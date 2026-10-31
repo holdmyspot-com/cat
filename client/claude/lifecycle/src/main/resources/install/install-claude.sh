@@ -33,18 +33,18 @@ cat_validate_marketplace_root "${MARKETPLACE_ROOT}" "CAT_CLAUDE_MARKETPLACE_ROOT
 # known_marketplaces.json and installed_plugins.json in plugins, the marketplace in plugins/marketplaces and the plugin
 # in plugins/cache. They replace each file by renaming a temporary file over it. These files were observed by tracing
 # Claude Code 2.1.312, so a later version of Claude Code may need them checked again.
-cat_require_writable "${RERUN_COMMAND}" "${CLAUDE_GLOBAL_CONFIG_FILE}" "${CLAUDE_CONFIG_DIR}" \
+cat_require_writable claude "${RERUN_COMMAND}" "${CLAUDE_GLOBAL_CONFIG_FILE}" "${CLAUDE_CONFIG_DIR}" \
 	"${CLAUDE_CONFIG_DIR}/backups" "${CLAUDE_CONFIG_DIR}/plugins" "${CLAUDE_CONFIG_DIR}/plugins/marketplaces" \
 	"${CLAUDE_CONFIG_DIR}/settings.json" "${CLAUDE_CONFIG_DIR}/plugins/known_marketplaces.json" \
 	"${CLAUDE_CONFIG_DIR}/plugins/installed_plugins.json" "${CLAUDE_CONFIG_DIR}/plugins/cache" "${CAT_DATA_DIR}" \
 	"$(dirname -- "${MARKETPLACE_ROOT}")"
-cat_require_removable "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
+cat_require_removable claude "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
 
 cat_resolve_artifact_directory "claude" "${CAT_SOURCE}"
 cat_validate_artifact "${CAT_ARTIFACT_DIRECTORY}" ".claude-plugin/plugin.json" "Claude"
 MARKETPLACE_METADATA="${CAT_ARTIFACT_DIRECTORY}/install/claude-marketplace.json"
 cat_migrate_data "${CAT_DATA_DIR}" "${CAT_ARTIFACT_DIRECTORY}/install/migrations"
-cat_begin_harness_changes installation "${RERUN_COMMAND}"
+cat_begin_harness_changes claude installation "${RERUN_COMMAND}"
 claude plugin uninstall cat@cat >/dev/null 2>&1 || true
 claude plugin marketplace remove cat >/dev/null 2>&1 || true
 rm -rf "${MARKETPLACE_ROOT}"

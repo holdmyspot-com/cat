@@ -283,7 +283,7 @@ platform=${expected_platform}" ]
 	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex v1.0"
 	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL/v1.0/HEAD} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
 
-	expect_unchanged_by_single_command "${CODEX_HOME}/config.toml" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${install_command}" v1.0
 
 	chmod u+w "${CODEX_HOME}/config.toml"
 	run single_command v1.0
@@ -291,8 +291,8 @@ platform=${expected_platform}" ]
 	[ -f "${CODEX_HOME}/agents/cat-reviewer.toml" ]
 	make_read_only "${CODEX_HOME}/config.toml"
 
-	expect_unchanged_by_single_command "${CODEX_HOME}/config.toml" "${install_command}" v1.0
-	expect_unchanged_by_single_command "${CODEX_HOME}/config.toml" "${uninstall_command} --uninstall --delete-data" \
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${uninstall_command} --uninstall --delete-data" \
 		--uninstall --delete-data
 }
 
@@ -306,7 +306,7 @@ platform=${expected_platform}" ]
 	mkdir -p "${CODEX_HOME}/plugins"
 	make_read_only "${CODEX_HOME}/plugins"
 
-	expect_unchanged_by_single_command "${CODEX_HOME}/plugins" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${install_command}" v1.0
 
 	chmod u+w "${CODEX_HOME}/plugins"
 	run single_command v1.0
@@ -314,8 +314,8 @@ platform=${expected_platform}" ]
 	[ -d "${CODEX_HOME}/plugins/cat-marketplace" ]
 	make_read_only "${CODEX_HOME}/plugins"
 
-	expect_unchanged_by_single_command "${CODEX_HOME}/plugins" "${install_command}" v1.0
-	expect_unchanged_by_single_command "${CODEX_HOME}/plugins" "${uninstall_command} --uninstall" --uninstall
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${uninstall_command} --uninstall" --uninstall
 }
 
 # Codex writes a helper program into CODEX_HOME/tmp whenever it installs or removes a plugin
@@ -329,8 +329,22 @@ platform=${expected_platform}" ]
 	mkdir -p "${CODEX_HOME}/tmp"
 	make_read_only "${CODEX_HOME}/tmp"
 
-	expect_unchanged_by_single_command "${CODEX_HOME}/tmp" "${install_command}" v1.0
-	expect_unchanged_by_single_command "${CODEX_HOME}/tmp" "${uninstall_command} --uninstall" --uninstall
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/tmp" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/tmp" "${uninstall_command} --uninstall" --uninstall
+}
+
+@test "single command that stops partway tells an agent to hand the command to the user without the prompt prefix" {
+	create_fake_engine_command codex
+	printf '%s\n' '#!/usr/bin/env sh' 'exit 1' > "${FAKE_BIN}/codex"
+	create_fake_release codex > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
+
+	run single_command v1.0
+
+	[ "${status}" -ne 0 ]
+	[[ "${output}" == *"stopped partway"* ]]
+	expect_agent_told_to_hand_command_to_user codex
 }
 
 @test "single command reaches the same Codex state as the Codex bootstrap scripts" {

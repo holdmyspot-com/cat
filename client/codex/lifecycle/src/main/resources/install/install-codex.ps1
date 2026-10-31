@@ -156,7 +156,10 @@ function Stop-CatNotWritable([string] $Path, [string] $Command)
 {
 	throw ("CAT changed nothing because it cannot write $Path.`n" +
 		"An agent's sandbox usually causes this. Run this command in a PowerShell window outside the sandbox:`n`n" +
-		"  $Command")
+		"  $Command`n`n" +
+		"If you are an agent that ran the command that printed this, show the user the command above exactly as " +
+		"printed, ask them to run it outside the sandbox, and end your turn there. Do not summarize the command or go " +
+		"on to other work.")
 }
 
 # Returns the absolute form of a path, resolving a relative one against PowerShell's current location as the cmdlets

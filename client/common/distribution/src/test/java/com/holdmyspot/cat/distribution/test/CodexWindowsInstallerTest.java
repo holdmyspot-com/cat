@@ -273,6 +273,7 @@ public final class CodexWindowsInstallerTest
 						"https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/lifecycle/src/main/" +
 						"resources/install/install-codex.ps1))) -Source '").
 					contains(RELEASE_NAME + "'");
+				requireAgentToldToHandCommandToUser(result.output());
 				requireThat(fixture.commands(), "commands").isEmpty();
 				requireThat(snapshot(fixture.codexHome), "after").isEqualTo(before, "before");
 			}
@@ -517,6 +518,7 @@ public final class CodexWindowsInstallerTest
 					contains("  $env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
 						"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
 						"resources/install/bootstrap-codex.ps1))) -Uninstall" + System.lineSeparator());
+				requireAgentToldToHandCommandToUser(result.output());
 				requireThat(fixture.commands(), "commands").isEmpty();
 				requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
 			}
@@ -652,6 +654,20 @@ public final class CodexWindowsInstallerTest
 				return root;
 		}
 		throw new SkipException("Every drive from D: to Z: exists, so none can stand for a missing drive");
+	}
+
+	/**
+	 * Verifies that a refusal's output tells an agent that ran the command to show the user the command, ask them to
+	 * run it outside the sandbox and end its turn, and does not offer the Claude Code prompt prefix.
+	 *
+	 * @param output the output of the refused operation
+	 */
+	private static void requireAgentToldToHandCommandToUser(String output)
+	{
+		requireThat(output, "output").
+			contains("If you are an agent that ran the command that printed this, show the user the command above " +
+				"exactly as printed, ask them to run it outside the sandbox, and end your turn there.").
+			doesNotContain("prefixed with");
 	}
 
 	/**

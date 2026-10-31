@@ -246,18 +246,24 @@ SCRIPT
 
 # Runs one operation through the single command and checks that it changed nothing because a path was not writable.
 #
+# The message must name the path and the command, and tell an agent that ran the command to show it to the user and end
+# its turn. Only Claude Code lets a user type the command at the prompt prefixed with "! ", so only the Claude message
+# may say so.
+#
 # Arguments:
-#   $1 - The path that the operation cannot write, which its message must name.
-#   $2 - The command that the message must give for running the operation outside the sandbox.
-#   $3... - The single command's arguments.
+#   $1 - The harness, claude or codex.
+#   $2 - The path that the operation cannot write, which its message must name.
+#   $3 - The command that the message must give for running the operation outside the sandbox.
+#   $4... - The single command's arguments.
 #
 # Environment:
 #   HOME holds every directory that the operation could change; COMMAND_LOG records the harness commands.
 expect_unchanged_by_single_command()
 {
-	expected_path="$1"
-	expected_command="$2"
-	shift 2
+	expected_harness="$1"
+	expected_path="$2"
+	expected_command="$3"
+	shift 3
 	home_before="$(tree_digest "${HOME}")"
 	: > "${COMMAND_LOG}"
 
@@ -266,11 +272,31 @@ expect_unchanged_by_single_command()
 	[ "${status}" -eq 77 ]
 	[[ "${output}" == *"CAT changed nothing because it cannot write ${expected_path}."* ]]
 	[[ "${output}" == *"sandbox"* ]]
-	[[ "${output}" == *"prefixed with \"! \""* ]]
 	[[ "${output}" == *"
   ${expected_command}"* ]]
+	expect_agent_told_to_hand_command_to_user "${expected_harness}"
 	[ "$(tree_digest "${HOME}")" = "${home_before}" ]
 	! grep -q '^claude \|^codex ' "${COMMAND_LOG}" || false
+}
+
+# Checks that the last command's output tells an agent to hand the printed command to the user, and that it offers the
+# "! " prompt prefix only for Claude Code.
+#
+# Arguments:
+#   $1 - The harness, claude or codex.
+#
+# Environment:
+#   output holds the last command's output, as Bats sets it.
+expect_agent_told_to_hand_command_to_user()
+{
+	[[ "${output}" == *"If you are an agent that ran the command that printed this, show the user the command above \
+exactly as printed, ask them to run it outside the sandbox, and end your turn there."* ]]
+	if [ "$1" = claude ]; then
+		[[ "${output}" == *"prefixed with \"! \""* ]]
+	else
+		[[ "${output}" != *"prefixed with"* ]]
+		[[ "${output}" != *'"! "'* ]]
+	fi
 }
 
 # Appends the outcome of an operation to a record: its exit status, the harness commands that it ran and a digest of

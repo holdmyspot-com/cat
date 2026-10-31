@@ -34,16 +34,16 @@ cat_validate_marketplace_root "${MARKETPLACE_ROOT}" "CAT_CODEX_MARKETPLACE_ROOT"
 # CODEX_HOME over it, stage the marketplace in .tmp/marketplaces, write a helper in tmp/arg0 and copy the plugin into
 # plugins/cache, all within CODEX_HOME; CAT itself writes the agents, its data and its marketplace. The Codex files were
 # observed by tracing Codex 0.160.0, so a later version of Codex may need them checked again.
-cat_require_writable "${RERUN_COMMAND}" "${CODEX_HOME}" "${CODEX_HOME}/.tmp" "${CODEX_HOME}/tmp" \
+cat_require_writable codex "${RERUN_COMMAND}" "${CODEX_HOME}" "${CODEX_HOME}/.tmp" "${CODEX_HOME}/tmp" \
 	"${CODEX_HOME}/config.toml" "${CODEX_HOME}/plugins/cache" "${CODEX_HOME}/agents" "${CAT_DATA_DIR}" \
 	"$(dirname -- "${MARKETPLACE_ROOT}")"
-cat_require_removable "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
+cat_require_removable codex "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
 
 cat_resolve_artifact_directory "codex" "${CAT_SOURCE}"
 cat_validate_artifact "${CAT_ARTIFACT_DIRECTORY}" ".codex-plugin/plugin.json" "Codex"
 MARKETPLACE_METADATA="${CAT_ARTIFACT_DIRECTORY}/install/codex-marketplace.json"
 cat_migrate_data "${CAT_DATA_DIR}" "${CAT_ARTIFACT_DIRECTORY}/install/migrations"
-cat_begin_harness_changes installation "${RERUN_COMMAND}"
+cat_begin_harness_changes codex installation "${RERUN_COMMAND}"
 cat_install_codex_agents "${CAT_ARTIFACT_DIRECTORY}" "${CODEX_HOME}" "${CAT_DATA_DIR}"
 codex plugin remove cat@cat >/dev/null 2>&1 || true
 codex plugin marketplace remove cat >/dev/null 2>&1 || true

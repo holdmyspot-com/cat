@@ -34,14 +34,14 @@ esac
 # "codex plugin remove" and "codex plugin marketplace remove" replace config.toml by renaming a temporary file from
 # CODEX_HOME over it, write a helper in tmp/arg0 and delete the plugin from plugins/cache, all within CODEX_HOME. These
 # files were observed by tracing Codex 0.160.0, so a later version of Codex may need them checked again.
-cat_require_writable "${RERUN_COMMAND}" "${CODEX_HOME}" "${CODEX_HOME}/tmp" "${CODEX_HOME}/config.toml" \
+cat_require_writable codex "${RERUN_COMMAND}" "${CODEX_HOME}" "${CODEX_HOME}/tmp" "${CODEX_HOME}/config.toml" \
 	"${CODEX_HOME}/plugins/cache"
 [ ! -f "${CAT_DATA_DIR}/codex-agent-files" ] ||
-	cat_require_writable "${RERUN_COMMAND}" "${CODEX_HOME}/agents" "${CAT_DATA_DIR}"
-cat_require_removable "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}" "${HOME}/.cat/bundles"
-[ "${DELETE_DATA}" = false ] || cat_require_removable "${RERUN_COMMAND}" "${CAT_DATA_DIR}"
+	cat_require_writable codex "${RERUN_COMMAND}" "${CODEX_HOME}/agents" "${CAT_DATA_DIR}"
+cat_require_removable codex "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}" "${HOME}/.cat/bundles"
+[ "${DELETE_DATA}" = false ] || cat_require_removable codex "${RERUN_COMMAND}" "${CAT_DATA_DIR}"
 
-cat_begin_harness_changes removal "${RERUN_COMMAND}"
+cat_begin_harness_changes codex removal "${RERUN_COMMAND}"
 cat_remove_codex_agents "${CODEX_HOME}" "${CAT_DATA_DIR}"
 codex plugin remove cat@cat
 codex plugin marketplace remove cat >/dev/null 2>&1 || true

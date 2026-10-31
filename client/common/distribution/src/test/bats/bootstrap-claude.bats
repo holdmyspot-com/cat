@@ -181,7 +181,7 @@ v1.0"
 	printf '{}\n' > "${CLAUDE_CONFIG_DIR}/settings.json"
 	make_read_only "${CLAUDE_CONFIG_DIR}/settings.json"
 
-	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/settings.json" "${install_command}" v1.0
+	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/settings.json" "${install_command}" v1.0
 
 	chmod u+w "${CLAUDE_CONFIG_DIR}/settings.json"
 	run single_command v1.0
@@ -189,8 +189,8 @@ v1.0"
 	[ -d "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
 	make_read_only "${CLAUDE_CONFIG_DIR}/settings.json"
 
-	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/settings.json" "${install_command}" v1.0
-	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/settings.json" "${uninstall_command}" --uninstall
+	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/settings.json" "${install_command}" v1.0
+	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/settings.json" "${uninstall_command}" --uninstall
 }
 
 @test "single command changes nothing when the directory that holds Claude's marketplace is read-only" {
@@ -205,15 +205,15 @@ v1.0"
 	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins"
 	make_read_only "${CLAUDE_CONFIG_DIR}/plugins"
 
-	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/plugins" "${install_command}" v1.0
+	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/plugins" "${install_command}" v1.0
 
 	chmod u+w "${CLAUDE_CONFIG_DIR}/plugins"
 	run single_command v1.0
 	[ "${status}" -eq 0 ]
 	make_read_only "${CLAUDE_CONFIG_DIR}/plugins"
 
-	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/plugins" "${install_command}" v1.0
-	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/plugins" "${uninstall_command}" --uninstall
+	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/plugins" "${install_command}" v1.0
+	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/plugins" "${uninstall_command}" --uninstall
 }
 
 # Without CLAUDE_CONFIG_DIR, Claude Code keeps .claude.json directly in the home directory, outside .claude
@@ -227,7 +227,7 @@ v1.0"
 	mkdir -p "${HOME}/.claude"
 	make_read_only "${HOME}"
 
-	expect_unchanged_by_single_command "${HOME}" "${install_command}" v1.0
+	expect_unchanged_by_single_command claude "${HOME}" "${install_command}" v1.0
 }
 
 @test "single command changes nothing when the .claude.json in Claude's configuration directory is read-only" {
@@ -241,7 +241,21 @@ v1.0"
 	printf '{}\n' > "${CLAUDE_CONFIG_DIR}/.claude.json"
 	make_read_only "${CLAUDE_CONFIG_DIR}/.claude.json"
 
-	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/.claude.json" "${uninstall_command}" --uninstall
+	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/.claude.json" "${uninstall_command}" --uninstall
+}
+
+@test "single command that stops partway tells an agent to hand the command to the user and offers the prompt prefix" {
+	create_fake_engine_command claude
+	printf '%s\n' '#!/usr/bin/env sh' 'exit 1' > "${FAKE_BIN}/claude"
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
+
+	run single_command v1.0
+
+	[ "${status}" -ne 0 ]
+	[[ "${output}" == *"stopped partway"* ]]
+	expect_agent_told_to_hand_command_to_user claude
 }
 
 @test "single command reaches the same Claude Code state as the Claude bootstrap scripts" {

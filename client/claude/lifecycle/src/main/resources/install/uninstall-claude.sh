@@ -40,10 +40,10 @@ set -- "${CLAUDE_GLOBAL_CONFIG_FILE}" "${CLAUDE_CONFIG_DIR}" "${CLAUDE_CONFIG_DI
 for CACHED_VERSION in "${CLAUDE_CONFIG_DIR}/plugins/cache/cat/cat"/*; do
 	[ ! -d "${CACHED_VERSION}" ] || set -- "$@" "${CACHED_VERSION}"
 done
-cat_require_writable "${RERUN_COMMAND}" "$@"
-cat_require_removable "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}" "${HOME}/.cat/bundles"
+cat_require_writable claude "${RERUN_COMMAND}" "$@"
+cat_require_removable claude "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}" "${HOME}/.cat/bundles"
 
-cat_begin_harness_changes removal "${RERUN_COMMAND}"
+cat_begin_harness_changes claude removal "${RERUN_COMMAND}"
 claude plugin uninstall cat@cat
 claude plugin marketplace remove cat >/dev/null 2>&1 || true
 rm -rf "${MARKETPLACE_ROOT}"

@@ -9,6 +9,8 @@ CAT_DOWNLOAD_TEMP_DIRECTORY=""
 CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-holdmyspot-com/cat}"
 # The exit status of an installer or uninstaller that stops before any change because it cannot write a path
 CAT_NOT_WRITABLE_STATUS=77
+# The harness that CAT_RECOVERY_COMMAND operates on, which selects the hint printed with it
+CAT_RECOVERY_HARNESS=""
 # The command that repeats the running operation, printed when the operation fails after it began changing the harness
 CAT_RECOVERY_COMMAND=""
 # The operation that CAT_RECOVERY_COMMAND repeats, such as "installation", for the failure message
@@ -482,19 +484,30 @@ lifecycle/src/main/resources/install/cat.sh | ${cat_environment}sh -s -- --harne
 	printf '%s\n' "${cat_command}"
 }
 
-# Writes how to run a command outside the agent's sandbox, followed by the command.
+# Writes how to run a command outside the agent's sandbox, followed by the command and what an agent that ran the
+# failed command must do with it.
 #
 # Arguments:
-#   $1 - The command.
+#   $1 - Harness identifier. Only claude gets the hint to type the command at the prompt prefixed with "! ", which only
+#        Claude Code offers.
+#   $2 - The command.
 #
 # Errors:
-#   Writes the instructions and the command to standard error.
+#   Writes the instructions, the command and the instruction to an agent to standard error.
 cat_print_rerun_instructions()
 {
-	echo "An agent's sandbox usually causes this. Run this command outside the sandbox, such as in a terminal; in" \
-		"Claude Code, you can type it at the prompt prefixed with \"! \":" >&2
+	if [ "$1" = claude ]; then
+		echo "An agent's sandbox usually causes this. Run this command outside the sandbox, such as in a terminal; in" \
+			"Claude Code, you can type it at the prompt prefixed with \"! \":" >&2
+	else
+		echo "An agent's sandbox usually causes this. Run this command outside the sandbox, such as in a terminal:" >&2
+	fi
 	echo >&2
-	echo "  $1" >&2
+	echo "  $2" >&2
+	echo >&2
+	echo "If you are an agent that ran the command that printed this, show the user the command above exactly as" \
+		"printed, ask them to run it outside the sandbox, and end your turn there. Do not summarize the command or go on" \
+		"to other work." >&2
 }
 
 # Returns whether a file or directory can be written, without changing it.
@@ -519,8 +532,9 @@ cat_is_writable()
 # Exits before any change when CAT cannot write a path, explaining why and how to run the command outside the sandbox.
 #
 # Arguments:
-#   $1 - The path that cannot be written.
-#   $2 - The command that repeats the operation.
+#   $1 - Harness identifier, which selects the hint that cat_print_rerun_instructions gives.
+#   $2 - The path that cannot be written.
+#   $3 - The command that repeats the operation.
 #
 # Errors:
 #   Names the path, explains that an agent's sandbox usually causes this, and gives the command.
@@ -529,16 +543,17 @@ cat_is_writable()
 #   Exits with CAT_NOT_WRITABLE_STATUS.
 cat_exit_not_writable()
 {
-	echo "CAT changed nothing because it cannot write $1." >&2
-	cat_print_rerun_instructions "$2"
+	echo "CAT changed nothing because it cannot write $2." >&2
+	cat_print_rerun_instructions "$1" "$3"
 	exit "${CAT_NOT_WRITABLE_STATUS}"
 }
 
 # Exits before any change when the operation could not create or change one of the paths.
 #
 # Arguments:
-#   $1 - The command that repeats the operation, which the user can run outside the sandbox.
-#   $2... - Each file or directory that the operation creates or changes. An existing file is checked together with
+#   $1 - Harness identifier, which selects the hint to run the command outside the sandbox.
+#   $2 - The command that repeats the operation, which the user can run outside the sandbox.
+#   $3... - Each file or directory that the operation creates or changes. An existing file is checked together with
 #           its directory, because a program can replace a file by renaming a new one over it. For a path that does
 #           not exist, the nearest existing directory above it is checked instead, because the operation creates the
 #           path there.
@@ -548,16 +563,19 @@ cat_exit_not_writable()
 #   that is not.
 cat_require_writable()
 {
-	cat_rerun_command="$1"
-	shift
+	cat_harness="$1"
+	cat_rerun_command="$2"
+	shift 2
 	for cat_path in "$@"; do
 		while [ ! -e "${cat_path}" ] && [ "$(dirname -- "${cat_path}")" != "${cat_path}" ]; do
 			cat_path="$(dirname -- "${cat_path}")"
 		done
-		cat_is_writable "${cat_path}" || cat_exit_not_writable "${cat_path}" "${cat_rerun_command}"
+		cat_is_writable "${cat_path}" ||
+			cat_exit_not_writable "${cat_harness}" "${cat_path}" "${cat_rerun_command}"
 		if [ ! -d "${cat_path}" ]; then
 			cat_directory="$(dirname -- "${cat_path}")"
-			cat_is_writable "${cat_directory}" || cat_exit_not_writable "${cat_directory}" "${cat_rerun_command}"
+			cat_is_writable "${cat_directory}" ||
+				cat_exit_not_writable "${cat_harness}" "${cat_directory}" "${cat_rerun_command}"
 		fi
 	done
 }
@@ -565,8 +583,9 @@ cat_require_writable()
 # Exits before any change when the operation could not delete one of the paths that exist.
 #
 # Arguments:
-#   $1 - The command that repeats the operation, which the user can run outside the sandbox.
-#   $2... - Each file or directory that the operation deletes. A path that does not exist is skipped. For one that
+#   $1 - Harness identifier, which selects the hint to run the command outside the sandbox.
+#   $2 - The command that repeats the operation, which the user can run outside the sandbox.
+#   $3... - Each file or directory that the operation deletes. A path that does not exist is skipped. For one that
 #           exists, both it and the directory that holds it must be writable.
 #
 # Exit status:
@@ -574,12 +593,14 @@ cat_require_writable()
 #   first path that is not writable.
 cat_require_removable()
 {
-	cat_rerun_command="$1"
-	shift
+	cat_harness="$1"
+	cat_rerun_command="$2"
+	shift 2
 	for cat_path in "$@"; do
 		[ -e "${cat_path}" ] || continue
 		for cat_checked_path in "$(dirname -- "${cat_path}")" "${cat_path}"; do
-			cat_is_writable "${cat_checked_path}" || cat_exit_not_writable "${cat_checked_path}" "${cat_rerun_command}"
+			cat_is_writable "${cat_checked_path}" ||
+				cat_exit_not_writable "${cat_harness}" "${cat_checked_path}" "${cat_rerun_command}"
 		done
 	done
 }
@@ -588,12 +609,14 @@ cat_require_removable()
 # failure from then on tells the user how to finish it.
 #
 # Arguments:
-#   $1 - The operation, such as "installation" or "removal".
-#   $2 - The command that repeats it.
+#   $1 - Harness identifier, which selects the hint to run the command outside the sandbox.
+#   $2 - The operation, such as "installation" or "removal".
+#   $3 - The command that repeats it.
 cat_begin_harness_changes()
 {
-	CAT_RECOVERY_OPERATION="$1"
-	CAT_RECOVERY_COMMAND="$2"
+	CAT_RECOVERY_HARNESS="$1"
+	CAT_RECOVERY_OPERATION="$2"
+	CAT_RECOVERY_COMMAND="$3"
 }
 
 # Deletes the download directory and, when the operation failed after it began changing the harness, tells the user
@@ -615,7 +638,7 @@ cat_finish()
 	if [ "${cat_exit_status}" -ne 0 ] && [ -n "${CAT_RECOVERY_COMMAND}" ]; then
 		echo "CAT's ${CAT_RECOVERY_OPERATION} stopped partway, so CAT may be missing or incomplete. If an error above" \
 			"says that a file could not be written, such as \"Read-only file system\", run the command again to finish." >&2
-		cat_print_rerun_instructions "${CAT_RECOVERY_COMMAND}"
+		cat_print_rerun_instructions "${CAT_RECOVERY_HARNESS}" "${CAT_RECOVERY_COMMAND}"
 	fi
 	return "${cat_exit_status}"
 }
