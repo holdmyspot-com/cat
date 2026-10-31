@@ -1,5 +1,8 @@
 ---
-description: Use when the user asks to uninstall CAT from Codex.
+description: Use when the user asks to uninstall or remove CAT, or to delete CAT's data.
 ---
 
-Read `first-use.md` in this skill's directory and follow it exactly.
+This skill belongs to CAT's Codex plugin, so wherever its instructions run `install/cat.sh`, give
+`--harness codex` as the first arguments after the script's path.
+
+<!-- cat:include ../shared-lazy-body.md -->
