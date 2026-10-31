@@ -4,13 +4,16 @@ import static com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ROOT_
 
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.claude.secrets.StreamJsonEventsAccess;
 import com.holdmyspot.cat.claude.secrets.StreamJsonEventsSecrets;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -53,7 +56,12 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>model output in a turn is an {@code assistant} record, a {@code stream_event} record, or a {@code result}
  *   record that reports usage. A {@code user} record, a {@code rate_limit_event} record and a {@code system} record
  *   other than a hook are not output. A {@code hook_started} record marks a hook as running until its
- *   {@code hook_response} record.</li>
+ *   {@code hook_response} record;</li>
+ *   <li>a command runs from the {@code timestamp} of the {@code assistant} record that calls {@code Bash} to the
+ *   {@code timestamp} of the {@code user} record that answers it. Claude Code 2.1.287 answers a command in the
+ *   foreground only once it has ended, so an agent never receives a result from a command that is still running. It
+ *   answers a background command at once with a {@code backgroundTaskId}, and its {@code task_notification} record
+ *   has no time, so how long a background command ran is unknown.</li>
  * </ul>
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -85,6 +93,14 @@ public final class StreamJsonEvents extends HarnessEvents
 	 */
 	private final List<String> received = new ArrayList<>();
 	private final Map<String, Integer> toolEntries = new HashMap<>();
+	/**
+	 * When each {@code Bash} call was made, by its identifier, or {@code null} if its record has no time.
+	 */
+	private final Map<String, Instant> commandStarts = new HashMap<>();
+	/**
+	 * How long each {@code Bash} call ran, in the order called; {@code null} while it is unanswered or if it is unknown.
+	 */
+	private final Map<String, Duration> commandDurations = new LinkedHashMap<>();
 	/**
 	 * The start of each child, by the identifier of the {@code Agent} call that started it, which is also the child's
 	 * identity.
@@ -170,7 +186,7 @@ public final class StreamJsonEvents extends HarnessEvents
 		{
 			switch (block.path("type").asString(""))
 			{
-				case "tool_use" -> readToolCall(block, eventTurn, agent);
+				case "tool_use" -> readToolCall(block, eventTurn, agent, parseTime(event));
 				case "text" -> recordAssistant(eventTurn, agent, message + ":" + blockIndex,
 					block.path("text").asString(""));
 				default ->
@@ -180,7 +196,7 @@ public final class StreamJsonEvents extends HarnessEvents
 			blockIndex += 1;
 		}
 		setToolCalls(calls.values().stream().toList());
-		setEvidence(new SessionEvidence(entries, received));
+		setEvidence(new SessionEvidence(entries, received, summarizeCommands()));
 	}
 
 	/**
@@ -189,8 +205,9 @@ public final class StreamJsonEvents extends HarnessEvents
 	 * @param block the tool-use block
 	 * @param eventTurn the root turn that owns the call
 	 * @param agent the root name or child identity
+	 * @param time when the call was made, or {@code null} if its record has no time
 	 */
-	private void readToolCall(JsonNode block, int eventTurn, String agent)
+	private void readToolCall(JsonNode block, int eventTurn, String agent, Instant time)
 	{
 		String id = block.path("id").asString("");
 		String tool = block.path("name").asString("");
@@ -203,6 +220,11 @@ public final class StreamJsonEvents extends HarnessEvents
 			command = commandNode.stringValue();
 		if (agent.equals(ROOT_AGENT))
 			calls.put(id, new ToolCall(tool, command, null));
+		if (command != null)
+		{
+			commandStarts.put(id, time);
+			commandDurations.put(id, null);
+		}
 		String arguments = command;
 		if (arguments == null)
 			arguments = contentText(input);
@@ -245,6 +267,8 @@ public final class StreamJsonEvents extends HarnessEvents
 				status = exitStatus(block.path("is_error").asBoolean(false), result);
 			if (status == null)
 				status = tool.exitStatus();
+			if (tool.command())
+				commandDurations.put(id, measure(commandStarts.get(id), parseTime(event), result));
 			entries.set(index, new SessionEvidence.Tool(tool.turn(), tool.agent(), tool.tool(), tool.input(),
 				tool.command(), status, toolOutput(tool.tool(), result, block.path("content"))));
 
@@ -254,7 +278,62 @@ public final class StreamJsonEvents extends HarnessEvents
 			readChildReport(id, result);
 		}
 		setToolCalls(calls.values().stream().toList());
-		setEvidence(new SessionEvidence(entries, received));
+		setEvidence(new SessionEvidence(entries, received, summarizeCommands()));
+	}
+
+	/**
+	 * Returns how long a command ran.
+	 *
+	 * @param start  when the command was called, or {@code null} if unknown
+	 * @param end    when its result was recorded, or {@code null} if unknown
+	 * @param result the record's structured result
+	 * @return the duration, or {@code null} if the command ran in the background or a time is unknown
+	 */
+	private static Duration measure(Instant start, Instant end, JsonNode result)
+	{
+		if (start == null || end == null || end.isBefore(start) || result.has("backgroundTaskId"))
+			return null;
+		return Duration.between(start, end);
+	}
+
+	/**
+	 * Summarizes how the session's commands ran. The longest command is unknown while a command is unanswered or if one
+	 * ran in the background. No result is ever received from a command that is still running.
+	 *
+	 * @return the summary
+	 */
+	private CommandSummary summarizeCommands()
+	{
+		Duration slowest = Duration.ZERO;
+		for (Duration duration : commandDurations.values())
+		{
+			if (duration == null)
+			{
+				slowest = null;
+				break;
+			}
+			if (duration.compareTo(slowest) > 0)
+				slowest = duration;
+		}
+		return new CommandSummary(slowest, 0);
+	}
+
+	/**
+	 * Returns when a record was written.
+	 *
+	 * @param event the record
+	 * @return its {@code timestamp}, or {@code null} if it has none that can be read
+	 */
+	private static Instant parseTime(JsonNode event)
+	{
+		try
+		{
+			return Instant.parse(event.path("timestamp").asString(""));
+		}
+		catch (DateTimeParseException _)
+		{
+			return null;
+		}
 	}
 
 	/**
@@ -294,7 +373,7 @@ public final class StreamJsonEvents extends HarnessEvents
 			report.add("Summary: " + summary);
 		entries.add(new SessionEvidence.ChildEvent(turnFor(start.agent()), start.agent(), id, start.name(),
 			SessionEvidence.ChildEvent.Kind.ENDED, report.toString()));
-		setEvidence(new SessionEvidence(entries, received));
+		setEvidence(new SessionEvidence(entries, received, summarizeCommands()));
 	}
 
 	/**
@@ -423,7 +502,7 @@ public final class StreamJsonEvents extends HarnessEvents
 		}
 		else
 			entries.set(index, entry);
-		setEvidence(new SessionEvidence(entries, received));
+		setEvidence(new SessionEvidence(entries, received, summarizeCommands()));
 	}
 
 	/**
@@ -549,7 +628,7 @@ public final class StreamJsonEvents extends HarnessEvents
 			recordAssistant(eventTurn, agent, "result", text);
 		if (agent.equals(ROOT_AGENT))
 			turnCompleted = true;
-		setEvidence(new SessionEvidence(entries, received));
+		setEvidence(new SessionEvidence(entries, received, summarizeCommands()));
 
 		JsonNode models = event.path("modelUsage");
 		if (models.isObject() && !models.isEmpty())

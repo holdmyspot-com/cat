@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.optimizer.report;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
+import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.Revert;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
@@ -85,6 +87,16 @@ final class ReportJson
 			concurrencyNode.put("shared_hold_until", concurrency.sharedHoldUntil().toString());
 		concurrencyNode.put("window_cap", concurrency.windowCap());
 		concurrencyNode.put("backoffs", concurrency.backoffs());
+		ObjectNode commands = concurrencyNode.putObject("commands");
+		for (Map.Entry<Purpose, CommandCounts> entry : concurrency.commands().entrySet())
+		{
+			ObjectNode counts = commands.putObject(EnumNames.lowerCase(entry.getKey()));
+			counts.put("trials", entry.getValue().sessions());
+			counts.put("slow_known", entry.getValue().slowKnown());
+			counts.put("slow", entry.getValue().slow());
+			counts.put("empty_running_known", entry.getValue().emptyRunningKnown());
+			counts.put("empty_running", entry.getValue().emptyRunning());
+		}
 		assumptions(root.putObject("assumptions"), report.assumptions());
 		ArrayNode attempts = root.putArray("attempts");
 		for (AttemptSummary attempt : report.attempts())

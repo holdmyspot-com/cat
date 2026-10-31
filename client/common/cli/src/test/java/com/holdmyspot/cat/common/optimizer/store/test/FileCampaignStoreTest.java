@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
@@ -69,6 +70,7 @@ import java.nio.file.attribute.AclEntryPermission;
 import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.UserPrincipal;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -937,7 +939,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
-	 * Verifies that descriptive prompt sizes and input observations survive a store reload.
+	 * Verifies that descriptive prompt sizes, input observations and command counts survive a store reload.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -945,6 +947,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	public void preservesOptimizationMeasurements() throws IOException
 	{
 		// Requirement: R-E18
+		// Requirement: R-E6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			FileCampaignStore store = new FileCampaignStore(cleanup.add(Files.createTempDirectory("measurements")), JSON,
@@ -952,7 +955,11 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			OptimizationEvidence evidence = new OptimizationEvidence(List.of(), List.of(),
 				Map.of(Builder.INCUMBENT, new PromptSize(4L, 1L, null)),
 				Map.of(Builder.confirmedIdentity("model-a"),
-					Map.of(Builder.INCUMBENT, Map.of("safety", new TrialInputs(3, List.of(0L, 10L))))));
+					Map.of(Builder.INCUMBENT, Map.of("safety", new TrialInputs(3, List.of(0L, 10L)))))).
+				addCommands(new TrialKey(Purpose.FORMAL, 2, Builder.INCUMBENT, "safety", 1),
+					new CommandSummary(Duration.ofSeconds(11), null)).
+				addCommands(new TrialKey(Purpose.DEVELOPMENT, 1, Builder.INCUMBENT, "safety", 1),
+					new CommandSummary(Duration.ofSeconds(1), 0));
 			Campaign campaign = new Builder().confirmed().optimization(evidence).build();
 			store.replaceSnapshot(campaign);
 			requireThat(store.load(campaign.header().id()).orElseThrow().optimization(), "measurements").
@@ -1259,8 +1266,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	/**
 	 * Verifies that a version-45 snapshot whose throttle holds the window cap at 1 without a rejection loads with the
 	 * campaign's ceiling as the level to regrow to, so slow start can raise its window again while utilization stays at
-	 * 80% or more; that one whose throttle counts a rejection's backoffs keeps the window at 1; and that a version-45
-	 * trial session's throttle keeps its window cap as its peak window.
+	 * 80% or more; that one whose throttle counts a rejection's backoffs keeps the window at 1; that a version-45
+	 * trial session's throttle keeps its window cap as its peak window; and that a session recorded before sessions
+	 * recorded how their commands ran, like a snapshot that counted none, loads with them unknown.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -1278,13 +1286,15 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment(ID, trial);
 			store.writeTrialSession(ID, trial.key(), new TrialSession(expired, expired.plusSeconds(40), 8,
-				new Throttle(expired, 1, 0, 1), List.of(new RateLimitWindow(0.80, null)), HostLogin.API_KEY, null));
+				new Throttle(expired, 1, 0, 1), List.of(new RateLimitWindow(0.80, null)), HostLogin.API_KEY, null,
+				new CommandSummary(Duration.ofSeconds(3), 0)));
 			store.replaceSnapshot(original);
 
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
 			root.put("format_version", 45);
 			((ObjectNode) root.get("throttle")).remove("peak_window");
+			((ObjectNode) root.get("optimization")).remove("commands");
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 			try (Stream<Path> files = Files.list(heldOutDirectory(campaigns).resolve("trials")))
 			{
@@ -1292,7 +1302,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				ObjectNode recordRoot = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
 				recordRoot.put("format_version", 45);
 				for (JsonNode session : recordRoot.get("sessions"))
+				{
 					((ObjectNode) session.get("throttle")).remove("peak_window");
+					((ObjectNode) session).remove(List.of("slowest_command_ms", "empty_running_results"));
+				}
 				Files.writeString(record, JSON.writeValueAsString(recordRoot), UTF_8);
 			}
 
@@ -1304,6 +1317,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			requireThat(ConcurrencyPolicy.window(observed), "window").isEqualTo(8);
 			requireThat(restarted.readRecord(ID, trial.key()).orElseThrow().sessions().getFirst().throttle(),
 				"sessionThrottle").isEqualTo(new Throttle(expired, 1, 0, 1));
+			requireThat(restarted.readRecord(ID, trial.key()).orElseThrow().sessions().getFirst().commands(),
+				"sessionCommands").isEqualTo(CommandSummary.UNKNOWN);
+			requireThat(loaded.optimization().commands(), "commands").isEmpty();
 
 			((ObjectNode) root.get("throttle")).put("backoffs", 2);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);

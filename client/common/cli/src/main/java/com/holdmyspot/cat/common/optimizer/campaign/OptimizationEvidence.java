@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
@@ -26,12 +27,14 @@ import java.util.Set;
  * @param attempts retained original promotion results in launch order
  * @param tokenUsage reported usage of every finished nested session, by role
  * @param approaches the editing approach and order origin of each reserved prompt author attempt
+ * @param commands how the shell commands of completed trial sessions ran, by the sessions' purpose and then by the
+ *   certification attempt that they belong to, which is 0 for a purpose outside certification attempts
  */
 public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
 	Map<Sha256, PromptSize> promptSizes,
 	Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
 	List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage,
-	Map<Integer, ApproachAssignment> approaches)
+	Map<Integer, ApproachAssignment> approaches, Map<Purpose, Map<Integer, CommandCounts>> commands)
 {
 	/**
 	 * No descriptive evidence has been recorded.
@@ -48,11 +51,16 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 	 * @param attempts retained original promotion results in launch order
 	 * @param tokenUsage reported usage of every finished nested session, by role
 	 * @param approaches durable approach assignments by reserved attempt number
+	 * @param commands how the shell commands of completed trial sessions ran, by purpose and certification attempt
 	 * @throws NullPointerException if an argument or element is null
 	 */
 	public OptimizationEvidence
 	{
 		approaches = Map.copyOf(approaches);
+		Map<Purpose, Map<Integer, CommandCounts>> copiedCommands = new EnumMap<>(Purpose.class);
+		for (Map.Entry<Purpose, Map<Integer, CommandCounts>> entry : commands.entrySet())
+			copiedCommands.put(entry.getKey(), Map.copyOf(entry.getValue()));
+		commands = Map.copyOf(copiedCommands);
 		promptAuthors = List.copyOf(promptAuthors);
 		removed = List.copyOf(removed);
 		promptSizes = Map.copyOf(promptSizes);
@@ -102,7 +110,27 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
 		List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage)
 	{
-		this(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, Map.of());
+		this(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, Map.of(), Map.of());
+	}
+
+	/**
+	 * Creates evidence without command observations.
+	 *
+	 * @param promptAuthors retained diagnoses
+	 * @param removed       removed hunks
+	 * @param promptSizes   target file measurements
+	 * @param trialInputs   trial observations
+	 * @param attempts      promotion results
+	 * @param tokenUsage    usage by session role
+	 * @param approaches    durable approach assignments by reserved attempt number
+	 */
+	public OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
+		Map<Sha256, PromptSize> promptSizes,
+		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
+		List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage,
+		Map<Integer, ApproachAssignment> approaches)
+	{
+		this(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, approaches, Map.of());
 	}
 
 	/**
@@ -133,7 +161,8 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 	{
 		Map<Integer, ApproachAssignment> updated = new HashMap<>(approaches);
 		updated.put(number, assignment);
-		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, updated);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, updated,
+			commands);
 	}
 
 	/**
@@ -182,7 +211,8 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		cells.put(cell, cells.getOrDefault(cell, TrialInputs.EMPTY).add(input));
 		snapshots.put(snapshot, cells);
 		updated.put(identity, snapshots);
-		return new OptimizationEvidence(promptAuthors, removed, promptSizes, updated, attempts, tokenUsage, approaches);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, updated, attempts, tokenUsage, approaches,
+			commands);
 	}
 
 	/**
@@ -202,6 +232,44 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		List<TokenUsage> sessions = new ArrayList<>(updated.getOrDefault(role, List.of()));
 		sessions.add(usage);
 		updated.put(role, sessions);
-		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, updated, approaches);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, updated, approaches,
+			commands);
+	}
+
+	/**
+	 * Counts how the shell commands of one more completed trial session ran.
+	 *
+	 * @param key      the session's trial
+	 * @param observed how the session's commands ran
+	 * @return the updated evidence
+	 * @throws NullPointerException if {@code key} or {@code observed} are null
+	 */
+	public OptimizationEvidence addCommands(TrialKey key, CommandSummary observed)
+	{
+		requireThat(key, "key").isNotNull();
+		requireThat(observed, "observed").isNotNull();
+		int attempt = commandAttempt(key);
+		Map<Purpose, Map<Integer, CommandCounts>> updated = new EnumMap<>(Purpose.class);
+		updated.putAll(commands);
+		Map<Integer, CommandCounts> byAttempt = new HashMap<>(updated.getOrDefault(key.purpose(), Map.of()));
+		byAttempt.put(attempt, byAttempt.getOrDefault(attempt, CommandCounts.EMPTY).add(observed));
+		updated.put(key.purpose(), byAttempt);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage,
+			approaches, updated);
+	}
+
+	/**
+	 * Returns the certification attempt under which a trial's command observations are counted.
+	 *
+	 * @param key the trial
+	 * @return the certification attempt's index for a trial of a certification attempt, otherwise 0
+	 */
+	private static int commandAttempt(TrialKey key)
+	{
+		return switch (key.purpose())
+		{
+			case FORMAL, CONTROL, INCUMBENT -> key.series();
+			case DEVELOPMENT, BASELINE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> 0;
+		};
 	}
 }

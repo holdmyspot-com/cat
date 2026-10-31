@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
+import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Comparability;
 import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
@@ -21,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
+import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Revert;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
@@ -41,6 +43,8 @@ import com.holdmyspot.cat.common.optimizer.statistics.Interval;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -148,9 +152,11 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param backoffs the consecutive rate-limit backoffs
 	 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, which stops the trials of every
 	 *   campaign of the harness, or {@code null} if none lasts
+	 * @param commands how the shell commands of the reported phase's completed trial sessions ran, by purpose, in
+	 *   purpose order; empty if none completed
 	 */
 	public record Concurrency(int window, int ceiling, int slowStartSize, Instant holdUntil, int windowCap,
-		int backoffs, Instant sharedHoldUntil)
+		int backoffs, Instant sharedHoldUntil, Map<Purpose, CommandCounts> commands)
 	{
 		/**
 		 * Creates the state.
@@ -162,6 +168,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		 * @param windowCap the window that the last rate-limit response set, or 0 if none
 		 * @param backoffs the consecutive rate-limit backoffs
 		 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, or {@code null} if none lasts
+		 * @param commands how the shell commands of the reported phase's completed trial sessions ran, by purpose
+		 * @throws NullPointerException if {@code commands} is null
 		 * @throws IllegalArgumentException if {@code window}, {@code ceiling} or {@code slowStartSize} are not
 		 *   positive, or {@code windowCap} or {@code backoffs} are negative
 		 */
@@ -172,6 +180,10 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			requireThat(slowStartSize, "slowStartSize").isPositive();
 			requireThat(windowCap, "windowCap").isNotNegative();
 			requireThat(backoffs, "backoffs").isNotNegative();
+			requireThat(commands, "commands").isNotNull();
+			Map<Purpose, CommandCounts> ordered = new EnumMap<>(Purpose.class);
+			ordered.putAll(commands);
+			commands = Collections.unmodifiableMap(ordered);
 		}
 	}
 
@@ -347,8 +359,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			describe(campaign), choices(campaign), authorityWarnings(campaign), cells, allocation,
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
-			concurrency(campaign, evidence.sharedHoldUntil()), assumptions, attempts, keepOffers, claim, limitations,
-			conditions,
+			concurrency(campaign, evidence.sharedHoldUntil(), commands(campaign, phase, attemptIndex)), assumptions,
+			attempts, keepOffers, claim, limitations, conditions,
 			OptimizationReport.of(campaign), campaign.development().reverts(), AddedTestCaseReport.of(campaign),
 			evidence.certifiedEnvironment());
 	}
@@ -613,20 +625,53 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	}
 
 	/**
+	 * Returns how the shell commands of the reported phase's completed trial sessions ran. A certification attempt's
+	 * report counts its formal, control and incumbent trials; a development report counts the trials of every other
+	 * purpose.
+	 *
+	 * @param campaign the campaign
+	 * @param phase    the reported phase
+	 * @param attempt  the reported certification index, or 0 if none
+	 * @return the counts by purpose
+	 */
+	private static Map<Purpose, CommandCounts> commands(Campaign campaign, Phase phase, int attempt)
+	{
+		Map<Purpose, CommandCounts> counts = new EnumMap<>(Purpose.class);
+		if (phase == Phase.UNCONFIRMED)
+			return counts;
+		for (Map.Entry<Purpose, Map<Integer, CommandCounts>> entry : campaign.optimization().commands().entrySet())
+		{
+			boolean certification = switch (entry.getKey())
+			{
+				case FORMAL, CONTROL, INCUMBENT -> true;
+				case DEVELOPMENT, BASELINE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> false;
+			};
+			if (certification != (phase == Phase.FORMAL))
+				continue;
+			CommandCounts observed = entry.getValue().get(attempt);
+			if (observed != null)
+				counts.put(entry.getKey(), observed);
+		}
+		return counts;
+	}
+
+	/**
 	 * Returns the concurrency state.
 	 *
 	 * @param campaign the campaign
 	 * @param sharedHoldUntil the end of the hold on the harness's shared capacity, or {@code null} if none lasts
+	 * @param commands how the shell commands of the reported phase's completed trial sessions ran, by purpose
 	 * @return the state
 	 */
-	private static Concurrency concurrency(Campaign campaign, Instant sharedHoldUntil)
+	private static Concurrency concurrency(Campaign campaign, Instant sharedHoldUntil,
+		Map<Purpose, CommandCounts> commands)
 	{
 		Throttle throttle = campaign.throttle();
 		Instant holdUntil = null;
 		if (!throttle.holdUntil().equals(Instant.EPOCH))
 			holdUntil = throttle.holdUntil();
 		return new Concurrency(ConcurrencyPolicy.window(campaign), campaign.ceiling(), campaign.slowStart().size(),
-			holdUntil, throttle.windowCap(), throttle.backoffs(), sharedHoldUntil);
+			holdUntil, throttle.windowCap(), throttle.backoffs(), sharedHoldUntil, commands);
 	}
 
 	/**

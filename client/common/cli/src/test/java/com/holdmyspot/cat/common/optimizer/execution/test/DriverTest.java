@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptResult;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
@@ -93,6 +94,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief;
 import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
@@ -3297,7 +3299,8 @@ public final class DriverTest
 	/**
 	 * A completed trial session appends a session record to its trial's record: when the session started and ended,
 	 * how many trial sessions were running when it started, the throttle state after its reported rate-limit windows,
-	 * those windows, the harness's login and the session's token usage.
+	 * those windows, the harness's login, the session's token usage and how its shell commands ran, which the campaign
+	 * also counts for the trial's purpose.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3324,13 +3327,17 @@ public final class DriverTest
 					passed.effects(), passed.initialProject(), passed.model(), passed.reasoning(), usage, windows,
 					passed.promptSources(),
 					passed.toolCalls()));
+				CommandSummary commands = new CommandSummary(Duration.ofSeconds(12), 1);
+				harness.sessions().supplyEvidence(passed.transcript(), new SessionEvidence(List.of(), commands));
 				driver.step();
 
 				// The 85% window stops the concurrency window from growing beyond the 2 trials that are running
 				Throttle frozen = new Throttle(Instant.EPOCH, 2, 0, 2);
 				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
 					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(3)), 2, frozen, windows,
-					HostLogin.SUBSCRIPTION, usage)));
+					HostLogin.SUBSCRIPTION, usage, commands)));
+				requireThat(harness.campaign().optimization().commands(), "commands").isEqualTo(Map.of(
+					Purpose.DEVELOPMENT, Map.of(0, new CommandCounts(1, 1, 1, 1, 1))));
 			}
 		}
 	}
@@ -3362,7 +3369,8 @@ public final class DriverTest
 
 				requireThat(recordedSessions(harness), "sessions").isEqualTo(List.of(new TrialSession(
 					DriverHarness.START, DriverHarness.START.plus(Duration.ofMinutes(1)), 1,
-					new Throttle(resetsAt, 1, 0, 1), windows, HostLogin.API_KEY, null)));
+					new Throttle(resetsAt, 1, 0, 1), windows, HostLogin.API_KEY, null, CommandSummary.UNKNOWN)));
+				requireThat(harness.campaign().optimization().commands(), "commands").isEmpty();
 			}
 		}
 	}

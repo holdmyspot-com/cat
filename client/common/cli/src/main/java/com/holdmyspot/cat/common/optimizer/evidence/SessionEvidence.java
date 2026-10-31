@@ -18,8 +18,10 @@ import java.util.TreeMap;
  * @param entries  the tool calls, hook outcomes, assistant positions and child events recorded by the harness
  * @param received every tool result as the trial's agents received it, in no particular order. A harness that wraps
  *                 or encodes a result supplies it both as received and decoded.
+ * @param commands how long the trial's shell commands ran and how often an agent received an empty result from a
+ *                 command that was still running, as far as the harness's records show
  */
-public record SessionEvidence(List<Entry> entries, List<String> received)
+public record SessionEvidence(List<Entry> entries, List<String> received, CommandSummary commands)
 {
 	/**
 	 * The actor name of the trial's main agent, whose response text is supplied separately.
@@ -31,14 +33,29 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	 *
 	 * @param entries  the recorded entries, in event order within each turn
 	 * @param received every tool result as the trial's agents received it, in no particular order
+	 * @param commands how long the trial's shell commands ran and how often an agent received an empty result from a
+	 *                 command that was still running
 	 * @throws NullPointerException if any of the arguments, or any of their elements, are null
 	 */
 	public SessionEvidence
 	{
 		requireThat(entries, "entries").isNotNull();
 		requireThat(received, "received").isNotNull();
+		requireThat(commands, "commands").isNotNull();
 		entries = List.copyOf(entries);
 		received = List.copyOf(received);
+	}
+
+	/**
+	 * Creates a trial's activity whose records do not show how its commands ran.
+	 *
+	 * @param entries  the recorded entries, in event order within each turn
+	 * @param received every tool result as the trial's agents received it, in no particular order
+	 * @throws NullPointerException if any of the arguments, or any of their elements, are null
+	 */
+	public SessionEvidence(List<Entry> entries, List<String> received)
+	{
+		this(entries, received, CommandSummary.UNKNOWN);
 	}
 
 	/**
@@ -50,6 +67,19 @@ public record SessionEvidence(List<Entry> entries, List<String> received)
 	public SessionEvidence(List<Entry> entries)
 	{
 		this(entries, outputs(entries));
+	}
+
+	/**
+	 * Creates the activity of a trial whose agents received every recorded tool output whole.
+	 *
+	 * @param entries  the recorded entries, in event order within each turn
+	 * @param commands how long the trial's shell commands ran and how often an agent received an empty result from a
+	 *                 command that was still running
+	 * @throws NullPointerException if any of the arguments, or any entry, are null
+	 */
+	public SessionEvidence(List<Entry> entries, CommandSummary commands)
+	{
+		this(entries, outputs(entries), commands);
 	}
 
 	/**

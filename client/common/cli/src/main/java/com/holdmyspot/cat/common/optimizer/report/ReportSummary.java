@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.common.optimizer.report;
 
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
+import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
@@ -157,6 +159,18 @@ final class ReportSummary
 		lines.add("Concurrency: window " + concurrency.window() + " of ceiling " + concurrency.ceiling() +
 			", slow start " + concurrency.slowStartSize() + ", throttle " + throttle + " (window cap " +
 			concurrency.windowCap() + ", backoffs " + concurrency.backoffs() + ")");
+		if (!concurrency.commands().isEmpty())
+		{
+			lines.add("Commands by purpose (descriptive only; a share counts the trials whose records show it):");
+			for (Map.Entry<Purpose, CommandCounts> entry : concurrency.commands().entrySet())
+			{
+				CommandCounts counts = entry.getValue();
+				lines.add("  " + EnumNames.lowerCase(entry.getKey()) + ": a command of " +
+					CommandCounts.SLOW.toSeconds() + " s or more " + counts.slow() + "/" + counts.slowKnown() +
+					", an empty result from a running command " + counts.emptyRunning() + "/" +
+					counts.emptyRunningKnown() + ", of " + counts.sessions() + " trials");
+			}
+		}
 		if (!report.assumptions().passRatesByConcurrency().isEmpty())
 		{
 			lines.add("Pass rate by concurrency level (descriptive only):");

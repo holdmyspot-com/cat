@@ -41,6 +41,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -242,6 +243,67 @@ public final class StatusReportTest
 
 		requireThat(report.summary(ZoneId.of("America/Toronto")), "summary").
 			contains("throttle hold until 2026-01-15T00:00:00-05:00 ");
+	}
+
+	/**
+	 * A development report shows, for each purpose of the development phase, how many trials ran a command of 10
+	 * seconds or more and how many received an empty result from a command that was still running, each out of the
+	 * trials whose records show it. A certification attempt's trials are not part of it.
+	 */
+	// Requirement: R-E6
+	@Test
+	public void developmentReportShowsCommandShares()
+	{
+		Sha256 snapshot = Builder.snapshot("candidate-1");
+		OptimizationEvidence evidence = OptimizationEvidence.EMPTY.
+			addCommands(new TrialKey(Purpose.DEVELOPMENT, 1, snapshot, "safety", 1),
+				new CommandSummary(Duration.ofSeconds(12), 1)).
+			addCommands(new TrialKey(Purpose.DEVELOPMENT, 1, snapshot, "safety", 2),
+				new CommandSummary(Duration.ofSeconds(2), 0)).
+			addCommands(new TrialKey(Purpose.DEVELOPMENT, 1, snapshot, "safety", 3), CommandSummary.UNKNOWN).
+			addCommands(new TrialKey(Purpose.REPRODUCTION, 1, snapshot, "safety", 1),
+				new CommandSummary(null, 0)).
+			addCommands(new TrialKey(Purpose.FORMAL, 1, snapshot, "safety", 1),
+				new CommandSummary(Duration.ofSeconds(30), 0));
+		StatusReport report = StatusReport.of(confirmed().optimization(evidence).build(), ReportEvidence.NONE);
+		JsonNode commands = report.toJson(JsonMapper.builder().build()).path("concurrency").path("commands");
+
+		requireThat(commands.path("development").path("trials").asLong(), "trials").isEqualTo(3L);
+		requireThat(commands.path("development").path("slow").asLong(), "slow").isEqualTo(1L);
+		requireThat(commands.path("development").path("slow_known").asLong(), "slowKnown").isEqualTo(2L);
+		requireThat(commands.path("development").path("empty_running").asLong(), "emptyRunning").isEqualTo(1L);
+		requireThat(commands.path("development").path("empty_running_known").asLong(), "emptyRunningKnown").
+			isEqualTo(2L);
+		requireThat(commands.has("formal"), "hasFormal").isFalse();
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("  development: a command of 10 s or more 1/2, an empty result from a running command 1/2, " +
+				"of 3 trials").
+			contains("  reproduction: a command of 10 s or more 0/0, an empty result from a running command 0/1, " +
+				"of 1 trials").
+			doesNotContain("formal:");
+	}
+
+	/**
+	 * A certification attempt's report shows the command shares of that attempt's trials only.
+	 */
+	// Requirement: R-E6
+	@Test
+	public void formalReportShowsAttemptCommandShares()
+	{
+		Sha256 snapshot = Builder.snapshot("candidate-1");
+		OptimizationEvidence evidence = OptimizationEvidence.EMPTY.
+			addCommands(new TrialKey(Purpose.DEVELOPMENT, 1, snapshot, "safety", 1),
+				new CommandSummary(Duration.ofSeconds(12), 1)).
+			addCommands(new TrialKey(Purpose.FORMAL, 1, snapshot, "safety", 1),
+				new CommandSummary(Duration.ofSeconds(10), 0));
+		Campaign campaign = confirmed().optimization(evidence).certificationAttempt(1).
+			boundaries(ReportBoundaries.boundaries()).cell("formatting", 1, 0).cell("safety", 1, 0).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("  formal: a command of 10 s or more 1/1, an empty result from a running command 0/1, " +
+				"of 1 trials").
+			doesNotContain("development:");
 	}
 
 	/**

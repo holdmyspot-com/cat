@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -36,6 +37,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
@@ -110,6 +112,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
@@ -167,6 +170,9 @@ final class CampaignJson
 	 */
 	private static final Set<String> RETIRED_CONDITIONS = Set.of("model_provider", "host_tools", "external_sources");
 	private static final String TOKEN_USAGE = "token_usage";
+	private static final String COMMANDS = "commands";
+	private static final String SLOWEST_COMMAND = "slowest_command_ms";
+	private static final String EMPTY_RUNNING_RESULTS = "empty_running_results";
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
@@ -422,6 +428,23 @@ final class CampaignJson
 			ObjectNode assignment = approaches.putObject(entry.getKey().toString());
 			assignment.put("approach", EnumNames.lowerCase(entry.getValue().approach()));
 			assignment.put("source", EnumNames.lowerCase(entry.getValue().source()));
+		}
+		ObjectNode commands = node.putObject(COMMANDS);
+		for (Purpose purpose : Purpose.values())
+		{
+			Map<Integer, CommandCounts> byAttempt = evidence.commands().get(purpose);
+			if (byAttempt == null)
+				continue;
+			ObjectNode purposeNode = commands.putObject(EnumNames.lowerCase(purpose));
+			for (Entry<Integer, CommandCounts> entry : new TreeMap<>(byAttempt).entrySet())
+			{
+				ObjectNode counts = purposeNode.putObject(entry.getKey().toString());
+				counts.put("sessions", entry.getValue().sessions());
+				counts.put("slow_known", entry.getValue().slowKnown());
+				counts.put("slow", entry.getValue().slow());
+				counts.put("empty_running_known", entry.getValue().emptyRunningKnown());
+				counts.put("empty_running", entry.getValue().emptyRunning());
+			}
 		}
 		ObjectNode usage = node.putObject(TOKEN_USAGE);
 		for (SessionRole role : SessionRole.values())
@@ -689,7 +712,35 @@ final class CampaignJson
 				constant(entry.getValue(), "source", ApproachAssignment.Source.class)));
 		}
 		return new OptimizationEvidence(promptAuthors, readStrings(node, "removed"), sizes, inputs, results,
-			readRoleUsage(node), approaches);
+			readRoleUsage(node), approaches, readCommandCounts(node));
+	}
+
+	/**
+	 * Reads how the shell commands of completed trial sessions ran. A snapshot written before sessions recorded their
+	 * commands has no counts.
+	 *
+	 * @param node the optimization evidence
+	 * @return the counts by purpose and certification attempt
+	 */
+	private static Map<Purpose, Map<Integer, CommandCounts>> readCommandCounts(JsonNode node)
+	{
+		Map<Purpose, Map<Integer, CommandCounts>> commands = new EnumMap<>(Purpose.class);
+		if (!node.has(COMMANDS))
+			return commands;
+		for (Entry<String, JsonNode> purpose : object(node, COMMANDS).properties())
+		{
+			Map<Integer, CommandCounts> byAttempt = new HashMap<>();
+			requireObject(purpose.getValue(), COMMANDS);
+			for (Entry<String, JsonNode> entry : purpose.getValue().properties())
+			{
+				JsonNode counts = entry.getValue();
+				byAttempt.put(Integer.parseInt(entry.getKey()), new CommandCounts(longInteger(counts, "sessions"),
+					longInteger(counts, "slow_known"), longInteger(counts, "slow"),
+					longInteger(counts, "empty_running_known"), longInteger(counts, "empty_running")));
+			}
+			commands.put(EnumNames.parse(purpose.getKey(), Purpose.class), byAttempt);
+		}
+		return commands;
 	}
 
 	/**
@@ -883,11 +934,22 @@ final class CampaignJson
 			node.putNull(TOKEN_USAGE);
 		else
 			node.set(TOKEN_USAGE, writeTokenUsage(session.usage()));
+		Duration slowest = session.commands().slowest();
+		if (slowest == null)
+			node.putNull(SLOWEST_COMMAND);
+		else
+			node.put(SLOWEST_COMMAND, slowest.toMillis());
+		Integer emptyRunning = session.commands().emptyRunningResults();
+		if (emptyRunning == null)
+			node.putNull(EMPTY_RUNNING_RESULTS);
+		else
+			node.put(EMPTY_RUNNING_RESULTS, emptyRunning.intValue());
 		return node;
 	}
 
 	/**
-	 * Reads the record of a finished trial session.
+	 * Reads the record of a finished trial session. A record written before sessions recorded how their commands ran
+	 * has neither command value, so both are unknown.
 	 *
 	 * @param node the document
 	 * @return the session's record
@@ -902,7 +964,25 @@ final class CampaignJson
 		if (usageNode != null)
 			usage = readTokenUsage(usageNode);
 		return new TrialSession(instant(node, "started_at"), instant(node, "ended_at"), integer(node, "concurrency"),
-			readThrottle(field(node, "throttle")), windows, constant(node, "login", HostLogin.class), usage);
+			readThrottle(field(node, "throttle")), windows, constant(node, "login", HostLogin.class), usage,
+			readCommands(node));
+	}
+
+	/**
+	 * Reads how a finished trial session's commands ran.
+	 *
+	 * @param node the session's document
+	 * @return the summary, with each value that is absent or {@code null} unknown
+	 */
+	private static CommandSummary readCommands(JsonNode node)
+	{
+		Duration slowest = null;
+		if (node.has(SLOWEST_COMMAND) && !node.get(SLOWEST_COMMAND).isNull())
+			slowest = Duration.ofMillis(longValue(node.get(SLOWEST_COMMAND), SLOWEST_COMMAND));
+		Integer emptyRunning = null;
+		if (node.has(EMPTY_RUNNING_RESULTS) && !node.get(EMPTY_RUNNING_RESULTS).isNull())
+			emptyRunning = intValue(node.get(EMPTY_RUNNING_RESULTS), EMPTY_RUNNING_RESULTS);
+		return new CommandSummary(slowest, emptyRunning);
 	}
 
 	/**

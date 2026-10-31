@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.store.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.campaign.Allocation;
 import com.holdmyspot.cat.common.optimizer.campaign.AllocationRule;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
@@ -87,6 +88,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -609,8 +611,8 @@ public abstract class CampaignStoreContract
 	}
 
 	/**
-	 * The record of each finished trial session, one with reported usage and rate-limit windows and one with neither,
-	 * survives assignment retries, outcome writes and store reopening, in completion order.
+	 * The record of each finished trial session, one with reported usage, rate-limit windows and command timings and
+	 * one with none of them, survives assignment retries, outcome writes and store reopening, in completion order.
 	 *
 	 * @throws IOException if the store fails
 	 */
@@ -629,9 +631,10 @@ public abstract class CampaignStoreContract
 				new TrialSession(Instant.parse("2026-10-01T10:00:00Z"), Instant.parse("2026-10-01T10:04:30.125Z"), 3,
 					new Throttle(resetsAt, 1, 2, 1),
 					List.of(new RateLimitWindow(0.97, resetsAt), new RateLimitWindow(0.25, null)),
-					HostLogin.SUBSCRIPTION, new TokenUsage(100, 20, 30, 10)),
+					HostLogin.SUBSCRIPTION, new TokenUsage(100, 20, 30, 10),
+					new CommandSummary(Duration.ofMillis(17_181), 2)),
 				new TrialSession(Instant.parse("2026-10-01T10:05:00Z"), Instant.parse("2026-10-01T10:05:00Z"), 1,
-					Throttle.NONE, List.of(), HostLogin.API_KEY, null));
+					Throttle.NONE, List.of(), HostLogin.API_KEY, null, CommandSummary.UNKNOWN));
 			store.writeTrialSession("campaign-1", assigned.key(), sessions.getFirst());
 			store.writeAssignment("campaign-1", assigned);
 			store.writeTrialSession("campaign-1", assigned.key(), sessions.getLast());

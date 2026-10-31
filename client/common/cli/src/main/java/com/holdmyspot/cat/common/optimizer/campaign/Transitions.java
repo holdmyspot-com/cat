@@ -60,6 +60,8 @@ public final class Transitions
 		{
 			case CampaignEvent.ObserveTokenUsage observed ->
 				draft.optimization = draft.optimization.addUsage(observed.role(), observed.usage());
+			case CampaignEvent.ObserveCommands observed ->
+				draft.optimization = draft.optimization.addCommands(observed.key(), observed.commands());
 			case CampaignEvent.Confirm confirm -> confirm(draft, confirm);
 			case CampaignEvent.ExtendFork extend -> extendFork(draft, extend);
 			case CampaignEvent.Revise _ -> revise(draft);
@@ -89,7 +91,7 @@ public final class Transitions
 				sizes.put(measured.snapshot(), measured.size());
 				draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 					sizes, draft.optimization.trialInputs(), draft.optimization.attempts(),
-					draft.optimization.tokenUsage(), draft.optimization.approaches());
+					draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands());
 			}
 			case CampaignEvent.RetainPromptAuthorDiagnosis retain ->
 			{
@@ -97,7 +99,7 @@ public final class Transitions
 				promptAuthors.add(retain.diagnosis());
 				draft.optimization = new OptimizationEvidence(promptAuthors, draft.optimization.removed(),
 					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
-					draft.optimization.tokenUsage(), draft.optimization.approaches());
+					draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands());
 			}
 			case CampaignEvent.ReproductionValues values -> reproductionValues(draft, values);
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
@@ -829,7 +831,7 @@ public final class Transitions
 			removed.addAll(next.removed());
 			draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), removed,
 				draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
-				draft.optimization.tokenUsage(), draft.optimization.approaches());
+				draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands());
 			TrialAdoption.promote(draft, new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
 				next.accepted(), next.acceptedRuns(), next));
 			return;

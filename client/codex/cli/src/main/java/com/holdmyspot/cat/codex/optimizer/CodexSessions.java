@@ -197,7 +197,7 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(json, "json").isNotNull();
 		List<String> received = RolloutToolResults.read(transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS),
 			json);
-		return new SessionEvidence(activity.entries(), received);
+		return new SessionEvidence(activity.entries(), received, activity.commands());
 	}
 
 	/**

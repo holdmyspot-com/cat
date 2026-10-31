@@ -59,6 +59,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
@@ -626,12 +627,13 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Appends the record of an ended trial session to its trial's record before the session's output is validated or
-	 * adopted. The record holds the throttle state after the session's reported rate-limit windows were applied.
+	 * adopted. The record holds the throttle state after the session's reported rate-limit windows were applied, and
+	 * how the shell commands of a completed session ran, which the campaign also counts by purpose.
 	 *
 	 * @param trial the session
 	 * @param result the session's result, or {@code null} if the session failed with an exception
 	 * @param now the current time
-	 * @throws IOException if the trial record cannot be written
+	 * @throws IOException if the trial record or the campaign cannot be written
 	 */
 	private void recordTrialSession(InFlight.Trial trial, SessionResult result, Instant now) throws IOException
 	{
@@ -639,10 +641,35 @@ public final class Driver implements AutoCloseable
 		if (result != null)
 			windows = result.windows();
 		TokenUsage usage = null;
+		CommandSummary commands = CommandSummary.UNKNOWN;
 		if (result instanceof SessionResult.Completed completed)
+		{
 			usage = completed.usage();
+			commands = readCommands(completed);
+		}
 		context.store().writeTrialSession(campaignId, trial.key(), new TrialSession(trial.startedAt(), now,
-			trial.concurrency(), campaign.throttle(), windows, login, usage));
+			trial.concurrency(), campaign.throttle(), windows, login, usage, commands));
+		if (result instanceof SessionResult.Completed)
+			record(new CampaignEvent.ObserveCommands(trial.key(), commands));
+	}
+
+	/**
+	 * Reads how a completed trial session's shell commands ran.
+	 *
+	 * @param completed the session's result
+	 * @return the summary, which is unknown if the session's transcript cannot be read
+	 */
+	private CommandSummary readCommands(SessionResult.Completed completed)
+	{
+		try
+		{
+			return context.sessions().readEvidence(completed.transcript()).commands();
+		}
+		catch (IOException _)
+		{
+			// The trial's built-in tools read the same transcript and report that it cannot be read
+			return CommandSummary.UNKNOWN;
+		}
 	}
 
 	/**

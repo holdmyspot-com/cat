@@ -347,6 +347,7 @@
 	},
 	"optimization" : {
 		"approaches" : { },
+		"commands" : { },
 		"token_usage" : { },
 		"prompt_authors" : [ ],
 		"removed" : [ ],

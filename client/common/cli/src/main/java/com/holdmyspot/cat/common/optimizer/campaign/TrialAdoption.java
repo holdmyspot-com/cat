@@ -824,7 +824,7 @@ public final class TrialAdoption
 			result.snapshot(), runs, result.changedLines(), result.accepted(), result.winner()));
 		draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage(),
-			draft.optimization.approaches());
+			draft.optimization.approaches(), draft.optimization.commands());
 	}
 
 	/**
@@ -963,7 +963,7 @@ public final class TrialAdoption
 		results.sort(Comparator.comparingInt(AttemptResult::number));
 		draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage(),
-			draft.optimization.approaches());
+			draft.optimization.approaches(), draft.optimization.commands());
 	}
 
 	/**

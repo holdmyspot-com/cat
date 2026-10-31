@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ROOT_
 
 import com.holdmyspot.cat.codex.optimizer.RolloutMessages.RolloutMessage;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Assistant;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.ChildEvent;
@@ -13,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Hook;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Question;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence.Tool;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -42,6 +44,10 @@ final class AppServerEvidence
 		"contentItems", "agentsStates", "status", "success", "error");
 	private static final Set<String> ITEM_METADATA = Set.of("type", "id", "tool", "durationMs", "pluginId",
 		"scriptPath", "processId", "source", "commandActions", "senderThreadId");
+	/**
+	 * The line that ends the header of a result that Codex returns from a command, before the command's output.
+	 */
+	private static final String OUTPUT_HEADER = "Output:\n";
 	private final Map<String, Entry> entries = new LinkedHashMap<>();
 	private final Map<String, Integer> rootTurns = new HashMap<>();
 	private final Map<String, Integer> childTurns = new HashMap<>();
@@ -67,6 +73,10 @@ final class AppServerEvidence
 	 * entries when it ended, by the command's entry key.
 	 */
 	private final Map<String, Placed> ends = new LinkedHashMap<>();
+	/**
+	 * How long each command ran, by the command's entry key; {@code null} until the app-server reports it.
+	 */
+	private final Map<String, Duration> durations = new HashMap<>();
 	private int currentTurn = 1;
 
 	/**
@@ -265,6 +275,12 @@ final class AppServerEvidence
 		{
 			output = renderValue(item.path("aggregatedOutput"));
 			receivedWhileRunning = running.getOrDefault(item.path("id").asString(""), List.of());
+			String key = createKey(params, "item", item.path("id").asString(""));
+			JsonNode duration = item.path("durationMs");
+			if (duration.isIntegralNumber() && duration.longValue() >= 0)
+				durations.put(key, Duration.ofMillis(duration.longValue()));
+			else
+				durations.putIfAbsent(key, null);
 		}
 		else
 		{
@@ -402,7 +418,57 @@ final class AppServerEvidence
 			activity.add(placed.entries() + inserted, placed.entry());
 			inserted += 1;
 		}
-		return new SessionEvidence(activity);
+		return new SessionEvidence(activity, summarizeCommands());
+	}
+
+	/**
+	 * Summarizes how the session's commands ran. A command that the app-server has not reported as ended has no known
+	 * duration, so the longest is then unknown. A result that an agent received while its command was still running is
+	 * empty if nothing follows the {@code Output:} line that ends its header, or if it is blank and has no header.
+	 *
+	 * @return the summary
+	 */
+	private CommandSummary summarizeCommands()
+	{
+		Duration slowest = Duration.ZERO;
+		for (Duration duration : durations.values())
+		{
+			if (duration == null)
+			{
+				slowest = null;
+				break;
+			}
+			if (duration.compareTo(slowest) > 0)
+				slowest = duration;
+		}
+		int empty = 0;
+		for (Entry entry : entries.values())
+		{
+			if (entry instanceof Tool tool && tool.command())
+			{
+				for (String result : tool.running())
+				{
+					if (isEmpty(result))
+						empty += 1;
+				}
+			}
+		}
+		return new CommandSummary(slowest, empty);
+	}
+
+	/**
+	 * Returns whether a result that an agent received from a running command held none of the command's output.
+	 *
+	 * @param result the result's text
+	 * @return {@code true} if nothing follows the header's {@code Output:} line, or the result is blank and has no
+	 *         header
+	 */
+	private static boolean isEmpty(String result)
+	{
+		int header = result.indexOf(OUTPUT_HEADER);
+		if (header < 0)
+			return result.isBlank();
+		return result.substring(header + OUTPUT_HEADER.length()).isBlank();
 	}
 
 	/**

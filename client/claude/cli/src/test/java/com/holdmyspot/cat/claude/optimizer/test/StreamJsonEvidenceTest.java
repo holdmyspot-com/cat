@@ -5,10 +5,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.optimizer.StreamJsonEvents;
 import com.holdmyspot.cat.claude.secrets.StreamJsonEventsSecrets;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -341,5 +343,38 @@ public final class StreamJsonEvidenceTest
 			new SessionEvidence.Tool(1, "agent-call", "Bash", "true", true, 0, "child stdout"),
 			new SessionEvidence.Assistant(1, "agent-call", 1, "child done"),
 			new SessionEvidence.Assistant(2, "root", 1, "")));
+	}
+
+	/**
+	 * Verifies that the longest shell command is measured from the record of its call to the record of its result,
+	 * for the root and its children alike, that a call that runs no shell command is not measured, and that no result
+	 * counts as received while its command was still running, since Claude returns a foreground command's result only
+	 * once the command has ended.
+	 *
+	 * @throws IOException if the recordings cannot be read
+	 */
+	@Test
+	public void summarizesCommands() throws IOException
+	{
+		// Requirement: R-E6
+		requireThat(parse(recorded("claude-tool-calls.jsonl")).commands(), "rootCommands").
+			isEqualTo(new CommandSummary(Duration.ofMillis(204), 0));
+		requireThat(parse(recorded("claude-child-tool-calls.jsonl")).commands(), "childCommands").
+			isEqualTo(new CommandSummary(Duration.ofMillis(117), 0));
+	}
+
+	/**
+	 * Verifies that a session that ran a command in the background has no known longest command, since Claude reports
+	 * neither when a background command ended nor how long it ran, while its count of empty results received from
+	 * running commands stays 0: Claude answers a background command at once with a notice that names it.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void backgroundCommandHasUnknownDuration() throws IOException
+	{
+		// Requirement: R-E6
+		requireThat(parse(recorded("claude-exit-statuses.jsonl")).commands(), "commands").
+			isEqualTo(new CommandSummary(null, 0));
 	}
 }

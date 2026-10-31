@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.store.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
 import org.testng.annotations.Test;
@@ -26,7 +27,7 @@ public final class TrialSessionTest
 		Instant startedAt = Instant.parse("2026-10-05T12:00:05Z");
 		Instant endedAt = Instant.parse("2026-10-05T12:00:00Z");
 		TrialSession session = new TrialSession(startedAt, endedAt, 1, Throttle.NONE, List.of(), HostLogin.API_KEY,
-			null);
+			null, CommandSummary.UNKNOWN);
 		requireThat(session.startedAt(), "startedAt").isEqualTo(startedAt);
 		requireThat(session.endedAt(), "endedAt").isEqualTo(endedAt);
 	}

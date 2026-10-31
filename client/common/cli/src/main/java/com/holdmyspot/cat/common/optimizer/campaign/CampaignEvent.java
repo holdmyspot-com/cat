@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
@@ -40,6 +41,28 @@ public sealed interface CampaignEvent
 		{
 			requireThat(role, "role").isNotNull();
 			requireThat(usage, "usage").isNotNull();
+		}
+	}
+
+	/**
+	 * Records how the shell commands of a completed trial session ran.
+	 *
+	 * @param key      the session's trial
+	 * @param commands how the session's commands ran
+	 */
+	record ObserveCommands(TrialKey key, CommandSummary commands) implements CampaignEvent
+	{
+		/**
+		 * Creates the observation.
+		 *
+		 * @param key      the session's trial
+		 * @param commands how the session's commands ran
+		 * @throws NullPointerException if {@code key} or {@code commands} are null
+		 */
+		public ObserveCommands
+		{
+			requireThat(key, "key").isNotNull();
+			requireThat(commands, "commands").isNotNull();
 		}
 	}
 

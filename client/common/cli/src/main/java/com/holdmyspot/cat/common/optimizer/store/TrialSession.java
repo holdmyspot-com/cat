@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.store;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
@@ -22,9 +23,11 @@ import java.util.List;
  * @param windows the rate-limit windows that the session reported, empty if it reported none
  * @param login indicates whether the harness authenticates through a subscription login or an API key
  * @param usage the token counts that the harness reported for the session, or {@code null} if it reported none
+ * @param commands how long the session's longest shell command ran and how many empty results its agents received
+ *   from commands that were still running, each unknown if the harness's records do not show it
  */
 public record TrialSession(Instant startedAt, Instant endedAt, int concurrency, Throttle throttle,
-	List<RateLimitWindow> windows, HostLogin login, TokenUsage usage)
+	List<RateLimitWindow> windows, HostLogin login, TokenUsage usage, CommandSummary commands)
 {
 	/**
 	 * Creates a session record.
@@ -37,6 +40,8 @@ public record TrialSession(Instant startedAt, Instant endedAt, int concurrency, 
 	 * @param windows the rate-limit windows that the session reported, empty if it reported none
 	 * @param login whether the harness authenticates through a subscription login or an API key
 	 * @param usage the token counts that the harness reported for the session, or {@code null} if it reported none
+	 * @param commands how long the session's longest shell command ran and how many empty results its agents received
+	 *   from commands that were still running, each unknown if the harness's records do not show it
 	 * @throws NullPointerException if any argument other than {@code usage} is null, or {@code windows} contains null
 	 * @throws IllegalArgumentException if {@code concurrency} is less than 1
 	 */
@@ -48,6 +53,7 @@ public record TrialSession(Instant startedAt, Instant endedAt, int concurrency, 
 		requireThat(throttle, "throttle").isNotNull();
 		requireThat(windows, "windows").isNotNull();
 		requireThat(login, "login").isNotNull();
+		requireThat(commands, "commands").isNotNull();
 		windows = List.copyOf(windows);
 	}
 }

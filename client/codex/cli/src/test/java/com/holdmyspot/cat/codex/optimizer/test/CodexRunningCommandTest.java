@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
+import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 
@@ -16,6 +18,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
@@ -158,6 +161,68 @@ public final class CodexRunningCommandTest
 			String rendered = sessions(jvm, root).readEvidence(transcript).render();
 			requireThat(rendered, "rendered").contains("Actor: child " + SHIPPING + "\n" + ENDED_COMMAND).
 				doesNotContain(STILL_RUNNING).doesNotContain("Command ended");
+		}
+	}
+
+	/**
+	 * Verifies that the record of the trial reports its longest command, the child's {@code cat docs/facts.md} that
+	 * the app-server reports as running for 17,181 ms, and the one empty result that the child received from it while
+	 * it was still running.
+	 *
+	 * @throws IOException if the recording cannot be read
+	 */
+	@Test
+	public void summarizesCommands() throws IOException
+	{
+		// Requirement: R-E6
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-running-command-"));
+			CommandSummary commands = sessions(jvm, root).readEvidence(TRANSCRIPT).commands();
+
+			requireThat(commands, "commands").isEqualTo(new CommandSummary(Duration.ofMillis(17_181), 1));
+		}
+	}
+
+	/**
+	 * Verifies that a result that the child received while its command was still running and that held some of the
+	 * command's output is not counted as an empty result.
+	 *
+	 * @throws IOException if the trial cannot be written or read
+	 */
+	@Test
+	public void runningResultWithOutputIsNotEmpty() throws IOException
+	{
+		// Requirement: R-E6
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-running-command-"));
+			Path artifacts = Files.createDirectories(root.resolve("artifacts"));
+			Path transcript = Files.copy(TRANSCRIPT, artifacts.resolve("transcript.jsonl"));
+			Path rollouts = Files.createDirectories(artifacts.resolve(HarnessRun.SESSION_TRANSCRIPTS));
+			Path recorded = TRANSCRIPT.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS);
+			try (Stream<Path> files = Files.list(recorded))
+			{
+				for (Path rollout : files.toList())
+				{
+					String text = Files.readString(rollout, UTF_8);
+					if (rollout.getFileName().toString().equals(SHIPPING_ROLLOUT))
+					{
+						// The child receives the first line of the file before the command ends
+						text = text.replace("Wall time 10.2 seconds\\nOutput:\\n\"},{\"type\":\"input_text\"," +
+							"\"text\":\"\"}", "Wall time 10.2 seconds\\nOutput:\\n\"},{\"type\":" +
+							"\"input_text\",\"text\":\"# Acme facts\"}");
+					}
+					Files.writeString(rollouts.resolve(rollout.getFileName()), text, UTF_8);
+				}
+			}
+
+			SessionEvidence evidence = sessions(jvm, root).readEvidence(transcript);
+			requireThat(evidence.render(), "rendered").contains(STILL_RUNNING + "Script completed\nWall time " +
+				"10.2 seconds\nOutput:\n# Acme facts\n");
+			requireThat(evidence.commands().emptyRunningResults(), "emptyRunningResults").isEqualTo(0);
 		}
 	}
 
