@@ -47,13 +47,27 @@ a team, see Pricing (docs/PRICING.md) for commercial plans and features.
 
 ## Get Started
 
-### 1. Select a release
+### 1. Install or update CAT
 
-Each bootstrap command installs the latest CAT release by default, verifies the matching platform archive and checksum,
-and safely upgrades an existing CAT installation. To install a particular release, append its tag (for example,
-`v1.0`). For example, append `v1.0` after the pipe: `| sh -s v1.0`.
+Ask your agent in Claude Code or Codex: "Install CAT from https://github.com/holdmyspot-com/cat/releases". Each
+release's notes give the agent the command for that release, and CAT's `update` skill updates CAT later.
 
-### 2. Choose a coding harness
+Or run the single command yourself. Inside a Claude Code or Codex session it detects which harness runs it; in Claude
+Code, type it at the prompt prefixed with `! `. It installs the latest release, or updates an existing installation to
+it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh
+```
+
+- To install a particular release, end the command with `| sh -s -- v1.0` instead of `| sh`.
+- In a terminal, outside a session, name the harness: end the command with `| sh -s -- --harness claude` or
+	`| sh -s -- --harness codex`. Without it, the command exits without changing anything and asks for it.
+- When the command reports that it cannot write a path, it has changed nothing. An agent's sandbox usually causes this:
+	run the command that it prints in a terminal, or in Claude Code at the prompt prefixed with `! `.
+- Codex on Windows installs from PowerShell; see [Install CAT](docs/installation.md).
+
+The per-harness commands below do the same for one harness, and also accept a release tag after `| sh -s`:
 
 <details>
 <summary>Claude Code</summary>
@@ -91,9 +105,20 @@ curl -fsSL \
 
 </details>
 
-### 3. Start or resume a session
+### 2. Start or resume a session
 
 Start or resume a session. CAT then injects its default rules and your project's applicable rules.
+
+### Uninstall
+
+Ask your agent to uninstall CAT, which runs CAT's `uninstall` skill, or run the single command with `--uninstall`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh -s -- --uninstall
+```
+
+In Codex, CAT keeps its data, so that a later installation can migrate it; end the command with
+`| sh -s -- --uninstall --delete-data` to delete it too.
 
 ## Learn More
 

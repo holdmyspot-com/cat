@@ -4,11 +4,48 @@ CAT v1.0 supports Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, ma
 
 ## Install or upgrade
 
+### Ask your agent or run the single command
+
+Ask your agent in Claude Code or Codex: "Install CAT from https://github.com/holdmyspot-com/cat/releases". Each
+release's notes start with the commands that install, update and uninstall that release, which the agent runs. Once CAT
+is installed, ask your agent to update or upgrade CAT, and CAT's `update` skill compares the installed version with the
+latest release and installs the latest release only when they differ, or the release that you name.
+
+To run the single command yourself, run it in a Claude Code or Codex session, where it detects the harness that runs
+it; in Claude Code, type it at the prompt prefixed with `! `. It installs the latest release, or updates an existing
+installation to the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh
+```
+
+To install a particular release, such as `v1.0`, end the command with `| sh -s -- v1.0` instead of `| sh`.
+
+In a terminal, outside a session, the command cannot tell which harness to install for, so it exits without changing
+anything and asks you to name one. End the command with `| sh -s -- --harness claude` for Claude Code or
+`| sh -s -- --harness codex` for Codex, followed by a release tag if you want one.
+
+To install into a custom Claude Code configuration directory or Codex home directory, set `CLAUDE_CONFIG_DIR` or
+`CODEX_HOME` for `sh`, as in `| CODEX_HOME=/path/to/codex-home sh`.
+
+Before the command removes or writes anything, it checks that it can write every file and directory that the
+installation changes, such as Codex's `config.toml` or Claude Code's `settings.json`. When it cannot write one, it
+changes nothing, exits with status 77, and prints the path and the command to run. An agent's sandbox usually causes
+this, because it makes the harness's configuration read-only: run the printed command in a terminal, or in Claude Code
+at the prompt prefixed with `! `. If a later step fails, the command prints the same command to run again to finish the
+installation.
+
+Codex on Windows runs commands in PowerShell and installs CAT with the PowerShell command under
+[Codex on Windows](#2-choose-a-coding-harness) below.
+
+After the single command succeeds, [start or resume a session](#3-start-or-resume-a-session).
+
 ### 1. Select a release
 
-Each bootstrap command installs the latest release by default. Append a release tag such as `v1.0` after `sh -s`, or
-`-Version v1.0` after the PowerShell command, to select a specific version. Re-run the same command to upgrade CAT to
-the latest release, or append a release tag to install that specific version.
+The per-harness commands below install one harness, as the single command does. Each installs the latest release by
+default. Append a release tag such as `v1.0` after `sh -s`, or `-Version v1.0` after the PowerShell command, to select a
+specific version. Re-run the same command to upgrade CAT to the latest release, or append a release tag to install that
+specific version.
 
 ### 2. Choose a coding harness
 
@@ -70,6 +107,17 @@ harness's plugin mechanism. Start or resume a session after installation.
 
 ## Uninstall
 
+Ask your agent to uninstall or remove CAT, which runs CAT's `uninstall` skill with the uninstaller that the installed
+plugin holds, or run the single command with `--uninstall`, as for an installation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh -s -- --uninstall
+```
+
+In a terminal, name the harness as for an installation, as in `| sh -s -- --harness codex --uninstall`. Like the
+installation, the uninstaller changes nothing and prints the command to run outside the sandbox when it cannot write a
+path that it changes.
+
 ### Choose a coding harness
 
 #### Claude Code
@@ -94,8 +142,9 @@ curl -fsSL \
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Uninstall
 ```
 
-The Codex uninstallers keep CAT's data, so that a later installation can migrate it. To delete it too, end the command
-with `| sh -s -- --delete-data` instead of `| sh`, or add `-DeleteData` after `-Uninstall` on Windows.
+The Codex uninstallers keep CAT's data, so that a later installation can migrate it. To delete it too, end the single
+command with `| sh -s -- --uninstall --delete-data`, end the Codex command above with `| sh -s -- --delete-data` instead
+of `| sh`, or add `-DeleteData` after `-Uninstall` on Windows.
 
 The Codex uninstaller removes only the CAT-owned custom agents recorded in `~/.codex/agents`
 (`%USERPROFILE%\.codex\agents` on Windows), then asks Codex to remove the plugin. Claude Code removes CAT's bundled
