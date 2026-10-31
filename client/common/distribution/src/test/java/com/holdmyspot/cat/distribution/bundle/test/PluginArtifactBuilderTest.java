@@ -366,8 +366,9 @@ public final class PluginArtifactBuilderTest
 	}
 
 	/**
-	 * Verifies a bundled lazy-rule prerequisite is indexed relative to the injected common rule directory, so the rule
-	 * loader can resolve both paths after direct context loses its source location.
+	 * Verifies a bundled lazy rule's {@code depends-on} entry, which its source writes relative to the rule, ships in the
+	 * lazy-rule dependency index naming both rules through the plugin directory, so an agent resolves neither against a
+	 * file's location.
 	 */
 	@Test
 	public void routesBundledLazyDependencies() throws IOException
@@ -386,8 +387,8 @@ public final class PluginArtifactBuilderTest
 			RuleArtifactRouter.route(artifact, scope.yaml());
 
 			String index = Files.readString(common.resolve("lazy-rule-dependencies.md"));
-			requireThat(index, "index").contains("`../include/java/javadoc.md`").
-				contains("`../include/documentation/general.md`").doesNotContain("`rules/include/");
+			requireThat(index, "index").contains("When lazy loading `${CAT_PLUGIN_ROOT}/rules/include/java/javadoc.md`, " +
+				"first lazy load `${CAT_PLUGIN_ROOT}/rules/include/documentation/general.md`.");
 			requireThat(Files.readString(include.resolve("javadoc.md")), "javadocRule").
 				doesNotContain("depends-on");
 		}

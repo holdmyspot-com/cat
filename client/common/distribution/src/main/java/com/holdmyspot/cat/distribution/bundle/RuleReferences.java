@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.distribution.bundle;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.BoundedInput;
@@ -20,11 +21,12 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * Relocates and checks the references that packaged Markdown files make to packaged rules.
+ * Rewrites and checks the references that packaged Markdown files make to packaged rules.
  * <p>
  * A reference is a path in backticks that ends in {@code .md}. It names a packaged file either through the plugin
  * directory, as {@code ${CAT_PLUGIN_ROOT}/rules/...} or the plugin-root directive, or relative to the directory of the
- * file that holds it.
+ * file that holds it. A packaged plugin names each packaged rule through the plugin directory, because an agent can
+ * resolve a relative reference against the wrong directory.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -39,6 +41,10 @@ public final class RuleReferences
 	 */
 	private static final List<String> PLUGIN_ROOTS = List.of("${CAT_PLUGIN_ROOT}",
 		ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
+	/**
+	 * The start of a reference to a packaged rule through the plugin directory.
+	 */
+	private static final String PLUGIN_RULES = "${CAT_PLUGIN_ROOT}/rules/";
 	private static final int MAXIMUM_INPUT_BYTES = 1_048_576;
 
 	/**
@@ -49,49 +55,85 @@ public final class RuleReferences
 	}
 
 	/**
-	 * Rewrites a rule's relative references for a new location of the rule, so that each one still names the file it
-	 * named before the move. A reference that does not name a packaged rule from the old location stays as written,
-	 * such as an example path in the rule's prose.
+	 * Rewrites every relative reference in an assembled plugin's Markdown files that names a packaged rule into the
+	 * form {@code ${CAT_PLUGIN_ROOT}/rules/<path>}, which an agent resolves without knowing the file that holds the
+	 * reference. A relative reference resolves against the directory of the file that holds it. A reference that does
+	 * not name a packaged rule stays as written, such as an example path in a rule's prose or a skill's reference to a
+	 * file of its own directory.
 	 *
-	 * @param body   the rule's content
-	 * @param source the rule's old location
-	 * @param target the rule's new location
-	 * @param rules  the artifact's rule directory
-	 * @return the content with relocated references
+	 * @param artifact the assembled plugin
+	 * @throws IOException if a Markdown file cannot be read or written
 	 */
-	static String relocate(String body, Path source, Path target, Path rules)
+	static void namePluginRoot(Path artifact) throws IOException
 	{
-		Matcher matcher = REFERENCE.matcher(body);
-		StringBuilder result = new StringBuilder(body.length());
+		Path rules = artifact.resolve("rules");
+		try (Stream<Path> files = Files.walk(artifact))
+		{
+			for (Path file : files.filter(RuleReferences::isMarkdown).sorted().toList())
+			{
+				String content = BoundedInput.readUtf8(file, MAXIMUM_INPUT_BYTES, "Packaged Markdown file");
+				String rewritten = namePluginRoot(content, file, rules);
+				if (!rewritten.equals(content))
+					Files.writeString(file, rewritten, UTF_8);
+			}
+		}
+	}
+
+	/**
+	 * Rewrites the relative references in one Markdown file's content that name a packaged rule.
+	 *
+	 * @param content the file's content
+	 * @param file    the file
+	 * @param rules   the artifact's rule directory
+	 * @return the content with each such reference written through the plugin directory
+	 */
+	private static String namePluginRoot(String content, Path file, Path rules)
+	{
+		Matcher matcher = REFERENCE.matcher(content);
+		StringBuilder result = new StringBuilder(content.length());
 		while (matcher.find())
 		{
-			Optional<Path> named = relative(matcher.group(1), source).
-				filter(path -> path.startsWith(rules) && Files.isRegularFile(path, NOFOLLOW_LINKS));
-			if (named.isEmpty())
+			Optional<Path> rule = packagedRule(matcher.group(1), file, rules);
+			if (rule.isEmpty())
 				continue;
-			String relocated = slashSeparated(target.getParent().relativize(named.get()));
-			matcher.appendReplacement(result, Matcher.quoteReplacement("`" + relocated + "`"));
+			matcher.appendReplacement(result, Matcher.quoteReplacement("`" + pluginRootReference(rules, rule.get()) +
+				"`"));
 		}
 		matcher.appendTail(result);
 		return result.toString();
 	}
 
 	/**
-	 * Rejects an assembled plugin whose Markdown files reference a missing packaged rule. A reference through the
-	 * plugin directory must name a packaged file. A relative reference must name a packaged file when its file name is
-	 * that of a packaged rule; other relative references, such as a project's {@code README.md}, name files outside the
-	 * plugin and are not checked.
+	 * Returns the reference to a packaged rule through the plugin directory.
+	 *
+	 * @param rules the artifact's rule directory
+	 * @param rule  a packaged rule
+	 * @return {@code ${CAT_PLUGIN_ROOT}/rules/} followed by the rule's slash-separated path below {@code rules}
+	 */
+	static String pluginRootReference(Path rules, Path rule)
+	{
+		return PLUGIN_RULES + slashSeparated(rules.relativize(rule));
+	}
+
+	/**
+	 * Rejects an assembled plugin whose Markdown files reference a missing packaged rule, or name a packaged rule
+	 * relative to the file that holds the reference. A reference through the plugin directory must name a packaged
+	 * file. A relative reference must not resolve to a packaged rule, and must name a packaged file when its file name
+	 * is that of a packaged rule; other relative references, such as a project's {@code README.md}, name files outside
+	 * the plugin and are not checked.
 	 *
 	 * @param artifact the assembled plugin
 	 * @throws NullPointerException if {@code artifact} is null
-	 * @throws IOException          if a reference names a missing file, listing each such reference with its file and
-	 *                              line, or if a file cannot be read
+	 * @throws IOException          if a reference names a missing file or names a packaged rule relative to its file,
+	 *                              listing each such reference with its file and line, or if a file cannot be read
 	 */
 	public static void requireResolvable(Path artifact) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
-		Set<String> ruleNames = ruleNames(artifact.resolve("rules"));
+		Path rules = artifact.resolve("rules");
+		Set<String> ruleNames = ruleNames(rules);
 		List<String> missing = new ArrayList<>();
+		List<String> relative = new ArrayList<>();
 		try (Stream<Path> files = Files.walk(artifact))
 		{
 			for (Path file : files.filter(RuleReferences::isMarkdown).sorted().toList())
@@ -101,20 +143,47 @@ public final class RuleReferences
 				while (matcher.find())
 				{
 					String reference = matcher.group(1);
+					long line = content.substring(0, matcher.start()).chars().filter(c -> c == '\n').count() + 1;
+					String location = slashSeparated(artifact.relativize(file)) + ":" + line + ": `" + reference + "`";
+					if (packagedRule(reference, file, rules).isPresent())
+					{
+						relative.add(location);
+						continue;
+					}
 					Optional<Path> named = named(reference, file, artifact, ruleNames);
 					if (named.isPresent() && !Files.isRegularFile(named.get(), NOFOLLOW_LINKS))
-					{
-						long line = content.substring(0, matcher.start()).chars().filter(c -> c == '\n').count() + 1;
-						missing.add(slashSeparated(artifact.relativize(file)) + ":" + line + ": `" + reference + "`");
-					}
+						missing.add(location);
 				}
 			}
 		}
+		List<String> problems = new ArrayList<>();
 		if (!missing.isEmpty())
 		{
-			throw new IOException("These references in the plugin " + artifact + " name files that it does not " +
-				"hold:\n" + String.join("\n", missing));
+			problems.add("These references in the plugin " + artifact + " name files that it does not hold:\n" +
+				String.join("\n", missing));
 		}
+		if (!relative.isEmpty())
+		{
+			problems.add("These references in the plugin " + artifact + " name a packaged rule relative to the file " +
+				"that holds them, which an agent can resolve against the wrong directory. Rule packaging must write " +
+				"each one as " + PLUGIN_RULES + "<path>:\n" + String.join("\n", relative));
+		}
+		if (!problems.isEmpty())
+			throw new IOException(String.join("\n\n", problems));
+	}
+
+	/**
+	 * Returns the packaged rule that a relative reference names.
+	 *
+	 * @param reference the reference
+	 * @param file      the file that holds the reference
+	 * @param rules     the artifact's rule directory
+	 * @return the rule, or empty if the reference is not relative or does not resolve to a packaged rule
+	 */
+	private static Optional<Path> packagedRule(String reference, Path file, Path rules)
+	{
+		return relative(reference, file).
+			filter(path -> path.startsWith(rules) && Files.isRegularFile(path, NOFOLLOW_LINKS));
 	}
 
 	/**

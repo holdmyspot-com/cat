@@ -178,9 +178,8 @@ public final class BundledRuleAudienceTest
 				doesNotContain("When documenting Bash functions");
 			requireThat(Files.readString(interfaces), "interfaceIndex").
 				contains("When selecting a Java platform or available project API, lazy load " +
-					"`../../java/standard-apis.md`.");
-			requireThat(Files.isRegularFile(interfaces.resolveSibling("../../java/standard-apis.md").normalize()),
-				"standardApisExists").isTrue();
+					"`${CAT_PLUGIN_ROOT}/rules/include/java/standard-apis.md`.");
+			requireThat(plugin.resolve("rules/include/java/standard-apis.md"), "standardApis").isRegularFile();
 		}
 	}
 

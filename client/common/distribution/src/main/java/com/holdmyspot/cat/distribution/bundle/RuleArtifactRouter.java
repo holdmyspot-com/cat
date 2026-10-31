@@ -21,7 +21,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Converts path-scoped artifact rules into plain-text rule bodies and a direct routing index.
+ * Prepares an assembled plugin's rules for the harness: names each packaged rule through the plugin directory, and
+ * converts path-scoped and lazy-rule metadata into plain-text rule bodies and direct routing indexes.
  */
 public final class RuleArtifactRouter
 {
@@ -38,9 +39,9 @@ public final class RuleArtifactRouter
 	}
 
 	/**
-	 * Moves each path-scoped direct rule below {@code rules/include}, removes its frontmatter, rewrites its relative
-	 * references to packaged rules so that they resolve from its new location, and creates direct prose that tells a
-	 * harness when to load it.
+	 * Rewrites each relative reference in the plugin's Markdown that names a packaged rule into the form
+	 * {@code ${CAT_PLUGIN_ROOT}/rules/<path>}, then moves each path-scoped direct rule below {@code rules/include},
+	 * removes its frontmatter, and creates direct prose that tells a harness when to load it.
 	 *
 	 * @param artifact a non-null assembled plugin artifact
 	 * @param yamlMapper a non-null YAML parser
@@ -53,6 +54,7 @@ public final class RuleArtifactRouter
 		Path rules = artifact.resolve("rules");
 		if (!Files.isDirectory(rules, NOFOLLOW_LINKS))
 			return;
+		RuleReferences.namePluginRoot(artifact);
 		try (Stream<Path> directories = Files.list(rules))
 		{
 			for (Path directory : directories.filter(path -> Files.isDirectory(path, NOFOLLOW_LINKS)).toList())
@@ -94,10 +96,10 @@ public final class RuleArtifactRouter
 						throw new IOException("Lazy rule dependency is not available: " + artifact.relativize(file) +
 							" depends on " + dependency);
 					if (resolved.startsWith(include))
-						lazyDependencies.add(common.relativize(resolved).toString().replace('\\', '/'));
+						lazyDependencies.add(RuleReferences.pluginRootReference(rules, resolved));
 				}
 				if (!lazyDependencies.isEmpty())
-					dependencies.put(common.relativize(file).toString().replace('\\', '/'), lazyDependencies);
+					dependencies.put(RuleReferences.pluginRootReference(rules, file), lazyDependencies);
 			}
 		}
 		if (dependencies.isEmpty())
@@ -133,7 +135,7 @@ public final class RuleArtifactRouter
 					continue;
 				Path target = artifact.resolve("rules/include").resolve(directory.getFileName()).resolve(file.getFileName());
 				Files.createDirectories(target.getParent());
-				writeNew(artifact, target, RuleReferences.relocate(rule.body(), file, target, artifact.resolve("rules")));
+				writeNew(artifact, target, rule.body());
 				Files.delete(file);
 				routes.add(new Route(artifact.relativize(target).toString().replace('\\', '/'), rule.paths()));
 			}
