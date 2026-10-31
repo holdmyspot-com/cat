@@ -1,13 +1,16 @@
 package com.holdmyspot.cat.common.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RelativeRuleReference;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -55,7 +58,7 @@ public final class RelativeRuleReferenceTest
 				new RelativeRuleReference(project.resolve(".cat/rules/common/team.md"), 3, "../include/build.md",
 					"${CAT_PROJECT_ROOT}/.cat/rules/include/build.md")));
 			requireThat(rules, "rules").contains("Before building, load");
-			requireThat(RelativeRuleReference.warning(references), "warning").
+			requireThat(RelativeRuleReference.warning(references, project.resolve("list.md")), "warning").
 				contains(project.resolve(".cat/rules/common/team.md") + ":3: `../include/build.md`").
 				contains("`${CAT_PROJECT_ROOT}/.cat/rules/include/build.md`");
 		}
@@ -83,23 +86,120 @@ public final class RelativeRuleReferenceTest
 	}
 
 	/**
-	 * Verifies that a warning about many references names a bounded number of them and counts the rest.
+	 * Verifies that the warning states how many references there are and why they matter, gives a request that the user
+	 * can paste to their agent naming the file that lists them, tells the user how to fix them, and says that it repeats.
 	 */
 	@Test
-	public void boundsWarningLength()
+	public void warningTellsUserHowToFix()
 	{
 		Path rule = Path.of("/project/.cat/rules/common/team.md").toAbsolutePath();
-		List<RelativeRuleReference> references = new ArrayList<>();
-		for (int line = 1; line <= 25; ++line)
+		Path listFile = Path.of("/project/.cat/sessions/s/relative-rule-references.md").toAbsolutePath();
+		List<RelativeRuleReference> references = List.of(new RelativeRuleReference(rule, 3, "x.md",
+			"${CAT_PROJECT_ROOT}/.cat/rules/common/x.md"), new RelativeRuleReference(rule, 4, "y.md",
+			"${CAT_PROJECT_ROOT}/.cat/rules/common/y.md"));
+
+		String warning = RelativeRuleReference.warning(references, listFile);
+
+		requireThat(warning, "warning").startsWith("CAT: 2 rule references name a file relative to the rule's own " +
+				"directory, so an agent can load the wrong file.").
+			contains("ask it: \"Replace each rule reference listed in `" + listFile + "` with the form shown for it.\"").
+			contains("To fix them yourself, replace each listed reference with the form shown for it").
+			contains("`depends-on` entries are not affected").
+			contains("repeats at each session start until none remain").
+			contains("- " + rule + ":4: `y.md` is relative to the rule's directory; write " +
+				"`${CAT_PROJECT_ROOT}/.cat/rules/common/y.md`").
+			doesNotContain("more, listed in");
+	}
+
+	/**
+	 * Verifies that with more references than the warning names, the list file holds every one of them and the warning
+	 * counts the rest and names that file.
+	 *
+	 * @throws IOException if the rules cannot be written or the list file cannot be read
+	 */
+	@Test
+	public void listsEveryReferenceBeyondWarning() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			references.add(new RelativeRuleReference(rule, line, "x.md",
-				"${CAT_PROJECT_ROOT}/.cat/rules/common/x.md"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(project, ".cat/rules/include/x.md", "X guidance");
+			StringBuilder team = new StringBuilder("# Team\n");
+			for (int reference = 1; reference <= 25; ++reference)
+				team.append("Load `x.md`.\n");
+			write(project, ".cat/rules/include/team.md", team.toString());
+			Path listFile = project.resolve("relative-rule-references.md");
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			String warning = RelativeRuleReference.sessionWarning(null, project, listFile,
+				new PrintStream(error, true, UTF_8));
+
+			Path rule = project.resolve(".cat/rules/include/team.md");
+			List<String> expected = new ArrayList<>();
+			for (int line = 2; line <= 26; ++line)
+			{
+				expected.add(rule + ":" + line + ": `x.md` is relative to the rule's directory; write " +
+					"`${CAT_PROJECT_ROOT}/.cat/rules/include/x.md`");
+			}
+			requireThat(Files.readAllLines(listFile, UTF_8), "list").isEqualTo(expected);
+			requireThat(warning, "warning").startsWith("CAT: 25 rule references").
+				contains(rule + ":21: `x.md`").doesNotContain(rule + ":22: `x.md`").
+				endsWith("\n- and 5 more, listed in `" + listFile + "`");
+			requireThat(error.toString(UTF_8), "error").isEmpty();
 		}
+	}
 
-		String warning = RelativeRuleReference.warning(references);
+	/**
+	 * Verifies that a later session start without references removes the list file of an earlier start and shows no
+	 * warning.
+	 *
+	 * @throws IOException if the rules cannot be written or removed
+	 */
+	@Test
+	public void removesListWhenReferencesAreFixed() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(project, ".cat/rules/include/x.md", "X guidance");
+			write(project, ".cat/rules/include/team.md", "# Team\n\nLoad `x.md`.\n");
+			Path listFile = project.resolve("relative-rule-references.md");
+			PrintStream error = new PrintStream(new ByteArrayOutputStream(), true, UTF_8);
+			RelativeRuleReference.sessionWarning(null, project, listFile, error);
+			requireThat(listFile, "listFile").isRegularFile();
+			write(project, ".cat/rules/include/team.md", "# Team\n\nLoad `${CAT_PROJECT_ROOT}/.cat/rules/include/x.md`.\n");
 
-		requireThat(warning, "warning").contains(":20: `x.md`").doesNotContain(":21: `x.md`").
-			contains("and 5 more");
+			String warning = RelativeRuleReference.sessionWarning(null, project, listFile, error);
+
+			requireThat(warning, "warning").isEmpty();
+			requireThat(Files.exists(listFile), "listFileExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a list file that cannot be written is reported and still yields the warning.
+	 *
+	 * @throws IOException if the rules cannot be written
+	 */
+	@Test
+	public void warnsWhenListCannotBeWritten() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(project, ".cat/rules/include/x.md", "X guidance");
+			write(project, ".cat/rules/include/team.md", "# Team\n\nLoad `x.md`.\n");
+			// A directory where the list file belongs makes writing the file fail
+			Path listFile = Files.createDirectories(project.resolve("relative-rule-references.md/blocked")).getParent();
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			String warning = RelativeRuleReference.sessionWarning(null, project, listFile,
+				new PrintStream(error, true, UTF_8));
+
+			requireThat(warning, "warning").contains(project.resolve(".cat/rules/include/team.md") + ":3: `x.md`");
+			requireThat(error.toString(UTF_8), "error").contains("CAT could not update the list of relative rule " +
+				"references in " + listFile);
+		}
 	}
 
 	/**

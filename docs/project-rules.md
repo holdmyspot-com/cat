@@ -97,6 +97,12 @@ each user or project rule that names an existing file relative to its own direct
 `terms.md`, and shows the rule file, the line and the reference to write instead. The warning goes to you, not to the
 agent, and CAT still loads the rule. `depends-on` entries stay relative and are not checked.
 
+The warning shows at most 20 references. CAT lists every one of them in `relative-rule-references.md` in the session's
+directory, `.cat/sessions/<session-id>/`, and the warning gives that file's absolute path. To fix the references, either
+ask your agent to "Replace each rule reference listed in `<file>` with the form shown for it", using the path from the
+warning, or edit each listed rule yourself and replace the reference with the form shown for it. The warning repeats at
+each session start until no such reference remains.
+
 ### 5. Order related rules
 
 Use `depends-on` frontmatter when one direct project rule needs guidance defined by another direct project rule. Each

@@ -482,6 +482,17 @@ public final class SessionDirectory
 	}
 
 	/**
+	 * Returns the file that lists every reference in the project's or the user's rules that names a file relative to the
+	 * rule's own directory, with the form to write instead, for the user or their agent to fix.
+	 *
+	 * @return the file's path
+	 */
+	public Path relativeRuleReferencesFile()
+	{
+		return directory.resolve("relative-rule-references.md");
+	}
+
+	/**
 	 * Replaces each {@link #SESSION_ID_DIRECTIVE} in a text with the session's ID.
 	 *
 	 * @param text the text

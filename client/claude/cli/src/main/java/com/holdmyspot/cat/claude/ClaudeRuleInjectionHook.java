@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -47,7 +46,9 @@ final class ClaudeRuleInjectionHook
 	 * Loads rules for one Claude hook event and emits its harness JSON response.
 	 * <p>
 	 * At SessionStart, the response's {@code systemMessage}, which Claude Code shows the user rather than the agent,
-	 * warns about each project or user rule reference that names a file relative to the rule's own directory.
+	 * warns about each project or user rule reference that names a file relative to the rule's own directory and tells
+	 * the user how to fix it, and the session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such
+	 * reference.
 	 *
 	 * @param eventName the Claude hook event name
 	 * @param args the hook command-line arguments
@@ -98,9 +99,10 @@ final class ClaudeRuleInjectionHook
 			response.put("hookSpecificOutput", Map.of("hookEventName", eventName, "additionalContext", context));
 			if (!eventName.equals("SubagentStart"))
 			{
-				List<RelativeRuleReference> references = RelativeRuleReference.find(userRulesRoot, projectDir);
-				if (!references.isEmpty())
-					response.put("systemMessage", RelativeRuleReference.warning(references));
+				String warning = RelativeRuleReference.sessionWarning(userRulesRoot, projectDir,
+					session.relativeRuleReferencesFile(), error);
+				if (!warning.isEmpty())
+					response.put("systemMessage", warning);
 			}
 			output.write(json.writeValueAsBytes(response));
 			output.write('\n');

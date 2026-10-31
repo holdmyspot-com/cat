@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.CodexSessionStartHook;
+import com.holdmyspot.cat.codex.CodexSubagentStartHook;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -512,12 +513,85 @@ public final class CodexSessionStartHookTest
 			HookResult clean = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), homeVariable,
 				cleanHome.toString()), project);
 
+			Path listFile = project.resolve(".cat/sessions").resolve(sessionId()).resolve("relative-rule-references.md");
 			requireThat(readResponse(warned).path("systemMessage").asString(), "systemMessage").
 				contains(personal + ":3: `review.md`").
-				contains("`${CAT_USER_RULES}/common/review.md`");
+				contains("`${CAT_USER_RULES}/common/review.md`").
+				contains("Replace each rule reference listed in `" + listFile + "` with the form shown for it.");
 			requireThat(warnedRules, "rules").contains("Before reviewing, load").
 				doesNotContain("relative to the rule's own directory");
 			requireThat(readResponse(clean).has("systemMessage"), "clean.hasSystemMessage").isFalse();
+			requireThat(Files.exists(listFile), "listFileAfterFix").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that SessionStart lists every relative rule reference in the session's directory, and that SubagentStart
+	 * of a subagent that shares that directory neither writes the list nor warns.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void listsReferencesAtSessionStartOnly() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Path rule = project.resolve(".cat/rules/common/team.md");
+			Files.createDirectories(rule.getParent());
+			Files.writeString(rule, "# Team\n\nLoad `build.md`.\n");
+			Files.writeString(rule.resolveSibling("build.md"), "Build guidance");
+			Path listFile = project.resolve(".cat/sessions").resolve(sessionId()).resolve("relative-rule-references.md");
+			ByteArrayOutputStream subagentOutput = new ByteArrayOutputStream();
+			ByteArrayOutputStream subagentError = new ByteArrayOutputStream();
+
+			CodexSubagentStartHook.run(new String[0], new ByteArrayInputStream(("{\"session_id\":\"" + sessionId() +
+					"\",\"cwd\":" + jsonString(project) + ",\"agent_type\":\"cat:worker\"}").getBytes(UTF_8)),
+				subagentOutput, new PrintStream(subagentError, true, UTF_8), Map.of("PLUGIN_ROOT", plugin.toString(),
+					Platform.current().homeVariable(), project.resolve("home").toString()), project, Yielding.waiting());
+			requireThat(readJson(subagentOutput.toString(UTF_8)).has("systemMessage"), "subagent.hasSystemMessage").
+				isFalse();
+			requireThat(Files.exists(listFile), "listFileAfterSubagentStart").isFalse();
+
+			HookResult warned = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), project);
+
+			requireThat(Files.readString(listFile, UTF_8), "list").isEqualTo(rule + ":3: `build.md` is relative to " +
+				"the rule's directory; write `${CAT_PROJECT_ROOT}/.cat/rules/common/build.md`\n");
+			requireThat(readResponse(warned).has("systemMessage"), "warned.hasSystemMessage").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that when the list of relative rule references cannot be written, SessionStart still returns the agent's
+	 * context and the user's warning, and reports the failure.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void warnsWhenReferenceListCannotBeWritten() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Path rule = project.resolve(".cat/rules/common/team.md");
+			Files.createDirectories(rule.getParent());
+			Files.writeString(rule, "# Team\n\nBefore building, load `build.md`.\n");
+			Files.writeString(rule.resolveSibling("build.md"), "Build guidance");
+			// A directory where the list file belongs makes writing the file fail
+			Path listFile = Files.createDirectories(project.resolve(".cat/sessions").resolve(sessionId()).
+				resolve("relative-rule-references.md/blocked")).getParent();
+
+			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString()), project);
+
+			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").
+				contains(rule + ":3: `build.md`");
+			requireThat(sessionRules(result), "rules").contains("Before building, load");
+			requireThat(result.error(), "error").contains("CAT could not update the list of relative rule references in " +
+				listFile);
 		}
 	}
 

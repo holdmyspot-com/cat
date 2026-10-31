@@ -670,13 +670,90 @@ public final class ClaudeSessionStartHookTest
 				"CLAUDE_CONFIG_DIR", cleanProject.resolve(".claude").toString()), cleanProject);
 
 			JsonNode warnedEnvelope = scope.json().readTree(warned.output());
+			String rules = completeContext(warned);
+			Path listFile = project.resolve(".cat/sessions").resolve(sessionId(referencedFile(context(warned)))).
+				resolve("relative-rule-references.md");
 			requireThat(warnedEnvelope.path("systemMessage").asString(), "systemMessage").
 				contains(project.resolve(".cat/rules/common/team.md") + ":3: `../include/build.md`").
-				contains("`${CAT_PROJECT_ROOT}/.cat/rules/include/build.md`");
-			requireThat(completeContext(warned), "rules").contains("Before building, load").
+				contains("`${CAT_PROJECT_ROOT}/.cat/rules/include/build.md`").
+				contains("Replace each rule reference listed in `" + listFile + "` with the form shown for it.");
+			requireThat(Files.readString(listFile, UTF_8), "list").
+				contains(project.resolve(".cat/rules/common/team.md") + ":3: `../include/build.md`");
+			requireThat(rules, "rules").contains("Before building, load").
 				doesNotContain("relative to the rule's own directory");
 			requireThat(scope.json().readTree(clean.output()).has("systemMessage"), "clean.hasSystemMessage").
 				isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that only SessionStart lists the relative rule references in the session's directory, and that a later
+	 * SessionStart of the same session, after the references were fixed, removes that list and shows no warning.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void listsReferencesAtSessionStartOnly() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			write(project, ".cat/rules/common/team.md", "# Team\n\nBefore building, load `../include/build.md`.\n");
+			write(project, ".cat/rules/include/build.md", "Build guidance");
+			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_CONFIG_DIR",
+				project.resolve(".claude").toString());
+			String input = "{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID + "\"}";
+			Path listFile = project.resolve(".cat/sessions").resolve(SESSION_ID).resolve("relative-rule-references.md");
+
+			HookResult subagent = invokeSubagent("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" +
+				SESSION_ID + "\",\"agent_id\":\"a1b2c3\"}", environment, project);
+			requireThat(scope.json().readTree(subagent.output()).has("systemMessage"), "subagent.hasSystemMessage").
+				isFalse();
+			requireThat(Files.exists(listFile), "listFileAfterSubagentStart").isFalse();
+
+			HookResult warned = invoke(input, environment, project);
+			requireThat(scope.json().readTree(warned.output()).has("systemMessage"), "warned.hasSystemMessage").isTrue();
+			requireThat(listFile, "listFile").isRegularFile();
+
+			write(project, ".cat/rules/common/team.md", "# Team\n\nBefore building, load " +
+				"`${CAT_PROJECT_ROOT}/.cat/rules/include/build.md`.\n");
+			HookResult fixed = invoke(input, environment, project);
+			requireThat(scope.json().readTree(fixed.output()).has("systemMessage"), "fixed.hasSystemMessage").isFalse();
+			requireThat(Files.exists(listFile), "listFileAfterFix").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that when the list of relative rule references cannot be written, SessionStart still returns the agent's
+	 * context and the user's warning, and reports the failure.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void warnsWhenReferenceListCannotBeWritten() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			write(project, ".cat/rules/common/team.md", "# Team\n\nBefore building, load `../include/build.md`.\n");
+			write(project, ".cat/rules/include/build.md", "Build guidance");
+			// A directory where the list file belongs makes writing the file fail
+			Path listFile = Files.createDirectories(project.resolve(".cat/sessions").resolve(SESSION_ID).
+				resolve("relative-rule-references.md/blocked")).getParent();
+
+			HookResult result = invoke("{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID + "\"}",
+				Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_CONFIG_DIR", project.resolve(".claude").toString()),
+				project);
+
+			requireThat(scope.json().readTree(result.output()).path("systemMessage").asString(), "systemMessage").
+				contains(project.resolve(".cat/rules/common/team.md") + ":3: `../include/build.md`");
+			requireThat(completeContext(result), "rules").contains("Before building, load");
+			requireThat(result.error(), "error").contains("CAT could not update the list of relative rule references in " +
+				listFile);
 		}
 	}
 

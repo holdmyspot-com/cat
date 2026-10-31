@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
@@ -63,7 +62,8 @@ final class CodexRuleInjectionHook
 	 * CAT session directories that earlier versions of CAT wrote to their current location, and then removes the CAT
 	 * session directories of sessions that their harness no longer keeps. Its response's {@code systemMessage}, which
 	 * Codex shows the user as a warning rather than giving it to the agent, warns about each project or user rule
-	 * reference that names a file relative to the rule's own directory.
+	 * reference that names a file relative to the rule's own directory and tells the user how to fix it, and the
+	 * session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such reference.
 	 * <p>
 	 * A Codex subagent is a thread whose shells receive its own thread ID, the input's {@code agent_id}, so its rules
 	 * file lies in the CAT session directory of that ID rather than its parent's, and its pointer tells it not to read
@@ -106,9 +106,8 @@ final class CodexRuleInjectionHook
 					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID);
 					context = context(directory, session, RULES_FILE_POINTER::formatted);
-					List<RelativeRuleReference> references = RelativeRuleReference.find(userRulesRoot, projectDir);
-					if (!references.isEmpty())
-						warning = RelativeRuleReference.warning(references);
+					warning = RelativeRuleReference.sessionWarning(userRulesRoot, projectDir,
+						directory.relativeRuleReferencesFile(), error);
 				}
 				else if (event.path("agent_id").isString())
 				{

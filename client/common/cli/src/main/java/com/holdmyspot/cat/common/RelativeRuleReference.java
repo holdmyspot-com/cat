@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -96,26 +97,78 @@ public record RelativeRuleReference(Path rule, int line, String reference, Strin
 	}
 
 	/**
-	 * Returns the warning that tells the user which rule references to rewrite.
+	 * Finds the relative references of a session's rules, lists every one of them in a file that the user or their agent
+	 * can read, and returns the warning for the user.
 	 * <p>
-	 * The warning names at most {@value #MAXIMUM_LISTED} references, so it stays short enough for a harness to show,
-	 * and counts the rest.
+	 * When there are no references, the method deletes the file, so that a file from an earlier start of the same session
+	 * does not list references that were fixed since. A failure to write or delete the file is reported to
+	 * {@code error} and still yields the warning, because the warning alone lets the user fix the references it names.
+	 *
+	 * @param userRulesRoot the user rule directory, or {@code null} when the session has none
+	 * @param projectRoot   the project directory, whose {@code .cat/rules} directory is searched
+	 * @param listFile      the file that lists every reference, one {@link #message()} per line
+	 * @param error         the stream that receives a failure to write or delete {@code listFile}
+	 * @return the warning, or an empty string if there are no references
+	 * @throws NullPointerException if {@code projectRoot}, {@code listFile} or {@code error} is null
+	 */
+	public static String sessionWarning(Path userRulesRoot, Path projectRoot, Path listFile, PrintStream error)
+	{
+		requireThat(listFile, "listFile").isNotNull();
+		requireThat(error, "error").isNotNull();
+		List<RelativeRuleReference> references = find(userRulesRoot, projectRoot);
+		StringJoiner list = new StringJoiner("\n", "", "\n");
+		for (RelativeRuleReference reference : references)
+			list.add(reference.message());
+		try
+		{
+			if (references.isEmpty())
+				Files.deleteIfExists(listFile);
+			else
+				Files.writeString(listFile, list.toString(), UTF_8);
+		}
+		catch (IOException e)
+		{
+			error.println("CAT could not update the list of relative rule references in " + listFile + ": " + e);
+		}
+		if (references.isEmpty())
+			return "";
+		return warning(references, listFile);
+	}
+
+	/**
+	 * Returns the warning that tells the user how many rule references name a file relative to the rule's directory, how
+	 * to have their agent fix them or fix them themselves, and which references they are.
+	 * <p>
+	 * The warning names at most {@value #MAXIMUM_LISTED} references, so it stays short enough for a harness to show, and
+	 * points to {@code listFile} for the rest.
 	 *
 	 * @param references the references
+	 * @param listFile   the file that lists every reference
 	 * @return the warning
-	 * @throws NullPointerException     if {@code references} is null
+	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code references} is empty
 	 */
-	public static String warning(List<RelativeRuleReference> references)
+	public static String warning(List<RelativeRuleReference> references, Path listFile)
 	{
 		requireThat(references, "references").isNotEmpty();
+		requireThat(listFile, "listFile").isNotNull();
+		String count;
+		if (references.size() == 1)
+			count = "1 rule reference names";
+		else
+			count = references.size() + " rule references name";
 		StringJoiner warning = new StringJoiner("\n");
-		warning.add("CAT: these rule references name a file relative to the rule's own directory, which agents can " +
-			"resolve against the wrong directory. Name each file from the root that CAT states instead:");
+		warning.add("CAT: " + count + " a file relative to the rule's own directory, so an agent can load the wrong " +
+			"file.");
+		warning.add("To have your agent fix them, ask it: \"Replace each rule reference listed in `" + listFile +
+			"` with the form shown for it.\"");
+		warning.add("To fix them yourself, replace each listed reference with the form shown for it, which starts with " +
+			"`" + PROJECT_ROOT + "` or `" + USER_RULES + "`. `depends-on` entries are not affected.");
+		warning.add("This warning repeats at each session start until none remain.");
 		for (RelativeRuleReference reference : references.subList(0, Math.min(references.size(), MAXIMUM_LISTED)))
 			warning.add("- " + reference.message());
 		if (references.size() > MAXIMUM_LISTED)
-			warning.add("- and " + (references.size() - MAXIMUM_LISTED) + " more");
+			warning.add("- and " + (references.size() - MAXIMUM_LISTED) + " more, listed in `" + listFile + "`");
 		return warning.toString();
 	}
 
