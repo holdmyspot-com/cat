@@ -99,6 +99,10 @@ jobs:
     needs: build
     runs-on: ubuntu-26.04
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/release-notes.md
+          sparse-checkout-cone-mode: false
       - name: Download native release files
         uses: actions/download-artifact@v8
         with:
@@ -111,12 +115,21 @@ jobs:
           find native -type f -name SHA256SUMS.txt -exec cat '{}' \; | LC_ALL=C sort > release/SHA256SUMS.txt
           test "$(find release -type f -name 'cat-*-*.tar.gz' | wc -l)" -eq 10
           test "$(wc -l < release/SHA256SUMS.txt)" -eq 10
+      # The notes start with the commands that install, update and uninstall this release, followed by the notes that
+      # GitHub generates, which end with the link to the full changelog
+      - name: Write release notes
+        run: |
+          sed 's/${GITHUB_REF_NAME}/'"${GITHUB_REF_NAME}"'/g' .github/release-notes.md > "${RUNNER_TEMP}/release-notes.md"
+          if grep -F '${' "${RUNNER_TEMP}/release-notes.md"; then
+            echo "The release notes template holds a placeholder other than \${GITHUB_REF_NAME}." >&2
+            exit 1
+          fi
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
           gh release create "${GITHUB_REF_NAME}" release/* --repo "${GITHUB_REPOSITORY}"
-          --title "CAT ${GITHUB_REF_NAME}" --generate-notes
+          --title "CAT ${GITHUB_REF_NAME}" --notes-file "${RUNNER_TEMP}/release-notes.md" --generate-notes
 
   # Artifact storage is billed by the hour, so delete the native release files once publishing ends instead of
   # keeping them for their retention period. This also runs when a build or the publish job fails.

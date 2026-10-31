@@ -1,5 +1,8 @@
 #!/usr/bin/env bats
 
+# Tests the installers that both harnesses share: the single command's harness detection and its release notes, the
+# downloaded per-harness bootstraps, and the shared installer library.
+
 load bootstrap-helpers
 
 @test "shared installer usage distinguishes download and extracted-artifact inputs" {
@@ -206,4 +209,44 @@ load bootstrap-helpers
 	[[ "${output}" == *"--harness claude or --harness codex"* ]]
 	[ "$(cat "${COMMAND_LOG}")" = "curl -fsSL ${SINGLE_COMMAND_URL}" ]
 	[ ! -e "${CLAUDE_CONFIG_DIR}" ]
+}
+
+@test "release notes give the release's single commands, which install and uninstall that release" {
+	repository="${BATS_TEST_DIRNAME}/../../../../../.."
+	render="$(grep -F 'release-notes.md >' "${repository}/.github/workflows/release.yml" | sed 's/^ *//')"
+	[ -n "${render}" ]
+	create_fake_engine_command claude
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	notes_directory="${TEST_ROOT}/notes"
+	mkdir -p "${notes_directory}"
+
+	(cd "${repository}" && GITHUB_REF_NAME=v1.0 RUNNER_TEMP="${notes_directory}" sh -c "${render}")
+
+	notes="${notes_directory}/release-notes.md"
+	! grep -F '${' "${notes}" || false
+	install_command="$(grep '^curl .*/cat\.sh | sh -s -- v1\.0$' "${notes}")"
+	uninstall_command="$(grep '^curl .*/cat\.sh | sh -s -- --uninstall$' "${notes}")"
+	[[ "${install_command}" == "curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/"* ]]
+	[[ "${uninstall_command}" == "curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/"* ]]
+	grep -Fx "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/\
+lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Version v1.0" "${notes}"
+	grep -Fx "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/\
+lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Uninstall" "${notes}"
+	grep -F "cannot write a path" "${notes}"
+	grep -F "outside the" "${notes}"
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
+
+	run sh -c "${install_command}"
+
+	[ "${status}" -eq 0 ]
+	grep -Fx "curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/common/lifecycle/src/main/\
+resources/install/cat.sh" "${COMMAND_LOG}"
+	grep -Fx "claude plugin install cat@cat" "${COMMAND_LOG}"
+
+	run sh -c "${uninstall_command}"
+
+	[ "${status}" -eq 0 ]
+	grep -Fx "claude plugin uninstall cat@cat" "${COMMAND_LOG}"
+	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
 }
