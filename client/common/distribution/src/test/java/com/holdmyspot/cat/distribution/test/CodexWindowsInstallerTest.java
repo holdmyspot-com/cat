@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URISyntaxException;
@@ -16,9 +17,12 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -345,6 +349,69 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
+	 * Verifies that installing when the Codex home is on a drive that does not exist changes nothing, runs no command,
+	 * and names the drive's root, which has no folder above it, and the command that repeats the installation.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void installRefusesMissingDrive() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path artifact = fixture.artifact();
+			String root = missingDriveRoot();
+			String codexHome = root + "codex";
+			Map<String, String> before = snapshot(fixture.root);
+
+			Result result = fixture.run("$env:CODEX_HOME = " + literal(codexHome) + "\n" +
+				install("-Source " + literal(artifact)));
+
+			requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
+			requireThat(result.output(), "output").
+				contains("CAT changed nothing because it cannot write " + root + ".").
+				contains("  $env:CODEX_HOME = " + literal(codexHome) + "; & ([scriptblock]::Create((irm ");
+			requireThat(fixture.commands(), "commands").isEmpty();
+			requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
+		}
+	}
+
+	/**
+	 * Verifies that removing the plugin when the Codex home is on a drive that does not exist changes nothing, runs no
+	 * command, and names the drive's root, which has no folder above it, and the command that repeats the removal.
+	 *
+	 * @throws IOException          if the files cannot be written or the script cannot be run
+	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 */
+	@Test
+	public void uninstallRefusesMissingDrive() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			Path profile = Files.createDirectories(fixture.root.resolve("profile"));
+			Files.createDirectories(profile.resolve(".cat/bundles/cat-claude-v1.0-windows-x64/bin"));
+			String root = missingDriveRoot();
+			String codexHome = root + "codex";
+			Map<String, String> before = snapshot(fixture.root);
+
+			Result result = fixture.run("$env:USERPROFILE = " + literal(profile) + "\n$env:CODEX_HOME = " +
+				literal(codexHome) + "\n" + install("-Uninstall"));
+
+			requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
+			requireThat(result.output(), "output").
+				contains("CAT changed nothing because it cannot write " + root + ".").
+				contains("  $env:CODEX_HOME = " + literal(codexHome) + "; & ([scriptblock]::Create((irm " +
+					"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
+					"resources/install/bootstrap-codex.ps1))) -Uninstall" + System.lineSeparator());
+			requireThat(fixture.commands(), "commands").isEmpty();
+			requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
+		}
+	}
+
+	/**
 	 * Verifies that removing an installed plugin deletes CAT's agents and marketplace, and keeps CAT's data.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run
@@ -549,6 +616,27 @@ public final class CodexWindowsInstallerTest
 			}
 		}
 		return snapshot;
+	}
+
+	/**
+	 * Returns the root of a drive that does not exist, the first one from {@code Z:\} down to {@code D:\} that is
+	 * not among the file system's roots, which include mapped and substituted drives.
+	 *
+	 * @return the root, such as {@code Z:\}
+	 * @throws SkipException if every drive from {@code D:} to {@code Z:} exists
+	 */
+	private static String missingDriveRoot()
+	{
+		Set<String> roots = new HashSet<>();
+		for (File root : File.listRoots())
+			roots.add(root.getPath().toUpperCase(Locale.ROOT));
+		for (char letter = 'Z'; letter >= 'D'; letter = (char) (letter - 1))
+		{
+			String root = letter + ":\\";
+			if (!roots.contains(root))
+				return root;
+		}
+		throw new SkipException("Every drive from D: to Z: exists, so none can stand for a missing drive");
 	}
 
 	/**

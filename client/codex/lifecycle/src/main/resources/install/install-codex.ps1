@@ -84,10 +84,11 @@ function Invoke-CatProgramQuietly([string] $Program, [string[]] $Arguments)
 	& $Program @Arguments *> $null
 }
 
-# Rejects a marketplace folder that is not named cat-marketplace, before the installer deletes it.
+# Rejects a marketplace folder that is not named cat-marketplace, before the installer deletes it. The name is read
+# from the text, because Split-Path rejects a path on a drive that does not exist.
 function Assert-CatMarketplaceRoot([string] $Path)
 {
-	if ((Split-Path -Leaf $Path) -ne 'cat-marketplace')
+	if ([IO.Path]::GetFileName($Path.TrimEnd('\', '/')) -ne 'cat-marketplace')
 	{
 		throw ("CAT marketplace path must end in \cat-marketplace so CAT only replaces its own marketplace: $Path. " +
 			'Set CAT_CODEX_MARKETPLACE_ROOT to a path ending in \cat-marketplace.')
@@ -401,10 +402,12 @@ function Install-CatAgents([string] $Artifact, [string] $CodexHome, [string] $Da
 
 $codexHome = $env:CODEX_HOME
 if (-not $codexHome) { $codexHome = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.codex' }
+# Until the write check passes, paths are joined with [IO.Path]::Combine, because Join-Path rejects a path on a drive
+# that does not exist, which the write check reports instead
 $dataDirectory = $env:CAT_CODEX_DATA_DIR
-if (-not $dataDirectory) { $dataDirectory = Join-Path $codexHome 'plugins\data\cat-cat' }
+if (-not $dataDirectory) { $dataDirectory = [IO.Path]::Combine($codexHome, 'plugins\data\cat-cat') }
 $marketplaceRoot = $env:CAT_CODEX_MARKETPLACE_ROOT
-if (-not $marketplaceRoot) { $marketplaceRoot = Join-Path $codexHome 'plugins\cat-marketplace' }
+if (-not $marketplaceRoot) { $marketplaceRoot = [IO.Path]::Combine($codexHome, 'plugins\cat-marketplace') }
 Assert-CatMarketplaceRoot $marketplaceRoot
 
 if ($Uninstall)
@@ -413,16 +416,16 @@ if ($Uninstall)
 	if ($DeleteData) { Assert-CatDataDirectory $dataDirectory }
 	$userProfile = $env:USERPROFILE
 	if (-not $userProfile) { $userProfile = [Environment]::GetFolderPath('UserProfile') }
-	$bundles = Join-Path $userProfile '.cat\bundles'
+	$bundles = [IO.Path]::Combine($userProfile, '.cat\bundles')
 	$arguments = '-Uninstall'
 	if ($DeleteData) { $arguments += ' -DeleteData' }
 	$rerunCommand = Get-CatRerunCommand 'HEAD' 'bootstrap-codex.ps1' $arguments
 	# "codex plugin remove" records the removal in config.toml and deletes the plugin from the plugin cache
-	$writable = @($codexHome, (Join-Path $codexHome 'config.toml'), (Join-Path $codexHome 'tmp'),
-		(Join-Path $codexHome 'plugins\cache'))
-	if (Test-Path -LiteralPath (Join-Path $dataDirectory 'codex-agent-files'))
+	$writable = @($codexHome, [IO.Path]::Combine($codexHome, 'config.toml'), [IO.Path]::Combine($codexHome, 'tmp'),
+		[IO.Path]::Combine($codexHome, 'plugins\cache'))
+	if (Test-Path -LiteralPath ([IO.Path]::Combine($dataDirectory, 'codex-agent-files')))
 	{
-		$writable += @((Join-Path $codexHome 'agents'), $dataDirectory)
+		$writable += @([IO.Path]::Combine($codexHome, 'agents'), $dataDirectory)
 	}
 	Assert-CatWritable $rerunCommand $writable
 	$removable = @($marketplaceRoot, $bundles)
@@ -472,9 +475,10 @@ try
 	# Codex replaces config.toml by renaming a temporary file from its home folder over it when "codex plugin
 	# marketplace add" and "codex plugin add" record the marketplace and the plugin, and "codex plugin add" copies the
 	# plugin into the plugin cache
-	Assert-CatWritable $rerunCommand @($codexHome, (Join-Path $codexHome 'config.toml'), (Join-Path $codexHome '.tmp'),
-		(Join-Path $codexHome 'tmp'), (Join-Path $codexHome 'plugins\cache'), (Join-Path $codexHome 'agents'),
-		$dataDirectory, (Join-Path $marketplaceRoot '..'))
+	Assert-CatWritable $rerunCommand @($codexHome, [IO.Path]::Combine($codexHome, 'config.toml'),
+		[IO.Path]::Combine($codexHome, '.tmp'), [IO.Path]::Combine($codexHome, 'tmp'),
+		[IO.Path]::Combine($codexHome, 'plugins\cache'), [IO.Path]::Combine($codexHome, 'agents'), $dataDirectory,
+		[IO.Path]::Combine($marketplaceRoot, '..'))
 	Assert-CatRemovable $rerunCommand @($marketplaceRoot)
 
 	Update-CatData $dataDirectory (Join-Path $artifact 'install\migrations')
