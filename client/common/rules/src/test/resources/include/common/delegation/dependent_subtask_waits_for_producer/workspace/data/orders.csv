@@ -1,0 +1,8 @@
+order_id,customer,amount
+1001,Ana Lindqvist,120.00
+1002,Ben Okafor,85.50
+1003,Ana Lindqvist,140.25
+1004,{{customer}},{{total}}
+1005,Chen Wei,310.00
+1006,Ben Okafor,99.99
+1007,Chen Wei,45.00

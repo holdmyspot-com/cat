@@ -115,10 +115,10 @@ deferred work, incorporate the evidence and complete its assignment. A rolling d
 outcomes, hidden prerequisites, or an ambiguous ready handoff.
 
 Choose ownership separately from decomposition. Account for shared decisions and writes, context reconstruction,
-handoffs, review, and integration when deciding whether independent assignments justify more agents. Keep a small
-cohesive task with one owner when splitting supplies no independent work or distinct verification benefit. When the plan
-assigns work to subagents, lazy load `delegation.md`;
-do not substitute this planning rule for that execution contract.
+handoffs, review, and integration when deciding whether to split work. Keep a small cohesive task with one owner when
+splitting supplies no independent work or distinct verification benefit. When the plan assigns work to subagents, lazy
+load `delegation.md` before choosing those subagents' subtasks; do not substitute this planning rule for that execution
+contract.
 
 When selecting verification work, lazy load `testing.md`.
 
@@ -134,7 +134,8 @@ assumed contract does not establish that contract.
 
 State why the selected combination fits the observed dependencies, uncertainty, available checks, coordination cost,
 and exposure to rework. Treat any unmeasured elapsed-time advantage as a reasoned expectation. Do not invent durations,
-claim a universal optimum, or turn that expectation into a forecast-based stopping or scheduling policy.
+claim a universal optimum, or turn that expectation into a forecast-based stopping or scheduling policy. Estimating
+a delegated subtask's size to decide how to split it is not such a policy.
 
 ## Revise From Evidence
 

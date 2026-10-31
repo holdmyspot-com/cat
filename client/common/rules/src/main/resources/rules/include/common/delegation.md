@@ -16,6 +16,11 @@
 - Ensure a required delegate launch uses its documented direct operation and receipt before any wait, recovery, or
 	status conclusion, so an unrelated tool result cannot be mistaken for a launch attempt.
 - Wait for a live delegate by blocking until it returns, rather than observing it at intervals.
+<!-- A parent sent one subagent four topics, two of them independent of the others, with one shared reading list; after
+     45 minutes the subagent had read about 15 rule files and changed no file. -->
+- Split delegated work into as many independent subtasks of about five minutes each as its dependencies allow, each
+	run by its own subagent with only the context that subtask needs, so independent work proceeds concurrently and no
+	delegate spends its time on context that belongs to other work.
 
 ## Guidance
 
@@ -36,11 +41,18 @@ recipient's injected response contract and required form when one exists; otherw
 component. Do not redefine that contract's statuses, keys, or terminal meanings in the task. Do not rely on a
 parent-only requirement or generic handoff language.
 
-Delegate one verification-closed behavior cluster at a time: one coherent observable outcome whose production changes
-and focused tests end in an exact gate. Paths that overlap do not make independently testable lifecycle, schema, or
-quality changes one cluster. Sequence those clusters through one exclusive writer or retain them at the higher
-authority. Do not delegate work when accepting it would require the parent to rederive its decisions or review work as
-broadly as implementing it directly.
+Before delegating, decompose the work into as many independent subtasks as possible, each estimated at about five
+minutes of a subagent's work, and give each subtask its own subagent. Each subtask is one verification-closed behavior
+cluster: one coherent observable outcome whose production changes and focused tests end in its own exact gate. Paths
+that overlap do not make independently testable lifecycle, schema, or quality changes one cluster. A piece that cannot
+be split further without losing its own exact gate stays one subtask, even when it takes longer than five minutes.
+Launch the subtasks that the conflict graph below shows as independent concurrently. A subtask that consumes another
+subtask's output waits for that output, and subtasks whose write sets overlap run in sequence through one exclusive
+writer or stay with the higher authority. Do not delegate work when accepting it would require the parent to rederive
+its decisions or review work as broadly as implementing it directly.
+
+Give each subtask its own task contract that carries only what that subtask needs, including a reading list limited to
+the files its decisions depend on. Do not send several subtasks one shared reading list.
 
 For every write-capable delegation, supply a task contract with an exact write allowlist, verification commands,
 workspace mode, and acceptance evidence. Treat the write allowlist as authority and the verification commands only as
@@ -115,7 +127,7 @@ the other's changing output. If the actor responsible for workspace integration 
 isolated results, use one exclusive writer in the shared worktree instead of improvising temporary indexes, worktrees,
 commits, or merge commands in prompt prose.
 
-Use one readiness review to map several upcoming clusters before serial implementation begins. Split every discovered
+Use one readiness review to map several upcoming clusters before their implementation begins. Split every discovered
 missing prerequisite into its own verification-closed cluster with a named responsible component, then run only
 graph-independent clusters in parallel. This reduces rediscovery and handoff latency without allowing a consumer to
 start before its producer's accepted snapshot exists.
