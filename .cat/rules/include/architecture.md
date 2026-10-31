@@ -7,7 +7,7 @@
 
 ## Guidance
 
-Before applying this rule, lazy load `./java-modules.md`.
+Before applying this rule, lazy load `./java-modules/shared-secrets.md`.
 
 Treat `client/common/` and `.cat/rules/common/` as common locations. They may use coding-harness-neutral concepts and
 data, including a harness identifier, generic contracts, and caller-provided values. They must not discover, name,
@@ -17,7 +17,7 @@ environment variables, APIs, files, configuration, prompts, rules, or behavior.
 Put each concrete harness reference and integration decision in that harness's module or rule. Harness-owned code may
 invoke common code through a harness-neutral contract. Share common behavior only when its execution contract is
 identical; otherwise keep the differing behavior in the owning harness location. Follow the Shared Secrets and
-reflection policy in `java-modules.md`.
+reflection policy in `java-modules/shared-secrets.md`.
 
 This applies equally to production code, tests, fixtures, examples, comments, and literal values. Common tests model
 harness-neutral contracts using generic identifiers such as `harness-a`; move a test that requires a concrete harness
