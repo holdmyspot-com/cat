@@ -26,7 +26,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -50,6 +49,11 @@ public final class HarnessCapacityTest
 	 * The time at which tests of holds start.
 	 */
 	private static final Instant HOLD_START = Instant.parse("2026-10-06T12:00:00Z");
+	/**
+	 * The longest time to wait for the child JVM that records a hold to exit. It bounds a hung child JVM on a loaded CI
+	 * runner and is not expected to be reached, because the child uses a controlled clock and never sleeps.
+	 */
+	private static final Duration CHILD_JVM_EXIT_TIMEOUT = Duration.ofMinutes(2);
 
 	/**
 	 * Creates the test fixture.
@@ -511,7 +515,8 @@ public final class HarnessCapacityTest
 	 * to persist it. One child JVM records the hold; the test JVM's existing pool must then honour it. This process
 	 * boundary uses a controlled clock, starts no harness or model and does not sleep.
 	 * <p>
-	 * Starting the child JVM and loading its classes can take one second or longer, especially during a parallel build.
+	 * Starting the child JVM and loading its classes can take more than ten seconds on a CI runner that is running other
+	 * tests in parallel, so the test waits up to {@link #CHILD_JVM_EXIT_TIMEOUT} for the child to exit.
 	 *
 	 * @throws IOException if the fixture cannot run or its files cannot be used
 	 * @throws InterruptedException if waiting for a fixture is interrupted
@@ -539,11 +544,12 @@ public final class HarnessCapacityTest
 	}
 
 	/**
-	 * Records a hold in a separate JVM with the test runtime's classes and dependencies.
+	 * Records a hold in a separate JVM with the test runtime's classes and dependencies. If that JVM does not exit within
+	 * {@link #CHILD_JVM_EXIT_TIMEOUT}, it is killed and the test fails with the output it produced.
 	 *
 	 * @param directory the isolated lock and process working directory
 	 * @return the fixture's output with platform line endings normalized
-	 * @throws IOException if the process cannot start or its output cannot be read
+	 * @throws IOException if the process cannot start, its output cannot be read or it exits with a non-zero status
 	 * @throws InterruptedException if waiting is interrupted
 	 */
 	private static String capacityProcess(Path directory) throws IOException, InterruptedException
@@ -559,8 +565,13 @@ public final class HarnessCapacityTest
 			directory.toString(), HOLD_START.toString()).directory(directory.toFile()).redirectErrorStream(true);
 		try (Process process = builder.start())
 		{
-			requireThat(process.waitFor(10, TimeUnit.SECONDS), "finished").isTrue();
+			boolean exited = process.waitFor(CHILD_JVM_EXIT_TIMEOUT);
+			// Reading a hung child's output would block forever. Killing it closes that output, so the read ends and the
+			// failure shows what the child printed.
+			if (!exited)
+				process.destroyForcibly();
 			String output = new String(process.getInputStream().readAllBytes(), UTF_8).replace("\r\n", "\n").strip();
+			requireThat(exited, "exited").withContext(output, "output").isTrue();
 			if (process.exitValue() != 0)
 				throw new IOException("Capacity fixture exited with " + process.exitValue() + ": " + output);
 			return output;
