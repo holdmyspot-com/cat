@@ -28,10 +28,9 @@ case "${CAT_VERSION}" in
 esac
 CAT_DOWNLOAD_TEMP_DIRECTORY="$(mktemp -d "${CAT_DOWNLOAD_TEMP_ROOT}/cat-${CAT_HARNESS}-bootstrap.XXXXXX")"
 trap 'rm -rf "${CAT_DOWNLOAD_TEMP_DIRECTORY}"' EXIT HUP INT TERM
-CAT_COMMON_SOURCE_URL="https://raw.githubusercontent.com/${CAT_REPOSITORY}/${CAT_VERSION}/client/common/lifecycle/"\
-"src/main/resources/install"
-CAT_HARNESS_SOURCE_URL="https://raw.githubusercontent.com/${CAT_REPOSITORY}/${CAT_VERSION}/client/${CAT_HARNESS}/lifecycle/"\
-"src/main/resources/install"
+CAT_CLIENT_SOURCE_URL="https://raw.githubusercontent.com/${CAT_REPOSITORY}/${CAT_VERSION}/client"
+CAT_COMMON_SOURCE_URL="${CAT_CLIENT_SOURCE_URL}/common/lifecycle/src/main/resources/install"
+CAT_HARNESS_SOURCE_URL="${CAT_CLIENT_SOURCE_URL}/${CAT_HARNESS}/lifecycle/src/main/resources/install"
 curl -fsSL "${CAT_COMMON_SOURCE_URL}/common.sh" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/common.sh"
 curl -fsSL "${CAT_HARNESS_SOURCE_URL}/install-${CAT_HARNESS}.sh" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/install-${CAT_HARNESS}.sh"
 sh "${CAT_DOWNLOAD_TEMP_DIRECTORY}/install-${CAT_HARNESS}.sh" "${CAT_VERSION}"
