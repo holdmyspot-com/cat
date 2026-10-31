@@ -96,8 +96,14 @@ public final class LifecycleSkillsTest
 				requireThat(manifest, skill).contains("--harness " + harness).contains("Read `first-use.md`").
 					doesNotContain("cat:include");
 				String body = Files.readString(plugin.resolve("skills/" + skill + "/first-use.md"));
-				requireThat(body, skill + "Body").contains("status 77").contains("outside the sandbox").
-					contains("prefixed with `! `").contains("Do not run it again").doesNotContain("${CAT_PLUGIN_ROOT}");
+				// The skill's source wraps lines, so phrases are matched across line breaks
+				String flattened = body.replaceAll("\\s+", " ");
+				requireThat(flattened, skill + "Body").contains("status 77").contains("outside the sandbox").
+					contains("end your turn with a reply that names that path").
+					contains("shows the command in a code block character for character as printed").
+					contains("never as a summary or a description of it").contains("prefixed with `! `").
+					contains("Do no other work in that turn").contains("Do not run it again").
+					doesNotContain("${CAT_PLUGIN_ROOT}");
 				if (harness.equals("claude"))
 					requireThat(manifest, skill).contains("allowed-tools: [Bash]");
 				else

@@ -5,6 +5,7 @@
 - Remove CAT with the uninstaller that its installed plugin already holds, so that removal downloads nothing.
 - Keep CAT's data unless the user asks to delete it, so that a later installation can migrate it.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
+- Give the user the exact command that a blocked change needs, so that they can run it without asking for it.
 
 ## Guidance
 
@@ -24,9 +25,11 @@ Run one command, writing the installed plugin directory's absolute path in place
 	the user asks to delete CAT's data. Do not run the file itself, which PowerShell's execution policy can block.
 
 When the command exits with status 77, or its output says that CAT cannot write a path and gives a command to run
-outside the sandbox, show the user that path and that command exactly as printed, tell them that they can run the
-command in a terminal or, in Claude Code, type it at the prompt prefixed with `! `, and stop. Do not run it again, with
-other permissions, or in any other way to get around the sandbox. Report any other failure with the command's output.
+outside the sandbox, end your turn with a reply that names that path, shows the command in a code block character for
+character as printed, never as a summary or a description of it, and asks the user to run it in a terminal outside the
+sandbox or, in Claude Code only, to type it at the prompt prefixed with `! `. Do no other work in that turn, including
+work the user asked for earlier. Do not run it again, with other permissions, or in any other way to get around the
+sandbox. Report any other failure with the command's output.
 
 After the command succeeds, tell the user that CAT is uninstalled and that sessions they start from now on run without
 it.
