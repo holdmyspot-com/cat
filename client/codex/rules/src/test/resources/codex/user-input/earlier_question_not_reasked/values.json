@@ -1,0 +1,77 @@
+{
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"runners": "ubuntu-24.04 and windows-2022"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-24.04 and windows-2022, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-22.04 and macos-14"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-22.04 and macos-14, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-24.04, windows-2025 and macos-15"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-24.04, windows-2025 and macos-15, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-22.04 and windows-2025"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-22.04 and windows-2025, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "windows-2022 and macos-15"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on windows-2022 and macos-15, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-24.04 and macos-14"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-24.04 and macos-14, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-22.04, ubuntu-24.04 and windows-2022"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-22.04, ubuntu-24.04 and windows-2022, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "macos-14 and macos-15"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on macos-14 and macos-15, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-22.04, windows-2022 and macos-14"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-22.04, windows-2022 and macos-14, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "windows-2022 and windows-2025"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on windows-2022 and windows-2025, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-24.04, macos-14 and macos-15"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-24.04, macos-14 and macos-15, without a second request for the supported platforms"
+		},
+		{
+			"values": {
+				"runners": "ubuntu-22.04 and macos-15"
+			},
+			"expected_outcome": "ci.yml runs the ledger tests and release.yml builds the wheel, both on ubuntu-22.04 and macos-15, without a second request for the supported platforms"
+		}
+	]
+}

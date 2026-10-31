@@ -1,0 +1,101 @@
+{
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"constant": "RETRY_LIMIT",
+				"value": "5",
+				"flag": "retry-limit"
+			},
+			"expected_outcome": "src/settings.py alone defines RETRY_LIMIT = 5, src/cli.py accepts --retry-limit to override it, and README.md documents --retry-limit with default 5"
+		},
+		{
+			"values": {
+				"constant": "MAX_RETRIES",
+				"value": "3",
+				"flag": "max-retries"
+			},
+			"expected_outcome": "src/settings.py alone defines MAX_RETRIES = 3, src/cli.py accepts --max-retries to override it, and README.md documents --max-retries with default 3"
+		},
+		{
+			"values": {
+				"constant": "MAX_ATTEMPTS",
+				"value": "4",
+				"flag": "max-attempts"
+			},
+			"expected_outcome": "src/settings.py alone defines MAX_ATTEMPTS = 4, src/cli.py accepts --max-attempts to override it, and README.md documents --max-attempts with default 4"
+		},
+		{
+			"values": {
+				"constant": "CONNECT_RETRIES",
+				"value": "6",
+				"flag": "connect-retries"
+			},
+			"expected_outcome": "src/settings.py alone defines CONNECT_RETRIES = 6, src/cli.py accepts --connect-retries to override it, and README.md documents --connect-retries with default 6"
+		},
+		{
+			"values": {
+				"constant": "RETRY_COUNT",
+				"value": "2",
+				"flag": "retry-count"
+			},
+			"expected_outcome": "src/settings.py alone defines RETRY_COUNT = 2, src/cli.py accepts --retry-count to override it, and README.md documents --retry-count with default 2"
+		},
+		{
+			"values": {
+				"constant": "ATTEMPT_LIMIT",
+				"value": "7",
+				"flag": "attempt-limit"
+			},
+			"expected_outcome": "src/settings.py alone defines ATTEMPT_LIMIT = 7, src/cli.py accepts --attempt-limit to override it, and README.md documents --attempt-limit with default 7"
+		},
+		{
+			"values": {
+				"constant": "MAX_TRIES",
+				"value": "8",
+				"flag": "max-tries"
+			},
+			"expected_outcome": "src/settings.py alone defines MAX_TRIES = 8, src/cli.py accepts --max-tries to override it, and README.md documents --max-tries with default 8"
+		},
+		{
+			"values": {
+				"constant": "RETRIES",
+				"value": "9",
+				"flag": "retries"
+			},
+			"expected_outcome": "src/settings.py alone defines RETRIES = 9, src/cli.py accepts --retries to override it, and README.md documents --retries with default 9"
+		},
+		{
+			"values": {
+				"constant": "TRY_LIMIT",
+				"value": "3",
+				"flag": "try-limit"
+			},
+			"expected_outcome": "src/settings.py alone defines TRY_LIMIT = 3, src/cli.py accepts --try-limit to override it, and README.md documents --try-limit with default 3"
+		},
+		{
+			"values": {
+				"constant": "MAX_RECONNECTS",
+				"value": "5",
+				"flag": "max-reconnects"
+			},
+			"expected_outcome": "src/settings.py alone defines MAX_RECONNECTS = 5, src/cli.py accepts --max-reconnects to override it, and README.md documents --max-reconnects with default 5"
+		},
+		{
+			"values": {
+				"constant": "RECONNECT_LIMIT",
+				"value": "4",
+				"flag": "reconnect-limit"
+			},
+			"expected_outcome": "src/settings.py alone defines RECONNECT_LIMIT = 4, src/cli.py accepts --reconnect-limit to override it, and README.md documents --reconnect-limit with default 4"
+		},
+		{
+			"values": {
+				"constant": "ATTEMPTS",
+				"value": "6",
+				"flag": "attempts"
+			},
+			"expected_outcome": "src/settings.py alone defines ATTEMPTS = 6, src/cli.py accepts --attempts to override it, and README.md documents --attempts with default 6"
+		}
+	]
+}

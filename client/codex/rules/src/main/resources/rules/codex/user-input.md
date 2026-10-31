@@ -7,6 +7,9 @@
 - Never use the user-input tool to send a status update, progress report or other message that needs no answer.
 - Never use the user-input tool to make the user repeat information or authorization that the conversation already
 	gives.
+- Never use the user-input tool to ask again for a decision that an earlier question in the conversation asked, whether
+	or not the user has answered it yet, or to ask whether to continue, pause or keep working on an active goal or work
+	that the user told the agent to continue.
 - Make every message for a subagent or the parent agent reach that agent through a collaboration tool, never through
 	the user-input tool, which reaches only the user.
 - Never use the user-input tool to cancel, stop or retract anything, including an earlier mistaken user-input call.
@@ -27,6 +30,12 @@ is worded as a question.
 
 Do not call a user-input tool to ask for information or authorization that the user has already given in this
 conversation, such as the option to use, the scope of a change, or permission to go ahead.
+
+Before a user-input call, compare its question with every question that you have asked in this conversation, answered
+or not. If one asks for the same decision, even in other words, do not call: act on its answer, or keep waiting for it.
+The answer to a `request_user_input_async` call arrives later as a user message, so the absence of an answer is never a
+reason to ask again. An active goal or an instruction to continue authorizes continuing that work: never ask whether to
+continue, pause or keep working on it.
 
 Send a message, update, follow-up, correction or progress question for a subagent or the parent agent with a
 collaboration tool, such as `send_message` or `followup_task`, addressed to that agent. This includes telling a
