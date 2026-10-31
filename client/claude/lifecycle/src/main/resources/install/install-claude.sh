@@ -18,15 +18,26 @@ RERUN_COMMAND="$(cat_rerun_command claude \
 	"$(cat_environment_assignments "CLAUDE_CONFIG_DIR CAT_CLAUDE_DATA_DIR CLAUDE_PLUGIN_DATA CAT_CLAUDE_MARKETPLACE_ROOT")" \
 	"${CAT_SOURCE}" "${SCRIPT_DIRECTORY}/install-claude.sh" "" "${CAT_SOURCE}")"
 
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+	CLAUDE_GLOBAL_CONFIG_FILE="${CLAUDE_CONFIG_DIR}/.claude.json"
+else
+	CLAUDE_GLOBAL_CONFIG_FILE="${HOME}/.claude.json"
+fi
 CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 CAT_DATA_DIR="${CAT_CLAUDE_DATA_DIR:-${CLAUDE_PLUGIN_DATA:-${CLAUDE_CONFIG_DIR}/plugins/data/cat-cat}}"
 MARKETPLACE_ROOT="${CAT_CLAUDE_MARKETPLACE_ROOT:-${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace}"
 cat_validate_marketplace_root "${MARKETPLACE_ROOT}" "CAT_CLAUDE_MARKETPLACE_ROOT"
-# "claude plugin install" enables the plugin in the user's settings.json, records it in installed_plugins.json and
-# copies it into the plugin cache; "claude plugin marketplace add" records the marketplace in known_marketplaces.json
-cat_require_writable "${RERUN_COMMAND}" "${CLAUDE_CONFIG_DIR}/settings.json" \
-	"${CLAUDE_CONFIG_DIR}/plugins/known_marketplaces.json" "${CLAUDE_CONFIG_DIR}/plugins/installed_plugins.json" \
-	"${CLAUDE_CONFIG_DIR}/plugins/cache" "${CAT_DATA_DIR}" "$(dirname -- "${MARKETPLACE_ROOT}")"
+# "claude plugin marketplace add" and "claude plugin install" write .claude.json, its lock and its temporary files in
+# the directory that holds .claude.json, which is CLAUDE_CONFIG_DIR when it is set and HOME otherwise. In the
+# configuration directory they write .storage-write.lock, backups of .claude.json in backups, settings.json,
+# known_marketplaces.json and installed_plugins.json in plugins, the marketplace in plugins/marketplaces and the plugin
+# in plugins/cache. They replace each file by renaming a temporary file over it. These files were observed by tracing
+# Claude Code 2.1.312, so a later version of Claude Code may need them checked again.
+cat_require_writable "${RERUN_COMMAND}" "${CLAUDE_GLOBAL_CONFIG_FILE}" "${CLAUDE_CONFIG_DIR}" \
+	"${CLAUDE_CONFIG_DIR}/backups" "${CLAUDE_CONFIG_DIR}/plugins" "${CLAUDE_CONFIG_DIR}/plugins/marketplaces" \
+	"${CLAUDE_CONFIG_DIR}/settings.json" "${CLAUDE_CONFIG_DIR}/plugins/known_marketplaces.json" \
+	"${CLAUDE_CONFIG_DIR}/plugins/installed_plugins.json" "${CLAUDE_CONFIG_DIR}/plugins/cache" "${CAT_DATA_DIR}" \
+	"$(dirname -- "${MARKETPLACE_ROOT}")"
 cat_require_removable "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
 
 cat_resolve_artifact_directory "claude" "${CAT_SOURCE}"

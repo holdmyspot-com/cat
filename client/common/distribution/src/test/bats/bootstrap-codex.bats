@@ -318,6 +318,21 @@ platform=${expected_platform}" ]
 	expect_unchanged_by_single_command "${CODEX_HOME}/plugins" "${uninstall_command} --uninstall" --uninstall
 }
 
+# Codex writes a helper program into CODEX_HOME/tmp whenever it installs or removes a plugin
+@test "single command changes nothing when Codex's tmp directory is read-only" {
+	create_fake_engine_command codex
+	create_fake_release codex > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
+	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex v1.0"
+	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL/v1.0/HEAD} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
+	mkdir -p "${CODEX_HOME}/tmp"
+	make_read_only "${CODEX_HOME}/tmp"
+
+	expect_unchanged_by_single_command "${CODEX_HOME}/tmp" "${install_command}" v1.0
+	expect_unchanged_by_single_command "${CODEX_HOME}/tmp" "${uninstall_command} --uninstall" --uninstall
+}
+
 @test "single command reaches the same Codex state as the Codex bootstrap scripts" {
 	create_fake_engine_command codex
 	create_fake_release codex > /dev/null

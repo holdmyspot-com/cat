@@ -30,10 +30,13 @@ CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 CAT_DATA_DIR="${CAT_CODEX_DATA_DIR:-${CODEX_HOME}/plugins/data/cat-cat}"
 MARKETPLACE_ROOT="${CAT_CODEX_MARKETPLACE_ROOT:-${CODEX_HOME}/plugins/cat-marketplace}"
 cat_validate_marketplace_root "${MARKETPLACE_ROOT}" "CAT_CODEX_MARKETPLACE_ROOT"
-# "codex plugin marketplace add" and "codex plugin add" record the marketplace and the plugin in config.toml, and
-# "codex plugin add" copies the plugin into the plugin cache
-cat_require_writable "${RERUN_COMMAND}" "${CODEX_HOME}/config.toml" "${CODEX_HOME}/plugins/cache" \
-	"${CODEX_HOME}/agents" "${CAT_DATA_DIR}" "$(dirname -- "${MARKETPLACE_ROOT}")"
+# "codex plugin marketplace add" and "codex plugin add" replace config.toml by renaming a temporary file from
+# CODEX_HOME over it, stage the marketplace in .tmp/marketplaces, write a helper in tmp/arg0 and copy the plugin into
+# plugins/cache, all within CODEX_HOME; CAT itself writes the agents, its data and its marketplace. The Codex files were
+# observed by tracing Codex 0.160.0, so a later version of Codex may need them checked again.
+cat_require_writable "${RERUN_COMMAND}" "${CODEX_HOME}" "${CODEX_HOME}/.tmp" "${CODEX_HOME}/tmp" \
+	"${CODEX_HOME}/config.toml" "${CODEX_HOME}/plugins/cache" "${CODEX_HOME}/agents" "${CAT_DATA_DIR}" \
+	"$(dirname -- "${MARKETPLACE_ROOT}")"
 cat_require_removable "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
 
 cat_resolve_artifact_directory "codex" "${CAT_SOURCE}"

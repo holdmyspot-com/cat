@@ -216,6 +216,34 @@ v1.0"
 	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/plugins" "${uninstall_command}" --uninstall
 }
 
+# Without CLAUDE_CONFIG_DIR, Claude Code keeps .claude.json directly in the home directory, outside .claude
+@test "single command changes nothing when the home directory that holds Claude's .claude.json is read-only" {
+	create_fake_engine_command claude
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
+	unset CLAUDE_CONFIG_DIR
+	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude v1.0"
+	mkdir -p "${HOME}/.claude"
+	make_read_only "${HOME}"
+
+	expect_unchanged_by_single_command "${HOME}" "${install_command}" v1.0
+}
+
+@test "single command changes nothing when the .claude.json in Claude's configuration directory is read-only" {
+	create_fake_engine_command claude
+	create_fake_release claude > /dev/null
+	publish_install_scripts
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
+	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL/v1.0/HEAD} | CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- \
+--harness claude --uninstall"
+	mkdir -p "${CLAUDE_CONFIG_DIR}"
+	printf '{}\n' > "${CLAUDE_CONFIG_DIR}/.claude.json"
+	make_read_only "${CLAUDE_CONFIG_DIR}/.claude.json"
+
+	expect_unchanged_by_single_command "${CLAUDE_CONFIG_DIR}/.claude.json" "${uninstall_command}" --uninstall
+}
+
 @test "single command reaches the same Claude Code state as the Claude bootstrap scripts" {
 	create_fake_engine_command claude
 	create_fake_release claude > /dev/null
