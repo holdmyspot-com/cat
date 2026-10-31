@@ -13,7 +13,7 @@ paths:
 ## Guidance
 
 When CAT lifecycle hooks have one execution contract across harnesses, ship the hook once in the common plugin resource
-layer. Each harness manifest must invoke that artifact-relative hook through its native plugin-root placeholder. The
+layer. Each harness manifest must invoke that artifact-relative hook through the harness's plugin-root value. The
 hook derives CAT's installation directory from its own location, not a harness-specific environment variable. Keep
 harness-specific commands, configuration, paths, environment variables, and argument adaptation at the manifest or
 entry boundary; pass those values to the shared hook rather than making it name a harness or its layout.
