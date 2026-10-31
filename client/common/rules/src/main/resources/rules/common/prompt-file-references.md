@@ -11,6 +11,7 @@ paths:
 - Keep prompt references actionable without duplicating mutable details from their authoritative sources.
 - Make a routing entry select its target from an observable condition that exists before the target's outcome, rather
 	than restating that outcome or the target's contents.
+- Let an agent find each file that a prompt file names without knowing the directory that the prompt file came from.
 
 ## Guidance
 
@@ -18,6 +19,12 @@ When a prompt file directs an agent to read an external file, name the file and 
 the external file's current values, defaults, or other mutable content. Require the agent to read the referenced file
 and use its values at execution time. Treat every path-shaped reference as external, including dotfiles, configuration,
 source, data, and Markdown files.
+
+When a prompt file names another file for an agent to read, name it from a root that the agent's context states:
+`${CAT_PLUGIN_ROOT}` for a file of the CAT plugin, `${CAT_PROJECT_ROOT}` for a file of the project, `${CAT_USER_RULES}`
+for a user rule, or, in a skill, the skill's own directory for a file of that skill. Never name it relative to the
+prompt file's own directory, such as `../include/x.md` or a bare `x.md`. A `depends-on` entry and a `cat:include`
+directive stay relative, because CAT resolves them, not the agent.
 
 When a prompt routes to another prompt file, state the observable request, artifact, or state that tells the reader when
 to load it, then name the target. Keep the route limited to that trigger and target instruction, plus any read order or
