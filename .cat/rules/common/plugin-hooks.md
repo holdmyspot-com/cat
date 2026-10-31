@@ -6,9 +6,17 @@ paths:
 
 ## Design Goals
 
+- Ship each CAT lifecycle hook that has one execution contract across harnesses once, with every harness-specific
+	value supplied at its manifest boundary.
 - Start every hook from its harness's manifest on every platform, whatever characters the plugin's directory holds.
 
 ## Guidance
+
+When CAT lifecycle hooks have one execution contract across harnesses, ship the hook once in the common plugin resource
+layer. Each harness manifest must invoke that artifact-relative hook through its native plugin-root placeholder. The
+hook derives CAT's installation directory from its own location, not a harness-specific environment variable. Keep
+harness-specific commands, configuration, paths, environment variables, and argument adaptation at the manifest or
+entry boundary; pass those values to the shared hook rather than making it name a harness or its layout.
 
 Codex runs a hook's `commandWindows` in PowerShell, not `cmd.exe`, so the command starts a `.cmd` launcher with the
 call operator, `& "$env:PLUGIN_ROOT\hooks\<name>.cmd"`. A quoted path without `&` is only a string, which PowerShell

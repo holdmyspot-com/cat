@@ -52,8 +52,16 @@ When writing, parsing, or displaying a date or time, including in a name or iden
 When changing a plugin installer that migrates persisted plugin data or a runtime assumption about that data, lazy load
 `../include/plugin-data-migration.md`.
 
-Before rebuilding, reinstalling, refreshing, or validating a plugin distribution or cache, or when a task needs a CAT
-helper CLI, lazy load `plugin-artifacts.md`.
+Before rebuilding, reinstalling, refreshing, publishing, or validating a plugin distribution or cache; before editing a
+file in an installed plugin cache or using a changed shipped command, hook, prompt, or configuration; or when a task
+needs a CAT helper CLI, lazy load `../include/plugin-artifacts.md`.
+
+When writing a path reference into a file that ships in a plugin artifact, such as plugin code, a skill, a hook, a
+launcher, or a packaged rule, or changing which files distribution assembly packages, lazy load
+`../include/plugin-artifacts/packaged-content.md`.
+
+When changing a plugin-facing skill's description, or what a hook, launcher, or command returns to its harness,
+including its output, response, or exit code, lazy load `../include/plugin-artifacts/harness-contracts.md`.
 
 When writing code, a command, a hook, or a skill or rule instruction that passes an argument to a CAT launcher, lazy
 load `../include/jlink-launchers/launcher-arguments.md`.
