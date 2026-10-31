@@ -11,6 +11,7 @@ import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
@@ -289,6 +290,37 @@ public final class CodexRunnerTest
 		requireThat(CodexRunner.withPrivateTmp(command, bwrap, run), "command").isEqualTo(List.of(bwrap.toString(),
 			"--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toAbsolutePath().toString(), "--bind", run.toString(),
 			run.toString(), "--die-with-parent", "--", "codex", "app-server", "--stdio", "--enable", "hooks"));
+	}
+
+	/**
+	 * Verifies that on Linux a trial's app-server starts with the {@code TMPDIR} that the trial's configuration sets
+	 * for its shell commands, rather than the caller's, so that the filesystem helpers that the app-server starts and
+	 * the shell commands' sandboxes share Codex's record of the directories that they mount over.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void appServerSharesShellTemporaryDirectory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-tmpdir-"));
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path home = Files.createDirectories(run.resolve("home"));
+			Path temporaryDirectory = Files.createDirectories(home.resolve("tmp"));
+			Path configuration = home.resolve("config.toml");
+			CodexConnectionConfiguration.copy(root.resolve("host.toml"), configuration, run.resolve("project"),
+				HarnessDependencyCaches.NONE, temporaryDirectory, 0, Platform.LINUX_X64);
+			String shellTemporaryDirectory = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("shell_environment_policy").path("set").path("TMPDIR").asString();
+
+			Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin",
+				"TMPDIR", root.resolve("host-tmp").toString()), HarnessDependencyCaches.NONE, home, run,
+				temporaryDirectory, Platform.LINUX_X64);
+
+			requireThat(shellTemporaryDirectory, "shellTemporaryDirectory").isEqualTo(temporaryDirectory.toString());
+			requireThat(appServer.get("TMPDIR"), "appServerTemporaryDirectory").isEqualTo(shellTemporaryDirectory);
+		}
 	}
 
 	/**

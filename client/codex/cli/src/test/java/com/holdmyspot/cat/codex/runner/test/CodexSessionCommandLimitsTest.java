@@ -43,9 +43,10 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 		Path userCodexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME"));
 		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
 			sessionRequests, Platform.current()).orElse(null);
+		Path temporaryDirectory = Files.createDirectories(runHome.resolve("tmp"));
 		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration,
 			fixture.run().directory().resolve("project"),
-			HarnessDependencyCaches.NONE, Files.createDirectories(runHome.resolve("tmp")), 0, requestAccess,
+			HarnessDependencyCaches.NONE, temporaryDirectory, 0, requestAccess,
 			Platform.current());
 		List<Path> readOnly = CodexRunner.sessionReadOnly(List.of(), requestAccess);
 		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly,
@@ -54,7 +55,8 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 		JsonNode root = TomlMapper.builder().build().readTree(Files.readString(configuration));
 
 		Map<String, String> commandEnvironment = new HashMap<>(CodexRunner.processEnvironment(
-			fixture.userEnvironment(), HarnessDependencyCaches.NONE, runHome, fixture.run().directory()));
+			fixture.userEnvironment(), HarnessDependencyCaches.NONE, runHome, fixture.run().directory(),
+			temporaryDirectory, Platform.current()));
 		JsonNode policy = root.path("shell_environment_policy");
 		for (JsonNode excluded : policy.path("exclude"))
 			commandEnvironment.remove(excluded.stringValue());

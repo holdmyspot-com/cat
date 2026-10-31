@@ -179,7 +179,7 @@ public final class CodexRunner
 			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, run, readOnlyEvidence, deniedReads,
 				Platform.current(), environment, requestAccess, appServer);
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
-				run.directory());
+				run.directory(), temporaryDirectory, Platform.current());
 			Path worktree = run.directory().resolve("project");
 			installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome, isolatedEnvironment,
 				executables, (setup, step) -> HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables,
@@ -241,22 +241,29 @@ public final class CodexRunner
 	/**
 	 * Returns the environment of a run's app-server. It holds the caller's generic operating-system variables, its
 	 * Codex authentication variables and the shared dependency caches, names the run's isolated home as the Codex home,
-	 * and stops Git from finding a repository above the run directory.
+	 * and stops Git from finding a repository above the run directory. On Linux, it also names the run's temporary
+	 * directory as {@code TMPDIR}, the directory that the run's configuration gives the session's shell commands.
 	 *
-	 * @param environment  the caller's environment
-	 * @param caches       the shared dependency caches
-	 * @param isolatedHome the run's isolated home
-	 * @param runDirectory the run's directory
+	 * @param environment        the caller's environment
+	 * @param caches             the shared dependency caches
+	 * @param isolatedHome       the run's isolated home
+	 * @param runDirectory       the run's directory
+	 * @param temporaryDirectory the run's temporary directory, which the run's configuration names as the shell
+	 *                           commands' {@code TMPDIR}
+	 * @param platform           the platform that the app-server runs on
 	 * @return the environment, which the caller may change
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code runDirectory} is relative
 	 */
 	public static Map<String, String> processEnvironment(Map<String, String> environment,
-		HarnessDependencyCaches caches, Path isolatedHome, Path runDirectory)
+		HarnessDependencyCaches caches, Path isolatedHome, Path runDirectory, Path temporaryDirectory,
+		Platform platform)
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(isolatedHome, "isolatedHome").isNotNull();
+		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 		HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
 		// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
@@ -264,6 +271,15 @@ public final class CodexRunner
 		isolatedEnvironment.putAll(caches.environment());
 		isolatedEnvironment.put(CODEX_HOME, isolatedHome.toString());
 		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, runDirectory);
+		if (platform.isLinux())
+		{
+			// Codex's Linux sandbox creates an empty directory for each protected path that a shell command's sandbox
+			// mounts over, and records it in a file under TMPDIR so that no other sandbox removes it while the command
+			// still needs it. The filesystem helpers that the app-server starts for a thread inherit the app-server's
+			// TMPDIR. Without the shell commands' TMPDIR, a helper that a sibling thread's start launched records in a
+			// different file, removes a running command's directory and makes that command fail before it starts.
+			isolatedEnvironment.put("TMPDIR", temporaryDirectory.toString());
+		}
 		return isolatedEnvironment;
 	}
 
