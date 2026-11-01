@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
@@ -289,72 +290,48 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that on Windows, where Claude Code has no sandbox, isolated settings keep the parent's sandbox
-	 * settings instead of requiring a sandbox, while still permitting writes only to the invocation-local home and
-	 * denying the listed reads.
+	 * Returns native Windows platforms with and without a parent sandbox configuration.
 	 *
-	 * @throws IOException if fixture I/O fails
+	 * @return the platform and parent settings of each refused launch
 	 */
-	@Test
-	public void copiesParentSandboxOnWindows() throws IOException
+	@DataProvider
+	public Object[][] windowsSettings()
 	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-sandbox-"));
-			Path source = root.resolve("settings.json");
-			Path destination = root.resolve("isolated/settings.json");
-			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
-			Path claudeHome = claudeTemporaryDirectory.resolve("home");
-			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
-			Files.writeString(source, """
-				{
-				  "sandbox": {
-				    "enabled": false,
-				    "autoAllowBashIfSandboxed": true,
-				    "filesystem": {"allowWrite": ["/workspace"], "denyRead": ["/secrets"]}
-				  }
-				}
-				""");
-
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeHome, List.of(), claudeTemporaryDirectory, List.of(snapshot), Platform.WINDOWS_X64);
-
-			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
-			requireThat(sandbox.path("enabled").asBoolean(), "sandboxEnabled").isFalse();
-			requireThat(sandbox.has("failIfUnavailable"), "failIfUnavailable").isFalse();
-			requireThat(sandbox.has("allowUnsandboxedCommands"), "unsandboxedCommands").isFalse();
-			requireThat(sandbox.path("autoAllowBashIfSandboxed").asBoolean(), "autoAllowBash").isTrue();
-			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").
-				isEqualTo(List.of(claudeHome.toString()));
-			requireThat(strings(sandbox.path("filesystem").path("denyRead")), "denyRead").
-				isEqualTo(List.of("/secrets", snapshot.toString()));
-		}
+		return new Object[][]{{Platform.WINDOWS_X64, "{}"}, {Platform.WINDOWS_ARM64, "{}"},
+			{Platform.WINDOWS_X64, "{\"sandbox\":{\"enabled\":true}}"},
+			{Platform.WINDOWS_ARM64, "{\"sandbox\":{\"enabled\":false}}"}};
 	}
 
 	/**
-	 * Verifies that on Windows, isolated settings do not enable a sandbox that the parent's settings do not declare.
+	 * Verifies that native Windows is refused before isolated settings or directories are written, regardless of the
+	 * parent's sandbox settings, with the reason and the WSL2 alternative.
 	 *
+	 * @param platform the platform that the session would run on
+	 * @param parent   the parent's settings
 	 * @throws IOException if fixture I/O fails
 	 */
-	@Test
-	public void addsNoSandboxRequirementOnWindows() throws IOException
+	@Test(dataProvider = "windowsSettings", expectedExceptions = UnsupportedOperationException.class,
+		expectedExceptionsMessageRegExp = "Claude Code has no command sandbox on native Windows, so CAT cannot " +
+			"confine the session's commands\\. Run Claude Code and CAT inside WSL2\\.")
+	public void refusesNativeWindows(Platform platform, String parent) throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-no-sandbox-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-refusal-"));
+			Path source = Files.writeString(root.resolve("settings.json"), parent);
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
-
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory,
-				List.of(), Platform.WINDOWS_X64);
-
-			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
-			requireThat(sandbox.has("enabled"), "sandboxEnabled").isFalse();
-			requireThat(sandbox.has("failIfUnavailable"), "failIfUnavailable").isFalse();
-			requireThat(sandbox.has("allowUnsandboxedCommands"), "unsandboxedCommands").isFalse();
+			try
+			{
+				ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+					claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), platform);
+			}
+			finally
+			{
+				requireThat(Files.exists(destination.getParent()), "isolatedDirectoryExists").isFalse();
+				requireThat(Files.exists(claudeTemporaryDirectory), "temporaryDirectoryExists").isFalse();
+			}
 		}
 	}
 
@@ -412,32 +389,6 @@ public final class ClaudeConnectionSettingsTest
 				isEqualTo(List.of("/secrets", snapshot.toString()));
 			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").
 				isEqualTo(List.of(claudeHome.toString()));
-		}
-	}
-
-	/**
-	 * Verifies that on Windows, where Claude Code has no sandbox to confine commands, isolated settings do not let a
-	 * command run without approval.
-	 *
-	 * @throws IOException if fixture I/O fails
-	 */
-	@Test
-	public void unconfinedCommandsNeedApprovalOnWindows() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-commands-"));
-			Path destination = root.resolve("isolated/settings.json");
-			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
-
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory,
-				List.of(), Platform.WINDOWS_X64);
-
-			JsonNode result = scope.json().readTree(Files.readString(destination));
-			requireThat(strings(result.path("permissions").path("allow")), "allow").
-				isEqualTo(List.of("Skill", "Edit(./**)"));
 		}
 	}
 

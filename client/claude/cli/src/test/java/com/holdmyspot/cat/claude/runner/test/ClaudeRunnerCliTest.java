@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
@@ -44,6 +45,52 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
+	 * Returns the native Windows platforms that cannot run Claude sessions.
+	 *
+	 * @return the refused platforms
+	 */
+	@DataProvider
+	public Object[][] windowsPlatforms()
+	{
+		return new Object[][]{{Platform.WINDOWS_X64}, {Platform.WINDOWS_ARM64}};
+	}
+
+	/**
+	 * Verifies that the bridge used by the launcher, optimizer and requested sessions refuses native Windows before
+	 * it takes capacity, creates a run or writes a started event.
+	 *
+	 * @param platform the platform that the session would run on
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "windowsPlatforms", expectedExceptions = UnsupportedOperationException.class,
+		expectedExceptionsMessageRegExp = "Claude Code has no command sandbox on native Windows, so CAT cannot " +
+			"confine the session's commands\\. Run Claude Code and CAT inside WSL2\\.")
+	public void refusesNativeWindows(Platform platform) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-windows-refusal-"));
+			StringWriter output = new StringWriter();
+			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
+				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(),
+				"--model", "sonnet", "--effort", "low"};
+			try
+			{
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), output, Map.of(), platform, _ ->
+				{
+					throw new AssertionError("The launch took a capacity slot");
+				});
+			}
+			finally
+			{
+				requireThat(output.toString(), "output").isEmpty();
+				requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a bridge given {@code --capacity-wait} gives up when no capacity frees within the wait, before it
 	 * starts a session.
 	 *
@@ -73,7 +120,8 @@ public final class ClaudeRunnerCliTest
 					"5", "--model", "sonnet", "--effort", "low"};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
+					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(),
+						Platform.LINUX_X64, _ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
 				catch (HarnessCapacityWaitExpiredException _)
@@ -121,7 +169,7 @@ public final class ClaudeRunnerCliTest
 				{
 					// Taking capacity comes before starting Claude, so a refusal that takes none starts no session
 					ClaudeRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
-						Map.of(), _ ->
+						Map.of(), Platform.LINUX_X64, _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
 						});
@@ -171,7 +219,7 @@ public final class ClaudeRunnerCliTest
 				try
 				{
 					ClaudeRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
-						Map.of(), _ ->
+						Map.of(), Platform.LINUX_X64, _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
 						});
@@ -219,7 +267,8 @@ public final class ClaudeRunnerCliTest
 					"--run-root", root.resolve("runs").toString(), "--agent", AGENT};
 				try
 				{
-					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(),
+						Platform.LINUX_X64, _ ->
 					{
 						throw new AssertionError("The launch took a capacity slot");
 					});

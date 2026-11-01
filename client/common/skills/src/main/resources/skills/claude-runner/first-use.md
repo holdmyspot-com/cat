@@ -8,6 +8,12 @@
 	did not choose.
 - Let a session that a runner started run Claude Code through the same launcher, without a login or a sandbox exception.
 
+## Supported environments
+
+Claude runner sessions require Linux or macOS. On native Windows, Claude Code has no command sandbox, so CAT cannot
+confine the session's commands and refuses to start it. Run Claude Code and CAT inside WSL2 instead; Java reports
+Linux there, so Claude runner sessions are supported.
+
 ## Launcher
 
 Run `bin/claude-runner` in CAT's installed plugin directory, two levels above this skill's directory, by its absolute

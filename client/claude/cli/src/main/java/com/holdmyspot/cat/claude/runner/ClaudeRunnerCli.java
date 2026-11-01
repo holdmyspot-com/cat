@@ -84,6 +84,7 @@ public final class ClaudeRunnerCli
 			executeMaintenance(args, Path.of(""), environment, Pause::sleeping, System.out);
 			return;
 		}
+		ClaudeConnectionSettings.requireSupportedPlatform(Platform.current());
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
 		{
@@ -140,12 +141,37 @@ public final class ClaudeRunnerCli
 	 * @param environment the host environment
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
 	 *   command selected
-	 * @throws NullPointerException if any argument is null
-	 * @throws IOException if runner startup, the harness, or bridge I/O fails
+	 * @throws NullPointerException          if any argument is null
+	 * @throws UnsupportedOperationException if the current platform is native Windows
+	 * @throws IOException                   if runner startup, the harness, or bridge I/O fails
 	 */
 	public static void serve(JvmScope process, Path workingDirectory, String[] args, Reader input, Writer output,
 		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
 	{
+		serve(process, workingDirectory, args, input, output, environment, Platform.current(), capacityForMaximum);
+	}
+
+	/**
+	 * Serves one Claude bridge on the supplied platform, refusing native Windows before preparing a run or taking
+	 * capacity. WSL2 reports Linux and is supported.
+	 *
+	 * @param process            the process scope, whose lock coordinator and waiting the bridge uses
+	 * @param workingDirectory  the directory from which the command was invoked
+	 * @param args               bridge options
+	 * @param input              the bridge input
+	 * @param output             the bridge output
+	 * @param environment        the host environment
+	 * @param platform           the platform that the session would run on
+	 * @param capacityForMaximum creates capacity for the selected maximum concurrency
+	 * @throws NullPointerException          if any argument is null
+	 * @throws UnsupportedOperationException if {@code platform} is native Windows
+	 * @throws IOException                   if runner startup, the harness, or bridge I/O fails
+	 */
+	public static void serve(JvmScope process, Path workingDirectory, String[] args, Reader input, Writer output,
+		Map<String, String> environment, Platform platform, IntFunction<HarnessCapacity> capacityForMaximum)
+		throws IOException
+	{
+		ClaudeConnectionSettings.requireSupportedPlatform(platform);
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -216,10 +242,7 @@ public final class ClaudeRunnerCli
 				if (harness.equals("claude"))
 				{
 					Path artifact = options.artifact().toAbsolutePath();
-					String launcher = "claude-runner";
-					if (Platform.current().isWindows())
-						launcher += ".cmd";
-					runner = new RequestedRunner(scope, artifact, artifact.resolve("bin").resolve(launcher),
+					runner = new RequestedRunner(scope, artifact, artifact.resolve("bin/claude-runner"),
 						List.of());
 				}
 				else if (harness.equals("codex"))

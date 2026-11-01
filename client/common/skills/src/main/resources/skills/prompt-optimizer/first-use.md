@@ -7,6 +7,13 @@
 - Relay the launcher's results without adding statistics, estimates or verdicts of the agent's own, so that every
 	claim the user sees is one that the launcher made.
 
+## Supported environments
+
+The optimizer's Claude sessions and trials require Linux or macOS. On native Windows, Claude Code has no command
+sandbox, so CAT cannot confine the session's commands and refuses to start it. Run Claude Code and CAT inside WSL2
+instead; Java reports Linux there, so Claude sessions and trials are supported. Codex sessions and trials also support
+native Windows.
+
 ## Workflow
 
 Run the launcher that this skill's `SKILL.md` names. Each command prints one JSON object. Exit code 0 means its `status`
