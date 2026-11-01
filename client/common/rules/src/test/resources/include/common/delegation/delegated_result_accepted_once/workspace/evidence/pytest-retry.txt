@@ -1,0 +1,7 @@
+$ python -m pytest tests/test_queue.py::test_retry_keeps_original_position -v
+============================= test session starts ==============================
+collected 1 item
+
+tests/test_queue.py::test_retry_keeps_original_position PASSED           [100%]
+
+============================== 1 passed in 0.01s ===============================

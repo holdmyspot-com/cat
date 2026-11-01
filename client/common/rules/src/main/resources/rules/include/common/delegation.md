@@ -25,9 +25,16 @@
 <!-- A parent spent most of a long assignment on readiness reviews, inventories, and approval stops between small
      already authorized steps, while the connected deliverable that its acceptance required stayed unbuilt. -->
 - Let a delegate carry an authorized assignment through implementation, focused verification, and routine repairs to
-	its own gate, with the parent deciding only the open questions the task names and accepting the result once, at the
+	its own gate, with the parent deciding only the open questions the task names and accepting the result only at the
 	completed assignment, so delegated time goes to deliverable work rather than to approval stops or to reviews that
 	resolve no decision.
+<!-- A parent coordinating about 24 subagents spent about a quarter of a long run re-checking returned evidence, mostly
+     recomputing hashes that showed only that files were unaltered, while the claim that decided acceptance was one
+     result inside that evidence; one result was often checked by its delegate, a review subagent, and the parent. -->
+- Have a parent accept or reject a delegated result once, when the delegate reports completion, by confirming each
+	claimed outcome that the acceptance condition decides through the check that decides it, and reuse that decision
+	until an input it depended on changes, so acceptance time goes to the claims that decide it rather than to evidence
+	that decides nothing or to repeated checks of the same result.
 
 ## Guidance
 
@@ -40,8 +47,8 @@ machine-readable diagnostics. Do not leave an agent or human to reproduce those 
 
 Delegate bounded-review work to a cheaper model only when its acceptance check is materially cheaper, narrower, or more
 reliable than independently performing the delegated work. Give it explicit inputs, a bounded deliverable, and
-acceptance evidence. Treat its result as a candidate until the specified deterministic check or higher-authority review
-accepts it once the assignment is complete.
+acceptance evidence. Treat its result as a candidate until the parent accepts it at the completed assignment, as the
+acceptance guidance below describes.
 
 When a delegated response must use a specific form, state that form in the task sent to the recipient. Name the
 recipient's injected response contract and required form when one exists; otherwise specify every required response
@@ -54,16 +61,16 @@ reading its task contract and required rules, running its gates, and the parent'
 Without a measured fixed cost, aim for about five minutes of a subagent's work, and do not split a piece further when
 its subtasks would spend more time on that fixed cost than on their own work. Size a subtask by its deliverable work: a
 production change with its own gate, or an investigation that resolves a named decision. Delegate a subtask whose only
-output is an assessment, inventory, or review only when its result resolves a named decision that selects or changes
-implementation work. When choosing which work to delegate next while executing a plan, lazy load
-`implementation-planning.md`. Each subtask is one verification-closed behavior cluster: one coherent observable outcome
-whose production changes and focused tests end in its own exact gate. Paths that overlap do not make independently
-testable lifecycle, schema, or quality changes one cluster. A piece that cannot be split further without losing its own
-exact gate stays one subtask, however long it takes. Launch the subtasks that the conflict graph below shows as
-independent concurrently. A subtask that consumes another subtask's output waits for that output, and subtasks whose
-write sets overlap run in sequence through one exclusive writer or stay with the higher authority. Do not delegate work
-when accepting it would require the parent to rederive its decisions or review work as broadly as implementing it
-directly.
+output is an assessment, inventory, or review, including a further review of a result that its delegate or the parent
+already checked, only when its result resolves a named decision that selects or changes implementation work. When
+choosing which work to delegate next while executing a plan, lazy load `implementation-planning.md`. Each subtask is one
+verification-closed behavior cluster: one coherent observable outcome whose production changes and focused tests end in
+its own exact gate. Paths that overlap do not make independently testable lifecycle, schema, or quality changes one
+cluster. A piece that cannot be split further without losing its own exact gate stays one subtask, however long it
+takes. Launch the subtasks that the conflict graph below shows as independent concurrently. A subtask that consumes
+another subtask's output waits for that output, and subtasks whose write sets overlap run in sequence through one
+exclusive writer or stay with the higher authority. Do not delegate work when accepting it would require the parent to
+rederive its decisions or review work as broadly as implementing it directly.
 
 Give each subtask its own task contract that carries only what that subtask needs, including a reading list limited to
 the files its decisions depend on. Do not send several subtasks one shared reading list. A subtask's gates are its
@@ -71,13 +78,25 @@ focused checks: the compilation, static analysis and tests that its owned paths 
 once, after integrating the subtasks' results, so that concurrent subtasks neither run it nor wait for one another's.
 
 For every write-capable delegation, supply a task contract with an exact write allowlist, verification commands,
-workspace mode, and acceptance evidence. The contract gives the delegate authority to complete the implementation, its
-focused verification, and routine repairs within that scope, through to its own gate. Require an intermediate parent
-decision only for an unresolved contract question, authority boundary, or consequential design choice that the task
-names. Accept and integrate the result at the completed assignment boundary; do not insert approval stops between steps
-the contract already authorizes. Treat the write allowlist as authority and the verification commands only as
-observation: compiling or testing a wider dependency closure does not authorize the delegate to repair it. A diagnostic
-whose owning path is outside the allowlist is an out-of-scope dependency to report, not work to absorb.
+workspace mode, and acceptance evidence. The contract requires the delegate's completion report to name, for each
+outcome it claims, the check that decides it, as a command or a precise observation, that check's result, and where the
+check's full output is. The contract gives the delegate authority to complete the implementation, its focused
+verification, and routine repairs within that scope, through to its own gate. Require an intermediate parent decision
+only for an unresolved contract question, authority boundary, or consequential design choice that the task names. Accept
+and integrate the result at the completed assignment boundary; do not insert approval stops between steps the contract
+already authorizes. Treat the write allowlist as authority and the verification commands only as observation: compiling
+or testing a wider dependency closure does not authorize the delegate to repair it. A diagnostic whose owning path is
+outside the allowlist is an out-of-scope dependency to report, not work to absorb.
+
+When a delegate reports completion, accept or reject its result once, at that point. For each claimed outcome that the
+acceptance condition decides, rerun or inspect the decisive check that the report names, and compare its result with
+the claim; do not search the delegate's other evidence for it. When the report names no decisive check for such an
+outcome, run the check that the acceptance condition specifies. Reject the result when a decisive check fails or
+contradicts the claim. Do not check the integrity or provenance of the returned files, for example by recomputing
+payload hashes, re-validating archive contents, or comparing source identities, unless the task names tampering,
+corruption in transit, or a stale input as a risk; that check then decides the outcome the risk threatens. Reuse an
+accepted result afterwards: a later review, integration, or status report does not check it again unless an input it
+depended on changed.
 
 When a high-judgment reviewer prepares a task for a mechanical executor, require its returned plan amendment to make
 the task decision-free: exact API/schema and failure semantics, factory and registration points, static-analysis-safe
@@ -180,6 +199,6 @@ dependent delegation only from the resulting integrated snapshot.
 
 Keep high-judgment work with the higher-level model: semantic design, intent, topic boundaries, earliest complete
 placement, conflict resolution, security-sensitive decisions, and any result whose verification would require redoing
-the same analysis. Do not delegate merely to create an appearance of independent review.
+the same analysis.
 
 When a cheaper agent is available and delegation satisfies these conditions, use it; otherwise continue directly.
