@@ -9,7 +9,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
  * the assertion. A pair holds a candidate formal trial and the reference trial that ran the same test case: a control
  * trial or an incumbent trial.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param bothPassed    the pairs in which both trials passed the assertion
  * @param candidateOnly the pairs in which only the candidate trial passed the assertion

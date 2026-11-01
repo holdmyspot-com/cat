@@ -513,8 +513,6 @@ record JavaSource(String code, List<Literal> literals)
 
 	/**
 	 * The state of one pair of braces while the parser is inside it.
-	 * <p>
-	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
 	private static final class Frame
 	{

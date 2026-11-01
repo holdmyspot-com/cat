@@ -74,8 +74,6 @@ import java.util.function.Predicate;
  * new {@code CLAUDE.md} into their effects directory, and the sessions that write reproduction values return
  * {@link #newValues(SessionRequest) new values} unless the {@link #contractAuthors(Function) contract author script}
  * decides otherwise.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
 public final class DriverHarness
 {

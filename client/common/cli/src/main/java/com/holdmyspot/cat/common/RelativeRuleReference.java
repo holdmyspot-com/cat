@@ -21,7 +21,7 @@ import java.util.stream.Stream;
  * A reference in a project or user rule that names an existing file relative to the rule's own directory or rule
  * directory, which an agent that reads the rule can resolve against the wrong directory.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param rule        the absolute, normalized file of the rule that holds the reference
  * @param line        the 1-based line of the reference in {@code rule}

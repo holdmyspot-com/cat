@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * The judged outcome of one targeted diagnostic rerun of a failing test case.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param verdict the rerun's label
  * @param rationale the judge's explanation of the label or, when no judge ran, the record of the rerun's

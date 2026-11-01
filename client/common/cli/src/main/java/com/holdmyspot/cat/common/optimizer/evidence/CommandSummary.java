@@ -9,7 +9,7 @@ import java.time.Duration;
  * nothing yet while it was still running, as the harness's records show them. A value that the harness's records do
  * not show is unknown rather than 0.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param slowest             the duration of the session's longest shell command, {@link Duration#ZERO} if the
  *                            session ran none, or {@code null} if the records do not show how long one of its

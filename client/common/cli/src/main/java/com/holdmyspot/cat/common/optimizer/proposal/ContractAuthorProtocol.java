@@ -54,7 +54,7 @@ import tools.jackson.databind.node.ObjectNode;
  * When the session ends, CAT validates the proposal file with the draft directory through {@link ProposalCheck},
  * returns every problem to the session once, and then gives each generated value of a new test case its seed.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ContractAuthorProtocol
 {

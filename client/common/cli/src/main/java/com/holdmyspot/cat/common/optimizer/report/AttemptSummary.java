@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * One certification attempt's outcome and whether it still describes the current prompt system and conditions.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param index the certification index
  * @param outcome the attempt's outcome label, or {@code null} while it runs

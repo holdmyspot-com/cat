@@ -7,8 +7,6 @@ import java.util.Set;
 
 /**
  * Creates and opens the forks of campaigns, so that a test replaces Git with an in-memory fork.
- * <p>
- * <b>Thread Safety:</b> Implementations are not thread-safe.
  */
 public interface Forks
 {

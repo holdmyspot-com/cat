@@ -12,7 +12,7 @@ import java.util.Set;
  * The certification records of one target, oldest first. A certified delivery appends its record and never changes an
  * earlier one.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param records the records in the order that the deliveries appended them
  */

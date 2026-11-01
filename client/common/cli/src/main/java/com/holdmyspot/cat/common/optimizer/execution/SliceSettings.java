@@ -7,7 +7,7 @@ import java.time.Duration;
 /**
  * The time limits of one slice: the bounded interval during which {@link SliceRunner} advances the {@link Driver}.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param budget how long after the slice starts new work may be admitted
  * @param grace how long after the budget running sessions may finish before they are cancelled

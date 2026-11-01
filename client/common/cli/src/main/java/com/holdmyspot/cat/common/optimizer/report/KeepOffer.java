@@ -10,7 +10,7 @@ import java.util.List;
  * One {@code keep improvement} choice, with the evidence that qualifies it: the best qualifying certification attempt
  * of one measurement identity.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param attempt the certification index of the attempt whose frozen snapshot the choice delivers
  * @param historical {@code true} if the attempt was measured under an earlier measurement identity
@@ -25,7 +25,7 @@ public record KeepOffer(int attempt, boolean historical, List<String> differing,
 	/**
 	 * The evidence that one cell of an offered attempt gives.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param cell the cell's identifier
 	 * @param passes the attempt's adopted passes

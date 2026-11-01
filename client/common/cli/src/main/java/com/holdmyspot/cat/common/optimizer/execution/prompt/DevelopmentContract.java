@@ -14,7 +14,7 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Writes a confirmed contract for sessions that must not learn its held-out part.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class DevelopmentContract
 {

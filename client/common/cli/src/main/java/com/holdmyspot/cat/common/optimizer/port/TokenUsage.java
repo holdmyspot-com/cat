@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * The token counts that a harness reported for one nested session.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param input the input tokens, including cached ones
  * @param cachedInput the input tokens served from the provider's prompt cache

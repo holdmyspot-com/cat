@@ -13,7 +13,7 @@ import java.util.List;
  * <p>
  * Every output that cannot be shown carries the reason.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cell the cell's identifier
  * @param passes the candidate's adopted passes in the reported phase
@@ -30,7 +30,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	/**
 	 * The candidate's observed pass rate under the frozen judge.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param label {@code development estimate} for development trials, otherwise {@code formal estimate}
 	 * @param rate the fraction of adopted outcomes that passed, or {@code null} if there are none
@@ -57,7 +57,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	/**
 	 * The incumbent's counts in the baseline that a comparison used.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param baseline the baseline's index
 	 * @param passes the incumbent's passes
@@ -89,7 +89,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * evidence is absent: the incumbent's counts for a baseline that the campaign no longer holds, the state and the
 	 * frozen bounds outside a certification attempt.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param unavailable why no improvement is shown, or {@code null} if one is
 	 * @param points the candidate's pass rate minus the incumbent's, in percentage points
@@ -152,7 +152,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * {@code controls} and {@code incumbents} hold each assertion's control and incumbent comparisons, and
 	 * {@code cellState} decides the cell from both parts.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param state the state of the comparison
 	 * @param minimumPassRate the minimum pass rate {@code p_min} that the cell is compared with
@@ -204,7 +204,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	 * One assertion's comparison between the candidate and its reference trials in a certification attempt: the
 	 * control trials or the incumbent trials.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param assertionId the identifier of the assertion
 	 * @param state {@code passed}, {@code below control} or {@code below incumbent}, {@code undecided},
@@ -271,7 +271,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	/**
 	 * One error bar.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param method how the endpoints were computed
 	 * @param oneSided {@code true} if the bar bounds the pass probability from one side only

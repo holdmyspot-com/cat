@@ -9,7 +9,7 @@ import java.time.Duration;
 /**
  * How the shell commands of a group of completed trial sessions ran.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param sessions          the number of completed trial sessions
  * @param slowKnown         the number of those sessions whose longest command is known

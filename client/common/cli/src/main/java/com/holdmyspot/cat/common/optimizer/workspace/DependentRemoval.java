@@ -25,7 +25,7 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * Removes a dependent of the target prompt file from the content of the file that holds it.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class DependentRemoval
 {

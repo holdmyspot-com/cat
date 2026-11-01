@@ -15,7 +15,7 @@ import java.util.List;
  * set; failed reductions split into progressively smaller groups until each retained hunk has been tested alone.
  * Promotion judges each reduction against every triggering test case fixed by the last accepted runs.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param files the original changes, including the working candidate's bytes
  * @param retained the hunks in the last passing attempt

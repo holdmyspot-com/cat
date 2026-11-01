@@ -11,7 +11,7 @@ import java.util.List;
  * A failing test case with the judge's rationale and the failure's diagnosis. A prompt author attempt receives a
  * development failure whole, and a certification failure only as its {@link #summary() summary}.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param testCase the test case that failed: the targeted copy of a development failure's test case, or the held-out
  *   test case of a certification failure

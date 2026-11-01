@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * Requirements that no reply can satisfy together, as the contract author found them in the prompt system.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param requirementIds at least two distinct, non-blank requirement identifiers
  * @param evidence non-blank text identifying the file and instructions that show the conflict

@@ -34,7 +34,7 @@ import java.util.TreeSet;
  * directory's recorded files, nested links included. Git metadata never appears, and neither do CAT's session
  * directories, because a trial agent must not read other trials or formal assignments.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class Dereferenced
 {

@@ -18,7 +18,7 @@ import java.util.Optional;
  * A round's frozen prompt author policy, reserved sessions and received edits. Weak rounds address each failing
  * test once and validate all contenders before selecting one winner.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param attempts the received weak attempts or rejected sequential attempts per addressed cell, in contract order
  * @param weak indicates whether the working candidate was weak when the round started

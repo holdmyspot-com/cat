@@ -21,7 +21,7 @@ import java.util.Map;
  * the incumbent with the target prompt files emptied. The proposal shows them to the user, and the contract author's
  * revision brief carries them.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class PilotReport
 {

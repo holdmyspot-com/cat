@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * A condition that makes certification unavailable, as the contract author found it in the prompt system.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param outcome the matching {@code certification unavailable} outcome
  * @param requirementIds a non-empty list of the requirement identifiers affected by the condition

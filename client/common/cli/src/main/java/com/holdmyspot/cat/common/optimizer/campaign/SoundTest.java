@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * A test revision's report that one prompt test needs no change.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param lineage the number of the lineage whose test the report covers
  * @param test the identifier of the test

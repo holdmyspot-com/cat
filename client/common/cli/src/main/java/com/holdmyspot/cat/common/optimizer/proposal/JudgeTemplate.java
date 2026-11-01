@@ -19,7 +19,7 @@ import tools.jackson.databind.node.ObjectNode;
  * proposal, so a prompt system cannot choose how it is judged, and confirmation freezes the complete profile in the
  * contract.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class JudgeTemplate
 {

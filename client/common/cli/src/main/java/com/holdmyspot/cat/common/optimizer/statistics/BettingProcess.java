@@ -67,7 +67,7 @@ import java.util.List;
  * </ol>
  * Otherwise, and whenever the shortcut is ineligible, the exact comparison decides.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class BettingProcess
 {

@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * One round of a failure group's reproduction: trials of the working candidate on the round's test cases in one cell.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cellId the cell that the round's trials run in
  * @param testCases the test cases that the round tries, with their counts; empty while the round awaits the contract

@@ -12,7 +12,7 @@ import java.util.List;
  * show how often the agent passes each assertion without the target prompts. The trials enter no count and spend no
  * allowance.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param testId the prompt test
  * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran; a pilot

@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * One measurement of the original prompt system, called the incumbent, with its own statistical error allowance.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param index the baseline's number within the campaign, from 1
  * @param identity the conditions under which the incumbent outcomes were measured

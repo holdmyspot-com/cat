@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 /**
  * Represents the model and effort declared by one CAT Claude custom agent.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param name the CAT agent name
  * @param model the selected Claude model

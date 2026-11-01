@@ -20,7 +20,7 @@ import java.util.List;
  * {@value #FREEZE_UTILIZATION} or more after the hold ends, the limit stays 1; a report below it lifts the limit. The
  * response adds no randomized pacing.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param holdUntil  the earliest instant at which admissions may start, or {@link Instant#EPOCH} if none is held
  * @param windowCap  the largest permitted concurrency window, or 0 if none is imposed

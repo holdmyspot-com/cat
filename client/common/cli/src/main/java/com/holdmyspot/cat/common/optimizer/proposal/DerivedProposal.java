@@ -15,7 +15,7 @@ import java.util.Map;
  * The validated contract and findings from the session that reads the prompt system and proposes its requirements
  * and tests (the contract author).
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param contract the proposed contract, with the judge model, effort, prompt and result schema that CAT supplies
  * @param derivedSources the prompt files that load although no harness event reports them

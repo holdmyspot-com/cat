@@ -7,7 +7,7 @@ import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 /**
  * The status and delivery outcome that one driver run returns to the host agent.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param status the campaign's status after the slice
  * @param delivery the delivery that the slice attempted, or {@code null} if it attempted none

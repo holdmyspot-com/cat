@@ -7,7 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * a certification attempt. It joins development once it reproduces the group. Its expected outcome is the outcome of
  * no held-out test case, so it changes neither part of the confirmed split.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param attempt the index of the certification attempt whose formal failures led to the test case
  * @param testId the identifier of the prompt test

@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * A request to examine, and if needed revise, one prompt test. While a request is pending, no new trial starts.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param test the identifier of the test
  * @param trigger what requested the revision

@@ -17,7 +17,7 @@ import tools.jackson.databind.JsonNode;
  * Each schema is the single definition of its output's shape, so the validator reads it rather than repeating it. A
  * keyword outside the subset is an error, because ignoring it would make the schema promise a check that never runs.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class SchemaValidator
 {

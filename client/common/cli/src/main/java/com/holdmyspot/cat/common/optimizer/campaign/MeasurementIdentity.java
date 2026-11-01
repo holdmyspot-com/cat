@@ -34,7 +34,7 @@ import java.util.function.BiPredicate;
  * original values. Acceptance applies only to the recorded values and scopes; missing data stays missing, and a
  * loader configuration change cannot be accepted within an identity.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param values          the observed value of each recorded condition that applies to the whole campaign
  * @param cells           the observed value of each recorded condition of each cell, keyed by the cell's identifier

@@ -15,7 +15,7 @@ import java.util.List;
  * What a command tells the host agent: a campaign's status, or the certification history of a target that has no
  * campaign.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param status the campaign's status after the command, or {@code null} if the result reports a certification record
  * @param certification the certification history of a target that has no campaign, or {@code null} if the result

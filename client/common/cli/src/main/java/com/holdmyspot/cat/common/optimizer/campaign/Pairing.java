@@ -19,7 +19,7 @@ import java.util.Set;
  * {@code j}-th candidate formal trial in assignment order and runs that trial's test case. Each assertion of the
  * cell's prompt test then compares how often the candidate and the reference trials pass it.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param unpaired    the adopted candidate formal trials that no adopted reference trial pairs with yet, in
  *                    assignment order
@@ -157,7 +157,7 @@ public record Pairing(List<UnpairedTrial> unpaired, Map<String, PairCounts> comp
 	/**
 	 * An adopted candidate formal trial that waits for the reference trial it pairs with.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param testCase the test case that the trial ran, which its reference trial runs
 	 * @param passed   the identifiers of the assertions that the trial passed

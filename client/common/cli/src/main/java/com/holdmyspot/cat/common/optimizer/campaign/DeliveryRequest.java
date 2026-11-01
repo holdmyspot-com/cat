@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * A candidate that the campaign decided to deliver to the base worktree.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param candidate the candidate to deliver
  * @param attempt the certification attempt whose frozen snapshot is delivered, or 0 for an uncertified working

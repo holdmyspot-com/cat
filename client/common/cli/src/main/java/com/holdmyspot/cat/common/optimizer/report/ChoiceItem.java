@@ -8,7 +8,7 @@ import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
 /**
  * One answer that the user may give now. The command that passes an answer back accepts only listed choices.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param choice the choice
  * @param attempt the certification index of the attempt that {@link Choice#KEEP_IMPROVEMENT} delivers, otherwise 0

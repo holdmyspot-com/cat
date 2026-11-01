@@ -73,7 +73,7 @@ final class SessionEvents
 	/**
 	 * The end of one session.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param token the driver's identifier of the session
 	 * @param result the session's result, or {@code null} if the session failed with an exception

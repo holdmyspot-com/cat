@@ -21,7 +21,7 @@ import java.util.function.Function;
 /**
  * The delivered certifications of a target and whether each harness's latest one still applies.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param latest the latest record of each harness with its applicability, in the order of the history; not empty
  * @param earlier the records that a later record of the same harness followed, in the order of the history

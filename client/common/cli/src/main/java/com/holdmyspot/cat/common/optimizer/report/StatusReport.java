@@ -62,7 +62,7 @@ import tools.jackson.databind.node.ObjectNode;
  * keep-improvement choice. It never shows a pooled pass fraction, a token total, a time estimate or a completion
  * probability.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param status what the host does next, or how the campaign ended
  * @param campaignId the campaign's identifier
@@ -142,7 +142,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	/**
 	 * The concurrency state that limits how many trials run at once.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param window the most trials that may run at once for the work that the campaign does now
 	 * @param ceiling the campaign's ceiling

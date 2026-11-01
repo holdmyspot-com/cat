@@ -8,7 +8,7 @@ import tools.jackson.databind.JsonNode;
  * Reads the fields of the JSON documents that campaign storage writes, reporting a document that does not have the
  * expected shape with an {@link IllegalArgumentException} whose message starts with the field's name.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class JsonFields
 {

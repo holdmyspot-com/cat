@@ -7,7 +7,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 /**
  * One exact snapshot of the prompt system being tested. The original prompt system is the incumbent.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param number the candidate's number within the campaign; the incumbent is 0
  * @param snapshot the snapshot's identity

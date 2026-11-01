@@ -41,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
  * the artifact's {@code optimize-xhigh} agent definition. CAT does not know how many bytes of a tool output Claude Code
  * keeps whole, so the inventory states no tool-output limit.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ClaudeProfileInventory implements ProfileInventory
 {

@@ -11,7 +11,7 @@ import java.nio.file.attribute.BasicFileAttributes;
  * <p>
  * A file system without the {@code unix} attribute view, such as Windows', holds no character devices.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class FileSystemCharacterDevices implements CharacterDevices
 {

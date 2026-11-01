@@ -15,7 +15,7 @@ import java.util.List;
  * state does not, such as the trial model outside a session, is unchecked. A certification is also historical when
  * its recorded parameters do not imply the parameters that the current version of CAT certifies under.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param status indicates whether the result is current
  * @param promptContentChanged {@code true} if the prompt-system snapshot differs

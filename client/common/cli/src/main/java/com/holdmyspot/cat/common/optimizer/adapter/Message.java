@@ -5,7 +5,7 @@ import java.io.IOException;
 /**
  * Something that happened in a session's runner, which the session driver waits for.
  * <p>
- * <b>Thread Safety:</b> Implementations are immutable and thread-safe.
+ * <b>Thread Safety:</b> Implementations are thread-safe.
  */
 public sealed interface Message permits Message.Started, TurnCompleted, Message.TurnFailed, Message.Ended,
 	Message.Wake

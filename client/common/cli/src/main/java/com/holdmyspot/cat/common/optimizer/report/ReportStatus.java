@@ -10,7 +10,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
  * The values are: {@code running}, {@code awaiting_user},
  * {@code busy}, or the label of a terminal outcome.
  * <p>
- * <b>Thread Safety:</b> Implementations are immutable and thread-safe.
+ * <b>Thread Safety:</b> Implementations are thread-safe.
  */
 public sealed interface ReportStatus
 {
@@ -24,7 +24,7 @@ public sealed interface ReportStatus
 	/**
 	 * The campaign has not ended.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param status {@code running}, {@code awaiting_user} or {@code busy}
 	 */
@@ -51,7 +51,7 @@ public sealed interface ReportStatus
 	/**
 	 * The campaign ended with an outcome or with an uncertified delivery.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param outcome the outcome or delivery label
 	 */
@@ -78,7 +78,7 @@ public sealed interface ReportStatus
 	/**
 	 * The campaign ended with neither an outcome nor a delivery.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
 	record Interrupted() implements ReportStatus
 	{

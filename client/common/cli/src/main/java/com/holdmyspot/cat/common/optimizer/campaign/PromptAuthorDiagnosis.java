@@ -11,7 +11,7 @@ import java.util.List;
  * Retained prompt author evidence: the manifest of an attempt whose report CAT could read, including attempts that
  * produced no candidate.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param number the prompt author attempt's number within the campaign, from 1
  * @param lineage the number of the lineage whose contract the prompt author received

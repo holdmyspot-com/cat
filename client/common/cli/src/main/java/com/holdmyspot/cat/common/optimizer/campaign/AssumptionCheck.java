@@ -19,7 +19,7 @@ public final class AssumptionCheck
 	/**
 	 * One outcome counted by the campaign, with the concurrency level its trial started at.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param concurrency the number of the candidate's trials in flight when the trial started, including itself
 	 * @param verdict the outcome
@@ -44,7 +44,7 @@ public final class AssumptionCheck
 	/**
 	 * The descriptive pass rate at one concurrency level.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param concurrency the concurrency level
 	 * @param passes the passes at that level

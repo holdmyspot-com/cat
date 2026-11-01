@@ -7,7 +7,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 /**
  * A test case that a reproduction round tried, with its reproduction counts.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param testCase the test case
  * @param trials the round's adopted trials of the test case

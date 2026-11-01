@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
  * documentation that the ranking was taken from), {@code read} (the date it was read) and {@code families} (the
  * model families, most capable first). The ranking's source is {@code <address>, read <date>}.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class RankingResource
 {

@@ -37,8 +37,6 @@ import java.util.TreeMap;
  * A participant that a selection omits keeps its recorded entry, which a later selection restores. A fork that
  * {@code extend} returns becomes current only when it is adopted, and the fork it replaces stays available by identity.
  * The diff of a selection holds the patches that the test supplied for its paths.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
 public final class InMemoryForks implements Forks
 {

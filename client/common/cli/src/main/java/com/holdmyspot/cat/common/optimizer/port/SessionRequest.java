@@ -15,7 +15,7 @@ import java.util.Optional;
 /**
  * What a nested session needs in order to start.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param role the kind of work that the session performs
  * @param part the part of the contract whose content the session may read: {@link Part#HELD_OUT} for formal and

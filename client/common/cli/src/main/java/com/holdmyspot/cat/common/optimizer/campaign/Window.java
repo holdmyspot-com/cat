@@ -9,7 +9,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * failure that consumes one of the unit's spare failures lowers it to the spare failures that remain plus one; any
  * other failure keeps it, but starts a new full window.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param size the most trials of the unit that may run at once
  * @param passes the adopted passes since the window last changed or a failure was adopted

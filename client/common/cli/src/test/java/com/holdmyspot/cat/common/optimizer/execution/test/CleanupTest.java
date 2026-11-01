@@ -561,8 +561,6 @@ public final class CleanupTest
 	 * worktree deletes its directory and its record, and removing one that does not exist does nothing, as
 	 * {@link Forks#remove(Path, Path)} documents. {@link Cleanup} only removes worktrees, so the fake creates them
 	 * through {@link #fork(Path, Path)} and refuses the other operations.
-	 * <p>
-	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
 	private static final class FakeForks implements Forks
 	{

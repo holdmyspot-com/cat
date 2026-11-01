@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * Runs the build command of a trial plugin that the project builds.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class PluginBuild
 {

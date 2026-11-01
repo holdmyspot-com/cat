@@ -16,7 +16,7 @@ import java.util.List;
  * test under one trial profile, has comparison boundaries that use its own frozen incumbent bounds at
  * {@code K / beta_i} (see {@link Comparison}).
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param level                     the attempt's certification level {@code alpha_i}
  * @param minimumPassRate           the pass probability that a certified cell exceeds

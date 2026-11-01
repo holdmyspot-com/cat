@@ -28,7 +28,7 @@ import java.util.stream.Stream;
  * file that holds it. A packaged plugin names each packaged rule through the plugin directory, because an agent can
  * resolve a relative reference against the wrong directory.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class RuleReferences
 {

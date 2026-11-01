@@ -55,8 +55,6 @@ import tools.jackson.databind.json.JsonMapper;
  * a guard that the agent fails even before any prompt is optimized.
  * <p>
  * Pilot trials are targeted: they enter no count, record no campaign event and spend no allowance.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
 public final class GuardPilot
 {

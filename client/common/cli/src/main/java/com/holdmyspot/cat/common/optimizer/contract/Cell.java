@@ -6,7 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * One prompt test under one model and reasoning-effort combination. CAT measures the pass rate separately for each
  * such combination, called a cell.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param id the identifier that is unique within the contract: the test's identifier when the test has one cell,
  *   otherwise the test's identifier followed by {@code @} and the profile's label. A cell whose profile limits tool

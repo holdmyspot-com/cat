@@ -10,7 +10,7 @@ import java.util.Map;
  * The record of one guard pilot trial: a control trial of a development test case, decided by the proposed built-in
  * tools and judge.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param values the value of each variable of the test case, by variable name, in declaration order: the text of a
  *   text value, and the call of a generated value

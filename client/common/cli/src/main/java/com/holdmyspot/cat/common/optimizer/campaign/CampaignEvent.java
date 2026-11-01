@@ -71,7 +71,7 @@ public sealed interface CampaignEvent
 	 * needs. The incumbent and the working candidate keep their numbers and edits; their snapshots on the larger fork
 	 * replace their earlier ones, which stay in the earlier lineages' evidence.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param incumbent the incumbent's snapshot on the larger fork
 	 * @param working the working candidate's snapshot on the larger fork, which equals {@code incumbent} while the
@@ -97,7 +97,7 @@ public sealed interface CampaignEvent
 	/**
 	 * The user confirmed a contract, which starts a new evidence history called a lineage.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param contract the confirmed contract, with the certification scope that the user chose
 	 * @param contractHash the contract's identity
@@ -126,7 +126,7 @@ public sealed interface CampaignEvent
 	/**
 	 * The user asked to revise the contract. A running certification attempt stops and never resumes.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
 	record Revise() implements CampaignEvent
 	{
@@ -135,7 +135,7 @@ public sealed interface CampaignEvent
 	/**
 	 * Requests assignment and recording of a trial before its session starts.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param admission the admission that the scheduler planned
 	 */
@@ -156,7 +156,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A session started running an assigned logical trial.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param key the trial
 	 */
@@ -177,7 +177,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A running logical trial was labelled by its built-in tools or by its judge.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param key the trial
 	 * @param verdict the trial's label
@@ -242,7 +242,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A run of a logical trial ended without an outcome. The trial records it as an infrastructure attempt.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param key the trial
 	 * @param failure why the run ended
@@ -274,7 +274,7 @@ public sealed interface CampaignEvent
 	 * The harness's shared hold, set by a rate-limit rejection or a provider refusal, stops admissions until it ends
 	 * and drops the concurrency window to 1.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param until when the hold ends
 	 * @param backoffs the shared hold's number of doubled holds since a turn last completed
@@ -299,7 +299,7 @@ public sealed interface CampaignEvent
 	/**
 	 * The harness reported its rate-limit windows.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param windows the reported windows
 	 * @param at when they were reported
@@ -368,7 +368,7 @@ public sealed interface CampaignEvent
 	 * A prompt author's proposed file changes passed inventory validation, so checks that decide whether to promote
 	 * the snapshot can start.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param number the reserved attempt number
 	 * @param cell the optimization round's cell identifier that the attempt addresses
@@ -460,7 +460,7 @@ public sealed interface CampaignEvent
 	/**
 	 * Starts the working candidate's next certification attempt by freezing its procedure and opening its trial stream.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param calibration the cap calibrated for the attempt's certification level
 	 * @param formalSeed the seed of the attempt's formal draw stream
@@ -488,7 +488,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A contract author session wrote the test cases of a formal failure group's current round.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param attempt the index of the attempt whose failure group the test cases address
 	 * @param group the group's 1-based position in the attempt's groups
@@ -519,7 +519,7 @@ public sealed interface CampaignEvent
 	/**
 	 * Cap calibration for the next certification attempt failed.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param detail why calibration failed
 	 */
@@ -562,7 +562,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A prompt test needs a test revision before new trials start.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param request the request
 	 */
@@ -583,7 +583,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A test revision changed prompt tests. A running attempt stops, and the revised contract waits for confirmation.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param revisions the changes, one per revised test
 	 */
@@ -606,7 +606,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A test revision found that a prompt test needs no change.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param test the identifier of the test
 	 * @param reasons why the test needs no change
@@ -631,7 +631,7 @@ public sealed interface CampaignEvent
 	/**
 	 * A test revision found that it cannot proceed within the confirmed requirements.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param test the identifier of the test that the revision examined
 	 * @param reason why the revision cannot proceed
@@ -682,7 +682,7 @@ public sealed interface CampaignEvent
 	/**
 	 * The user answered a pending decision.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param choice the answer
 	 * @param attempt the certification index of the attempt to keep for {@link Choice#KEEP_IMPROVEMENT}, otherwise
@@ -759,7 +759,7 @@ public sealed interface CampaignEvent
 	 * Reports required edits outside the prompt author's permitted files and asks the user how to continue. Only the
 	 * driver applies this event.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param warnings the warnings, in report order
 	 */
@@ -782,7 +782,7 @@ public sealed interface CampaignEvent
 	/**
 	 * The user cancelled the campaign.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
 	record Cancel() implements CampaignEvent
 	{
@@ -791,7 +791,7 @@ public sealed interface CampaignEvent
 	/**
 	 * The user closed the campaign, for example to start a new one with a fresh budget.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
 	record Close() implements CampaignEvent
 	{
@@ -800,7 +800,7 @@ public sealed interface CampaignEvent
 	/**
 	 * CAT observed measurement conditions outside a trial's completion, before the next model call.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param observed the observed conditions
 	 */
@@ -821,7 +821,7 @@ public sealed interface CampaignEvent
 	/**
 	 * Inventory validation found a change in the optimization worktree that CAT did not make.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param description what changed
 	 */
@@ -843,7 +843,7 @@ public sealed interface CampaignEvent
 	/**
 	 * CAT found a condition that makes certification unavailable under the current lineage.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param outcome the matching {@code certification unavailable} outcome
 	 */

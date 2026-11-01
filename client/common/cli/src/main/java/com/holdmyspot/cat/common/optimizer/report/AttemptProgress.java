@@ -18,7 +18,7 @@ import java.util.TreeMap;
 /**
  * One reserved prompt author's original promotion progress, retained after winner minimality.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param round the round's position in the campaign, starting at one
  * @param number the prompt author's launch-order attempt number

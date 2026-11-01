@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
  * order within their {@link SequenceGroup}. Trials that also share a series form an adoption group: their outcomes
  * enter campaign evidence in sequence order.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param purpose why the trial runs
  * @param series the development series for {@link Purpose#DEVELOPMENT} and {@link Purpose#DIAGNOSTIC}, the baseline

@@ -8,7 +8,7 @@ import java.nio.file.Path;
  * Where a judged trial session's harness events and file changes were retained. Any path may no longer exist when it
  * is read.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param transcript the file that holds the trial session's harness events
  * @param effects the directory that holds the files that the trial session changed

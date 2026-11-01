@@ -14,7 +14,7 @@ import java.util.function.Predicate;
  * of trials that complete with an outcome, counted against the campaign's window when each completes, undoes one
  * halving.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param windows the window of each unit of work that adopted an outcome; a unit without one uses its starting window
  * @param halvings the halvings in effect, at most {@value #MAXIMUM_HALVINGS}

@@ -18,7 +18,7 @@ import java.util.Set;
 /**
  * Chooses the files of a candidate that every trial's project holds.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class TrialSelection
 {

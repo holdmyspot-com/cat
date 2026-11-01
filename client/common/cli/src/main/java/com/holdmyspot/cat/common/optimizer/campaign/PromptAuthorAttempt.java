@@ -10,7 +10,7 @@ import java.util.List;
  * A prompt author's validated prompt edits awaiting targeted trials that decide whether they replace the working
  * candidate.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param number the attempt's number within the campaign, from 1
  * @param cell the failing cell that the attempt addresses

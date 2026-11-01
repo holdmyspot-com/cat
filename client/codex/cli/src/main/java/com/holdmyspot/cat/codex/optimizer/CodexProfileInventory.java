@@ -39,7 +39,7 @@ import tools.jackson.databind.json.JsonMapper;
  * definition, which must name a model of version 6 or later. A trial's {@code config.toml} sets
  * {@code tool_output_token_limit} only from its profile, so the tool-output limit depends on the profile alone.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class CodexProfileInventory implements ProfileInventory
 {

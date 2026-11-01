@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
  * family first and, within a family, an older version below a newer one; a model without a version ranks below every
  * versioned model of its family.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param families the families, most capable first
  * @param source where the ranking came from, such as the documentation's address and the date it was read

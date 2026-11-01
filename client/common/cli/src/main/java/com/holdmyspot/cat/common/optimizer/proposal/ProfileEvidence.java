@@ -26,7 +26,7 @@ import tools.jackson.databind.node.ObjectNode;
  * The available model and effort combinations (trial profiles), the capability ranking of their model families, and
  * the model or effort that each prompt file selects (its binding), recorded when the contract author ran.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param inventory the harness's profile inventory and its source
  * @param ranking the capability ranking that CAT ships for the harness

@@ -10,7 +10,7 @@ import java.util.List;
  * reproduced the formal failures of certification attempts, or those that reproduction trials try. They are campaign
  * state outside the confirmed contract: they change neither the held-out part nor the contract's identity.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param testCases the test cases, in the order they were added
  */

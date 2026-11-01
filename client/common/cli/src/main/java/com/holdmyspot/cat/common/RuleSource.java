@@ -8,7 +8,7 @@ import java.util.Optional;
 /**
  * A file that CAT's rules give an agent, and how the file reaches it.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param file     the absolute, normalized file
  * @param kind     how the file reaches the agent

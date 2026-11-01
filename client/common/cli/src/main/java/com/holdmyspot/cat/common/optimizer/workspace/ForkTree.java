@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
  * stored under their absolute paths, minus the file-system root. Later edits to the project or to an external file
  * never change the tree, so every candidate is an exact snapshot of the fork plus an overlay.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ForkTree
 {

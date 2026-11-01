@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * The impact of a failed development trial and the reason for it.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param impact the failure's impact
  * @param rationale the triage session's explanation of {@code impact} or, when the triage failed, why the failure

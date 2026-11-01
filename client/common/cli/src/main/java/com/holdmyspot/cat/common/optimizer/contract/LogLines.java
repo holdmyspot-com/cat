@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
  * Each line looks real by itself, in format, words and token density; the lines as a whole mean nothing. Their
  * timestamps increase and lie within 2025.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class LogLines implements ValueGenerator
 {

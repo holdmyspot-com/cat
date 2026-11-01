@@ -21,7 +21,7 @@ import tools.jackson.databind.node.ObjectNode;
  * inside one Markdown code fence. Any other final response has no output: prose around the object, two objects, an
  * object with a repeated property name, or a value that is not an object.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class JsonResponse
 {

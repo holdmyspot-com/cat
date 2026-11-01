@@ -30,7 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
  * leaves the target unchanged. The source depends only on the fork, the target and its dependents, so it is the same
  * for every candidate.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ControlSource
 {

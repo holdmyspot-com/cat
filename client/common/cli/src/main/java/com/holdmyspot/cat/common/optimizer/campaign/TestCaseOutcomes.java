@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * A candidate's adopted outcomes on one trial's content, including representative and targeted runs.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param testCase the test case, matched independently of its draw position or targeting
  * @param passes the adopted passing outcomes on that test case

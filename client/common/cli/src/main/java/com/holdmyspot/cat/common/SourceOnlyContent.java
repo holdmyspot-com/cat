@@ -20,7 +20,7 @@ import java.util.stream.Stream;
  * Comments that start with {@code cat:} are directives that later build or runtime steps replace, so they stay. Text
  * inside fenced code blocks and code spans is an example for the reader and stays as written.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class SourceOnlyContent
 {

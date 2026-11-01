@@ -27,7 +27,7 @@ import java.util.Map;
  * The file holds held-out content: the values of the development test cases that the trials ran and the judges'
  * rationales.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class PilotFile
 {

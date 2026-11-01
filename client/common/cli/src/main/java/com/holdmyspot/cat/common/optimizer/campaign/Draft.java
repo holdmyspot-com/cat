@@ -19,8 +19,6 @@ import java.util.Set;
 
 /**
  * A mutable copy of a {@link Campaign} that one transition edits before it builds the next state.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
 final class Draft
 {

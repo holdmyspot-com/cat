@@ -19,7 +19,7 @@ import java.util.Map;
  * {@code {{name}}} text is inserted unchanged. A placeholder without a value stays as written, because a prompt may
  * show the placeholder syntax that a contract's turns use.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class PromptTemplate
 {

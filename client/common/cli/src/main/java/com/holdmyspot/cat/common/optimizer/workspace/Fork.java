@@ -37,7 +37,7 @@ import java.util.Set;
  * campaign files never make the base dirty, records the files, and adds the optimization worktree. Every Git operation
  * runs through {@link Git}.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class Fork implements ForkView
 {

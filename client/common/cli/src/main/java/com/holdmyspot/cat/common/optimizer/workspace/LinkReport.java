@@ -21,7 +21,7 @@ import java.util.Optional;
  * <p>
  * A link cycle and a link to a missing target block confirmation until the user resolves them.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class LinkReport
 {

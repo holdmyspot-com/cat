@@ -13,7 +13,7 @@ import java.util.List;
  * Each failing test case reruns one at a time. Treat {@value #RERUNS} passes as clearing that test case and one failure
  * as reproducing its defect.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param pending the failing test cases still to rerun, the first being the current one
  * @param passedReruns the passing reruns of the current test case

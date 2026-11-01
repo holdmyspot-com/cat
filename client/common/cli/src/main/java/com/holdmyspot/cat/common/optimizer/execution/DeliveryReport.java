@@ -9,7 +9,7 @@ import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 /**
  * The outcome of a delivery that a slice attempted.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param result        what the delivery did
  * @param applicability for a delivered candidate, whether its result still describes the current prompt content and

@@ -18,7 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Reads and atomically replaces the JSON files that campaign storage keeps.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class JsonFiles
 {

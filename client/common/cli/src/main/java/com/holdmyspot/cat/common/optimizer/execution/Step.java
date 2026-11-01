@@ -12,7 +12,7 @@ public sealed interface Step
 	/**
 	 * The slice continues: the driver waits for a session to end, or until {@code wakeBy}, and steps again.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param wakeBy the latest time at which the driver must step again even if no session ends
 	 */
@@ -33,7 +33,7 @@ public sealed interface Step
 	/**
 	 * The slice ended: nothing runs and the state is persisted.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param result what the slice returns to the host agent
 	 */

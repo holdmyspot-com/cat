@@ -7,7 +7,7 @@ import java.time.Instant;
 /**
  * One rate-limit window that a harness reported, such as a five-hour or weekly allowance.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param utilization the fraction of the window that is used, from 0 to 1
  * @param resetsAt when the window resets, or {@code null} if the harness did not report it

@@ -21,7 +21,7 @@ import java.util.stream.Stream;
  * Codex records each installed plugin as a {@code [plugins."<plugin>@<marketplace>"]} table of {@code config.toml}
  * in its home directory, and keeps the plugin's files in {@code plugins/cache/<marketplace>/<plugin>/<version>}.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class InstalledPlugins
 {

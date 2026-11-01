@@ -29,7 +29,7 @@ public sealed interface SessionResult
 	 * it gave so far, because CAT judges the timeout evidence instead of retrying the trial. {@code responses} then
 	 * holds fewer entries than the request had turns.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param transcript the retained harness event archive
 	 * @param responses each turn's assistant messages in order, ending with its final response
@@ -87,7 +87,7 @@ public sealed interface SessionResult
 	/**
 	 * The session stopped because CAT interrupted it.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param windows the rate-limit windows that the harness reported during the session
 	 */
@@ -109,7 +109,7 @@ public sealed interface SessionResult
 	/**
 	 * The provider rejected the session because of a rate limit.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param hold the harness's shared hold after the session recorded the rejection
 	 * @param windows the rate-limit windows that the harness reported during the session
@@ -134,7 +134,7 @@ public sealed interface SessionResult
 	/**
 	 * The provider refused the session's request with HTTP status 403.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param hold the harness's shared hold after the session recorded the refusal
 	 * @param afterLongestHold {@code true} if the refusal followed the end of a hold of the longest length
@@ -161,7 +161,7 @@ public sealed interface SessionResult
 	/**
 	 * The session ended without replying to every turn for a reason other than an interrupt, rate limit or refusal.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param reason what went wrong, for the infrastructure-failure record
 	 * @param windows the rate-limit windows that the harness reported during the session

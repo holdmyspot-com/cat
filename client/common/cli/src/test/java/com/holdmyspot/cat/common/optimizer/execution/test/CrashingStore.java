@@ -21,8 +21,6 @@ import java.util.Optional;
 /**
  * A {@link CampaignStore} that simulates a crash: once armed, it fails the first snapshot replacement after the next
  * write of a kind, and every write after that, until the process restarts.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
 public final class CrashingStore implements CampaignStore
 {

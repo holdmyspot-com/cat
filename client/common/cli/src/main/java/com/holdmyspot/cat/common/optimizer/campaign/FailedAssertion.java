@@ -10,7 +10,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * A failed built-in tool contributes the behavior that the tool detects. A judge contributes one of the behaviors
  * that the assertion admits, or {@code other} when none of them describes the failure.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param assertionId the identifier of the failed assertion
  * @param behavior    the behavior through which the assertion failed

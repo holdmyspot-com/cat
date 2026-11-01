@@ -12,7 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The dependents of the target prompt file that a control trial removes from its copy of a built plugin.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class PluginRemovals
 {

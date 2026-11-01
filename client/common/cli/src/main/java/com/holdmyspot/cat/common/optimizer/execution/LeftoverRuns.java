@@ -186,7 +186,7 @@ public final class LeftoverRuns
 	/**
 	 * A process that a run manifest recorded.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param pid the process identifier
 	 * @param startedAt the process's recorded start time

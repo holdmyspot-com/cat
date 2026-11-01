@@ -14,7 +14,7 @@ import java.util.Set;
  * {@value TrialProfile#NO_REASONING}, so that its sessions run without reasoning rather than under the harness's
  * default effort.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param source where the inventory came from, such as the command that listed it or the documentation it cites
  * @param profiles every profile, in the harness's order

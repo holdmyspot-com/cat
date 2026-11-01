@@ -38,7 +38,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Reading reports a document that does not describe an overlay on the supplied fork with an
  * {@link IllegalArgumentException} or a {@link NullPointerException}.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class OverlayJson
 {

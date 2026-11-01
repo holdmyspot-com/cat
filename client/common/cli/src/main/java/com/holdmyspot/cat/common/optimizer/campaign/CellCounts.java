@@ -12,7 +12,7 @@ import java.util.List;
  * The batches split the outcomes, in adoption order, into consecutive groups of {@value #BATCH_SIZE}. The last batch
  * may be incomplete.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param passes the number of adopted passes {@code S}
  * @param failures the number of adopted failures {@code F}

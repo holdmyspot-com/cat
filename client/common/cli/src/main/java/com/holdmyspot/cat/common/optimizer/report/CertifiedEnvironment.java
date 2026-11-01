@@ -23,7 +23,7 @@ import java.util.StringJoiner;
  * does not record says {@code not recorded}, and a line whose condition the reporting session could not check ends
  * with {@code (not checked)}. The block ends with {@link #MACHINE_LIMITATION}.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param identity    the measurement conditions that the certification was measured under
  * @param cells       the identifiers of the cells of the certification scope, in cell order

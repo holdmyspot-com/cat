@@ -6,7 +6,7 @@ import java.util.function.DoublePredicate;
  * Finds, in floating-point arithmetic, the point in {@code [0, 1]} where a condition that holds below the point stops
  * holding.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class Bisection
 {

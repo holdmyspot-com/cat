@@ -35,7 +35,7 @@ public sealed interface Admission
 	/**
 	 * Reruns an assigned trial with the same test case, purpose and snapshot.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param key the trial
 	 */
@@ -75,7 +75,7 @@ public sealed interface Admission
 	 * Assigns a new test case to a purpose and snapshot. Recording {@link CampaignEvent.Assign} precedes
 	 * starting its session.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param purpose why the trial runs
 	 * @param series the series that the trial belongs to, as {@link TrialKey#series()} describes

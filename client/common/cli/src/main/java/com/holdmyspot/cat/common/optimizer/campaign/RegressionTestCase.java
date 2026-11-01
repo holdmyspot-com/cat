@@ -8,7 +8,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
  * A test case that failed a sampled trial of an earlier prompt snapshot or of the original prompt system, retained
  * for replay to check later edits.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param testCase the test case that failed
  * @param working the working candidate's latest outcome on the test case, or {@code null} if it has none

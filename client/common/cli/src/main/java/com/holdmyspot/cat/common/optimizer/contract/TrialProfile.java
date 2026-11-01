@@ -13,7 +13,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
  * binding or the user's restriction, an empty model or effort is open and matches every value. A tool-output token
  * limit of {@code 0} leaves the harness's default limit; contract profiles always do.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param model the model, or empty for a pattern that leaves it open
  * @param effort the reasoning effort, or empty for a pattern that leaves it open

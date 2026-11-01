@@ -162,7 +162,7 @@ import tools.jackson.databind.node.ObjectNode;
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
  * longer does, and a pending decision that reported only such conditions as changed.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class CampaignJson
 {

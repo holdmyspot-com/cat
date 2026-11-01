@@ -8,7 +8,7 @@ import java.util.List;
  * What running the hooks that run before the model acts showed, once in a trial's workspace and once as the user's
  * sessions run them.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param checked     the number of hooks that ran
  * @param differences the hooks whose output differs between the two runs, in the order that they ran

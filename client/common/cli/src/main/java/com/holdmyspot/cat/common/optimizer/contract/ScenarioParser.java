@@ -17,8 +17,6 @@ import java.util.regex.Pattern;
  * Parses the content of a {@code scenario.md}.
  * <p>
  * Headings inside fenced code blocks belong to the text around them. Every problem names its line.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
 final class ScenarioParser
 {

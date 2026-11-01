@@ -1114,7 +1114,7 @@ public final class GuardPilotTest
 	/**
 	 * A judge whose request carries the trial's reply and whose verdict is the one that the reply names.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is stateless and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
 	private static final class ScriptedJudge implements JudgeProtocol
 	{

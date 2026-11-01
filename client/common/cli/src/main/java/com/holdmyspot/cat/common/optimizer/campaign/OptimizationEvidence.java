@@ -18,7 +18,7 @@ import java.util.Set;
 /**
  * Durable descriptive optimization evidence, separate from pass and failure counts and allowance.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param promptAuthors the retained prompt author diagnoses
  * @param removed the hunks removed from promoted attempts

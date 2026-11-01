@@ -30,7 +30,7 @@ import java.util.function.IntFunction;
  * <p>
  * Every decision compares exact rationals, and equality never decides.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class PairedComparison
 {

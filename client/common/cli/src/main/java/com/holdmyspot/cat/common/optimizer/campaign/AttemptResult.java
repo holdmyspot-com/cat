@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * Original promotion evidence retained after winner selection and minimality.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param round the round's first reserved attempt number
  * @param working the working snapshot all attempts received

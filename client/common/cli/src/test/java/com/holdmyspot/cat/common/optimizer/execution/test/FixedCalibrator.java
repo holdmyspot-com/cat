@@ -10,7 +10,7 @@ import java.math.BigDecimal;
 /**
  * A {@link CapCalibrator} that returns a fixed cap without running calibration, or fails if it has no cap.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cap the cap of every attempt, or {@code 0} to fail
  */

@@ -8,7 +8,7 @@ import java.util.List;
  * What development learns of a certification failure, whose test case is held out: the failure's cell, test and failed
  * assertions with their behaviors, without its test case, reply or rationale.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cellId the identifier of the cell in which the failure occurred
  * @param testId the identifier of the prompt test that the failed test case belongs to

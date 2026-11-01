@@ -14,7 +14,7 @@ import java.util.Set;
  * The evidence history under one confirmed contract. Revising the contract starts a new history rather than reusing
  * earlier results for certification.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param number the lineage's number within the campaign, from 1
  * @param contract the confirmed contract, with the certification scope that the user chose

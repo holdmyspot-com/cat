@@ -17,7 +17,7 @@ public final class Registry
 	/**
 	 * A campaign's header and the session that started the campaign.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param sessionId the ID of the harness session that started the campaign and alone runs, changes or delivers it
 	 * @param header the campaign's header
@@ -48,7 +48,7 @@ public final class Registry
 		/**
 		 * Resume the resumable campaign that the same session started in the same harness.
 		 * <p>
-		 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+		 * <b>Thread Safety:</b> This class is thread-safe.
 		 *
 		 * @param header the campaign
 		 */
@@ -69,7 +69,7 @@ public final class Registry
 		/**
 		 * Refuse, because another session or the other harness started the resumable campaign. Nothing changes.
 		 * <p>
-		 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+		 * <b>Thread Safety:</b> This class is thread-safe.
 		 *
 		 * @param owner the campaign, which names its starting harness, and the session that started it
 		 */
@@ -90,7 +90,7 @@ public final class Registry
 		/**
 		 * Create a new campaign, because no resumable campaign exists for the root and target.
 		 * <p>
-		 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+		 * <b>Thread Safety:</b> This class is thread-safe.
 		 */
 		record Create() implements Opening
 		{

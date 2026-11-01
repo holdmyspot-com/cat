@@ -13,7 +13,7 @@ import java.util.Set;
 /**
  * A change that a test revision made to one prompt test.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param lineage the number of the lineage whose test the revision changed
  * @param test the identifier of the test

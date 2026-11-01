@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  * and a length within documented bounds, so that a contract author can size a workspace file from the number of
  * sections.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class MarkdownSections implements ValueGenerator
 {

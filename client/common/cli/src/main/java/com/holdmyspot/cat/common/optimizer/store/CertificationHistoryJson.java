@@ -55,7 +55,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Reading takes the smallest threshold whose written form is {@code alpha} and refuses an {@code alpha} that no
  * threshold writes.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class CertificationHistoryJson
 {

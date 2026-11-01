@@ -8,7 +8,7 @@ import java.nio.file.Path;
  * A campaign's identity, project and prompt target, the user's goal for the target, starting harness, and lifecycle
  * state.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param id the campaign's identity
  * @param root the canonical project root

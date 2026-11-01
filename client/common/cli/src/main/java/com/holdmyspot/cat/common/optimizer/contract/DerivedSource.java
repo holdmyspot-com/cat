@@ -6,7 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * A prompt file that loads for the prompt system although no harness event reports it, such as an instruction file
  * that the harness reads by convention.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param path the non-blank path of the file, relative to the project for a file inside it and absolute otherwise
  * @param rule the non-blank explanation of the documented rule that loads the file

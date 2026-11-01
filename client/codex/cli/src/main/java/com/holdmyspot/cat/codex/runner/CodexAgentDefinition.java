@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 /**
  * Represents the model, effort, and developer contract declared by one CAT Codex custom agent.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param model the selected Codex model
  * @param effort the selected reasoning effort

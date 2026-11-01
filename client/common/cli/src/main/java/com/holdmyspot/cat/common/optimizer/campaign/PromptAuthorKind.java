@@ -8,7 +8,7 @@ import java.util.List;
  * One kind of failure in a prompt author's manifest: the supplied failures whose trials first depart from the contract
  * at the same action, with the prompt author's classification of the kind and the changed hunks that address it.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param name the prompt author's name for the kind
  * @param failures the identifiers of the supplied failures that belong to the kind

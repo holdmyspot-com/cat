@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * The outcomes and pending diagnosis or prompt author work used to improve the current prompt snapshot.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param working the working candidate
  * @param series the sequence of development counts, identified by a number that changes whenever counts restart

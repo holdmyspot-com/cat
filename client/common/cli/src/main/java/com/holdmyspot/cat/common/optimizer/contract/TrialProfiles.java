@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * available from the harness, their capability ranking, the choices selected by prompt files, the user's restriction,
  * the resulting pairs of prompt test and trial profile, called cells, and the certification scope.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param inventory the harness's profile inventory and its source
  * @param ranking the model families ranked by advertised capability

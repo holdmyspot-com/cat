@@ -6,7 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * A prompt file that selects a model, a reasoning effort or both. These selections bind the profile values used to
  * derive the file's trial profiles.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param file the source name used by the requirements that the file supplies
  * @param profile the selected model and effort; an empty value leaves that choice open

@@ -11,7 +11,7 @@ import java.util.List;
  * A judge's output for one trial: the verdict, the evidence that decided it, and the behavior through which each
  * failed assertion failed.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param verdict indicates whether the trial passed every assertion that the judge decided
  * @param rationale the evidence that decided each assertion, in the judge's words

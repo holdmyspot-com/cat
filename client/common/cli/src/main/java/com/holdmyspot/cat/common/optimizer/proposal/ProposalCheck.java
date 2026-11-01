@@ -71,7 +71,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Every problem names the file and line, or the JSON path of the proposal file, that it concerns. The session end, the
  * restoring of a stored proposal and the contract author's {@code contract check} all validate through this class.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ProposalCheck
 {

@@ -8,7 +8,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
  * The assigned trials that share one cell (prompt test and trial profile), purpose and snapshot, and therefore one
  * sequence of numbers.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cell the trials' cell identifier
  * @param purpose why the trials run

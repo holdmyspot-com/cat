@@ -14,8 +14,6 @@ import java.util.Set;
  * What the commands use of a campaign's fork: its recorded files, its workspace, the extension of its participants,
  * and the earlier forks that the campaign ran on. {@link Fork} is the Git-backed implementation; tests supply an
  * in-memory one.
- * <p>
- * <b>Thread Safety:</b> Implementations are not thread-safe.
  */
 public interface ForkView
 {

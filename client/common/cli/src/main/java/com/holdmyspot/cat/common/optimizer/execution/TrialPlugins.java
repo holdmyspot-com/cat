@@ -16,7 +16,7 @@ import java.util.List;
 /**
  * Finds the plugin directories that the trials of a staged source install.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class TrialPlugins
 {

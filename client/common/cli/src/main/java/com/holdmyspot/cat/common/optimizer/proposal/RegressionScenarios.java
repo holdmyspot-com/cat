@@ -30,7 +30,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Recorded regression scenarios available to a contract author, associated with the guidance each scenario exercises.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param project the project root used to resolve proposal source paths
  * @param scenarios the recorded scenarios, in citation order

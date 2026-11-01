@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * The observations that a status report needs and that the campaign state does not hold.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param observations the adopted outcomes of the reported phase, each with the concurrency level it ran at
  * @param symbolicLinks {@code true} if staging replaced symbolic links with copies of their targets

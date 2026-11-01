@@ -20,7 +20,7 @@ import java.util.Set;
  * The saved state of one prompt-optimization campaign. {@link Transitions} derives each next state.
  * A lineage is the evidence history under one confirmed contract.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param header the campaign's identity, binding and lifecycle state
  * @param ceiling the most nested sessions that may run at once

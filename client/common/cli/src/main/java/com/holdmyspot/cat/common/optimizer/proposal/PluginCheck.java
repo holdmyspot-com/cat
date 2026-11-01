@@ -11,7 +11,7 @@ import java.util.Map;
 /**
  * What CAT finds when it checks a campaign's trial plugins against the project before a proposal.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param plugins the trial plugins that every trial installs, in configuration order
  * @param uncovered the prompt files that do not load from the project and that no mapping covers, in path order; a

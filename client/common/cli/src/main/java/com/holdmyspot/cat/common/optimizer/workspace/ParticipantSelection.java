@@ -27,7 +27,7 @@ import java.util.TreeSet;
  * reading the live files. After confirmation the fork only grows, and the selection of each fork that a campaign
  * moved off stays stored, so the candidates on it stay available.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param added every participant recorded after the fork's creation, and every target that their links reached
  * @param selected the added participants that the fork's files hold

@@ -9,7 +9,7 @@ import java.nio.file.Path;
 /**
  * A trial plugin with the directory of its base copy in campaign storage.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param plugin the trial plugin
  * @param directory the absolute directory of the plugin's base copy

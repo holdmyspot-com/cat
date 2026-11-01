@@ -101,8 +101,6 @@ public record CapCalibration(SignificanceLevel level, BigDecimal minimumPassRate
 	 * <p>
 	 * After {@code n} outcomes, a state with {@code F} failures has {@code n - F} passes, so the distribution is
 	 * indexed by {@code F} alone.
-	 * <p>
-	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
 	public static final class Walk
 	{

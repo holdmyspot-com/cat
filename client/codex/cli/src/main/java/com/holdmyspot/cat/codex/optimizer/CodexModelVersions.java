@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
  * version 6 or later when the number before any dot is 6 or greater. A slug without that form, such as
  * {@code codex-auto-review}, is not of version 6 or later.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class CodexModelVersions
 {

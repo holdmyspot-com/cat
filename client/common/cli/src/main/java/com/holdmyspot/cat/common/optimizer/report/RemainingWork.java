@@ -35,7 +35,7 @@ import java.util.Set;
  * The count is a lower bound on the work that remains. It is never a token total, a time estimate or a completion
  * probability.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param phase the phase that the count describes
  * @param entries the trials still required, by cell and reason
@@ -81,7 +81,7 @@ public record RemainingWork(Phase phase, List<Entry> entries, Integer total, Str
 	/**
 	 * The trials that one cell still requires for one reason.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param cell the cell's identifier
 	 * @param kind what the trials are required for

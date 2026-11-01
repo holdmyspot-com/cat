@@ -9,7 +9,7 @@ import java.util.List;
  * <p>
  * The weights are testing assumptions, not usage frequencies, and they do not change with the allocation of trials.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cells the weight of each held-out test case within each cell, in the contract's cell order
  */
@@ -19,7 +19,7 @@ public record Benchmark(List<CellWeights> cells)
 	 * The weight of each held-out test case of one cell, whose formal trials draw its prompt test's held-out test cases
 	 * uniformly.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param cell the cell's identifier
 	 * @param testCases the number of held-out test cases of the cell's prompt test

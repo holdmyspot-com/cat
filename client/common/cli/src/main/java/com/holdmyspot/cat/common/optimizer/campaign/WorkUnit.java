@@ -7,7 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * part of a certification attempt, one round of a formal failure group's reproduction, or one prompt author
  * attempt's promotion runs.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param purpose the purpose of the unit's trials: {@link Purpose#DEVELOPMENT}, {@link Purpose#FORMAL},
  *   {@link Purpose#REPRODUCTION} or {@link Purpose#PROMOTION}

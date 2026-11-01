@@ -7,7 +7,7 @@ import java.time.Instant;
 /**
  * A run of a logical trial that ended without a pass or fail outcome. The trial runs again with the same test case.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param endedAt when the run ended
  * @param failure why the run ended

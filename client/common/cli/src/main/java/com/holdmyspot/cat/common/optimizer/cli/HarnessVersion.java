@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
  * Reads a harness's version from {@code <executable> --version}. The process is behind {@link Launcher}, so that a
  * test supplies a fake.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class HarnessVersion
 {

@@ -7,7 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * missing file. {@code start} refuses a campaign while its prompt system holds one, so that its trials never run
  * without a file that the prompt system names.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param file      the non-blank path of the prompt file that holds the reference, relative to the project
  * @param reference the non-blank reference as the prompt file writes it, without escapes

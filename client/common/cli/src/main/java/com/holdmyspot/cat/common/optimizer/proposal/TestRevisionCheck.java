@@ -32,7 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
  * test's directory, requirements and absent triggers, and none of its test cases may repeat a confirmed one. The
  * session end and the contract tools' {@code contract check} both validate through this class.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class TestRevisionCheck
 {

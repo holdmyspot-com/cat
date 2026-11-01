@@ -16,7 +16,7 @@ import java.util.List;
  * The cells of a confirmed campaign: its certification scope and, per test, the weakest cell and the development
  * cells.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param scope the certification scope that the user chose
  * @param scopeCells the number of cells in the certification scope
@@ -68,7 +68,7 @@ public record CellTierReport(CertificationScope scope, int scopeCells, List<Test
 	/**
 	 * One test's weakest cell and development cells.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param test the test's identifier
 	 * @param weakestCell the identifier of the test's weakest cell

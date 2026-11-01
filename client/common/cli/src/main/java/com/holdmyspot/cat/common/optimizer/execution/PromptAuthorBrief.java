@@ -42,7 +42,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * ended attempt's failures appear only as their cell, test and failed requirements. It excludes outcomes from
  * certification attempts in progress.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cell                the identifier of the cell (one prompt test under one trial profile) that the prompt
  *                            author attempt targets
@@ -320,7 +320,7 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	/**
 	 * The manifest of an earlier prompt author attempt of the same lineage, with what became of the attempt.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param diagnosis the attempt's retained manifest
 	 * @param result    what became of the attempt
@@ -344,7 +344,7 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	/**
 	 * The certification outcomes of an attempt that has ended.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param index        the attempt's certification index
 	 * @param outcome      the attempt's outcome
@@ -446,7 +446,7 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 	 * An assertion that a certification attempt proved the candidate to pass less often than its reference trials:
 	 * the control trials or the incumbent trials.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param cellId      the identifier of the cell
 	 * @param testId      the identifier of the cell's prompt test

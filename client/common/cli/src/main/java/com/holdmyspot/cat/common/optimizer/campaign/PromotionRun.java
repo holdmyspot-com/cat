@@ -7,7 +7,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 /**
  * Replays a test case to decide whether a prompt author's prompt edits replace the working candidate.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param role why the run exists
  * @param testCase the targeted test case

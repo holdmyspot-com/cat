@@ -14,7 +14,7 @@ import java.util.List;
  * Delivery writes the journal before it changes any file and records each change after applying it, so a restart
  * resumes the same delivery instead of planning it again.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param candidate the identity of the delivered candidate
  * @param changes the planned changes, in the order they are applied

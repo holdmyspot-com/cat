@@ -11,7 +11,7 @@ import java.nio.file.Path;
  * An edit that a prompt author reported a requirement needs but that it did not make, because the edit seemed to lie
  * outside its edit authority. The driver checks each one against the authority.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param requirement the identifier of the requirement that needs the edit
  * @param path the path at which the edit is needed, relative to the project directory or absolute

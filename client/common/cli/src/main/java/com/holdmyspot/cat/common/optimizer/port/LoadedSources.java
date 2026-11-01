@@ -10,7 +10,7 @@ import java.util.List;
  * The prompt files that load although no harness event reports them, in production and in trials, and what the user's
  * harness configuration adds to the user's sessions but not to trials.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param production the files that a session of the user's harness loads, with the rule that loads each
  * @param trials the files that a trial loads with the campaign's trial plugins, with the rule that loads each; a file

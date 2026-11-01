@@ -30,7 +30,7 @@ import tools.jackson.databind.node.ObjectNode;
  * context; a file lets the session edit only the parts that a correction concerns and read back only the parts that
  * it needs.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class OutputFile
 {

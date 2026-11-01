@@ -16,7 +16,7 @@ import java.util.Map;
  * One test case that CAT added to the development part of a test after a certification attempt ended with formal
  * failures.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param attempt         the index of the certification attempt after which the test case was added
  * @param testId          the identifier of the test that the test case belongs to

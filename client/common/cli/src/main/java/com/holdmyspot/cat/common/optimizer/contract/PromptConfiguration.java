@@ -38,7 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
  * A plugin with {@code build} is one that the project builds; any other is the user's installed copy, named
  * {@code <plugin>@<marketplace>}. Unknown keys are refused.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param harnesses the plugins of each harness that the configuration has a key for, by the key
  */

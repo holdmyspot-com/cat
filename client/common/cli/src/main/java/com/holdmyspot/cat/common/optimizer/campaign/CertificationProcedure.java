@@ -15,7 +15,7 @@ import java.util.List;
  * using the improvement error limit {@code β_i / K}. A comparison is unavailable unless the attempt and frozen
  * baseline record every required measurement condition with equal values.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param improvementLevel the per-cell error limit {@code β_i / K} for incorrectly declaring improvement
  * @param baselineIndex the incumbent baseline that the comparisons were frozen from

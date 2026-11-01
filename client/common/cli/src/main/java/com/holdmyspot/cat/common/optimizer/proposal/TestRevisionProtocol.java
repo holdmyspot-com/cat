@@ -44,7 +44,7 @@ import tools.jackson.databind.node.ObjectNode;
  * of the split. A valid correction receives a new draft directory beside the confirmed one, which holds the confirmed
  * draft with the corrected test's files.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class TestRevisionProtocol
 {

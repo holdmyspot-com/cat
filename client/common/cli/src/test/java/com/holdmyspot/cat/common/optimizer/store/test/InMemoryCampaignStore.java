@@ -17,8 +17,6 @@ import java.util.TreeMap;
 
 /**
  * A {@link CampaignStore} that holds snapshots, trial records and delivery journals in memory.
- * <p>
- * <b>Thread Safety:</b> This class is not thread-safe.
  */
 public final class InMemoryCampaignStore extends AbstractCampaignStore
 {

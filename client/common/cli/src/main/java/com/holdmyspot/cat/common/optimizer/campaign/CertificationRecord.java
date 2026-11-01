@@ -31,7 +31,7 @@ import java.util.TreeMap;
  * which names the prompt sources and the contract by hash. It holds no trial, so its size depends only on the number
  * of cells, assertions, prompt files and conditions.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param target the campaign's target, relative to the project
  * @param certificationIndex the certification index {@code i} of the certified attempt
@@ -194,7 +194,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	/**
 	 * The certified attempt's counts of one cell.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param test the cell's prompt test
 	 * @param cell the cell's identifier

@@ -17,7 +17,7 @@ import java.util.TreeSet;
  * observations have not been observed and do not prevent comparison, and conditions that are recorded for
  * information only never prevent it.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param status indicates whether the observations are comparable
  * @param differing the conditions with different recorded values campaign-wide or for the same cell

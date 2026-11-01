@@ -15,7 +15,7 @@ import java.util.Optional;
  * The files of a trial plugin as trials install it: the plugin's base copy with each file that a mapping copies from
  * the project written over its mapped path.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class PluginFiles
 {

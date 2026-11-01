@@ -53,7 +53,7 @@ import tools.jackson.databind.node.ObjectNode;
  * the generator calls that state none differ from the seeds that CAT gives those calls when the session ends. Only
  * {@code contract workspace} writes, and only below the output directory that it receives.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ContractTools
 {

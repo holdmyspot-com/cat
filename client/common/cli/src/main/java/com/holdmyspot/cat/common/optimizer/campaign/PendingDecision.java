@@ -19,7 +19,7 @@ public sealed interface PendingDecision
 	/**
 	 * A run observed conditions that differ from the campaign's measurement identity.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param observed the observed conditions
 	 * @param changed the conditions whose observed value differs
@@ -56,7 +56,7 @@ public sealed interface PendingDecision
 	/**
 	 * The optimization worktree holds a change that CAT did not make.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param description what changed
 	 */
@@ -79,7 +79,7 @@ public sealed interface PendingDecision
 	 * A trial had {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures since assignment or the last
 	 * retry choice; the user must choose whether to retry or stop. Rate limits and interruptions are excluded.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param key the trial
 	 */
@@ -100,7 +100,7 @@ public sealed interface PendingDecision
 	/**
 	 * Cap calibration failed, so the attempt stays uncommitted.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param detail why calibration failed
 	 */
@@ -123,7 +123,7 @@ public sealed interface PendingDecision
 	 * A cell (prompt test and trial profile) reached the outcome count that triggers review without meeting the commit
 	 * gate.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param cell the cell's identifier
 	 * @param outcomes the cell's development outcomes included in evidence
@@ -149,7 +149,7 @@ public sealed interface PendingDecision
 	 * A certification attempt ended without certification and meets {@link KeepImprovement}'s conditions for offering
 	 * its snapshot as an improvement over the original prompt system.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param attempt the attempt's certification index
 	 */
@@ -171,7 +171,7 @@ public sealed interface PendingDecision
 	 * Every failure group of an ended certification attempt either reproduced or ran its rounds without reproducing,
 	 * and at least one did not reproduce. No prompt author works on a group that did not reproduce.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param attempt the attempt's certification index
 	 */
@@ -192,7 +192,7 @@ public sealed interface PendingDecision
 	/**
 	 * A certification attempt certified, but some cell is proven worse than the original prompt system.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param attempt the attempt's certification index
 	 */
@@ -213,7 +213,7 @@ public sealed interface PendingDecision
 	/**
 	 * A condition makes certification unavailable under the current confirmed contract.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param outcome the {@code certification unavailable} outcome
 	 */
@@ -236,7 +236,7 @@ public sealed interface PendingDecision
 	/**
 	 * A prompt author reported conflicts held by the confirmed prompt system. Answers follow report order.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param conflicts the conflicts, in report order
 	 * @param resolutions the 1-based positions already selected, in conflict order
@@ -318,7 +318,7 @@ public sealed interface PendingDecision
 	/**
 	 * A prompt author reported edits that its requirements need but that lie outside the edit authority.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param warnings the warnings, in report order
 	 */
@@ -341,7 +341,7 @@ public sealed interface PendingDecision
 	/**
 	 * A test revision found that it cannot proceed within the confirmed requirements.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param test the identifier of the test that the revision examined
 	 * @param reason why the revision cannot proceed

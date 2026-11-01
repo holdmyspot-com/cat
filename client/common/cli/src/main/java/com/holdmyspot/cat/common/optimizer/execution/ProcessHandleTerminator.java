@@ -14,7 +14,7 @@ import java.util.Optional;
  * system reports the recorded start time for it. Where the operating system reports no start time, nothing is
  * terminated. The current process is never terminated.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ProcessHandleTerminator implements ProcessTerminator
 {

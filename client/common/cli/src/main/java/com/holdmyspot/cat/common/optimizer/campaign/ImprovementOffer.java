@@ -8,7 +8,7 @@ import java.util.List;
  * Offers the highest-ranked attempt that meets {@link KeepImprovement}'s conditions under one set of measurement
  * conditions. Keeping its prompt snapshot ends optimization with the label {@code improved, not certified}.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param attempt the attempt's certification index
  * @param identity the measurement identity that the attempt was measured under

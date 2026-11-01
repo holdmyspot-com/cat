@@ -41,7 +41,7 @@ import java.util.StringJoiner;
  * It combines the contract author's proposal with the items that CAT computes: the statistical procedure, the
  * symbolic-link report, the authentication and volume warning, and the minimum session count.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class Proposal
 {

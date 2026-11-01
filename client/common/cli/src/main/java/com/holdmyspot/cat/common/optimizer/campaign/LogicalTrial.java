@@ -10,7 +10,7 @@ import java.util.List;
  * One assigned trial whose result is not yet included in campaign evidence. Retries run the same test case
  * under the same key rather than count as additional trials.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param key the trial's identity
  * @param testCase the assigned test case, which every retry reuses

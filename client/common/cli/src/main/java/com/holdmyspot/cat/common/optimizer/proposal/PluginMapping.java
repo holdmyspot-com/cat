@@ -21,7 +21,7 @@ import java.util.TreeSet;
  * Maps the project's prompt files onto the bases of the trial plugins that the project builds, so that a candidate's
  * edit reaches the plugin that trials install, and checks what the mappings leave out.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class PluginMapping
 {
@@ -281,7 +281,7 @@ public final class PluginMapping
 	/**
 	 * What a campaign's trial plugins leave out of trials.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param uncovered the prompt files that do not load from the project and that no mapping covers, in path order;
 	 *   a candidate's edit to one of them never reaches trials

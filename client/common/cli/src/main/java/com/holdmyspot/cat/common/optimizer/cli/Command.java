@@ -17,7 +17,7 @@ public sealed interface Command
 	/**
 	 * Starts the campaign for a target, or resumes the target's resumable campaign.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param target the prompt file or prompt system, as the user wrote it
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
@@ -49,7 +49,7 @@ public sealed interface Command
 	/**
 	 * Advances a campaign for one slice.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param campaign the campaign's identifier
 	 */
@@ -70,7 +70,7 @@ public sealed interface Command
 	/**
 	 * Reports a campaign, or the certification history of a target that has no campaign, without changing it.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param subject the campaign's identifier or the target
 	 */
@@ -91,7 +91,7 @@ public sealed interface Command
 	/**
 	 * Confirms the campaign's current proposal with the certification scope that the user chose.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param scope the certification scope
@@ -115,7 +115,7 @@ public sealed interface Command
 	/**
 	 * Regenerates the proposal from the user's feedback.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param feedback the user's feedback
@@ -140,7 +140,7 @@ public sealed interface Command
 	/**
 	 * Passes the user's answer to a pending decision back to the campaign.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param choice the choice
@@ -191,7 +191,7 @@ public sealed interface Command
 	/**
 	 * Cancels a campaign, keeping its history and spent allowance.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param campaign the campaign's identifier
 	 */
@@ -220,7 +220,7 @@ public sealed interface Command
 	/**
 	 * Checks a contract author session's proposal file and draft directory as CAT does when the session ends.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param context the context file that CAT wrote into the session's project
 	 */
@@ -241,7 +241,7 @@ public sealed interface Command
 	/**
 	 * Writes the workspace files of one test case of a prompt test in a contract author session's draft directory.
 	 * <p>
-	 * <b>Thread Safety:</b> This class is immutable and thread-safe.
+	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param context       the context file that CAT wrote into the session's project
 	 * @param testDirectory the prompt test's directory, relative to the draft directory

@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
  * expected outcome, belong to the development part, because an earlier campaign already showed them to the prompt
  * author.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class Split
 {

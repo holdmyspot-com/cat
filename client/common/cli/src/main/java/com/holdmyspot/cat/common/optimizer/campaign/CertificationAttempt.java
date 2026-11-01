@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * The outcomes and fixed conditions for certifying one unchanged prompt snapshot on newly sampled trials.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param index the certification index {@code i}, assigned at commit and never changed
  * @param lineage the number of the confirmed-contract history that the attempt belongs to

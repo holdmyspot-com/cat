@@ -7,7 +7,7 @@ import java.time.Instant;
 /**
  * The scheduler's rule, adopted-outcome count and time when it assigned a trial. Retries retain this decision.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param rule the allocation rule that chose the trial
  * @param evidenceRevision the campaign's {@link Campaign#evidenceRevision() evidence revision} that the decision

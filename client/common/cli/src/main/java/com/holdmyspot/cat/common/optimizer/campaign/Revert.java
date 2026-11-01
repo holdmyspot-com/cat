@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * The comparison that withdrew a promoted candidate and its retained development evidence.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param withdrawn the candidate that was withdrawn
  * @param cell the addressed cell that triggered withdrawal

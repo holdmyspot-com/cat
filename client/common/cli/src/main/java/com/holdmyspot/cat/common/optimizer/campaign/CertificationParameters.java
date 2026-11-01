@@ -16,7 +16,7 @@ import java.util.List;
  * A certification proves its claim and every weaker one. A claim implies another when its minimum pass rate is at
  * least the other's and its certification level is at most the other's.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param minimumPassRate the pass probability that each certified cell exceeds
  * @param level the certification level {@code α_i} of the attempt

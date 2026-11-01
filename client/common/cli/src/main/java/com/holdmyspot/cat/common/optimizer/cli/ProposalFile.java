@@ -32,7 +32,7 @@ import java.util.Optional;
  * when the contract author ran, and the salt that CAT drew for the proposal. Confirmation therefore freezes the trial
  * profiles and the split into development and held-out test cases that the user saw.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 final class ProposalFile
 {

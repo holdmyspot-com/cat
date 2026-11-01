@@ -15,7 +15,7 @@ import java.util.regex.Pattern;
  * A plugin that every trial of a campaign installs, as the prompt test configuration lists it, with the base that CAT
  * copied into campaign storage when the campaign started.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param name the plugin's name: the manifest name of a plugin that the project builds, or
  *   {@code <plugin>@<marketplace>} for one that it does not

@@ -24,7 +24,7 @@ import java.util.Set;
  * the test cases. Stress rounds count toward the group's round limit. After the round limit, the group is not
  * reproduced until the user asks for more rounds.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param cellId the cell in which the formal failures occurred
  * @param testId the identifier of the prompt test that the failed test cases belong to

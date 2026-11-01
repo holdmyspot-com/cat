@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * The conditions under which one trial session ran, recorded when the session ended.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param startedAt when the session started
  * @param endedAt when the driver received the session's end

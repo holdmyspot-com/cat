@@ -9,7 +9,7 @@ import java.util.List;
  * The campaign's pending test revision requests, the revisions that it applied and the tests that a revision reported
  * sound.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param requests the pending requests, at most one per test, in the order they arose
  * @param revisions the applied revisions, in the order they were applied

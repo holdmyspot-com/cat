@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * The descriptive pass rates by concurrency level that a status shows.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param passRatesByConcurrency the descriptive pass rate at each observed concurrency level, in increasing level
  *   order; the rates support no claim

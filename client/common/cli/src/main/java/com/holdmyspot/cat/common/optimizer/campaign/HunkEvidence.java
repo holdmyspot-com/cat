@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * The failures and generalization cases that a prompt author's manifest gives for one changed hunk.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param id          the prompt author's identifier for the hunk, which the manifest's kinds name
  * @param path        the changed file's resolved path

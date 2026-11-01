@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * The working candidate's state retained at promotion for a possible restoration.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param development the predecessor's counts and test case evidence without pending work or another predecessor
  * @param round the round that promoted the current working candidate

@@ -9,7 +9,7 @@ import java.util.Map;
 /**
  * A hook that runs before the model acts, at session start or prompt submission, as the harness runs it.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param name        a sentence fragment that names the hook, its event and the file that declares it
  * @param command     the program and its arguments

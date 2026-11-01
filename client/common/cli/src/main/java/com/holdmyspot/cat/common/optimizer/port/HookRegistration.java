@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * A hook that a file of the prompt system or of a trial plugin registers, as trials load it.
  * <p>
- * <b>Thread Safety:</b> This class is immutable and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param plugin  the name of the trial plugin whose file registers the hook, or an empty string for a file of the
  *                project

@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Claude Code records each installed plugin in {@code plugins/installed_plugins.json} under its configuration
  * directory, keyed by {@code <plugin>@<marketplace>}, with one entry per scope that installed it.
  * <p>
- * <b>Thread Safety:</b> This class is stateless and thread-safe.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class InstalledPlugins
 {
