@@ -18,101 +18,42 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Concurrent, cheap tests:** Every work item preserves `design.md` [§10](design.md#10-testability-contract). A change
 	that makes a test depend on shared state, real time or replaying earlier work is rejected in review.
 
-## Handoff to Claude Code (2026-10-24)
+## Current state (2026-11-01)
 
-The user requested this handoff and shutdown of background terminals. Resume the original goal through every
-[§9 final gate](#9-final-gates); it remains incomplete. The earlier handoff at
-`/home/gili/cat/worktrees/handoff/handoff.md` retains the standing security and ordering rules, but its old current
-state, open decisions and process labels are superseded by this section and the newer entries below.
+Resume the goal through every [§9 final gate](#9-final-gates); it remains incomplete. This section replaces the
+2026-10-24 handoff to Claude Code. Its evidence paths and results are in §2 and the
+[interim design acceptance mapping](#interim-design-acceptance-mapping); `goal.md` stays untracked.
 
-### Verified state and evidence
+- **Released tree:** v1.0 `51fa3c4266` (Build 41312176958 and Release 41312833488). The Claude and Codex plugin caches
+	match its archives file for file (checked 2026-11-01).
+- **Running:** Codex E5, campaign `20261021T142441Z-30f739`, thread `01a15ed8-fc71-72e1-9eb1-4fa77c43386e`, project
+	`/home/gili/cat/worktrees/e5-codex3/project`. Attempt 1 of candidate 60 ended `not certified: inconclusive`; the user
+	asked for another optimization round, then another certification round (2026-11-01). Each turn runs through the
+	unchanged `/home/gili/cat/worktrees/e5-codex3/step.sh <label> <prompt> <thread>`, with a receipt appended to
+	`receipts/authorization.txt` before it; the last label used is in `receipts/status.txt` and the latest event files.
+- **Open:** final gates 2, 4, 5, 6 and 7 (§9), which need G1, G2, G4, G6, G7 and G9 (interim mapping) and R-I1's native
+	evidence. Live checks: Codex E3 (the approved handbook-motto exemption as revision feedback, scope `weakest_cell`,
+	stop, accept without certification); the Codex halves of WI-121 and WI-122; both skills of WI-120; the WI-119 skill
+	writing `prompt.json`, in both harnesses; the Codex held-out denial check of G4; the arm C replay
+	(`.cat/sessions/3184ae68-7dad-45b6-b48f-c68707926440/temp/briefs/user-input-positive.md`). WI-71's certification and
+	WI-70's rule step run last; gate 8 removes the requirement tags after gates 1–7 pass. Claude E5 stays stopped and E8
+	waits for the user; neither waives gate 4. WI-123's Codex requested-session check passed and is reused.
+- **Order:** the only ordering limit between harnesses is the user's budget: one model-spending campaign or probe per
+	harness at a time (user ruling, 2026-10-21). Each harness's live checks are separate evidence, so a Claude check runs
+	while a Codex campaign runs. A check that starts a session in the other harness, such as WI-120's skills, waits until
+	that harness is free. A harness's plugin cache is never refreshed while its campaign runs.
+- **Dropped:** the 2026-10-24 handoff's check whether `StatusReport.of` reports a completed certified campaign as
+	certified despite detected dependence. It traced to the accessed-path detector, which `706416b739` removed when the
+	user chose to rule dependence out by trial isolation (G4 row); no production code can report detected dependence.
 
-- Worktree: `/home/gili/cat/worktrees/v1.0`, branch `v1.0`. Tested source is `caecb66cc8`; acceptance documentation
-  is `17c11ecff2`. Both were pushed. This handoff changes documentation only; preserve the untracked `goal.md`.
-- Latest unrestricted clean verify: 3,256 tests, zero failures/errors, 11 skipped, 151.565 seconds. All 299 test-JVM
-  runtime-property checks pass with the requested outside-Git temporary directory and nonexistent HOME/user.home;
-  that home stayed absent. All fourteen cases at or over one second and 23 overlapping reactor module timings are
-  retained. Comment-only runtime reasons were added afterward with executable-source equality verified.
-- Session evidence root:
-  `/home/gili/cat/worktrees/v1.0/.cat/sessions/01a16de4-2163-75d0-9e45-481a1850fb3e/temp/`.
-  Preserve it for the successor; do not sweep this session merely because its orchestrator stopped. Named receipts
-  below are relative to this root and must be read before reuse. If the session directory is to be removed, first
-  move the retained evidence into the successor's authorized handoff directory and record its new location.
-- `tracked-link-checkout-gN9ItB/` retains the missing tracked-link TDD red, three-case focused green, full build,
-  all 299 XML reports and SHA-256 manifest, runtime checks, scope/preimages and source/gate reconciliation.
-  The repair refuses absent entries as well as regular files/directories at tracked workspace-link paths, retaining
-  valid links' content/provenance and repair instructions. Source commit: `caecb66cc8`.
-- `proposal-acceptance-We2ix8/` retains the public-start pilot checks (`f911ea6114`), policy reconciliation and G2
-  review: 90 method references, ten local claim groups passed and two partial. The pilot receives nonzero trial/judge
-  usage and leaves formal attempts, logical trials and development counts empty, with no baseline before confirmation.
-- `process-file-locks-nkvi1jo3/` retains the completed shared-coordinator refactor: source `12f54cef07`, documentation
-  `3fc3cd15a5`, hosted Build 40146996998 passed. `JvmScope.fileLocks()` supplies the same coordinator to child scopes
-  and lock consumers; the mutable static registry is gone. Do not ask the lock-policy question again.
-- Latest source-method reconciliation: 379 test/support sources, 299 reports, 2,102 requirement tags mapped to
-  passing methods, 136 inventory IDs, no unknown tags; R-I1 still lacks its native proof. It verified 377 unchanged
-  sources, reparsed two and reviewed 87 cumulative changed paths. These are execution/traceability facts, not proof
-  that every requirement or final gate is satisfied. Receipts:
-  `tagged-method-audit-xkl06G/tracked-link-checkout-method-traceability.json` and
-  `java-harness-audit-obirnizd/tracked-link-checkout-source-comparison.json`.
-- G1 retains 55 inspected method references and 23 clauses: 19 local passes, four native clauses unrun. G3, G5 and G8
-  retain 42, 72 and 73 passing method references respectively, freshly reconciled in `tracked-link-checkout-gN9ItB/`.
-  G2 still requires both harnesses' conditional/later-loading and unavailable-obligation evidence. G4, G6, G7, G9 and
-  G10 remain unfinished. The same seven PMD internal `NonThreadSafeSingleton` rule errors remain; those analyses are
-  incomplete, and no check was suppressed.
-- Hosted Build 40151872893 passed on the previous pushed tree. Build 40153571458 for `17c11ecff2` completed with
-  conclusion `success`, verified through GitHub after its local watcher was stopped. The handoff
-  documentation push may create a newer Build; reconcile that exact commit as well. No release/tag publication is
-  authorized by this handoff.
+### Standing limits
 
-### Stopped work and immediate continuation
-
-1. Both known live background terminals were interrupted through their terminal channels at the user's request:
-   original E5 `continue17` driver session 64305 and local hosted-Build watcher session 41306 each returned exit 130.
-   All other known long-running handles had already returned terminal results. The remote GitHub workflow continues
-   independently. Shutdown receipts are in `claude-handoff-cad5xgvz/terminal-shutdown.json`; E5's authorization log
-   also records the interruption. No successful E5 completion receipt was established.
-2. E5 is the Codex end-to-end scenario covering real host tools, child agents/worktrees and text/file-effect trial
-   and judge recordings for replay. Preserve project `/home/gili/cat/worktrees/e5-codex3/project`, campaign
-   `20261021T142441Z-30f739` and original thread `01a15ed8-fc71-72e1-9eb1-4fa77c43386e`. Read
-   `/home/gili/cat/worktrees/e5-codex3/receipts/authorization.txt` in full and reconcile `continue17` receipts and the
-   retained campaign before resuming. Resume that identity/results; do not start a duplicate campaign. `continue18`
-   was unused when this handoff was prepared; verify it is still unused before selecting the next receipt label.
-   Log the next resume. The continue17 launch used unchanged `step.sh` under a private `/tmp` namespace, the
-   supported runner isolation that permits nested Codex without changing daemon permissions:
-   `/usr/bin/bwrap --dev-bind / / --tmpfs /tmp --die-with-parent -- /home/gili/cat/worktrees/e5-codex3/step.sh`.
-   It received `continue17`, the approved keep-identity instruction and the original thread ID as arguments;
-   HOME was `/home/gili/cat/home`, CODEX_HOME its `.codex`, TMPDIR the session's
-   `wi123_plugin_check-u7pkCw/codex-valid-plugin`, and CAT_RUN_PART_OUTPUT was unset. Preserve the sandbox restrictions;
-   do not change the masked daemon, hook trust or provider settings. Do not refresh a harness's plugin cache or run
-   another model-spending probe while its campaign runs. Codex's cache last matched source `43c4a62e6e`; newer local
-   build outputs do not prove that a running campaign used them.
-3. G4 review is in `assignment-acceptance-gf8n5bi3/inspected-methods.json`: 37 inspected method reviews, not yet bound
-   into a complete acceptance map. `continuation.json` names the immediate untested hypothesis: `StatusReport.of`
-   selects an existing campaign outcome before detected dependence. The current report test covers only a running
-   campaign. Check whether a completed certified campaign plus dependent `ReportEvidence` still reports certified;
-   establish a failing requirement-level test before any fix. No test or production change for this hypothesis has
-   been made. `SliceEvidence.toReportEvidence` supplies empty access/protected-path lists, so inspect the owning
-   producer before claiming a live detection failure. Finish retry/outcome, targeted/formal separation and split-freeze
-   review, then retain both native held-out-access checks. Use retained full XML for method binding; do not rerun
-   already valid checks merely to recover context.
-4. After E5 completes or pauses, reuse the already-passed Codex requested-session check (WI-123); do not repeat it
-   merely because the old handoff queued it. Continue Codex E3 with the approved handbook-motto exemption as revision
-   feedback, scope `weakest_cell`, stop, then accept without certification. Then run the pending Codex live checks
-   WI-122, WI-121, WI-120 and WI-119 before their Claude counterparts. Claude E1 may keep its identity/results, but
-   that choice still needs applying through its owning session. Claude E5 remains stopped; E8 remains user-deferred.
-   Neither is a blanket waiver of the final end-to-end gate. WI-71 certification and WI-70's rule step run last;
-   requirement tags and planning references are removed only after gates 1–7 pass.
-
-### Decisions and standing limits
-
-No product-policy answer is pending from the outgoing orchestrator. The user approved `JvmScope.executableFiles()`
-with production retries and no sleeps in tests; retained request-input symlink refusal; chose inheritance of existing
-Codex `project_doc_*` settings; approved retaining E1/E5 identities/results; and allowed `keep_identity` for every
-measurement change except loader changes. The user also authorized direct code changes during the Codex takeover.
-The original handoff's process-termination integration and queued unit-test conversions are complete and recorded in
-§2. Unit tests are the default; retain the smallest real boundary check when replacing the dependency would hide a
-required defect. Do not weaken security checks, read credentials, query the prohibited load-balancer settings endpoint,
-or publish a release. Use HOME `/home/gili/cat/home`, never `cd`, and preserve existing user work.
+The user approved `JvmScope.executableFiles()` with production retries and no sleeps in tests; retained request-input
+symlink refusal; chose inheritance of existing Codex `project_doc_*` settings; approved retaining E1/E5 identities and
+results; and allowed `keep_identity` for every measurement change except loader changes. Unit tests are the default;
+retain the smallest real boundary check when replacing the dependency would hide a required defect. Do not weaken
+security checks, read credentials, query the prohibited load-balancer settings endpoint, or publish a release without
+the user's request. Use HOME `/home/gili/cat/home`, never `cd`, and preserve existing user work.
 
 ## 1. Working rules for implementers
 
@@ -3991,8 +3932,10 @@ evidence. None of them proves the product outcome by itself.
 
 ### Interim design acceptance mapping
 
-This map records reviewed evidence on the named source tree. Reconcile passed rows again on the final tree;
-all other rows remain unrun, and final gate 5 remains unmet. The evidence paths below are relative to orchestrator
+This map records reviewed evidence on the named source tree. A passed row stays accepted on the final tree: recheck only
+the method references whose test or production sources changed after the row's tree, against the final build's test
+reports, and re-review a subclaim only when such a change altered what its methods prove. All other rows remain unrun,
+and final gate 5 remains unmet. The evidence paths below are relative to orchestrator
 session `01a16de4-2163-75d0-9e45-481a1850fb3e`.
 
 | Design row | State | Evidence and remaining work |
@@ -4001,9 +3944,9 @@ session `01a16de4-2163-75d0-9e45-481a1850fb3e`.
 | G2 | Unrun | `temp/proposal-acceptance-We2ix8/g2-acceptance-review.json` maps 90 inspected method references to twelve claim groups on `caecb66cc8`: ten passed locally and two remain partial pending installed-harness evidence. Public start now supplies nonzero pilot usage and proves no formal trials, attempts, development counts or baseline are created before confirmation. The tracked-link missing-entry case failed before the repair; regular-file, directory and missing entries now require repair while valid links preserve content/provenance. The G2 text follows the approved weakest-cell default and WI-81 multi-plugin mappings. WI-111 conditional/later-loading verification and native E4 recognition of unavailable remote/media/response-contingent obligations remain required for both harnesses. |
 | G3 | Passed on `caecb66cc8` | `temp/tracked-link-checkout-gN9ItB/g3-acceptance.json` maps ten reviewed subclaims to 42 passing method references from the unrestricted 3,256-test build. It covers exact boundaries, cap fixtures, deficiency/improvement, frozen comparisons, other minimum pass rates, paired decisions, persistent budgets and claim wording. |
 | G4 | Unrun | Bound 2026-10-25 against the clean build of `ed424415f8` (3,256 tests, 0 failures): all 37 methods of `temp/assignment-acceptance-gf8n5bi3/inspected-methods.json` and the clause map in `.cat/sessions/cca95cb9-5cca-4414-a364-97112216d094/temp/g4-binding/g4-binding.md` pass. Dependence: the user chose (2026-10-24) to rule it out by trial isolation and remove the unfed accessed-path detector, which no production code supplies; done on 2026-10-24 (`706416b739` removes the detector, `e350b01cde` proves trial state and judge evidence isolation, `40f6656b7e` documents isolation). Split freeze under revision: `OptimizerCoreTest.reviseKeepsTestCasesInTheirParts` (`2c34a4678e`, 2026-10-28) starts a proposal with test cases in both parts, revises it with added test cases, and checks that every earlier test case keeps its shown part, the stored and confirmed salt stay the same, and the confirmed contract assigns each test case the part shown; drawing a new salt on revision makes it fail (`"partAfter" must be equal to held-out`, test case "three fruits"); clean build of `2c34a4678e` passes (Common CLI 2,669 tests, 0 failures). Claude native held-out denial check passed 2026-10-28 (session `3184ae68-7dad-45b6-b48f-c68707926440`, `temp/g4-claude-heldout-LAzsCz/attempt-5-controls/`): released v1.0 Claude artifact (`598cfbed13`), Claude Code 2.1.310, claude-opus-5-5, `claude-runner --deny-read` on the held-out directory and the held-out run root while `campaign.json` was replaced by rename every 3 s (21 replacements). In both turns the session ran the project's `scripts/release-report.sh`; its reads of `campaign.json`, the trial file, the run-root file and the listing of both roots failed ("No such file or directory") while two readable controls at the same original paths printed (`notes.md` BLUEFIN, sibling `development/summary.json` PLOVER); held-out markers KESTREL, OSPREY and HERON: 0 in the transcript and the retained run; both turns ended without error, runner exit 0. Attempts 1–4 are not evidence (model unreachable; session declined to read; nested sandbox EPERM; no readable control). Open: the Codex held-out denial check, after E5. |
-| G5 | Passed locally on `caecb66cc8` | `temp/tracked-link-checkout-gN9ItB/g5-acceptance.json` maps fifteen inspected output, applicability, accepted-change, remaining-work and size subclaims to 72 passing method references. The public status test edits a command named by an unchanged prompt and retains current certification; file/memory store contracts retain accepted evidence, attempts and allowances after reopen. The native campaigns remain required under gate 4. Reconcile on the final source. |
+| G5 | Passed locally on `caecb66cc8` | `temp/tracked-link-checkout-gN9ItB/g5-acceptance.json` maps fifteen inspected output, applicability, accepted-change, remaining-work and size subclaims to 72 passing method references. The public status test edits a command named by an unchanged prompt and retains current certification; file/memory store contracts retain accepted evidence, attempts and allowances after reopen. The native campaigns remain required under gate 4. |
 | G6 | Unrun | Reconcile real ESC recordings for both harnesses, the Codex admission-stop limit, replay, persistence faults and cross-harness binding. |
 | G7 | Unrun | Reconcile real runner roles, prompt tests, host tools, observed profiles and trial plugins; complete replay, workspace, delivery, eligibility and shared-capacity assertion maps. |
 | G8 | Passed on `caecb66cc8` | `temp/tracked-link-checkout-gN9ItB/g8-acceptance.json` maps thirteen inspected subclaims to 73 passing method references from the unrestricted 3,256-test build. It covers development cells, capability ranking, formal ordering, allocation, pairs, concurrency, throttling, refusal, volume warnings and persistent shared holds. One child JVM records a hold; an already-open parent pool refuses admission until controlled-clock expiry, then admits. This local design row does not close gate 4 or the user-deferred native E8 scenarios. |
 | G9 | Unrun | Current unrestricted clean verify on `caecb66cc8`: 3,256 tests, zero failures/errors, 11 skipped, 151.565 s; all 299 runtime-property checks pass with nonexistent HOME/user.home. The previous pushed tree passed hosted Build 40151872893; hosted Build 40153571458 passed for its documentation tree `17c11ecff2`. `temp/tracked-link-checkout-gN9ItB/` retains scope/preimages, missing-link TDD red and three-case focused green, full results, all fourteen slow cases and 23 overlapping module timings, all 299 reports and current gate reconciliation. Three runtime Javadocs and a fixture comment changed after the build; executable source remains unchanged. Cumulative source and method reconciliation are retained separately; R-I1 still needs native evidence. The same seven PMD internal `NonThreadSafeSingleton` rule errors remain (PMD 7.28.0 fails on six records' methods); none of those records declares a non-final static field, so the rule had nothing to find there (`.cat/sessions/cca95cb9-5cca-4414-a364-97112216d094/temp/g9/pmd-record-errors.md`); no check was suppressed. Source audit on `ed424415f8` (`.cat/sessions/cca95cb9-5cca-4414-a364-97112216d094/temp/g9/source-audit.md`): static state, sleeps, test-class fields, calibration ownership and the no-harness rule pass; the non-empty Git diff now has one owning test, `ForkTest.diffHoldsOnlySelectedChanges` (`4da627d85c`, 2026-10-27), and three delivery tests use `InMemoryForks.diff`. The fixture, shared-fake and input review on the same tree finds no state shared between parallel methods: no JVM-global setter, no static mutable object, per-test locks only, and a private temporary child per test (same file). The native review remains required. |
-| G10 | Passed locally on `ed424415f8` | `.cat/sessions/cca95cb9-5cca-4414-a364-97112216d094/temp/g10/g10-acceptance.md` maps the six clauses to the clean build's artifacts and 32 passing methods: both artifacts ship the skill (identical shared body) and the launcher, no old-procedure reference remains, the regression rule follows D13, recorded scenarios use the prompt test format and location, and a proposal that omits one is refused. Reconcile on the final source. |
+| G10 | Passed locally on `ed424415f8` | `.cat/sessions/cca95cb9-5cca-4414-a364-97112216d094/temp/g10/g10-acceptance.md` maps the six clauses to the clean build's artifacts and 32 passing methods: both artifacts ship the skill (identical shared body) and the launcher, no old-procedure reference remains, the regression rule follows D13, recorded scenarios use the prompt test format and location, and a proposal that omits one is refused. |
