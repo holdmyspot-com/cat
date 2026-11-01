@@ -61,7 +61,7 @@
 - Reject an incomplete, ambiguous, generic, or unauditable semantic plan before it can create replacement commits.
 - Make candidate-topic boundary evidence monotonic: downstream challenge resolution, ledger, output planning, repair,
 	and replay may split a reviewed candidate topic but may not collapse, omit, or reclassify a `separate` decision. A
-	combination is valid only when both reviewer matrices explicitly record it as `combined` with its missing
+	combination is valid only when the topic reviewer's matrix explicitly records it as `combined` with its missing
 	prerequisite.
 - Make candidate discovery produce the smallest independently selectable and accepted behavior boundaries before
 	reconciliation. Reconciliation compares and refines those boundaries; it never chooses a broader product, release,
@@ -79,8 +79,8 @@ self-contained change—for example, “organize commits by topic,” “squash 
 infer topic organization.
 
 Before invoking `git-topic-replay`, resolve its launcher instead of assuming it is on `PATH`. From a CAT source-checkout
-root, build the distribution with `client/mvnw -f client/pom.xml -pl distribution -am package` and run
-`client/distribution/target/jlink/<harness>/bin/git-topic-replay`. Otherwise, use the selected harness wrapper's
+root, build the distribution with `client/mvnw -q -f client/pom.xml -pl common/distribution -am package` and run
+`client/common/distribution/target/jlink/<harness>/bin/git-topic-replay`. Otherwise, use the selected harness wrapper's
 installed `git-topic-replay` launcher. Record the
 workflow revision and launcher artifact used for the invocation. When the workflow source changed, rebuild the
 distribution before review; do not combine a cached installed skill with a launcher built from newer source, or use an
@@ -390,15 +390,15 @@ check after another is removed, retain separate outputs even when they share a r
 
 Treat a whole-source review as an exceptional conclusion: it is valid only after the matrix covers every terminal
 behavior in the source and every pair has a recorded blocker. A raw source patch, an empty placement list, a source-wide
-counterfactual, or a passing source-level build cannot establish that a source is whole. Write the planner's matrix to
-`MANIFEST.planner-action-result-matrix.json` and the independent reviewer's matrix to
-`MANIFEST.independent-action-result-matrix.json`; each has `rows` with `candidate_id`, `observable_behavior`,
-`observable_result`, `acceptance_check`, `required_artifacts`, and `deferred_artifacts`, plus `pairs` with both
-candidate IDs, a `separate` or `combined` disposition, removal result, split-enabling artifacts, and a missing
-prerequisite only for `combined`. The independent attestation must bind both its candidate-universe file and
-action-result matrix by SHA-256. The CLI rejects missing or incomplete matrices and rejects a shared output unless both
-matrices explicitly mark its behavior pair `combined`. Preserve the independent reviewer's artifacts unchanged, and
-require the adversarial challenge ledger to challenge every retained combination before declaring outputs.
+counterfactual, or a passing source-level build cannot establish that a source is whole. The topic reviewer writes
+`MANIFEST.independent-action-result-matrix.json`, with `rows` containing `candidate_id`, `observable_behavior`,
+`observable_result`, `acceptance_check`, `required_artifacts`, and `deferred_artifacts`, plus `pairs` with
+`first_candidate_id`, `second_candidate_id`, `disposition` (`separate` or `combined`), `removal_result`,
+`split_enabling_artifacts`, and `missing_prerequisite` (a specific blocker for `combined`, otherwise null).
+The independent attestation must bind both its candidate-universe file and
+action-result matrix by SHA-256. The CLI rejects a missing or incomplete matrix and rejects a shared output unless the
+reviewer's matrix explicitly marks its behavior pair `combined`. Preserve the independent reviewer's artifacts
+unchanged, and require the adversarial challenge ledger to challenge every retained combination before declaring outputs.
 
 ### Derive Split-Enabling Snapshots
 
@@ -434,16 +434,17 @@ snapshot exists.
 
 ### Iteratively Decompose Candidate Topics
 
-Before declaring outputs, treat every candidate topic as provisional. First freeze `MANIFEST.candidate-universe.json`,
-written before creating output names, source-review classifications, or a semantic-placement ledger. For each discovered
-behavior, record a stable snake_case `id` and its observable user or reader outcome, affected responsibility, acceptance
+Before declaring outputs, treat every candidate topic as provisional. The topic reviewer freezes
+`MANIFEST.independent-candidate-universe.json` before creating output names, source-review classifications, or a
+semantic-placement ledger. For each discovered behavior, record a stable snake_case `id` and its observable user or
+reader outcome, affected responsibility, acceptance
 evidence, and the units that may contribute to it. Discover these behaviors from the raw range and affected
 responsibilities; do not use a source commit, its subject, a path grouping, a component label, or a proposed topic as a
 candidate or as its discovery basis. A phrase such as “the source's contribution”, “native sessions”, or “rule changes”
 is not a behavior inventory entry.
 
-Before writing either candidate universe, run `git-topic-replay exposure-inventory MANIFEST`. Map every returned
-selectable entry point to exactly one candidate's `exposed_entry_points` list in both reviewer universes. A candidate
+Before writing the reviewed candidate universe, run `git-topic-replay exposure-inventory MANIFEST`. Map every returned
+selectable entry point to exactly one candidate's `exposed_entry_points` list in that universe. A candidate
 that owns more than one returned entry point must name an `entry_point_families` record with its complete membership,
 selection surface, shared purpose, and acceptance check. The command normalizes equivalent supported-harness agent
 declarations into one entry point; a shared package, path, or installer never combines distinct entries. The CLI rejects
@@ -466,15 +467,28 @@ entry-point family, it must try the smallest snapshot containing each member's o
 focused acceptance check. Combine members only when no member can be selected and accepted without every other member,
 and record the exact missing final-state prerequisite for each attempted split. In particular, separate harness-specific
 installation or removal flows seed separate candidates unless that test proves an exact prerequisite. Do this before
-either reviewer freezes its candidate universe or writes a reconciliation.
+the topic reviewer freezes its candidate universe or the planner challenges it.
 
 Give one source-neutral topic reviewer the complete immutable inventory and raw diffs, but not a proposed output plan,
 source-review dispositions, planner topic names, or an expected number of candidate topics. Do not exclude an artifact
 class from that handoff, including prior planning, replay, test, generated-input, and workflow-evidence material. The
-reviewer writes `MANIFEST.topic-candidate-universe.json`, names its reviewer, and records
-each candidate topic's snake_case `id`, responsibility, acceptance evidence, discovery evidence, split counterfactual,
-and contributing semantic units. Before accepting it, validate complete inventory-ID coverage and the launcher's exact
-schema.
+reviewer writes `MANIFEST.independent-candidate-universe.json` as an object with `reviewer`, `candidates`, and
+`entry_point_families`. Each candidate records `id` in snake_case, `observable_outcome`, `discovery_evidence`,
+`responsibility`, `acceptance_evidence`, `split_counterfactual`, contributing `units` with `inventory_id` and
+`affected_unit`, and `exposed_entry_points`. Each family records `candidate_id`, `members`, `selection_surface`,
+`shared_purpose`, and `acceptance_check`. Before accepting it, validate complete inventory-ID coverage and the
+launcher's exact schema.
+
+The reviewer also writes `MANIFEST.independent-candidate-discovery-passes.json` as an object with a `passes` array.
+Record at least an initial pass and a terminal pass, numbered consecutively from 1; each has `number`,
+`examined_candidate_ids`, and `new_candidate_ids`. The terminal pass examines every final candidate exactly once and
+has no new candidates. After freezing the universe and its action-result matrix, write
+`MANIFEST.independent-review-attestation.json` with `reviewer`, captured `base` and `tip`, `workflow_revision`,
+`raw_diff_handoff`, `candidate_universe_sha256`, `action_result_matrix_sha256`, and `unprimed: true`. The reviewer must
+match the universe's reviewer, and the handoff identifies the immutable raw diffs supplied before planner information.
+The two digest fields bind the exact bytes of `MANIFEST.independent-candidate-universe.json` and
+`MANIFEST.independent-action-result-matrix.json`, respectively, using lower-case 64-digit SHA-256 values. The
+declaration and preflight gates reject absent evidence, mismatched hashes or range, and an unattested review.
 
 The planner does not write a competing candidate universe. It writes a challenge ledger against the frozen reviewed
 universe. Each challenge must prove either a missing candidate topic or a composite reviewed candidate topic with a
@@ -485,10 +499,10 @@ placement. `declare-topic-outputs` and `preflight` reject a missing reviewer att
 planner attempt to alter a topic outside an approved challenge.
 
 Treat reviewed candidate boundaries as monotonic evidence. A later reconciliation, semantic ledger, output plan, repair,
-or replay may split a candidate, but it may not merge, omit, or reclassify a pair that either reviewer marked
+or replay may split a candidate, but it may not merge, omit, or reclassify a pair that the topic reviewer marked
 `separate`. A many-to-one reconciliation or final semantic candidate is valid only when every merged pair is marked
-`combined` in both action-result matrices with its exact missing prerequisite. Otherwise preserve separate outputs or
-invalidate the affected evidence and repeat focused review; do not let a planner's broad candidate override an
+`combined` in the topic reviewer's action-result matrix with its exact missing prerequisite. Otherwise preserve separate
+outputs or invalidate the affected evidence and repeat focused review; do not let a planner's broad candidate override an
 independent split decision.
 
 Then reconcile the candidate-universe inventory against the whole immutable artifact inventory: each changed unit maps
@@ -508,9 +522,8 @@ until one complete pass finds no new candidate and every remaining combination h
 passing build, applicable patch, successful dry run, structural ledger check, completed review, or preserved final tree
 verifies an already chosen output; none proves that discovery is complete or ends this decomposition loop.
 
-For every final semantic-placement-ledger candidate and semantic-plan candidate, cite the planner and independent
-candidate-universe IDs that were reconciled into it. Cite every discovery record at least once, and cite planner and
-independent records together only when their reconciliation compares that pair. This traceability permits a final
+For every final semantic-placement-ledger candidate and semantic-plan candidate, record `candidate_universe_ids` from
+the reviewed universe that justify it. Cite every discovery record at least once. This traceability permits a final
 candidate to split or combine discovery candidates, but prevents the final plan from silently dropping an independently
 identified behavior. `declare-topic-outputs` and `preflight` enforce these citations and reconciliation links.
 
@@ -525,9 +538,9 @@ and verifiable output. The review packet must repeat that justification for ever
 
 ### Guard Topic-List Communication
 
-Do not give the user a final, planned, or intended commit-topic list until iterative decomposition has completed: both
-candidate universes are reconciled, every retained split has been re-examined, and the terminal discovery pass records
-no new candidate. Until then, describe any list only as a provisional inventory and state the unfinished decision that
+Do not give the user a final, planned, or intended commit-topic list until iterative decomposition has completed: the
+reviewed universe's challenges are resolved, every retained split has been re-examined, and the terminal discovery pass
+records no new candidate. Until then, describe any list only as a provisional inventory and state the unfinished decision that
 can change it. This prevents an early inventory from becoming an implicit output plan before its split counterfactuals
 are tested.
 
@@ -825,7 +838,7 @@ verification, configuration, or another prerequisite? Split the source whenever 
 A whole-source or whole-file review is invalid when its hunks have different earliest dependency-complete outputs. Mark
 it **split**, even if all hunks modify one path. Shared source or path ownership is not evidence of shared placement.
 
-Do not record `whole`, `split`, or `absorbed` until the two candidate-universe inventories have been reconciled and
+Do not record `whole`, `split`, or `absorbed` until the reviewed universe's challenges have been resolved and
 every outcome that source can affect has a pairwise split decision. A reviewer may not infer `whole` from the absence of
 a proposed split or from a source-level build passing. If one source implements multiple outcomes, split it even when
 all output commits happen to use the same broad component or package.

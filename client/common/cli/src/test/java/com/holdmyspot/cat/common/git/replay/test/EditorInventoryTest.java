@@ -163,24 +163,25 @@ public final class EditorInventoryTest
 	}
 
 	/**
-	 * Verifies CAT combines equivalent Codex and Claude agent declarations by their shared selectable name.
+	 * Verifies equivalent host declarations share one logical agent and retain their custom-agent kind.
 	 *
 	 * @throws IOException if valid immutable declarations are rejected
 	 */
 	@Test
 	public void inventoriesCustomAgentEntryPoint() throws IOException
 	{
-		String codexPath = "client/codex/plugin/src/main/resources/agents/codex/architecture-high.toml";
-		String claudePath = "client/claude/plugin/src/main/resources/agents/claude/architecture-high.md";
-		List<History.InventoryEntry> captured = List.of(addedPath(codexPath, "codex"), addedPath(claudePath, "claude"));
-		Map<String, String> manifests = Map.of("codex", "name = \"cat-architecture-high\"\n",
-			"claude", "---\nname: architecture-high\n---\n");
+		String firstPath = "client/host-a/plugin/src/main/resources/agents/host-a/architecture-high.toml";
+		String secondPath = "client/host-b/plugin/src/main/resources/agents/host-b/architecture-high.md";
+		List<History.InventoryEntry> captured = List.of(addedPath(firstPath, "first"), addedPath(secondPath, "second"));
+		Map<String, String> manifests = Map.of("first", "name = \"cat-architecture-high\"\n",
+			"second", "---\nname: architecture-high\n---\n");
 
 		List<ExposedEntryPoint> inventory = EntryPoints.collect(captured, manifests::get);
 
 		requireThat(inventory.size(), "entryPointCount").isEqualTo(1);
 		requireThat(inventory.getFirst().id(), "entryPointId").isEqualTo("agent:architecture-high");
-		requireThat(inventory.getFirst().paths(), "entryPointPaths").isEqualTo(List.of(claudePath, codexPath));
+		requireThat(inventory.getFirst().kind(), "entryPointKind").isEqualTo("custom_agent");
+		requireThat(inventory.getFirst().paths(), "entryPointPaths").isEqualTo(List.of(firstPath, secondPath));
 	}
 
 	/**
@@ -220,25 +221,33 @@ public final class EditorInventoryTest
 	}
 
 	/**
-	 * Verifies CAT normalizes cross-harness skills into one entry point and classifies supported installer flows.
+	 * Verifies inventory classifies commands, skills, and current lifecycle paths while excluding installer helpers.
 	 *
 	 * @throws IOException if captured product paths are rejected
 	 */
 	@Test
 	public void inventoriesDeclaredProductEntries() throws IOException
 	{
-		String codexSkill = "client/codex/skills/src/main/resources/skills/help/SKILL.md";
-		String claudeSkill = "client/claude/skills/src/main/resources/skills/help/SKILL.md";
-		List<History.InventoryEntry> captured = List.of(addedPath(codexSkill, "codex"), addedPath(claudeSkill, "claude"),
-			addedPath("client/lifecycle/src/main/resources/install/install-codex.sh", "installer"));
+		String firstSkill = "client/host-a/skills/src/main/resources/skills/help/SKILL.md";
+		String secondSkill = "client/host-b/skills/src/main/resources/skills/help/SKILL.md";
+		String installer = "client/host-a/lifecycle/src/main/resources/install/install-host-a.sh";
+		String powershellInstaller = "client/host-a/lifecycle/src/main/resources/install/install-host-a.ps1";
+		List<History.InventoryEntry> captured = List.of(addedPath(firstSkill, "first"), addedPath(secondSkill, "second"),
+			addedPath(installer, "installer"), addedPath(powershellInstaller, "powershell"),
+			addedPath("client/common/lifecycle/src/main/resources/install/bootstrap.sh", "bootstrap"),
+			addedPath("client/common/lifecycle/src/main/resources/install/common.sh", "helper"),
+			addedPath("client/common/cli/src/main/java/com/holdmyspot/cat/common/git/replay/GitTopicReplayEditor.java",
+				"command"));
 		Map<String, String> manifests = Map.of();
 
 		List<ExposedEntryPoint> inventory = EntryPoints.collect(captured, manifests::get);
 
-		requireThat(inventory.size(), "entryPointCount").isEqualTo(2);
-		requireThat(inventory.get(0).id(), "firstEntryPointId").isEqualTo("installer:install-codex");
-		requireThat(inventory.get(1).id(), "secondEntryPointId").isEqualTo("skill:help");
-		requireThat(inventory.get(1).paths(), "skillPaths").isEqualTo(List.of(claudeSkill, codexSkill));
+		requireThat(inventory.stream().map(ExposedEntryPoint::id).toList(), "entryPointIds").isEqualTo(List.of(
+			"command:git-topic-replay", "installer:bootstrap", "installer:install-host-a", "skill:help"));
+		requireThat(inventory.stream().map(ExposedEntryPoint::kind).toList(), "entryPointKinds").isEqualTo(List.of(
+			"command", "installer", "installer", "skill"));
+		requireThat(inventory.get(2).paths(), "installerPaths").isEqualTo(List.of(powershellInstaller, installer));
+		requireThat(inventory.get(3).paths(), "skillPaths").isEqualTo(List.of(firstSkill, secondSkill));
 	}
 
 	/**
@@ -250,7 +259,7 @@ public final class EditorInventoryTest
 		expectedExceptionsMessageRegExp = ".*one selectable behavior family.*")
 	public void rejectsMixedCommandAndInstallerFamily() throws IOException
 	{
-		List<String> entries = List.of("command:git-topic-replay", "installer:install-codex");
+		List<String> entries = List.of("command:git-topic-replay", "installer:install-host-a");
 		CandidateUniverseRequirements requirements = new CandidateUniverseRequirements(Set.of("command", "installer"),
 			List.of("source"), Set.copyOf(entries), false);
 		CandidateUniverseEntry candidate = new CandidateUniverseEntry("release", "Release surfaces are selectable",

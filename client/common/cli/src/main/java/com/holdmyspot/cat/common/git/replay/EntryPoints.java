@@ -49,8 +49,23 @@ public final class EntryPoints
 			if (entryPoint != null)
 				addExposedEntryPoint(pathsByEntryPoint, entryPoint, item.path());
 		}
-		return pathsByEntryPoint.entrySet().stream().map(entry -> new ExposedEntryPoint(entry.getKey(), "custom_agent",
-			entry.getValue().stream().sorted().toList())).sorted(Comparator.comparing(ExposedEntryPoint::id)).toList();
+		return pathsByEntryPoint.entrySet().stream().map(entry -> new ExposedEntryPoint(entry.getKey(),
+			entryPointKind(entry.getKey()), entry.getValue().stream().sorted().toList())).
+			sorted(Comparator.comparing(ExposedEntryPoint::id)).toList();
+	}
+
+	/**
+	 * Returns the product-surface kind of a tool-derived logical entry point.
+	 *
+	 * @param entryPoint a logical identifier with its declared kind prefix
+	 * @return the kind, using {@code custom_agent} for agent declarations
+	 */
+	private static String entryPointKind(String entryPoint)
+	{
+		String prefix = entryPoint.substring(0, entryPoint.indexOf(':'));
+		if (prefix.equals("agent"))
+			return "custom_agent";
+		return prefix;
 	}
 
 	/**
@@ -74,14 +89,16 @@ public final class EntryPoints
 	private static String declaredEntryPoint(String path)
 	{
 		String skillPrefix = "client/";
-		if (path.matches("client/(codex|claude)/skills/src/main/resources/skills/[^/]+/SKILL\\.md"))
+		if (path.matches("client/[^/]+/skills/src/main/resources/skills/[^/]+/SKILL\\.md"))
 		{
 			String[] segments = path.substring(skillPrefix.length()).split("/");
 			return "skill:" + segments[6];
 		}
-		String installerPrefix = "client/lifecycle/src/main/resources/install/";
-		if (path.matches(installerPrefix + "(bootstrap(-[a-z]+)?|install-[a-z]+|uninstall-[a-z]+)\\.sh"))
-			return "installer:" + path.substring(installerPrefix.length(), path.length() - ".sh".length());
+		if (path.matches("client/[^/]+/lifecycle/src/main/resources/install/" +
+			"(bootstrap(-[a-z-]+)?|install-[a-z-]+|uninstall-[a-z-]+)\\.(sh|ps1)"))
+		{
+			return "installer:" + path.substring(path.lastIndexOf('/') + 1, path.lastIndexOf('.'));
+		}
 		if (path.equals("client/common/cli/src/main/java/com/holdmyspot/cat/common/git/replay/GitTopicReplayEditor.java"))
 			return "command:git-topic-replay";
 		return null;
@@ -95,7 +112,7 @@ public final class EntryPoints
 	 */
 	private static boolean isCustomAgentManifest(String path)
 	{
-		return path.matches("client/(codex|claude)/plugin/src/main/resources/agents/(codex|claude)/[^/]+\\.(toml|md)");
+		return path.matches("client/[^/]+/plugin/src/main/resources/agents/[^/]+/[^/]+\\.(toml|md)");
 	}
 
 	/**
