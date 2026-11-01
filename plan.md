@@ -54,11 +54,16 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	run-part"); after review found that the read-file rule makes the last line `run-part`'s own and that the PostToolUse
 	hook blocked a cut unsaved result, the user ruled "just return [End of output] then": `run-part` ends the command's
 	output with `[End of output]` and the hook passes such a result through. Clean build 3,552 tests, 0 failures, 18
-	skipped. `2b7d01153b`: the project thread-safety rule fixes each note's opening statement and adds a
+	skipped. `2b7d01153b`: the project thread-safety rule fixes each note's opening statement and added a
 	`<b>Process Safety:</b>` note for files and other processes (user ruling, 2026-11-01: option B); every Thread Safety
-	note under `client/` follows it. Open defect found there: `OptimizerCore` writes campaign snapshots and overlays
-	outside `CampaignLock` (`start`, `rebind`, trial plugins, two usage writes), which the store notes forbid. Open: the topic skill's full entry-point vocabulary (the image holds only its own harness's adapter); the user
-	asked why the inventory needs the other harness's files, and the current shared reader of both formats is proposed.
+	note under `client/` follows it. `af42d38a43` replaces that note (user ruling, 2026-11-01: "avoid adding a dedicated
+	label and just discuss the behavior in prose as the JDK does for file-related APIs"): a type states what callers need
+	to know about other processes in plain sentences, and nothing when they need nothing. Clean build 3,552 tests, 0
+	failures, 18 skipped. Open defect: `OptimizerCore` writes campaign snapshots and overlays outside `CampaignLock`
+	(`start`, `rebind`, trial plugins, two usage writes), which the store descriptions forbid; user ruling (2026-11-01):
+	those writes take the lock. Open: the topic skill's entry-point inventory; user rulings (2026-11-01): the files it
+	reads are data to sort into topics, whatever harness they belong to, and the skill works in repositories other than
+	CAT.
 - **Dropped:** the 2026-10-24 handoff's check whether `StatusReport.of` reports a completed certified campaign as
 	certified despite detected dependence. It traced to the accessed-path detector, which `706416b739` removed when the
 	user chose to rule dependence out by trial isolation (G4 row); no production code can report detected dependence.
