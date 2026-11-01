@@ -42,6 +42,15 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	harness at a time (user ruling, 2026-10-21). Each harness's live checks are separate evidence, so a Claude check runs
 	while a Codex campaign runs. A check that starts a session in the other harness, such as WI-120's skills, waits until
 	that harness is free. A harness's plugin cache is never refreshed while its campaign runs.
+- **Prompt-prerequisites audit (user request, 2026-11-01):** the tree was audited against the new bundled rule
+	`prompt-prerequisites.md`, and the user ruled on each confirmed finding. Integrated: `cc7fd21219`, `8a3debeda1`,
+	`35c4790223`, `2a5b2653f6`, `a5b5b1b478`, `980a4599fb` (native Windows Claude sessions refused, pointing to WSL2),
+	`2333940a8d` (a values session may report its test values exhausted), `ed84d09ab7`, `3900bada62`, `8c752fe410`
+	(no `sandbox_mode` in Codex agent definitions, which Codex ignores for subagents) and `e3bf85c763`; also `b53a5e1df5`
+	(Thread Safety notes in the rule's form) and `b64cec6032` (member names omit their enclosing type's words). Clean
+	build 3,546 tests, 0 failures, 17 skipped. Open: the topic skill's full entry-point vocabulary (the image holds only
+	its own harness's adapter; packaging choice is the user's), the read-only `run-part` fallback, the form of Thread
+	Safety notes that state conditions or file and process guarantees, all awaiting user rulings.
 - **Dropped:** the 2026-10-24 handoff's check whether `StatusReport.of` reports a completed certified campaign as
 	certified despite detected dependence. It traced to the accessed-path detector, which `706416b739` removed when the
 	user chose to rule dependence out by trial isolation (G4 row); no production code can report detected dependence.
@@ -1530,7 +1539,9 @@ The riskiest pure code, built first.
 	names its behavior; the judge's verdict names one listed behavior or `other` for each failed requirement;
 	`FailureSummary` carries it. Contract, proposal and campaign formats increase; older ones are refused.
 - **Groups:** after a failed attempt, formal failures are grouped by cell, test, failed requirement and behavior.
-- **Rounds:** per group, the values contract author writes at least 4 combinations aimed at the behavior; CAT runs up to
+- **Rounds:** per group, the values contract author writes at least 4 combinations aimed at the behavior, or reports
+	with a reason that the confirmed test admits no 4 valid new ones, which records the group as not reproduced while
+	the other groups go on (user ruling, 2026-11-01); CAT runs up to
 	100 reproduction trials of them in the group's cell, ending the round at 2 failures with that behavior. A reproduced
 	group's values join development as WI-34's do. Otherwise the contract author gets the tried values and their counts,
 	no replies, and its new values replace them. A failed round may repeat under a stress setting the harness offers (a
@@ -1549,7 +1560,8 @@ The riskiest pure code, built first.
 - **ContractAuthor:** one contract author session per ended attempt receives, for each prompt test with a formal
 	failure, that prompt test with only the development values of its outcome-changing variables (as the prompt author's
 	contract shows them, without the salt) and each failure's cell and failed requirements. It returns at least 4 new
-	outcome-changing combinations per failed test that exercise those requirements, in a strict schema; the contract
+	outcome-changing combinations per failed test that exercise those requirements, or a reason that the confirmed test
+	admits no 4 valid new ones (user ruling, 2026-11-01), in a strict schema; the contract
 	author's prompt change is shown to the user before delivery.
 - **Validation:** CAT rejects a new outcome-changing value equal to any existing value of its variable, held-out values
 	included, without telling the contract author which part holds the value, and validates the generator as for any test
@@ -3101,7 +3113,8 @@ including mappings of one source into several plugins; the old two-plugin refusa
 - **Change:** a nested session, in both harnesses, may write its own run and home and the user's `~/.npm` and `~/.m2`,
 	and keeps the user's `MAVEN_OPTS`. The session environment versions change.
 - **Tests:** `HarnessDependencyCacheTest`, `ClaudeConnectionSettingsTest.writesIsolatedSettings`,
-	`ClaudeConnectionSettingsTest.copiesParentSandboxOnWindows`,
+	`ClaudeConnectionSettingsTest.refusesNativeWindows` (user ruling, 2026-11-01: native Windows Claude sessions are
+	refused, replacing `copiesParentSandboxOnWindows`),
 	`CodexConnectionConfigurationTest.configuresNestedDependencyCaches`, the session environment version tests.
 - **Exit:** the full build passes, the tests failed before the change, and a rerun Claude E1 guard pilot shows no
 	trial writing `~/.claude` or `~/.cat`.

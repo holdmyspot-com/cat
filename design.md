@@ -2142,7 +2142,8 @@ campaign when its harness cannot apply the denial, for example when the host's s
 case that triggers a formal failure, so development could find nothing to edit. When a certification attempt ends with
 formal failures, a contract author session receives, for each prompt test with a formal failure, that prompt test with
 only its development test cases, and each failure's cell, failed assertions and behaviors. It writes new development
-test cases for that test, at least 4, that exercise the failed assertions through that behavior. CAT refuses a new test
+test cases for that test, at least 4, that exercise the failed assertions through that behavior, or reports with a
+reason that the confirmed test admits no 4 valid new ones (user ruling, 2026-11-01). CAT refuses a new test
 case whose normalized expected outcome equals a held-out one, and validates it like any other. The new test cases
 belong to the development part only, and the held-out part never changes. They join development only once they
 reproduce the failure (below). Development draws of that test then give the added test cases, together, half of the
@@ -2165,7 +2166,9 @@ against, and an edit made without the failure in view tends to trade one rare fa
 attempt, before any prompt author session works on it, CAT reproduces each **failure group**: the formal failures that
 share a cell, a test, a failed assertion and a behavior.
 
-1. The contract author writes the group's new development test cases, as above.
+1. The contract author writes the group's new development test cases, as above. When it reports that the confirmed
+	test admits no more, the group is recorded as not reproduced, as after the round limit, and the other groups go
+	on.
 2. CAT runs reproduction trials of those test cases in the group's cell, up to 100 per round, and stops the round once
 	the assertion has failed twice with the group's behavior. Reproduction trials are development trials of the
 	working candidate, targeted at the group's test cases, so they never enter representative counts; development
@@ -2567,16 +2570,16 @@ and one harness-neutral definition that both runners apply sets them, so a limit
 the other. A session's commands run with the run's isolated home as their home directory, receive no harness
 credential in their environment, and cannot read any harness's login or configuration files, in the run's home or the
 user's, or any run under the run root except their own. The user's harness directories stay readable otherwise,
-because a session's installed plugins link to files there. On Windows, where Claude Code runs commands without its
-sandbox, the read limits bind only Claude's file tools. A harness that a command starts directly therefore cannot
-reach the model provider; a session that needs another session requests one instead (D98).
+because a session's installed plugins link to files there. On native Windows, where Claude Code runs commands without
+its sandbox, Claude sessions are refused instead, and the refusal tells the user to run Claude Code and CAT inside WSL2
+(user ruling, 2026-11-01). A harness that a command starts directly therefore
+cannot reach the model provider; a session that needs another session requests one instead (D98).
 
-No one can answer a nested session's approval prompt, so a session's own commands run without one. Outside Windows the
+No one can answer a nested session's approval prompt, so a session's own commands run without one. The
 Claude runner allows Bash for the session and relies on the sandbox it requires, which forbids unsandboxed commands:
 the credential scrub turns off Claude Code's own `sandbox.autoAllowBashIfSandboxed` and its `acceptEdits` mode, so
 without that grant every command but the launcher waited for an approval, and a session could not even create a
-directory in its project. The user's deny and ask rules still apply first. On Windows, where nothing confines the
-commands, the runner adds no such grant.
+directory in its project. The user's deny and ask rules still apply first.
 
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
 request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
