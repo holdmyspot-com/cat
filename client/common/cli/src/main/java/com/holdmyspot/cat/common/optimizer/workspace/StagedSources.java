@@ -28,7 +28,11 @@ import java.util.function.Predicate;
  * link is replaced by a copy of its resolved target, so a trial write through a link reaches only the trial's copy.
  * CAT's session directories are excluded. A staged source is a cache that is rebuilt from the overlay when needed.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe. Concurrent requests for one candidate share one staged source.
+ * <b>Thread Safety:</b> This class is thread-safe.
+ * <p>
+ * <b>Process Safety:</b> This class is process-safe. Concurrent requests from any threads or processes for one
+ * candidate, with the same excluded paths and selection, return the same staged source. A reader in any process finds
+ * a staged source absent or complete, except while {@link #delete(Sha256)} removes it.
  */
 public final class StagedSources
 {

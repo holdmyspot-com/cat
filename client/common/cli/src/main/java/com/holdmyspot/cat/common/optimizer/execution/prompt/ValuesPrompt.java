@@ -52,7 +52,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Builds requests for contract author sessions that write the test cases of a formal failure group's reproduction
  * round, and validates the test cases that they write.
  * <p>
- * <b>Thread Safety:</b> Callers may build requests and validate test cases concurrently.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ValuesPrompt implements ValuesProtocol
 {

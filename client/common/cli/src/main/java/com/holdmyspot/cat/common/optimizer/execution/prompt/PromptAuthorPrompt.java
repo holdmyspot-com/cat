@@ -61,7 +61,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Builds requests for sessions that edit prompt files, and reads their reports of needed edits outside the allowed
  * paths and operations, together with their evidence manifest.
  * <p>
- * <b>Thread Safety:</b> Callers may build requests and read reports concurrently.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class PromptAuthorPrompt implements PromptAuthorProtocol
 {

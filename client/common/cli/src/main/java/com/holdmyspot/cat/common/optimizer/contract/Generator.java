@@ -15,8 +15,8 @@ import java.util.Locale;
  * confirmed development test cases the other half. The draw depends only on the stream's kind, seed and position and on
  * the added test cases, never on candidate identity; formal and baseline draws never use added test cases.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe. Concurrent draws from one stream are serialized and use
- * consecutive positions.
+ * <b>Thread Safety:</b> This class is thread-safe. Concurrent draws from one stream use consecutive stream
+ * positions, and each draw records the position that it used.
  */
 public final class Generator
 {

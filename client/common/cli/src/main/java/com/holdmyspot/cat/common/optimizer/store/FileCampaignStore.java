@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
+import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.io.IOException;
@@ -43,7 +44,9 @@ import tools.jackson.databind.json.JsonMapper;
  * storage device, renamed over the target, and the directory is forced. A crash leaves either the old or the new
  * content. Readers never read the temporary files, and the next write of the same target replaces a leftover one.
  * <p>
- * <b>Thread Safety:</b> This class is not thread-safe. One process at a time may write a campaign.
+ * <b>Process Safety:</b> This class is not process-safe. Only the holder of a campaign's {@link CampaignLock} may write
+ * the campaign's snapshot, trial records or delivery journal. While that holds, a reader in any process sees each of
+ * these files with its previous or new content, never part of it.
  */
 public final class FileCampaignStore extends AbstractCampaignStore
 {

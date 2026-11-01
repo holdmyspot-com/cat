@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The stores, workspace, session protocols and run settings that a {@link Driver} uses for one campaign.
  * <p>
- * <b>Thread Safety:</b> Callers may read the context concurrently if its collaborators support concurrent access.
+ * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param fileLocks the process-owned lock coordinator
  * @param store the campaign store

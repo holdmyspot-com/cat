@@ -23,7 +23,8 @@ import tools.jackson.databind.json.JsonMapper;
  * A subclass reads one harness's event format and records each observation through the protected setters.
  * Unrecognized lines are ignored.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe. {@link #read(JsonNode)} runs while the parser holds its lock.
+ * <b>Thread Safety:</b> This class is thread-safe. {@link #read(JsonNode)} never runs concurrently with itself or
+ * with a public method of this class.
  */
 public abstract class HarnessEvents
 {

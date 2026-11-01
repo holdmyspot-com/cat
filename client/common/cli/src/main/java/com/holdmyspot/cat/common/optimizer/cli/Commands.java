@@ -32,8 +32,6 @@ import java.util.regex.Pattern;
  * Every outcome is one JSON object on the output stream, apart from the report of a contract tool, which a contract
  * author session reads as text. The exit codes are 0 for a result, 1 for a refusal or a failure, and 2 for invalid
  * input.
- * <p>
- * <b>Thread Safety:</b> This class is thread-safe if {@code core} is.
  */
 public final class Commands
 {

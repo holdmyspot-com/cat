@@ -5,6 +5,8 @@ import java.time.Instant;
 
 /**
  * Reports whether the user interrupted the host turn that runs the optimizer.
+ * <p>
+ * <b>Thread Safety:</b> Implementations must be thread-safe.
  */
 @FunctionalInterface
 public interface HostInterruptSignal

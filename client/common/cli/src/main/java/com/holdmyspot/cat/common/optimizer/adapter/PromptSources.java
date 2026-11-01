@@ -23,8 +23,8 @@ import tools.jackson.databind.json.JsonMapper;
  * staged. The value records no file content and no content hash, so it does not change when a candidate edits a
  * prompt file. It changes only when the set of loaded sources changes.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe. {@link #read(JsonNode)} runs while the observation holds its
- * lock.
+ * <b>Thread Safety:</b> This class is thread-safe. {@link #read(JsonNode)} never runs concurrently with itself or
+ * with a public method of this class.
  */
 public abstract class PromptSources
 {

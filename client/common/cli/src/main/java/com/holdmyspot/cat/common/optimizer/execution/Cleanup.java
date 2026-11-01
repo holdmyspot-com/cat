@@ -46,8 +46,9 @@ import tools.jackson.databind.json.JsonMapper;
  * A removal that fails does not fail the command that runs it: the command reports a warning that names the path and
  * the cause, and continues.
  * <p>
- * <b>Thread Safety:</b> This class is not thread-safe. Removal takes the campaign's write lock; a campaign whose lock
- * another process holds is removed by a later command.
+ * <b>Process Safety:</b> This class is not process-safe. It removes none of a campaign's files while the campaign's
+ * {@link CampaignLock} is held by anyone else, in any process: {@link #end(Campaign, DeliveryResult)} then returns
+ * {@link Removal.Deferred}, and a later command removes the files.
  */
 public final class Cleanup
 {

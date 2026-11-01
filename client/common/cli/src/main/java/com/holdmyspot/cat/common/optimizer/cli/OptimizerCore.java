@@ -151,7 +151,7 @@ import java.util.stream.Stream;
  * user retained the incumbent. A removal that fails adds a warning to the command's summary, or to its refusal, and
  * the command continues; the next command retries the removal.
  * <p>
- * <b>Thread Safety:</b> This class is not thread-safe. One launcher process runs one command.
+ * <b>Process Safety:</b> This class is not process-safe.
  */
 public final class OptimizerCore implements Core
 {

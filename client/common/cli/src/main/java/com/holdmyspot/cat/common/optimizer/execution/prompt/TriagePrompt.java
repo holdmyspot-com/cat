@@ -34,7 +34,7 @@ import tools.jackson.databind.node.ObjectNode;
  * Builds requests that decide the impact of one failed development trial, and reads the impact from the triage
  * session's final response.
  * <p>
- * <b>Thread Safety:</b> Callers may build requests and read impacts concurrently.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class TriagePrompt implements TriageProtocol
 {

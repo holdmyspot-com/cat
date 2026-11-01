@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Checks the actual scenario, values and workspace files of a delivered prompt test.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe if the borrowed mapper supports concurrent reads.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class DeliveredTestContract
 {

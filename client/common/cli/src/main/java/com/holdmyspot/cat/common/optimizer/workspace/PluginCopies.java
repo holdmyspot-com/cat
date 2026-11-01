@@ -24,7 +24,11 @@ import java.util.StringJoiner;
  * the project builds, so that a candidate's edit and an emptied control file reach the plugin that its trials load, and
  * the copies of the plugins' bases.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe. Concurrent requests for one copy share it.
+ * <b>Thread Safety:</b> This class is thread-safe.
+ * <p>
+ * <b>Process Safety:</b> This class is process-safe. Concurrent requests for one copy from any threads or processes
+ * return the same directory. A reader in any process finds a copy absent or complete, except while
+ * {@link #delete(Sha256)} removes it.
  */
 final class PluginCopies
 {

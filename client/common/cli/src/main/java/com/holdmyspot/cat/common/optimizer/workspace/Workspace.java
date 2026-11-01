@@ -34,7 +34,10 @@ import java.util.Set;
  * participants live in a mirror beside it, never in the live files. A scan of the worktree reports the mirror's files
  * under their absolute paths, so it is comparable with a candidate's {@link Overlay#snapshot() snapshot}.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe. Writes to the worktree and scans of it do not overlap.
+ * <b>Thread Safety:</b> This class is thread-safe. {@link #scanWorktree()} never returns an inventory of a worktree
+ * that a {@link #materialize(Overlay)} call on this workspace has written only in part.
+ * <p>
+ * <b>Process Safety:</b> This class is not process-safe.
  */
 public final class Workspace implements WorkspacePort
 {

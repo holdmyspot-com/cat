@@ -14,9 +14,6 @@ import java.util.concurrent.LinkedBlockingQueue;
  * <p>
  * Reading blocks until the driver sends a line or ends the stream, so the runner receives each turn only when the
  * driver sends it.
- * <p>
- * <b>Thread Safety:</b> {@link #send(String)} and {@link #end()} may be called from any thread. A single thread
- * reads.
  */
 final class LineFeed extends Reader
 {
@@ -33,7 +30,8 @@ final class LineFeed extends Reader
 	}
 
 	/**
-	 * Makes a line available to the reader.
+	 * Makes a line available to the reader. Any thread may call this method, also while other threads call it or
+	 * {@link #end()}, or read.
 	 *
 	 * @param line the line, without a terminator
 	 * @throws NullPointerException if {@code line} is null
@@ -45,7 +43,8 @@ final class LineFeed extends Reader
 	}
 
 	/**
-	 * Ends the stream after the lines that were already sent.
+	 * Ends the stream after the lines that were already sent. Any thread may call this method, also while other
+	 * threads call it or {@link #send(String)}, or read.
 	 */
 	void end()
 	{

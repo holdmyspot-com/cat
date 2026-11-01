@@ -9,7 +9,7 @@ import java.util.Map;
  * {@code \n} line endings. A generator keeps every version: a change to its output adds a version and leaves the
  * earlier ones expanding as before, so that a committed values file rebuilds the same files.
  * <p>
- * <b>Thread Safety:</b> Implementations must be immutable and thread-safe.
+ * <b>Thread Safety:</b> Implementations must be thread-safe.
  */
 public interface ValueGenerator
 {

@@ -20,7 +20,10 @@ import java.util.Set;
  * session's delta. A prompt author session that edits the runner's copy of the authoring copy leaves its edits in its
  * effects directory instead, which is scanned under the same rules.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe. Each copy is a separate directory.
+ * <b>Thread Safety:</b> This class is thread-safe.
+ * <p>
+ * <b>Process Safety:</b> This class is process-safe. Each {@link #prepare(Overlay)} returns a new directory that no
+ * other call, in any thread or process, returns.
  */
 public final class AuthoringCopies
 {

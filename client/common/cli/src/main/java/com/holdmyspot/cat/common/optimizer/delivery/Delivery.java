@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.UnownedChange;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.VerificationFailed;
+import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.Create;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.Delete;
@@ -92,7 +93,10 @@ import tools.jackson.databind.json.JsonMapper;
  * </ol>
  * Delivery never commits, stages or moves a branch in the base worktree; the user reviews the uncommitted changes.
  * <p>
- * <b>Thread Safety:</b> This class is not thread-safe. One process at a time may deliver a campaign.
+ * <b>Process Safety:</b> This class is not process-safe. Only the holder of the campaign's {@link CampaignLock} may
+ * deliver it. A reader in any process sees each file or link that delivery creates or replaces with its previous or
+ * new content, never part of it. Delivery checks each target's live state just before it writes the target, and
+ * returns {@link ConcurrentEdit} without overwriting a target that changed since the delivery was journaled.
  */
 public final class Delivery
 {

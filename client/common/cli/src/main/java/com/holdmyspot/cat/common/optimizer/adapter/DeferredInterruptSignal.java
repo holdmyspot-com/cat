@@ -11,7 +11,7 @@ import java.time.Instant;
  * A host interrupt signal that locates the host session's log when it is first polled, so that a command that never
  * polls it, such as {@code status}, does not need the log.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe if the located signal is.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class DeferredInterruptSignal implements HostInterruptSignal
 {
