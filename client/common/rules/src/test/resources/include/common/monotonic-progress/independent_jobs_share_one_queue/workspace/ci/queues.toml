@@ -1,0 +1,13 @@
+# Queues and the number of jobs each runs at once. The platform team sets these capacities.
+
+[[queue]]
+name = "{{queue}}"
+capacity = 1
+
+[[queue]]
+name = "pool-a"
+capacity = 2
+
+[[queue]]
+name = "pool-b"
+capacity = 2

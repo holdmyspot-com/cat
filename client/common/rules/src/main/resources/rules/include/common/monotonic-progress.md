@@ -43,7 +43,10 @@ silently changes one; create a distinct identity only through a terminal, explic
 the earlier record and states why its result cannot be compared with the replacement.
 
 When independently executable units can run concurrently, choose the highest bounded concurrency supported by the
-available capacity and the workflow's isolation guarantees. A persistent parent must own and reap every child, record
+available capacity and the workflow's isolation guarantees. When independent ready work is intended to run
+concurrently, check whether its execution resources permit actual overlap. Account for queue groups, locks, shared
+mutable resources, and capacity. Remove unnecessary serialization within existing authority; otherwise record the
+constraint and continue other eligible work. A persistent parent must own and reap every child, record
 each terminal result, and return failure when any required child fails; a parent that exits while children run cannot
 establish their result. Give concurrent units separate mutable resources and durable evidence. Do not treat partial
 output, a started process, or a child that has not reached a terminal recorded state as successful work.

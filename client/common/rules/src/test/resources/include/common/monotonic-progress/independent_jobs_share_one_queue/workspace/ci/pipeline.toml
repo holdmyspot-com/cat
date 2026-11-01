@@ -1,0 +1,21 @@
+# Jobs run when a pipeline starts. A job waits in its queue until the queue has a free slot.
+
+[[job]]
+name = "lint"
+queue = "{{queue}}"
+run = "make lint"
+
+[[job]]
+name = "unit-tests"
+queue = "{{queue}}"
+run = "make unit-tests"
+
+[[job]]
+name = "docs"
+queue = "{{queue}}"
+run = "make docs"
+
+[[job]]
+name = "package"
+queue = "{{queue}}"
+run = "make package"
