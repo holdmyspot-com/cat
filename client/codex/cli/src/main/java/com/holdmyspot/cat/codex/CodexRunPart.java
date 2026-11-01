@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.lang.ProcessBuilder.Redirect;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
@@ -38,7 +39,11 @@ import java.util.Optional;
  * The output stays inside the project: in a Codex thread, which names its ID in {@code CODEX_THREAD_ID}, it is saved
  * in the temporary folder of the thread's CAT session directory (see {@link SessionDirectory}) in the nearest CAT
  * project that contains the folder that the command runs in. Outside a CAT project, or without
- * {@code CODEX_THREAD_ID}, it is saved in the folder that {@link #fallbackFolder(Map)} returns.
+ * {@code CODEX_THREAD_ID}, it is saved in the folder that {@link #fallbackFolder(Map)} returns. When the folder or
+ * the file that would save the output cannot be created, as in a read-only sandbox, {@code run-part} runs the command
+ * as it would run without {@code run-part}: the output is neither saved nor limited, its standard output and standard
+ * error reach those of {@code run-part} unchanged, {@code run-part} prints nothing of its own, and it exits with the
+ * command's exit status.
  * <p>
  * The command receives the saved output's path in {@code CAT_RUN_PART_OUTPUT} and, in {@code bash}, finds the
  * plugin's {@code client/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
@@ -84,13 +89,17 @@ public final class CodexRunPart
 		CommandShell shell = CommandShell.current();
 		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
 			CodexReadPart.launcher(shell.launcher("read-part")), Path.of(System.getProperty("java.home"), OVERRIDES),
-			Platform.current().environment(System.getenv()), System.out, System.err, Pause::sleeping);
+			Platform.current().environment(System.getenv()), System.out, System.err, Redirect.INHERIT, Redirect.INHERIT,
+			Pause::sleeping);
 		System.out.flush();
 		System.exit(status);
 	}
 
 	/**
-	 * Runs a command, saves its output and exit status, then prints the output's first part.
+	 * Runs a command, saves its output and exit status, then prints the output's first part. When the folder or the
+	 * file that would save the output cannot be created, as in a read-only sandbox, it runs the command as it would
+	 * run without {@code run-part} instead: the command's standard output and standard error go to
+	 * {@code commandOutput} and {@code commandError}, unsaved and unchanged, and nothing else is printed.
 	 *
 	 * @param args a non-null empty command-line argument array
 	 * @param input the command
@@ -106,19 +115,21 @@ public final class CodexRunPart
 	 *   CAT project, or without {@code CODEX_THREAD_ID}, the output is saved in the folder that
 	 *   {@link #fallbackFolder(Map)} returns for this environment; the command
 	 *   runs in this environment with the caller's locale restored, the overrides folder first on a set {@code PATH}
-	 *   when {@code shell} is {@code bash}, and {@code CAT_RUN_PART_OUTPUT} naming the saved output; in PowerShell,
-	 *   {@code CAT_RG_LINE_LIMIT} sets the line limit of a command that is one {@code rg} search
-	 *   (see {@link RipgrepOutputLimit})
+	 *   when {@code shell} is {@code bash}, and {@code CAT_RUN_PART_OUTPUT} naming the saved output, which is unset
+	 *   when the output cannot be saved; in PowerShell, {@code CAT_RG_LINE_LIMIT} sets the line limit of a saved
+	 *   command that is one {@code rg} search (see {@link RipgrepOutputLimit})
 	 * @param output receives the part
 	 * @param error receives diagnostics
+	 * @param commandOutput where the command's standard output goes when its output cannot be saved
+	 * @param commandError where the command's standard error goes when its output cannot be saved
 	 * @param waiting how the command waits between the attempts of a retried operation
-	 * @return the exit status of {@code read-part}, 1 if the command cannot be run, or 2 for a usage error or a
-	 *   {@code CAT_RG_LINE_LIMIT} that is not a whole number
+	 * @return the exit status of {@code read-part}; the command's exit status if its output cannot be saved; 1 if the
+	 *   command cannot be run; or 2 for a usage error or a {@code CAT_RG_LINE_LIMIT} that is not a whole number
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(String[] args, InputStream input, boolean terminal, Path workingDirectory, CommandShell shell,
 		Path readPart, Path overrides, Map<String, String> environment, OutputStream output, PrintStream error,
-		Waiting waiting)
+		Redirect commandOutput, Redirect commandError, Waiting waiting)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
@@ -129,6 +140,8 @@ public final class CodexRunPart
 		requireThat(environment, "environment").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(error, "error").isNotNull();
+		requireThat(commandOutput, "commandOutput").isNotNull();
+		requireThat(commandError, "commandError").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		try
 		{
@@ -156,33 +169,27 @@ public final class CodexRunPart
 						error.println("run-part: " + e.getMessage());
 						return 2;
 					}
-					command = search.get();
 				}
 			}
-			Path saved = Files.createTempDirectory(outputFolder(workingDirectory, environment, waiting), FOLDER_PREFIX).
-				resolve(SAVED_OUTPUT);
-			ProcessBuilder builder = new ProcessBuilder(shell.processArguments(command, environment)).
-				directory(workingDirectory.toFile()).
-				redirectErrorStream(true).
-				redirectOutput(saved.toFile());
-			Map<String, String> childEnvironment = builder.environment();
-			childEnvironment.clear();
-			childEnvironment.putAll(callerEnvironment(environment));
-			childEnvironment.put("CAT_RUN_PART_OUTPUT", saved.toString());
-			String path = childEnvironment.get("PATH");
-			if (path != null && shell == CommandShell.POSIX)
-				childEnvironment.put("PATH", overrides + File.pathSeparator + path);
-			int status;
-			try (Process process = builder.start())
+			Optional<Path> saved = createSavedOutput(workingDirectory, environment, waiting);
+			if (saved.isEmpty())
 			{
-				// The command reads no input: closing its standard input ends any read at once, on every platform
-				process.getOutputStream().close();
-				status = process.waitFor();
+				// The command runs as it would without run-part
+				ProcessBuilder builder = commandBuilder(command, workingDirectory, shell, overrides, environment).
+					redirectOutput(commandOutput).
+					redirectError(commandError);
+				return runCommand(builder);
 			}
+			ProcessBuilder builder = commandBuilder(search.orElse(command), workingDirectory, shell, overrides,
+				environment).
+				redirectErrorStream(true).
+				redirectOutput(saved.get().toFile());
+			builder.environment().put("CAT_RUN_PART_OUTPUT", saved.get().toString());
+			int status = runCommand(builder);
 			if (search.isPresent())
-				status = RipgrepOutputLimit.limitOutput(saved, status, lineLimit);
-			Files.writeString(Path.of(saved + EXIT_STATUS_SUFFIX), status + "\n");
-			return CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, output, error);
+				status = RipgrepOutputLimit.limitOutput(saved.get(), status, lineLimit);
+			Files.writeString(Path.of(saved.get() + EXIT_STATUS_SUFFIX), status + "\n");
+			return CodexReadPart.run(new String[]{saved.get().toString()}, shell, readPart, environment, output, error);
 		}
 		catch (IOException | InvalidPathException e)
 		{
@@ -194,6 +201,73 @@ public final class CodexRunPart
 			Thread.currentThread().interrupt();
 			error.println("run-part: interrupted");
 			return 1;
+		}
+	}
+
+	/**
+	 * Creates the empty file that saves the command's output, in a new folder of its own.
+	 *
+	 * @param workingDirectory the folder that the command runs in
+	 * @param environment the environment of the JVM
+	 * @param waiting how the command waits between the attempts of a retried operation
+	 * @return the file, or an empty {@code Optional} if the folder or the file cannot be created, as in a read-only
+	 *   sandbox
+	 */
+	private static Optional<Path> createSavedOutput(Path workingDirectory, Map<String, String> environment,
+		Waiting waiting)
+	{
+		try
+		{
+			Path folder = Files.createTempDirectory(outputFolder(workingDirectory, environment, waiting), FOLDER_PREFIX);
+			return Optional.of(Files.createFile(folder.resolve(SAVED_OUTPUT)));
+		}
+		catch (IOException | InvalidPathException _)
+		{
+			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Returns a process builder that runs a command in the shell, in its folder and in the caller's environment.
+	 *
+	 * @param command the command
+	 * @param workingDirectory the folder that the command runs in
+	 * @param shell the shell that runs the command
+	 * @param overrides the folder of the programs that the command finds before the caller's {@code PATH} when
+	 *   {@code shell} is {@code bash}
+	 * @param environment the environment of the JVM
+	 * @return the process builder, whose environment is the caller's, with its locale restored and, when {@code shell}
+	 *   is {@code bash}, {@code overrides} first on a set {@code PATH}
+	 */
+	private static ProcessBuilder commandBuilder(String command, Path workingDirectory, CommandShell shell,
+		Path overrides, Map<String, String> environment)
+	{
+		ProcessBuilder builder = new ProcessBuilder(shell.processArguments(command, environment)).
+			directory(workingDirectory.toFile());
+		Map<String, String> childEnvironment = builder.environment();
+		childEnvironment.clear();
+		childEnvironment.putAll(callerEnvironment(environment));
+		String path = childEnvironment.get("PATH");
+		if (path != null && shell == CommandShell.POSIX)
+			childEnvironment.put("PATH", overrides + File.pathSeparator + path);
+		return builder;
+	}
+
+	/**
+	 * Runs a command without input and waits for it to exit.
+	 *
+	 * @param builder the process builder of the command
+	 * @return the command's exit status
+	 * @throws IOException if the command cannot be started
+	 * @throws InterruptedException if the thread is interrupted while the command runs
+	 */
+	private static int runCommand(ProcessBuilder builder) throws IOException, InterruptedException
+	{
+		try (Process process = builder.start())
+		{
+			// The command reads no input: closing its standard input ends any read at once, on every platform
+			process.getOutputStream().close();
+			return process.waitFor();
 		}
 	}
 

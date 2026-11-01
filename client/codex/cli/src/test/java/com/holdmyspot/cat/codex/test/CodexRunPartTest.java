@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.lang.ProcessBuilder.Redirect;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -88,6 +89,9 @@ public final class CodexRunPartTest
 				". The file was deleted]\n");
 			requireThat(call.status(), "status").isEqualTo(3);
 			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("3\n");
+			requireThat(call.error(), "error").isEmpty();
+			requireThat(call.commandOutput(), "commandOutput").isEmpty();
+			requireThat(call.commandError(), "commandError").isEmpty();
 		}
 	}
 
@@ -340,6 +344,120 @@ public final class CodexRunPartTest
 	}
 
 	/**
+	 * Verifies that when {@code run-part} cannot create the folder that would save the output, as in a read-only
+	 * sandbox, the command still runs and behaves as it would without {@code run-part}: its standard output and
+	 * standard error reach the caller's, unsaved and unchanged, {@code run-part} prints nothing of its own, and the call
+	 * exits with the command's exit status. Outside a CAT project the folder's parent is {@code TMPDIR}; in a Codex
+	 * thread inside a CAT project it is the project's {@code .cat/sessions}. Each of them is a regular file here, so no
+	 * folder can be created inside it whatever the user's permissions.
+	 *
+	 * @throws IOException if the temporary files cannot be written
+	 */
+	@Test
+	public void unsavableOutputPassesThrough() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path file = Files.writeString(temporary.resolve("file"), "");
+			Path project = Files.createDirectories(temporary.resolve("project"));
+			Files.createDirectories(project.resolve(".cat"));
+			Files.writeString(project.resolve(".cat/sessions"), "");
+			String command = script("printf 'out|%s\\n' \"${CAT_RUN_PART_OUTPUT-unset}\"\necho err >&2\nexit 3\n",
+				"Write-Output \"out|$(if ($null -eq $env:CAT_RUN_PART_OUTPUT) { 'unset' } else { 'set' })\"\n" +
+					"[Console]::Error.WriteLine('err')\nexit 3\n");
+
+			List<Call> calls = List.of(
+				runPart(command, false, OUTSIDE_PROJECT, Map.of("TMPDIR", file.resolve("temp").toString())),
+				runPart(command, false, project, Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", THREAD_ID,
+					"CODEX_HOME", temporary.toString())));
+
+			for (Call call : calls)
+			{
+				requireThat(call.commandOutput(), "commandOutput").withContext(call.error(), "error").
+					isEqualTo("out|unset" + EOL);
+				requireThat(call.commandError(), "commandError").isEqualTo("err" + EOL);
+				requireThat(call.output(), "output").isEmpty();
+				requireThat(call.error(), "error").isEmpty();
+				requireThat(call.status(), "status").isEqualTo(3);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a command whose output cannot be saved runs in the folder and environment that it would run in if
+	 * the output were saved: the caller's locale is restored and, in a POSIX shell, the plugin's {@code run-part}
+	 * overrides come first on its {@code PATH}.
+	 *
+	 * @throws IOException if the temporary files cannot be written
+	 */
+	@Test
+	public void unsavableOutputKeepsCommandEnvironment() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
+			Path file = Files.writeString(temporary.resolve("file"), "");
+			Path folder = Files.createDirectories(temporary.resolve("folder"));
+			String path = Path.of("/usr/bin").toAbsolutePath() + File.pathSeparator + Path.of("/bin").toAbsolutePath();
+			Map<String, String> environment = Map.of("TMPDIR", file.resolve("temp").toString(), "PATH", path,
+				"LC_CTYPE", "C.UTF-8", "CAT_CALLER_LC_ALL", "+C", "CAT_CALLER_LC_CTYPE", "-");
+			String expected = "C|unset|unset";
+			if (SHELL == CommandShell.POSIX)
+				expected += "|" + OVERRIDES + File.pathSeparator + path;
+
+			// PowerShell may add its own folder to PATH, so only the POSIX command prints it
+			Call call = runPart(script("pwd; printf '%s|%s|%s|%s\\n' \"${LC_ALL-unset}\" \"${LC_CTYPE-unset}\" " +
+				"\"${CAT_CALLER_LC_ALL-unset}\" \"$PATH\"", "(Get-Location).Path; " +
+				variables("LC_ALL", "LC_CTYPE", "CAT_CALLER_LC_ALL")), false, folder, environment);
+
+			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
+			requireThat(call.commandOutput(), "commandOutput").withContext(call.error(), "error").
+				isEqualTo(folder.toRealPath() + EOL + expected + EOL);
+			requireThat(call.output(), "output").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a PowerShell command that is one {@code rg} search, whose output cannot be saved, runs as written,
+	 * without the line width and line limit that apply to a saved search, as it would without {@code run-part}.
+	 *
+	 * @throws IOException if the temporary files cannot be written
+	 */
+	@Test
+	public void unsavableSearchIsNotLimited() throws IOException
+	{
+		if (SHELL != CommandShell.POWERSHELL)
+			throw new SkipException("A POSIX shell runs the plugin's rg override, which Bats tests");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
+			Path file = Files.writeString(temporary.resolve("file"), "");
+			Path caller = Files.createDirectories(temporary.resolve("caller"));
+			Files.writeString(caller.resolve("rg.cmd"), "@echo %*\r\n@echo b\r\n@echo c\r\n@exit /b 1\r\n");
+			// The caller's rg.cmd runs in cmd.exe, which Windows finds through the system folders
+			Map<String, String> environment = new HashMap<>();
+			for (String name : List.of("SystemRoot", "ComSpec"))
+			{
+				String value = System.getenv(name);
+				if (value != null)
+					environment.put(name, value);
+			}
+			environment.put("PATH", caller + File.pathSeparator + System.getenv("PATH"));
+			environment.put("PATHEXT", ".COM;.EXE;.BAT;.CMD");
+			environment.put("TMPDIR", file.resolve("temp").toString());
+			environment.put("CAT_RG_LINE_LIMIT", "1");
+
+			Call call = runPart("rg -n needle", false, OUTSIDE_PROJECT, environment);
+
+			requireThat(call.commandOutput(), "commandOutput").withContext(call.error(), "error").
+				isEqualTo("-n needle" + EOL + "b" + EOL + "c" + EOL);
+			requireThat(call.output(), "output").isEmpty();
+			requireThat(call.status(), "status").isEqualTo(1);
+		}
+	}
+
+	/**
 	 * Verifies that a call without a command prints how to use {@code run-part} and saves nothing.
 	 *
 	 * @throws IOException if the temporary folder cannot be created or listed
@@ -401,15 +519,17 @@ public final class CodexRunPartTest
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment
 	 * @return the call's streams and exit status
+	 * @throws IOException if the files of the command's own streams cannot be created, read or removed
 	 */
 	private static Call runPart(String command, boolean terminal, Path workingDirectory,
-		Map<String, String> environment)
+		Map<String, String> environment) throws IOException
 	{
 		return runPart(command, terminal, workingDirectory, READ_PART, OVERRIDES, environment);
 	}
 
 	/**
-	 * Runs {@code run-part} from a plugin's {@code bin} folder.
+	 * Runs {@code run-part} from a plugin's {@code bin} folder. The command's own standard output and standard error,
+	 * which reach the caller only when {@code run-part} cannot save the output, go to files that this call reads back.
 	 *
 	 * @param command the command on standard input
 	 * @param terminal {@code true} if standard input is a terminal
@@ -418,16 +538,38 @@ public final class CodexRunPartTest
 	 * @param overrides the folder of the programs that the command finds before the caller's {@code PATH}
 	 * @param environment the environment
 	 * @return the call's streams and exit status
+	 * @throws IOException if the files of the command's own streams cannot be created, read or removed
 	 */
 	private static Call runPart(String command, boolean terminal, Path workingDirectory, Path readPart,
-		Path overrides, Map<String, String> environment)
+		Path overrides, Map<String, String> environment) throws IOException
 	{
-		ByteArrayOutputStream output = new ByteArrayOutputStream();
-		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
-			workingDirectory, SHELL, readPart, overrides, environment, output, new PrintStream(error, true, UTF_8),
-				Yielding.waiting());
-		return new Call(output.toString(UTF_8), error.toString(UTF_8), status);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path streams = cleanup.add(Files.createTempDirectory("run-part-streams-"));
+			Path commandOutput = streams.resolve("stdout");
+			Path commandError = streams.resolve("stderr");
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+			int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
+				workingDirectory, SHELL, readPart, overrides, environment, output, new PrintStream(error, true, UTF_8),
+				Redirect.to(commandOutput.toFile()), Redirect.to(commandError.toFile()), Yielding.waiting());
+			return new Call(output.toString(UTF_8), error.toString(UTF_8), status, readIfPresent(commandOutput),
+				readIfPresent(commandError));
+		}
+	}
+
+	/**
+	 * Returns a file's text.
+	 *
+	 * @param file the file
+	 * @return the file's text, or an empty string if the file does not exist
+	 * @throws IOException if the file cannot be read
+	 */
+	private static String readIfPresent(Path file) throws IOException
+	{
+		if (Files.notExists(file))
+			return "";
+		return Files.readString(file);
 	}
 
 	/**
@@ -446,23 +588,31 @@ public final class CodexRunPartTest
 	/**
 	 * The streams and exit status of one call.
 	 *
-	 * @param output the standard output
-	 * @param error the standard error
+	 * @param output the standard output of {@code run-part}
+	 * @param error the standard error of {@code run-part}
 	 * @param status the exit status
+	 * @param commandOutput the command's own standard output, which reaches the caller only when {@code run-part}
+	 *   cannot save the output
+	 * @param commandError the command's own standard error, which reaches the caller only when {@code run-part} cannot
+	 *   save the output
 	 */
-	private record Call(String output, String error, int status)
+	private record Call(String output, String error, int status, String commandOutput, String commandError)
 	{
 		/**
 		 * Creates a call.
 		 *
-		 * @param output the standard output
-		 * @param error the standard error
+		 * @param output the standard output of {@code run-part}
+		 * @param error the standard error of {@code run-part}
 		 * @param status the exit status
+		 * @param commandOutput the command's own standard output
+		 * @param commandError the command's own standard error
 		 */
 		private Call
 		{
 			assert output != null;
 			assert error != null;
+			assert commandOutput != null;
+			assert commandError != null;
 		}
 	}
 }

@@ -10,7 +10,9 @@ The shell does not define it, so wherever this guide uses `${CAT_PLUGIN_ROOT}`, 
 run-part saves and segments the output into multiple parts. When you invoke it, it will return the first part of the
 output followed by an instruction in square brackets on the last line that says how many of the output's bytes remain,
 in at least how many more parts, and explains how to fetch the rest of the output. Each later part ends the same way,
-until a part's last line starts with `[End of `; that part is the last one.
+until a part's last line starts with `[End of `; that part is the last one. When run-part cannot save the output, as
+in a read-only sandbox, it prints the command's whole output unchanged, with no such instruction: there are no parts to
+fetch.
 
 Read every part of guidance that you must follow, and of a document or command output that the user asked you to read
 in full. Read other output while its parts serve your task. When the parts that you have read show that the rest will
