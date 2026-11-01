@@ -381,8 +381,8 @@ public final class ClaudeSessionStartHookTest
 
 	/**
 	 * Verifies SubagentStart writes a subagent's rules to its own file in the CAT session directory of the parent
-	 * session, whose ID the input's {@code session_id} carries, and states that directory as {@code CAT_TEMP} in the
-	 * rules.
+	 * session, whose ID the input's {@code session_id} carries, and states that directory as {@code CAT_TEMP} and the
+	 * effective local timezone in the rules.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -402,6 +402,8 @@ public final class ClaudeSessionStartHookTest
 
 			requireThat(result.error(), "error").isEmpty();
 			requireThat(rules, "rules").isEqualTo(directory.resolve("subagents/a1b2c3.md"));
+			requireThat(Files.readString(rules), "subagentTimezone").contains("# Session Timezone\n\n").
+				contains("The session's effective local timezone is `");
 			requireThat(directory.resolve("session.json"), "marker").isRegularFile();
 			requireThat(Files.readString(rules), "rulesContent").
 				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + SESSION_ID + "/temp`.");

@@ -2,7 +2,7 @@
 
 ## Design Goals
 
-- Route each planning, delegation, handoff, waiting, progress, and workflow-state decision to its focused rule before
+- Route each planning, delegation, handoff, waiting, and workflow-state decision to its focused rule before
 	the reader commits to that action.
 
 ## Guidance
@@ -23,8 +23,6 @@ Before sending a task, result, correction request, or other information to anoth
 whose agents exchange information, lazy load `../agent-handoffs.md`.
 
 When creating, using, or handing off temporary files or directories, lazy load `../temporary-resources.md`.
-
-When a task is expected to run for multiple minutes, lazy load `../progress-reporting.md`.
 
 When a task needs a state change that something else produces, such as a hosted build finishing, a background process
 exiting or a subagent returning, lazy load `../external-waits.md` before you check that state or continue other work.

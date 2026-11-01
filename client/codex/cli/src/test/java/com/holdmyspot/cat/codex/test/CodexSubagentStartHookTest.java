@@ -145,6 +145,7 @@ public final class CodexSubagentStartHookTest
 					"for this session are in `" + rulesFile + "`. Read that whole file, as described above, before you plan").
 				doesNotContain("subagent guidance").doesNotContain("CAT Environment");
 			requireThat(Files.readString(rulesFile, UTF_8), "rules").contains("subagent guidance").
+				contains("# Session Timezone\n\n").contains("The session's effective local timezone is `").
 				contains("`CAT_TEMP` is `${CAT_PROJECT_ROOT}/.cat/sessions/" + AGENT_ID + "/temp`.").
 				doesNotContain("# Reading Command Output");
 			requireThat(Files.exists(project.resolve(".cat/sessions").resolve(PARENT_ID)), "parentDirectoryExists").isFalse();
@@ -178,6 +179,8 @@ public final class CodexSubagentStartHookTest
 			HookResult result = invoke(input, Map.of("PLUGIN_ROOT", plugin.toString()), project);
 
 			requireThat(context(result), "context").contains("# Reading Command Output").contains("subagent guidance");
+			requireThat(context(result), "timezoneContext").contains("# Session Timezone\n\n").
+				contains("The session's effective local timezone is `");
 			requireThat(Files.readString(parentRulesFile, UTF_8), "parentRules").isEqualTo("main agent rules");
 			requireThat(result.error(), "error").isEmpty();
 		}

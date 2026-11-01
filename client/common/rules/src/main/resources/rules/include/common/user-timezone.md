@@ -3,6 +3,8 @@
 ## Design Goals
 
 - Let the user read every time and date that an agent presents to them without converting it from UTC or another zone.
+- Use the session timezone stated in context without requiring an environment command; determine it from the
+	environment only when context does not state it.
 - Keep every time that an agent writes for a file, tool, or shared record in one unambiguous zone, so a later reader or
 	program does not depend on the session's local zone.
 
@@ -13,8 +15,9 @@ express it in the user's timezone and make the zone evident with an offset or ab
 `2026-10-05T07:30:00-04:00`. Convert the calendar date together with the time, because the date can differ between
 zones. Convert every UTC or other-zone timestamp that a tool, log, API, or command returns before presenting it.
 
-The user's timezone is the local system timezone of the session. Determine it from the environment, for example from
-the output of `date +"%Z %z"`, which follows `TZ` and `/etc/localtime`; do not assume UTC.
+The user's timezone is the local system timezone of the session. Use the session timezone stated in your context. Only
+when context does not state it, determine it from the environment, for example from the output of `date +"%Z %z"`,
+which follows `TZ` and `/etc/localtime`; do not assume UTC.
 
 Every other time that you write uses UTC by default and makes the zone evident, such as `2026-10-05T11:30:00Z`. This
 covers values in files, commands, data formats, logs, identifiers, commit messages, and other machine-readable output.

@@ -29,6 +29,30 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies bundled progress reporting is routed only to the main agent, including after a subagent loads workflows.
+	 *
+	 * @throws IOException if the rules or test filesystem cannot be read
+	 */
+	@Test
+	public void routesProgressOnlyToMainAgent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path plugin = Path.of("../rules/src/main/resources");
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+
+			String main = loader.loadForMainAgent(plugin, project, "harnessa");
+			String subagent = loader.loadForSubagent(plugin, project, "harnessa", "reviewer");
+			String workflows = loader.loadRule(plugin, Path.of("include/common/rule-routing/workflows.md"));
+
+			requireThat(main, "main").contains("progress-reporting.md");
+			requireThat(subagent, "subagent").doesNotContain("progress-reporting.md");
+			requireThat(workflows, "workflows").doesNotContain("progress-reporting.md");
+		}
+	}
+
+	/**
 	 * Verifies the loader injects common and selected-harness rule bodies while retaining source-only design goals.
 	 */
 	@Test

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RelativeRuleReference;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.SessionRules;
 import com.holdmyspot.cat.common.Waiting;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,6 +17,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import tools.jackson.core.JacksonException;
@@ -89,7 +91,10 @@ final class ClaudeRuleInjectionHook
 			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
 			String rules;
 			if (eventName.equals("SubagentStart"))
+			{
 				rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID, scope.subagentType(event));
+				rules = SessionRules.withTimezone(rules, ZoneId.systemDefault());
+			}
 			else
 				rules = loader.loadForMainAgent(pluginRoot, userRulesRoot, projectDir, HARNESS_ID);
 			Files.createDirectories(rulesFile.getParent());

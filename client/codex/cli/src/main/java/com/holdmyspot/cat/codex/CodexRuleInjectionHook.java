@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Function;
@@ -120,14 +121,17 @@ final class CodexRuleInjectionHook
 					Path parentRulesFile = directory.rulesFileOf(event.path("session_id").asString());
 					SessionRules session = loader.loadSessionForSubagent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID, scope.subagentType(event));
+					session = new SessionRules(session.readingGuidance(),
+						SessionRules.withTimezone(session.rules(), ZoneId.systemDefault()));
 					context = context(directory, session,
 						rulesFile -> SUBAGENT_RULES_FILE_POINTER.formatted(parentRulesFile, rulesFile));
 				}
 				else
 				{
 					SessionDirectory directory = scope.sessionDirectory(projectDir, event, "session_id");
-					context = directory.insertSessionId(loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir,
-						HARNESS_ID, scope.subagentType(event)));
+					String rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir,
+						HARNESS_ID, scope.subagentType(event));
+					context = directory.insertSessionId(SessionRules.withTimezone(rules, ZoneId.systemDefault()));
 				}
 				Map<String, Object> response = new LinkedHashMap<>();
 				response.put("hookSpecificOutput", Map.of("hookEventName", eventName, "additionalContext", context));
