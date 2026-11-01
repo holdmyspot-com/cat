@@ -4,8 +4,8 @@
 
 - Preserve ownership of a started external operation until its recorded terminal result establishes whether the
 	required work completed, failed, or was interrupted.
-- Preserve verified work after an owner interruption by resuming only the claimed work that lacks a recorded terminal
-	result when the workflow retains an executable plan.
+- A resumable workflow publishes current controller ownership before preparation, so status and recovery operations
+	preserve live work and resume only unrecorded work after its owner is confirmed absent.
 - Keep a command's outcome observable when a descendant retains its terminal channel after the command itself has
 	returned.
 - Use a durable-job mechanism only when the execution environment documents a terminal-status contract that can be
@@ -40,14 +40,6 @@ Use a durable-job mechanism only when the execution environment documents submit
 operations. Retain the returned job identifier with the workflow record and use the documented terminal status to mark
 the work completed, failed, or interrupted. Do not simulate a durable job with a background shell process when the
 environment does not guarantee that it outlives the execution session.
-
-When a workflow owner disappears, do not discard a whole recorded run merely because its tool session ended. First use
-the workflow's status command. If it reports a recovery action and a retained plan plus unrecorded claimed work, invoke
-that recovery action so the workflow records only ownerless workers as interrupted, repeats only the unfinished work,
-and keeps every terminal result already recorded. It must refuse to disturb a worker that still has an owner. If the
-status instead reports that it cannot resume, let the same recovery action record an interrupted result. The workflow
-command, rather than a caller's directory scan or reconstructed arguments, must determine which path applies and retain
-the decision it made.
 
 Publish a controller's durable identity, current phase, active workers, and renewable liveness deadline before any
 preparatory action that can affect a recorded workflow result, including building, preflighting, materializing input,

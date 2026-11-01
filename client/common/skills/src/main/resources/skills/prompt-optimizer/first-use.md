@@ -116,3 +116,8 @@ launcher field.
 To stop a campaign that the user asks to stop, run `cancel <campaign>`. To show a campaign's state without advancing
 it, run `status <campaign>` or `status <target>`. For a target that has no resumable campaign, `status <target>`
 reports the target's delivered certification, if any, instead; show its `summary`.
+
+When the session that drove a campaign is gone, including after a context reset, crash or killed session, run
+`status <campaign>` and continue with the workflow step that its `status` selects. Show any notice that directs you
+to resume the campaign's owning session and follow it before advancing the campaign. Never discard the campaign or
+start a new one for the same target merely because the earlier session ended.

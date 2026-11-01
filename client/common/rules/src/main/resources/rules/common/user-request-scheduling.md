@@ -10,8 +10,8 @@ agents: ["main"]
 - Acknowledge each user request once, promptly, and apply related steering without losing unrelated requested work,
 	so that resuming from a compaction neither repeats an acknowledgement nor drops a request.
 - Process unrelated user requests fairly in their arrival order after the active terminal goal completes.
-- On session resumption, determine whether a goal is active from the goal-status interface rather than historical
-	conversation context.
+- On session resumption, determine whether a goal is active from a callable goal-status tool when available, or from
+	the current turn's record and latest user instruction, asking the user when those do not settle its status.
 - Do not substitute the agent's plausible interpretation for a user request whose materially different meanings would
 	require different work or produce different results.
 - When the user asks whether you have questions, settle every material question before acting, so the work does not
@@ -21,9 +21,11 @@ agents: ["main"]
 
 ## Guidance
 
-When resuming a session, query the current thread's goal-status interface before deciding whether any user request
-arrives during active work. Use that status for the decision. Historical conversation, summaries, and continuation
-messages that say a goal is active or paused do not establish its current status.
+When resuming a session, determine the current goal status before deciding whether any user request arrives during
+active work. If the harness provides a callable goal-status tool, such as `get_goal`, query it and use its result.
+Otherwise use the current turn's record and the latest user instruction; if those do not settle the status, ask the
+user before scheduling the request. Historical conversation, summaries, and continuation text do not establish the
+current goal status. A user-only command or a tool that only proposes a goal is not a callable goal-status tool.
 
 Before acknowledging or scheduling a user request, establish its identity and whether it has already been handled from
 the available conversation and continuation record. Context resumption does not constitute a new delivery. When the

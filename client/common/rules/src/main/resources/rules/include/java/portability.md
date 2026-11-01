@@ -2,8 +2,8 @@
 
 ## Design Goals
 
-- Java code, including its tests, behaves the same on every operating system the project deploys to, as shown by
-	passing on each of those systems.
+- Changes that rely on operating-system-dependent behavior are claimed portable only after passing on every deployment
+	target; targets the session cannot test are explicitly reported as unverified for a session with access to verify.
 - Operating-system behavior comes from Java platform or project APIs, not from an external program started only
 	because it happens to provide that behavior on the developer's system.
 
@@ -31,5 +31,8 @@ production seam instead. For example, a test that started its fake through `env 
 that macOS `env` lacks, hung on macOS; sending the interrupt as a request on the harness's input stream removed the
 signal from both the product and the test.
 
-A passing run on one operating system does not establish portability. Verify on each target system, for example
-through the CI platform matrix.
+A passing run on one operating system does not establish portability. When new functionality relies on behavior that
+can differ between operating systems, test it on each target system through the project's CI platform matrix or
+interactively on a remote runner, using a remote-runner-session skill when available. Decide locally from those
+results whether to keep, revise, or remove the feature. When this session cannot reach CI or remote runners, do not
+claim that the change is portable. Report each target system as unverified so that a session with access can verify it.

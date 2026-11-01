@@ -18,10 +18,11 @@ The user now writes: "Also, can you tell me what time zone the server logs use?"
 
 ## Assertions
 
-### current_goal_status_queried
+### current_goal_status_established
 
 - **kind**: effect
 - **description**: Before the response treats the new message as arriving during active work, for example by
 	acknowledging it as a side request or queueing it behind the goal, the retained tool events show a query of the
-	thread's current goal status through the session's goal interface. The summary's description of the goal as active is
-	not used as that status.
+	thread's current goal status when a callable goal-status tool is available. Without one, the agent uses the current
+	turn's record and latest user instruction, asking the user if those do not settle it. A user-only command or a
+	goal-proposal tool does not count as a callable status tool. The summary's description is never used as current status.
