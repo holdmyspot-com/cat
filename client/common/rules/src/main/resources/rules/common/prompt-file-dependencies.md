@@ -13,6 +13,8 @@ paths:
 	index or a routing-only intermediate.
 - Keep the text that a direct rule shares across platforms in one file, so that an edit to it reaches the rule on every
 	platform, while each platform still receives only its own commands.
+- Let shared rules reference values supplied by the current harness, with those values defined before a lazy rule
+	uses them and unknown variable names rejected when rules are loaded.
 
 ## Guidance
 
@@ -65,3 +67,10 @@ When a direct rule's text differs between platforms, write the shared text once 
 differs from a path that names `{platform}`, such as `<!-- cat:include platform/{platform}/shell.md -->`. The loader
 replaces `{platform}` with `windows` on Windows and `posix` elsewhere, so give each fragment a file at the same path
 under both folders.
+
+Use `${CAT_RULE_STRONGEST_IMPLEMENTER}` for the current harness's strongest implementer model and effort. The harness
+supplies the value from its installed agent definition. The loader substitutes references in rendered rule bodies and
+injects a definition into session context for bundled lazy rules, which agents read directly. These are context
+variables, not shell environment variables. A harness supplies each supported variable by name; the loader rejects an
+unknown name or an unavailable value when rendering a rule or defining its session variables. Keep harness-specific
+values in their owning harness integration, rather than writing them in a shared rule.

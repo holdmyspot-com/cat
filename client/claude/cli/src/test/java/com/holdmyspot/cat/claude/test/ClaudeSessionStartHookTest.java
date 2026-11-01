@@ -41,6 +41,48 @@ public final class ClaudeSessionStartHookTest
 		SessionDirectory.SESSION_ID_DIRECTIVE + "/temp`.\n";
 
 	/**
+	 * Verifies delegation variables use the installed strongest implementer and follow changes to its model.
+	 */
+	@Test
+	public void derivesDelegationTierFromAgent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path agent = Files.createDirectories(plugin.resolve("agents/claude")).
+				resolve("optimize-xhigh.md");
+			String definition = """
+				---
+				model: %s
+				effort: %s
+				---
+				Implementer guidance.
+				""";
+			Path lazy = Files.createDirectories(plugin.resolve("rules/include/common")).resolve("delegation.md");
+			Files.writeString(lazy, "An owned finding is not an escalation to ${CAT_RULE_STRONGEST_IMPLEMENTER}.");
+			Path direct = Files.createDirectories(plugin.resolve("rules/common")).resolve("delegation.md");
+			Files.writeString(direct, "<!-- cat:include ../include/common/delegation.md -->");
+			for (String model : List.of("opus", "alternate-model"))
+			{
+				String effort = "high";
+				if (model.equals("alternate-model"))
+					effort = "medium";
+				Files.writeString(agent, definition.formatted(model, effort));
+				HookResult result = invoke(cwdInput(project),
+					Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString()), project);
+				String rules = Files.readString(referencedFile(context(result)));
+
+				requireThat(result.error(), "error").isEmpty();
+				requireThat(rules, "rules").contains("An owned finding is not an escalation to " +
+					model + " at " + effort + " effort.").contains(
+					"`${CAT_RULE_STRONGEST_IMPLEMENTER}` stands for " + model + " at " + effort +
+						" effort.");
+			}
+		}
+	}
+
+	/**
 	 * Verifies Claude receives a short instruction that locates the complete main-agent rules in CAT's temporary root and
 	 * requires reading that whole file rather than a searched subset.
 	 */
@@ -809,7 +851,7 @@ public final class ClaudeSessionStartHookTest
 			{
 				requireThat(rules, "rules").contains("`CAT_PROJECT_ROOT` is `" + project + "`").
 					contains("`CAT_TEMP` is `" + temp + "`").contains("`mktemp -d -p '${CAT_TEMP}' ").
-					doesNotContain("/.cat/sessions/");
+					doesNotContain(project + "/.cat/sessions/");
 			}
 		}
 	}

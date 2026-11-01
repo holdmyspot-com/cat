@@ -2,7 +2,9 @@ package com.holdmyspot.cat.codex;
 
 import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
+import com.holdmyspot.cat.codex.runner.CodexAgentDefinition;
 import com.holdmyspot.cat.common.HookScope;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RelativeRuleReference;
 import com.holdmyspot.cat.common.SessionRules;
@@ -99,7 +101,8 @@ final class CodexRuleInjectionHook
 				Path projectDir = scope.projectDir(event, workingDirectory);
 				Path pluginRoot = scope.pluginRoot();
 				Path userRulesRoot = scope.userRulesRoot();
-				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), Platform.current(),
+					Map.of("STRONGEST_IMPLEMENTER", () -> strongestImplementer(pluginRoot)));
 				String context;
 				String warning = "";
 				if (!eventName.equals("SubagentStart"))
@@ -149,6 +152,19 @@ final class CodexRuleInjectionHook
 		{
 			writeScopeFailure(eventName, output, error, e);
 		}
+	}
+
+	/**
+	 * Reads the strongest implementer's model and effort from this installation's agent definition.
+	 *
+	 * @param pluginRoot the installed plugin directory
+	 * @return the model and effort for portable delegation guidance
+	 * @throws IOException if the agent definition is absent or malformed
+	 */
+	private static String strongestImplementer(Path pluginRoot) throws IOException
+	{
+		CodexAgentDefinition agent = CodexAgentDefinition.load(pluginRoot, "optimize-xhigh");
+		return agent.model() + " at " + agent.effort() + " reasoning";
 	}
 
 	/**

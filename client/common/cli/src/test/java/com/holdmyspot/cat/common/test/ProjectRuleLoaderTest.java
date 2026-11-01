@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -133,6 +134,109 @@ public final class ProjectRuleLoaderTest
 			requireThat(context, "context").isEqualTo("# Role\n\nComplete included guidance. Lazy load `" +
 				plugin.resolve("rules/include/common/lazy.md") + "`.\n\nRoot: " + plugin + ". Lazy load `" +
 				plugin.resolve("rules/include/common/lazy.md") + "`.");
+		}
+	}
+
+	/**
+	 * Verifies included guidance receives the integration's supplied value without regex replacement interpretation.
+	 */
+	@Test
+	public void substitutesRuleVariableInInclude() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			write(plugin, "rules/include/common/role.md", "<!-- cat:include tier.md -->");
+			write(plugin, "rules/include/common/tier.md", "Escalate to ${CAT_RULE_IMPLEMENTER}.");
+			String tier = "model-$1 at high effort";
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), Platform.LINUX_X64,
+				Map.of("IMPLEMENTER", () -> tier));
+
+			requireThat(loader.loadRule(plugin, Path.of("include/common/role.md")), "rule").
+				isEqualTo("Escalate to " + tier + ".");
+		}
+	}
+
+	/**
+	 * Verifies session context defines a variable before an agent reads a lazy rule that uses it.
+	 */
+	@Test
+	public void definesLazyRuleVariable() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/routing.md", "Lazy load `../include/common/tier.md`.");
+			write(plugin, "rules/include/common/tier.md", "Escalate to ${CAT_RULE_IMPLEMENTER}.");
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), Platform.LINUX_X64,
+				Map.of("IMPLEMENTER", () -> "model-a at high effort"));
+
+			String context = loader.loadForMainAgent(plugin, project, "harness-a");
+
+			requireThat(context, "context").contains("# CAT Rule Variables").
+				contains("`${CAT_RULE_IMPLEMENTER}` stands for model-a at high effort.").
+				contains("context variable, not a shell variable");
+		}
+	}
+
+	/**
+	 * Verifies an unknown variable in a lazy rule prevents a configured integration from injecting context.
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*Unknown CAT rule variable UNKNOWN.*")
+	public void rejectsUnknownLazyRuleVariable() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/include/common/tier.md", "Escalate to ${CAT_RULE_UNKNOWN}.");
+			new ProjectRuleLoader(scope.yaml(), Platform.LINUX_X64,
+				Map.of("IMPLEMENTER", () -> "model-a at high effort")).
+				loadForMainAgent(plugin, project, "harness-a");
+		}
+	}
+
+	/**
+	 * Verifies an unused variable does not require its integration's external metadata.
+	 */
+	@Test
+	public void leavesUnusedVariableUnresolved() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/include/common/tier.md", "No escalation guidance.");
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), Platform.LINUX_X64,
+				Map.of("IMPLEMENTER", () ->
+				{
+					throw new IOException("Unused metadata must not be read");
+				}));
+
+			requireThat(loader.loadForMainAgent(plugin, project, "harness-a"), "context").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies an unprovided rule variable cannot reach an explicitly rendered rule.
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*Unknown CAT rule variable UNKNOWN.*")
+	public void rejectsUnknownRuleVariable() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			write(plugin, "rules/include/common/role.md", "Escalate to ${CAT_RULE_UNKNOWN}.");
+
+			new ProjectRuleLoader(scope.yaml()).loadRule(plugin, Path.of("include/common/role.md"));
 		}
 	}
 

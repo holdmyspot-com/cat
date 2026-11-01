@@ -4,7 +4,9 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.claude.runner.ClaudeAgentDefinition;
 import com.holdmyspot.cat.common.HookScope;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RelativeRuleReference;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -88,7 +90,8 @@ final class ClaudeRuleInjectionHook
 			}
 			Path pluginRoot = scope.pluginRoot();
 			Path userRulesRoot = scope.userRulesRoot();
-			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), Platform.current(),
+				Map.of("STRONGEST_IMPLEMENTER", () -> strongestImplementer(pluginRoot)));
 			String rules;
 			if (eventName.equals("SubagentStart"))
 			{
@@ -124,6 +127,19 @@ final class ClaudeRuleInjectionHook
 				// The host owns the output stream and no recovery is possible.
 			}
 		}
+	}
+
+	/**
+	 * Reads the strongest implementer's model and effort from this installation's agent definition.
+	 *
+	 * @param pluginRoot the installed plugin directory
+	 * @return the model and effort for portable delegation guidance
+	 * @throws IOException if the agent definition is absent or malformed
+	 */
+	private static String strongestImplementer(Path pluginRoot) throws IOException
+	{
+		ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(pluginRoot, "optimize-xhigh");
+		return agent.model() + " at " + agent.effort() + " effort";
 	}
 
 	/**

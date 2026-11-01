@@ -141,8 +141,14 @@ public final class ProjectRuleLoader
 	private static final String RULES_DIRECTORY = ".cat/rules";
 	private static final Set<String> FRONTMATTER_KEYS = Set.of("agents", "depends-on", "paths");
 
+	/**
+	 * Matches portable rule variables, leaving directory and session references to their existing resolvers.
+	 */
+	private static final Pattern RULE_VARIABLE = Pattern.compile("\\$\\{CAT_RULE_([^}]+)}");
+
 	private final YAMLMapper yamlMapper;
 	private final Platform platform;
+	private final Map<String, RuleVariableResolver> variables;
 
 	/**
 	 * Creates a loader backed by a YAML mapper that loads the rules for the current platform.
@@ -164,10 +170,36 @@ public final class ProjectRuleLoader
 	 */
 	public ProjectRuleLoader(YAMLMapper yamlMapper, Platform platform)
 	{
+		this(yamlMapper, platform, Map.of());
+	}
+
+	/**
+	 * Creates a loader with integration-supplied portable rule variables.
+	 * <p>
+	 * Rendered rule bodies substitute the values. Session context also defines variables used by bundled lazy rules,
+	 * so an agent reading those files directly can interpret their references. Resolvers run only for used variables.
+	 *
+	 * @param yamlMapper a non-null YAML parser
+	 * @param platform   the platform whose fragments the rules' includes name
+	 * @param variables  variable names without the {@code CAT_RULE_} prefix, mapped to their value suppliers;
+	 *                   names must match {@code [A-Z][A-Z0-9_]*}
+	 * @throws NullPointerException     if any argument, variable name, or resolver is null
+	 * @throws IllegalArgumentException if a variable name is invalid
+	 */
+	public ProjectRuleLoader(YAMLMapper yamlMapper, Platform platform, Map<String, RuleVariableResolver> variables)
+	{
 		requireThat(yamlMapper, "yamlMapper").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(variables, "variables").isNotNull();
+		for (String name : variables.keySet())
+		{
+			requireThat(name, "name").isNotNull();
+			if (!name.matches("[A-Z][A-Z0-9_]*"))
+				throw new IllegalArgumentException("Invalid CAT rule variable name: " + name);
+		}
 		this.yamlMapper = yamlMapper;
 		this.platform = platform;
+		this.variables = Map.copyOf(variables);
 	}
 
 	/**
@@ -332,9 +364,10 @@ public final class ProjectRuleLoader
 			}
 		}
 		if (readFile == null)
-			return new SessionRules("", context(rules, userRulesRoot, projectRoot, audience));
+			return new SessionRules("", context(rules, pluginRoot, userRulesRoot, projectRoot, audience));
 		rules.remove(readFile);
-		return new SessionRules(readFile.context().strip(), context(rules, userRulesRoot, projectRoot, audience));
+		return new SessionRules(readFile.context().strip(),
+			context(rules, pluginRoot, userRulesRoot, projectRoot, audience));
 	}
 
 	/**
@@ -566,7 +599,7 @@ public final class ProjectRuleLoader
 		throws IOException
 	{
 		List<Rule> rules = orderedRules(pluginRoot, userRulesRoot, projectRoot, harness, audience);
-		return context(rules, userRulesRoot, projectRoot, audience);
+		return context(rules, pluginRoot, userRulesRoot, projectRoot, audience);
 	}
 
 	/**
@@ -664,18 +697,23 @@ public final class ProjectRuleLoader
 	 * Renders the context for ordered rules, followed by the lazy-loading routes of the user's and the project's
 	 * included rules.
 	 *
-	 * @param rules the rules in injection order
+	 * @param rules         the rules in injection order
+	 * @param pluginRoot    the plugin directory whose lazy rules may reference portable variables
 	 * @param userRulesRoot the optional non-repository rule directory owned by the current user
-	 * @param projectRoot a non-null directory whose {@code .cat/rules} subdirectories are loaded
-	 * @param audience the rule recipient
+	 * @param projectRoot   a non-null directory whose {@code .cat/rules} subdirectories are loaded
+	 * @param audience      the rule recipient
 	 * @return the generated context
 	 * @throws IOException if declared lazy-rule metadata is invalid or names an unavailable file
 	 */
-	private String context(List<Rule> rules, Path userRulesRoot, Path projectRoot, RuleAudience audience)
+	private String context(List<Rule> rules, Path pluginRoot, Path userRulesRoot, Path projectRoot,
+		RuleAudience audience)
 		throws IOException
 	{
 		Path projectRules = rulesDirectory(projectRoot);
 		List<String> context = new ArrayList<>(rules.stream().map(Rule::context).toList());
+		String definitions = lazyVariableDefinitions(pluginRoot);
+		if (!definitions.isEmpty())
+			context.add(definitions);
 		if (userRulesRoot != null)
 		{
 			String userLazyDependencies = lazyDependencies(userRulesRoot, userRulesRoot, RuleRoot.USER, audience);
@@ -686,6 +724,71 @@ public final class ProjectRuleLoader
 		if (!lazyDependencies.isBlank())
 			context.add(lazyDependencies);
 		return String.join("\n\n---\n", context);
+	}
+
+	/**
+	 * Defines variables that a bundled lazy rule will require when read directly.
+	 *
+	 * @param pluginRoot the plugin directory
+	 * @return the session definitions, or an empty string when none are needed or no integration supplies variables
+	 * @throws IOException if a lazy rule is invalid or a referenced variable is unknown or unavailable
+	 */
+	private String lazyVariableDefinitions(Path pluginRoot) throws IOException
+	{
+		Path include = pluginRoot.resolve("rules/include");
+		if (variables.isEmpty() || !Files.isDirectory(include, NOFOLLOW_LINKS))
+			return "";
+		Map<String, String> resolved = new LinkedHashMap<>();
+		try (Stream<Path> files = Files.walk(include))
+		{
+			for (Path file : files.filter(path -> path.getFileName().toString().endsWith(".md")).sorted().toList())
+			{
+				String body = SourceOnlyContent.remove(readRule(pluginRoot, file, RuleRoot.PLUGIN), file.toString());
+				resolveVariables(body, file, resolved);
+			}
+		}
+		if (resolved.isEmpty())
+			return "";
+		StringJoiner definitions = new StringJoiner("\n\n", "# CAT Rule Variables\n\n", "");
+		for (Map.Entry<String, String> entry : resolved.entrySet())
+		{
+			definitions.add("`${CAT_RULE_" + entry.getKey() + "}` stands for " + entry.getValue() +
+				". Use this value wherever a rule references it; it is a context variable, not a shell variable.");
+		}
+		return definitions.toString();
+	}
+
+	/**
+	 * Substitutes integration-supplied values and records each value for subsequent references.
+	 *
+	 * @param content  the rule body
+	 * @param file     the rule file named in a diagnostic
+	 * @param resolved values already resolved during this rendering
+	 * @return the body with every portable rule variable substituted
+	 * @throws IOException if a variable is unknown or its resolver cannot supply a non-blank value
+	 */
+	private String resolveVariables(String content, Path file, Map<String, String> resolved) throws IOException
+	{
+		Matcher matcher = RULE_VARIABLE.matcher(content);
+		StringBuffer result = new StringBuffer(content.length());
+		while (matcher.find())
+		{
+			String name = matcher.group(1);
+			String value = resolved.get(name);
+			if (value == null)
+			{
+				RuleVariableResolver resolver = variables.get(name);
+				if (resolver == null)
+					throw new IOException("Unknown CAT rule variable " + name + " in " + file);
+				value = resolver.resolve();
+				if (value == null || value.isBlank())
+					throw new IOException("CAT rule variable " + name + " has no value in " + file);
+				resolved.put(name, value);
+			}
+			matcher.appendReplacement(result, Matcher.quoteReplacement(value));
+		}
+		matcher.appendTail(result);
+		return result.toString();
 	}
 
 	/**
@@ -930,7 +1033,7 @@ public final class ProjectRuleLoader
 				ShellQuoting::powerShell);
 			injected = replaceDirectory(injected, PLUGIN_ROOT_DIRECTIVE_PATH, pluginRoot);
 		}
-		return injected;
+		return resolveVariables(injected, file, new LinkedHashMap<>());
 	}
 
 	/**

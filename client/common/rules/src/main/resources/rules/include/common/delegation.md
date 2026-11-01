@@ -184,11 +184,12 @@ already mechanical eligible cluster for an unrelated review, and do not launch a
 its accepted receipt.
 
 Make quality closure part of the producer cluster, not a later repair queue. Before a parent accepts or hands off a
-cluster, run its compile and exact-path Checkstyle/PMD preflight as soon as its owned paths exist, then run its focused
-behavior gate. An owned compiler or static-analysis finding with a plan-determined repair remains with that same
-executor and allowlist; it is not a Sol-high escalation or a new repair agent. Record known unrelated module-wide
-quality failures as an environmental baseline and use the exact owned-path gates while developing; run broad quality
-gates only at the plan's declared integration boundaries.
+cluster, run the checks the project configures for its owned paths, when it has any. Run configured compilation and
+static-analysis checks as soon as those paths exist, then any configured focused behavior gate. An owned compiler or
+static-analysis finding with a plan-determined repair remains with that same executor and allowlist; it is not an
+escalation to ${CAT_RULE_STRONGEST_IMPLEMENTER} or a new repair agent. Record known unrelated module-wide quality
+failures as an environmental baseline and use the exact owned-path gates while developing; run broad quality gates
+only at the plan's declared integration boundaries.
 
 A delegate never integrates its own result. The parent or an authoritative integration operation first rejects changed
 paths outside the allowlist, then integrates accepted results one at a time, runs the combined affected checks, and then
