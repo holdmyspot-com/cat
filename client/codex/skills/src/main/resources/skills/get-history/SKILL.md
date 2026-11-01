@@ -17,6 +17,14 @@ Give the launcher one of these argument lists, where `<thread-id>` is the thread
 <thread-id> search keyword --context 2
 <thread-id> errors
 <thread-id> file-history config.json
+<thread-id> request-status
 ```
+
+`request-status` reads a user message's text, or its start, on standard input, such as from a file that holds it, and
+reports whether a later turn answered it: `compacted_at=` gives the time of the thread's latest compaction, the
+`before_compaction:` line describes the last matching message sent before it, which the compaction may have kept, and
+each `after_compaction:` line describes a matching message sent after it, which is a new request. Each description
+gives when the message was sent and either when it was answered, with the answer's opening text, or `no answer`, and
+whether its turn completed, was aborted, or has not finished.
 
 <!-- cat:include ../shared-first-use-route.md -->

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -44,7 +45,7 @@ public final class CodexGetHistoryTest
 
 			String result = CodexGetHistorySecrets.getCodexGetHistoryAccess().
 				execute(scope, Map.of("CODEX_HOME", codexHome.toString()),
-				new String[]{threadId, "analyze"});
+				new String[]{threadId, "analyze"}, InputStream.nullInputStream());
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
 				contains("records=1");
@@ -70,7 +71,7 @@ public final class CodexGetHistoryTest
 
 			String result = CodexGetHistorySecrets.getCodexGetHistoryAccess().
 				execute(scope, Map.of(Platform.current().homeVariable(),
-				home.toString()), new String[]{threadId, "analyze"});
+				home.toString()), new String[]{threadId, "analyze"}, InputStream.nullInputStream());
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
 				contains("records=1");
@@ -88,7 +89,8 @@ public final class CodexGetHistoryTest
 		try (TestJvmScope scope = new TestJvmScope())
 		{
 			CodexGetHistorySecrets.getCodexGetHistoryAccess().
-				execute(scope, Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"});
+				execute(scope, Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"},
+				InputStream.nullInputStream());
 		}
 	}
 
@@ -102,7 +104,8 @@ public final class CodexGetHistoryTest
 		try (TestJvmScope scope = new TestJvmScope())
 		{
 			CodexGetHistorySecrets.getCodexGetHistoryAccess().
-				execute(scope, Map.of("CODEX_HOME", "/unused"), new String[]{"not-a-uuid", "analyze"});
+				execute(scope, Map.of("CODEX_HOME", "/unused"), new String[]{"not-a-uuid", "analyze"},
+				InputStream.nullInputStream());
 		}
 	}
 }

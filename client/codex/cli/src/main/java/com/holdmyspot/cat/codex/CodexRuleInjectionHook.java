@@ -14,6 +14,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -63,7 +64,10 @@ final class CodexRuleInjectionHook
 	 * session directories of sessions that their harness no longer keeps. Its response's {@code systemMessage}, which
 	 * Codex shows the user as a warning rather than giving it to the agent, warns about each project or user rule
 	 * reference that names a file relative to the rule's own directory and tells the user how to fix it, and the
-	 * session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such reference.
+	 * session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such reference. When the SessionStart
+	 * input's {@code source} is {@code compact}, the context ends with a section that lists, for each user message that
+	 * the compaction kept, when it was sent and whether a later turn answered it, as the session log that the input's
+	 * {@code transcript_path} names records it; a missing or unreadable log omits the section.
 	 * <p>
 	 * A Codex subagent is a thread whose shells receive its own thread ID, the input's {@code agent_id}, so its rules
 	 * file lies in the CAT session directory of that ID rather than its parent's, and its pointer tells it not to read
@@ -105,7 +109,8 @@ final class CodexRuleInjectionHook
 					directory.sweep(Instant.now(), error);
 					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID);
-					context = context(directory, session, RULES_FILE_POINTER::formatted);
+					context = context(directory, session, RULES_FILE_POINTER::formatted) +
+						keptMessagesSection(json, event, error);
 					warning = RelativeRuleReference.sessionWarning(userRulesRoot, projectDir,
 						directory.relativeRuleReferencesFile(), error);
 				}
@@ -161,6 +166,39 @@ final class CodexRuleInjectionHook
 		Path rulesFile = directory.rulesFile();
 		Files.writeString(rulesFile, directory.insertSessionId(session.rules()), StandardCharsets.UTF_8);
 		return directory.insertSessionId(session.readingGuidance()) + "\n\n# CAT Rules\n\n" + pointer.apply(rulesFile);
+	}
+
+	/**
+	 * Returns the context section that lists the outcomes of the user messages that a compaction kept, when Codex
+	 * starts the session again after compacting it.
+	 *
+	 * @param json the invocation-owned JSON mapper
+	 * @param event the SessionStart input
+	 * @param error diagnostics for the host
+	 * @return the section after a blank line, or an empty string if the input's {@code source} is not
+	 *   {@code compact}, the input names no session log, or the log cannot be read
+	 */
+	private static String keptMessagesSection(JsonMapper json, JsonNode event, PrintStream error)
+	{
+		// WORKAROUND: https://github.com/openai/codex/issues/42611
+		if (!event.path("source").asString("").equals("compact"))
+			return "";
+		String transcript = event.path("transcript_path").asString("");
+		if (transcript.isBlank())
+			return "";
+		try
+		{
+			String section = RolloutRequestStatus.read(json, Path.of(transcript)).keptSection();
+			if (section.isEmpty())
+				return "";
+			return "\n\n" + section;
+		}
+		catch (IOException | InvalidPathException e)
+		{
+			// The kept messages' outcomes are an aid; the rules still reach the agent without them
+			error.println("CAT SessionStart: Unable to read the session log " + transcript + ": " + e.getMessage());
+			return "";
+		}
 	}
 
 	/**
