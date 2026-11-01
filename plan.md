@@ -48,9 +48,13 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	`2333940a8d` (a values session may report its test values exhausted), `ed84d09ab7`, `3900bada62`, `8c752fe410`
 	(no `sandbox_mode` in Codex agent definitions, which Codex ignores for subagents) and `e3bf85c763`; also `b53a5e1df5`
 	(Thread Safety notes in the rule's form) and `b64cec6032` (member names omit their enclosing type's words). Clean
-	build 3,546 tests, 0 failures, 17 skipped. Open: the topic skill's full entry-point vocabulary (the image holds only
-	its own harness's adapter; packaging choice is the user's), the read-only `run-part` fallback, the form of Thread
-	Safety notes that state conditions or file and process guarantees, all awaiting user rulings.
+	build 3,546 tests, 0 failures, 17 skipped. `ed8056c9c7`: when `run-part` cannot save the output, as in a read-only
+	sandbox, it runs the command exactly as without `run-part`, with each stream passed through, no notice and the
+	command's exit status (user ruling, 2026-11-01: "have run-part behave exactly as the nested command would if it
+	wasn't run through run-part"); clean build 3,549 tests, 0 failures, 18 skipped. In progress: Thread Safety notes that
+	state conditions, and a separate Process Safety note for file and process guarantees (user ruling, 2026-11-01: option
+	B). Open: the topic skill's full entry-point vocabulary (the image holds only its own harness's adapter); the user
+	asked why the inventory needs the other harness's files, and the current shared reader of both formats is proposed.
 - **Dropped:** the 2026-10-24 handoff's check whether `StatusReport.of` reports a completed certified campaign as
 	certified despite detected dependence. It traced to the accessed-path detector, which `706416b739` removed when the
 	user chose to rule dependence out by trial isolation (G4 row); no production code can report detected dependence.
