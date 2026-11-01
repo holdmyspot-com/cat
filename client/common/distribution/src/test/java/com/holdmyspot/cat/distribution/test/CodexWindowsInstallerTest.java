@@ -404,10 +404,11 @@ public final class CodexWindowsInstallerTest
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
 			requireThat(result.output(), "output").
-				contains("CAT changed nothing because it cannot write " + root + ".").
+				contains("CAT changed nothing because it cannot write " + root + ".");
+			requireThat(lines(result.output()), "outputLines").
 				contains("  $env:CODEX_HOME = " + literal(codexHome) + "; & ([scriptblock]::Create((irm " +
 					"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
-					"resources/install/bootstrap-codex.ps1))) -Uninstall" + System.lineSeparator());
+					"resources/install/bootstrap-codex.ps1))) -Uninstall");
 			requireThat(fixture.commands(), "commands").isEmpty();
 			requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
 		}
@@ -514,10 +515,11 @@ public final class CodexWindowsInstallerTest
 
 				requireThat(result.status(), "status").withContext(result.output(), "output").isNotEqualTo(0);
 				requireThat(result.output(), "output").
-					contains("CAT changed nothing because it cannot write " + fullPath(config) + ".").
+					contains("CAT changed nothing because it cannot write " + fullPath(config) + ".");
+				requireThat(lines(result.output()), "outputLines").
 					contains("  $env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
 						"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
-						"resources/install/bootstrap-codex.ps1))) -Uninstall" + System.lineSeparator());
+						"resources/install/bootstrap-codex.ps1))) -Uninstall");
 				requireAgentToldToHandCommandToUser(result.output());
 				requireThat(fixture.commands(), "commands").isEmpty();
 				requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
@@ -668,6 +670,17 @@ public final class CodexWindowsInstallerTest
 			contains("If you are an agent that ran the command that printed this, show the user the command above " +
 				"exactly as printed, ask them to run it outside the sandbox, and end your turn there.").
 			doesNotContain("prefixed with");
+	}
+
+	/**
+	 * Splits text into lines, whatever line terminator each uses.
+	 *
+	 * @param text the text to split
+	 * @return the lines, without their terminators
+	 */
+	private static List<String> lines(String text)
+	{
+		return List.of(text.split("\\R", -1));
 	}
 
 	/**
