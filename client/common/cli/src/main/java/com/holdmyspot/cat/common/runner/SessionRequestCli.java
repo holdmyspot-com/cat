@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -52,8 +53,10 @@ public final class SessionRequestCli
 	}
 
 	/**
-	 * Writes a request atomically and waits, or waits again for an existing request. On timeout prints the id and the
-	 * exact follow-up command. Response paths are printed even for unsuccessful requested sessions.
+	 * Writes a request atomically and waits, or waits again for an existing request. A response that exists but cannot
+	 * be read or parsed yet is checked again until the wait bound. On timeout prints the id and the exact follow-up
+	 * command, followed by the response path and the failure if the last check could not read it. Response paths are
+	 * printed even for unsuccessful requested sessions.
 	 *
 	 * @param args     submission options or await options
 	 * @param requests the owning run's requests directory
@@ -62,7 +65,7 @@ public final class SessionRequestCli
 	 * @param output   receives response paths or timeout instructions
 	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
-	 * @throws IOException              if request or response I/O fails
+	 * @throws IOException              if request I/O fails or a pause is cut short
 	 */
 	public static int execute(String[] args, Path requests, Clock clock, Pause pause, PrintWriter output)
 		throws IOException
@@ -71,8 +74,10 @@ public final class SessionRequestCli
 	}
 
 	/**
-	 * Writes a request atomically and waits, or waits again for an existing request. On timeout prints the id and the
-	 * exact follow-up command. Response paths are printed even for unsuccessful requested sessions.
+	 * Writes a request atomically and waits, or waits again for an existing request. A response that exists but cannot
+	 * be read or parsed yet is checked again until the wait bound. On timeout prints the id and the exact follow-up
+	 * command, followed by the response path and the failure if the last check could not read it. Response paths are
+	 * printed even for unsuccessful requested sessions.
 	 *
 	 * @param args       submission options or await options
 	 * @param requests   the owning run's requests directory
@@ -84,7 +89,8 @@ public final class SessionRequestCli
 	 * @param output     receives response paths or timeout instructions
 	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
-	 * @throws IOException              if request or response I/O fails, or the request exceeds {@code limits}
+	 * @throws IOException              if request I/O fails, a pause is cut short, or the request exceeds
+	 *                                  {@code limits}
 	 */
 	public static int execute(String[] args, Path requests, Path nullDevice, RequestLimits limits, Clock clock,
 		Pause pause, PrintWriter output) throws IOException
@@ -163,18 +169,32 @@ public final class SessionRequestCli
 		Instant deadline = clock.instant().plus(wait);
 		while (true)
 		{
-			if (Files.isRegularFile(response))
+			String readFailure = "";
+			if (Files.exists(response))
 			{
-				JsonNode result = json.readTree(response.toFile());
-				output.println(response);
-				if (result.path("status").asString().equals("completed"))
-					return 0;
-				return 1;
+				try
+				{
+					JsonNode result = json.readTree(response.toFile());
+					output.println(response);
+					if (result.path("status").asString().equals("completed"))
+						return 0;
+					return 1;
+				}
+				catch (JacksonException e)
+				{
+					// Right after the broker moves the response into place, Windows can refuse to open it while another
+					// process, such as an indexer or antivirus, still holds it, and some file systems can briefly show an
+					// incomplete document. Failing here would end the wait that the session asked for, so both kinds of
+					// failure are retried; one that lasts until the deadline is reported with the timeout.
+					readFailure = e.getMessage().replaceAll("\\s*\\R\\s*", " ");
+				}
 			}
 			if (!clock.instant().isBefore(deadline))
 			{
 				output.println("id=" + id);
 				output.println("\"$CAT_REQUEST_SESSION\" --await " + id);
+				if (!readFailure.isEmpty())
+					output.println("unreadable=" + response + ": " + readFailure);
 				return 3;
 			}
 			pause.pause();

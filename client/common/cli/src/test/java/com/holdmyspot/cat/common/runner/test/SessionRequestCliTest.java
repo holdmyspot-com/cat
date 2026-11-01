@@ -334,6 +334,86 @@ public final class SessionRequestCliTest
 	}
 
 	/**
+	 * Verifies that awaiting a request returns its response when the response file exists but cannot be read at the
+	 * first check and can be read at a later check before the deadline.
+	 * <p>
+	 * On Windows the broker's freshly moved {@code response.json} can be held open briefly by another process, so the
+	 * awaiting session's read fails; some file systems can also briefly show an incomplete document. In the
+	 * {@code locked} case a directory at the response path stands for the held file: it exists, and reading it fails.
+	 * In the {@code incomplete} case the file holds a truncated document. Between checks, the pause replaces either one
+	 * with the broker's response, as the other process releasing the file would.
+	 *
+	 * @param kind the way the first read fails
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "unreadableResponses")
+	public void retriesUnreadableResponse(String kind) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "await-"));
+				Path requests = Files.createDirectory(root.resolve("requests"));
+				Path response = root.resolve("responses/first/response.json");
+				if (kind.equals("locked"))
+					Files.createDirectories(response);
+				else
+					Files.writeString(Files.createDirectories(response.getParent()).resolve("response.json"), "{\"status\":");
+				StringWriter output = new StringWriter();
+				int status = SessionRequestCli.execute(new String[]{"--await", "first"}, requests,
+					new ManualClock(Instant.EPOCH), () ->
+					{
+						Files.delete(response);
+						Files.writeString(response, "{\"status\":\"completed\"}");
+					}, new PrintWriter(output));
+				requireThat(status, "status").isEqualTo(0);
+				requireThat(output.toString().strip(), "output").isEqualTo(response.toString());
+			}
+		}
+	}
+
+	/**
+	 * Returns the ways that the first read of an existing response can fail.
+	 *
+	 * @return {@code locked} for a file that another process holds, {@code incomplete} for a truncated document
+	 */
+	@DataProvider
+	public Object[][] unreadableResponses()
+	{
+		return new Object[][]{{"locked"}, {"incomplete"}};
+	}
+
+	/**
+	 * Verifies that awaiting a request whose response file still cannot be read at the deadline times out with the
+	 * follow-up command and names the file that could not be read.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void reportsUnreadableResponseAtDeadline() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "await-"));
+				Path requests = Files.createDirectory(root.resolve("requests"));
+				// A directory at the response path exists, and reading it fails, like a file that another process keeps
+				// open.
+				Path response = Files.createDirectories(root.resolve("responses/first/response.json"));
+				ManualClock time = new ManualClock(Instant.EPOCH);
+				StringWriter output = new StringWriter();
+				int status = SessionRequestCli.execute(new String[]{"--await", "first"}, requests, time,
+					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(output));
+				requireThat(status, "status").isEqualTo(3);
+				requireThat(output.toString(), "output").contains("id=first").
+					contains("\"$CAT_REQUEST_SESSION\" --await first").contains("unreadable=" + response);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that awaiting an existing request rejects submission options.
 	 *
 	 * @throws IOException if fixture I/O fails
