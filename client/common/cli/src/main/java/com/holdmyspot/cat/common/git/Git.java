@@ -60,7 +60,7 @@ public final class Git
 	 * @return Git's standard-output lines
 	 * @throws IOException if Git cannot run or rejects the request
 	 */
-	public List<String> lines(Map<String, String> environment, String... arguments) throws IOException
+	private List<String> lines(Map<String, String> environment, String... arguments) throws IOException
 	{
 		return new String(bytes(environment, arguments), UTF_8).lines().toList();
 	}
@@ -106,8 +106,7 @@ public final class Git
 			if (output.exceededLimit())
 			{
 				throw new IOException("Git command output exceeds the maximum supported size of " +
-					MAXIMUM_RETAINED_OUTPUT_BYTES +
-					" bytes; reduce the selected paths or split the replay work");
+					MAXIMUM_RETAINED_OUTPUT_BYTES + " bytes; reduce the selected paths");
 			}
 			waitForSuccess(process, arguments, new String(output.bytes(), UTF_8));
 			return output.bytes();
@@ -132,43 +131,6 @@ public final class Git
 			// Drain the output so that Git cannot block on a full pipe
 			readBoundedOutput(process.getInputStream());
 			return waitFor(process);
-		}
-	}
-
-	/**
-	 * Returns Git's three-way merge of an earlier file, the source's parent version, and the source version.
-	 *
-	 * @param earlierFile the earlier file version that receives the source change
-	 * @param parentFile the source commit's parent version
-	 * @param sourceFile the source commit's version
-	 * @return the merged file, including conflict markers when reviewer action is needed
-	 * @throws IOException if Git cannot run or cannot produce a merge candidate
-	 */
-	public byte[] mergeFile(Path earlierFile, Path parentFile, Path sourceFile) throws IOException
-	{
-		String[] arguments = {"merge-file", "-p", earlierFile.toString(), parentFile.toString(), sourceFile.toString()};
-		try (Process process = start(Map.of(), arguments))
-		{
-			ProcessOutput output = readBoundedOutput(process.getInputStream());
-			if (output.exceededLimit())
-			{
-				throw new IOException("Git merge candidate exceeds the maximum supported size of " +
-					MAXIMUM_RETAINED_OUTPUT_BYTES +
-					" bytes; prepare a smaller file-level change");
-			}
-			try
-			{
-				if (process.waitFor() > 127)
-				{
-					throw new IOException("Git could not prepare a merge candidate: " + new String(output.bytes(), UTF_8));
-				}
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-				throw new IOException("Interrupted while preparing a merge candidate", e);
-			}
-			return output.bytes();
 		}
 	}
 

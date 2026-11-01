@@ -266,7 +266,7 @@ public final class DistributionMain
 				"skills/get-history/SKILL.md",
 				"skills/git-amend/SKILL.md", "skills/git-commit/SKILL.md", "skills/git-merge-linear/SKILL.md",
 				"skills/git-rebase/SKILL.md", "skills/git-rewrite-history/SKILL.md", "skills/git-squash/SKILL.md",
-				"skills/git-commit-per-topic/SKILL.md", "skills/help/SKILL.md")),
+				"skills/help/SKILL.md")),
 			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
 			codexAgentLaunchers(), legalMaterials, List.of(commonInstallers, codexInstallers),
 			runtimeDirectory.resolve("codex"));
@@ -503,8 +503,8 @@ public final class DistributionMain
 	 */
 	static Set<String> claudeAgentLaunchers()
 	{
-		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "claude-artifact",
-			"claude-runner", "codex-artifact", "codex-runner", "wait-until", "request-session");
+		return Set.of("get-history", "plugin-info", "prompt-optimizer", "claude-artifact", "claude-runner",
+			"codex-artifact", "codex-runner", "wait-until", "request-session");
 	}
 
 	/**
@@ -556,8 +556,8 @@ public final class DistributionMain
 	 */
 	static Set<String> codexAgentLaunchers()
 	{
-		return Set.of("git-topic-replay", "get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part",
-			"claude-artifact", "claude-runner", "codex-artifact", "codex-runner", "wait-until", "request-session");
+		return Set.of("get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part", "claude-artifact",
+			"claude-runner", "codex-artifact", "codex-runner", "wait-until", "request-session");
 	}
 
 	/**
@@ -568,8 +568,6 @@ public final class DistributionMain
 	private static List<JlinkImageBuilder.Launcher> sharedLaunchers()
 	{
 		return List.of(
-			new JlinkImageBuilder.Launcher("git-topic-replay", "com.holdmyspot.cat.common.cli",
-				"com.holdmyspot.cat.common.git.replay.GitTopicReplayEditor"),
 			new JlinkImageBuilder.Launcher("session-analyzer", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.history.SessionHistory"));
 	}

@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.fakes.test.TestHookScope;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.git.replay.GitTopicReplayEditor;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -288,57 +287,6 @@ public final class SessionDirectoryTest
 				}
 			}
 			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies the Git replay editor refuses to run without either session variable, naming both, and creates no CAT
-	 * session directory.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void replayEditorRefusesWithoutSession() throws IOException
-	{
-		// Requirement: R-W13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			Files.createDirectories(project.resolve(".cat"));
-			try
-			{
-				GitTopicReplayEditor.temporaryRoot(project, Map.of("HOME", project.toString()),
-					List.of(HARNESS_A, HARNESS_B), Yielding.waiting());
-				throw new AssertionError("The editor ran without a session variable");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains(HARNESS_A.sessionVariable()).
-					contains(HARNESS_B.sessionVariable());
-			}
-			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies the Git replay editor keeps its state in the temporary directory of the session that a session variable
-	 * names.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void replayEditorUsesSessionTemp() throws IOException
-	{
-		// Requirement: R-W13
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			Files.createDirectories(project.resolve(".cat"));
-			Path temporaryRoot = GitTopicReplayEditor.temporaryRoot(project,
-				Map.of(HARNESS_B.sessionVariable(), SESSION_ID, "HOME", project.toString(), "USERPROFILE",
-					project.toString()), List.of(HARNESS_A, HARNESS_B), Yielding.waiting());
-			requireThat(temporaryRoot, "temporaryRoot").isEqualTo(project.toAbsolutePath().normalize().
-				resolve(".cat/sessions/" + SESSION_ID + "/temp"));
 		}
 	}
 

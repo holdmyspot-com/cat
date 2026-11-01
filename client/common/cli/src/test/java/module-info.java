@@ -11,7 +11,6 @@ module com.holdmyspot.cat.common.cli.test
 
 	exports com.holdmyspot.cat.common.fakes.test to org.testng, com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.distribution.test;
-	exports com.holdmyspot.cat.common.git.replay.test to org.testng;
 	exports com.holdmyspot.cat.common.git.test to org.testng;
 	exports com.holdmyspot.cat.common.history.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.adapter.fakes.test to com.holdmyspot.cat.claude.cli.test,
@@ -43,6 +42,4 @@ module com.holdmyspot.cat.common.cli.test
 		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.runner.test to org.testng;
 	exports com.holdmyspot.cat.common.test to org.testng;
-
-	opens com.holdmyspot.cat.common.git.replay.test to tools.jackson.databind;
 }
