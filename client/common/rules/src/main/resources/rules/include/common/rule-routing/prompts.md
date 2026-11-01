@@ -13,5 +13,8 @@ declared goals or contracts, lazy load `../contract-design.md`.
 When adding, amending, moving, splitting, merging, or otherwise reorganizing a rule, prompt, skill, command, or
 workflow, lazy load `../rule-organization.md`.
 
+When writing or changing a prompt instruction that requires an outcome or behavior, or removing or narrowing a
+mechanism that such an instruction relies on, lazy load `../prompt-prerequisites.md`.
+
 When a project-owned CLI, API, validator, generator, or other callable tool must enforce a workflow requirement, lazy
 load `../rules-own-tool-requirements.md`.
