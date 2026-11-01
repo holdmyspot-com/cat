@@ -8,9 +8,9 @@
 	uncertainty, with stated reasons that include coordination and rework without claiming an unmeasured speed advantage.
 - Keep the executable plan current when evidence changes a design premise or task dependency, preserving valid work and
 	exposing what must be decided before dependent implementation can begin.
-- When agents choose the next work, while planning or executing a plan, let each investigation or supporting artifact
-	resolve a named decision that changes implementation, and let a runnable connected acceptance check precede further
-	isolated verification.
+- When agents choose the next work, while planning or executing a plan, keep each prerequisite only while it traces to
+	an acceptance condition or a named decision, let each investigation or supporting artifact resolve a named decision
+	that changes implementation, and let a runnable connected acceptance check precede further isolated verification.
 - Cover consequential user-experience transitions and actor goals without requiring redundant documents or treating a
 	coverage representation as a mandatory assignment boundary.
 
@@ -105,10 +105,12 @@ change a dependency, verification boundary, ownership boundary, or exposure to r
 These units can coexist in one plan. When a connected acceptance check becomes runnable, schedule it before further
 isolated verification unless that verification addresses a named prerequisite or an unresolved failure. A passing
 intermediate check alone does not justify extending the investigation or verification that produced it. Distinguish
-required prerequisites from a preferred order. Place a decision's evidence-producing work before implementation that
-relies on its answer, at the earliest boundary the governing design checks permit. Keep independent ready work eligible
-while another branch awaits evidence. Do not assume that a named component, source directory, or phase is an
-independently runnable assignment.
+required prerequisites from a preferred order. A prerequisite is required only while it traces to an acceptance
+condition or a named decision: when choosing the next work, re-check each prerequisite added while planning or executing
+against that trace, and drop one that no longer traces, recording why. Place a decision's evidence-producing work before
+implementation that relies on its answer, at the earliest boundary the governing design checks permit. Keep independent
+ready work eligible while another branch awaits evidence. Do not assume that a named component, source directory, or
+phase is an independently runnable assignment.
 
 ## Set Detail, Ownership, and Verification
 
