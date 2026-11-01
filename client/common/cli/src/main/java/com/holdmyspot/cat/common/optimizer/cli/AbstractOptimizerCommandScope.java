@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
+import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
@@ -94,6 +95,24 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 
 	@Override
 	public abstract SessionPort sessions() throws IOException;
+
+	/**
+	 * Returns the probe that checks symbolic-link creation in this command's CAT temporary directory.
+	 *
+	 * @return the symbolic-link probe
+	 * @throws IOException if the host session or its directory cannot be resolved
+	 */
+	protected SymbolicLinkProbe symbolicLinkProbe() throws IOException
+	{
+		try
+		{
+			return SymbolicLinkProbe.inDirectory(sessionDirectory().temp());
+		}
+		catch (CommandRefusedException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
+	}
 
 	@Override
 	public abstract ProfileInventory profiles();

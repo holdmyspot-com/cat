@@ -44,6 +44,10 @@ public final class InMemoryForks implements Forks
 {
 	private final Path root;
 	private final Set<Path> tracked;
+	/**
+	 * The project-relative paths that the supplied Git index records as symbolic links, even in a broken checkout.
+	 */
+	private Set<Path> trackedLinks = Set.of();
 	private final Map<Path, FileInventory> inventories = new HashMap<>();
 	/**
 	 * The immutable bytes captured while scanning files, indexed by their inventory content hashes.
@@ -160,12 +164,22 @@ public final class InMemoryForks implements Forks
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The tracked files hold no symbolic link.
+	 * The link paths are the ones supplied by the test as Git index entries.
 	 */
 	@Override
 	public Set<Path> trackedLinks(Path base)
 	{
-		return Set.of();
+		return trackedLinks;
+	}
+
+	/**
+	 * Supplies the symbolic-link paths reported by the Git index independently of the checkout's entries.
+	 *
+	 * @param trackedLinks the project-relative symbolic-link paths
+	 */
+	public void supplyTrackedLinks(Set<Path> trackedLinks)
+	{
+		this.trackedLinks = Set.copyOf(trackedLinks);
 	}
 
 	/**

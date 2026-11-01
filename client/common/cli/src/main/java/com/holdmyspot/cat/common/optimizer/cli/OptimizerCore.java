@@ -205,10 +205,23 @@ public final class OptimizerCore implements Core
 	{
 		Header header = campaign.header();
 		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
-			scope.profiles().roleProfile()), RegressionScenarios.read(scope.json(), root, scope.home(),
-			scope.forks().trackedLinks(root)),
+			scope.profiles().roleProfile()), regressionScenarios(root),
 			header.target(), header.goal(), scope.sessions().reportsExitStatus(), campaign.plugins().orElseThrow(),
 			scope.launcher(), scope.profiles()::toolOutputBytes);
+	}
+
+	/**
+	 * Reads recorded scenarios and refuses broken workspace links before campaign changes or model launch.
+	 *
+	 * @param root the original project root
+	 * @return the recorded scenarios
+	 * @throws IOException if discovery or the symbolic-link probe fails, or a workspace link needs checkout repair
+	 */
+	private RegressionScenarios regressionScenarios(Path root) throws IOException
+	{
+		RegressionScenarios scenarios = RegressionScenarios.read(scope.json(), root, scope.home());
+		scenarios.requireLinkCheckouts(scope.symbolicLinkProbe(), scope.forks().trackedLinks(root));
+		return scenarios;
 	}
 
 	/**
@@ -300,6 +313,7 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException("A campaign optimizes one prompt file, so the target must be a file, but " +
 				absolute + " is not. Run start with the prompt file to optimize.");
 		}
+		regressionScenarios(root);
 		CampaignStore store = scope.store();
 		Registry.Opening opening = Registry.open(headers(), scope.sessionDirectory().sessionId(), root, absolute,
 			scope.harness());
@@ -386,6 +400,13 @@ public final class OptimizerCore implements Core
 		try
 		{
 			result = body.run(notices);
+		}
+		catch (RegressionScenarios.CheckoutRepairException e)
+		{
+			String message = e.getMessage();
+			if (!notices.isEmpty())
+				message += "\n" + String.join("\n", notices);
+			throw new CommandRefusedException(message, e);
 		}
 		catch (CommandRefusedException e)
 		{
@@ -1731,6 +1752,7 @@ public final class OptimizerCore implements Core
 		Path root = scope.projectRoot();
 		CampaignStore store = scope.store();
 		Campaign loaded = require(store, campaign, true);
+		regressionScenarios(root);
 		ForkView fork = openFork(root, loaded);
 		DerivedProposal previous = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
 			"Campaign " + campaign + " has no proposal to revise. Run `start` again to derive one."));

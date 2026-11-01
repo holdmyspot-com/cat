@@ -1694,6 +1694,101 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Supplies the commands that can start a contract author and both results of the symbolic-link permission probe.
+	 *
+	 * @return command paths crossed with link-creation support
+	 */
+	@DataProvider
+	public static Object[][] brokenCheckoutCommands()
+	{
+		return new Object[][]
+			{
+				{"create", true},
+				{"create", false},
+				{"resume", true},
+				{"resume", false},
+				{"revise", true},
+				{"revise", false}
+			};
+	}
+
+	/**
+	 * Verifies that broken tracked workspace links stop a new start, a resumed start and revise before any model
+	 * request or campaign change. The supplied filesystem probe chooses the CLI refusal or infrastructure error.
+	 *
+	 * @param command the new-start, resumed-start or revision path
+	 * @param canCreateLinks indicates whether the supplied probe can create symbolic links
+	 * @throws IOException if the fixture cannot be created or read
+	 * @throws CommandRefusedException if the initial campaign cannot be started
+	 * @throws InterruptedException if the initial session wait is interrupted
+	 */
+	@Test(dataProvider = "brokenCheckoutCommands")
+	public void brokenCheckoutsStopModelLaunch(String command, boolean canCreateLinks)
+		throws IOException, CommandRefusedException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = "";
+			if (!command.equals("create"))
+				id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			int requestsBefore = repository.sessions().requests.size();
+			List<Campaign> before = new ArrayList<>();
+			for (Header header : OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+				store(repository.scope()).listHeaders())
+			{
+				before.add(repository.load(header.id()));
+			}
+			Path scenario = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE/reported"));
+			Files.writeString(scenario.resolve("scenario.md"), "Turn: Read notes.md.");
+			Path workspace = Files.createDirectory(scenario.resolve("workspace"));
+			Files.writeString(workspace.resolve("notes.md"), "../../shared/notes.md");
+			Path first = repository.root().relativize(workspace.resolve("notes.md"));
+			Path second = repository.root().relativize(workspace.resolve("missing notes.md"));
+			repository.forks().supplyTrackedLinks(Set.of(first, second));
+			repository.scope().supplySymbolicLinkProbe(() ->
+			{
+				if (!canCreateLinks)
+					throw new IOException("The supplied filesystem denies symbolic-link creation");
+			});
+			List<String> arguments;
+			if (command.equals("revise"))
+				arguments = List.of("revise", id, "Cover the notes.");
+			else
+				arguments = List.of("start", "CLAUDE.md");
+
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC).execute(arguments, out), "exitCode").
+					isEqualTo(1);
+			}
+			ObjectNode result = (ObjectNode) JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
+			String expectedStatus = "error";
+			if (canCreateLinks)
+				expectedStatus = "refused";
+			requireThat(result.get("status").asString(), "status").isEqualTo(expectedStatus);
+			String message = result.get("message").asString();
+			requireThat(message, "message").contains(PortablePaths.text(first)).contains(PortablePaths.text(second)).
+				contains("git config core.symlinks true").contains("git checkout --").contains("rerun the command");
+			if (canCreateLinks)
+				requireThat(message, "message").doesNotContain("Developer Mode").doesNotContain("IOException");
+			else
+				requireThat(message, "message").contains("IOException:").contains("Developer Mode").contains("permission");
+			requireThat(repository.sessions().requests.size(), "modelRequests").isEqualTo(requestsBefore);
+			List<Campaign> after = new ArrayList<>();
+			for (Header header : OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
+				store(repository.scope()).listHeaders())
+			{
+				after.add(repository.load(header.id()));
+			}
+			requireThat(after, "campaigns").isEqualTo(before);
+		}
+	}
+
+	/**
 	 * Verifies that the contract author's request names a recorded scenario of the project's test tree and that its
 	 * draft directory holds the scenario's complete content.
 	 *

@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
+import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
 import java.io.IOException;
@@ -66,6 +67,9 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private final S sessions;
 	private final FakeProfileInventory profiles = new FakeProfileInventory();
 	private String userLoaderSettings;
+	private SymbolicLinkProbe symbolicLinkProbe = () ->
+	{
+	};
 
 	/**
 	 * Creates a scope whose sessions end only when the test ends them.
@@ -172,6 +176,22 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 		ensureOpen();
 		return sessions;
+	}
+
+	@Override
+	protected SymbolicLinkProbe symbolicLinkProbe()
+	{
+		return symbolicLinkProbe;
+	}
+
+	/**
+	 * Supplies the result of attempting symbolic-link creation without using the host filesystem's permission.
+	 *
+	 * @param symbolicLinkProbe the supplied filesystem probe
+	 */
+	void supplySymbolicLinkProbe(SymbolicLinkProbe symbolicLinkProbe)
+	{
+		this.symbolicLinkProbe = symbolicLinkProbe;
 	}
 
 	@Override

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.proposal;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
@@ -19,8 +20,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -38,6 +40,25 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	private static final String SCENARIO = PromptTestFiles.SCENARIO;
 	private static final Path TEST_RESOURCES = Path.of("src/test/resources");
 	private static final Path MAIN_RESOURCES = Path.of("src/main/resources");
+
+	/**
+	 * Signals that {@link RegressionScenarios} found broken workspace links that the user can restore with Git.
+	 */
+	public static final class CheckoutRepairException extends IOException
+	{
+		@java.io.Serial
+		private static final long serialVersionUID = 1L;
+
+		/**
+		 * Creates a checkout repair request for the CLI to render as a user-fixable refusal.
+		 *
+		 * @param message the affected paths and repair commands
+		 */
+		private CheckoutRepairException(String message)
+		{
+			super(message);
+		}
+	}
 
 	/**
 	 * The format of a recorded scenario.
@@ -144,32 +165,26 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	 * {@code <module>/src/test/resources/<path>/<case>/scenario.md}. Other Markdown files hold workspace files.
 	 * <p>
 	 * A {@code <case>/scenario.md} that parses is a prompt test directory in the current format, read with its workspace
-	 * files and values file, unless the project's Git index records a symbolic link in its
-	 * {@value PromptTestFiles#WORKSPACE} directory where the checkout holds a regular file. Any other scenario is in an
-	 * earlier format, kept with the reason for its conversion.
+	 * files and values file. Any other scenario is in an earlier format, kept with the reason for its conversion.
 	 *
-	 * @param json         the JSON mapper that reads values files
-	 * @param project      the project root
-	 * @param home         the user home resolved at the environment boundary
-	 * @param trackedLinks the files, relative to {@code project}, that the project's Git index records as symbolic
-	 *                     links
+	 * @param json    the JSON mapper that reads values files
+	 * @param project the project root
+	 * @param home    the user home resolved at the environment boundary
 	 * @return the available scenarios, sorted by citation
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException          if an existing scenario tree cannot be read
 	 */
-	public static RegressionScenarios read(JsonMapper json, Path project, Path home, Set<Path> trackedLinks)
+	public static RegressionScenarios read(JsonMapper json, Path project, Path home)
 		throws IOException
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(home, "home").isNotNull();
-		requireThat(trackedLinks, "trackedLinks").isNotNull();
 		Path root = project.toAbsolutePath().normalize();
 		Path user = home.toAbsolutePath().normalize();
 		List<Scenario> scenarios = new ArrayList<>();
 		readRoot(json, root, root, true, scenarios);
 		readModules(json, root, scenarios);
-		refuseBrokenLinkCheckouts(root, trackedLinks, scenarios);
 		if (!user.equals(root))
 			readRoot(json, root, user, false, scenarios);
 		scenarios.sort(Comparator.comparing(Scenario::citation));
@@ -177,39 +192,61 @@ public record RegressionScenarios(Path project, List<Scenario> scenarios)
 	}
 
 	/**
-	 * Keeps for conversion each prompt test whose {@value PromptTestFiles#WORKSPACE} has no symbolic link at a
-	 * Git-recorded link path. A regular file can hold the target path instead of its contents when
-	 * {@code core.symlinks} is false; a missing entry silently leaves required input out of the trial workspace.
+	 * Refuses broken Git-recorded links in recorded scenario workspaces before a model session receives them.
+	 * The refusal names every affected path and the Git commands the user must run in the original project. A failed
+	 * probe additionally asks the user to enable symbolic-link creation before repairing the checkout.
 	 *
-	 * @param project      the project root
-	 * @param trackedLinks the files, relative to {@code project}, that the project's Git index records as symbolic
-	 *                     links
-	 * @param scenarios    the scenarios read from the project; each affected one is replaced
+	 * @param probe        checks actual symbolic-link creation, only when a broken checkout is found
+	 * @param trackedLinks the files, relative to the project, that Git records as symbolic links
+	 * @throws NullPointerException    if any argument is null
+	 * @throws CheckoutRepairException if a workspace link is broken and the process can create symbolic links
+	 * @throws IOException             if a workspace link is broken and the probe fails
 	 */
-	private static void refuseBrokenLinkCheckouts(Path project, Set<Path> trackedLinks, List<Scenario> scenarios)
+	public void requireLinkCheckouts(SymbolicLinkProbe probe, Set<Path> trackedLinks)
+		throws IOException
 	{
-		List<Path> brokenLinks = new ArrayList<>();
+		requireThat(probe, "probe").isNotNull();
+		requireThat(trackedLinks, "trackedLinks").isNotNull();
+		Set<Path> brokenLinks = new TreeSet<>();
 		for (Path link : trackedLinks)
 		{
 			Path file = project.resolve(link);
-			if (!Files.isSymbolicLink(file))
-				brokenLinks.add(file);
+			if (Files.isSymbolicLink(file))
+				continue;
+			for (Scenario scenario : scenarios)
+			{
+				Path scenarioFile = project.resolve(scenario.citation());
+				boolean inWorkspace = scenarioFile.getFileName().toString().equals(SCENARIO) &&
+					file.startsWith(scenarioFile.getParent().resolve(PromptTestFiles.WORKSPACE));
+				if (inWorkspace)
+					brokenLinks.add(link);
+			}
 		}
-		for (int i = 0; i < scenarios.size(); ++i)
+		if (brokenLinks.isEmpty())
+			return;
+
+		String paths = String.join(", ", brokenLinks.stream().map(PortablePaths::text).toList());
+		String checkout = brokenLinks.stream().map(PortablePaths::text).map(ShellQuoting::posix).
+			collect(Collectors.joining(" "));
+		String powerShell = brokenLinks.stream().map(PortablePaths::text).map(ShellQuoting::powerShell).
+			collect(Collectors.joining(" "));
+		String powerShellAlternative = "";
+		if (!checkout.equals(powerShell))
+			powerShellAlternative = " (PowerShell: `git checkout -- " + powerShell + "`)";
+		String repair = ("In the project %s, run `git config core.symlinks true`, then " +
+			"`git checkout -- %s`%s, then rerun the command.").formatted(project, checkout, powerShellAlternative);
+		try
 		{
-			Scenario scenario = scenarios.get(i);
-			if (!(scenario.format() instanceof Current current))
-				continue;
-			Path workspace = current.files().directory().resolve(PromptTestFiles.WORKSPACE);
-			Optional<Path> brokenLink = brokenLinks.stream().filter(file -> file.startsWith(workspace)).findFirst();
-			if (brokenLink.isEmpty())
-				continue;
-			String path = cited(project, brokenLink.get());
-			scenarios.set(i, new Scenario(scenario.source(), scenario.citation(), scenario.content(),
-				new Earlier(path + ": Git records a symbolic link here; restore that link in the checkout. " +
-					"Enable symbolic links for Git: on Windows, turn on Developer Mode, then run `git config " +
-					"core.symlinks true` and `git checkout -- " + path + "`.")));
+			probe.createAndRemove();
 		}
+		catch (IOException | UnsupportedOperationException e)
+		{
+			throw new IOException("Git records symbolic links but the checkout has different or missing entries: " +
+				paths + ". CAT could not create and remove a symbolic link. On Windows, turn on Developer Mode; " +
+				"on another system, grant permission to create symbolic links. " + repair, e);
+		}
+		throw new CheckoutRepairException("Git records symbolic links but the checkout has different or missing " +
+			"entries: " + paths + ". " + repair);
 	}
 
 	/**

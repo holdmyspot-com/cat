@@ -21,7 +21,6 @@ import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -99,7 +98,7 @@ public final class RegressionScenariosTest
 		Path root = project();
 		List<String> refused = new ArrayList<>();
 		for (RegressionScenarios.Scenario scenario : RegressionScenarios.read(JSON, root,
-			root.resolve("client/target/no-home"), Set.of()).scenarios())
+			root.resolve("client/target/no-home")).scenarios())
 		{
 			if (scenario.format() instanceof RegressionScenarios.Earlier(String problem))
 				refused.add(scenario.citation() + ": " + problem);
@@ -118,7 +117,7 @@ public final class RegressionScenariosTest
 		Path root = project();
 		List<String> misspelled = new ArrayList<>();
 		for (RegressionScenarios.Scenario scenario : RegressionScenarios.read(JSON, root,
-			root.resolve("client/target/no-home"), Set.of()).scenarios())
+			root.resolve("client/target/no-home")).scenarios())
 		{
 			Path file = Path.of(scenario.citation());
 			String name = file.getFileName().toString();
@@ -155,7 +154,7 @@ public final class RegressionScenariosTest
 	{
 		// Requirement: R-I3
 		Path root = project();
-		List<String> misplaced = RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home"), Set.of()).
+		List<String> misplaced = RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home")).
 			scenarios().stream().filter(scenario -> scenario.source().toString().contains("/src/main/resources/") &&
 				scenario.citation().startsWith(".cat/tests/")).map(RegressionScenarios.Scenario::citation).toList();
 		requireThat(misplaced, "misplaced").isEmpty();
@@ -183,7 +182,7 @@ public final class RegressionScenariosTest
 				Path scenario = Files.createDirectories(root.resolve("plugin/src/test/resources/common/wording/reported"));
 				Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
 				Files.writeString(scenario.getParent().resolve("context.md"), "Fixture context");
-				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"));
 				requireThat(found.scenarios().size(), "scenarios.size()").isEqualTo(1);
 				RegressionScenarios.Scenario only = found.scenarios().getFirst();
 				requireThat(only.source(), "source").isEqualTo(guidance.normalize());
@@ -216,7 +215,7 @@ public final class RegressionScenariosTest
 				Files.writeString(doubles, "Prefer real collaborators.");
 				Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/testing/doubles/reported"));
 				Files.writeString(scenario.resolve("scenario.md"), "Turn: Mock the clock.");
-				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"));
 				requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::source).toList(), "sources").
 					isEqualTo(List.of(doubles.normalize()));
 			}
@@ -243,7 +242,7 @@ public final class RegressionScenariosTest
 				Path scenario = Files.createDirectories(root.resolve(".cat/tests/common/wording/reported"));
 				Files.writeString(scenario.resolve("scenario.md"), "Turn: Summarize.\nExpected: Be brief.");
 				Files.writeString(scenario.resolve("context.md"), "Fixture context");
-				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				RegressionScenarios found = RegressionScenarios.read(JSON, root, root.resolve("home"));
 				requireThat(found.scenarios().stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
 					isEqualTo(List.of(".cat/tests/common/wording/reported/scenario.md"));
 				requireThat(found.scenarios().getFirst().content(), "content").
@@ -298,7 +297,7 @@ public final class RegressionScenariosTest
 				Path earlier = Files.createDirectories(tests.resolve("reported"));
 				Files.writeString(earlier.resolve("scenario.md"), "## Scenario\n\n### Request 1\n\nSummarize.\n");
 
-				RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"));
 				List<RegressionScenarios.Scenario> found = read.scenarios();
 				requireThat(found.stream().map(RegressionScenarios.Scenario::citation).toList(), "citations").
 					isEqualTo(List.of("plugin/src/test/resources/common/reading/reported/scenario.md",
@@ -373,7 +372,7 @@ public final class RegressionScenariosTest
 				Path briefReply = Files.createDirectories(root.resolve(".cat/tests/wording/brief_reply"));
 				Files.writeString(briefReply.resolve("scenario.md"), scenario);
 
-				RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"), Set.of());
+				RegressionScenarios read = RegressionScenarios.read(JSON, root, root.resolve("home"));
 				List<RegressionScenarios.Scenario> found = read.scenarios();
 				requireThat(found.size(), "found.size()").isEqualTo(2);
 				for (RegressionScenarios.Scenario regression : found)
@@ -415,58 +414,41 @@ public final class RegressionScenariosTest
 	}
 
 	/**
-	 * Verifies that a prompt test whose {@code workspace/} has a regular file, directory or missing entry at a
-	 * Git-recorded symbolic link is kept for conversion with the path and repair instructions. A valid link keeps
-	 * its target's content and source.
+	 * Verifies that a broken workspace link stops discovery with an infrastructure error when the supplied probe
+	 * reports that link creation is denied. The checkout fixture needs no actual symbolic-link permission.
 	 *
 	 * @param checkoutKind the entry at the recorded link, or {@code missing} for no entry
-	 * @throws IOException if the scenario tree cannot be created or read
+	 * @throws IOException if fixture creation or the expected probe refusal fails
 	 */
-	@Test(dataProvider = "brokenLinkCheckouts")
+	@Test(dataProvider = "brokenLinkCheckouts", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*workspace/notes.md.*Developer Mode.*permission.*git config " +
+			"core.symlinks true.*git checkout --.*rerun the command.*")
 	public void refusesBrokenLinkCheckout(String checkoutKind) throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
-				"link-checkout"));
-			Path guidance = Files.createDirectories(root.resolve("plugin/src/main/resources/rules/common")).
-				resolve("reading.md");
-			Files.writeString(guidance, "Read files whole.");
-			Path reading = root.resolve("plugin/src/test/resources/common/reading");
-			Files.createDirectories(reading.resolve("shared"));
-			Files.writeString(reading.resolve("shared/AGENTS.md"), "Shared by the reading tests.");
-			String scenario = """
-				## Variables
-
-				- **topic**: The topic to summarize
-
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "link-checkout"));
+			Files.createDirectories(root.resolve(".cat/rules"));
+			Files.writeString(root.resolve(".cat/rules/reading.md"), "Read files whole.");
+			Path scenario = Files.createDirectories(root.resolve(".cat/tests/reading/reported"));
+			Files.writeString(scenario.resolve("scenario.md"), """
 				## Scenario
 
-				Summarize {{topic}} from AGENTS.md.
+				Read notes.md.
 
 				## Assertions
 
-				### summary_given
+				### notes_read
 
 				- **kind**: effect
-				- **description**: The reply summarizes the file.
-				""";
-			Set<Path> trackedLinks = new HashSet<>();
-			for (String name : List.of("broken_checkout", "linked_checkout"))
-			{
-				Path test = Files.createDirectories(reading.resolve(name));
-				Files.writeString(test.resolve("scenario.md"), scenario);
-				Path workspace = Files.createDirectories(test.resolve("workspace"));
-				Files.createSymbolicLink(workspace.resolve("AGENTS.md"), Path.of("../../shared/AGENTS.md"));
-				trackedLinks.add(root.relativize(workspace.resolve("AGENTS.md")));
-			}
-			// Replace the tracked link with the selected broken checkout entry
-			Path broken = reading.resolve("broken_checkout/workspace/AGENTS.md");
-			Files.delete(broken);
+				- **description**: The reply summarizes the notes.
+				""");
+			Path workspace = Files.createDirectory(scenario.resolve("workspace"));
+			Path broken = workspace.resolve("notes.md");
 			switch (checkoutKind)
 			{
-				case "file" -> Files.writeString(broken, "../../shared/AGENTS.md");
+				case "file" -> Files.writeString(broken, "../../shared/notes.md");
 				case "directory" -> Files.createDirectory(broken);
 				case "missing" ->
 				{
@@ -474,18 +456,29 @@ public final class RegressionScenariosTest
 				default -> throw new IllegalArgumentException("Unknown checkout kind: " + checkoutKind);
 			}
 
-			List<RegressionScenarios.Scenario> found = RegressionScenarios.read(JSON, root, root.resolve("home"),
-				trackedLinks).scenarios();
-			requireThat(found.size(), "found.size()").isEqualTo(2);
-			if (!(found.get(0).format() instanceof RegressionScenarios.Earlier(String problem)))
-				throw new AssertionError("Not an earlier format: " + found.get(0).format());
-			requireThat(problem, "problem").
-				contains("plugin/src/test/resources/common/reading/broken_checkout/workspace/AGENTS.md").
-				contains("core.symlinks").contains("Developer Mode");
-			if (!(found.get(1).format() instanceof RegressionScenarios.Current(PromptTestFiles _, var texts)))
-				throw new AssertionError("Not the current format: " + found.get(1).format());
-			requireThat(texts, "texts").isEqualTo(List.of(new WorkspaceFile("AGENTS.md", "Shared by the reading tests.",
-				"plugin/src/test/resources/common/reading/shared/AGENTS.md")));
+			RegressionScenarios.read(JSON, root, root.resolve("home")).requireLinkCheckouts(() ->
+			{
+				throw new IOException("Link creation denied by the supplied filesystem probe");
+			}, Set.of(root.relativize(broken)));
+		}
+	}
+
+	/**
+	 * Verifies that a missing tracked link outside recorded workspaces does not trigger the permission probe.
+	 *
+	 * @throws IOException if the isolated temporary root cannot be created
+	 */
+	@Test
+	public void unrelatedLinksDoNotNeedProbe() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			RegressionScenarios scenarios = new RegressionScenarios(jvm.temporaryDirectory(), List.of());
+			scenarios.requireLinkCheckouts(() ->
+			{
+				throw new AssertionError("No broken workspace link needs a permission probe");
+			}, Set.of(Path.of("unrelated.md")));
+			requireThat(scenarios.scenarios(), "scenarios").isEmpty();
 		}
 	}
 
@@ -498,7 +491,7 @@ public final class RegressionScenariosTest
 	 */
 	private static List<String> citations(Path root) throws IOException
 	{
-		return RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home"), Set.of()).scenarios().stream().
+		return RegressionScenarios.read(JSON, root, root.resolve("client/target/no-home")).scenarios().stream().
 			map(RegressionScenarios.Scenario::citation).toList();
 	}
 
