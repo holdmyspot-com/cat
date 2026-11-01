@@ -147,7 +147,7 @@ public final class ClaudeRunner
 			if (workspace != null)
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
-			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment,
+			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
 				executables);
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");

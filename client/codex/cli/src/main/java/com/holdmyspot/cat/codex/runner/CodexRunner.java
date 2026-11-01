@@ -162,7 +162,7 @@ public final class CodexRunner
 			if (workspace != null)
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
-			HarnessProjectRepository.initialize(run.directory().resolve("project"), run.directory(), environment,
+			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
 				executables);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));

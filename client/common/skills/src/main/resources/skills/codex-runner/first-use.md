@@ -97,6 +97,10 @@ session completed, `75` when no capacity was free, and `1` otherwise, with the r
 
 ## Git in the copied project
 
+The copied project's commits carry the user's Git identity, as Git resolves `user.name` and `user.email` in the
+source project with the parent's environment. If either value is missing, commits use
+`CAT fixture <cat-fixture@example.invalid>` for both values.
+
 On Linux and macOS, the session can stage changes, commit, create branches and child worktrees, and merge in its
 copied project. Its `.git/config` and `.git/hooks` stay read-only. Keep child worktrees inside the copied project so
 they remain within the session's writable workspace. Windows sessions keep Codex's built-in Git metadata restrictions.

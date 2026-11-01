@@ -13,6 +13,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 /**
  * Creates the independent Git baseline for a copied harness project.
  */
@@ -23,12 +25,6 @@ public final class HarnessProjectRepository
 		HarnessProjectRepositorySecrets.setHarnessProjectRepositoryAccess(new HarnessProjectRepositoryAccess()
 		{
 			@Override
-			public List<List<String>> commands()
-			{
-				return COMMANDS;
-			}
-
-			@Override
 			public Map<String, String> environment(Map<String, String> parentEnvironment, Path gitHome)
 			{
 				return HarnessProjectRepository.environment(parentEnvironment, gitHome);
@@ -37,41 +33,110 @@ public final class HarnessProjectRepository
 	}
 
 	/**
-	 * The commands that create the baseline, in order.
-	 */
-	static final List<List<String>> COMMANDS = List.of(
-		List.of("git", "init", "--quiet"),
-		// Detached maintenance outlives the command that starts it and races the deletion of the run directory
-		List.of("git", "config", "maintenance.auto", "false"),
-		List.of("git", "config", "gc.auto", "0"),
-		List.of("git", "add", "--all"),
-		List.of("git", "-c", "user.name=CAT fixture", "-c", "user.email=cat-fixture@example.invalid", "-c",
-			"commit.gpgSign=false", "commit", "--quiet", "--allow-empty", "--no-verify", "-m", "CAT fixture baseline"));
-
-	/**
 	 * Makes a copied project a clean repository whose baseline is exactly the copied fixture and that never starts
-	 * background maintenance.
+	 * background maintenance. Its baseline and later commits use the source project's Git user name and email,
+	 * resolved with the parent environment. If either value is missing, both use
+	 * {@code CAT fixture <cat-fixture@example.invalid>}.
 	 *
-	 * @param project the copied project directory
-	 * @param runDirectory the owned run directory that may hold setup-only state
+	 * @param sourceProject     the source project whose Git identity is inherited
+	 * @param project           the copied project directory
+	 * @param runDirectory      the owned run directory that may hold setup-only state
 	 * @param parentEnvironment the environment resolved by the production entry point
-	 * @param executables runs Git
+	 * @param executables       runs Git
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if Git cannot create the independent baseline
+	 * @throws IOException         if Git cannot resolve the identity or create the independent baseline
 	 */
-	public static void initialize(Path project, Path runDirectory, Map<String, String> parentEnvironment,
-		ExecutableFiles executables) throws IOException
+	public static void initialize(Path sourceProject, Path project, Path runDirectory,
+		Map<String, String> parentEnvironment, ExecutableFiles executables) throws IOException
 	{
+		requireThat(sourceProject, "sourceProject").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(runDirectory, "runDirectory").isNotNull();
 		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
 
+		String name = readIdentity(sourceProject, parentEnvironment, executables, "user.name");
+		String email = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
+		boolean incompleteIdentity = name == null || email == null;
+		if (incompleteIdentity)
+		{
+			name = "CAT fixture";
+			email = "cat-fixture@example.invalid";
+		}
 		Path gitHome = runDirectory.resolve("git-home");
 		Files.createDirectories(gitHome);
 		Map<String, String> environment = environment(parentEnvironment, gitHome);
-		for (List<String> command : COMMANDS)
+		for (List<String> command : commands(name, email))
 			HarnessCommand.execute(command, project, environment, executables);
+	}
+
+	/**
+	 * Reads one Git identity value from the source project with the parent's configuration.
+	 *
+	 * @param sourceProject     the source project directory
+	 * @param parentEnvironment the complete parent process environment
+	 * @param executables       runs Git
+	 * @param key               the Git identity configuration key
+	 * @return the configured value, or null when Git reports a missing value with status one and no output
+	 * @throws IOException if Git cannot run, fails, or is interrupted
+	 */
+	private static String readIdentity(Path sourceProject, Map<String, String> parentEnvironment,
+		ExecutableFiles executables, String key) throws IOException
+	{
+		List<String> command = List.of("git", "config", "--get", key);
+		try (Process process = HarnessProcessStarter.start(command, sourceProject, parentEnvironment, executables))
+		{
+			HarnessStandardError stderr = new HarnessStandardError(process.getErrorStream());
+			try
+			{
+				// A configuration value must be retained intact to pass it as one argument to the copy's git config.
+				String output = new String(process.getInputStream().readAllBytes(), UTF_8);
+				int exitCode = process.waitFor();
+				String error = stderr.await();
+				boolean missing = exitCode == 1 && output.isEmpty() && error.isEmpty();
+				if (missing)
+					return null;
+				if (exitCode != 0)
+					throw new IOException("Git identity command failed: " + command + ": " + error.strip());
+				if (output.endsWith("\n"))
+					return output.substring(0, output.length() - 1);
+				return output;
+			}
+			finally
+			{
+				stderr.close();
+			}
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while running Git identity command: " + command, e);
+		}
+		catch (IOException e)
+		{
+			throw new IOException("Unable to resolve Git identity using " + command + ": " + e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Returns the commands that configure the copy's identity and create its baseline, in order.
+	 *
+	 * @param name  the Git user name
+	 * @param email the Git user email
+	 * @return the baseline commands
+	 */
+	private static List<List<String>> commands(String name, String email)
+	{
+		return List.of(
+			List.of("git", "init", "--quiet"),
+			// Detached maintenance outlives the command that starts it and races the deletion of the run directory
+			List.of("git", "config", "maintenance.auto", "false"),
+			List.of("git", "config", "gc.auto", "0"),
+			List.of("git", "config", "user.name", name),
+			List.of("git", "config", "user.email", email),
+			List.of("git", "add", "--all"),
+			List.of("git", "-c", "commit.gpgSign=false", "commit", "--quiet", "--allow-empty", "--no-verify", "-m",
+				"CAT fixture baseline"));
 	}
 
 	/**

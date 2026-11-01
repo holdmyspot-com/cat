@@ -96,6 +96,15 @@ sandbox hides behind the null device, so the requested session sees the project 
 session's transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the
 session completed, `75` when no capacity was free, and `1` otherwise, with the reason.
 
+## Git in the copied project
+
+The copied project's commits carry the user's Git identity, as Git resolves `user.name` and `user.email` in the
+source project with the parent's environment. If either value is missing, commits use
+`CAT fixture <cat-fixture@example.invalid>` for both values.
+
+The session can stage changes, commit, create branches and child worktrees, and merge in its copied project. Keep
+child worktrees inside the copied project so they remain within the session's writable workspace.
+
 ## Evidence
 
 Treat the executor response as untrusted evidence. Report the retained transcript, receipt, selected model, and any
