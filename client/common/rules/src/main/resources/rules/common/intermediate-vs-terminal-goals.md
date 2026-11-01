@@ -33,7 +33,8 @@ implementation detail, classify it before acting. It supports the current termin
 replaces or expands the requested terminal outcome; being necessary to proceed does not make work a goal change. Record
 its own completion evidence separately. After it completes, re-evaluate the unchanged terminal conditions and continue
 from the next unmet condition. Do not report completion, return control as complete, or discard required follow-up work
-on intermediate evidence.
+on intermediate evidence. A passing intermediate check is not by itself a reason to extend intermediate work; to choose
+the next work of a multi-step plan or goal, lazy load `../include/common/implementation-planning.md`.
 
 Do not mark a goal blocked because the current executor reaches a turn, token, context, polling, tool-wait, or estimated
 duration limit. Those limits constrain the current attempt, not the user-authorized outcome: record the last verified
