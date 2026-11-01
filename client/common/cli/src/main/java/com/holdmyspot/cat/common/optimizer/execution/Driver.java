@@ -44,7 +44,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
-import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
@@ -67,6 +66,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.InFlight.Judging;
 import com.holdmyspot.cat.common.optimizer.execution.InFlight.Triaging;
 import com.holdmyspot.cat.common.optimizer.execution.SessionEvents.Event;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.AttemptReview;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
@@ -1222,7 +1222,8 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Consumes the end of a session that writes reproduction values. Valid test cases become the failure group's
-	 * current round, whose reproduction trials then run; a rejected response or a failed session is an infrastructure
+	 * current round, whose reproduction trials then run; exhaustion marks the group not reproduced, as after its
+	 * round limit. A rejected response or a failed session is an infrastructure
 	 * failure. The result is ignored if its group's round does not await values when the session ends.
 	 *
 	 * @param values the session
@@ -1246,10 +1247,10 @@ public final class Driver implements AutoCloseable
 				describe(failure);
 			case SessionResult.Completed completed ->
 			{
-				List<AddedTestCase> testCases;
+				ValuesPrompt.Result response;
 				try
 				{
-					testCases = context.values().testCases(completed, campaign.contract(),
+					response = context.values().testCases(completed, campaign.contract(),
 						campaign.developmentTestCases(), values.attempt(), group);
 				}
 				catch (InvalidProposalException e)
@@ -1257,7 +1258,13 @@ public final class Driver implements AutoCloseable
 					infrastructureFailure = "The reproduction values were rejected: " + String.join(" ", e.problems());
 					return;
 				}
-				record(new CampaignEvent.ReproductionValues(values.attempt(), values.group(), testCases));
+				switch (response)
+				{
+					case ValuesPrompt.Cases cases ->
+						record(new CampaignEvent.ReproductionValues(values.attempt(), values.group(), cases.testCases()));
+					case ValuesPrompt.Exhausted _ ->
+						record(new CampaignEvent.ExhaustReproductionValues(values.attempt(), values.group()));
+				}
 			}
 			// The session starts again once the harness's shared hold ends
 			case SessionResult.RateLimited _, SessionResult.Refused _ ->

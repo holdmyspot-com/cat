@@ -221,7 +221,7 @@ public final class ValuesPrompt implements ValuesProtocol
 	 * The rejection of an expected outcome that a held-out test case holds never names the part that holds it.
 	 */
 	@Override
-	public List<AddedTestCase> testCases(SessionResult.Completed result, Contract contract, AddedTestCases known,
+	public Result testCases(SessionResult.Completed result, Contract contract, AddedTestCases known,
 		int attempt, FailureGroup group) throws InvalidProposalException
 	{
 		requireThat(result, "result").isNotNull();
@@ -238,6 +238,21 @@ public final class ValuesPrompt implements ValuesProtocol
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
 
+		ObjectNode response = output.get();
+		if (response.has("exhausted"))
+		{
+			boolean exhaustionOnly = response.get("exhausted").asBoolean() && response.has("reason") &&
+				!response.has("test_cases");
+			if (!exhaustionOnly)
+			{
+				throw new InvalidProposalException(List.of(
+					"An exhausted response must give exhausted: true and a non-blank reason, without test_cases"));
+			}
+			return new Exhausted(response.get("reason").asString());
+		}
+		if (!response.has("test_cases") || response.has("reason"))
+			throw new InvalidProposalException(List.of("A cases response must give only test_cases"));
+
 		PromptTest test = contract.findTest(group.testId()).orElseThrow(() ->
 			new IllegalArgumentException("The contract has no test '" + group.testId() + "'"));
 		List<TestCase> parsed;
@@ -247,7 +262,7 @@ public final class ValuesPrompt implements ValuesProtocol
 		}
 		if (!problems.isEmpty())
 			throw new InvalidProposalException(problems);
-		return parsed.stream().map(testCase -> new AddedTestCase(attempt, test.id(), testCase)).toList();
+		return new Cases(parsed.stream().map(testCase -> new AddedTestCase(attempt, test.id(), testCase)).toList());
 	}
 
 	/**
@@ -408,5 +423,53 @@ public final class ValuesPrompt implements ValuesProtocol
 			normalized.put(value.getKey(), form);
 		}
 		return normalized;
+	}
+
+	/**
+	 * A validated values response: new cases or an exhausted domain.
+	 */
+	public sealed interface Result permits Cases, Exhausted
+	{
+	}
+
+	/**
+	 * New test cases for a reproduction round.
+	 *
+	 * @param testCases at least {@value ValuesProtocol#MINIMUM_TEST_CASES} new cases
+	 */
+	public record Cases(List<AddedTestCase> testCases) implements Result
+	{
+		/**
+		 * Creates the round's cases.
+		 *
+		 * @param testCases at least {@value ValuesProtocol#MINIMUM_TEST_CASES} new cases
+		 * @throws NullPointerException if {@code testCases} is null or contains null
+		 * @throws IllegalArgumentException if fewer than {@value ValuesProtocol#MINIMUM_TEST_CASES} cases are given
+		 */
+		public Cases
+		{
+			requireThat(testCases.size(), "testCases.size()").isGreaterThanOrEqualTo(MINIMUM_TEST_CASES);
+			testCases = List.copyOf(testCases);
+		}
+	}
+
+	/**
+	 * The session cannot write four valid new cases without changing the confirmed test.
+	 *
+	 * @param reason the session's explanation, using only the test information shown to it
+	 */
+	public record Exhausted(String reason) implements Result
+	{
+		/**
+		 * Creates an exhaustion declaration.
+		 *
+		 * @param reason the session's explanation
+		 * @throws NullPointerException if {@code reason} is null
+		 * @throws IllegalArgumentException if {@code reason} is blank
+		 */
+		public Exhausted
+		{
+			requireThat(reason, "reason").isNotBlank();
+		}
 	}
 }

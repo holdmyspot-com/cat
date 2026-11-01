@@ -22,7 +22,8 @@ import java.util.Set;
  * test cases under each stress setting that the harness offers for the cell, one round per setting, until one
  * reproduces it; after the last setting, or when the harness offers none, the next round in the group's cell replaces
  * the test cases. Stress rounds count toward the group's round limit. After the round limit, the group is not
- * reproduced until the user asks for more rounds.
+ * reproduced until the user asks for more rounds. A contract author that cannot write four valid new cases without
+ * changing the confirmed test also leaves the group not reproduced, with the same user choices.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
@@ -190,6 +191,19 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 	}
 
 	/**
+	 * Returns this group as not reproduced because the contract author cannot write four valid new cases.
+	 *
+	 * @return the updated group, retaining all earlier rounds and their counts
+	 * @throws IllegalStateException if the group's current round does not await values
+	 */
+	FailureGroup exhaustValues()
+	{
+		if (!awaitsValues())
+			throw new IllegalStateException("The failure group does not await values: " + this);
+		return new FailureGroup(cellId, testId, failed, formalFailures, roundLimit, rounds, Status.NOT_REPRODUCED);
+	}
+
+	/**
 	 * Returns this group after one more reproduction trial of its current round.
 	 *
 	 * @param index the position of the trial's test case in the current round
@@ -320,7 +334,8 @@ public record FailureGroup(String cellId, String testId, FailedAssertion failed,
 		 */
 		REPRODUCED,
 		/**
-		 * Its round limit passed without a reproduction; CAT waits for the user's choice.
+		 * Its round limit passed without a reproduction, or its valid new cases were exhausted; CAT waits for the user's
+		 * choice.
 		 */
 		NOT_REPRODUCED,
 		/**

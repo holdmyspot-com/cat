@@ -1,10 +1,12 @@
 {
 	"$schema": "https://json-schema.org/draft/2020-12/schema",
 	"title": "Development test cases",
+	"description": "Give only test_cases, or give exhausted: true and a non-blank reason when four valid new cases cannot be written without changing the confirmed test. Any other shortfall is an error.",
 	"type": "object",
 	"additionalProperties": false,
-	"required": ["test_cases"],
 	"properties": {
+		"exhausted": {"description": "Must be true when declaring exhaustion; omit test_cases and include reason.", "type": "boolean"},
+		"reason": {"description": "Why fewer than four valid new cases remain without changing the confirmed test; required with exhausted and otherwise omitted.", "type": "string", "pattern": "\\S"},
 		"test_cases": {
 			"description": "At least 4 new test cases of the failed test, each with values different from every other test case.",
 			"type": "array",

@@ -4978,6 +4978,117 @@ public final class DriverTest
 	}
 
 	/**
+	 * Exhaustion marks the group not reproduced and offers the ordinary user choices without cancelling the campaign.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void exhaustedValuesKeepTheCampaignActive() throws IOException
+	{
+		Contract contract = ContractFixtures.contract();
+		FailedAssertion failed = new FailedAssertion("asks_before_deleting", "deleted_without_asking");
+		Campaign campaign = reproducing(contract, "safety", failed,
+			List.of(new ReproductionRound("safety", tried(contract, "safety", "earlier", 25, 25, 25, 25)),
+				new ReproductionRound("safety", List.of())));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
+			harness.contractAuthors(_ -> harness.derived("""
+				{"exhausted": true, "reason": "Fewer than four unused combinations remain."}
+				"""));
+			try (Driver driver = harness.open())
+			{
+				harness.runSlice(driver);
+
+				Campaign paused = harness.campaign();
+				requireThat(paused.pending(), "pending").isEqualTo(new PendingDecision.FailuresNotReproduced(1));
+				requireThat(paused.attempt(1).group(1).status(), "status").
+					isEqualTo(FailureGroup.Status.NOT_REPRODUCED);
+				requireThat(paused.attempt(1).group(1).trials(), "trials").isEqualTo(100);
+				requireThat(paused.attempt(1).group(1).rounds(), "rounds").
+					isEqualTo(campaign.attempt(1).group(1).rounds());
+				requireThat(paused.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
+				requireThat(paused.choices(), "choices").isEqualTo(List.of(Choice.MORE_ROUNDS, Choice.NEW_ATTEMPT,
+					Choice.STOP));
+				requireThat(paused.lineage().added().testCases(), "added").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Exhausting one group leaves the other groups free to reproduce before the ordinary user decision.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void exhaustedGroupDoesNotStopOtherGroups() throws IOException
+	{
+		FailedAssertion exhausted = new FailedAssertion("asks_before_deleting", "other");
+		FailedAssertion reproduced = new FailedAssertion("asks_before_deleting", "deleted_without_asking");
+		Campaign campaign = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+			certificationAttempt(1).failure(new Failure(Builder.testCase("safety", "logs"), "",
+				List.of(exhausted), null, List.of(), List.of(), Builder.FILES)).
+			failure(new Failure(Builder.testCase("safety", "cache"), "", List.of(reproduced), null, List.of(),
+				List.of(), Builder.FILES)).outcome(Outcome.BELOW_MINIMUM).build();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
+			harness.contractAuthors(request ->
+			{
+				if (harness.failureGroup(request).get("behavior").asString().equals("other"))
+				{
+					return harness.derived("""
+						{"exhausted": true, "reason": "Fewer than four unused combinations remain."}
+						""");
+				}
+				return harness.newValues(request);
+			});
+			harness.trials(_ -> harness.failed());
+			try (Driver driver = harness.open())
+			{
+				harness.runSlice(driver);
+
+				Campaign paused = harness.campaign();
+				requireThat(paused.pending(), "pending").isEqualTo(new PendingDecision.FailuresNotReproduced(1));
+				requireThat(paused.attempt(1).group(1).status(), "exhausted").
+					isEqualTo(FailureGroup.Status.NOT_REPRODUCED);
+				requireThat(paused.attempt(1).group(2).status(), "reproduced").
+					isEqualTo(FailureGroup.Status.REPRODUCED);
+				requireThat(paused.lineage().added().testCases(), "added").
+					isEqualTo(paused.attempt(1).group(2).round().added());
+			}
+		}
+	}
+
+	/**
+	 * A malformed exhaustion declaration remains an infrastructure failure and leaves the group awaiting valid values.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void malformedExhaustionStopsTheSlice() throws IOException
+	{
+		Contract contract = ContractFixtures.contract();
+		FailedAssertion failed = new FailedAssertion("asks_before_deleting", "deleted_without_asking");
+		Campaign campaign = reproducing(contract, "safety", failed,
+			List.of(new ReproductionRound("safety", List.of())));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
+			harness.contractAuthors(_ -> harness.derived("{\"exhausted\":true}"));
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+
+				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(result.status().outcomeDetail(), "detail").contains("non-blank reason");
+				requireThat(harness.campaign().attempt(1).group(1).awaitsValues(), "awaitsValues").isTrue();
+				requireThat(harness.campaign().lineage().added().testCases(), "added").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * A development failure on an added test case is an ordinary development failure: triage receives it, and the
 	 * prompt author receives the added test case.
 	 *

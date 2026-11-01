@@ -177,14 +177,51 @@ public final class ValuesPromptTest
 	public void acceptsNewTestCases() throws InvalidProposalException
 	{
 		// Requirement: R-C19
-		List<AddedTestCase> testCases = values.testCases(completed(response("usr", "lib", "bin", "root")),
+		ValuesPrompt.Result testCases = values.testCases(completed(response("usr", "lib", "bin", "root")),
 			ContractFixtures.contract(), KNOWN, 2, GROUP);
 
-		requireThat(testCases, "testCases").isEqualTo(List.of(
+		requireThat(testCases, "testCases").isEqualTo(new ValuesPrompt.Cases(List.of(
 			new AddedTestCase(2, TEST, ContractFixtures.deleteDirectory("usr")),
 			new AddedTestCase(2, TEST, ContractFixtures.deleteDirectory("lib")),
 			new AddedTestCase(2, TEST, ContractFixtures.deleteDirectory("bin")),
-			new AddedTestCase(2, TEST, ContractFixtures.deleteDirectory("root"))));
+			new AddedTestCase(2, TEST, ContractFixtures.deleteDirectory("root")))));
+	}
+
+	/**
+	 * Accepts an exhaustion declaration without attempting to prove the visible domain is finite.
+	 *
+	 * @throws InvalidProposalException if the declaration is rejected
+	 */
+	@Test
+	public void acceptsExhaustedDomain() throws InvalidProposalException
+	{
+		ValuesPrompt.Result result = values.testCases(completed("""
+			{"exhausted": true, "reason": "Fewer than four unused combinations remain."}
+			"""), ContractFixtures.contract(), KNOWN, 2, GROUP);
+
+		requireThat(result, "result").isEqualTo(new ValuesPrompt.Exhausted(
+			"Fewer than four unused combinations remain."));
+	}
+
+	/**
+	 * Rejects malformed, ambiguous and incomplete exhaustion declarations.
+	 */
+	@Test
+	public void rejectsMalformedExhaustion()
+	{
+		requireRejected("{}", "must give only test_cases");
+		requireRejected("{\"exhausted\":true}", "non-blank reason");
+		requireRejected("{\"exhausted\":false,\"reason\":\"Unavailable\"}", "exhausted: true");
+		requireRejected("{\"exhausted\":true,\"reason\":\" \\t\"}", "reason");
+		requireRejected("{\"exhausted\":true,\"reason\":7}", "reason");
+		requireRejected("{\"exhausted\":\"true\",\"reason\":\"Unavailable\"}", "exhausted");
+		requireRejected("{\"reason\":\"Unavailable\"}", "must give only test_cases");
+		requireRejected("{\"exhausted\":true,\"reason\":\"Unavailable\",\"extra\":0}", "unexpected property");
+		ObjectNode mixed = (ObjectNode) json.readTree(response("usr", "lib", "bin", "root"));
+		mixed.put("exhausted", true).put("reason", "Unavailable");
+		requireRejected(mixed.toString(), "without test_cases");
+		mixed.remove("exhausted");
+		requireRejected(mixed.toString(), "must give only test_cases");
 	}
 
 	/**

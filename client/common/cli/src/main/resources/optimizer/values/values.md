@@ -3,7 +3,8 @@
 ## Design Goals
 
 - Write at least 4 new test cases of the failed test below that lead an assistant to fail the failed assertion through
-	the behavior below, so that development trials reproduce that failure and prompt editing can correct it.
+	the behavior below, so that development trials reproduce that failure and prompt editing can correct it; report
+	exhaustion with a reason when four valid new cases cannot be written without changing the confirmed test.
 - Make every new test case's values differ from those of every existing test case of the test, and its expected
 	outcome differ from every held-out expected outcome, so that the new test cases add content that the test does not
 	already hold and never reveal a held-out answer.
@@ -50,7 +51,8 @@ The failure group, as JSON:
 
 ### How to write the test cases
 
-- Write at least 4 test cases. Each gives one value for every variable of the test, and for no other variable, and
+- Write at least 4 test cases unless the domain is exhausted as described below. Each gives one value for every
+	variable of the test, and for no other variable, and
 	states its `expected_outcome`: the result that a compliant reply gives for those values.
 - Aim each test case at the behavior: choose content under which an assistant that fails the assertion through that
 	behavior would show it in its reply or its effects, while the test's turns and expected behaviour still apply
@@ -79,7 +81,16 @@ The generators, with every word, date and number that their output can contain:
 
 ### Output
 
-Return the test cases as one JSON object that satisfies this schema:
+If four valid new cases cannot be written without changing the confirmed test, return
+`{"exhausted": true, "reason": "..."}` instead of test cases. Explain which limits of the confirmed test prevent four
+new cases, using only the information shown to you. This includes a finite domain whose remaining combinations have
+been consumed by earlier rounds or other groups of the same test. Do not change the test or repeat existing cases to
+reach four. CAT accepts this declaration without requiring proof of the size of the domain and marks the group not
+reproduced, as it does after the round limit. Use exhaustion only for this inability; any other shortfall is still an
+error.
+
+Return either the test cases or exhaustion as one JSON object that satisfies this schema. A cases response gives only
+`test_cases`; an exhaustion response gives only `exhausted: true` and a non-blank `reason`. Never combine the two.
 
 {{output_schema}}
 

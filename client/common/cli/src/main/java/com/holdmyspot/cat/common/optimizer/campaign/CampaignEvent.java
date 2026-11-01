@@ -517,6 +517,27 @@ public sealed interface CampaignEvent
 	}
 
 	/**
+	 * A contract author exhausted the valid new cases for a group's reproduction round.
+	 *
+	 * @param attempt the attempt whose group awaits values
+	 * @param group   the group's 1-based position in the attempt
+	 */
+	record ExhaustReproductionValues(int attempt, int group) implements CampaignEvent
+	{
+		/**
+		 * Creates the exhaustion event.
+		 *
+		 * @param attempt the attempt whose group awaits values
+		 * @param group   the group's 1-based position in the attempt
+		 * @throws IllegalArgumentException if {@code group} is not positive
+		 */
+		public ExhaustReproductionValues
+		{
+			requireThat(group, "group").isPositive();
+		}
+	}
+
+	/**
 	 * Cap calibration for the next certification attempt failed.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.

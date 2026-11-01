@@ -388,7 +388,18 @@ public final class TrialAdoption
 			draft.added = draft.added.plus(updated.round().added());
 			draft.restartDevelopmentCounts();
 		}
-		List<FailureGroup.Status> statuses = next.groups().stream().map(FailureGroup::status).toList();
+		finishReproduction(draft, next);
+	}
+
+	/**
+	 * Requests the user's choice once all groups have ended and at least one was not reproduced.
+	 *
+	 * @param draft   the state
+	 * @param attempt the attempt with the updated groups
+	 */
+	static void finishReproduction(Draft draft, CertificationAttempt attempt)
+	{
+		List<FailureGroup.Status> statuses = attempt.groups().stream().map(FailureGroup::status).toList();
 		if (!statuses.contains(FailureGroup.Status.REPRODUCING) &&
 			statuses.contains(FailureGroup.Status.NOT_REPRODUCED))
 		{

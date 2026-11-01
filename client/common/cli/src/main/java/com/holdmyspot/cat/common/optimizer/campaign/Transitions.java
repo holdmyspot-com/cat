@@ -99,6 +99,7 @@ public final class Transitions
 					draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands());
 			}
 			case CampaignEvent.ReproductionValues values -> reproductionValues(draft, values);
+			case CampaignEvent.ExhaustReproductionValues exhausted -> exhaustReproductionValues(draft, exhausted);
 			case CampaignEvent.Commit commit -> commit(draft, campaign, commit);
 			case CampaignEvent.CalibrationFailed failed ->
 			{
@@ -248,6 +249,27 @@ public final class Transitions
 		}
 		FailureGroup group = attempt.group(values.group());
 		draft.replaceAttempt(attempt.withGroup(values.group(), group.withValues(values.testCases())));
+	}
+
+	/**
+	 * Marks a group whose new values are exhausted as not reproduced, preserving the usual user decision.
+	 *
+	 * @param draft     the state
+	 * @param exhausted the event
+	 * @throws IllegalStateException if the campaign has no confirmed contract, no attempt is reproducing, or the
+	 *   group does not await values
+	 * @throws IllegalArgumentException if another attempt is reproducing or the group does not exist
+	 */
+	private static void exhaustReproductionValues(Draft draft, CampaignEvent.ExhaustReproductionValues exhausted)
+	{
+		requireConfirmed(draft);
+		CertificationAttempt attempt = draft.reproducing().orElseThrow(() ->
+			new IllegalStateException("No certification attempt is reproducing its formal failures"));
+		requireThat(exhausted.attempt(), "exhausted.attempt()").isEqualTo(attempt.index(), "attempt.index()");
+		FailureGroup group = attempt.group(exhausted.group());
+		CertificationAttempt next = attempt.withGroup(exhausted.group(), group.exhaustValues());
+		draft.replaceAttempt(next);
+		TrialAdoption.finishReproduction(draft, next);
 	}
 
 	/**
