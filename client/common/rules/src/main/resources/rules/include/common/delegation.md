@@ -22,6 +22,12 @@
 	only the context and focused checks it needs and each large enough that its own work outweighs a subagent's fixed
 	cost, so independent work proceeds concurrently, no delegate spends its time on context or checks that belong to
 	other work, and the full build runs once, after integration.
+<!-- A parent spent most of a long assignment on readiness reviews, inventories, and approval stops between small
+     already authorized steps, while the connected deliverable that its acceptance required stayed unbuilt. -->
+- Let a delegate carry an authorized assignment through implementation, focused verification, and routine repairs to
+	its own gate, with the parent deciding only the open questions the task names and accepting the result once, at the
+	completed assignment, so delegated time goes to deliverable work rather than to approval stops or to reviews that
+	resolve no decision.
 
 ## Guidance
 
@@ -35,7 +41,7 @@ machine-readable diagnostics. Do not leave an agent or human to reproduce those 
 Delegate bounded-review work to a cheaper model only when its acceptance check is materially cheaper, narrower, or more
 reliable than independently performing the delegated work. Give it explicit inputs, a bounded deliverable, and
 acceptance evidence. Treat its result as a candidate until the specified deterministic check or higher-authority review
-accepts it.
+accepts it once the assignment is complete.
 
 When a delegated response must use a specific form, state that form in the task sent to the recipient. Name the
 recipient's injected response contract and required form when one exists; otherwise specify every required response
@@ -46,14 +52,18 @@ Before delegating, decompose the work into as many independent subtasks as possi
 subagent. Make each subtask the smallest independent piece whose own work clearly outweighs a subagent's fixed cost:
 reading its task contract and required rules, running its gates, and the parent's review and integration of its result.
 Without a measured fixed cost, aim for about five minutes of a subagent's work, and do not split a piece further when
-its subtasks would spend more time on that fixed cost than on their own work. Each subtask is one verification-closed
-behavior cluster: one coherent observable outcome whose production changes and focused tests end in its own exact gate.
-Paths that overlap do not make independently testable lifecycle, schema, or quality changes one cluster. A piece that
-cannot be split further without losing its own exact gate stays one subtask, however long it takes. Launch the subtasks
-that the conflict graph below shows as independent concurrently. A subtask that consumes another subtask's output waits
-for that output, and subtasks whose write sets overlap run in sequence through one exclusive writer or stay with the
-higher authority. Do not delegate work when accepting it would require the parent to rederive its decisions or review
-work as broadly as implementing it directly.
+its subtasks would spend more time on that fixed cost than on their own work. Size a subtask by its deliverable work: a
+production change with its own gate, or an investigation that resolves a named decision. Delegate a subtask whose only
+output is an assessment, inventory, or review only when its result resolves a named decision that selects or changes
+implementation work. When choosing which work to delegate next while executing a plan, lazy load
+`implementation-planning.md`. Each subtask is one verification-closed behavior cluster: one coherent observable outcome
+whose production changes and focused tests end in its own exact gate. Paths that overlap do not make independently
+testable lifecycle, schema, or quality changes one cluster. A piece that cannot be split further without losing its own
+exact gate stays one subtask, however long it takes. Launch the subtasks that the conflict graph below shows as
+independent concurrently. A subtask that consumes another subtask's output waits for that output, and subtasks whose
+write sets overlap run in sequence through one exclusive writer or stay with the higher authority. Do not delegate work
+when accepting it would require the parent to rederive its decisions or review work as broadly as implementing it
+directly.
 
 Give each subtask its own task contract that carries only what that subtask needs, including a reading list limited to
 the files its decisions depend on. Do not send several subtasks one shared reading list. A subtask's gates are its
@@ -61,7 +71,11 @@ focused checks: the compilation, static analysis and tests that its owned paths 
 once, after integrating the subtasks' results, so that concurrent subtasks neither run it nor wait for one another's.
 
 For every write-capable delegation, supply a task contract with an exact write allowlist, verification commands,
-workspace mode, and acceptance evidence. Treat the write allowlist as authority and the verification commands only as
+workspace mode, and acceptance evidence. The contract gives the delegate authority to complete the implementation, its
+focused verification, and routine repairs within that scope, through to its own gate. Require an intermediate parent
+decision only for an unresolved contract question, authority boundary, or consequential design choice that the task
+names. Accept and integrate the result at the completed assignment boundary; do not insert approval stops between steps
+the contract already authorizes. Treat the write allowlist as authority and the verification commands only as
 observation: compiling or testing a wider dependency closure does not authorize the delegate to repair it. A diagnostic
 whose owning path is outside the allowlist is an out-of-scope dependency to report, not work to absorb.
 
@@ -133,18 +147,22 @@ the other's changing output. If the actor responsible for workspace integration 
 isolated results, use one exclusive writer in the shared worktree instead of improvising temporary indexes, worktrees,
 commits, or merge commands in prompt prose.
 
-Use one readiness review to map several upcoming clusters before their implementation begins. Split every discovered
-missing prerequisite into its own verification-closed cluster with a named responsible component, then run only
-graph-independent clusters in parallel. This reduces rediscovery and handoff latency without allowing a consumer to
-start before its producer's accepted snapshot exists.
+Use a readiness review only for upcoming clusters whose contracts still contain a genuine gap: a behavior, interface,
+responsible component, or verification that the plan has not decided. Never place one in front of a cluster whose
+contract is already decision-free; launch that cluster. When several upcoming clusters have such gaps, map them in one
+review before their implementation begins. Split every discovered missing prerequisite into its own
+verification-closed cluster with a named responsible component, then run only graph-independent clusters in parallel.
+This reduces rediscovery and handoff latency without allowing a consumer to start before its producer's accepted
+snapshot exists.
 
 Maintain a rolling readiness window rather than reviewing one blocked cluster at a time. Before an accepted cluster
 unblocks a sequential successor, the parent maps the next eligible dependency frontier: each cluster's exact write set,
 accepted-snapshot inputs, focused gate, static-analysis scope, and integration consumer. The high-judgment reviewer
-resolves only genuine contract gaps in that window and returns one decision-free amendment plus a conflict graph.
-Launch every graph-independent write cluster concurrently only in the isolated worktrees that graph assigns; retain
-one exclusive writer for every shared-worktree chain. Do not delay an already mechanical eligible cluster for an
-unrelated review, and do not launch a consumer until every producer edge has its accepted receipt.
+resolves only genuine contract gaps for clusters in that window that are not yet mechanical, and returns one
+decision-free amendment plus a conflict graph. Launch every graph-independent write cluster concurrently only in the
+isolated worktrees that graph assigns; retain one exclusive writer for every shared-worktree chain. Do not delay an
+already mechanical eligible cluster for an unrelated review, and do not launch a consumer until every producer edge has
+its accepted receipt.
 
 Make quality closure part of the producer cluster, not a later repair queue. Before a parent accepts or hands off a
 cluster, run its compile and exact-path Checkstyle/PMD preflight as soon as its owned paths exist, then run its focused
