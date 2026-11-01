@@ -8,6 +8,9 @@
 	uncertainty, with stated reasons that include coordination and rework without claiming an unmeasured speed advantage.
 - Keep the executable plan current when evidence changes a design premise or task dependency, preserving valid work and
 	exposing what must be decided before dependent implementation can begin.
+- When agents choose the next work, while planning or executing a plan, let each investigation or supporting artifact
+	resolve a named decision that changes implementation, and let a runnable connected acceptance check precede further
+	isolated verification.
 - Cover consequential user-experience transitions and actor goals without requiring redundant documents or treating a
 	coverage representation as a mandatory assignment boundary.
 
@@ -82,24 +85,30 @@ or list of components can support this check but cannot replace demonstrating th
 
 ## Select the Work and Its Order
 
-Choose the smallest coherent, verifiable portion of a use case or equivalent contract that preserves coupled decisions
-and useful acceptance evidence. It must end in a result an agent can implement and verify with the context it receives.
-A whole journey, whole use case, screen, or individual interaction is not automatically an assignment. Compare only
-alternatives that could change a dependency, verification boundary, ownership boundary, or exposure to rework:
+Apply this section when writing a plan and again when choosing the next work while executing one. Choose the smallest
+coherent, verifiable portion of a use case or equivalent contract that preserves coupled decisions and useful acceptance
+evidence. It must end in a result an agent can implement and verify with the context it receives. A whole journey, whole
+use case, screen, or individual interaction is not automatically an assignment. Compare only alternatives that could
+change a dependency, verification boundary, ownership boundary, or exposure to rework:
 
 - Use a behavior slice when exercising its connected path can resolve a consequential integration or design question
 	before further implementation depends on the answer.
 - Use a component, shared capability, or coherent batch when its shared internals, compatibility constraints, or atomic
 	transition need one consistent implementation and can be checked together. Such an assignment need not be directly
 	user-visible. Keep the later consuming behavior and its integration check visible in the plan.
-- Use a focused investigation when an unresolved premise changes which implementation is valid. Name the decision its
-	result resolves and the implementation work that depends on it; an investigation result is not implementation
-	completion.
+- Use a focused investigation when an unresolved premise changes which implementation is valid. Before starting or
+	extending an investigation or a supporting artifact, such as a probe, diagnostic, harness, or isolated component
+	check, name the decision its result resolves, how each possible result changes the implementation, and the required
+	outcome that depends on it. Reuse existing evidence that already resolves the decision. An investigation result is
+	not implementation completion: once the decision is resolved, continue the dependent implementation.
 
-These units can coexist in one plan. Distinguish required prerequisites from a preferred order. Place a decision's
-evidence-producing work before implementation that relies on its answer, at the earliest boundary the governing design
-checks permit. Keep independent ready work eligible while another branch awaits evidence. Do not assume that a named
-component, source directory, or phase is an independently runnable assignment.
+These units can coexist in one plan. When a connected acceptance check becomes runnable, schedule it before further
+isolated verification unless that verification addresses a named prerequisite or an unresolved failure. A passing
+intermediate check alone does not justify extending the investigation or verification that produced it. Distinguish
+required prerequisites from a preferred order. Place a decision's evidence-producing work before implementation that
+relies on its answer, at the earliest boundary the governing design checks permit. Keep independent ready work eligible
+while another branch awaits evidence. Do not assume that a named component, source directory, or phase is an
+independently runnable assignment.
 
 ## Set Detail, Ownership, and Verification
 
