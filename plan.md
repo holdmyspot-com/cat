@@ -70,10 +70,10 @@ the user's request. Use HOME `/home/gili/cat/home`, never `cd`, and preserve exi
 	receive the same routing. Write a failing test before each behaviour change.
 - **Requirement tags:** Every test method that proves a requirement carries a comment `// Requirement: R-…` naming each
 	requirement ID it proves. The final gate counts these tags, and gate 8 then removes them.
-- **No references to this plan or `design.md`:** both files are deleted once the implementation is complete (user
-	ruling, 2026-10-01). Code, tests, resources and prompts never cite either file, its section numbers or its
-	identifiers (H, D, G, P, T, E, WI, handoff and trace numbers); they state the rule, number or reason itself. The
-	requirement tags are the only exception until gate 8.
+- **No references to this plan or `design.md`:** both files, and this plan's `plan-history.md`, are deleted once the
+	implementation is complete (user ruling, 2026-10-01). Code, tests, resources and prompts never cite these files,
+	their section numbers or their identifiers (H, D, G, P, T, E, WI, handoff and trace numbers); they state the rule,
+	number or reason itself. The requirement tags are the only exception until gate 8.
 - **Test tiers:**
 	- **Unit:** every Java test. It runs in the default build under TestNG parallel methods, and includes file-system and
 		real-Git tests that use test-owned temporary directories. `design.md` [§10](design.md#10-testability-contract) T3
@@ -3926,8 +3926,8 @@ unrun; an unrun gate is unmet.
 7. **Documentation:** `design.md` §11 and §12 reflect the WI-0 results; decisions changed during implementation are
 	recorded in §13; this plan's §2 shows every work item done.
 8. **Standalone codebase:** after gates 1–7 pass, a last commit removes every `// Requirement:` tag, and a search of
-	`client/`, `docs/` and `.cat/` finds no reference to `design.md`, this plan, or their section numbers and
-	identifiers (§1).
+	`client/`, `docs/` and `.cat/` finds no reference to `design.md`, this plan, `plan-history.md`, or their section
+	numbers and identifiers (§1).
 
 A mock-only run, a successful contract extraction, a candidate diff or a statistical unit test is intermediate
 evidence. None of them proves the product outcome by itself.
