@@ -12,6 +12,10 @@ depends-on:
 - Make every affected variable declared outside a function body, such as a field, constant, or module-level variable,
 	name what its value represents and the role the code gives it, so a reader can tell it apart from any other value of
 	the same kind without reading the code that uses it.
+- Make every affected member declared in a type, such as a constant, field, method, or nested type, read without
+	repetition when qualified by its enclosing type, as its references show it: its name omits each leading or trailing
+	word that an enclosing type's name already supplies, unless dropping that word would make the name collide with or
+	be confused with another member or nearby term of that type, or the word names a different thing than the type does.
 - Keep a type's name accurate after its responsibility changes, so readers do not infer an earlier or narrower job from
 	a name that no longer describes the current one.
 - Make the names of related functions and methods use the same words for the behavior they share and matched words for
@@ -43,9 +47,18 @@ Name a variable declared outside a function body after what its value represents
 domain set its contents come from, and the role the code gives them. Do not name it after only its container or element
 kind, such as `FIELDS`, `NAMES`, `KEYS`, or `VALUES`; such a name fits every collection of that kind and leaves the
 reader to search its uses to learn which items it holds and why. For example, a set of the hook-input fields that a
-handler parses, while it skips every other field, is `PARSED_HOOK_FIELDS`, not `FIELDS`. Omit a word that the
-enclosing type's name already supplies, as the Clear Writing qualifier check allows, but keep the word that states the
-role.
+handler parses, while it skips every other field, is `PARSED_HOOK_FIELDS`, not `FIELDS`. It keeps `HOOK` because the
+enclosing type names the handler, not the hook input.
+
+Read the name of every affected member declared in a type, such as a constant, field, method, or nested type, as its
+references show it: qualified by its enclosing type. Do this even for a private member that its own type references
+unqualified, because a reader of the declaration still sees the enclosing type. Then drop each leading or trailing word
+that the enclosing type's name, or the name of a type enclosing that one, already supplies. Keep such a word only when
+dropping it would make the name collide with, or be confused with, another member or nearby term of that type, or when
+the word names a different thing than the type does. For example, in an `OrderStore` that writes its orders to a file,
+the version of that file's format reads as `OrderStore.ORDER_FORMAT_VERSION`, where `ORDER` repeats the type, so
+name it `FORMAT_VERSION`. A second constant for the format version of the price lists that the store reads stays
+`PRICE_LIST_FORMAT_VERSION`, because a price list is not the order store.
 
 For a function or method, distinguish one that returns an already-known value from one that searches for a value,
 chooses among candidates, converts input, makes a value canonical, checks a condition, creates something, or removes
