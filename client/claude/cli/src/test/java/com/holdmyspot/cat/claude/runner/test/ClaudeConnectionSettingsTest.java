@@ -42,7 +42,7 @@ public final class ClaudeConnectionSettingsTest
 			Path destination = root.resolve("isolated/settings.json");
 			Path launcher = root.resolve("artifact with spaces/bin/request-session");
 			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), root.resolve("responses"),
-				root.resolve("requested-runs"), launcher);
+				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
@@ -80,7 +80,7 @@ public final class ClaudeConnectionSettingsTest
 			Path launcher = root.resolve("artifact with spaces/bin/request-session");
 			Path responses = root.resolve("responses");
 			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), responses,
-				root.resolve("requested-runs"), launcher);
+				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
 			String defaultSettings = Files.readString(destination);

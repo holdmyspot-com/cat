@@ -47,7 +47,10 @@ public final class SessionRequestCli
 		String directory = System.getenv(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (directory == null || directory.isBlank())
 			throw new IOException("Session requests are unavailable; start the runner with --session-requests <count>");
-		int status = execute(args, Path.of(directory), Clock.systemUTC(), Pause.sleeping(Duration.ofMillis(100)),
+		SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.valueOf(
+			System.getenv(SessionRequestAccess.SHELL_VARIABLE));
+		int status = execute(args, Path.of(directory), shell, Clock.systemUTC(),
+			Pause.sleeping(Duration.ofMillis(100)),
 			new PrintWriter(System.out, true, StandardCharsets.UTF_8));
 		System.exit(status);
 	}
@@ -76,6 +79,29 @@ public final class SessionRequestCli
 	/**
 	 * Writes a request atomically and waits, or waits again for an existing request. A response that exists but cannot
 	 * be read or parsed yet is checked again until the wait bound. On timeout prints the id and the exact follow-up
+	 * command in the session's shell, followed by the response path and the failure if the last check could not read it.
+	 * Response paths are printed even for unsuccessful requested sessions.
+	 *
+	 * @param args       submission options or await options
+	 * @param requests   the owning run's requests directory
+	 * @param shell      the shell that runs the request launcher
+	 * @param clock      measures the wait bound
+	 * @param pause      paces response checks
+	 * @param output     receives response paths or timeout instructions
+	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
+	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
+	 * @throws IOException              if request I/O fails or a pause is cut short
+	 */
+	public static int execute(String[] args, Path requests, SessionRequestAccess.Shell shell, Clock clock, Pause pause,
+		PrintWriter output) throws IOException
+	{
+		return execute(args, requests, RequestArchive.NULL_DEVICE, RequestLimits.DEFAULT, shell, clock, pause,
+			output);
+	}
+
+	/**
+	 * Writes a request atomically and waits, or waits again for an existing request. A response that exists but cannot
+	 * be read or parsed yet is checked again until the wait bound. On timeout prints the id and the exact follow-up
 	 * command, followed by the response path and the failure if the last check could not read it. Response paths are
 	 * printed even for unsuccessful requested sessions.
 	 *
@@ -95,10 +121,38 @@ public final class SessionRequestCli
 	public static int execute(String[] args, Path requests, Path nullDevice, RequestLimits limits, Clock clock,
 		Pause pause, PrintWriter output) throws IOException
 	{
+		return execute(args, requests, nullDevice, limits, SessionRequestAccess.Shell.POSIX, clock, pause, output);
+	}
+
+	/**
+	 * Writes a request atomically and waits, or waits again for an existing request. A response that exists but cannot
+	 * be read or parsed yet is checked again until the wait bound. On timeout prints the id and the exact follow-up
+	 * command in the session's shell, followed by the response path and the failure if the last check could not read it.
+	 * Response paths are printed even for unsuccessful requested sessions.
+	 *
+	 * @param args       submission options or await options
+	 * @param requests   the owning run's requests directory
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read; the
+	 *                   request leaves those files out of the trees that it carries
+	 * @param limits     the bounds that the request's archive must stay within
+	 * @param shell      the shell that runs the request launcher
+	 * @param clock      measures the wait bound
+	 * @param pause      paces response checks
+	 * @param output     receives response paths or timeout instructions
+	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
+	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
+	 * @throws IOException              if request I/O fails or a pause is cut short or the request exceeds
+	 *                                  {@code limits}
+	 */
+	public static int execute(String[] args, Path requests, Path nullDevice, RequestLimits limits,
+		SessionRequestAccess.Shell shell,
+		Clock clock, Pause pause, PrintWriter output) throws IOException
+	{
 		requireThat(args, "args").isNotNull();
 		requireThat(requests, "requests").isDirectory();
 		requireThat(nullDevice, "nullDevice").isNotNull();
 		requireThat(limits, "limits").isNotNull();
+		requireThat(shell, "shell").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -192,7 +246,10 @@ public final class SessionRequestCli
 			if (!clock.instant().isBefore(deadline))
 			{
 				output.println("id=" + id);
-				output.println("\"$CAT_REQUEST_SESSION\" --await " + id);
+				if (shell == SessionRequestAccess.Shell.POWERSHELL)
+					output.println("& $env:CAT_REQUEST_SESSION --await " + id);
+				else
+					output.println("\"$CAT_REQUEST_SESSION\" --await " + id);
 				if (!readFailure.isEmpty())
 					output.println("unreadable=" + response + ": " + readFailure);
 				return 3;

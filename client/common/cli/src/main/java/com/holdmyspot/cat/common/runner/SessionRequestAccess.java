@@ -26,9 +26,19 @@ import java.util.Optional;
  * @param responses the run's responses directory, where the runner answers each request
  * @param requestedRuns the run root of the requested sessions' runs
  * @param launcher  the {@code request-session} launcher of the run's artifact
+ * @param shell the shell used by the session's instructions
  */
-public record SessionRequestAccess(Path requests, Path responses, Path requestedRuns, Path launcher)
+public record SessionRequestAccess(Path requests, Path responses, Path requestedRuns, Path launcher, Shell shell)
 {
+	/**
+	 * A shell that can run the request launcher.
+	 */
+	public enum Shell
+	{
+		POSIX,
+		POWERSHELL
+	}
+
 	/**
 	 * The variable that names the requests directory to a session's commands.
 	 */
@@ -37,6 +47,10 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * The variable that names the {@code request-session} launcher to a session's commands.
 	 */
 	public static final String LAUNCHER_VARIABLE = "CAT_REQUEST_SESSION";
+	/**
+	 * The variable that tells a session which shell form to use for the request wait command.
+	 */
+	public static final String SHELL_VARIABLE = "CAT_REQUEST_SESSION_SHELL";
 	/**
 	 * The name of the launcher that requests a session, without the extension that it has on Windows.
 	 */
@@ -49,6 +63,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @param responses the run's responses directory, where the runner answers each request
 	 * @param requestedRuns the run root of the requested sessions' runs
 	 * @param launcher  the {@code request-session} launcher of the run's artifact
+	 * @param shell the shell used by the session's instructions
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public SessionRequestAccess
@@ -57,6 +72,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 		requireThat(responses, "responses").isNotNull();
 		requireThat(requestedRuns, "requestedRuns").isNotNull();
 		requireThat(launcher, "launcher").isNotNull();
+		requireThat(shell, "shell").isNotNull();
 	}
 
 	/**
@@ -121,18 +137,20 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @param artifact        the harness artifact that the run uses, whose {@code bin} directory holds the launcher
 	 * @param sessionRequests how many sessions the session may request
 	 * @param platform        the platform that the session runs on, which decides the launcher's file name
+	 * @param shell           the shell used by the session's instructions
 	 * @return the access, or empty if {@code sessionRequests} is {@code 0}, in which case nothing is created
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code sessionRequests} is negative
 	 * @throws IOException              if a directory cannot be created
 	 */
 	public static Optional<SessionRequestAccess> allowing(HarnessRun run, Path artifact, int sessionRequests,
-		Platform platform) throws IOException
+		Platform platform, Shell shell) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(shell, "shell").isNotNull();
 		if (sessionRequests == 0)
 			return Optional.empty();
 		Path requests = Files.createDirectories(requestsDirectory(run));
@@ -140,7 +158,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 		Path requestedRuns = Files.createDirectories(requestedRunsDirectory(run));
 		for (int ordinal = 1; ordinal <= sessionRequests; ++ordinal)
 			Files.createDirectories(requestedRuns.resolve(String.valueOf(ordinal)));
-		return Optional.of(new SessionRequestAccess(requests, responses, requestedRuns, launcher(artifact, platform)));
+		return Optional.of(new SessionRequestAccess(requests, responses, requestedRuns, launcher(artifact, platform),
+			shell));
 	}
 
 	/**
@@ -196,6 +215,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public Map<String, String> environment()
 	{
-		return Map.of(REQUESTS_VARIABLE, requests.toString(), LAUNCHER_VARIABLE, launcher.toString());
+		return Map.of(REQUESTS_VARIABLE, requests.toString(), LAUNCHER_VARIABLE, launcher.toString(),
+			SHELL_VARIABLE, shell.name());
 	}
 }

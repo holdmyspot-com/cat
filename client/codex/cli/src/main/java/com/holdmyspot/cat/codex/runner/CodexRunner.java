@@ -170,8 +170,11 @@ public final class CodexRunner
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
 			Path isolatedConfiguration = isolatedHome.resolve(CONFIGURATION);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
+			SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
+			if (Platform.current().isWindows())
+				shell = SessionRequestAccess.Shell.POWERSHELL;
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifact, sessionRequests,
-				Platform.current()).orElse(null);
+				Platform.current(), shell).orElse(null);
 			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration,
 				run.directory().resolve("project"), caches,
 				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current());

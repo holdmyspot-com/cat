@@ -41,8 +41,11 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 		Path runHome = fixture.runHome();
 		Path configuration = runHome.resolve("config.toml");
 		Path userCodexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME"));
+		SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
+		if (Platform.current().isWindows())
+			shell = SessionRequestAccess.Shell.POWERSHELL;
 		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
-			sessionRequests, Platform.current()).orElse(null);
+			sessionRequests, Platform.current(), shell).orElse(null);
 		Path temporaryDirectory = Files.createDirectories(runHome.resolve("tmp"));
 		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration,
 			fixture.run().directory().resolve("project"),

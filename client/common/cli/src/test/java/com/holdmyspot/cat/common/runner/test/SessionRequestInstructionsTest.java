@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.ShellQuoting;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import java.nio.file.Path;
 import org.testng.annotations.Test;
@@ -79,5 +80,26 @@ public final class SessionRequestInstructionsTest
 
 		requireThat(text, "text").contains("& '" + launcher + "' --harness").
 			contains("& '" + launcher + "' --await <id>").doesNotContain("$");
+	}
+
+	/**
+	 * Verifies that the command environment carries the explicitly selected shell form.
+	 */
+	@Test
+	public void carriesExplicitShellFormToRequestCommand()
+	{
+		Path requests = Path.of("/run/requests");
+		Path responses = Path.of("/run/responses");
+		Path requestedRuns = Path.of("/run/requested-runs");
+		Path posixLauncher = Path.of("/artifact/bin/request-session");
+		Path powerShellLauncher = Path.of("C:/artifact/bin/request-session.cmd");
+		SessionRequestAccess posix = new SessionRequestAccess(requests, responses, requestedRuns, posixLauncher,
+			SessionRequestAccess.Shell.POSIX);
+		SessionRequestAccess powerShell = new SessionRequestAccess(requests, responses, requestedRuns, powerShellLauncher,
+			SessionRequestAccess.Shell.POWERSHELL);
+
+		requireThat(posix.environment().get(SessionRequestAccess.SHELL_VARIABLE), "posixShell").isEqualTo("POSIX");
+		requireThat(powerShell.environment().get(SessionRequestAccess.SHELL_VARIABLE), "powerShell").
+			isEqualTo("POWERSHELL");
 	}
 }

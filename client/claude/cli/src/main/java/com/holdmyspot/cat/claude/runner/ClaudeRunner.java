@@ -162,7 +162,7 @@ public final class ClaudeRunner
 			// independent trials do not redownload the same immutable registry artifacts.
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifactRoot, sessionRequests,
-				Platform.current()).orElse(null);
+				Platform.current(), SessionRequestAccess.Shell.POSIX).orElse(null);
 			Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
 				hostConfiguration.resolve("settings.json"), isolatedProcessHome, requestAccess);
 			if (requiresCredentialFiles(isolatedEnvironment))

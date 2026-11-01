@@ -51,7 +51,7 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 			Path runHome = fixture.runHome();
 			Path userSettings = fixture.userHome().resolve(".claude/settings.json");
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
-				sessionRequests, Platform.current()).orElse(null);
+				sessionRequests, Platform.current(), SessionRequestAccess.Shell.POSIX).orElse(null);
 			Map<String, String> processEnvironment = ClaudeRunner.processEnvironment(scope, fixture.userEnvironment(),
 				HarnessDependencyCaches.NONE, userSettings, runHome, requestAccess);
 			Map<String, String> commandEnvironment = new HashMap<>(processEnvironment);

@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.RequestLimits;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -78,7 +79,7 @@ public final class SessionRequestCliTest
 					"--model", "model-a", "--effort", "effort-a", "--install-cat"}, requests, time,
 					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(output));
 				requireThat(status, "status").isEqualTo(3);
-				requireThat(output.toString(), "output").contains("--await");
+				requireThat(output.toString(), "output").contains("\"$CAT_REQUEST_SESSION\" --await ");
 				try (Stream<Path> files = Files.list(requests))
 				{
 					Path file = files.findFirst().orElseThrow();
@@ -119,6 +120,32 @@ public final class SessionRequestCliTest
 						}, new PrintWriter(new StringWriter())),
 						"refused").isEqualTo(1);
 				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a timed-out request prints the PowerShell command that waits for it again.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void printsPowerShellAwaitCommand() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "await-powershell-"));
+				Path requests = Files.createDirectory(root.resolve("requests"));
+				Files.createDirectories(root.resolve("responses/first/response.json"));
+				ManualClock time = new ManualClock(Instant.EPOCH);
+				StringWriter output = new StringWriter();
+				int status = SessionRequestCli.execute(new String[]{"--await", "first"}, requests,
+					SessionRequestAccess.Shell.POWERSHELL, time,
+					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(output));
+				requireThat(status, "status").isEqualTo(3);
+				requireThat(output.toString(), "output").contains("& $env:CAT_REQUEST_SESSION --await first");
 			}
 		}
 	}
