@@ -32,6 +32,11 @@ import tools.jackson.databind.json.JsonMapper;
  * the saved output. A cut result that does not end with a part's closing line names the agent's command instead. The
  * hook deletes nothing after a cut, so that the command still finds the saved output.
  * <p>
+ * A result that ends with the line {@code [End of output]} comes from a {@code run-part} that could not save the
+ * output. Codex cuts such a result when it is longer than Codex's own limit, whether or not the agent set
+ * {@code max_output_tokens}, and no saved file holds the lines that it removed, so the hook passes the result
+ * unchanged, cut or not, and deletes nothing.
+ * <p>
  * A result that Codex did not cut and that ends with {@code [End of <path>. The file was deleted]} shows the agent the
  * whole last part of a saved output. When {@code <path>} is a file that {@code run-part} saved, the hook deletes the
  * file's folder and leaves the result unchanged, since that line already tells the agent that the file is gone.
@@ -57,6 +62,11 @@ public final class CodexPostToolUseHook
 	 */
 	private static final Pattern LAST_PART = Pattern.compile("(?:\\A|\n)\\[End of (?<path>[^\n]+)\\. The file was " +
 		"deleted]\\s*\\z");
+	/**
+	 * The line that ends the output of a {@code run-part} that could not save the output.
+	 */
+	private static final Pattern UNSAVED_END = Pattern.compile("(?:\\A|\n)" + Pattern.quote(CodexRunPart.UNSAVED_END) +
+		"\\s*\\z");
 	/**
 	 * The program that a command runs, and the folder that holds both programs. The program's path may be quoted, in
 	 * which case it may hold spaces, and on Windows it ends with {@code .cmd}.
@@ -121,7 +131,7 @@ public final class CodexPostToolUseHook
 			if (!command.isString() || !result.isString())
 				return;
 			Matcher script = SCRIPT.matcher(command.stringValue());
-			if (!script.find())
+			if (!script.find() || UNSAVED_END.matcher(result.stringValue()).find())
 				return;
 			if (CUT.matcher(result.stringValue()).find())
 			{

@@ -168,6 +168,60 @@ public final class CodexPostToolUseHookTest
 	}
 
 	/**
+	 * Verifies that a cut result of a {@code run-part} command that could not save the output, which ends with the line
+	 * {@code [End of output]}, passes unchanged and deletes nothing: no saved file holds the lines that Codex removed,
+	 * and running the command again would be cut the same way.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void cutUnsavedOutputPassesUnchanged() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, true);
+			String result = """
+				Warning: truncated output (original token count: 20000)
+				first
+				…900 tokens truncated…
+				last
+				[End of output]
+				""";
+
+			HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\ncat notes.md\nEOF", result,
+				Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(hook.error(), "error").isEmpty();
+			requireThat(saved, "saved").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that an uncut result of a {@code run-part} command that could not save the output, which ends with the
+	 * line {@code [End of output]}, passes unchanged and deletes nothing.
+	 *
+	 * @throws IOException if the test folders cannot be used
+	 */
+	@Test
+	public void uncutUnsavedOutputPassesUnchanged() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
+			Path saved = savedOutput(temporary, true);
+
+			HookResult hook = invoke(CommandShell.POSIX, BIN + "run-part <<'EOF'\nls\nEOF", "a\n[End of output]\n",
+				Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(hook.output(), "output").isEmpty();
+			requireThat(hook.error(), "error").isEmpty();
+			requireThat(saved, "saved").isRegularFile();
+		}
+	}
+
+	/**
 	 * Verifies that a result that Codex did not cut passes unchanged.
 	 */
 	@Test

@@ -47,6 +47,10 @@ public final class CodexRunPartTest
 	private static final String EOL = System.lineSeparator();
 	private static final Pattern LAST_PART = Pattern.compile("\\[End of (?<path>[^\n]+)\\. The file was deleted]\n\\z");
 	/**
+	 * The line that ends the standard output of {@code run-part} when it cannot save the output.
+	 */
+	private static final String UNSAVED_END = "[End of output]\n";
+	/**
 	 * A folder that no CAT project contains, so that {@code run-part} saves the output of a command that runs there
 	 * under {@code TMPDIR}.
 	 */
@@ -90,7 +94,6 @@ public final class CodexRunPartTest
 			requireThat(call.status(), "status").isEqualTo(3);
 			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("3\n");
 			requireThat(call.error(), "error").isEmpty();
-			requireThat(call.commandOutput(), "commandOutput").isEmpty();
 			requireThat(call.commandError(), "commandError").isEmpty();
 		}
 	}
@@ -346,10 +349,11 @@ public final class CodexRunPartTest
 	/**
 	 * Verifies that when {@code run-part} cannot create the folder that would save the output, as in a read-only
 	 * sandbox, the command still runs and behaves as it would without {@code run-part}: its standard output and
-	 * standard error reach the caller's, unsaved and unchanged, {@code run-part} prints nothing of its own, and the call
-	 * exits with the command's exit status. Outside a CAT project the folder's parent is {@code TMPDIR}; in a Codex
-	 * thread inside a CAT project it is the project's {@code .cat/sessions}. Each of them is a regular file here, so no
-	 * folder can be created inside it whatever the user's permissions.
+	 * standard error reach the caller's, unsaved and unchanged, {@code run-part} prints only the line
+	 * {@code [End of output]} after the standard output, and the call exits with the command's exit status. Outside a
+	 * CAT project the folder's parent is {@code TMPDIR}; in a Codex thread inside a CAT project it is the project's
+	 * {@code .cat/sessions}. Each of them is a regular file here, so no folder can be created inside it whatever the
+	 * user's permissions.
 	 *
 	 * @throws IOException if the temporary files cannot be written
 	 */
@@ -374,13 +378,44 @@ public final class CodexRunPartTest
 
 			for (Call call : calls)
 			{
-				requireThat(call.commandOutput(), "commandOutput").withContext(call.error(), "error").
-					isEqualTo("out|unset" + EOL);
+				requireThat(call.output(), "output").withContext(call.error(), "error").
+					isEqualTo("out|unset" + EOL + UNSAVED_END);
 				requireThat(call.commandError(), "commandError").isEqualTo("err" + EOL);
-				requireThat(call.output(), "output").isEmpty();
 				requireThat(call.error(), "error").isEmpty();
 				requireThat(call.status(), "status").isEqualTo(3);
 			}
+		}
+	}
+
+	/**
+	 * Verifies that when {@code run-part} cannot save the output, the line {@code [End of output]} that ends its
+	 * standard output is on a line of its own: after a standard output that does not end with a line feed, a line feed
+	 * comes first, and a command that writes no standard output gives only that line. The command's standard error and
+	 * exit status stay unchanged.
+	 *
+	 * @throws IOException if the temporary files cannot be written
+	 */
+	@Test
+	public void unsavableOutputEndsWithLine() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path file = Files.writeString(temporary.resolve("file"), "");
+			Map<String, String> environment = Map.of("TMPDIR", file.resolve("temp").toString());
+
+			Call unfinished = runPart(script("printf 'a\\nb'\necho err >&2\nexit 3\n",
+				"[Console]::Out.Write(\"a`nb\")\n[Console]::Error.WriteLine('err')\nexit 3\n"), false, OUTSIDE_PROJECT,
+				environment);
+			requireThat(unfinished.output(), "unfinished").withContext(unfinished.error(), "error").
+				isEqualTo("a\nb\n" + UNSAVED_END);
+			requireThat(unfinished.commandError(), "unfinishedError").isEqualTo("err" + EOL);
+			requireThat(unfinished.status(), "unfinishedStatus").isEqualTo(3);
+
+			Call empty = runPart("exit 4", false, OUTSIDE_PROJECT, environment);
+			requireThat(empty.output(), "empty").withContext(empty.error(), "error").isEqualTo(UNSAVED_END);
+			requireThat(empty.commandError(), "emptyError").isEmpty();
+			requireThat(empty.status(), "emptyStatus").isEqualTo(4);
 		}
 	}
 
@@ -412,9 +447,8 @@ public final class CodexRunPartTest
 				variables("LC_ALL", "LC_CTYPE", "CAT_CALLER_LC_ALL")), false, folder, environment);
 
 			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
-			requireThat(call.commandOutput(), "commandOutput").withContext(call.error(), "error").
-				isEqualTo(folder.toRealPath() + EOL + expected + EOL);
-			requireThat(call.output(), "output").isEmpty();
+			requireThat(call.output(), "output").withContext(call.error(), "error").
+				isEqualTo(folder.toRealPath() + EOL + expected + EOL + UNSAVED_END);
 		}
 	}
 
@@ -450,9 +484,8 @@ public final class CodexRunPartTest
 
 			Call call = runPart("rg -n needle", false, OUTSIDE_PROJECT, environment);
 
-			requireThat(call.commandOutput(), "commandOutput").withContext(call.error(), "error").
-				isEqualTo("-n needle" + EOL + "b" + EOL + "c" + EOL);
-			requireThat(call.output(), "output").isEmpty();
+			requireThat(call.output(), "output").withContext(call.error(), "error").
+				isEqualTo("-n needle" + EOL + "b" + EOL + "c" + EOL + UNSAVED_END);
 			requireThat(call.status(), "status").isEqualTo(1);
 		}
 	}
@@ -519,7 +552,7 @@ public final class CodexRunPartTest
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment
 	 * @return the call's streams and exit status
-	 * @throws IOException if the files of the command's own streams cannot be created, read or removed
+	 * @throws IOException if the file of the command's own standard error cannot be created, read or removed
 	 */
 	private static Call runPart(String command, boolean terminal, Path workingDirectory,
 		Map<String, String> environment) throws IOException
@@ -528,8 +561,8 @@ public final class CodexRunPartTest
 	}
 
 	/**
-	 * Runs {@code run-part} from a plugin's {@code bin} folder. The command's own standard output and standard error,
-	 * which reach the caller only when {@code run-part} cannot save the output, go to files that this call reads back.
+	 * Runs {@code run-part} from a plugin's {@code bin} folder. The command's own standard error, which reaches the
+	 * caller only when {@code run-part} cannot save the output, goes to a file that this call reads back.
 	 *
 	 * @param command the command on standard input
 	 * @param terminal {@code true} if standard input is a terminal
@@ -538,7 +571,7 @@ public final class CodexRunPartTest
 	 * @param overrides the folder of the programs that the command finds before the caller's {@code PATH}
 	 * @param environment the environment
 	 * @return the call's streams and exit status
-	 * @throws IOException if the files of the command's own streams cannot be created, read or removed
+	 * @throws IOException if the file of the command's own standard error cannot be created, read or removed
 	 */
 	private static Call runPart(String command, boolean terminal, Path workingDirectory, Path readPart,
 		Path overrides, Map<String, String> environment) throws IOException
@@ -546,15 +579,13 @@ public final class CodexRunPartTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path streams = cleanup.add(Files.createTempDirectory("run-part-streams-"));
-			Path commandOutput = streams.resolve("stdout");
 			Path commandError = streams.resolve("stderr");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 			int status = CodexRunPart.run(new String[0], new ByteArrayInputStream(command.getBytes(UTF_8)), terminal,
 				workingDirectory, SHELL, readPart, overrides, environment, output, new PrintStream(error, true, UTF_8),
-				Redirect.to(commandOutput.toFile()), Redirect.to(commandError.toFile()), Yielding.waiting());
-			return new Call(output.toString(UTF_8), error.toString(UTF_8), status, readIfPresent(commandOutput),
-				readIfPresent(commandError));
+				Redirect.to(commandError.toFile()), Yielding.waiting());
+			return new Call(output.toString(UTF_8), error.toString(UTF_8), status, readIfPresent(commandError));
 		}
 	}
 
@@ -591,12 +622,10 @@ public final class CodexRunPartTest
 	 * @param output the standard output of {@code run-part}
 	 * @param error the standard error of {@code run-part}
 	 * @param status the exit status
-	 * @param commandOutput the command's own standard output, which reaches the caller only when {@code run-part}
-	 *   cannot save the output
 	 * @param commandError the command's own standard error, which reaches the caller only when {@code run-part} cannot
 	 *   save the output
 	 */
-	private record Call(String output, String error, int status, String commandOutput, String commandError)
+	private record Call(String output, String error, int status, String commandError)
 	{
 		/**
 		 * Creates a call.
@@ -604,14 +633,12 @@ public final class CodexRunPartTest
 		 * @param output the standard output of {@code run-part}
 		 * @param error the standard error of {@code run-part}
 		 * @param status the exit status
-		 * @param commandOutput the command's own standard output
 		 * @param commandError the command's own standard error
 		 */
 		private Call
 		{
 			assert output != null;
 			assert error != null;
-			assert commandOutput != null;
 			assert commandError != null;
 		}
 	}

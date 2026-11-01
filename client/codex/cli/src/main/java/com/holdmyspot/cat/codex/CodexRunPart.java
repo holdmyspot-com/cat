@@ -42,8 +42,9 @@ import java.util.Optional;
  * {@code CODEX_THREAD_ID}, it is saved in the folder that {@link #fallbackFolder(Map)} returns. When the folder or
  * the file that would save the output cannot be created, as in a read-only sandbox, {@code run-part} runs the command
  * as it would run without {@code run-part}: the output is neither saved nor limited, its standard output and standard
- * error reach those of {@code run-part} unchanged, {@code run-part} prints nothing of its own, and it exits with the
- * command's exit status.
+ * error reach those of {@code run-part} unchanged, and it exits with the command's exit status. Its only line of its
+ * own is {@code [End of output]}, which ends its standard output on a line of its own, so that the agent can tell the
+ * command's last line from the line that ends a part.
  * <p>
  * The command receives the saved output's path in {@code CAT_RUN_PART_OUTPUT} and, in {@code bash}, finds the
  * plugin's {@code client/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
@@ -71,6 +72,11 @@ public final class CodexRunPart
 	 */
 	static final String EXIT_STATUS_SUFFIX = ".exit-status";
 	/**
+	 * The line that ends the standard output of {@code run-part} when it cannot save the output. It is the line that
+	 * ends a saved output's last part without the saved file's path and the clause that says the file was deleted.
+	 */
+	static final String UNSAVED_END = "[End of output]";
+	/**
 	 * The folder, in the runtime image, of the programs that the command finds before the caller's {@code PATH}.
 	 */
 	private static final String OVERRIDES = "run-part-overrides";
@@ -89,8 +95,7 @@ public final class CodexRunPart
 		CommandShell shell = CommandShell.current();
 		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
 			CodexReadPart.launcher(shell.launcher("read-part")), Path.of(System.getProperty("java.home"), OVERRIDES),
-			Platform.current().environment(System.getenv()), System.out, System.err, Redirect.INHERIT, Redirect.INHERIT,
-			Pause::sleeping);
+			Platform.current().environment(System.getenv()), System.out, System.err, Redirect.INHERIT, Pause::sleeping);
 		System.out.flush();
 		System.exit(status);
 	}
@@ -98,8 +103,9 @@ public final class CodexRunPart
 	/**
 	 * Runs a command, saves its output and exit status, then prints the output's first part. When the folder or the
 	 * file that would save the output cannot be created, as in a read-only sandbox, it runs the command as it would
-	 * run without {@code run-part} instead: the command's standard output and standard error go to
-	 * {@code commandOutput} and {@code commandError}, unsaved and unchanged, and nothing else is printed.
+	 * run without {@code run-part} instead: the command's standard output goes to {@code output} and its standard error
+	 * to {@code commandError}, unsaved and unchanged, then {@code output} receives the line {@code [End of output]},
+	 * after a line feed if the standard output does not end with one.
 	 *
 	 * @param args a non-null empty command-line argument array
 	 * @param input the command
@@ -118,9 +124,8 @@ public final class CodexRunPart
 	 *   when {@code shell} is {@code bash}, and {@code CAT_RUN_PART_OUTPUT} naming the saved output, which is unset
 	 *   when the output cannot be saved; in PowerShell, {@code CAT_RG_LINE_LIMIT} sets the line limit of a saved
 	 *   command that is one {@code rg} search (see {@link RipgrepOutputLimit})
-	 * @param output receives the part
+	 * @param output receives the part, or the command's standard output when its output cannot be saved
 	 * @param error receives diagnostics
-	 * @param commandOutput where the command's standard output goes when its output cannot be saved
 	 * @param commandError where the command's standard error goes when its output cannot be saved
 	 * @param waiting how the command waits between the attempts of a retried operation
 	 * @return the exit status of {@code read-part}; the command's exit status if its output cannot be saved; 1 if the
@@ -129,7 +134,7 @@ public final class CodexRunPart
 	 */
 	public static int run(String[] args, InputStream input, boolean terminal, Path workingDirectory, CommandShell shell,
 		Path readPart, Path overrides, Map<String, String> environment, OutputStream output, PrintStream error,
-		Redirect commandOutput, Redirect commandError, Waiting waiting)
+		Redirect commandError, Waiting waiting)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
@@ -140,7 +145,6 @@ public final class CodexRunPart
 		requireThat(environment, "environment").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(error, "error").isNotNull();
-		requireThat(commandOutput, "commandOutput").isNotNull();
 		requireThat(commandError, "commandError").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		try
@@ -176,9 +180,8 @@ public final class CodexRunPart
 			{
 				// The command runs as it would without run-part
 				ProcessBuilder builder = commandBuilder(command, workingDirectory, shell, overrides, environment).
-					redirectOutput(commandOutput).
 					redirectError(commandError);
-				return runCommand(builder);
+				return runUnsaved(builder, output);
 			}
 			ProcessBuilder builder = commandBuilder(search.orElse(command), workingDirectory, shell, overrides,
 				environment).
@@ -224,6 +227,45 @@ public final class CodexRunPart
 		catch (IOException | InvalidPathException _)
 		{
 			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Runs a command whose output cannot be saved, without input, copies its standard output as it arrives, then ends
+	 * it with the line {@code [End of output]} on a line of its own. The line ends with {@code \n} on every platform,
+	 * as do the lines that {@code read-part} adds to a part.
+	 *
+	 * @param builder the process builder of the command, whose standard output is a pipe
+	 * @param output receives the command's standard output, then the line
+	 * @return the command's exit status
+	 * @throws IOException if the command cannot be started or its output cannot be copied
+	 * @throws InterruptedException if the thread is interrupted while the command runs
+	 */
+	private static int runUnsaved(ProcessBuilder builder, OutputStream output) throws IOException,
+		InterruptedException
+	{
+		try (Process process = builder.start())
+		{
+			// The command reads no input: closing its standard input ends any read at once, on every platform
+			process.getOutputStream().close();
+			byte last = '\n';
+			try (InputStream commandOutput = process.getInputStream())
+			{
+				byte[] buffer = new byte[8192];
+				for (int count = commandOutput.read(buffer); count >= 0; count = commandOutput.read(buffer))
+				{
+					output.write(buffer, 0, count);
+					output.flush();
+					last = buffer[count - 1];
+				}
+			}
+			int status = process.waitFor();
+			String end = UNSAVED_END + "\n";
+			if (last != '\n')
+				end = "\n" + end;
+			output.write(end.getBytes(UTF_8));
+			output.flush();
+			return status;
 		}
 	}
 
