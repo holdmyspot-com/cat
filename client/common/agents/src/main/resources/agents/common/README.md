@@ -4,7 +4,8 @@ These harness-neutral bodies define stakeholder reviews, plan construction, plan
 Claude and Codex wrappers supply only harness metadata, a capability tier, and an include reference to the matching body.
 
 Stakeholder bodies review a declared change and report evidence-based findings or a clean approval. The plan-builder body
-produces an implementation plan, while the plan-review body assesses a declared plan. These bodies are read-only.
+produces an implementation plan, while the plan-review body assesses a declared plan. These bodies instruct agents not to
+edit files. Codex reviewers inherit their parent session's permissions.
 
 The optimize body implements one delegated work item. It writes only within the delegation's write allowlist and
 worktree, and its wrappers grant write tools for that purpose.

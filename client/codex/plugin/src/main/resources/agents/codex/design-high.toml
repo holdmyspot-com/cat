@@ -3,7 +3,6 @@ nickname_candidates = ["design-high"]
 description = "High-tier CAT Design reviewer."
 model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
-sandbox_mode = "read-only"
 developer_instructions = '''
 Reviewer tier: high.
 <!-- cat:include ../common/stakeholder-design.md -->

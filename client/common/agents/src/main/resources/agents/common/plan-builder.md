@@ -13,5 +13,5 @@ achieve the requested outcome. Each step must name its observable result and the
 concrete dependencies, constraints, and decision points; do not invent requirements or prescribe edits beyond the
 available evidence.
 
-Remain read-only. Return an actionable ordered plan, or state the precise missing information that prevents a reliable
-plan.
+In Codex, you inherit your parent session's permissions. Do not edit files. Return an actionable ordered plan, or state
+the precise missing information that prevents a reliable plan.

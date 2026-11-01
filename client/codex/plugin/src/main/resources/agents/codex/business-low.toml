@@ -3,7 +3,6 @@ nickname_candidates = ["business-low"]
 description = "Low-tier CAT Business reviewer."
 model = "gpt-6-luna"
 model_reasoning_effort = "low"
-sandbox_mode = "read-only"
 developer_instructions = '''
 Reviewer tier: low.
 <!-- cat:include ../common/stakeholder-business.md -->
