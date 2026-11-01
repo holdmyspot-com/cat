@@ -153,7 +153,7 @@ every decision that needs judgment.
 **Orchestrator:** Opus 5.5 at high effort in Claude Code, or `gpt-6.1-sol` at high effort in Codex. It never delegates:
 
 - integrating each delegated result into the shared tree, one at a time;
-- reviewing each result against its work item's exit check, [§8](#8-test-suite-rules) and `design.md`
+- accepting each result once against its work item's exit check, [§8](#8-test-suite-rules) and `design.md`
 	[§10](design.md#10-testability-contract);
 - every change to `design.md` or this plan, including premise-gate fallbacks;
 - user decisions and the interactive premise gates;
@@ -333,8 +333,12 @@ A mismatch is fixed in the agent definition before any delegation.
 - its requirement IDs and their rows from [§3](#3-requirement-inventory);
 - a write allowlist: the packages and paths the work item names, and their tests;
 - its worktree and the snapshot it starts from;
-- the verification commands: the focused tests and `./mvnw verify` from `client/`;
-- the exit check as its acceptance evidence.
+- the verification commands: the compilation, static analysis and focused tests of the paths it owns. The orchestrator
+	runs `./mvnw verify` once, after integrating the results, so concurrent subagents neither run it nor wait for one
+	another's;
+- the exit check as its acceptance evidence;
+- its completion report: for each outcome it claims, the check that decides it, as a command or a precise observation,
+	that check's result, and where the check's full output is.
 
 The subagent never changes `design.md`, this plan or a path outside its allowlist, and never integrates its own
 result. When it finds a contradiction, a decision it may not make, or a failure outside its allowlist, it stops and
@@ -358,8 +362,11 @@ requirement names.
 
 **Acceptance and escalation:**
 
-- The orchestrator rejects changes outside the allowlist, integrates the result, reruns the exit check on the integrated
-	tree and reviews it.
+- The orchestrator accepts or rejects a result once, when the subagent reports completion. It rejects changes outside
+	the allowlist, then confirms each claimed outcome that the exit check decides by rerunning or reading the check the
+	report names, without searching the subagent's other evidence or checking the integrity of its files. It integrates
+	the accepted result, runs the combined affected checks and then `./mvnw verify` once. An accepted result is not
+	checked again unless an input it depended on changed.
 - A reported design gap returns to the orchestrator. It fixes `design.md` first, then this plan, then relaunches the
 	work item.
 - After two failed attempts at the same exit check, the work item moves up one tier (low, medium, high, xhigh). After
