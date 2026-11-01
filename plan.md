@@ -61,9 +61,11 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	to know about other processes in plain sentences, and nothing when they need nothing. Clean build 3,552 tests, 0
 	failures, 18 skipped. Open defect: `OptimizerCore` writes campaign snapshots and overlays outside `CampaignLock`
 	(`start`, `rebind`, trial plugins, two usage writes), which the store descriptions forbid; user ruling (2026-11-01):
-	those writes take the lock. Open: the topic skill's entry-point inventory; user rulings (2026-11-01): the files it
-	reads are data to sort into topics, whatever harness they belong to, and the skill works in repositories other than
-	CAT.
+	those writes take the lock. The topic skill's entry-point inventory: user rulings (2026-11-01): the files it reads
+	are data to sort into topics, whatever harness they belong to, and the skill works in repositories other than CAT;
+	then, told that a split's validity is objective but its grouping into topics is not, the user chose to remove the
+	skill ("b"). Removed in `c249a62d2b`: the `git-commit-per-topic` skill, the `git-topic-replay`
+	launcher and the replay package. Clean build 3,445 tests, 0 failures, 18 skipped, 109 s.
 - **Dropped:** the 2026-10-24 handoff's check whether `StatusReport.of` reports a completed certified campaign as
 	certified despite detected dependence. It traced to the accessed-path detector, which `706416b739` removed when the
 	user chose to rule dependence out by trial isolation (G4 row); no production code can report detected dependence.
