@@ -36,8 +36,6 @@ import java.util.Set;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. {@link #scanWorktree()} never returns an inventory of a worktree
  * that a {@link #materialize(Overlay)} call on this workspace has written only in part.
- * <p>
- * <b>Process Safety:</b> This class is not process-safe.
  */
 public final class Workspace implements WorkspacePort
 {

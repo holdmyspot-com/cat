@@ -93,10 +93,10 @@ import tools.jackson.databind.json.JsonMapper;
  * </ol>
  * Delivery never commits, stages or moves a branch in the base worktree; the user reviews the uncommitted changes.
  * <p>
- * <b>Process Safety:</b> This class is not process-safe. Only the holder of the campaign's {@link CampaignLock} may
- * deliver it. A reader in any process sees each file or link that delivery creates or replaces with its previous or
- * new content, never part of it. Delivery checks each target's live state just before it writes the target, and
- * returns {@link ConcurrentEdit} without overwriting a target that changed since the delivery was journaled.
+ * Only the holder of the campaign's {@link CampaignLock} may deliver it. A reader in any process sees each file or link
+ * that delivery creates or replaces with its previous or new content, never part of it. Delivery checks each target's
+ * live state just before it writes the target, and returns {@link ConcurrentEdit} without overwriting a target that
+ * changed since the delivery was journaled.
  */
 public final class Delivery
 {

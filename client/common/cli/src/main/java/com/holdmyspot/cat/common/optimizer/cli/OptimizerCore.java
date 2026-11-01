@@ -150,8 +150,6 @@ import java.util.stream.Stream;
  * removes the files of a campaign whose certified delivery it completed, and {@code choose} those of a campaign whose
  * user retained the incumbent. A removal that fails adds a warning to the command's summary, or to its refusal, and
  * the command continues; the next command retries the removal.
- * <p>
- * <b>Process Safety:</b> This class is not process-safe.
  */
 public final class OptimizerCore implements Core
 {

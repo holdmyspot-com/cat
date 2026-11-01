@@ -29,9 +29,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Loading rebuilds the overlay on the fork that the file names, which is the campaign's current fork or an earlier
  * one that {@link ForkVersions} supplies, and returns it only if its identity equals the requested snapshot.
  * <p>
- * <b>Process Safety:</b> This class is not process-safe. Only the holder of the campaign's {@link CampaignLock} may
- * save its overlays. While that holds, a reader in any process finds either no overlay file for a candidate or the
- * complete one.
+ * Only the holder of the campaign's {@link CampaignLock} may save its overlays. While that holds, a reader in any
+ * process finds either no overlay file for a candidate or the complete one.
  */
 public final class FileCandidateOverlays implements CandidateOverlays
 {

@@ -44,9 +44,9 @@ import tools.jackson.databind.json.JsonMapper;
  * storage device, renamed over the target, and the directory is forced. A crash leaves either the old or the new
  * content. Readers never read the temporary files, and the next write of the same target replaces a leftover one.
  * <p>
- * <b>Process Safety:</b> This class is not process-safe. Only the holder of a campaign's {@link CampaignLock} may write
- * the campaign's snapshot, trial records or delivery journal. While that holds, a reader in any process sees each of
- * these files with its previous or new content, never part of it.
+ * Only the holder of a campaign's {@link CampaignLock} may write the campaign's snapshot, trial records or delivery
+ * journal. While that holds, a reader in any process sees each of these files with its previous or new content, never
+ * part of it.
  */
 public final class FileCampaignStore extends AbstractCampaignStore
 {

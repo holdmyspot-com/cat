@@ -21,9 +21,6 @@ import java.util.Set;
  * effects directory instead, which is scanned under the same rules.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
- * <p>
- * <b>Process Safety:</b> This class is process-safe. Each {@link #prepare(Overlay)} returns a new directory that no
- * other call, in any thread or process, returns.
  */
 public final class AuthoringCopies
 {
@@ -46,7 +43,8 @@ public final class AuthoringCopies
 	}
 
 	/**
-	 * Prepares a copy of the working candidate for a prompt author session.
+	 * Prepares a copy of the working candidate for a prompt author session. Each call returns a new directory that no
+	 * other call, in any thread or process, returns.
 	 *
 	 * @param working the working candidate's overlay on the fork
 	 * @return the directory that the prompt author edits

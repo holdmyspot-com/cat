@@ -61,9 +61,9 @@ method visibility, entrypoint classes, or business-logic boundaries, lazy load
 
 When deciding whether a Java type is thread-safe, implementing or extending a type whose documentation states the thread
 safety of its implementations, adding or removing synchronization or thread-safe types such as concurrent collections,
-atomics, or locks, writing or editing a type's thread-safety or Process Safety documentation, or writing or changing a
-type that reads or writes files, directories, or other outside resources that other processes may share, lazy load
-`${CAT_PROJECT_ROOT}/.cat/rules/include/java-class-design/thread-safety.md`.
+atomics, or locks, writing or editing a type's thread-safety documentation or documentation of its behavior with other
+processes, or writing or changing a type that reads or writes files, directories, or other outside resources that other
+processes may share, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/java-class-design/thread-safety.md`.
 
 When designing or changing a pouch scope, its lifetime, owned dependencies, child scopes, or resource ownership,
 constructing a shared service, policy, or resource such as a `JsonMapper` in code that can reach a pouch scope, or

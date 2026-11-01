@@ -8,10 +8,10 @@
 	protects, including how long the type keeps any mutable argument that the caller must then not change.
 - Let a caller that holds an interface or abstract class rely on its documented thread safety of implementations: every
 	implementation meets it, and it claims only what the type can guarantee.
-- Let a caller learn, apart from thread safety, what a type guarantees when other processes use the same files,
-	directories, or other outside resources, and which restriction the caller must honor otherwise.
-- Let every caller act on each note: the same contract always reads the same, and each condition that a note puts on
-	callers names the mechanism that lets them meet it.
+- Let a caller learn, apart from thread safety, each guarantee it can rely on and each restriction it must honor when
+	other processes use the same files, directories, or other outside resources, with no statement where it needs none.
+- Let every caller act on this documentation: the same thread-safety contract always reads the same, and each condition
+	that it puts on callers names the mechanism that lets them meet it.
 
 ## Guidance
 
@@ -46,27 +46,23 @@ When only some of a type's methods may run concurrently, give the type no note a
 calls it may overlap. Every implementation of a type that states either `Implementations` statement must be thread-safe;
 the thread-safe types and synchronization it needs for that are required, not speculative.
 
-### Process Safety Notes
+### Behavior With Other Processes
 
-Document a type that reads or writes files, directories, or other outside resources that another process may use at
-the same time in a `<b>Process Safety:</b>` note, placed after its Thread Safety note if it has one. Omit the note for a
-type that uses no such resource; a Thread Safety note never covers outside resources. Open the note with exactly one of
-these statements:
-
-- `This class is process-safe.` when other threads and processes may use the same resources at any time. Then state
-	what they observe, such as that a reader sees a replaced file's previous or new content, never part of it, or which
-	result remains when two writers race.
-- `This class is not process-safe.` otherwise. Then state any restriction that callers must honor, and the guarantees
-	that hold, including those that hold only while callers honor the restriction.
-- `Implementations are process-safe.` or `Implementations must be process-safe.`, chosen as for thread safety.
+When other processes may use the files, directories, or other outside resources that a type reads or writes, describe in
+plain sentences what a caller needs to know about that use: a guarantee it can rely on, such as that a reader in any
+process sees a replaced file's previous or new content, never part of it, or a restriction it must honor, such as that
+only the holder of a given lock may write the file. Put them in the type's description, or on the method they concern
+when they concern only one method, as the JDK's `java.nio.channels.FileLock` class description and the `ATOMIC_MOVE`
+description of `java.nio.file.Files.move` do. Use no label or fixed statement for them, and never put them in the Thread
+Safety note. When a caller needs to know nothing about other processes, say nothing: silence claims nothing.
 
 ### Conditions and Implementation Details
 
-In either note, state a condition on callers only when the code provides the mechanism that lets them meet it, such as
-a lock that callers take, and name that mechanism with `{@link}`. A note that needs a condition without such a
-mechanism is wrong: change the type so that it needs no condition or provides the mechanism, or change the note so that
-it claims only what the code guarantees, down to a bare `This class is not process-safe.` or no Thread Safety note.
-Neither note says how the type keeps its guarantees, such as whether it is immutable, which internal locks or
+In a Thread Safety note or in a description of behavior with other processes, state a condition on callers only when
+the code provides the mechanism that lets them meet it, such as a lock that callers take, and name that mechanism with
+`{@link}`. A sentence that needs a condition without such a mechanism is wrong: change the type so that it needs no
+condition or provides the mechanism, or change the sentence so that it claims only what the code guarantees, down to
+saying nothing. Neither says how the type keeps its guarantees, such as whether it is immutable, which internal locks or
 synchronization it uses, what it caches, or which temporary files it writes: those are implementation choices.
 
 ```java
@@ -89,12 +85,10 @@ public interface RequestHandler
 }
 
 /**
- * Stores the application's settings in one file.
+ * Stores the application's settings in one file. Only the process that holds the {@link SettingsLock} may write the
+ * settings. A reader in any process sees the file's previous or new content, never part of it.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
- * <p>
- * <b>Process Safety:</b> This class is not process-safe. Only the process that holds the {@link SettingsLock} may
- * write the settings. A reader in any process sees the file's previous or new content, never part of it.
  */
 public final class SettingsFile
 {

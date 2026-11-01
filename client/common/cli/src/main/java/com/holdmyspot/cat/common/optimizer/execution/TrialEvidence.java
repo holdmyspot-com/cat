@@ -26,10 +26,10 @@ import java.util.Optional;
  * Unreported exit statuses remain null. A recorded list with no calls lets a built-in tool decide that the trial
  * never called a tool.
  * <p>
- * <b>Thread Safety:</b> This class is thread-safe.
+ * Each call that reads a copy of the project reads the copy as it is when the call runs, including any change that
+ * another process made to it.
  * <p>
- * <b>Process Safety:</b> This class is not process-safe. Each call that reads a copy of the project reads the copy as
- * it is when the call runs, including any change that another process made to it.
+ * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class TrialEvidence implements TrialRecord
 {
