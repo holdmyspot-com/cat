@@ -673,7 +673,7 @@ final class CampaignJson
 				hunks.add(new HunkEvidence(text(hunk, "id"), pathValue(field(hunk, "path"), "path"),
 					integer(hunk, "before_start"), integer(hunk, "before_end"), integer(hunk, "after_start"),
 					integer(hunk, "after_end"), readStrings(hunk, "failures"), text(hunk, "analogous"),
-					text(hunk, "dissimilar")));
+					nullableText(hunk, "dissimilar")));
 			}
 			promptAuthors.add(new PromptAuthorDiagnosis(integer(promptAuthor, "number"), integer(promptAuthor,
 				"lineage"), text(promptAuthor, "cell"), sha256(promptAuthor, "snapshot"), kinds, hunks,

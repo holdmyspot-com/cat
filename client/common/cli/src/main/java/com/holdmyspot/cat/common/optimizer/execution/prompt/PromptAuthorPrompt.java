@@ -232,7 +232,16 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 			Map.entry("earlier_attempts", earlierAttemptsTable(brief.earlierManifests())),
 			Map.entry("sound_tests", pretty(encodeSoundTests(brief.soundTests()))),
 			Map.entry("report_schema", reportSchema)));
-		return new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), List.of(),
+		List<Path> readOnly = new ArrayList<>();
+		for (int index = 0; index < brief.developmentFailures().size(); ++index)
+		{
+			if (!brief.evidenceSections().containsKey(brief.developmentId(index)))
+				continue;
+			Path transcriptDirectory = brief.developmentFailures().get(index).files().transcript().getParent();
+			if (transcriptDirectory != null && !readOnly.contains(transcriptDirectory))
+				readOnly.add(transcriptDirectory);
+		}
+		return new SessionRequest(SessionRole.PROMPT_AUTHOR, Part.DEVELOPMENT, copy, List.of(turn), readOnly,
 			TIME_LIMIT, brief.contract().judge().profile());
 	}
 
@@ -459,9 +468,12 @@ public final class PromptAuthorPrompt implements PromptAuthorProtocol
 						return Optional.empty();
 					failures.add(failure.asString());
 				}
+				String dissimilar = null;
+				if (!hunk.get("dissimilar").isNull())
+					dissimilar = text(hunk, "dissimilar");
 				evidence.add(new HunkEvidence(text(hunk, "id"), Path.of(hunk.get("path").asString()),
 					hunk.get("before_start").asInt(), hunk.get("before_end").asInt(), hunk.get("after_start").asInt(),
-					hunk.get("after_end").asInt(), failures, text(hunk, "analogous"), text(hunk, "dissimilar")));
+					hunk.get("after_end").asInt(), failures, text(hunk, "analogous"), dissimilar));
 			}
 			List<PromptAuthorConflict> conflicts = new ArrayList<>();
 			if (!output.get().get("conflicts").isArray())

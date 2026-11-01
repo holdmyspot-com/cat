@@ -348,7 +348,8 @@ public abstract class CampaignStoreContract
 					new PromptAuthorKind("named the test", List.of("f4"), FailureKind.TEST_DEFECT, List.of(),
 						"The turn tells the agent that it is tested.")),
 				List.of(new HunkEvidence("h1", Path.of("CLAUDE.md"), 1, 2, 1, 3, List.of("f1", "f2"), "Another read",
-					"plain_list")),
+					"plain_list"), new HunkEvidence("h2", Path.of("CLAUDE.md"), 3, 4, 4, 5, List.of("f1"),
+					"An unconditional requirement", null)),
 				List.of("Uncited changed hunk: CLAUDE.md#2"), Path.of("/transcripts/prompt-author-3.jsonl").toAbsolutePath(),
 				Path.of("/effects/prompt-author-3").toAbsolutePath());
 			Campaign campaign = Transitions.apply(new Builder().header(header("campaign-prompt-author")).confirmed().

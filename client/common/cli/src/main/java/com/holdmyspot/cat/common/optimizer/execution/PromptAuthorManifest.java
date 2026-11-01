@@ -236,16 +236,19 @@ public record PromptAuthorManifest(List<PromptAuthorKind> kinds, List<HunkEviden
 	}
 
 	/**
-	 * Checks that each hunk's dissimilar case names a test of the confirmed contract.
+	 * Checks that each non-null dissimilar case names a test of the confirmed contract. Whether a test lies outside
+	 * the change's scope is the prompt author's semantic judgment.
 	 *
 	 * @param contract the confirmed contract
-	 * @return a rejection reason for each hunk whose dissimilar case names no test of the contract
+	 * @return a rejection reason for each hunk whose non-null dissimilar case names no test of the contract
 	 */
 	private List<String> dissimilarViolations(Contract contract)
 	{
 		List<String> violations = new ArrayList<>();
 		for (HunkEvidence evidence : hunks)
 		{
+			if (evidence.dissimilar() == null)
+				continue;
 			if (contract.findTest(evidence.dissimilar()).isPresent())
 				continue;
 			List<String> testIds = contract.tests().stream().map(PromptTest::id).toList();

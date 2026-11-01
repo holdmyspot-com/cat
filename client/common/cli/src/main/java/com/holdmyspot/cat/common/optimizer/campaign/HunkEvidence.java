@@ -13,15 +13,16 @@ import java.util.List;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  *
- * @param id the prompt author's identifier for the hunk, which the manifest's kinds name
- * @param path the changed file's resolved path
+ * @param id          the prompt author's identifier for the hunk, which the manifest's kinds name
+ * @param path        the changed file's resolved path
  * @param beforeStart the first annotated working line, from zero
- * @param beforeEnd the end of the working range, exclusive
- * @param afterStart the first annotated prompt author line, from zero
- * @param afterEnd the end of the prompt author range, exclusive
- * @param failures the supplied failure identifiers
- * @param analogous a case requiring the same guidance
- * @param dissimilar the identifier of the contract test whose case must not receive the guidance
+ * @param beforeEnd   the end of the working range, exclusive
+ * @param afterStart  the first annotated prompt author line, from zero
+ * @param afterEnd    the end of the prompt author range, exclusive
+ * @param failures    the supplied failure identifiers
+ * @param analogous   a case requiring the same guidance
+ * @param dissimilar  the identifier of the contract test whose case must not receive the guidance, or null when no
+ *                    confirmed-contract test lies outside the change's scope
  */
 public record HunkEvidence(String id, Path path, int beforeStart, int beforeEnd, int afterStart, int afterEnd,
 	List<String> failures, String analogous, String dissimilar)
@@ -29,16 +30,17 @@ public record HunkEvidence(String id, Path path, int beforeStart, int beforeEnd,
 	/**
 	 * Creates evidence for one hunk.
 	 *
-	 * @param id the prompt author's identifier for the hunk
-	 * @param path the changed file's resolved path
+	 * @param id          the prompt author's identifier for the hunk
+	 * @param path        the changed file's resolved path
 	 * @param beforeStart the first working line
-	 * @param beforeEnd the working range end
-	 * @param afterStart the first prompt author line
-	 * @param afterEnd the prompt author range end
-	 * @param failures the supplied failure identifiers
-	 * @param analogous a case requiring the same guidance
-	 * @param dissimilar the identifier of the contract test whose case is excluded from the guidance
-	 * @throws NullPointerException if an argument or a collection element is null
+	 * @param beforeEnd   the working range end
+	 * @param afterStart  the first prompt author line
+	 * @param afterEnd    the prompt author range end
+	 * @param failures    the supplied failure identifiers
+	 * @param analogous   a case requiring the same guidance
+	 * @param dissimilar  the identifier of the contract test whose case is excluded from the guidance, or null when no
+	 *                    confirmed-contract test lies outside the change's scope
+	 * @throws NullPointerException     if an argument other than {@code dissimilar} or a collection element is null
 	 * @throws IllegalArgumentException if a path is invalid, a range is invalid, the citations are empty,
 	 *   or any text is blank
 	 */
@@ -55,7 +57,8 @@ public record HunkEvidence(String id, Path path, int beforeStart, int beforeEnd,
 		for (String failure : failures)
 			requireThat(failure, "failure").isNotBlank();
 		requireThat(analogous, "analogous").isNotBlank();
-		requireThat(dissimilar, "dissimilar").isNotBlank();
+		if (dissimilar != null)
+			requireThat(dissimilar, "dissimilar").isNotBlank();
 	}
 
 	/**

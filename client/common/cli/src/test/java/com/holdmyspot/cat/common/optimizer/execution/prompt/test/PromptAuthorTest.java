@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -66,6 +67,80 @@ public final class PromptAuthorTest
 	 */
 	public PromptAuthorTest()
 	{
+	}
+
+	/**
+	 * Grants only the transcript directories of development failures with rendered evidence, once per directory;
+	 * ended certification failures and development failures without evidence grant no access.
+	 */
+	@Test
+	public void grantsRenderedDevelopmentTranscripts()
+	{
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(), Set.of());
+		Path runs = Path.of("/session/optimizer-runs").toAbsolutePath();
+		List<Failure> failures = new ArrayList<>();
+		for (String run : List.of("development_1", "development_2", "development_1", "unavailable"))
+		{
+			TrialFiles files = new TrialFiles(runs.resolve(run + "/artifacts/transcript.jsonl"),
+				runs.resolve(run + "/effects"), runs.resolve(run + "/initial-project"));
+			failures.add(new Failure(failure().testCase(), "Failed", List.of(), null, List.of(), List.of(), files));
+		}
+		PromptAuthorBrief identified = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), failures, Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+			List.of());
+		Map<String, String> sections = new HashMap<>();
+		for (int index = 0; index < 3; ++index)
+			sections.put(identified.developmentId(index), "Transcript: " + failures.get(index).files().transcript());
+		sections.put("held_out", "Transcript: " + runs.resolve("held_out/artifacts/transcript.jsonl"));
+		EndedAttempt ended = new EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure().summary()),
+			List.of(), List.of());
+		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), failures, sections, Map.of(), List.of(ended), Map.of(), "", List.of(), List.of(),
+			List.of());
+
+		SessionRequest request = prompt.request(brief, COPY);
+
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(runs.resolve("development_1/artifacts"),
+			runs.resolve("development_2/artifacts")));
+	}
+
+	/**
+	 * Returns dissimilar report values and whether the report reader accepts their representation.
+	 *
+	 * @return JSON values and their acceptance
+	 */
+	@DataProvider
+	public static Object[][] dissimilarReportValues()
+	{
+		return new Object[][]{{"null", true}, {"\"plain_list\"", true}, {"\" \"", false}, {"42", false},
+			{"false", false}, {"[]", false}, {"{}", false}};
+	}
+
+	/**
+	 * Reads a dissimilar test identifier or explicit absence, rejecting malformed representations.
+	 *
+	 * @param value    the JSON value
+	 * @param accepted indicates whether the report must be accepted
+	 */
+	@Test(dataProvider = "dissimilarReportValues")
+	public void readsDissimilarReportValue(String value, boolean accepted)
+	{
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(), Set.of());
+		String response = """
+			{"needed_edits":[],"kinds":[],"conflicts":[],"hunks":[
+			{"id":"h1","path":"rules.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+			"failures":["f"],"analogous":"Another request","dissimilar":%s}]}
+			""".formatted(value);
+		SessionResult.Completed result = new SessionResult.Completed(COPY.resolve("transcript.jsonl"),
+			List.of(List.of(response)), COPY, COPY, "model", null, null, List.of(), "none", List.of());
+
+		requireThat(prompt.report(result).isPresent(), "accepted").isEqualTo(accepted);
+		if (accepted)
+		{
+			String expected = json.readTree(value).stringValue();
+			requireThat(prompt.report(result).orElseThrow().manifest().hunks().getFirst().dissimilar(), "dissimilar").
+				isEqualTo(expected);
+		}
 	}
 
 	/**

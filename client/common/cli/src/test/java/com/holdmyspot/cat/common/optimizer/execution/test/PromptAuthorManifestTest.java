@@ -206,7 +206,7 @@ public final class PromptAuthorManifestTest
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
 	}
 	/**
-	 * Returns dissimilar cases and whether the confirmed contract has a test with that identifier.
+	 * Returns dissimilar cases and whether they are absent or name a test in the confirmed contract.
 	 *
 	 * @return the dissimilar case and whether the manifest is accepted
 	 */
@@ -216,16 +216,17 @@ public final class PromptAuthorManifestTest
 		return new Object[][]
 			{
 				{"plain_list", true},
+				{null, true},
 				{"A question that needs no file", false}
 			};
 	}
 
 	/**
-	 * Verifies that a hunk's dissimilar case must be the identifier of a test of the confirmed contract, and that the
-	 * rejection names the hunk and the value.
+	 * Accepts an absent dissimilar case or a confirmed test identifier, and rejects an unknown identifier with the
+	 * hunk and value in the rejection.
 	 *
-	 * @param dissimilar the hunk's dissimilar case
-	 * @param accepted whether the manifest is accepted
+	 * @param dissimilar the hunk's dissimilar case, or null for an unconditional change
+	 * @param accepted   indicates whether the manifest is accepted
 	 */
 	@Test(dataProvider = "dissimilarCases")
 	public void dissimilarCaseIsAContractTest(String dissimilar, boolean accepted)
@@ -441,7 +442,8 @@ public final class PromptAuthorManifestTest
 		String turn = prompt.request(brief, Path.of("/copy").toAbsolutePath()).turns().getFirst();
 
 		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
-			contains("\"plain_list\"");
+			contains("\"plain_list\"").contains("Use `null` for\n\t`dissimilar` only when no confirmed-contract test " +
+				"lies outside the change's scope");
 	}
 
 	/**
