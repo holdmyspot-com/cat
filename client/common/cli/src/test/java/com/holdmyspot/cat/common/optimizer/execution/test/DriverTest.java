@@ -1085,6 +1085,10 @@ public final class DriverTest
 	 * All three weak attempts use one working reference's verdict, and that run does not count as their own evidence.
 	 * The reference starts the pooled check of each attempt's failed regression run, whose paired reruns then reject
 	 * every attempt where the working candidate passes and accept every attempt where it fails.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: each invocation runs three prompt author
+	 * attempts through their triggering, regression and paired rerun trials until the round ends, persisting and
+	 * validating the campaign at each step, and the first test in a JVM to use the driver also loads its classes.
 	 *
 	 * @param referenceVerdict the working candidate's verdict on the regression test case
 	 * @param accepted whether every attempt fixes the failure without introducing a regression
