@@ -233,6 +233,9 @@ public abstract class RunnerSessions implements SessionPort
 	 * it enables and no trial plugin holds, and every MCP server that it declares runs in production only. An enabled
 	 * plugin is held by a trial plugin of the same name, or, for a plugin that the project builds, of the same name
 	 * without its marketplace.
+	 *
+	 * @throws IOException if a source cannot be read or an absolute trial source's containing directory overlaps a
+	 *   held-out location
 	 */
 	@Override
 	public final LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
@@ -295,7 +298,35 @@ public abstract class RunnerSessions implements SessionPort
 			if (!trialKeys.contains(entry.getKey()))
 				productionOnly.add(entry.getValue());
 		}
+		validateSourceGrants(trials);
 		return new LoadedSources(production, trials, productionOnly, homeOnly(plugins), unreachableReferences(root));
+	}
+
+	/**
+	 * Refuses absolute source files whose containing directories overlap held-out locations. The contract author
+	 * receives these directories as read-only evidence, which must never expose held-out content.
+	 *
+	 * @param sources the trial files that the contract author's brief lists
+	 * @throws IOException if a containing directory cannot be resolved or overlaps a held-out location
+	 */
+	private void validateSourceGrants(List<DerivedSource> sources) throws IOException
+	{
+		List<Path> heldOut = heldOutLocations();
+		for (DerivedSource source : sources)
+		{
+			Path file = Path.of(source.path());
+			if (!file.isAbsolute())
+				continue;
+			Path directory = file.normalize().getParent().toRealPath();
+			for (Path location : heldOut)
+			{
+				if (location.startsWith(directory) || directory.startsWith(location))
+				{
+					throw new IOException("The read-only directory " + directory + " for listed file " + file +
+						" overlaps held-out location " + location);
+				}
+			}
+		}
 	}
 
 	/**

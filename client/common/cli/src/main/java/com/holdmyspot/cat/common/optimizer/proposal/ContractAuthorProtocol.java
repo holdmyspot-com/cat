@@ -26,10 +26,12 @@ import java.io.UncheckedIOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Function;
 
@@ -296,7 +298,26 @@ public final class ContractAuthorProtocol
 			Map.entry("context_file", files.contextFile())));
 		FollowUp correct = result -> correction(result, promptSystem, profiles, salt);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn),
-			List.of(), TIME_LIMIT, role(), files, List.of(), Optional.of(correct));
+			readOnlyDirectories(loadedFiles), TIME_LIMIT, role(), files, List.of(), Optional.of(correct));
+	}
+
+	/**
+	 * Returns the containing directories of files listed by absolute path, with each directory granted once.
+	 * Project-relative files are already available in the session's project.
+	 *
+	 * @param files the files that the brief lists
+	 * @return the narrowest directories needed to read the absolute files, in listing order
+	 */
+	private static List<Path> readOnlyDirectories(List<DerivedSource> files)
+	{
+		Set<Path> directories = new LinkedHashSet<>();
+		for (DerivedSource file : files)
+		{
+			Path path = Path.of(file.path());
+			if (path.isAbsolute())
+				directories.add(path.normalize().getParent());
+		}
+		return List.copyOf(directories);
 	}
 
 	/**

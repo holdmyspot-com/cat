@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
+import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
@@ -35,9 +36,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -184,6 +187,69 @@ public final class RoleBriefTest
 				requireThat(delivered.get(1), "correctionTurn").startsWith("CAT refused the proposal").
 					doesNotContain("Complete guidance for");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that the contract author's listed plugin file is granted through the bridge's read-only evidence
+	 * option, while the campaign's held-out directory, held-out runs and host project remain denied. The grant
+	 * contains neither held-out location.
+	 *
+	 * @throws IOException if a fixture cannot be written
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session fails
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test
+	public void pluginGrantKeepsHeldOutDenials()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-author-reads-")).
+				toRealPath();
+			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			Path campaign = root.resolve("campaign");
+			Path heldOut = Files.createDirectories(campaign.resolve("held-out"));
+			Path rules = Files.createDirectories(campaign.resolve("plugins/base/rules/common"));
+			Path listed = Files.writeString(rules.resolve("default.md"), "Plugin guidance");
+			Path staged = Files.createDirectories(root.resolve("staged"));
+			ContractAuthorProtocol author = new ContractAuthorProtocol(json, schema,
+				new JudgeTemplate(json, SESSION_PROFILE), new RegressionScenarios(root, List.of()),
+				root.resolve(TestSessions.INSTRUCTIONS), null, true, List.of(), root.resolve("bin/prompt-optimizer"),
+				profile -> OptionalLong.empty());
+			SessionRequest request = author.request(staged, new ProfileEvidence(ContractFixtures.ONE_PROFILE,
+				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(),
+				List.of(new DerivedSource(listed.toString(), "Plugin rule")), ContractFixtures.SALT);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
+				() -> List.of(heldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+				Yielding.fileReplacer(), Optional.empty(), root);
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				arguments.add(options);
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(Turn.replies("ok"), Turn.replies("ok")), input, output);
+			});
+
+			SessionResult result = sessions.start(request).completion().toCompletableFuture().get(60, TimeUnit.SECONDS);
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			List<String> options = arguments.getFirst();
+			int grant = options.indexOf("--read-only-evidence");
+			requireThat(options.subList(grant, grant + 2), "grant").
+				isEqualTo(List.of("--read-only-evidence", rules.toString()));
+			List<String> denied = new ArrayList<>();
+			for (int i = 0; i < options.size() - 1; ++i)
+			{
+				if (options.get(i).equals("--deny-read"))
+					denied.add(options.get(i + 1));
+			}
+			requireThat(denied, "denied").isEqualTo(List.of(heldOut.toString(),
+				settings.heldOutRunRoot().toString(), root.toString()));
+			for (Path protectedPath : List.of(heldOut, settings.heldOutRunRoot()))
+				requireThat(protectedPath.startsWith(rules), "grantContainsHeldOut").isFalse();
 		}
 	}
 

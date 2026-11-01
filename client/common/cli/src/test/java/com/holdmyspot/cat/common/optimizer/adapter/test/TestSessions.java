@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -138,7 +139,10 @@ final class TestSessions extends RunnerSessions
 	@Override
 	protected List<String> readOnlyArguments(List<Path> evidence)
 	{
-		return List.of();
+		List<String> arguments = new ArrayList<>();
+		for (Path path : evidence)
+			arguments.addAll(List.of("--read-only-evidence", path.toString()));
+		return arguments;
 	}
 
 	@Override

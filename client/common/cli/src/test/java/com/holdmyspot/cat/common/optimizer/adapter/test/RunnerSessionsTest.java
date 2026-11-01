@@ -464,6 +464,55 @@ public final class RunnerSessionsTest
 	}
 
 	/**
+	 * Returns held-out locations below or above the directory that a listed plugin rule would grant.
+	 *
+	 * @return held-out paths relative to the fixture root
+	 */
+	@DataProvider
+	public static Object[][] overlappingHeldOutLocations()
+	{
+		return new Object[][]
+		{
+			{Path.of("plugins/base/rules/common/held-out")},
+			{Path.of("plugins")}
+		};
+	}
+
+	/**
+	 * Verifies that source discovery refuses a plugin rule whose containing directory would also grant access to
+	 * held-out evidence, or is itself inside a held-out directory.
+	 *
+	 * @param location the held-out path relative to the fixture root
+	 * @throws IOException if the listed directory overlaps held-out evidence or a fixture cannot be read or written
+	 */
+	@Test(dataProvider = "overlappingHeldOutLocations", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*overlaps held-out.*")
+	public void refusesSourceGrantOverHeldOut(Path location) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-source-denial-")).
+				toRealPath();
+			Path base = manifest(root.resolve("plugins/base"), "cat", PluginInfo.CAT_REPOSITORY);
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path heldOut = Files.createDirectories(root.resolve(location));
+			write(base.resolve("rules/common/default.md"), "Plugin guidance");
+			write(heldOut.resolve("evidence.txt"), "Held-out evidence");
+			TrialPlugin plugin = new TrialPlugin("cat@market", "0".repeat(64), new TrialPlugin.Installed(),
+				List.of(), null);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
+				() -> List.of(heldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			TestSessions sessions = new TestSessions(settings, (_, _, _) ->
+			{
+			});
+
+			sessions.loadedSources(project, List.of(new PluginBase(plugin, base)));
+		}
+	}
+
+	/**
 	 * Verifies rule overlays use the process scope's temporary directory and remove their own child directory.
 	 *
 	 * @throws IOException if fixture files or loaded sources cannot be read or written

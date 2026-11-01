@@ -1496,6 +1496,59 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that absolute loaded files receive only their containing directories as read-only evidence, with
+	 * repeated directories granted once and project files needing no extra grant.
+	 */
+	@Test
+	public void grantsListedAbsoluteSources()
+	{
+		Path base = PROMPT_SYSTEM.resolve("campaign/plugins/base/rules/common");
+		Path otherBase = PROMPT_SYSTEM.resolve("campaign/plugins/other/rules/common");
+		List<DerivedSource> sources = List.of(
+			new DerivedSource("rules/project.md", "Project rule"),
+			new DerivedSource(base.resolve("first.md").toString(), "Plugin rule"),
+			new DerivedSource(base.resolve("second.md").toString(), "Plugin rule"),
+			new DerivedSource(otherBase.resolve("third.md").toString(), "Other plugin rule"));
+
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(), sources, SALT);
+
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(base, otherBase));
+		requireThat(request.part(), "part").isEqualTo(Part.DEVELOPMENT);
+		for (DerivedSource source : sources)
+			requireThat(request.turns().getFirst(), "brief").contains("`" + source.path() + "`");
+	}
+
+	/**
+	 * Verifies that regenerating a proposal from feedback grants the absolute files listed in the revision brief.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void revisionGrantsListedSources() throws InvalidProposalException
+	{
+		DerivedProposal first = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
+		Path rules = PROMPT_SYSTEM.resolve("campaign/plugins/base/rules/common");
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(),
+			List.of(new DerivedSource(rules.resolve("default.md").toString(), "Plugin rule")), first,
+			"Keep the tests.", Map.of());
+
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(rules));
+	}
+
+	/**
+	 * Verifies that a brief listing only project files grants no additional read access.
+	 */
+	@Test
+	public void projectSourcesNeedNoReadGrant()
+	{
+		SessionRequest request = contractAuthor.request(PROMPT_SYSTEM, PROFILES, List.of(),
+			List.of(new DerivedSource("rules/project.md", "Project rule")), SALT);
+
+		requireThat(request.readOnly(), "readOnly").isEmpty();
+	}
+
+	/**
 	 * Verifies that the contract author's request lists every hook registration with its event, matcher, command and
 	 * the file that registers it, of the project or of a trial plugin, and names the draft directory, the proposal
 	 * file and the launcher that provides the contract tools.
@@ -2007,7 +2060,7 @@ public final class ProposalTest
 		Path effects = directories.add(Files.createTempDirectory("contract-author-project-"));
 		author.request(project, PROFILES, List.of(), List.of(), SALT).files().write(effects);
 		write(effects, initialProject, output, Path.of("CLAUDE.md"),
-			DraftDirectory.testDirectories(RegressionScenarios.read(json, project, project, Set.of())));
+			DraftDirectory.testDirectories(RegressionScenarios.read(json, project, project)));
 		return session(effects, initialProject, "The proposal is in " + OutputFile.name(initialProject) + ".");
 	}
 
@@ -2043,7 +2096,7 @@ public final class ProposalTest
 			- **kind**: effect
 			- **description**: The summary keeps the {{tone}} tone.
 			""");
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String citation = ".cat/tests/CLAUDE/formatting/scenario.md";
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(citation));
@@ -2117,7 +2170,7 @@ public final class ProposalTest
 			  ]
 			}
 			""", UTF_8);
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		ContractAuthorProtocol author = contractAuthor(scenarios);
 		TestCase committed = new TestCase(Map.of("tone", new TestValue.Text("a terse"), "audience",
 			new TestValue.Text("a manager")), "a terse summary shortened for a manager reader");
@@ -2180,7 +2233,7 @@ public final class ProposalTest
 		String content = "Release 4.296 renamed the exporter.\n";
 		Path notesDirectory = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/notes"));
 		Files.writeString(notesDirectory.resolve("{{tone}}.md"), content, UTF_8);
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 
@@ -2231,7 +2284,7 @@ public final class ProposalTest
 		Files.writeString(docs.resolve("handbook.md"), content, UTF_8);
 		Path workspace = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/docs"));
 		Files.createSymbolicLink(workspace.resolve("handbook.md"), Path.of("../../../../../../docs/handbook.md"));
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 		ContractAuthorProtocol author = contractAuthor(scenarios);
@@ -2289,7 +2342,7 @@ public final class ProposalTest
 		Files.createSymbolicLink(docs.resolve("handbook.md"), external.resolve("handbook.md"));
 		Path workspace = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/docs"));
 		Files.createSymbolicLink(workspace.resolve("handbook.md"), Path.of("../../../../../../docs/handbook.md"));
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 		ContractAuthorProtocol author = contractAuthor(scenarios);
@@ -2348,7 +2401,7 @@ public final class ProposalTest
 		Path workspace = Files.createDirectories(project.resolve(".cat/tests/CLAUDE/formatting/workspace/docs"));
 		Files.writeString(workspace.resolve("handbook.md"), content, UTF_8);
 		Files.createSymbolicLink(workspace.resolveSibling("latest.md"), Path.of("docs/handbook.md"));
-		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project, Set.of());
+		RegressionScenarios scenarios = RegressionScenarios.read(json, project, project);
 		String output = changedDerivation(proposal -> ((ObjectNode) proposal.get("tests").get(0)).
 			putArray("regression_scenarios").add(".cat/tests/CLAUDE/formatting/scenario.md"));
 		ContractAuthorProtocol author = contractAuthor(scenarios);
