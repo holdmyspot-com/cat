@@ -39,6 +39,21 @@ public final class SessionRequestInstructionsTest
 	}
 
 	/**
+	 * Verifies that the instructions limit requests to work that needs an isolated session, naming a plugin check and
+	 * the other harness as such work, and send other work to a subagent.
+	 */
+	@Test
+	public void requestsOnlyIsolatedSessions()
+	{
+		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
+		String text = SessionRequestInstructions.text(1, launcher, false);
+
+		requireThat(text, "text").contains("Request one only when the work needs an isolated session").
+			contains("checking a plugin that you wrote").contains("running the other harness").
+			contains("Otherwise use a subagent").doesNotContain("needs checking in a new session");
+	}
+
+	/**
 	 * Verifies that the instructions tell a session whose task names no model or effort to choose them from the values
 	 * that the harness lists and to state its choice, rather than leaving it without an instruction.
 	 */

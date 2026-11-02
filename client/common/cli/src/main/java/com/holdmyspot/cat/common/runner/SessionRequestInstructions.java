@@ -38,9 +38,10 @@ public final class SessionRequestInstructions
 		else
 			sessions = sessionRequests + " sessions";
 		return "You may request up to " + sessions + " over this run. A requested session is a new session " +
-			"that the runner starts outside your sandbox, in a copy of a project directory that you name. Request one " +
-			"when work needs checking in a new session, such as a plugin that you wrote: your commands cannot start " +
-			"Claude Code or Codex themselves.\n" +
+			"that the runner starts outside your sandbox, in a copy of a project directory that you name; your commands " +
+			"cannot start Claude Code or Codex themselves. Request one only when the work needs an isolated session, " +
+			"such as checking a plugin that you wrote or running the other harness. Otherwise use a subagent, or do " +
+			"the work yourself when you cannot start one.\n" +
 			"\n" +
 			"Write each prompt into a file inside your project, then run:\n" +
 			"\n" +

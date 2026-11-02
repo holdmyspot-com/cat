@@ -372,8 +372,32 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
+	 * Verifies that the bundled rule on running a harness says, before the launcher steps, that a runner is only for a
+	 * task that needs a separate, isolated session, names the kinds of task that need one, and sends a task that a
+	 * subagent of the agent's own harness can do to that subagent.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleStartsOnlyIsolatedSessions() throws IOException
+	{
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
+		int isolation = rule.indexOf("only when the task needs a separate, isolated session");
+		requireThat(isolation, "isolation").isNotNegative();
+		requireThat(rule.indexOf("### Launcher"), "launcher").isGreaterThan(isolation);
+		requireThat(rule, "rule").contains("runs in a harness other than yours").
+			contains("tests a plugin or a fresh CAT installation").contains("starts from a fresh copy of the project").
+			contains("must not see this session's context").
+			contains("When a subagent of your own harness can do the task, delegate it to that subagent instead and " +
+				"do not start a runner");
+	}
+
+	/**
 	 * Verifies that the bundled workflow routing loads the rule on running a harness, so that an agent that runs a
-	 * runner launcher, or requests a session with the {@code request-session} launcher, reads it first.
+	 * runner launcher, or requests a session with the {@code request-session} launcher, reads it first, and that its
+	 * condition names those launchers rather than any new Claude Code or Codex session.
 	 *
 	 * @throws IOException if the routing cannot be read
 	 */
@@ -382,8 +406,29 @@ public final class RunnerLaunchersTest
 	{
 		List<URL> routing = resources("rules/include/common/rule-routing/workflows.md");
 		requireThat(routing, "routing").size().isEqualTo(1);
-		requireThat(read(routing.getFirst()), "workflows.md").contains("`request-session`").
-			contains("lazy load `../harness-runners.md`");
+		String text = read(routing.getFirst()).replaceAll("\\s+", " ");
+		requireThat(text, "workflows.md").
+			contains("Before starting a session through CAT's `claude-runner` or `codex-runner` launcher").
+			contains("`request-session`").contains("lazy load `../harness-runners.md`").
+			doesNotContain("new Claude Code or Codex session");
+	}
+
+	/**
+	 * Verifies that the always-loaded rule routing loads the workflow routing on starting a session through a runner
+	 * or session-request launcher, and not on any new Claude Code or Codex session, which a subagent could be read
+	 * as.
+	 *
+	 * @throws IOException if the routing cannot be read
+	 */
+	@Test
+	public void ruleRoutingNamesRunnerLaunchers() throws IOException
+	{
+		List<URL> routing = resources("rules/common/rule-routing.md");
+		requireThat(routing, "routing").size().isEqualTo(1);
+		String text = read(routing.getFirst()).replaceAll("\\s+", " ");
+		requireThat(text, "rule-routing.md").
+			contains("starting a session through CAT's `claude-runner`, `codex-runner` or `request-session` launcher").
+			doesNotContain("new Claude Code or Codex session");
 	}
 
 	/**
