@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -565,6 +566,38 @@ public final class CodexSessionStartHookTest
 				doesNotContain("relative to the rule's own directory");
 			requireThat(readResponse(clean).has("systemMessage"), "clean.hasSystemMessage").isFalse();
 			requireThat(Files.exists(listFile), "listFileAfterFix").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the SessionStart that creates the session's CAT session directory in a Git work tree that does not
+	 * ignore it adds CAT's lines to the project's {@code .gitignore} and tells the user through {@code systemMessage},
+	 * which Codex shows the user, and that a later SessionStart of the same session says nothing about it.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void tellsUserAboutAddedIgnoreLines() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = GitWorkTrees.create(cleanup.add(Files.createTempDirectory("cat-session-start-")).
+				toAbsolutePath().normalize().resolve("project"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Map<String, String> environment = Map.of("PLUGIN_ROOT", plugin.toString(),
+				Platform.current().homeVariable(), project.resolve("home").toString());
+
+			HookResult first = invoke(event(project), environment, project);
+			HookResult second = invoke(event(project), environment, project);
+
+			requireThat(readResponse(first).path("systemMessage").asString(), "systemMessage").
+				contains("CAT added /.cat/sessions/ to " + project.resolve(".gitignore")).
+				contains("Commit the change when convenient.");
+			requireThat(Files.readString(project.resolve(".gitignore"), UTF_8), "gitignore").
+				isEqualTo("# Per-session files of the CAT plugin for Claude Code and Codex " +
+					"(https://github.com/holdmyspot-com/cat)\n/.cat/sessions/\n");
+			requireThat(readResponse(second).has("systemMessage"), "second.hasSystemMessage").isFalse();
 		}
 	}
 

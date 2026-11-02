@@ -20,7 +20,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -52,7 +54,8 @@ final class ClaudeRuleInjectionHook
 	 * At SessionStart, the response's {@code systemMessage}, which Claude Code shows the user rather than the agent,
 	 * warns about each project or user rule reference that names a file relative to the rule's own directory and tells
 	 * the user how to fix it, and the session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such
-	 * reference.
+	 * reference. When the event created the session's CAT session directory, the {@code systemMessage} also tells the
+	 * user that CAT added the CAT session directories to the project's {@code .gitignore}, or could not and why.
 	 *
 	 * @param eventName the Claude hook event name
 	 * @param args the hook command-line arguments
@@ -105,13 +108,17 @@ final class ClaudeRuleInjectionHook
 			String context = CONTEXT_FILE_INSTRUCTION.formatted(eventName, rulesFile);
 			Map<String, Object> response = new LinkedHashMap<>();
 			response.put("hookSpecificOutput", Map.of("hookEventName", eventName, "additionalContext", context));
+			List<String> notices = new ArrayList<>();
+			session.ignoreNotice().ifPresent(notice -> notices.add(notice.forUser()));
 			if (!eventName.equals("SubagentStart"))
 			{
 				String warning = RelativeRuleReference.sessionWarning(userRulesRoot, projectDir,
 					session.relativeRuleReferencesFile(), error);
 				if (!warning.isEmpty())
-					response.put("systemMessage", warning);
+					notices.add(warning);
 			}
+			if (!notices.isEmpty())
+				response.put("systemMessage", String.join("\n\n", notices));
 			output.write(json.writeValueAsBytes(response));
 			output.write('\n');
 		}

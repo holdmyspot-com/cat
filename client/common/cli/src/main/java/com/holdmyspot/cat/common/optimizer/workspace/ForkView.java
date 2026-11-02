@@ -1,6 +1,5 @@
 package com.holdmyspot.cat.common.optimizer.workspace;
 
-import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
@@ -18,12 +17,6 @@ import java.util.Set;
 public interface ForkView
 {
 	/**
-	 * The line that creating a fork appends to the repository's local exclude when CAT's session directories are
-	 * not already ignored.
-	 */
-	String EXCLUDE_ENTRY = "/" + SessionDirectory.ROOT + "/";
-
-	/**
 	 * Returns the recorded files.
 	 *
 	 * @return the fork's inventory
@@ -38,12 +31,13 @@ public interface ForkView
 	WorkspacePort workspace();
 
 	/**
-	 * Indicates whether creating this fork appended CAT's session directories to the repository's local exclude.
-	 * Opening an existing fork returns {@code false}, so the notice belongs only to the command that created it.
+	 * Returns the notice that creating this fork added CAT's session directories to the base's {@code .gitignore}, or
+	 * could not and why, worded for the agent that reads the command's output: it says that the user commits the change.
+	 * Opening an existing fork returns no notice, so the notice belongs only to the command that created it.
 	 *
-	 * @return {@code true} if creation appended the line
+	 * @return the notice, or empty if creation left {@code .gitignore} as it was
 	 */
-	boolean excludeAdded();
+	Optional<String> ignoreNotice();
 
 	/**
 	 * Makes the fork's files hold exactly the given participants beside the paths that the fork was created with. A

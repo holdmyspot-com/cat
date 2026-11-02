@@ -36,13 +36,14 @@ import org.testng.annotations.Test;
 
 /**
  * Verifies the fork. Creating one runs against a real Git repository that each test owns: the clean-base refusal, the
- * local exclude, the recorded participants and the detached optimization worktree at {@code HEAD}. The diff of the
- * selected paths runs against such a repository too. Changing a fork's participants reads and writes only campaign
- * storage, so those tests store a fork without Git.
+ * {@code .gitignore} lines that ignore CAT's session directories, the recorded participants and the detached
+ * optimization worktree at {@code HEAD}. The diff of the selected paths runs against such a repository too. Changing a
+ * fork's participants reads and writes only campaign storage, so those tests store a fork without Git.
  */
 public final class ForkTest
 {
-	private static final String EXCLUDE_LINE = "/.cat/sessions/";
+	private static final String IGNORE_LINES = "# Per-session files of the CAT plugin for Claude Code and Codex " +
+		"(https://github.com/holdmyspot-com/cat)\n/.cat/sessions/\n";
 	/**
 	 * The directory, relative to the repository, that holds the campaigns of one session.
 	 */
@@ -129,13 +130,16 @@ public final class ForkTest
 				{"unstaged modification"},
 				{"unstaged deletion"},
 				{"untracked file"},
-				{"empty untracked file"}
+				{"empty untracked file"},
+				{"ignore lines and another line"},
+				{"ignore lines and an edited line"},
+				{"staged ignore lines"}
 			};
 	}
 
 	/**
 	 * Verifies that a base worktree with a change of the given kind is refused before anything is created: no
-	 * campaign storage, no worktree, no exclude line.
+	 * campaign storage, no worktree, no {@code .gitignore} change.
 	 *
 	 * @param change the kind of change to make
 	 * @throws IOException if the fixture cannot be created
@@ -168,12 +172,21 @@ public final class ForkTest
 				case "untracked file" -> writeFile(base.resolve("untracked.md"), "untracked", READ_WRITE);
 				// An empty regular file on the host is a change, unlike the device that a sandbox lays over a path
 				case "empty untracked file" -> writeFile(base.resolve(".bashrc"), "", READ_WRITE);
+				case "ignore lines and another line" ->
+					writeFile(ignoreFile(base), "ignored.md\n" + IGNORE_LINES + "other.md\n", READ_WRITE);
+				case "ignore lines and an edited line" ->
+					writeFile(ignoreFile(base), "edited.md\n" + IGNORE_LINES, READ_WRITE);
+				case "staged ignore lines" ->
+				{
+					writeFile(ignoreFile(base), "ignored.md\n" + IGNORE_LINES, READ_WRITE);
+					git.run("add", ".gitignore");
+				}
 				default -> throw new AssertionError("Unknown change: " + change);
 			}
-			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
+			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
 
 			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).refusesDirtyBase();
-			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
 		}
 	}
 
@@ -225,7 +238,8 @@ public final class ForkTest
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
-			requireThat(fork.excludeAdded(), "excludeAdded").isTrue();
+			requireThat(fork.ignoreNotice().orElseThrow(), "ignoreNotice").
+				contains("this change is theirs to commit; do not stage or commit it.");
 		}
 	}
 
@@ -286,39 +300,41 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that the exclude is appended when Git does not ignore CAT's session directories, so campaign files never
-	 * make the base dirty, and that the fork reports that it added it.
+	 * Verifies that CAT's lines are appended to the base's {@code .gitignore}, unstaged and nowhere else, when Git does
+	 * not ignore CAT's session directories, so campaign files never make the base dirty, and that the fork reports it.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void addsExcludeWhenSessionsAreNotIgnored() throws IOException
+	public void addsIgnoreLinesWhenSessionsAreNotIgnored() throws IOException
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
+			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
 			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
-				reportsExcludeAdditionOnlyAtCreation(fork, true);
-			requireThat(Files.readAllLines(excludeFile(base), UTF_8).stream().filter(EXCLUDE_LINE::equals).count(),
-				"excludeLines").isEqualTo(1L);
+				reportsIgnoreNoticeOnlyAtCreation(fork, true);
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo("ignored.md\n" + IGNORE_LINES);
+			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
 			requireThat(Files.isDirectory(base.resolve(CAMPAIGNS + "/c1")), "campaignExists").isTrue();
-			requireThat(new Git(base).lines("status", "--porcelain", "--untracked-files=all"), "status").isEmpty();
+			requireThat(new Git(base).lines("status", "--porcelain", "--untracked-files=all"), "status").
+				isEqualTo(List.of(" M .gitignore"));
 		}
 	}
 
 	/**
-	 * Verifies that the exclude is left alone when Git already ignores CAT's session directories through a pattern other
-	 * than the line that CAT appends.
+	 * Verifies that {@code .gitignore} is left alone when Git already ignores CAT's session directories through another
+	 * ignore source, here the repository's local exclude.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void leavesExcludeWhenAlreadyIgnored() throws IOException
+	public void leavesGitignoreWhenAlreadyIgnored() throws IOException
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -326,23 +342,24 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Files.writeString(excludeFile(base), ".cat/sessions\n", UTF_8, StandardOpenOption.APPEND);
-			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
+			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 
 			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
-				reportsExcludeAdditionOnlyAtCreation(fork, false);
-			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
+				reportsIgnoreNoticeOnlyAtCreation(fork, false);
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
 		}
 	}
 
 	/**
-	 * Verifies that a second campaign in the same repository does not append the exclude again.
+	 * Verifies that a second campaign in the same repository accepts a base whose only change is the lines that the
+	 * first campaign appended to {@code .gitignore}, and does not append them again.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void appendsExcludeOnlyOnce() throws IOException
+	public void appendsIgnoreLinesOnlyOnce() throws IOException
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -353,11 +370,40 @@ public final class ForkTest
 			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
 			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of(), Yielding.fileReplacer());
 
-			requireThat(first.excludeAdded(), "firstAdded").isTrue();
-			requireThat(second.excludeAdded(), "secondAdded").isFalse();
-			requireThat(Files.readAllLines(excludeFile(base), UTF_8).stream().filter(EXCLUDE_LINE::equals).count(),
-				"excludeLines").isEqualTo(1L);
+			requireThat(first.ignoreNotice(), "firstNotice").isPresent();
+			requireThat(second.ignoreNotice(), "secondNotice").isEmpty();
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo("ignored.md\n" + IGNORE_LINES);
 			requireThat(base.resolve(CAMPAIGNS + "/c2/worktree"), "secondWorktree").isDirectory();
+		}
+	}
+
+	/**
+	 * Verifies that a base without a committed {@code .gitignore} receives one that holds only CAT's lines, and that a
+	 * later campaign accepts that untracked file as the base's only change.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void acceptsUntrackedGitignoreOfIgnoreLines() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Git git = new Git(base);
+			git.run("rm", "--quiet", "--cached", ".gitignore");
+			git.run("commit", "--quiet", "-m", "no ignore file");
+			Files.delete(ignoreFile(base));
+			Files.delete(base.resolve("ignored.md"));
+
+			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of(), Yielding.fileReplacer());
+
+			requireThat(first.ignoreNotice(), "firstNotice").isPresent();
+			requireThat(second.ignoreNotice(), "secondNotice").isEmpty();
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(IGNORE_LINES);
+			requireThat(git.lines("status", "--porcelain", "--untracked-files=all"), "status").
+				isEqualTo(List.of("?? .gitignore"));
 		}
 	}
 
@@ -388,9 +434,15 @@ public final class ForkTest
 				isEqualTo(2L);
 			String head = worktrees.stream().filter(line -> line.startsWith("HEAD ")).findFirst().orElseThrow().
 				substring("HEAD ".length());
-			// The branch header names the checked-out commit and the branch, and no line follows for a clean checkout
-			requireThat(new Git(worktreeDirectory).lines("status", "--porcelain=v2", "--branch"), "worktreeStatus").
+			// The branch header names the checked-out commit and the branch. The only change is the recorded base's
+			// .gitignore, which holds the lines that CAT appended to the base
+			List<String> worktreeStatus = new Git(worktreeDirectory).lines("status", "--porcelain=v2", "--branch");
+			requireThat(worktreeStatus.subList(0, 2), "worktreeStatus").
 				isEqualTo(List.of("# branch.oid " + head, "# branch.head (detached)"));
+			requireThat(worktreeStatus.size(), "worktreeStatus.size").isEqualTo(3);
+			requireThat(worktreeStatus.getLast(), "worktreeChange").startsWith("1 .M ").endsWith(" .gitignore");
+			requireThat(Files.readString(worktreeDirectory.resolve(".gitignore"), UTF_8), "worktreeGitignore").
+				isEqualTo("ignored.md\n" + IGNORE_LINES);
 			requireThat(Files.readString(worktreeDirectory.resolve("prompt.md"), UTF_8), "trackedFile").
 				isEqualTo("prompt");
 			requireThat(Files.isSymbolicLink(worktreeDirectory.resolve("alias.md")), "trackedLink").isTrue();
@@ -548,8 +600,8 @@ public final class ForkTest
 
 	/**
 	 * Verifies that a failure while the first candidate is written into the new worktree removes the worktree
-	 * registration, the worktree and the fork storage, keeps the exclude line, and lets a retry succeed. The failure
-	 * comes from a regular file where the mirror of external files must be a directory.
+	 * registration, the worktree and the fork storage, keeps the {@code .gitignore} lines, and lets a retry succeed. The
+	 * failure comes from a regular file where the mirror of external files must be a directory.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -582,7 +634,7 @@ public final class ForkTest
 			requireThat(git.lines("worktree", "list"), "worktrees").size().isEqualTo(1);
 			requireThat(Files.exists(campaign.resolve("worktree")), "worktreeExists").isFalse();
 			requireThat(Files.exists(campaign.resolve("fork")), "forkExists").isFalse();
-			requireThat(Files.readAllLines(excludeFile(base), UTF_8), "exclude").contains(EXCLUDE_LINE);
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo("ignored.md\n" + IGNORE_LINES);
 			Files.delete(blocker);
 
 			Fork.create(base, campaign, Set.of(external), Yielding.fileReplacer());
@@ -631,14 +683,14 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that a Git failure while checking whether CAT's session directories are ignored propagates, instead of
-	 * being taken for "not ignored", and that nothing is created or appended. Git cannot check a path beyond a symbolic
-	 * link, so an ignored link at {@code .cat} makes the check fail with exit status 128, which the failure names.
+	 * Verifies that a Git failure while checking whether CAT's session directories are ignored is not taken for "not
+	 * ignored": nothing is appended, and the fork carries on with a notice that names the failure. Git cannot check a
+	 * path beyond a symbolic link, so an ignored link at {@code .cat} makes the check fail with exit status 128.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void propagatesGitFailureOfIgnoreCheck() throws IOException
+	public void reportsGitFailureOfIgnoreCheck() throws IOException
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -648,20 +700,15 @@ public final class ForkTest
 			Files.createSymbolicLink(base.resolve(".cat"), Path.of("elsewhere"));
 			// Ignoring the link keeps the base clean, so the fork reaches the ignore check
 			Files.writeString(excludeFile(base), "/.cat\n", UTF_8, StandardOpenOption.APPEND);
-			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
+			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
 			Path campaign = root.resolve("campaign");
 
-			try
-			{
-				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
-				throw new AssertionError("A Git failure of the ignore check must propagate");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains("check-ignore").contains("status 128");
-			}
-			requireThat(Files.exists(campaign), "campaignExists").isFalse();
-			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
+			Fork fork = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+
+			requireThat(fork.ignoreNotice().orElseThrow(), "notice").contains("CAT could not add /.cat/sessions/").
+				contains("check-ignore").contains("status 128");
+			requireThat(campaign.resolve("worktree"), "worktree").isDirectory();
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
 		}
 	}
 
@@ -771,6 +818,17 @@ public final class ForkTest
 	{
 		ForkTree.record(base, campaign, Set.of(Path.of("prompt.md")));
 		Files.createDirectories(campaign.resolve("worktree"));
+	}
+
+	/**
+	 * Returns the {@code .gitignore} of the repository's top-level directory.
+	 *
+	 * @param base the base worktree
+	 * @return the file
+	 */
+	private static Path ignoreFile(Path base)
+	{
+		return base.resolve(".gitignore");
 	}
 
 	/**

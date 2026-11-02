@@ -175,7 +175,7 @@ public final class CodexRunPart
 					}
 				}
 			}
-			Optional<Path> saved = createSavedOutput(workingDirectory, environment, waiting);
+			Optional<Path> saved = createSavedOutput(workingDirectory, environment, error, waiting);
 			if (saved.isEmpty())
 			{
 				// The command runs as it would without run-part
@@ -212,16 +212,19 @@ public final class CodexRunPart
 	 *
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment of the JVM
+	 * @param error receives the notice about the project's {@code .gitignore} when creating the CAT session directory
+	 *   changed that file or could not
 	 * @param waiting how the command waits between the attempts of a retried operation
 	 * @return the file, or an empty {@code Optional} if the folder or the file cannot be created, as in a read-only
 	 *   sandbox
 	 */
 	private static Optional<Path> createSavedOutput(Path workingDirectory, Map<String, String> environment,
-		Waiting waiting)
+		PrintStream error, Waiting waiting)
 	{
 		try
 		{
-			Path folder = Files.createTempDirectory(outputFolder(workingDirectory, environment, waiting), FOLDER_PREFIX);
+			Path folder = Files.createTempDirectory(outputFolder(workingDirectory, environment, error, waiting),
+				FOLDER_PREFIX);
 			return Optional.of(Files.createFile(folder.resolve(SAVED_OUTPUT)));
 		}
 		catch (IOException | InvalidPathException _)
@@ -318,14 +321,16 @@ public final class CodexRunPart
 	 *
 	 * @param workingDirectory the folder that the command runs in
 	 * @param environment the environment of the JVM
+	 * @param error receives the notice about the project's {@code .gitignore} when creating the CAT session directory
+	 *   changed that file or could not
 	 * @param waiting how the command waits between the attempts of a retried operation
 	 * @return the temporary folder of the Codex thread's CAT session directory in the nearest CAT project that
 	 *   contains {@code workingDirectory}; otherwise the folder that {@link #fallbackFolder(Map)} returns
 	 * @throws IOException if {@code CODEX_THREAD_ID} is not a UUID in canonical form, if neither {@code CODEX_HOME} nor
 	 *   the home directory's variable is set, or if the CAT session directory cannot be created
 	 */
-	private static Path outputFolder(Path workingDirectory, Map<String, String> environment, Waiting waiting)
-		throws IOException
+	private static Path outputFolder(Path workingDirectory, Map<String, String> environment, PrintStream error,
+		Waiting waiting) throws IOException
 	{
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment,
 			List.of(CodexSessionHarness.HARNESS), waiting))
@@ -334,7 +339,10 @@ public final class CodexRunPart
 			{
 				Optional<SessionDirectory> session = scope.sessionDirectory();
 				if (session.isPresent())
+				{
+					session.get().ignoreNotice().ifPresent(notice -> error.println(notice.forAgent()));
 					return session.get().temp();
+				}
 			}
 			return scope.temporaryDirectory();
 		}

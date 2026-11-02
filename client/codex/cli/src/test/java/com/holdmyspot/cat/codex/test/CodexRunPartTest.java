@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.codex.CodexRunPart;
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -148,6 +149,34 @@ public final class CodexRunPartTest
 			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
 			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + EOL + "[End of " + saved +
 				". The file was deleted]\n");
+		}
+	}
+
+	/**
+	 * Verifies that when {@code run-part} creates the thread's CAT session directory in a Git work tree that does not
+	 * ignore it, it adds CAT's lines to the project's {@code .gitignore} and its standard error, which the agent reads,
+	 * says that the change is the user's to commit and not the agent's.
+	 *
+	 * @throws IOException if the temporary folders cannot be created
+	 */
+	@Test
+	public void reportsAddedIgnoreLinesForAgent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = GitWorkTrees.create(cleanup.add(Files.createTempDirectory("run-part-test-")).
+				resolve("project"));
+			Files.createDirectories(project.resolve(".cat"));
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+
+			Call call = runPart(script("pwd", "(Get-Location).Path"), false, project, Map.of("TMPDIR",
+				temporary.toString(), "CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()));
+
+			requireThat(call.error(), "error").contains("CAT added /.cat/sessions/ to " + project.toAbsolutePath().
+				normalize().resolve(".gitignore")).
+				contains("Tell the user that this change is theirs to commit; do not stage or commit it.");
+			requireThat(Files.readString(project.resolve(".gitignore"), UTF_8), "gitignore").
+				endsWith("\n/.cat/sessions/\n");
 		}
 	}
 

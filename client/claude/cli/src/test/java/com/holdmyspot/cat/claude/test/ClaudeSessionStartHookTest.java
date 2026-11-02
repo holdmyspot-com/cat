@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -726,6 +727,40 @@ public final class ClaudeSessionStartHookTest
 			requireThat(rules, "rules").contains("Before building, load").
 				doesNotContain("relative to the rule's own directory");
 			requireThat(scope.json().readTree(clean.output()).has("systemMessage"), "clean.hasSystemMessage").
+				isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the SessionStart that creates the session's CAT session directory in a Git work tree that does not
+	 * ignore it adds CAT's lines to the project's {@code .gitignore} and tells the user through {@code systemMessage},
+	 * which Claude Code shows the user, and that a later SessionStart of the same session says nothing about it.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void tellsUserAboutAddedIgnoreLines() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path project = GitWorkTrees.create(cleanup.add(Files.createTempDirectory("cat-project-rules-")).
+				toAbsolutePath().normalize().resolve("project"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			copyBundledRules(plugin);
+			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_CONFIG_DIR",
+				project.resolve(".claude").toString());
+			String input = "{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID + "\"}";
+
+			HookResult first = invoke(input, environment, project);
+			HookResult second = invoke(input, environment, project);
+
+			requireThat(scope.json().readTree(first.output()).path("systemMessage").asString(), "systemMessage").
+				contains("CAT added /.cat/sessions/ to " + project.resolve(".gitignore")).
+				contains("Commit the change when convenient.");
+			requireThat(Files.readString(project.resolve(".gitignore"), UTF_8), "gitignore").
+				isEqualTo("# Per-session files of the CAT plugin for Claude Code and Codex " +
+					"(https://github.com/holdmyspot-com/cat)\n/.cat/sessions/\n");
+			requireThat(scope.json().readTree(second.output()).has("systemMessage"), "second.hasSystemMessage").
 				isFalse();
 		}
 	}

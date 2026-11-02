@@ -84,16 +84,17 @@ public final class ForksContract
 	}
 
 	/**
-	 * Verifies the creation result reports whether it added the exclude, while a reopened view reports no addition.
+	 * Verifies the creation result reports whether it added CAT's lines to {@code .gitignore}, while a reopened view
+	 * reports nothing.
 	 *
 	 * @param created the view returned by creation
-	 * @param added whether this fixture's creation added the exclude
+	 * @param added whether this fixture's creation added the lines
 	 * @throws IOException if the recorded fork cannot be reopened
 	 */
-	public void reportsExcludeAdditionOnlyAtCreation(ForkView created, boolean added) throws IOException
+	public void reportsIgnoreNoticeOnlyAtCreation(ForkView created, boolean added) throws IOException
 	{
-		requireThat(created.excludeAdded(), "excludeAdded").isEqualTo(added);
-		requireThat(forks.open(base, campaign).excludeAdded(), "reopenedExcludeAdded").isFalse();
+		requireThat(created.ignoreNotice().isPresent(), "noticed").isEqualTo(added);
+		requireThat(forks.open(base, campaign).ignoreNotice(), "reopenedNotice").isEmpty();
 	}
 
 	/**

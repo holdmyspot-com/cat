@@ -16,6 +16,12 @@ followed by an instruction to read that file whole, as that guidance describes, 
 removes the CAT session directory of every other session of the project that is more than 24 hours old and whose
 transcript Codex or Claude Code no longer keeps.
 
+When the hook creates the session's CAT session directory and the project is in a Git work tree that does not already
+ignore `.cat/sessions/`, CAT appends a comment that names the plugin and the line `/.cat/sessions/` to the `.gitignore`
+in the project's root directory. It neither stages nor commits that change, which is the user's to commit. The
+response's `systemMessage`, which Codex shows the user rather than the agent, says that CAT added the line, or that it
+could not and why. Outside a Git work tree, CAT writes no `.gitignore`.
+
 For a `SubagentStart` event, the hook writes the subagent's rules to the `rules.md` of the CAT session directory of the
 event's `agent_id`, the thread ID that Codex gives the subagent's shell commands in `CODEX_THREAD_ID`, so their
 `CAT_TEMP` names that directory. Its additional context holds the same guidance on reading command output whole,

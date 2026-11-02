@@ -20,7 +20,9 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
@@ -67,7 +69,9 @@ final class CodexRuleInjectionHook
 	 * session directories of sessions that their harness no longer keeps. Its response's {@code systemMessage}, which
 	 * Codex shows the user as a warning rather than giving it to the agent, warns about each project or user rule
 	 * reference that names a file relative to the rule's own directory and tells the user how to fix it, and the
-	 * session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such reference. When the SessionStart
+	 * session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such reference. When an event created
+	 * its agent's CAT session directory, the {@code systemMessage} also tells the user that CAT added the CAT session
+	 * directories to the project's {@code .gitignore}, or could not and why. When the SessionStart
 	 * input's {@code source} is {@code compact}, the context ends with a section that lists, for each user message that
 	 * the compaction kept, when it was sent and whether a later turn answered it, as the session log that the input's
 	 * {@code transcript_path} names records it; a missing or unreadable log omits the section.
@@ -105,11 +109,12 @@ final class CodexRuleInjectionHook
 					Map.of("STRONGEST_IMPLEMENTER", () -> strongestImplementer(pluginRoot)));
 				String context;
 				String warning = "";
+				SessionDirectory directory;
 				if (!eventName.equals("SubagentStart"))
 				{
 					// Moving before opening its own directory lets a resumed session keep the directory that it wrote
 					SessionDirectory.moveFromFormerRoot(projectDir, error);
-					SessionDirectory directory = scope.sessionDirectory(projectDir, event, "session_id");
+					directory = scope.sessionDirectory(projectDir, event, "session_id");
 					directory.sweep(Instant.now(), error);
 					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID);
@@ -120,7 +125,7 @@ final class CodexRuleInjectionHook
 				}
 				else if (event.path("agent_id").isString())
 				{
-					SessionDirectory directory = scope.sessionDirectory(projectDir, event, "agent_id");
+					directory = scope.sessionDirectory(projectDir, event, "agent_id");
 					Path parentRulesFile = directory.rulesFileOf(event.path("session_id").asString());
 					SessionRules session = loader.loadSessionForSubagent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID, scope.subagentType(event));
@@ -131,15 +136,19 @@ final class CodexRuleInjectionHook
 				}
 				else
 				{
-					SessionDirectory directory = scope.sessionDirectory(projectDir, event, "session_id");
+					directory = scope.sessionDirectory(projectDir, event, "session_id");
 					String rules = loader.loadForSubagent(pluginRoot, userRulesRoot, projectDir,
 						HARNESS_ID, scope.subagentType(event));
 					context = directory.insertSessionId(SessionRules.withTimezone(rules, ZoneId.systemDefault()));
 				}
 				Map<String, Object> response = new LinkedHashMap<>();
 				response.put("hookSpecificOutput", Map.of("hookEventName", eventName, "additionalContext", context));
+				List<String> notices = new ArrayList<>();
+				directory.ignoreNotice().ifPresent(notice -> notices.add(notice.forUser()));
 				if (!warning.isEmpty())
-					response.put("systemMessage", warning);
+					notices.add(warning);
+				if (!notices.isEmpty())
+					response.put("systemMessage", String.join("\n\n", notices));
 				output.write(json.writeValueAsBytes(response));
 				output.write('\n');
 			}

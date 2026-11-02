@@ -2,12 +2,11 @@ package com.holdmyspot.cat.common.optimizer.workspace;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.nio.file.StandardOpenOption.APPEND;
-import static java.nio.file.StandardOpenOption.CREATE;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.inventory.CharacterDevices;
@@ -33,21 +32,24 @@ import java.util.Set;
  * A campaign's fork of a base worktree: the recorded prompt system and the detached optimization worktree at the base's
  * {@code HEAD}.
  * <p>
- * Creating a fork requires a clean base worktree, ensures that Git ignores CAT's session directories so that
- * campaign files never make the base dirty, records the files, and adds the optimization worktree. Every Git operation
- * runs through {@link Git}.
+ * Creating a fork requires a clean base worktree, ensures through the base's {@code .gitignore} that Git ignores CAT's
+ * session directories so that campaign files never make the base dirty, records the files, and adds the optimization
+ * worktree. Every Git operation runs through {@link Git}.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class Fork implements ForkView
 {
-	private static final String[] CHECK_IGNORE = {"check-ignore", "--quiet", "--no-index",
-		SessionDirectory.ROOT + "/probe"};
 	private static final String CLEAN_PATHSPEC_EXCLUDING_SESSIONS = ":(exclude)" + SessionDirectory.ROOT;
 	/**
 	 * The start of a {@code git status --porcelain} entry for an untracked path, which the path follows.
 	 */
 	private static final String UNTRACKED_STATUS = "?? ";
+	/**
+	 * The {@code git status --porcelain} entry of a {@code .gitignore} that differs from the index only in the work
+	 * tree.
+	 */
+	private static final String UNSTAGED_IGNORE_FILE = " M " + SessionIgnore.FILE_NAME;
 	/**
 	 * The mode that a Git index records for a symbolic link.
 	 */
@@ -57,7 +59,7 @@ public final class Fork implements ForkView
 	private final ForkTree tree;
 	private final Workspace workspace;
 	private final Path worktree;
-	private final boolean excludeAdded;
+	private final Optional<String> ignoreNotice;
 	private final FileReplacer replacer;
 
 	/**
@@ -66,10 +68,11 @@ public final class Fork implements ForkView
 	 * @param recorded every recorded file, including the participants that the selection leaves out
 	 * @param selection the participants recorded after creation that the fork's files hold
 	 * @param worktree the optimization worktree's directory
-	 * @param excludeAdded {@code true} if creating the fork appended CAT's session directories to the local exclude
+	 * @param ignoreNotice the notice, for the agent that reads the command's output, that creating the fork added CAT's
+	 *   session directories to the base's {@code .gitignore} or could not
 	 * @param replacer replaces the stored participant selection
 	 */
-	private Fork(ForkTree recorded, ParticipantSelection selection, Path worktree, boolean excludeAdded,
+	private Fork(ForkTree recorded, ParticipantSelection selection, Path worktree, Optional<String> ignoreNotice,
 		FileReplacer replacer)
 	{
 		this.recorded = recorded;
@@ -77,7 +80,7 @@ public final class Fork implements ForkView
 		this.tree = recorded.reachableFrom(selection::holds);
 		this.workspace = new Workspace(tree, recorded.directory().getParent(), worktree);
 		this.worktree = worktree;
-		this.excludeAdded = excludeAdded;
+		this.ignoreNotice = ignoreNotice;
 		this.replacer = replacer;
 	}
 
@@ -85,8 +88,10 @@ public final class Fork implements ForkView
 	 * Forks a base worktree.
 	 * <p>
 	 * The base must have no staged, unstaged or untracked changes outside CAT's session directories. An untracked
-	 * character device counts as absent: it is no change, and the fork neither copies nor records it. Otherwise this
-	 * method stops before it creates anything, including the local exclude line.
+	 * character device counts as absent: it is no change, and the fork neither copies nor records it. A
+	 * {@code .gitignore} whose only change, unstaged, is the lines that CAT appends to ignore its session directories
+	 * counts as clean, and the fork records it with those lines. Otherwise this method stops before it creates anything,
+	 * including those lines.
 	 *
 	 * @param base the base worktree, which is the top-level directory of its repository
 	 * @param campaign the campaign storage directory
@@ -136,9 +141,10 @@ public final class Fork implements ForkView
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		Git git = new Git(normalizedBase);
-		Path exclude = requireTopLevel(git, normalizedBase);
+		requireTopLevel(git, normalizedBase);
 		requireClean(git, normalizedBase, devices);
-		boolean excludeAdded = ensureSessionDirectoriesIgnored(git, exclude);
+		Optional<String> ignoreNotice = SessionIgnore.ensure(normalizedBase).
+			map(SessionIgnore.IgnoreNotice::forAgent);
 
 		Set<Path> paths = new HashSet<>(participants);
 		for (Path path : tracked(git))
@@ -153,7 +159,7 @@ public final class Fork implements ForkView
 		{
 			git.run("worktree", "add", "--detach", worktree.toString(), "HEAD");
 			worktreeAdded = true;
-			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, excludeAdded, replacer);
+			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, ignoreNotice, replacer);
 			// Git checks out the tracked files only, so write the participants and the recorded modes as well
 			fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
 			return fork;
@@ -279,7 +285,8 @@ public final class Fork implements ForkView
 	/**
 	 * Removes what {@link #create(Path, Path, Set, FileReplacer)} created after it recorded the files, so that a retry
 	 * starts clean.
-	 * The local exclude line stays, because removing it would let campaign files dirty the base. A failure to undo is
+	 * The lines that CAT added to the base's {@code .gitignore} stay, because removing them would let campaign files
+	 * dirty the base. A failure to undo is
 	 * attached to the original failure as a suppressed exception.
 	 *
 	 * @param git the base's Git
@@ -338,7 +345,7 @@ public final class Fork implements ForkView
 	 * @param base the base worktree
 	 * @param campaign the campaign storage directory
 	 * @param replacer replaces the fork's stored participant selection
-	 * @return the fork, which reports that it did not add the local exclude
+	 * @return the fork, which reports no notice about the base's {@code .gitignore}
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws WorkspaceException if the campaign holds no fork
 	 * @throws IOException if the recorded files cannot be read
@@ -353,7 +360,7 @@ public final class Fork implements ForkView
 		Path worktree = worktreeOf(normalizedCampaign);
 		if (!Files.isDirectory(worktree))
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
-		return new Fork(tree, ParticipantSelection.read(normalizedCampaign), worktree, false, replacer);
+		return new Fork(tree, ParticipantSelection.read(normalizedCampaign), worktree, Optional.empty(), replacer);
 	}
 
 	/**
@@ -390,26 +397,27 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Requires that the base is the top-level directory of its repository, which the local exclude pattern assumes.
-	 * One Git process answers both this check and the exclude's location.
+	 * Requires that the base is the top-level directory of its repository, whose {@code .gitignore} holds the pattern
+	 * that ignores CAT's session directories.
 	 *
 	 * @param git the base's Git
 	 * @param base the base worktree
-	 * @return the repository's local exclude file
 	 * @throws IOException if Git fails
 	 */
-	private static Path requireTopLevel(Git git, Path base) throws IOException
+	private static void requireTopLevel(Git git, Path base) throws IOException
 	{
-		// The first line is the path from the base to the top-level directory, which is empty at the top level
-		List<String> lines = git.lines("rev-parse", "--show-cdup", "--git-path", "info/exclude");
-		if (lines.size() != 2 || !lines.getFirst().isEmpty())
-			throw new IllegalArgumentException(base + " is not the top-level directory of its repository.");
-		return base.resolve(lines.getLast());
+		// The output is the path from the base to the top-level directory, which is empty at the top level
+		for (String line : git.lines("rev-parse", "--show-cdup"))
+		{
+			if (!line.isEmpty())
+				throw new IllegalArgumentException(base + " is not the top-level directory of its repository.");
+		}
 	}
 
 	/**
-	 * Requires that the base has no staged, unstaged or untracked changes, ignoring CAT's session directories and the
-	 * untracked character devices, which count as absent.
+	 * Requires that the base has no staged, unstaged or untracked changes, ignoring CAT's session directories, the
+	 * untracked character devices, which count as absent, and a {@code .gitignore} whose only change is the unstaged
+	 * lines that CAT appends.
 	 *
 	 * @param git the base's Git
 	 * @param base the base worktree
@@ -435,6 +443,8 @@ public final class Fork implements ForkView
 				i += 1;
 			boolean untracked = entry.startsWith(UNTRACKED_STATUS);
 			if (untracked && isCharacterDevice(base.resolve(entry.substring(UNTRACKED_STATUS.length())), devices))
+				continue;
+			if (isOnlyIgnoreLines(git, base, entry))
 				continue;
 			changes.add(entry);
 		}
@@ -469,32 +479,27 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Appends CAT's session directories to the repository's local exclude if Git does not already ignore them.
+	 * Indicates whether a {@code git status --porcelain} entry is the base's {@code .gitignore} whose only change is the
+	 * lines that CAT appends to ignore its session directories, unstaged, with nothing else in the file changed.
 	 *
 	 * @param git the base's Git
-	 * @param exclude the repository's local exclude file
-	 * @return {@code true} if this method appended the line
-	 * @throws IOException if Git fails or the exclude cannot be written
+	 * @param base the base worktree
+	 * @param entry the status entry
+	 * @return {@code true} if the entry is that change and nothing more
+	 * @throws IOException if Git fails or the file cannot be read
 	 */
-	private static boolean ensureSessionDirectoriesIgnored(Git git, Path exclude) throws IOException
+	private static boolean isOnlyIgnoreLines(Git git, Path base, String entry) throws IOException
 	{
-		int status = git.status(CHECK_IGNORE);
-		if (status == 0)
+		String before;
+		if (entry.equals(UNSTAGED_IGNORE_FILE))
+			before = new String(git.bytes("show", ":" + SessionIgnore.FILE_NAME), UTF_8);
+		else if (entry.equals(UNTRACKED_STATUS + SessionIgnore.FILE_NAME))
+			before = "";
+		else
 			return false;
-		if (status != 1)
-		{
-			throw new IOException("Git command failed with status " + status + ": git " +
-				String.join(" ", CHECK_IGNORE));
-		}
-		Files.createDirectories(exclude.getParent());
-		String existing = "";
-		if (Files.exists(exclude))
-			existing = Files.readString(exclude, UTF_8);
-		String separator = "";
-		if (!existing.isEmpty() && !existing.endsWith("\n"))
-			separator = "\n";
-		Files.writeString(exclude, separator + EXCLUDE_ENTRY + "\n", UTF_8, CREATE, APPEND);
-		return true;
+		Path file = base.resolve(SessionIgnore.FILE_NAME);
+		return Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) &&
+			SessionIgnore.isAppended(before, Files.readString(file, UTF_8));
 	}
 
 	/**
@@ -524,7 +529,7 @@ public final class Fork implements ForkView
 			next[0] = next[0].withTarget(target);
 			next[0].write(campaign, replacer);
 		});
-		Fork fork = new Fork(extended, next[0], worktree, excludeAdded, replacer);
+		Fork fork = new Fork(extended, next[0], worktree, ignoreNotice, replacer);
 		fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
 		return fork;
 	}
@@ -556,7 +561,7 @@ public final class Fork implements ForkView
 		});
 		Set<Path> held = new HashSet<>(selection.selected());
 		held.addAll(chosen);
-		return new Fork(extended, stored[0].withSelected(held), worktree, excludeAdded, replacer);
+		return new Fork(extended, stored[0].withSelected(held), worktree, ignoreNotice, replacer);
 	}
 
 	@Override
@@ -569,7 +574,7 @@ public final class Fork implements ForkView
 			if (selection.added().contains(participant))
 				held.add(participant);
 		}
-		return new Fork(recorded, selection.withSelected(held), worktree, excludeAdded, replacer);
+		return new Fork(recorded, selection.withSelected(held), worktree, ignoreNotice, replacer);
 	}
 
 	/**
@@ -646,8 +651,8 @@ public final class Fork implements ForkView
 	}
 
 	@Override
-	public boolean excludeAdded()
+	public Optional<String> ignoreNotice()
 	{
-		return excludeAdded;
+		return ignoreNotice;
 	}
 }

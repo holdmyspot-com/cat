@@ -192,12 +192,12 @@ public final class InMemoryForksTest
 	}
 
 	/**
-	 * Returns whether the fixture's creation reports adding the exclude.
+	 * Returns whether the fixture's creation reports a notice about the base's {@code .gitignore}.
 	 *
 	 * @return the captured creation outcomes
 	 */
-	@DataProvider(name = "excludeFlags")
-	public Object[][] excludeFlags()
+	@DataProvider(name = "ignoreNoticeFlags")
+	public Object[][] ignoreNoticeFlags()
 	{
 		return new Object[][]
 			{
@@ -207,13 +207,13 @@ public final class InMemoryForksTest
 	}
 
 	/**
-	 * Verifies the captured exclude-added result applies to creation and is absent after reopening.
+	 * Verifies the captured {@code .gitignore} notice applies to creation and is absent after reopening.
 	 *
-	 * @param added whether the fixture's creation added the exclude
+	 * @param added whether the fixture's creation reports the notice
 	 * @throws IOException if the fixture or contract check fails
 	 */
-	@Test(dataProvider = "excludeFlags")
-	public void reportsExcludeAdditionOnlyAtCreation(boolean added) throws IOException
+	@Test(dataProvider = "ignoreNoticeFlags")
+	public void reportsIgnoreNoticeOnlyAtCreation(boolean added) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -222,11 +222,11 @@ public final class InMemoryForksTest
 			writeFile(base.resolve("prompt.md"), "prompt", READ_WRITE);
 			InMemoryForks forks = new InMemoryForks(base, Set.of(Path.of("prompt.md")));
 			if (added)
-				forks.addExcludeOnCreate();
+				forks.noticeIgnoreOnCreate("CAT added /.cat/sessions/ to .gitignore.");
 			Path campaign = root.resolve("campaign");
 			ForkView fork = forks.create(base, campaign, Set.of());
 
-			new ForksContract(forks, base, campaign).reportsExcludeAdditionOnlyAtCreation(fork, added);
+			new ForksContract(forks, base, campaign).reportsIgnoreNoticeOnlyAtCreation(fork, added);
 		}
 	}
 

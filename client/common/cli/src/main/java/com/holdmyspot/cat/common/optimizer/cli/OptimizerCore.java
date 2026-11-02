@@ -387,7 +387,8 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Runs a command's body after completing the removals that earlier commands started, and adds a warning for each
-	 * removal that fails to the body's result or refusal.
+	 * removal that fails to the body's result or refusal, after the notice about the project's {@code .gitignore}
+	 * when opening the session's CAT session directory created it and changed that file or could not.
 	 *
 	 * @param <E> the exception that the body throws besides refusals and I/O failures
 	 * @param body the command's body
@@ -399,6 +400,7 @@ public final class OptimizerCore implements Core
 	private <E extends Exception> CommandResult withCleanup(Body<E> body) throws CommandRefusedException, IOException, E
 	{
 		List<String> notices = new ArrayList<>(cleanup().resume());
+		scope.takeIgnoreNotice().ifPresent(notices::add);
 		CommandResult result;
 		try
 		{
@@ -611,9 +613,9 @@ public final class OptimizerCore implements Core
 			campaign = withTrialPlugins(root, store, campaign, fork, configured);
 			result = derive(root, store, campaign, fork, null, null);
 		}
-		if (!fork.excludeAdded())
+		if (fork.ignoreNotice().isEmpty())
 			return result;
-		String message = "Added " + ForkView.EXCLUDE_ENTRY + " to the repository's local info/exclude.";
+		String message = fork.ignoreNotice().get();
 		if (result.message() != null)
 			message += "\n" + result.message();
 		return new CommandResult(result.status(), result.harness(), result.proposal(), result.delivery(), message);

@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.UUID;
@@ -72,6 +73,7 @@ public final class SessionDirectory
 	private final Path directory;
 	private final String sessionId;
 	private final JsonMapper json;
+	private final Optional<SessionIgnore.IgnoreNotice> ignoreNotice;
 
 	/**
 	 * Creates a CAT session directory value.
@@ -80,19 +82,27 @@ public final class SessionDirectory
 	 * @param directory the session's directory
 	 * @param sessionId the session's ID
 	 * @param json the JSON mapper that reads markers
+	 * @param ignoreNotice the notice for the user about the project's {@code .gitignore}, if opening the directory
+	 *   changed it or failed to
 	 */
-	private SessionDirectory(Path projectRoot, Path directory, String sessionId, JsonMapper json)
+	private SessionDirectory(Path projectRoot, Path directory, String sessionId, JsonMapper json,
+		Optional<SessionIgnore.IgnoreNotice> ignoreNotice)
 	{
 		this.projectRoot = projectRoot;
 		this.directory = directory;
 		this.sessionId = sessionId;
 		this.json = json;
+		this.ignoreNotice = ignoreNotice;
 	}
 
 	/**
 	 * Returns a session's CAT session directory, creating the directory, its {@code temp/} directory and its marker when
 	 * they are missing. The marker is written to a temporary file in the directory and then linked into place, so
 	 * concurrent first uses leave one complete marker, and an existing marker is never overwritten.
+	 * <p>
+	 * When this call creates the directory, it also adds the CAT session directories to the project's
+	 * {@code .gitignore} through {@link SessionIgnore#ensure(Path)}, and {@link #ignoreNotice()} returns what the user
+	 * must be told about that.
 	 *
 	 * @param projectRoot the session's project
 	 * @param sessionId the harness's session ID, a UUID in canonical form
@@ -117,11 +127,18 @@ public final class SessionDirectory
 		if (!isSessionId(sessionId))
 			throw new IOException("The session ID is not a UUID in canonical form: " + sessionId);
 		Path directory = root(projectRoot).resolve(sessionId);
+		boolean created = Files.notExists(directory, LinkOption.NOFOLLOW_LINKS);
 		Files.createDirectories(directory.resolve(TEMP));
 		Path marker = directory.resolve(MARKER);
 		if (Files.notExists(marker, LinkOption.NOFOLLOW_LINKS))
 			writeMarker(marker, markerContent(sessionId, harness, configurationDirectory, now), json);
-		return new SessionDirectory(projectRoot.toAbsolutePath().normalize(), directory, sessionId, json);
+		Path project = projectRoot.toAbsolutePath().normalize();
+		Optional<SessionIgnore.IgnoreNotice> ignoreNotice;
+		if (created)
+			ignoreNotice = SessionIgnore.ensure(project);
+		else
+			ignoreNotice = Optional.empty();
+		return new SessionDirectory(project, directory, sessionId, json, ignoreNotice);
 	}
 
 	/**
@@ -298,6 +315,17 @@ public final class SessionDirectory
 		{
 			Files.deleteIfExists(partial);
 		}
+	}
+
+	/**
+	 * Returns the notice for the user about the project's {@code .gitignore}: that the {@link #open open} that created
+	 * this directory added the CAT session directories to it, or could not and why.
+	 *
+	 * @return the notice, or empty if the open did not create the directory or left {@code .gitignore} as it was
+	 */
+	public Optional<SessionIgnore.IgnoreNotice> ignoreNotice()
+	{
+		return ignoreNotice;
 	}
 
 	/**

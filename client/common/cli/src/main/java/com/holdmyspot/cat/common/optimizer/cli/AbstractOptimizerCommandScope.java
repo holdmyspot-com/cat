@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.AbstractJvmScope;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
@@ -80,6 +81,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 
 	private Path projectRoot;
 	private SessionDirectory sessionDirectory;
+	private boolean ignoreNoticeTaken;
 	private CampaignStore store;
 
 	/**
@@ -258,6 +260,26 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 		if (sessionDirectory == null)
 			sessionDirectory = openSessionDirectory(projectRoot());
 		return sessionDirectory;
+	}
+
+	/**
+	 * Returns, once per scope, the notice that opening the host session's CAT session directory created it and added
+	 * CAT's session directories to the project's {@code .gitignore}, or could not, in the form for the agent that reads
+	 * the command's output.
+	 *
+	 * @return the notice; empty if there is none or an earlier call returned it
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
+	 *   names no host session
+	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
+	 */
+	final Optional<String> takeIgnoreNotice() throws CommandRefusedException, IOException
+	{
+		Optional<String> notice = sessionDirectory().ignoreNotice().map(SessionIgnore.IgnoreNotice::forAgent);
+		if (ignoreNoticeTaken)
+			return Optional.empty();
+		ignoreNoticeTaken = true;
+		return notice;
 	}
 
 	/**

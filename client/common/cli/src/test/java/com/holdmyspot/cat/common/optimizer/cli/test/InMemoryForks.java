@@ -55,7 +55,7 @@ public final class InMemoryForks implements Forks
 	private final Map<Path, Set<Path>> created = new HashMap<>();
 	private final Map<Path, List<FileInventory>> versions = new HashMap<>();
 	private boolean dirty;
-	private boolean excludeAdded;
+	private Optional<String> ignoreNotice = Optional.empty();
 	private boolean removalDenied;
 	/**
 	 * The patch that the test supplied for each changed path, keyed by the path.
@@ -83,12 +83,14 @@ public final class InMemoryForks implements Forks
 	}
 
 	/**
-	 * Models the creation result that {@link Fork} records when
-	 * Git does not already ignore CAT's session directories, as verified by its workspace tests.
+	 * Models the creation result that {@link Fork} records when it added CAT's session directories to the base's
+	 * {@code .gitignore} or could not, as verified by its workspace tests.
+	 *
+	 * @param notice the notice for the user that creation returns
 	 */
-	void addExcludeOnCreate()
+	void noticeIgnoreOnCreate(String notice)
 	{
-		excludeAdded = true;
+		ignoreNotice = Optional.of(notice);
 	}
 
 	/**
@@ -145,7 +147,7 @@ public final class InMemoryForks implements Forks
 		}
 		recorded.put(campaign, new LinkedHashMap<>(inventory.entries()));
 		created.put(campaign, Set.copyOf(paths));
-		return new InMemoryFork(campaign, inventory, excludeAdded, true);
+		return new InMemoryFork(campaign, inventory, ignoreNotice, true);
 	}
 
 	/**
@@ -206,7 +208,7 @@ public final class InMemoryForks implements Forks
 		if (inventory == null)
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no fork.");
 		if (exists(campaign))
-			return new InMemoryFork(campaign, inventory, false, true);
+			return new InMemoryFork(campaign, inventory, Optional.empty(), true);
 		throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
 	}
 
@@ -297,20 +299,20 @@ public final class InMemoryForks implements Forks
 		private final Path campaign;
 		private final FileInventory inventory;
 		private final FakeWorkspacePort workspace;
-		private final boolean excludeAdded;
+		private final Optional<String> ignoreNotice;
 
 		/**
 		 * Creates a fork.
 		 *
 		 * @param campaign the campaign storage directory
 		 * @param inventory the recorded files
-		 * @param excludeAdded whether creation added the local exclude
+		 * @param ignoreNotice the notice for the user that creation returns about the base's {@code .gitignore}
 		 * @param current whether the fork becomes the campaign's current fork; a prospective fork does not
 		 */
-		InMemoryFork(Path campaign, FileInventory inventory, boolean excludeAdded, boolean current)
+		InMemoryFork(Path campaign, FileInventory inventory, Optional<String> ignoreNotice, boolean current)
 		{
 			this.campaign = campaign;
-			this.excludeAdded = excludeAdded;
+			this.ignoreNotice = ignoreNotice;
 			this.inventory = inventory;
 			this.workspace = new FakeWorkspacePort(campaign, inventory, root);
 			for (Map.Entry<Path, FileEntry> entry : inventory.entries().entrySet())
@@ -328,9 +330,9 @@ public final class InMemoryForks implements Forks
 		}
 
 		@Override
-		public boolean excludeAdded()
+		public Optional<String> ignoreNotice()
 		{
-			return excludeAdded;
+			return ignoreNotice;
 		}
 
 		@Override
@@ -361,7 +363,7 @@ public final class InMemoryForks implements Forks
 					held.put(entry.getKey(), entry.getValue());
 			}
 			materialize(campaign, held);
-			return new InMemoryFork(campaign, new FileInventory(root, held), excludeAdded, true);
+			return new InMemoryFork(campaign, new FileInventory(root, held), ignoreNotice, true);
 		}
 
 		@Override
@@ -385,7 +387,7 @@ public final class InMemoryForks implements Forks
 				if (entry != null)
 					held.putIfAbsent(participant, entry);
 			}
-			return new InMemoryFork(campaign, new FileInventory(root, held), excludeAdded, false);
+			return new InMemoryFork(campaign, new FileInventory(root, held), ignoreNotice, false);
 		}
 
 		@Override

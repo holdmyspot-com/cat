@@ -30,6 +30,9 @@ launcher field.
 	achieve, add `--goal <text>` with the user's own words, quoted as one argument; otherwise leave it out. It creates
 	a campaign or resumes the one that already exists for that target. Use its `campaign` value in every later
 	command.
+	- A result may say that CAT added `/.cat/sessions/` to the project's `.gitignore`. Show that text to the user with
+		the rest of the result. The user commits that change: do not stage or commit it yourself. `start` accepts a
+		project whose only uncommitted change is those lines.
 	- When `start` is refused because the target's prompt test configuration does not exist or has no key for this
 		harness, its `message` names the configuration file and lists the plugins installed in this harness and the
 		plugins that the project builds. The configuration says which plugins every trial installs. Show the `message`,

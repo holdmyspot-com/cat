@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
@@ -139,6 +140,10 @@ import java.util.stream.Stream;
 public final class OptimizerCoreTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * The notice that the fork boundary of some tests returns about the base's {@code .gitignore}.
+	 */
+	private static final String IGNORE_NOTICE = "CAT added /.cat/sessions/ to .gitignore.";
 	/**
 	 * A prompt test configuration whose Claude trials install no plugin.
 	 */
@@ -1165,9 +1170,33 @@ public final class OptimizerCoreTest
 	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> contractAuthor,
 		Set<Path> tracked, SessionResult contractAuthorEnd) throws IOException
 	{
+		return repository(scope, contractAuthor, tracked, contractAuthorEnd, false);
+	}
+
+	/**
+	 * Creates a repository and a core whose sessions follow a script.
+	 *
+	 * @param scope removes the repository
+	 * @param contractAuthor returns the contract author's final response for the number of contract author sessions
+	 *   started so far
+	 * @param tracked the files, relative to the project, that Git tracks
+	 * @param contractAuthorEnd how every contract author session ends instead of completing with
+	 *   {@code contractAuthor}'s response, or null to let the contract author complete
+	 * @param gitWorkTree {@code true} to make the project a real Git work tree that ignores nothing, so that the first
+	 *   command's session directory adds CAT's lines to its {@code .gitignore}; {@code false} for a {@code .git}
+	 *   directory that only marks the project
+	 * @return the repository
+	 * @throws IOException if the repository cannot be written
+	 */
+	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> contractAuthor,
+		Set<Path> tracked, SessionResult contractAuthorEnd, boolean gitWorkTree) throws IOException
+	{
 		Path root = scope.add(Files.createTempDirectory("optimizer-flow")).toRealPath();
 		Path scratch = Files.createDirectory(root.resolve("scratch-outside-git"));
-		Files.createDirectory(root.resolve(".git"));
+		if (gitWorkTree)
+			GitWorkTrees.create(root);
+		else
+			Files.createDirectory(root.resolve(".git"));
 		Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
 		Files.writeString(root.resolve(".env.example"), "TOKEN=fixture\n");
 		Files.writeString(root.resolve("extra.local.md"), "Local rules.\n");
@@ -1196,14 +1225,17 @@ public final class OptimizerCoreTest
 		};
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
-		// The host session's CAT session directory exists before any command runs in it
-		try
+		// Except in a real work tree, the host session's CAT session directory exists before any command runs in it
+		if (!gitWorkTree)
 		{
-			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
-		}
-		catch (CommandRefusedException e)
-		{
-			throw new IOException(e.getMessage(), e);
+			try
+			{
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
+			}
+			catch (CommandRefusedException e)
+			{
+				throw new IOException(e.getMessage(), e);
+			}
 		}
 		return new Repository(root, command, new OptimizerCore(command));
 	}
@@ -2157,11 +2189,11 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the start command reports a local exclude addition supplied by the fork boundary, and that
+	 * Verifies that the start command reports the {@code .gitignore} notice supplied by the fork boundary, and that
 	 * confirmation and resumption do not repeat the notice. Real Git's creation decision is covered by fork tests.
 	 */
 	@Test
-	public void startReportsAddedExclude() throws Exception
+	public void startReportsAddedIgnoreLines() throws Exception
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2169,10 +2201,10 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			repository.forks().addExcludeOnCreate();
+			repository.forks().noticeIgnoreOnCreate(IGNORE_NOTICE);
 			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
-			requireThat(started.get("message").asString(), "message").
-				contains("Added /.cat/sessions/").contains("info/exclude");
+			requireThat(started.get("message").asString(), "message").startsWith(IGNORE_NOTICE).
+				doesNotContain("info/exclude");
 			requireThat(started.get("proposal").isNull(), "missingProposal").isFalse();
 			String id = started.get("campaign").asString();
 			requireThat(output(repository, List.of("confirm", id, "latest_versions")).get("message").isNull(),
@@ -2183,11 +2215,36 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that when a command, rather than a SessionStart hook, creates the session's CAT session directory in a
+	 * Git work tree that does not ignore it, the command adds CAT's lines to the project's {@code .gitignore}, and its
+	 * result says so in the agent's form, which leaves the commit to the user; a later command says nothing more.
+	 */
+	@Test
+	public void firstCommandReportsIgnoreLines() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md")), null, true);
+
+			ObjectNode first = output(repository, List.of("start", "CLAUDE.md"));
+			ObjectNode second = output(repository, List.of("status", "CLAUDE.md"));
+
+			requireThat(Files.readString(repository.root().resolve(".gitignore"), StandardCharsets.UTF_8),
+				"gitignore").endsWith("\n/.cat/sessions/\n");
+			requireThat(first.toString(), "first").contains("CAT added /.cat/sessions/ to ").
+				contains("this change is theirs to commit; do not stage or commit it.");
+			requireThat(second.toString(), "second").doesNotContain("CAT added /.cat/sessions/");
+		}
+	}
+
+	/**
 	 * Verifies that the start command emits no notice when the fork boundary reports that Git already ignores
 	 * CAT's session directories. Real Git's ignore check is covered by fork tests.
 	 */
 	@Test
-	public void startDoesNotReportExistingExclude() throws Exception
+	public void startDoesNotReportExistingIgnore() throws Exception
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -2200,19 +2257,19 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that reporting an added exclude preserves the contract author's invalid-proposal diagnostic.
+	 * Verifies that reporting the {@code .gitignore} notice preserves the contract author's invalid-proposal
+	 * diagnostic.
 	 */
 	@Test
-	public void startReportsExcludeAndContractFailure() throws Exception
+	public void startReportsIgnoreAndContractFailure() throws Exception
 	{
 		// Requirement: R-W1
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> "invalid proposal");
-			repository.forks().addExcludeOnCreate();
+			repository.forks().noticeIgnoreOnCreate(IGNORE_NOTICE);
 			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
-			requireThat(started.get("message").asString(), "message").
-				contains("Added /.cat/sessions/").contains("info/exclude").
+			requireThat(started.get("message").asString(), "message").contains(IGNORE_NOTICE).
 				contains("The contract author's proposal is invalid");
 		}
 	}
