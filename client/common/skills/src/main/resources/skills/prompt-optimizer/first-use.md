@@ -80,9 +80,6 @@ launcher field.
 	- If the proposal names unranked models, confirmation is refused until the user ranks their families. Ask the user
 		where each family ranks, run `revise <campaign> <feedback>` with the user's words and repeat this step with its
 		result.
-	- If the proposal marks extra requirements, which the user's goal does not ask for, ask the user to keep or drop
-		each one. Run `revise <campaign> <feedback>` with the requirements that the user drops, if any, and repeat this
-		step with its result.
 	- Otherwise, ask the user to give feedback or to confirm. Tell the user that certification covers `weakest_cell`
 		unless the user chooses other cells, and present these choices with their tradeoffs, naming each choice's cells,
 		weakest cells and minimum session count from the proposal's "Certification scope" section:

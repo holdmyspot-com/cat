@@ -184,8 +184,7 @@ public final class Markdown
 
 	/**
 	 * Lists the user's goal, then every requirement, its source, the condition under which it applies and the ways in
-	 * which a reply can fail it. When the user stated a goal, a requirement that the goal does not state is marked as
-	 * an extra requirement, which the user keeps or drops.
+	 * which a reply can fail it.
 	 */
 	private void requirements()
 	{
@@ -196,11 +195,6 @@ public final class Markdown
 		{
 			text.append("- `").append(requirement.id()).append("`: ").append(requirement.description()).append('\n').
 				append("  Source: ").append(requirement.source()).append('\n');
-			if (goal != null && !requirement.source().equals(Requirement.GOAL))
-			{
-				text.append("  Extra requirement: the goal does not ask for it; keep it or drop it through revise " +
-					"feedback.\n");
-			}
 			if (requirement.trigger() == null)
 				text.append("  Applies: always\n");
 			else

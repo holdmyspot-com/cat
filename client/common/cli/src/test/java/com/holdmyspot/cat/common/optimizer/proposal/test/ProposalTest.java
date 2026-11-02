@@ -83,6 +83,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.OptionalLong;
@@ -2567,13 +2568,13 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that, when the user stated a goal, the proposal shows the goal and marks each requirement whose source
-	 * is a prompt file as an extra requirement, and marks none without a goal.
+	 * Verifies that the proposal shows the user's goal and every requirement as an ordinary requirement with its
+	 * source, with or without a goal, including a requirement that a stored proposal attributes to another prompt file.
 	 *
 	 * @throws InvalidProposalException if the output is rejected
 	 */
 	@Test
-	public void marksExtraRequirements() throws InvalidProposalException
+	public void showsNoExtraRequirementMark() throws InvalidProposalException
 	{
 		// Requirement: R-C24
 		String goal = "Summaries keep the requested format.";
@@ -2585,13 +2586,13 @@ public final class ProposalTest
 		String text = Proposal.of(derived, campaign, noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 
-		String first = text.substring(text.indexOf("- `r1`"), text.indexOf("- `r2`"));
 		String second = text.substring(text.indexOf("- `r2`"));
 		second = second.substring(0, second.indexOf("\n- ", 1) + 1);
 		requireThat(text, "text").contains(goal);
-		requireThat(first, "r1").doesNotContain("Extra requirement");
-		requireThat(second, "r2").contains("Extra requirement");
-		requireThat(rendered(output), "withoutGoal").doesNotContain("Extra requirement");
+		requireThat(text.toLowerCase(Locale.ROOT), "text").doesNotContain("extra requirement").
+			doesNotContain("drop it");
+		requireThat(second, "r2").contains("Source: rules/safety.md");
+		requireThat(rendered(output).toLowerCase(Locale.ROOT), "withoutGoal").doesNotContain("extra requirement");
 	}
 
 	/**
