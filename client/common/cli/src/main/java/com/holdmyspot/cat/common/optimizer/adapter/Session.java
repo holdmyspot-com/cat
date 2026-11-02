@@ -184,7 +184,8 @@ final class Session implements SessionHandle
 	 */
 	private SessionResult drive() throws IOException
 	{
-		String brief = RoleRules.fill(settings.artifact(), request.role(), request.turns().getFirst());
+		String brief = RoleRules.fill(settings.artifact(), request.role(),
+			sessions.ruleVariables(settings.artifact()), request.turns().getFirst());
 
 		Thread runner = Thread.ofPlatform().daemon().name("optimizer-runner").start(this::serve);
 		startupDeadline = clock.instant().plus(STARTUP_LIMIT);

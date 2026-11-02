@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RuleSource;
+import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
@@ -742,6 +743,16 @@ public abstract class RunnerSessions implements SessionPort
 	{
 		return settings;
 	}
+
+	/**
+	 * Returns the portable rule variables that the harness's session-start hook supplies, so that the rules a role's
+	 * first brief carries render with the values that the hook gives them.
+	 *
+	 * @param artifact the complete harness artifact that holds the rules
+	 * @return the variables, by name without the {@code CAT_RULE_} prefix; each resolver runs only when a rendered
+	 *   rule names its variable
+	 */
+	protected abstract Map<String, RuleVariableResolver> ruleVariables(Path artifact);
 
 	/**
 	 * Returns the runner's bridge.

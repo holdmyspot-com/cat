@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
@@ -103,6 +104,12 @@ public final class CodexSessions extends RunnerSessions
 	CodexSessions(Settings settings, Bridge bridge)
 	{
 		super(HARNESS_ID, settings, bridge);
+	}
+
+	@Override
+	protected Map<String, RuleVariableResolver> ruleVariables(Path artifact)
+	{
+		return CodexRuleVariables.of(artifact);
 	}
 
 	@Override

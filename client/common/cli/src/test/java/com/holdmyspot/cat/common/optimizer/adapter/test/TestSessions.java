@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.adapter.test;
 
+import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
 import com.holdmyspot.cat.common.optimizer.adapter.PluginFiles;
@@ -66,6 +67,12 @@ final class TestSessions extends RunnerSessions
 	TestSessions(Settings settings, Bridge bridge)
 	{
 		super(HARNESS, settings, bridge);
+	}
+
+	@Override
+	protected Map<String, RuleVariableResolver> ruleVariables(Path artifact)
+	{
+		return Map.of();
 	}
 
 	@Override

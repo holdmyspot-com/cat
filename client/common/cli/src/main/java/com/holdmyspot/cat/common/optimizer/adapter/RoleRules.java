@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.common.optimizer.adapter;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
+import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 
 import java.io.IOException;
@@ -50,17 +52,21 @@ final class RoleRules
 	 *
 	 * @param artifact the installed artifact supplying the role's rules
 	 * @param role the session's role
+	 * @param variables the portable rule variables that the harness supplies, by name without the {@code CAT_RULE_}
+	 *   prefix
 	 * @param prompt the complete first turn
 	 * @return the brief with rendered rules, unchanged for a role with no rules
-	 * @throws IOException if any required rule cannot be read or rendered
+	 * @throws IOException if any required rule cannot be read or rendered, or names a variable that {@code variables}
+	 *   lacks
 	 */
-	static String fill(Path artifact, SessionRole role, String prompt) throws IOException
+	static String fill(Path artifact, SessionRole role, Map<String, RuleVariableResolver> variables, String prompt)
+		throws IOException
 	{
 		List<Path> rules = RULES.get(role);
 		if (rules.isEmpty())
 			return prompt;
 
-		ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build());
+		ProjectRuleLoader loader = new ProjectRuleLoader(YAMLMapper.builder().build(), Platform.current(), variables);
 		List<String> bodies = new ArrayList<>(rules.size());
 		for (Path rule : rules)
 			bodies.add(loader.loadRule(artifact, rule));

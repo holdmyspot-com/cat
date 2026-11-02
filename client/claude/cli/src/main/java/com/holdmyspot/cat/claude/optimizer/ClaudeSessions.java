@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
+import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
@@ -148,6 +149,12 @@ public final class ClaudeSessions extends RunnerSessions
 		super(HARNESS_ID, settings, bridge);
 		requireThat(managedSettings, "managedSettings").isNotNull();
 		this.managedSettings = List.copyOf(managedSettings);
+	}
+
+	@Override
+	protected Map<String, RuleVariableResolver> ruleVariables(Path artifact)
+	{
+		return ClaudeRuleVariables.of(artifact);
 	}
 
 	@Override
