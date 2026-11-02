@@ -37,10 +37,10 @@ public final class SessionRequestInstructions
 			sessions = "1 session";
 		else
 			sessions = sessionRequests + " sessions";
-		return "Give work that a subagent can do to a subagent, or do it yourself when you cannot start one. Request " +
-			"a session only when the work needs a separate, isolated session: running the other harness, checking a " +
-			"plugin that you wrote or a fresh CAT installation, starting from a fresh copy of the project, or keeping " +
-			"the work out of your own context.\n" +
+		return "Request a session only when the work needs a separate, isolated session: running the other harness, " +
+			"checking a plugin that you wrote or a fresh CAT installation, starting from a fresh copy of the project, or " +
+			"keeping the work out of your own context. Other work that you hand off goes to a subagent; when you cannot " +
+			"start one, that work stays with you, and you do not request a session for it.\n" +
 			"\n" +
 			"You may request up to " + sessions + " over this run. A requested session is a new session that the " +
 			"runner starts outside your sandbox, in a copy of a project directory that you name; your commands cannot " +

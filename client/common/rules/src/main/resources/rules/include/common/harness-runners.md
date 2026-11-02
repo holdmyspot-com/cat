@@ -5,7 +5,7 @@
 - Run an authorized task in a new Claude Code or Codex session through the CAT artifact of this CAT version for that
 	harness, while preserving the runner's retained evidence.
 - Start a session through a runner or a session request only for a task that needs a separate, isolated session, and
-	give a task that a subagent of the agent's own harness can do to that subagent instead.
+	leave whether the agent delegates any other task to a subagent or does it itself to its delegation rules.
 - Prevent a runner invocation from selecting an arbitrary artifact or executable.
 - Give every run and every session request the model and the effort that its task names, or that the agent chooses
 	from the values the harness lists when its task names none, without asking the user or stopping the run for want of
@@ -27,8 +27,8 @@ for its artifact selector, `${CAT_PLUGIN_ROOT}/bin/claude-artifact` or `${CAT_PL
 
 Start a session through these launchers only when the task needs a separate, isolated session: for example, one that
 runs in a harness other than yours, tests a plugin or a fresh CAT installation, starts from a fresh copy of the project
-so that it begins from a clean state, or must not see this session's context. When a subagent of your own harness can
-do the task, delegate it to that subagent instead and do not start a runner.
+so that it begins from a clean state, or must not see this session's context. Do not start a runner for a task that
+needs no isolated session; whether you delegate it to a subagent or do it yourself follows your delegation rules.
 
 ### Supported environments
 

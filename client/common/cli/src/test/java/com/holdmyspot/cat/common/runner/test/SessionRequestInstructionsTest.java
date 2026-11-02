@@ -40,8 +40,9 @@ public final class SessionRequestInstructionsTest
 
 	/**
 	 * Verifies that the instructions open with the decision, before they state how many sessions the session may
-	 * request: work that a subagent can do goes to a subagent, and a session is requested only for work that needs a
-	 * separate, isolated session, of which they name the four kinds.
+	 * request: a session is requested only for work that needs a separate, isolated session, of which they name the
+	 * four kinds, and other work that is handed off goes to a subagent or, when none can start, stays with the session.
+	 * They do not tell the session to hand off every task that a subagent can do.
 	 */
 	@Test
 	public void decidesOnIsolationBeforeCount()
@@ -49,16 +50,17 @@ public final class SessionRequestInstructionsTest
 		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
 		String text = SessionRequestInstructions.text(1, launcher, false);
 
-		int subagent = text.indexOf("Give work that a subagent can do to a subagent, or do it yourself when you " +
-			"cannot start one");
 		int isolation = text.indexOf("Request a session only when the work needs a separate, isolated session");
+		int subagent = text.indexOf("Other work that you hand off goes to a subagent; when you cannot start one, that " +
+			"work stays with you, and you do not request a session for it");
 		int count = text.indexOf("You may request up to 1 session");
-		requireThat(subagent, "subagent").isNotNegative();
-		requireThat(isolation, "isolation").isGreaterThan(subagent);
-		requireThat(count, "count").isGreaterThan(isolation);
+		requireThat(isolation, "isolation").isNotNegative();
+		requireThat(subagent, "subagent").isGreaterThan(isolation);
+		requireThat(count, "count").isGreaterThan(subagent);
 		requireThat(text, "text").contains("running the other harness").
 			contains("checking a plugin that you wrote or a fresh CAT installation").
-			contains("starting from a fresh copy of the project").contains("keeping the work out of your own context");
+			contains("starting from a fresh copy of the project").contains("keeping the work out of your own context").
+			doesNotContain("Give work that a subagent can do to a subagent");
 	}
 
 	/**

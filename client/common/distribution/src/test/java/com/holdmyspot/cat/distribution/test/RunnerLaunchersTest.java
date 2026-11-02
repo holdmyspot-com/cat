@@ -373,8 +373,8 @@ public final class RunnerLaunchersTest
 
 	/**
 	 * Verifies that the bundled rule on running a harness says, before the launcher steps, that a runner is only for a
-	 * task that needs a separate, isolated session, names the kinds of task that need one, and sends a task that a
-	 * subagent of the agent's own harness can do to that subagent.
+	 * task that needs a separate, isolated session, names the kinds of task that need one, and leaves whether any
+	 * other task goes to a subagent to the agent's delegation rules instead of sending every such task to one.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -390,8 +390,9 @@ public final class RunnerLaunchersTest
 		requireThat(rule, "rule").contains("runs in a harness other than yours").
 			contains("tests a plugin or a fresh CAT installation").contains("starts from a fresh copy of the project").
 			contains("must not see this session's context").
-			contains("When a subagent of your own harness can do the task, delegate it to that subagent instead and " +
-				"do not start a runner");
+			contains("Do not start a runner for a task that needs no isolated session; whether you delegate it to a " +
+				"subagent or do it yourself follows your delegation rules").
+			doesNotContain("delegate it to that subagent instead");
 	}
 
 	/**
