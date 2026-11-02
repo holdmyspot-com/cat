@@ -7,8 +7,8 @@
 #   & ([scriptblock]::Create((Invoke-RestMethod <url of this script>))) -Uninstall [-DeleteData]
 #
 # -Source names the release tag to download, which is the default, or a folder that holds an extracted artifact.
-# -Uninstall removes the plugin and the Claude CAT artifacts that a runner skill downloaded into .cat\bundles, and keeps
-# CAT's data, so that a later installation can use it; -DeleteData deletes it too.
+# -Uninstall removes the plugin and the Claude CAT artifacts that a runner launcher downloaded into .cat\bundles, and
+# keeps CAT's data, so that a later installation can use it; -DeleteData deletes it too.
 #
 # Before it changes anything, the script checks that it can write every file and folder that the operation changes,
 # including those that Codex changes. If it cannot, as in an agent's sandbox, it changes nothing and fails with the

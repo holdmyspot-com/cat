@@ -59,8 +59,8 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Resolves another harness's CAT artifact of this CAT version and platform, so that a runner skill can run a task in
- * that harness with CAT installed although the user installed CAT only for its own harness.
+ * Resolves another harness's CAT artifact of this CAT version and platform, so that a runner launcher can run a task
+ * in that harness with CAT installed although the user installed CAT only for its own harness.
  * <p>
  * The artifact is the first of: the harness's installed CAT plugin when its version matches; the copy that an earlier
  * download left in the bundle directory; otherwise a copy that this class downloads from the release of this CAT

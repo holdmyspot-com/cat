@@ -27,16 +27,20 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests the launchers and skills through which each plugin runs either harness: the {@code claude-runner} and
- * {@code codex-runner} skills and launchers. Each plugin finds the other harness's artifact with a launcher of its own
- * harness and runs the runner launcher in that artifact's {@code bin/}, so neither plugin holds the other harness's
- * classes.
+ * Tests the launchers through which each plugin runs either harness, {@code claude-runner} and {@code codex-runner},
+ * and the bundled rule that tells agents how to run them. Each plugin finds the other harness's artifact with a
+ * launcher of its own harness and runs the runner launcher in that artifact's {@code bin/}, so neither plugin holds the
+ * other harness's classes.
  */
-public final class RunnerSkillLaunchersTest
+public final class RunnerLaunchersTest
 {
 	private static final String CLAUDE_MODULE = "com.holdmyspot.cat.claude.cli";
 	private static final String CODEX_MODULE = "com.holdmyspot.cat.codex.cli";
 	private static final String COMMON_MODULE = "com.holdmyspot.cat.common.cli";
+	/**
+	 * The bundled rule that tells agents how to run a harness, relative to the class path.
+	 */
+	private static final String HARNESS_RUNNERS_RULE = "rules/include/common/harness-runners.md";
 	/**
 	 * A launcher that a skill names in its plugin's {@code bin/}, whose first group is the launcher's name.
 	 */
@@ -44,13 +48,13 @@ public final class RunnerSkillLaunchersTest
 		"(?<![A-Za-z0-9_.>/-])bin/([A-Za-z0-9][A-Za-z0-9._-]*)");
 
 	/** Creates a test instance. */
-	public RunnerSkillLaunchersTest()
+	public RunnerLaunchersTest()
 	{
 	}
 
 	/**
 	 * Verifies that the Claude plugin's {@code bin/} holds {@code codex-artifact}, which finds the Codex artifact, and
-	 * {@code claude-runner}, which the Codex plugin's skill runs.
+	 * {@code claude-runner}, which the Codex plugin's {@code claude-runner} launcher runs.
 	 */
 	@Test
 	public void claudePluginHoldsRunnerLaunchers()
@@ -70,7 +74,7 @@ public final class RunnerSkillLaunchersTest
 
 	/**
 	 * Verifies that the Codex plugin's {@code bin/} holds {@code claude-artifact}, which finds the Claude artifact, and
-	 * {@code codex-runner}, which the Claude plugin's skill runs.
+	 * {@code codex-runner}, which the Claude plugin's {@code codex-runner} launcher runs.
 	 */
 	@Test
 	public void codexPluginHoldsRunnerLaunchers()
@@ -250,41 +254,67 @@ public final class RunnerSkillLaunchersTest
 	}
 
 	/**
-	 * Supplies each runner skill with the launcher that selects its artifact.
+	 * Verifies that neither plugin offers a skill for running a harness, since agents follow the bundled rule instead.
 	 *
-	 * @return the skill's name and its artifact selector
+	 * @throws IOException        if a skill tree cannot be read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
 	 */
-	@DataProvider
-	public Object[][] runnerSkills()
+	@Test
+	public void noPluginOffersRunnerSkill() throws IOException, URISyntaxException
 	{
-		return new Object[][]{{"claude-runner", "claude-artifact"}, {"codex-runner", "codex-artifact"}};
+		List<String> found = new ArrayList<>();
+		for (String module : List.of("claude", "codex", "common"))
+		{
+			forEachSkillTree(module, tree ->
+			{
+				for (String skill : List.of("claude-runner", "codex-runner"))
+				{
+					if (Files.exists(tree.resolve(skill)))
+						found.add(module + ": " + skill);
+				}
+			});
+		}
+		requireThat(found, "found").isEmpty();
 	}
 
 	/**
-	 * Verifies that both harnesses hold both runner skills over one shared body, which names the plugin's runner
-	 * launcher, the launcher that selects the artifact, and the use of the launcher inside a run, and holds no shell
-	 * syntax, since Codex runs commands without a shell.
+	 * Verifies that the bundled rule on running a harness names both runner launchers and both artifact selectors in
+	 * the plugin's {@code bin/}, each of which both plugins hold; names their use inside a run; tells the agent where
+	 * each turn's reply is in the transcript; and holds no shell syntax, since Codex runs commands without a shell.
 	 *
-	 * @param skill    the skill's name
-	 * @param selector the launcher that selects the skill's artifact
-	 * @throws IOException if a skill cannot be read
+	 * @throws IOException if the rule cannot be read
 	 */
-	@Test(dataProvider = "runnerSkills")
-	public void bothHarnessesHoldRunnerSkill(String skill, String selector) throws IOException
+	@Test
+	public void runnerRuleNamesLaunchersAndReplies() throws IOException
 	{
-		// Requirement: R-I9, R-I11
-		List<URL> bodies = resources("skills/" + skill + "/first-use.md");
-		requireThat(bodies, "bodies").size().isEqualTo(1);
-		requireThat(bodies.getFirst().toString(), "body").matches(".*common[-/]skills.*");
-		List<String> manifests = new ArrayList<>();
-		for (URL manifest : resources("skills/" + skill + "/SKILL.md"))
-			manifests.add(manifest.toString().replaceAll(".*(claude|codex)[-/]skills.*", "$1"));
-		requireThat(manifests, "manifests").containsExactly(List.of("claude", "codex"));
-		String body = read(bodies.getFirst());
-		requireThat(body, "first-use.md").contains("bin/" + skill).contains("bin/" + selector).
-			contains("CAT_SESSION_REQUESTS").contains("--input").contains("--request-depth").
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst());
+		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
+		for (String launcher : List.of("claude-runner", "claude-artifact", "codex-runner", "codex-artifact"))
+		{
+			requireThat(rule, "rule").contains("`${CAT_PLUGIN_ROOT}/bin/" + launcher + "`");
+			requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains(launcher);
+			requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains(launcher);
+		}
+		requireThat(rule, "rule").contains("CAT_SESSION_REQUESTS").contains("--input").contains("--request-depth").
+			contains("{\"type\":\"turn_completed\"").contains("assistant_response").contains("\"type\":\"turn_").
 			doesNotContain("printf").doesNotContain(" | ").doesNotContain("$(").doesNotContain("```bash").
 			doesNotContain("cannot start a harness");
+	}
+
+	/**
+	 * Verifies that the bundled workflow routing loads the rule on running a harness, so that an agent that runs a
+	 * runner launcher reads it first.
+	 *
+	 * @throws IOException if the routing cannot be read
+	 */
+	@Test
+	public void workflowRoutingLoadsRunnerRule() throws IOException
+	{
+		List<URL> routing = resources("rules/include/common/rule-routing/workflows.md");
+		requireThat(routing, "routing").size().isEqualTo(1);
+		requireThat(read(routing.getFirst()), "workflows.md").contains("lazy load `../harness-runners.md`");
 	}
 
 	/**
@@ -296,7 +326,7 @@ public final class RunnerSkillLaunchersTest
 	 */
 	private static List<URL> resources(String name) throws IOException
 	{
-		return new ArrayList<>(Collections.list(RunnerSkillLaunchersTest.class.getClassLoader().getResources(name)));
+		return new ArrayList<>(Collections.list(RunnerLaunchersTest.class.getClassLoader().getResources(name)));
 	}
 
 	/**

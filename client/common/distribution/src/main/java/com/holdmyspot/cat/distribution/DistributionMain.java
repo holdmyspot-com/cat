@@ -496,8 +496,8 @@ public final class DistributionMain
 	 * Returns the launchers of the Claude image that agents run, which the plugin holds in {@code bin/}. They include
 	 * {@code claude-artifact}, which reports this plugin as the Claude CAT artifact, {@code codex-artifact}, which
 	 * finds the Codex CAT artifact, {@code claude-runner}, which the Codex plugin's {@code claude-runner} launcher runs
-	 * from the Claude artifact, and {@code codex-runner}, which runs the runner of the Codex artifact, so that the
-	 * runner skills of both harnesses run the same launchers.
+	 * from the Claude artifact, and {@code codex-runner}, which runs the runner of the Codex artifact, so that agents
+	 * in both harnesses run the same launchers.
 	 *
 	 * @return the launchers' names
 	 */
@@ -549,8 +549,8 @@ public final class DistributionMain
 	 * Returns the launchers of the Codex image that agents run, which the plugin holds in {@code bin/}. They include
 	 * {@code codex-artifact}, which reports this plugin as the Codex CAT artifact, {@code claude-artifact}, which finds
 	 * the Claude CAT artifact, {@code codex-runner}, which the Claude plugin's {@code codex-runner} launcher runs from
-	 * the Codex artifact, and {@code claude-runner}, which runs the runner of the Claude artifact, so that the runner
-	 * skills of both harnesses run the same launchers.
+	 * the Codex artifact, and {@code claude-runner}, which runs the runner of the Claude artifact, so that agents in
+	 * both harnesses run the same launchers.
 	 *
 	 * @return the launchers' names
 	 */

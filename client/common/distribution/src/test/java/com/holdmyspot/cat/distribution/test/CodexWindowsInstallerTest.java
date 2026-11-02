@@ -439,7 +439,7 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
-	 * Verifies that removing an installed plugin deletes the CAT artifacts that a runner skill downloaded into
+	 * Verifies that removing an installed plugin deletes the CAT artifacts that a runner launcher downloaded into
 	 * {@code .cat\bundles}, and keeps the rest of CAT's per-user folder.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run

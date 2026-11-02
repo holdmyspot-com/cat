@@ -13,8 +13,8 @@ import java.nio.file.Path;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link ClaudeArtifact}, which reports the Claude CAT plugin that holds it as the artifact that Claude's
- * {@code claude-runner} skill runs.
+ * Tests {@link ClaudeArtifact}, which reports the Claude CAT plugin that holds it as the artifact that the Claude
+ * plugin's {@code claude-runner} launcher runs.
  */
 public final class ClaudeArtifactTest
 {

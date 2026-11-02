@@ -9,11 +9,11 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * Runs {@code claude-artifact}, which reports the Claude CAT artifact of this CAT version and platform for Claude's
- * {@code claude-runner} skill: the Claude CAT plugin that holds this launcher, with its {@code claude-runner}
- * launcher. The artifact is the plugin itself, reported with the source {@code installed}, so nothing is
- * downloaded. The plugin must pass the check of {@code claude-runner --verify-artifact} and hold an executable
- * {@code claude-runner}.
+ * Runs {@code claude-artifact}, which reports the Claude CAT artifact of this CAT version and platform for an agent
+ * that runs Claude Code from the Claude plugin: the Claude CAT plugin that holds this launcher, with its
+ * {@code claude-runner} launcher. The artifact is the plugin itself, reported with the source {@code installed}, so
+ * nothing is downloaded. The plugin must pass the check of {@code claude-runner --verify-artifact} and hold an
+ * executable {@code claude-runner}.
  */
 public final class ClaudeArtifact
 {

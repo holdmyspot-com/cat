@@ -9,11 +9,10 @@ import java.io.IOException;
 import java.nio.file.Path;
 
 /**
- * Runs {@code codex-artifact}, which reports the Codex CAT artifact of this CAT version and platform for Codex's
- * {@code codex-runner} skill: the Codex CAT plugin that holds this launcher, with its {@code codex-runner}
- * launcher. The artifact is the plugin itself, reported with the source {@code installed}, so nothing is
- * downloaded. The plugin must pass the check of {@code codex-runner --verify-artifact} and hold an executable
- * {@code codex-runner}.
+ * Runs {@code codex-artifact}, which reports the Codex CAT artifact of this CAT version and platform for an agent that
+ * runs Codex from the Codex plugin: the Codex CAT plugin that holds this launcher, with its {@code codex-runner}
+ * launcher. The artifact is the plugin itself, reported with the source {@code installed}, so nothing is downloaded.
+ * The plugin must pass the check of {@code codex-runner --verify-artifact} and hold an executable {@code codex-runner}.
  */
 public final class CodexArtifact
 {

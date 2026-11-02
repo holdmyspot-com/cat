@@ -152,12 +152,13 @@ custom agents with the plugin.
 
 ## Let sessions run CAT's runners
 
-CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. Both
-plugins hold both launchers, so a session in either harness can run either harness. A session runs a launcher as one
-command, by its absolute path, with no pipe, redirection, `cd` or environment-variable prefix, and gives it its records
-with `--input <file>`. Every run names its model with `--model <name>` and its reasoning effort with `--effort <level>`;
-the launcher refuses a run without either before it starts a session, and CAT's runner skills ask you which to use when
-you name none. The effort `none` runs the model without reasoning: `claude-runner` turns Claude Code's thinking off, and
+CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. Both plugins
+hold both launchers, so a session in either harness can run either harness. A session runs a launcher as one command, by
+its absolute path, with no pipe, redirection, `cd` or environment-variable prefix, and gives it its records with
+`--input <file>`. Every run names its model with `--model <name>` and its reasoning effort with `--effort <level>`; the
+launcher refuses a run without either before it starts a session. An agent that runs a launcher always passes both: the
+ones that you or its instructions name, or else ones that it chooses from the values that the harness lists, without
+asking you. The effort `none` runs the model without reasoning: `claude-runner` turns Claude Code's thinking off, and
 `codex-runner` asks Codex for no reasoning.
 
 Instead of `--model` and `--effort`, a run started outside a runner session may name `--agent <name>` with

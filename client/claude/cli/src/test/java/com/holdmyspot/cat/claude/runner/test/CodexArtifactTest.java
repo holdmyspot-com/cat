@@ -14,7 +14,8 @@ import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link CodexArtifact}, which finds the Codex CAT artifact that Claude's {@code codex-runner} skill runs.
+ * Tests {@link CodexArtifact}, which finds the Codex CAT artifact that the Claude plugin's {@code codex-runner}
+ * launcher runs.
  */
 public final class CodexArtifactTest
 {

@@ -9,11 +9,11 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * Runs {@code claude-artifact}, which finds the Claude CAT artifact of this CAT version and platform for Codex's
- * {@code claude-runner} skill and prints it with the artifact's {@code claude-runner} launcher. The Codex plugin holds
- * no Claude classes or files, so the artifact is the Claude CAT plugin installed for Claude Code when its version
- * matches, otherwise a copy in CAT's per-user bundle directory, which this command downloads from the Claude release
- * archive of this CAT version when it is missing.
+ * Runs {@code claude-artifact}, which finds the Claude CAT artifact of this CAT version and platform for an agent that
+ * runs Claude Code from the Codex plugin, and prints it with the artifact's {@code claude-runner} launcher. The Codex
+ * plugin holds no Claude classes or files, so the artifact is the Claude CAT plugin installed for Claude Code when its
+ * version matches, otherwise a copy in CAT's per-user bundle directory, which this command downloads from the Claude
+ * release archive of this CAT version when it is missing.
  */
 public final class ClaudeArtifact
 {

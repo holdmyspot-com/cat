@@ -11,7 +11,7 @@
 
 CAT's installed plugin directory is two levels above this skill's directory, and its `install/` directory holds CAT's
 uninstaller. The uninstaller removes CAT's plugin and its marketplace registration, and `.cat/bundles` in the user's
-home directory, where the runner skills keep the CAT artifacts that they downloaded. In Codex it first removes the
+home directory, where CAT's runner launchers keep the CAT artifacts that they downloaded. In Codex it first removes the
 CAT-owned custom agents recorded in CAT's ownership manifest, and it keeps CAT's data directory unless the user asks to
 delete CAT's data as well.
 

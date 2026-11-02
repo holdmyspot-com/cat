@@ -24,6 +24,9 @@ whose agents exchange information, lazy load `../agent-handoffs.md`.
 
 When creating, using, or handing off temporary files or directories, lazy load `../temporary-resources.md`.
 
+Before running a task or prompt in a new Claude Code or Codex session through CAT's `claude-runner` or `codex-runner`
+launcher, including from a session that a runner started, lazy load `../harness-runners.md`.
+
 When a task needs a state change that something else produces, such as a hosted build finishing, a background process
 exiting or a subagent returning, lazy load `../external-waits.md` before you check that state or continue other work.
 

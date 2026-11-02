@@ -25,7 +25,7 @@ capture_one()
 	harness="$1"
 	mode="$2"
 	concern="$3"
-	# Each plugin holds its runner in bin/, where the other harness's runner skill runs it
+	# Each plugin holds its runner in bin/, where the other harness's plugin runs it
 	runner="${runtime}/codex/bin/codex-runner"
 	if [ "${harness}" = claude ]; then
 		runner="${runtime}/claude/bin/claude-runner"

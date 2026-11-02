@@ -7,7 +7,7 @@
 #   & ([scriptblock]::Create((irm <url of this script>))) -Uninstall [-DeleteData]
 #
 # -Version installs a release tag instead of the latest release. -Uninstall removes the plugin with the current
-# installer, together with the artifacts that a runner skill downloaded, and keeps CAT's data; -DeleteData deletes it
+# installer, together with the artifacts that a runner launcher downloaded, and keeps CAT's data; -DeleteData deletes it
 # too.
 #
 # The script must stay ASCII and compatible with Windows PowerShell 5.1, and reports failures by throwing.

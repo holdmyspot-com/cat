@@ -13,8 +13,8 @@ import java.nio.file.Path;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link CodexArtifact}, which reports the Codex CAT plugin that holds it as the artifact that Codex's
- * {@code codex-runner} skill runs.
+ * Tests {@link CodexArtifact}, which reports the Codex CAT plugin that holds it as the artifact that the Codex
+ * plugin's {@code codex-runner} launcher runs.
  */
 public final class CodexArtifactTest
 {
