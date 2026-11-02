@@ -115,11 +115,11 @@ invoking an operation that can modify multiple artifacts or whose actual write s
 `../include/common/rule-routing/failures.md`.
 
 Before creating, reviewing, or revising an implementation plan for AI agents, delegating work, running a task in a new
-Claude Code or Codex session, or sending information to another agent, and when designing, updating, or executing a
-workflow that delegates work, exchanges information between agents, or hands off, retries, or resumes progress; when
-applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
-diverge from the user's intent; when creating, using, or handing off temporary files or directories; or when a task is
-expected to run for multiple minutes or needs a state change that something else produces, lazy load
+Claude Code or Codex session or requesting one, or sending information to another agent, and when designing, updating,
+or executing a workflow that delegates work, exchanges information between agents, or hands off, retries, or resumes
+progress; when applying a skill would cause you to ask for permission or confirmation, pause, leave requested work
+unfinished, or diverge from the user's intent; when creating, using, or handing off temporary files or directories; or
+when a task is expected to run for multiple minutes or needs a state change that something else produces, lazy load
 `../include/common/rule-routing/workflows.md`.
 
 When locating or selecting a Git commit, file history, or change to amend, backport, or replay, or creating or revising

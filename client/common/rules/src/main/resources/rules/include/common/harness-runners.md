@@ -5,19 +5,21 @@
 - Run an authorized task in a new Claude Code or Codex session through the CAT artifact of this CAT version for that
 	harness, while preserving the runner's retained evidence.
 - Prevent a runner invocation from selecting an arbitrary artifact or executable.
-- Give every run the model and the effort that its task names, or that the agent chooses from the values the harness
-	lists when its task names none, without asking the user or stopping the run for want of them.
+- Give every run and every session request the model and the effort that its task names, or that the agent chooses
+	from the values the harness lists when its task names none, without asking the user or stopping the run for want of
+	them.
 - Relay each turn's reply from the runner's transcript without reading the whole transcript.
-- Let a session that a runner started run either harness through the same launchers, without a login or a sandbox
-	exception.
+- Let a session that a runner started run either harness through the same launchers, or through the session-request
+	launcher that its instructions name, without a login or a sandbox exception.
 
 ## Guidance
 
 This rule applies when you run a task or prompt in a new Claude Code or Codex session through CAT's runner launchers,
 `${CAT_PLUGIN_ROOT}/bin/claude-runner` for Claude Code and `${CAT_PLUGIN_ROOT}/bin/codex-runner` for Codex, including
-from a session that a runner started. Both CAT plugins hold both launchers, and they take the same options. Below,
-`<harness>-runner` stands for the launcher of the harness that runs the task, and `<harness>-artifact` for its
-artifact selector, `${CAT_PLUGIN_ROOT}/bin/claude-artifact` or `${CAT_PLUGIN_ROOT}/bin/codex-artifact`.
+from a session that a runner started, and when such a session requests a new session with the `request-session`
+launcher whose absolute path its instructions name. Both CAT plugins hold both runner launchers, and they take the same
+options. Below, `<harness>-runner` stands for the launcher of the harness that runs the task, and `<harness>-artifact`
+for its artifact selector, `${CAT_PLUGIN_ROOT}/bin/claude-artifact` or `${CAT_PLUGIN_ROOT}/bin/codex-artifact`.
 
 ### Supported environments
 
@@ -33,14 +35,15 @@ file-writing tool, and run the launcher as one command with no pipe or redirecti
 milliseconds and keep waiting while the run writes `waiting` records, which it repeats every 30 seconds while a turn
 writes nothing else.
 
-Every run takes `--model <model>` and `--effort <effort>`, or outside a run `--agent <name>` instead, and the launcher
-refuses a run without them. Always pass them yourself; never ask the user for them and never stop the run for want of
-them. Pass the model and the effort that your task or instructions name. When they name no model or no effort, choose
-it yourself from the values that the harness lists: for Claude Code, the values that `claude --help` lists under
-`--model` and `--effort`; for Codex, the models and efforts that `codex debug models` lists; and for either, the effort
-`none`, which runs the model without reasoning and is the only effort of a model that lists none. When that listing
-command is unavailable, choose a model and an effort that you know the harness accepts, such as the ones this session
-runs under when it runs the same harness. State the model and the effort that you chose with the run's evidence.
+Every run and every session request takes `--model <model>` and `--effort <effort>`, or for a run outside a run
+`--agent <name>` instead, and the launcher refuses a run or request without them. Always pass them yourself; never ask
+the user for them and never stop the run for want of them. Pass the model and the effort that your task or instructions
+name. When they name no model or no effort, choose it yourself from the values that the harness lists: for Claude Code,
+the values that `claude --help` lists under `--model` and `--effort`; for Codex, the models and efforts that
+`codex debug models` lists; and for either, the effort `none`, which runs the model without reasoning and is the only
+effort of a model that lists none. When that listing command is unavailable, choose a model and an effort that you know
+the harness accepts, such as the ones this session runs under when it runs the same harness. State the model and the
+effort that you chose with the run's evidence.
 
 First check whether the command environment defines `CAT_SESSION_REQUESTS`.
 
@@ -115,6 +118,20 @@ sandbox hides behind the null device, so the requested session sees the project 
 session's transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the
 session completed, `75` when no capacity was free, and `1` otherwise, with the reason.
 
+A session request made with the `request-session` launcher counts against the same sessions. Write each turn's prompt
+into its own file inside your project, and pass the model and the effort as above:
+
+```text
+--harness <claude|codex> --project <project> --prompt <file> [--prompt <file>]... --model <model> --effort <effort>
+[--plugin <plugin>]... [--install-cat] [--session-transcripts]
+```
+
+The launcher waits up to 300 seconds. When the session ends, it prints the path of the response, a JSON file whose
+`status` field is `completed` for a completed session, and whose `reason` field gives the reason for any other status.
+When the runner wrote them, its `transcript` field names the session's transcript and its `receipt` field names its
+receipt. If the wait ends first, the launcher prints `id=<id>`; run the launcher again by its absolute path with only
+`--await <id>` to keep waiting.
+
 ### Replies
 
 The transcript is a JSON Lines file of the runner's records: one JSON object per line, whose `type` field comes first.
@@ -124,8 +141,9 @@ fields hold the harness's exit status and standard error; when `exit_code` is no
 them with the reply. A turn that failed ends with a record that begins `{"type":"turn_failed"` instead, whose `error`
 field gives the reason; report that reason in place of a reply. The transcript also holds other records, such as
 `harness_event` records that carry the harness's own events, so do not read the whole transcript to find the replies:
-pass `--output <transcript>`, search that file with your shell's search command for the lines that contain
-`"type":"turn_`, and read only those lines.
+pass `--output <transcript>`, or for a session request use the file that its response's `transcript` field names,
+search that file with your shell's search command for the lines that contain `"type":"turn_`, and read only those
+lines.
 
 ### Git in the copied project
 

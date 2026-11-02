@@ -304,8 +304,25 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
+	 * Verifies that the bundled rule on running a harness also covers a session request made with the
+	 * {@code request-session} launcher: the request takes the model and the effort the same way, and its response names
+	 * the transcript whose replies the agent reads.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleCoversSessionRequests() throws IOException
+	{
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		requireThat(read(rules.getFirst()), "rule").contains("`request-session`").
+			contains("Every run and every session request takes `--model <model>` and `--effort <effort>`").
+			contains("`transcript` field");
+	}
+
+	/**
 	 * Verifies that the bundled workflow routing loads the rule on running a harness, so that an agent that runs a
-	 * runner launcher reads it first.
+	 * runner launcher, or requests a session with the {@code request-session} launcher, reads it first.
 	 *
 	 * @throws IOException if the routing cannot be read
 	 */
@@ -314,7 +331,8 @@ public final class RunnerLaunchersTest
 	{
 		List<URL> routing = resources("rules/include/common/rule-routing/workflows.md");
 		requireThat(routing, "routing").size().isEqualTo(1);
-		requireThat(read(routing.getFirst()), "workflows.md").contains("lazy load `../harness-runners.md`");
+		requireThat(read(routing.getFirst()), "workflows.md").contains("`request-session`").
+			contains("lazy load `../harness-runners.md`");
 	}
 
 	/**

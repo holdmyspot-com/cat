@@ -49,8 +49,11 @@ public final class SessionRequestInstructions
 			"[--session-transcripts]\n" +
 			"\n" +
 			"Every input is a file path you can read: the project to copy, one prompt file per turn, and each " +
-			"plugin directory to install. Every request names the session's model and reasoning effort; use the ones " +
-			"that your task names, and a request without either is refused. --install-cat also installs CAT in the " +
+			"plugin directory to install. Every request names the session's model and reasoning effort, and a request " +
+			"without either is refused: use the ones that your task names, and when it names none, choose them from the " +
+			"values that the harness lists, or ones you know it accepts if you cannot list them, and state your choice " +
+			"in your reply. " +
+			"--install-cat also installs CAT in the " +
 			"session. Inputs must contain no " +
 			"symbolic links. The command waits up to 300 seconds. " +
 			"When the session ends, it prints the " +

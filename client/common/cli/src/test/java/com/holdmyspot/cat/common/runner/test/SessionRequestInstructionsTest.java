@@ -39,6 +39,20 @@ public final class SessionRequestInstructionsTest
 	}
 
 	/**
+	 * Verifies that the instructions tell a session whose task names no model or effort to choose them from the values
+	 * that the harness lists and to state its choice, rather than leaving it without an instruction.
+	 */
+	@Test
+	public void choosesModelAndEffortWhenTaskNamesNone()
+	{
+		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
+		String text = SessionRequestInstructions.text(1, launcher, false);
+
+		requireThat(text, "text").contains("use the ones that your task names, and when it names none, choose them " +
+			"from the values that the harness lists").contains("state your choice in your reply");
+	}
+
+	/**
 	 * Verifies that the instructions name both runner launchers beside the request launcher as another way to request
 	 * a session, with its records in an input file.
 	 */
