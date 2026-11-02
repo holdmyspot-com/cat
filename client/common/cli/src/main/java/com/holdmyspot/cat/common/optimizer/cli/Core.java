@@ -21,8 +21,8 @@ public interface Core
 	 * @return the result, which presents the proposal that awaits confirmation
 	 * @throws NullPointerException if {@code target} is null
 	 * @throws CommandRefusedException if the current harness cannot deny its sessions reads of held-out content, the
-	 *   other harness started the target's campaign, the target is not in the project, or the base worktree has
-	 *   uncommitted changes
+	 *   other harness started the target's campaign, another process runs the target's campaign, the target is not
+	 *   in the project, or the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
@@ -40,8 +40,8 @@ public interface Core
 	 * @throws NullPointerException if {@code target} is null
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}]
 	 * @throws CommandRefusedException if the current harness cannot deny its sessions reads of held-out content, the
-	 *   other harness started the target's campaign, the target is not in the project, or the base worktree has
-	 *   uncommitted changes
+	 *   other harness started the target's campaign, another process runs the target's campaign, the target is not
+	 *   in the project, or the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
@@ -64,8 +64,8 @@ public interface Core
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
 	 *   {@code goal} is blank
 	 * @throws CommandRefusedException if the current harness cannot deny its sessions reads of held-out content, the
-	 *   other harness started the target's campaign, the target is not in the project, or the base worktree has
-	 *   uncommitted changes
+	 *   other harness started the target's campaign, another process runs the target's campaign, the target is not
+	 *   in the project, or the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
@@ -76,7 +76,7 @@ public interface Core
 	 * Advances a campaign for one slice.
 	 *
 	 * @param campaign the campaign's identifier
-	 * @return the result
+	 * @return the result, which reports the campaign as busy without changing it if another process runs it
 	 * @throws CommandRefusedException if the campaign does not exist or the other harness started it
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits
@@ -105,8 +105,8 @@ public interface Core
 	 * @param scope the certification scope
 	 * @return the result
 	 * @throws NullPointerException if {@code scope} is null
-	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, it has no
-	 *   proposal to confirm, or the proposal cannot be confirmed with {@code scope}
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, another process
+	 *   runs it, it has no proposal to confirm, or the proposal cannot be confirmed with {@code scope}
 	 * @throws IOException if the store or the workspace fails
 	 */
 	CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException, IOException;
@@ -117,8 +117,8 @@ public interface Core
 	 * @param campaign the campaign's identifier
 	 * @param feedback the user's feedback
 	 * @return the result, which presents the regenerated proposal
-	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or its state does
-	 *   not permit a revision
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, another process
+	 *   runs it, or its state does not permit a revision
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
@@ -134,8 +134,8 @@ public interface Core
 	 * @param attempt the certification index that {@link Choice#KEEP_IMPROVEMENT} names, otherwise 0
 	 * @param reviewPoint the review point that {@link Choice#MORE_EVIDENCE} names, otherwise 0
 	 * @return the result
-	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or the choice is
-	 *   not one that the campaign offers now
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, another process
+	 *   runs it, or the choice is not one that the campaign offers now
 	 * @throws IOException if the store, the workspace or the delivery fails
 	 * @throws InterruptedException if the thread is interrupted while the delivery waits for the campaign's sessions
 	 */
@@ -149,7 +149,8 @@ public interface Core
 	 * @param campaign the campaign's identifier
 	 * @param resolution the 1-based position among the current conflict's resolutions
 	 * @return the next conflict's status, or the revised proposal
-	 * @throws CommandRefusedException if the campaign does not offer this resolution now
+	 * @throws CommandRefusedException if another process runs the campaign or the campaign does not offer this
+	 *   resolution now
 	 * @throws IOException if the store, workspace or session fails
 	 * @throws InterruptedException if derivation is interrupted
 	 */
@@ -161,8 +162,8 @@ public interface Core
 	 *
 	 * @param campaign the campaign's identifier
 	 * @return the result
-	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, or it is not
-	 *   active
+	 * @throws CommandRefusedException if the campaign does not exist, the other harness started it, another process
+	 *   runs it, or it is not active
 	 * @throws IOException if the store or the workspace fails
 	 */
 	CommandResult cancel(String campaign) throws CommandRefusedException, IOException;

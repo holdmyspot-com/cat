@@ -46,6 +46,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
 import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
+import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
 import com.holdmyspot.cat.common.optimizer.execution.DeliveryReport;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
@@ -150,6 +151,10 @@ import java.util.stream.Stream;
  * removes the files of a campaign whose certified delivery it completed, and {@code choose} those of a campaign whose
  * user retained the incumbent. A removal that fails adds a warning to the command's summary, or to its refusal, and
  * the command continues; the next command retries the removal.
+ * <p>
+ * A command that changes a campaign holds the campaign's {@link CampaignLock} from before its first change until its
+ * last, so it never writes the campaign while another process runs it. While another process holds the lock, such a
+ * command is refused before it changes anything, and {@code run} reports the campaign as busy instead.
  */
 public final class OptimizerCore implements Core
 {
@@ -509,6 +514,27 @@ public final class OptimizerCore implements Core
 		Campaign campaign = require(store, header.id(), true);
 		if (campaign.isConfirmed() && !campaign.revisionRequested())
 			return report(root, campaign, null, null);
+		try (CampaignLock _ = lock(header.id()))
+		{
+			return resumeHeld(root, store, require(store, header.id(), true));
+		}
+	}
+
+	/**
+	 * Resumes a campaign whose write lock this command holds and that waits for a confirmed contract.
+	 *
+	 * @param root the project root
+	 * @param store the store
+	 * @param campaign the campaign
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign cannot be shown, or its trial plugins are unrecorded and cannot
+	 *   be built, copied or mapped
+	 * @throws IOException if the store or the workspace fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
+	 */
+	private CommandResult resumeHeld(Path root, CampaignStore store, Campaign campaign)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
 		ForkView fork = openFork(root, campaign);
 		// A build that failed left the trial plugins unrecorded, so start builds them again
 		if (campaign.plugins().isEmpty())
@@ -572,14 +598,19 @@ public final class OptimizerCore implements Core
 		{
 			throw new CommandRefusedException(e.getMessage(), e);
 		}
-		FileInventory inventory = fork.inventory();
-		Overlay incumbent = Overlay.of(inventory);
-		new FileCandidateOverlays(directory, inventory, scope.json(), scope.fileReplacer()).save(incumbent);
-		Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal);
-		Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
-		store.replaceSnapshot(campaign);
-		campaign = withTrialPlugins(root, store, campaign, fork, configured);
-		CommandResult result = derive(root, store, campaign, fork, null, null);
+		CommandResult result;
+		// The fork creates the campaign's directory, which holds the lock file
+		try (CampaignLock _ = lock(id))
+		{
+			FileInventory inventory = fork.inventory();
+			Overlay incumbent = Overlay.of(inventory);
+			new FileCandidateOverlays(directory, inventory, scope.json(), scope.fileReplacer()).save(incumbent);
+			Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal);
+			Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
+			store.replaceSnapshot(campaign);
+			campaign = withTrialPlugins(root, store, campaign, fork, configured);
+			result = derive(root, store, campaign, fork, null, null);
+		}
 		if (!fork.excludeAdded())
 			return result;
 		String message = "Added " + ForkView.EXCLUDE_ENTRY + " to the repository's local info/exclude.";
@@ -644,6 +675,25 @@ public final class OptimizerCore implements Core
 	private Path lockFile(String id) throws IOException
 	{
 		return FileCampaignStore.lockFile(campaignsOf(id), id);
+	}
+
+	/**
+	 * Takes a campaign's write lock for a command that changes the campaign.
+	 *
+	 * @param id the campaign's identifier
+	 * @return the lock, which the caller releases
+	 * @throws CommandRefusedException if another process holds the lock
+	 * @throws IOException if the lock file cannot be created or locking fails
+	 */
+	private CampaignLock lock(String id) throws CommandRefusedException, IOException
+	{
+		Optional<CampaignLock> lock = CampaignLock.tryAcquire(scope.fileLocks(), lockFile(id));
+		if (lock.isEmpty())
+		{
+			throw new CommandRefusedException("Campaign " + id + " is running in another process. Wait for its " +
+				"slice to end, then try again.");
+		}
+		return lock.get();
 	}
 
 	/**
@@ -877,6 +927,8 @@ public final class OptimizerCore implements Core
 	 * version that each base copy's manifest declares, in the campaign. The worktree returns to the fork's files
 	 * afterwards, so the build output never takes part in trials. A failure leaves the plugins unrecorded, so that
 	 * {@code start} builds them again.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
 	 *
 	 * @param root the project root
 	 * @param store the store
@@ -1103,14 +1155,26 @@ public final class OptimizerCore implements Core
 		{
 			Path root = scope.projectRoot();
 			Campaign loaded = require(scope.store(), campaign, true);
-			if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
+			Optional<CampaignLock> held = CampaignLock.tryAcquire(scope.fileLocks(), lockFile(campaign));
+			if (held.isEmpty())
 			{
-				Optional<String> unfinished = reviseTests(root, loaded);
-				loaded = require(scope.store(), campaign, true);
-				if (unfinished.isPresent())
-					return report(root, loaded, null, unfinished.get());
+				SliceResult busy = Driver.busy(context(root, loaded), campaign);
+				return new CommandResult(busy.status(), scope.harness(), null, null, null);
 			}
-			SliceResult result = SliceRunner.run(context(root, loaded), campaign, List.of());
+			SliceResult result;
+			try (CampaignLock lock = held.get())
+			{
+				loaded = require(scope.store(), campaign, true);
+				if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
+				{
+					Optional<String> unfinished = reviseTests(root, loaded, lock);
+					loaded = require(scope.store(), campaign, true);
+					if (unfinished.isPresent())
+						return report(root, loaded, null, unfinished.get());
+				}
+				result = SliceRunner.run(context(root, loaded), campaign, List.of(), lock.lend());
+			}
+			// The cleanup takes the lock itself, so the command releases it first
 			DeliveryResult delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result).orElse(null);
 			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
 			return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
@@ -1125,14 +1189,15 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign, which awaits a test revision and no contract revision
+	 * @param lock the campaign's write lock, which the caller holds
 	 * @return a notice for the user if a session failed or its result is invalid, so that the remaining requests stay
 	 *   pending until {@code run} retries them; otherwise empty
-	 * @throws CommandRefusedException if another process runs the campaign, the campaign does not accept a test
-	 *   revision, or the fork does not hold the revised contract's files
+	 * @throws CommandRefusedException if the campaign does not accept a test revision, or the fork does not hold the
+	 *   revised contract's files
 	 * @throws IOException if the store, the workspace, the stored proposal or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private Optional<String> reviseTests(Path root, Campaign campaign)
+	private Optional<String> reviseTests(Path root, Campaign campaign, CampaignLock lock)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
@@ -1195,7 +1260,7 @@ public final class OptimizerCore implements Core
 				}
 				// A sound test is recorded at once, so a later failed session does not examine it again
 				case TestRevisionProtocol.Result.Sound sound -> apply(root, campaign,
-					List.of(new CampaignEvent.ReportTestSound(request.test(), sound.reasons())));
+					List.of(new CampaignEvent.ReportTestSound(request.test(), sound.reasons())), lock);
 				case TestRevisionProtocol.Result.Blocked block -> blocked.add(new CampaignEvent.BlockTestRevision(
 					request.test(), block.reason(), block.reasons(), block.proposedChange()));
 			}
@@ -1208,13 +1273,15 @@ public final class OptimizerCore implements Core
 		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
 		events.addAll(blocked);
 		if (!events.isEmpty())
-			apply(root, campaign, events);
+			apply(root, campaign, events, lock);
 		return Optional.empty();
 	}
 
 	/**
 	 * Stores a contract whose tests a test revision corrected, runs its guard pilot and returns the events that
 	 * start its lineage under the confirmed certification scope.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
@@ -1497,22 +1564,43 @@ public final class OptimizerCore implements Core
 		{
 			Path root = scope.projectRoot();
 			CampaignStore store = scope.store();
-			Campaign loaded = require(store, campaign, true);
-			ForkView fork = openFork(root, loaded);
-			DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
-				"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
-			// A revision after confirmation runs on the files that its presentation recorded beside the fork's
-			if (loaded.isConfirmed())
-				fork = fork.including(participants(root, derived));
-			PluginCheck plugin = pluginCheck(root, loaded, fork);
-			Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(), plugin);
-			if (!proposal.isConfirmable(certificationScope))
-				throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-			requireParticipantsHeld(root, fork, derived, trialSelection(root, loaded, derived, plugin));
-			List<CampaignEvent> events = new ArrayList<>(moveOnto(loaded, fork));
-			events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
-			return apply(root, loaded, events);
+			require(store, campaign, true);
+			try (CampaignLock lock = lock(campaign))
+			{
+				return confirmHeld(root, require(store, campaign, true), certificationScope, lock);
+			}
 		});
+	}
+
+	/**
+	 * Confirms the stored proposal of a campaign whose write lock this command holds.
+	 *
+	 * @param root the project root
+	 * @param loaded the campaign
+	 * @param certificationScope the certification scope that the user confirmed
+	 * @param lock the campaign's write lock
+	 * @return the result
+	 * @throws CommandRefusedException if the campaign has no confirmable proposal or does not accept the confirmation
+	 * @throws IOException if the store or the workspace fails
+	 */
+	private CommandResult confirmHeld(Path root, Campaign loaded, CertificationScope certificationScope,
+		CampaignLock lock) throws CommandRefusedException, IOException
+	{
+		String campaign = loaded.header().id();
+		ForkView fork = openFork(root, loaded);
+		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
+			"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
+		// A revision after confirmation runs on the files that its presentation recorded beside the fork's
+		if (loaded.isConfirmed())
+			fork = fork.including(participants(root, derived));
+		PluginCheck plugin = pluginCheck(root, loaded, fork);
+		Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(), plugin);
+		if (!proposal.isConfirmable(certificationScope))
+			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
+		requireParticipantsHeld(root, fork, derived, trialSelection(root, loaded, derived, plugin));
+		List<CampaignEvent> events = new ArrayList<>(moveOnto(loaded, fork));
+		events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
+		return apply(root, loaded, events, lock);
 	}
 
 	/**
@@ -1614,6 +1702,8 @@ public final class OptimizerCore implements Core
 	 * revised contract, if that fork holds more files than the campaign's. The fork becomes the campaign's current
 	 * fork, the incumbent and the working candidate keep their edits on it, and the optimization worktree is rewritten
 	 * to hold the working candidate. Repeating the move after an interruption repeats each step.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
 	 *
 	 * @param campaign the campaign
 	 * @param fork the fork that the revised contract runs on
@@ -1731,7 +1821,14 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(feedback, "feedback").isNotBlank();
-		return withCleanup(_ -> reviseBody(campaign, feedback));
+		return withCleanup(_ ->
+		{
+			require(scope.store(), campaign, true);
+			try (CampaignLock lock = lock(campaign))
+			{
+				return reviseBody(campaign, feedback, lock);
+			}
+		});
 	}
 
 	/**
@@ -1739,12 +1836,13 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param feedback the user's feedback
+	 * @param lock the campaign's write lock, which the caller holds
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign cannot be revised
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
-	private CommandResult reviseBody(String campaign, String feedback)
+	private CommandResult reviseBody(String campaign, String feedback, CampaignLock lock)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
@@ -1756,7 +1854,7 @@ public final class OptimizerCore implements Core
 			"Campaign " + campaign + " has no proposal to revise. Run `start` again to derive one."));
 		if (loaded.isConfirmed() && !loaded.revisionRequested())
 		{
-			apply(root, loaded, List.of(new CampaignEvent.Revise()));
+			apply(root, loaded, List.of(new CampaignEvent.Revise()), lock);
 			loaded = require(store, campaign, true);
 		}
 		return derive(root, store, loaded, fork, previous, feedback);
@@ -1769,23 +1867,29 @@ public final class OptimizerCore implements Core
 		return withCleanup(notices ->
 		{
 			Path root = scope.projectRoot();
-			Campaign loaded = require(scope.store(), campaign, true);
-			if (choice == Choice.PROPOSED_CHANGE && loaded.choices().contains(choice) &&
-				loaded.pending() instanceof PendingDecision.TestRevisionBlocked blocked)
-			{
-				// The contract author derives the revised contract from the change, which the user then confirms
-				return reviseBody(campaign, blocked.proposedChange());
-			}
-			CommandResult result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)));
-			Campaign chosen = require(scope.store(), campaign, true);
+			require(scope.store(), campaign, true);
+			CommandResult result;
 			DeliveryResult delivery = null;
-			if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
+			try (CampaignLock lock = lock(campaign))
 			{
-				// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
-				SliceResult slice = SliceRunner.run(context(root, chosen), campaign, List.of());
-				delivery = Optional.ofNullable(slice.delivery()).map(DeliveryReport::result).orElse(null);
-				result = new CommandResult(slice.status(), scope.harness(), null, slice.delivery(), null);
+				Campaign loaded = require(scope.store(), campaign, true);
+				if (choice == Choice.PROPOSED_CHANGE && loaded.choices().contains(choice) &&
+					loaded.pending() instanceof PendingDecision.TestRevisionBlocked blocked)
+				{
+					// The contract author derives the revised contract from the change, which the user then confirms
+					return reviseBody(campaign, blocked.proposedChange(), lock);
+				}
+				result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)), lock);
+				Campaign chosen = require(scope.store(), campaign, true);
+				if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
+				{
+					// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
+					SliceResult slice = SliceRunner.run(context(root, chosen), campaign, List.of(), lock.lend());
+					delivery = Optional.ofNullable(slice.delivery()).map(DeliveryReport::result).orElse(null);
+					result = new CommandResult(slice.status(), scope.harness(), null, slice.delivery(), null);
+				}
 			}
+			// The cleanup takes the lock itself, so the command releases it first
 			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
 			return result;
 		});
@@ -1795,7 +1899,14 @@ public final class OptimizerCore implements Core
 	public CommandResult resolveConflict(String campaign, int resolution)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
-		return withCleanup(_ -> resolveConflictBody(campaign, resolution));
+		return withCleanup(_ ->
+		{
+			require(scope.store(), campaign, true);
+			try (CampaignLock lock = lock(campaign))
+			{
+				return resolveConflictBody(campaign, resolution, lock);
+			}
+		});
 	}
 
 	/**
@@ -1803,12 +1914,13 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param campaign the campaign's identifier
 	 * @param resolution the 1-based position among the current conflict's resolutions
+	 * @param lock the campaign's write lock, which the caller holds
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign offers no such resolution now
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
-	private CommandResult resolveConflictBody(String campaign, int resolution)
+	private CommandResult resolveConflictBody(String campaign, int resolution, CampaignLock lock)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
@@ -1829,8 +1941,8 @@ public final class OptimizerCore implements Core
 				resolution + ": " + e.getMessage(), e);
 		}
 		if (chosen.size() == conflicts.conflicts().size())
-			return reviseBody(campaign, conflicts.feedback(resolution));
-		return apply(root, loaded, List.of(new CampaignEvent.ResolveConflict(resolution)));
+			return reviseBody(campaign, conflicts.feedback(resolution), lock);
+		return apply(root, loaded, List.of(new CampaignEvent.ResolveConflict(resolution)), lock);
 	}
 
 	@Override
@@ -1839,8 +1951,12 @@ public final class OptimizerCore implements Core
 		return withCleanup(_ ->
 		{
 			Path root = scope.projectRoot();
-			Campaign loaded = require(scope.store(), campaign, true);
-			return apply(root, loaded, List.of(new CampaignEvent.Cancel()));
+			require(scope.store(), campaign, true);
+			try (CampaignLock lock = lock(campaign))
+			{
+				Campaign loaded = require(scope.store(), campaign, true);
+				return apply(root, loaded, List.of(new CampaignEvent.Cancel()), lock);
+			}
 		});
 	}
 
@@ -1863,22 +1979,18 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param campaign the campaign
 	 * @param events the events
+	 * @param lock the campaign's write lock, which the caller holds and releases
 	 * @return the campaign's status after the events
-	 * @throws CommandRefusedException if another process runs the campaign or the campaign does not accept an event
+	 * @throws CommandRefusedException if the campaign does not accept an event
 	 * @throws IOException if the store or the workspace fails
 	 */
-	private CommandResult apply(Path root, Campaign campaign, List<CampaignEvent> events)
+	private CommandResult apply(Path root, Campaign campaign, List<CampaignEvent> events, CampaignLock lock)
 		throws CommandRefusedException, IOException
 	{
 		String id = campaign.header().id();
 		DriverContext context = context(root, campaign);
-		Optional<Driver> opened = Driver.open(context, id);
-		if (opened.isEmpty())
-		{
-			throw new CommandRefusedException("Campaign " + id + " is running in another process. Wait for its " +
-				"slice to end, then try again.");
-		}
-		try (Driver driver = opened.get())
+		Driver driver = Driver.open(context, id, lock.lend());
+		try (driver)
 		{
 			for (CampaignEvent event : events)
 				driver.apply(event);
@@ -1893,6 +2005,8 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Runs the contract author and presents its proposal.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
 	 *
 	 * @param root the project root
 	 * @param store persists the campaign's observed usage
@@ -2068,6 +2182,8 @@ public final class OptimizerCore implements Core
 	 * formal trials will see. Before confirmation, the fork also leaves out those that an earlier proposal needed and
 	 * this one does not. After confirmation, nothing leaves the fork, and the campaign stays on its current fork until
 	 * the user confirms the revision.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
 	 *
 	 * @param root the project root
 	 * @param store the store
@@ -2154,6 +2270,8 @@ public final class OptimizerCore implements Core
 	/**
 	 * Binds a campaign that waits for its first confirmed contract to the incumbent of its fork's changed files. The
 	 * incumbent overlay is saved for the new files before the campaign refers to it.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
 	 *
 	 * @param store the store
 	 * @param campaign the campaign

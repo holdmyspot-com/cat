@@ -46,10 +46,48 @@ public final class SliceRunner
 		requireThat(context, "context").isNotNull();
 		requireThat(campaignId, "campaignId").isNotBlank();
 		requireThat(commands, "commands").isNotNull();
-		Optional<Driver> opened = Driver.open(context, campaignId);
-		if (opened.isEmpty())
+		Optional<CampaignLock> lock = CampaignLock.tryAcquire(context.fileLocks(), context.lockFile());
+		if (lock.isEmpty())
 			return Driver.busy(context, campaignId);
-		try (Driver driver = opened.get())
+		return run(context, campaignId, commands, lock.get());
+	}
+
+	/**
+	 * Applies the user's commands to a campaign under a write lock that the caller has taken, then advances it until
+	 * the slice stops.
+	 * <p>
+	 * Takes ownership of the lock, releasing it when the slice ends.
+	 *
+	 * @param context the driver's context
+	 * @param campaignId the campaign's identifier
+	 * @param commands the user's commands, applied in order before the first step
+	 * @param lock the campaign's write lock
+	 * @return the slice's result
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code campaignId} is blank, the store holds no campaign with the identifier,
+	 *   or a command is not a user's command or names something that the campaign does not offer
+	 * @throws IllegalStateException if the campaign's state does not permit a command
+	 * @throws IOException if the store, the workspace or a session cannot be read or written
+	 * @throws InterruptedException if the thread is interrupted while waiting
+	 */
+	public static SliceResult run(DriverContext context, String campaignId, List<CampaignEvent> commands,
+		CampaignLock lock) throws IOException, InterruptedException
+	{
+		requireThat(lock, "lock").isNotNull();
+		try
+		{
+			requireThat(context, "context").isNotNull();
+			requireThat(campaignId, "campaignId").isNotBlank();
+			requireThat(commands, "commands").isNotNull();
+		}
+		catch (RuntimeException e)
+		{
+			try (lock)
+			{
+				throw e;
+			}
+		}
+		try (Driver driver = Driver.open(context, campaignId, lock))
 		{
 			for (CampaignEvent command : commands)
 				driver.apply(command);

@@ -52,6 +52,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
@@ -86,6 +87,8 @@ import com.holdmyspot.cat.common.optimizer.proposal.OutputFile;
 import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
 import com.holdmyspot.cat.common.optimizer.proposal.test.DraftFixtures;
 import com.holdmyspot.cat.common.optimizer.proposal.test.ProposalTest;
+import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
+import com.holdmyspot.cat.common.optimizer.report.Status;
 import com.holdmyspot.cat.common.optimizer.report.TokenStatistics;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
@@ -125,6 +128,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -3835,6 +3839,185 @@ public final class OptimizerCoreTest
 				repository.scope().json(), Yielding.fileReplacer()).require(campaign.incumbent().snapshot());
 			requireThat(incumbent.snapshot().entries().keySet(), "incumbentFiles").contains(Path.of("late.local.md")).
 				contains(Path.of("CLAUDE.md"));
+		}
+	}
+
+	/**
+	 * Takes a campaign's write lock as another process that runs the campaign holds it. This JVM's lock coordinator
+	 * refuses a second holder in this JVM as the operating system refuses one in another process, so the core sees the
+	 * campaign as held elsewhere.
+	 *
+	 * @param repository the owned campaign repository
+	 * @param id the campaign's identifier
+	 * @return the held lock
+	 * @throws CommandRefusedException if the project is not a Git repository
+	 * @throws IOException if the lock cannot be taken
+	 */
+	private static CampaignLock holdLock(Repository repository, String id) throws CommandRefusedException, IOException
+	{
+		return CampaignLock.tryAcquire(repository.scope().fileLocks(),
+			FileCampaignStore.lockFile(repository.campaigns(), id)).orElseThrow();
+	}
+
+	/**
+	 * Verifies that every command that changes an unconfirmed campaign is refused while another process holds the
+	 * campaign, and that the refusal leaves the campaign's files as they were and starts no session.
+	 */
+	@Test
+	public void refusesChangesWhileCampaignRuns() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			try (CampaignLock _ = holdLock(repository, id))
+			{
+				Map<String, String> before = contents(repository.directory(id));
+				int requests = repository.sessions().requests.size();
+				List<ThrowingCall> calls = List.of(
+					() -> repository.core().start(Path.of("CLAUDE.md")),
+					() -> repository.core().revise(id, "more"),
+					() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS),
+					() -> repository.core().choose(id, Choice.STOP, 0, 0),
+					() -> repository.core().resolveConflict(id, 1),
+					() -> repository.core().cancel(id));
+				for (ThrowingCall call : calls)
+					requireThat(refusal(call), "refusal").contains(id).contains("is running in another process");
+				requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+				requireThat(contents(repository.directory(id)), "contents").isEqualTo(before);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that confirming a revision that moves the campaign onto a larger fork is refused while another process
+	 * holds the campaign, and that the refusal leaves the campaign's overlays and snapshot as they were.
+	 */
+	@Test
+	public void confirmOntoLargerForkWaitsForCampaign() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			Files.writeString(repository.root().resolve("late.local.md"), "Late rules.\n");
+			repository.sessions().addDerivedSources(List.of(new DerivedSource("late.local.md",
+				"The harness loads the file by convention.")));
+			repository.core().revise(id, "cover the late local rules");
+			try (CampaignLock _ = holdLock(repository, id))
+			{
+				Map<String, String> before = contents(repository.directory(id));
+
+				String refusal = refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS));
+
+				requireThat(refusal, "refusal").contains("is running in another process");
+				requireThat(contents(repository.directory(id)), "contents").isEqualTo(before);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that {@code run} reports a campaign that awaits a test revision as busy while another process holds it,
+	 * without starting the test revision session or changing the campaign's files.
+	 */
+	@Test
+	public void runReportsBusyBeforeTestRevision() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count ->
+			{
+				if (count == 0)
+				{
+					return derivation(_ ->
+					{
+					});
+				}
+				return revisedFormatting(_ ->
+				{
+				});
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevision(repository, id);
+			repository.sessions().usage.put(SessionRole.CONTRACT_AUTHOR, List.of(new TokenUsage(100, 20, 30, 10)));
+			try (CampaignLock _ = holdLock(repository, id))
+			{
+				Map<String, String> before = contents(repository.directory(id));
+				int requests = repository.sessions().requests.size();
+
+				CommandResult result = repository.core().run(id);
+
+				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Active(Status.BUSY));
+				requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+				requireThat(contents(repository.directory(id)), "contents").isEqualTo(before);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} holds a new campaign while it derives the campaign's first proposal, so that no other
+	 * process can take the campaign while its first files are written.
+	 */
+	@Test
+	public void startHoldsNewCampaign() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			AtomicReference<Repository> created = new AtomicReference<>();
+			List<Boolean> held = new ArrayList<>();
+			Repository repository = repository(scope, _ ->
+			{
+				held.add(isHeld(created.get()));
+				return derivation(_ ->
+				{
+				});
+			});
+			created.set(repository);
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.proposal(), "proposal").isNotNull();
+			requireThat(held, "held").isEqualTo(List.of(true));
+			// The lock is free once the command has ended
+			holdLock(repository, result.status().campaignId()).close();
+		}
+	}
+
+	/**
+	 * Returns whether the only campaign of a repository is held, so that another process cannot take its lock.
+	 *
+	 * @param repository the owned campaign repository
+	 * @return true if the lock is held
+	 * @throws AssertionError if the repository does not hold exactly one campaign
+	 * @throws UncheckedIOException if the campaigns cannot be listed or locking fails
+	 */
+	private static boolean isHeld(Repository repository)
+	{
+		try (Stream<Path> campaigns = Files.list(repository.campaigns()))
+		{
+			List<Path> directories = campaigns.toList();
+			requireThat(directories, "directories").size().isEqualTo(1);
+			Path lockFile = FileCampaignStore.lockFile(repository.campaigns(),
+				directories.getFirst().getFileName().toString());
+			Optional<CampaignLock> lock = CampaignLock.tryAcquire(repository.scope().fileLocks(), lockFile);
+			if (lock.isEmpty())
+				return true;
+			lock.get().close();
+			return false;
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+		catch (CommandRefusedException e)
+		{
+			throw new AssertionError(e);
 		}
 	}
 
