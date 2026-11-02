@@ -221,18 +221,52 @@ public final class OptimizerCoreTest
 	 */
 	private static Map<String, String> contents(Path root) throws IOException
 	{
+		return contents(root, Set.of());
+	}
+
+	/**
+	 * Returns the content of every file below a directory except the files whose bytes the caller must not read, such
+	 * as a file whose byte range this process has locked, which Windows refuses to read.
+	 *
+	 * @param root the directory
+	 * @param unread the files below {@code root} that are recorded as present but whose bytes are not read
+	 * @return each file's relative path and content, or a placeholder for an unread file
+	 * @throws IOException if a file cannot be read
+	 */
+	private static Map<String, String> contents(Path root, Set<Path> unread) throws IOException
+	{
 		Map<String, String> result = new TreeMap<>();
 		try (Stream<Path> files = Files.walk(root))
 		{
 			for (Path path : files.toList())
 			{
 				String value = "<directory>";
-				if (Files.isRegularFile(path))
+				if (unread.contains(path))
+					value = "<unread>";
+				else if (Files.isRegularFile(path))
 					value = Files.readString(path, StandardCharsets.ISO_8859_1);
 				result.put(root.relativize(path).toString(), value);
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * Returns the content of every file in a campaign's directory while this process holds the campaign. The lock file
+	 * is recorded as present but its bytes are not read, because Windows refuses to read a file whose byte range is
+	 * locked.
+	 *
+	 * @param repository the owned campaign repository
+	 * @param id the campaign's identifier
+	 * @return each file's relative path and content
+	 * @throws CommandRefusedException if the project is not a Git repository
+	 * @throws IOException if a file cannot be read
+	 */
+	private static Map<String, String> contentsWhileHeld(Repository repository, String id)
+		throws CommandRefusedException, IOException
+	{
+		Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
+		return contents(repository.directory(id), Set.of(lockFile));
 	}
 
 	/**
@@ -3931,7 +3965,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			try (CampaignLock _ = holdLock(repository, id))
 			{
-				Map<String, String> before = contents(repository.directory(id));
+				Map<String, String> before = contentsWhileHeld(repository, id);
 				int requests = repository.sessions().requests.size();
 				List<ThrowingCall> calls = List.of(
 					() -> repository.core().start(Path.of("CLAUDE.md")),
@@ -3943,7 +3977,7 @@ public final class OptimizerCoreTest
 				for (ThrowingCall call : calls)
 					requireThat(refusal(call), "refusal").contains(id).contains("is running in another process");
 				requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
-				requireThat(contents(repository.directory(id)), "contents").isEqualTo(before);
+				requireThat(contentsWhileHeld(repository, id), "contents").isEqualTo(before);
 			}
 		}
 	}
@@ -3968,12 +4002,12 @@ public final class OptimizerCoreTest
 			repository.core().revise(id, "cover the late local rules");
 			try (CampaignLock _ = holdLock(repository, id))
 			{
-				Map<String, String> before = contents(repository.directory(id));
+				Map<String, String> before = contentsWhileHeld(repository, id);
 
 				String refusal = refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS));
 
 				requireThat(refusal, "refusal").contains("is running in another process");
-				requireThat(contents(repository.directory(id)), "contents").isEqualTo(before);
+				requireThat(contentsWhileHeld(repository, id), "contents").isEqualTo(before);
 			}
 		}
 	}
@@ -4005,14 +4039,14 @@ public final class OptimizerCoreTest
 			repository.sessions().usage.put(SessionRole.CONTRACT_AUTHOR, List.of(new TokenUsage(100, 20, 30, 10)));
 			try (CampaignLock _ = holdLock(repository, id))
 			{
-				Map<String, String> before = contents(repository.directory(id));
+				Map<String, String> before = contentsWhileHeld(repository, id);
 				int requests = repository.sessions().requests.size();
 
 				CommandResult result = repository.core().run(id);
 
 				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Active(Status.BUSY));
 				requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
-				requireThat(contents(repository.directory(id)), "contents").isEqualTo(before);
+				requireThat(contentsWhileHeld(repository, id), "contents").isEqualTo(before);
 			}
 		}
 	}
