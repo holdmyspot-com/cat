@@ -1,12 +1,15 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Platform;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -17,9 +20,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessEnvironment
 {
 	/**
-	 * The upper-case names of the variables that route network connections through a proxy.
+	 * The names of the variables that name the proxy for a child's network connections, in upper and lower case.
 	 */
-	private static final List<String> PROXY_VARIABLES = List.of("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY");
+	private static final List<String> PROXY_VARIABLES = List.of("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+		"http_proxy", "https_proxy", "all_proxy");
+	/**
+	 * The names of the variables that list the hosts that a child connects to without a proxy.
+	 */
+	private static final List<String> EXCLUSION_VARIABLES = List.of("NO_PROXY", "no_proxy");
 
 	/**
 	 * Copies only generic operating-system variables and removes CAT/harness home state.
@@ -31,6 +39,19 @@ public final class HarnessEnvironment
 	 * The copy also holds the proxy variables, in upper and lower case: {@code HTTP_PROXY}, {@code HTTPS_PROXY},
 	 * {@code ALL_PROXY} and {@code NO_PROXY}. A host that reaches the network only through a proxy names it there,
 	 * and a harness that lacks them cannot reach its model service.
+	 * <p>
+	 * When every proxy variable that names a proxy names one on a loopback address ({@code localhost},
+	 * {@code 127.0.0.0/8} or {@code ::1}), the copies of {@code NO_PROXY} and {@code no_proxy} lose their loopback
+	 * entries ({@code localhost}, an address or range in {@code 127.0.0.0/8}, and {@code ::1} with or without
+	 * brackets) and keep every other entry in its order, so that the child reaches this machine's loopback services,
+	 * such as a model gateway, through the proxy. A loopback proxy runs on this machine and can reach its loopback
+	 * services. A command sandbox that denies a command direct connections names such a proxy and lists the loopback
+	 * addresses in {@code NO_PROXY}, so a child started from that command could not otherwise reach a loopback
+	 * service at all; the proxy's address, not a variable that only one harness's sandbox sets, is how this method
+	 * recognizes it. A remote proxy cannot reach this machine's loopback services, so with a remote proxy, with a
+	 * proxy variable whose value cannot be parsed, or with no proxy, the copies stay unchanged. The proxy variables
+	 * are always copied unchanged, and a client connects to its proxy directly rather than through a proxy, so the
+	 * proxy stays reachable.
 	 * <p>
 	 * On Windows, the copy also holds {@code USERPROFILE}, {@code LOCALAPPDATA}, {@code TEMP}, {@code TMP},
 	 * {@code PATHEXT} and {@code SystemDrive}. Windows programs read the user's home directory from
@@ -55,9 +76,13 @@ public final class HarnessEnvironment
 		copy(source, result, "TERM");
 		copy(source, result, "NVM_DIR");
 		for (String name : PROXY_VARIABLES)
-		{
 			copy(source, result, name);
-			copy(source, result, name.toLowerCase(Locale.ROOT));
+		for (String name : EXCLUSION_VARIABLES)
+			copy(source, result, name);
+		if (isEveryProxyLoopback(result))
+		{
+			for (String name : EXCLUSION_VARIABLES)
+				removeLoopbackExclusions(result, name);
 		}
 		if (Platform.current().isWindows())
 		{
@@ -152,6 +177,110 @@ public final class HarnessEnvironment
 	 */
 	private HarnessEnvironment()
 	{
+	}
+
+	/**
+	 * Returns whether an environment names a proxy and every proxy that it names listens on a loopback address.
+	 *
+	 * @param environment the child's environment, which holds only non-blank values
+	 * @return {@code true} if at least one proxy variable is set and each one names a host on a loopback address
+	 */
+	private static boolean isEveryProxyLoopback(Map<String, String> environment)
+	{
+		boolean namesProxy = false;
+		for (String name : PROXY_VARIABLES)
+		{
+			String value = environment.get(name);
+			if (value == null)
+				continue;
+			if (!isLoopbackProxy(value.strip()))
+				return false;
+			namesProxy = true;
+		}
+		return namesProxy;
+	}
+
+	/**
+	 * Returns whether a proxy variable's value names a proxy on a loopback address. A value without a scheme is a host
+	 * and port, as command-line tools such as curl read it.
+	 *
+	 * @param value the variable's value, without surrounding whitespace
+	 * @return {@code true} if the value is a URL whose host is a loopback name or address; {@code false} if it names
+	 *   another host or cannot be parsed
+	 */
+	private static boolean isLoopbackProxy(String value)
+	{
+		String url = value;
+		if (!url.contains("://"))
+			url = "http://" + url;
+		String host;
+		try
+		{
+			host = new URI(url).getHost();
+		}
+		catch (URISyntaxException _)
+		{
+			return false;
+		}
+		return host != null && isLoopbackHost(host);
+	}
+
+	/**
+	 * Returns whether a host name or address literal denotes this machine's loopback interface, without a name
+	 * lookup.
+	 *
+	 * @param host a host name, an IPv4 address, or an IPv6 address with or without brackets
+	 * @return {@code true} if the host is {@code localhost}, an IPv4 address in {@code 127.0.0.0/8}, or the IPv6
+	 *   loopback address
+	 */
+	private static boolean isLoopbackHost(String host)
+	{
+		if (host.equalsIgnoreCase("localhost"))
+			return true;
+		String literal = host;
+		if (literal.startsWith("[") && literal.endsWith("]"))
+			literal = literal.substring(1, literal.length() - 1);
+		try
+		{
+			return InetAddress.ofLiteral(literal).isLoopbackAddress();
+		}
+		catch (IllegalArgumentException _)
+		{
+			// A host name other than localhost
+			return false;
+		}
+	}
+
+	/**
+	 * Removes the loopback entries from a comma-separated list of hosts that connect without a proxy. An entry is a
+	 * loopback entry if it is a loopback host or an address range, such as {@code 127.0.0.0/8}, whose address is one.
+	 * The other entries keep their order; the variable is removed if no entry remains.
+	 *
+	 * @param environment the mutable child environment
+	 * @param name        the name of the variable that holds the list
+	 */
+	private static void removeLoopbackExclusions(Map<String, String> environment, String name)
+	{
+		String value = environment.get(name);
+		if (value == null)
+			return;
+		StringJoiner kept = new StringJoiner(",");
+		for (String entry : value.split(","))
+		{
+			String host = entry.strip();
+			if (host.isEmpty())
+				continue;
+			int prefix = host.indexOf('/');
+			String address = host;
+			if (prefix != -1)
+				address = host.substring(0, prefix);
+			if (!isLoopbackHost(address))
+				kept.add(host);
+		}
+		if (kept.length() == 0)
+			environment.remove(name);
+		else
+			environment.put(name, kept.toString());
 	}
 
 	/**
