@@ -62,7 +62,8 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, userSettings, settings,
 				fixture.run().directory().resolve("claude"), runHome, List.of(), fixture.run().directory(),
 				ClaudeRunner.sessionDeniedReads(fixture.manager(), fixture.run(), List.of(), fixture.deniedReads(),
-					fixture.userEnvironment(), requestAccess), "", requestAccess, Platform.current());
+					fixture.userEnvironment(), requestAccess), "", requestAccess,
+				fixture.run().directory().resolve("project"), Platform.current());
 			JsonNode filesystem = scope.json().readTree(Files.readString(settings)).path("sandbox").path("filesystem");
 			return new Limits(commandEnvironment, paths(filesystem.path("denyRead")),
 				paths(filesystem.path("allowWrite")), paths(filesystem.path("allowRead")));

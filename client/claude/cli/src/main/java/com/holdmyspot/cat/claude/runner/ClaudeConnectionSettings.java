@@ -198,7 +198,7 @@ public final class ClaudeConnectionSettings
 		throws IOException
 	{
 		writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
-			isolationRoot, deniedReads, instructionFilesMode, null, platform);
+			isolationRoot, deniedReads, instructionFilesMode, null, null, platform);
 	}
 
 	/**
@@ -206,7 +206,9 @@ public final class ClaudeConnectionSettings
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String, Platform)}
 	 * does, except that the sandbox also lets the instance's commands write the run's requests directory when the
 	 * session may request sessions. It also permits the literal launcher command with any arguments and reads of
-	 * the run's responses directory and its descendants.
+	 * the run's responses directory and its descendants. When {@code project} is not null, the sandbox also lets the
+	 * instance's commands write {@code .git/worktrees} in it, which this method creates, so that Git can register the
+	 * linked worktrees that the instance adds; no other path under {@code .git} becomes writable.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -220,6 +222,8 @@ public final class ClaudeConnectionSettings
 	 *                                 empty string to keep the parent's choice
 	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
 	 *                                 none
+	 * @param project                  the instance's Git repository, whose {@code .git} is a directory, or
+	 *                                 {@code null} if the instance may register no linked worktree
 	 * @param platform                 the platform that the isolated instance runs on
 	 * @throws NullPointerException          if {@code instructionFilesMode} is null
 	 * @throws UnsupportedOperationException if {@code platform} is native Windows
@@ -227,7 +231,8 @@ public final class ClaudeConnectionSettings
 	 */
 	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
-		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Platform platform)
+		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
+		Platform platform)
 		throws IOException
 	{
 		requireSupportedPlatform(platform);
@@ -280,12 +285,21 @@ public final class ClaudeConnectionSettings
 			writablePaths.add(cache.toString());
 		if (requestAccess != null)
 			writablePaths.add(requestAccess.requests().toString());
+		Path worktreeRegistrations = null;
+		if (project != null)
+		{
+			// Git registers each linked worktree below this directory; the sandbox grants only a path that exists
+			worktreeRegistrations = project.toAbsolutePath().normalize().resolve(".git").resolve("worktrees");
+			writablePaths.add(worktreeRegistrations.toString());
+		}
 		filesystem.set("allowWrite", mapper.valueToTree(writablePaths));
 		denyReads(settings, filesystem, deniedReads);
 		excludeInstructionsAbove(settings, isolationRoot);
 
 		Files.createDirectories(claudeTemporaryDirectory);
 		Files.createDirectories(claudeHome);
+		if (worktreeRegistrations != null)
+			Files.createDirectories(worktreeRegistrations);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
 	}

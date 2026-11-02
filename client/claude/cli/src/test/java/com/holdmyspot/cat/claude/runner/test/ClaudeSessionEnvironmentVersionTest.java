@@ -93,13 +93,14 @@ public final class ClaudeSessionEnvironmentVersionTest
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(),
 				List.of(deniedFile, deniedDirectory, hostProject), Map.of());
 			List<Path> dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
+			Path project = run.directory().resolve("project");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads,
-				Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "", null,
+				project, Platform.LINUX_X64);
 			Path controlDestination = root.resolve("isolated/control-settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, controlDestination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "claude-md",
-				Platform.LINUX_X64);
+				null, project, Platform.LINUX_X64);
 
 			String settings = normalize(scope.json(), destination, root, run) + "\n" +
 				normalize(scope.json(), controlDestination, root, run);

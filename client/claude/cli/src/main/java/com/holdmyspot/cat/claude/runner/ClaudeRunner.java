@@ -172,7 +172,8 @@ public final class ClaudeRunner
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
 				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
 				caches.directories(), run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads,
-					environment, requestAccess), instructionFilesMode, requestAccess, Platform.current());
+					environment, requestAccess), instructionFilesMode, requestAccess, run.directory().resolve("project"),
+				Platform.current());
 			Path worktree = run.directory().resolve("project");
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.

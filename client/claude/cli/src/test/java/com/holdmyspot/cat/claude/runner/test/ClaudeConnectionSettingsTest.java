@@ -45,7 +45,8 @@ public final class ClaudeConnectionSettingsTest
 				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null,
+				Platform.LINUX_X64);
 			JsonNode allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
 			requireThat(allow.size(), "grantCount").isEqualTo(7);
 			requireThat(allow.path(2).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
@@ -55,7 +56,8 @@ public final class ClaudeConnectionSettingsTest
 				launcher.resolveSibling("codex-runner") + ":*)");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null,
+				Platform.LINUX_X64);
 			allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
 			requireThat(allow.size(), "defaultGrantCount").isEqualTo(3);
 			requireThat(allow.path(0).asString(), "skillGrant").isEqualTo("Skill");
@@ -82,11 +84,13 @@ public final class ClaudeConnectionSettingsTest
 			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), responses,
 				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null,
+				Platform.LINUX_X64);
 			String defaultSettings = Files.readString(destination);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null,
+				Platform.LINUX_X64);
 			JsonNode settings = scope.json().readTree(Files.readString(destination));
 			List<String> grants = new ArrayList<>();
 			for (JsonNode grant : settings.path("permissions").path("allow"))
@@ -106,7 +110,8 @@ public final class ClaudeConnectionSettingsTest
 				access.requests().toString()));
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null,
+				Platform.LINUX_X64);
 			requireThat(Files.readString(destination), "defaultSettings").isEqualTo(defaultSettings);
 		}
 	}
@@ -415,6 +420,37 @@ public final class ClaudeConnectionSettingsTest
 			JsonNode writablePaths = result.path("sandbox").path("filesystem").path("allowWrite");
 			requireThat(writablePaths.size(), "writablePathCount").isEqualTo(1);
 			requireThat(writablePaths.path(0).asString(), "writablePath").isEqualTo(claudeHome.toString());
+		}
+	}
+
+	/**
+	 * Verifies that the isolated settings let the session's commands write the directory in which Git registers the
+	 * linked worktrees of its project, which the settings create, and no other path in the project's Git directory.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void permitsOnlyGitWorktreeWrites() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-worktree-policy-"));
+			Path destination = root.resolve("isolated/.claude/settings.json");
+			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
+			Path claudeHome = claudeTemporaryDirectory.resolve("home");
+			Path project = Files.createDirectories(root.resolve("run/project/.git")).getParent();
+			Path registrations = project.resolve(".git/worktrees");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				claudeTemporaryDirectory, claudeHome, List.of(), root.resolve("run"), List.of(), "", null, project,
+				Platform.LINUX_X64);
+
+			List<String> writablePaths = strings(scope.json().readTree(Files.readString(destination)).
+				path("sandbox").path("filesystem").path("allowWrite"));
+			requireThat(writablePaths, "allowWrite").isEqualTo(List.of(claudeHome.toString(),
+				registrations.toString()));
+			requireThat(registrations, "registrations").isDirectory();
 		}
 	}
 
