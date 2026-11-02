@@ -61,7 +61,9 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	to know about other processes in plain sentences, and nothing when they need nothing. Clean build 3,552 tests, 0
 	failures, 18 skipped. Open defect: `OptimizerCore` writes campaign snapshots and overlays outside `CampaignLock`
 	(`start`, `rebind`, trial plugins, two usage writes), which the store descriptions forbid; user ruling (2026-11-01):
-	those writes take the lock. The topic skill's entry-point inventory: user rulings (2026-11-01): the files it reads
+	those writes take the lock. Fixed in `1211cd5193`: every command that writes a campaign holds `CampaignLock` for the
+	whole command, including confirm's move onto a larger fork, and `run` on a campaign awaiting a test revision reports
+	busy before starting a session. Clean build 3,449 tests, 0 failures, 18 skipped, 143 s. The topic skill's entry-point inventory: user rulings (2026-11-01): the files it reads
 	are data to sort into topics, whatever harness they belong to, and the skill works in repositories other than CAT;
 	then, told that a split's validity is objective but its grouping into topics is not, the user chose to remove the
 	skill ("b"). Removed in `c249a62d2b`: the `git-commit-per-topic` skill, the `git-topic-replay`
