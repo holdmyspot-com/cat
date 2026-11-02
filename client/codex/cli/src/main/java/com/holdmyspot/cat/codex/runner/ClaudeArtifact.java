@@ -73,7 +73,7 @@ public final class ClaudeArtifact
 			marketplace = configurationDirectory.resolve("plugins/cat-marketplace");
 		}
 		ReleaseBundles bundles = new ReleaseBundles(ReleaseBundles.directory(home),
-			ReleaseBundles.releaseUri(environment), Platform.current());
+			ReleaseBundles.releaseUri(environment), Platform.current(), environment);
 		return bundles.resolve(marketplace.resolve("plugins/cat"), "claude", Path.of(".claude-plugin/plugin.json"),
 			"claude-runner").format();
 	}

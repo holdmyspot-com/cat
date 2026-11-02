@@ -42,11 +42,11 @@ public final class JlinkImageBuilderTest
 
 	/**
 	 * The options of every launcher's JVM: warnings on standard error only, performance data kept in the process, UTF-8
-	 * output on every platform, and native access for the common module.
+	 * output on every platform, Basic proxy logins allowed for HTTPS tunnels, and native access for the common module.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
 		"-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
-		"--enable-native-access=com.holdmyspot.cat.common.cli";
+		"-Djdk.http.auth.tunneling.disabledSchemes= --enable-native-access=com.holdmyspot.cat.common.cli";
 
 	/** Creates a test instance. */
 	public JlinkImageBuilderTest()

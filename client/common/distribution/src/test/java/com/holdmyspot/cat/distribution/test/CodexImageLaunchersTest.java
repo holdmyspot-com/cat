@@ -34,7 +34,8 @@ public final class CodexImageLaunchersTest
 
 	/**
 	 * Verifies that each launcher of the Codex image starts its program when Codex's shell, PowerShell on Windows and a
-	 * POSIX shell elsewhere, runs the launcher's absolute path without an extension.
+	 * POSIX shell elsewhere, runs the launcher's absolute path without an extension, and passes Java the option that
+	 * allows Basic proxy logins for HTTPS tunnels with its empty value intact.
 	 *
 	 * @throws IOException          if the image cannot be built or its launchers cannot be run
 	 * @throws InterruptedException if the thread is interrupted while the launchers run
@@ -79,6 +80,7 @@ public final class CodexImageLaunchersTest
 			{
 				JlinkImageBuilder.Launcher launcher = launchers.get(i);
 				requireThat(lines.get(i), launcher.name()).startsWith("started ").
+					contains(" -Djdk.http.auth.tunneling.disabledSchemes= ").
 					contains("-m " + launcher.module() + "/" + launcher.mainClass());
 			}
 		}
@@ -171,7 +173,7 @@ public final class CodexImageLaunchersTest
 
 	/**
 	 * Writes the launchers that jlink writes on a platform, in jlink's form, beside a {@code java} that prints the
-	 * arguments that a launcher passes it.
+	 * arguments that a launcher passes it. The launchers' text is that of the launchers that JDK 27's jlink writes.
 	 */
 	private static final class FakeJlink implements ToolProvider
 	{
@@ -214,7 +216,8 @@ public final class CodexImageLaunchersTest
 					String name = specification.substring(0, specification.indexOf('='));
 					String target = specification.substring(specification.indexOf('=') + 1);
 					writeExecutable(bin.resolve(name),
-						"#!/bin/sh\nJLINK_VM_OPTIONS=\nDIR=`dirname $0`\n$DIR/java -m " + target + " \"$@\"\n");
+						"#!/bin/sh\nJLINK_VM_OPTIONS=\nDIR=`dirname $0`\n$DIR/java $JLINK_VM_OPTIONS -m " + target +
+						" \"$@\"\n");
 					if (platform.isWindows())
 					{
 						Files.writeString(bin.resolve(name + ".bat"), "@echo off\r\nset JLINK_VM_OPTIONS=\r\n" +

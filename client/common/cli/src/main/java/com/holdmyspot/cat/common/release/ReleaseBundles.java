@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.release;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
@@ -14,8 +15,14 @@ import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.Authenticator;
 import java.net.ConnectException;
+import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.ProxySelector;
 import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
@@ -37,12 +44,16 @@ import java.time.Period;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -59,8 +70,10 @@ import java.util.stream.Collectors;
  * resolution to use.
  * <p>
  * A download over HTTP waits at most 30 seconds to connect, 60 seconds for the server's response headers and 15 minutes
- * for the whole file, and reports the limit that expired. After a download, the bundles of other CAT versions, of any
- * harness and platform, are deleted from the bundle directory.
+ * for the whole file, and reports the limit that expired. It goes through the HTTP proxy that the process environment
+ * names in {@code HTTPS_PROXY}, {@code HTTP_PROXY} or {@code ALL_PROXY}, with the login of the proxy's URL, unless
+ * {@code NO_PROXY} lists the release's host. After a download, the bundles of other CAT versions, of any harness and
+ * platform, are deleted from the bundle directory.
  * <p>
  * A bundle's last-modified time tells when it was last used: a download sets it to the time of the download, and each
  * resolution that uses the bundle sets it to the time of that resolution. Every resolution deletes the bundles, of any
@@ -77,8 +90,8 @@ public final class ReleaseBundles
 			public ReleaseBundles create(Path directory, URI release, Platform platform, Duration connectLimit,
 				Duration responseLimit, Duration downloadLimit, Clock clock)
 			{
-				return new ReleaseBundles(directory, release, platform, connectLimit, responseLimit, downloadLimit,
-					clock);
+				return new ReleaseBundles(directory, release, platform, Map.of(), connectLimit, responseLimit,
+					downloadLimit, clock);
 			}
 		});
 	}
@@ -161,6 +174,7 @@ public final class ReleaseBundles
 	private final Path directory;
 	private final URI release;
 	private final Platform platform;
+	private final Map<String, String> environment;
 	private final Duration connectLimit;
 	private final Duration responseLimit;
 	private final Duration downloadLimit;
@@ -169,16 +183,19 @@ public final class ReleaseBundles
 	/**
 	 * Creates a resolution.
 	 *
-	 * @param directory the directory that holds the downloaded artifacts, each in
-	 *                  {@code cat-<harness>-v<version>-<platform>}
-	 * @param release   the location of this CAT version's release: a {@code file}, {@code http} or {@code https} URI
-	 *                  of the directory that holds its archives and {@code SHA256SUMS.txt}
-	 * @param platform  the platform whose artifact to resolve
+	 * @param directory   the directory that holds the downloaded artifacts, each in
+	 *                    {@code cat-<harness>-v<version>-<platform>}
+	 * @param release     the location of this CAT version's release: a {@code file}, {@code http} or {@code https}
+	 *                    URI of the directory that holds its archives and {@code SHA256SUMS.txt}
+	 * @param platform    the platform whose artifact to resolve
+	 * @param environment the process environment, whose proxy variables a download over HTTP follows, as
+	 *                    {@link Platform#environment(Map)} returns it
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public ReleaseBundles(Path directory, URI release, Platform platform)
+	public ReleaseBundles(Path directory, URI release, Platform platform, Map<String, String> environment)
 	{
-		this(directory, release, platform, CONNECT_LIMIT, RESPONSE_LIMIT, DOWNLOAD_LIMIT, Clock.systemUTC());
+		this(directory, release, platform, environment, CONNECT_LIMIT, RESPONSE_LIMIT, DOWNLOAD_LIMIT,
+			Clock.systemUTC());
 	}
 
 	/**
@@ -187,18 +204,20 @@ public final class ReleaseBundles
 	 * @param directory     the directory that holds the downloaded artifacts
 	 * @param release       the location of this CAT version's release
 	 * @param platform      the platform whose artifact to resolve
+	 * @param environment   the process environment, whose proxy variables a download over HTTP follows
 	 * @param connectLimit  how long a download waits to connect to the release's server
 	 * @param responseLimit how long a download waits for the server's response headers
 	 * @param downloadLimit how long a download of one file may take in total
 	 * @param clock         the clock that tells when a bundle was last used
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private ReleaseBundles(Path directory, URI release, Platform platform, Duration connectLimit,
-		Duration responseLimit, Duration downloadLimit, Clock clock)
+	private ReleaseBundles(Path directory, URI release, Platform platform, Map<String, String> environment,
+		Duration connectLimit, Duration responseLimit, Duration downloadLimit, Clock clock)
 	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(release, "release").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(environment, "environment").isNotNull();
 		requireThat(connectLimit, "connectLimit").isNotNull();
 		requireThat(responseLimit, "responseLimit").isNotNull();
 		requireThat(downloadLimit, "downloadLimit").isNotNull();
@@ -206,6 +225,7 @@ public final class ReleaseBundles
 		this.directory = directory.toAbsolutePath().normalize();
 		this.release = release;
 		this.platform = platform;
+		this.environment = environment;
 		this.connectLimit = connectLimit;
 		this.responseLimit = responseLimit;
 		this.downloadLimit = downloadLimit;
@@ -457,16 +477,32 @@ public final class ReleaseBundles
 
 	/**
 	 * Copies a release file over HTTP, following the redirects that GitHub answers a release download with, within the
-	 * time limits of this resolution.
+	 * time limits of this resolution. The request and its redirects go through the proxy that the environment names for
+	 * the file's location, if any, which gets the login of its URL when it asks for one. Over an HTTPS tunnel, the JDK
+	 * sends a Basic login only if {@code jdk.http.auth.tunneling.disabledSchemes} does not list {@code Basic}, as
+	 * CAT's launchers configure it.
 	 *
 	 * @param uri    the file's location
 	 * @param target the local file
-	 * @throws IOException if the request fails, its status is not 200, or a time limit expires
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed, the request fails, its status is
+	 *                     not 200, or a time limit expires
 	 */
 	private void fetchHttp(URI uri, Path target) throws IOException
 	{
-		try (HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).
-			connectTimeout(connectLimit).build())
+		HttpClient.Builder builder = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).
+			connectTimeout(connectLimit);
+		EnvironmentProxy proxy = findProxy(uri);
+		ProxyLogin login = null;
+		if (proxy != null)
+		{
+			builder.proxy(ProxySelector.of(proxy.address()));
+			if (proxy.user() != null)
+			{
+				login = new ProxyLogin(proxy);
+				builder.authenticator(login);
+			}
+		}
+		try (HttpClient client = builder.build())
 		{
 			HttpRequest request = HttpRequest.newBuilder(uri).timeout(responseLimit).GET().build();
 			CompletableFuture<HttpResponse<Path>> future = client.sendAsync(request,
@@ -490,6 +526,16 @@ public final class ReleaseBundles
 					throw new IOException("No connection within " + describe(connectLimit), cause);
 				if (cause instanceof HttpTimeoutException)
 					throw new IOException("No response within " + describe(responseLimit), cause);
+				if (login != null && login.wasRejected())
+				{
+					throw new IOException("The proxy that " + proxy.variable() + " names rejected the login of its URL",
+						cause);
+				}
+				if (login != null && login.serverAskedForLogin())
+				{
+					throw new IOException("The release's server asks for a login, which a download does not send",
+						cause);
+				}
 				if (cause instanceof IOException ioe)
 					throw ioe;
 				throw new IOException(String.valueOf(cause), cause);
@@ -501,6 +547,230 @@ public final class ReleaseBundles
 		{
 			Thread.currentThread().interrupt();
 			throw new IOException("Interrupted", e);
+		}
+	}
+
+	/**
+	 * Finds the proxy that the environment names for a download, as the common convention of command-line tools such
+	 * as curl reads it. The JDK's HTTP client does not read these variables, but a host that reaches the network only
+	 * through a proxy names it there.
+	 * <p>
+	 * A location whose host {@code NO_PROXY}, or else {@code no_proxy}, lists is fetched directly. Otherwise the proxy
+	 * is the first usable one of {@code HTTPS_PROXY}, {@code https_proxy}, {@code ALL_PROXY} and {@code all_proxy} for
+	 * an {@code https} location, or of {@code HTTP_PROXY}, {@code http_proxy}, {@code ALL_PROXY} and
+	 * {@code all_proxy} for an {@code http} location. A proxy is an {@code http} URL, or a host and port without a
+	 * scheme; its port defaults to 80. A variable that names a proxy of another scheme, such as {@code socks5}, which
+	 * the JDK's HTTP client cannot use, is passed over.
+	 *
+	 * @param location the location of the file to download
+	 * @return the proxy, or {@code null} if the download connects directly
+	 * @throws IOException if the first variable that names a proxy does not hold a URL that can be parsed
+	 */
+	private EnvironmentProxy findProxy(URI location) throws IOException
+	{
+		String host = location.getHost();
+		if (host == null || isExcludedFromProxy(host))
+			return null;
+		List<String> variables;
+		if (location.getScheme().equals("https"))
+			variables = List.of("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy");
+		else
+			variables = List.of("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy");
+		for (String variable : variables)
+		{
+			String value = environment.get(variable);
+			if (value == null || value.isBlank())
+				continue;
+			EnvironmentProxy proxy = EnvironmentProxy.parse(variable, value.strip());
+			if (proxy != null)
+				return proxy;
+		}
+		return null;
+	}
+
+	/**
+	 * Returns whether {@code NO_PROXY}, or else {@code no_proxy}, lists a host: a comma-separated entry that is
+	 * {@code *}, the host itself, or a domain that holds it, with or without a leading dot. Names match regardless of
+	 * case.
+	 *
+	 * @param host the host's name
+	 * @return {@code true} if the host is fetched without a proxy
+	 */
+	private boolean isExcludedFromProxy(String host)
+	{
+		String excluded = environment.get("NO_PROXY");
+		if (excluded == null || excluded.isBlank())
+			excluded = environment.get("no_proxy");
+		if (excluded == null || excluded.isBlank())
+			return false;
+		String name = host.toLowerCase(Locale.ROOT);
+		for (String entry : excluded.split(","))
+		{
+			String domain = entry.strip().toLowerCase(Locale.ROOT);
+			if (domain.equals("*"))
+				return true;
+			if (domain.startsWith("."))
+				domain = domain.substring(1);
+			if (domain.isEmpty())
+				continue;
+			if (name.equals(domain) || name.endsWith("." + domain))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * An HTTP proxy that an environment variable names, with the login of its URL, if any.
+	 *
+	 * @param variable the name of the variable
+	 * @param address  the proxy's address
+	 * @param user     the user name of the proxy's URL, percent-decoded, or {@code null} if the URL names no login
+	 * @param password the password of the proxy's URL, percent-decoded, which is empty if the URL names a user without
+	 *                 a password; {@code null} if the URL names no login
+	 */
+	private record EnvironmentProxy(String variable, InetSocketAddress address, String user, String password)
+	{
+		/**
+		 * Returns the proxy that an environment variable names. Its messages do not quote the variable's value,
+		 * because the value may hold the proxy's password.
+		 *
+		 * @param variable the variable's name
+		 * @param value    the variable's value, without surrounding whitespace
+		 * @return the proxy, or {@code null} if the value names a proxy of a scheme other than {@code http}
+		 * @throws IOException if the value is not a URL with a host and a valid port
+		 */
+		private static EnvironmentProxy parse(String variable, String value) throws IOException
+		{
+			String url = value;
+			if (!url.contains("://"))
+				url = "http://" + url;
+			URI proxy;
+			try
+			{
+				proxy = new URI(url);
+			}
+			catch (URISyntaxException _)
+			{
+				// The cause's message quotes the value, which may hold the proxy's password
+				throw new IOException(variable + " does not hold a proxy URL that can be parsed");
+			}
+			if (!proxy.getScheme().equalsIgnoreCase("http"))
+				return null;
+			String host = proxy.getHost();
+			if (host == null)
+				throw new IOException(variable + " does not hold a proxy URL that names a host");
+			int port = proxy.getPort();
+			if (port == -1)
+				port = 80;
+			if (port > 65_535)
+				throw new IOException(variable + " names a proxy port above 65535");
+			InetSocketAddress address = new InetSocketAddress(host, port);
+
+			String login = proxy.getRawUserInfo();
+			if (login == null)
+				return new EnvironmentProxy(variable, address, null, null);
+			int separator = login.indexOf(':');
+			String user;
+			String password;
+			if (separator == -1)
+			{
+				user = login;
+				password = "";
+			}
+			else
+			{
+				user = login.substring(0, separator);
+				password = login.substring(separator + 1);
+			}
+			return new EnvironmentProxy(variable, address, percentDecode(variable, user),
+				percentDecode(variable, password));
+		}
+
+		/**
+		 * Decodes the percent-encoded octets of a part of a URL's login as UTF-8. Unlike form decoding, a {@code +}
+		 * stays a {@code +}.
+		 *
+		 * @param variable the name of the variable that holds the URL
+		 * @param encoded  the part of the login
+		 * @return the decoded text
+		 * @throws IOException if a {@code %} is not followed by two hexadecimal digits
+		 */
+		private static String percentDecode(String variable, String encoded) throws IOException
+		{
+			try
+			{
+				return URLDecoder.decode(encoded.replace("+", "%2B"), UTF_8);
+			}
+			catch (IllegalArgumentException _)
+			{
+				// The cause's message quotes the text, which may be the proxy's password
+				throw new IOException(variable + " holds a proxy login that is not percent-encoded correctly");
+			}
+		}
+
+		@Override
+		public String toString()
+		{
+			// The default form would print the login, which a failure message or a log could then reveal
+			return "EnvironmentProxy[variable=" + variable + ", address=" + address + "]";
+		}
+	}
+
+	/**
+	 * Answers a login challenge from the proxy of one download with the login of the proxy's URL, and records the
+	 * challenges it receives so that a failed download can say why. A challenge from a release server, or from any
+	 * other host, gets no login, so that the proxy's password reaches only the proxy.
+	 */
+	private static final class ProxyLogin extends Authenticator
+	{
+		private final EnvironmentProxy proxy;
+		private final AtomicInteger proxyChallenges = new AtomicInteger();
+		private final AtomicBoolean serverChallenged = new AtomicBoolean();
+
+		/**
+		 * Creates a login for a proxy.
+		 *
+		 * @param proxy the proxy, whose URL names a login
+		 */
+		private ProxyLogin(EnvironmentProxy proxy)
+		{
+			this.proxy = proxy;
+		}
+
+		@Override
+		protected PasswordAuthentication getPasswordAuthentication()
+		{
+			InetSocketAddress address = proxy.address();
+			boolean fromThisProxy = getRequestorType() == RequestorType.PROXY &&
+				address.getHostString().equalsIgnoreCase(getRequestingHost()) &&
+				address.getPort() == getRequestingPort();
+			if (!fromThisProxy)
+			{
+				serverChallenged.set(true);
+				return null;
+			}
+			proxyChallenges.incrementAndGet();
+			return new PasswordAuthentication(proxy.user(), proxy.password().toCharArray());
+		}
+
+		/**
+		 * Returns whether the proxy challenged the download again after it received the login.
+		 *
+		 * @return {@code true} if the proxy rejected the login
+		 */
+		private boolean wasRejected()
+		{
+			return proxyChallenges.get() > 1;
+		}
+
+		/**
+		 * Returns whether a host other than the proxy asked for a login.
+		 *
+		 * @return {@code true} if a release server asked for a login
+		 */
+		private boolean serverAskedForLogin()
+		{
+			return serverChallenged.get();
 		}
 	}
 

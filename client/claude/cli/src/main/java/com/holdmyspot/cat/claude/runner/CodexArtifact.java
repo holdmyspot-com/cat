@@ -73,7 +73,7 @@ public final class CodexArtifact
 			marketplace = codexHome.resolve("plugins/cat-marketplace");
 		}
 		ReleaseBundles bundles = new ReleaseBundles(ReleaseBundles.directory(home),
-			ReleaseBundles.releaseUri(environment), Platform.current());
+			ReleaseBundles.releaseUri(environment), Platform.current(), environment);
 		return bundles.resolve(marketplace.resolve("plugins/cat"), "codex", Path.of(".codex-plugin/plugin.json"),
 			"codex-runner").format();
 	}

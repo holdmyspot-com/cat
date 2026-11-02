@@ -32,11 +32,15 @@ public final class JlinkImageBuilder
 	 * contention, at the cost of tools such as {@code jps} and {@code jstat} not seeing the JVM. Java writes its
 	 * standard streams in the console's or the system's character set, which on Windows is not UTF-8, while the
 	 * harnesses read UTF-8. On Windows, the common module reads the program's arguments from the process's command line
-	 * through native code, because the Java launcher loses the characters that the system's code page lacks.
+	 * through native code, because the Java launcher loses the characters that the system's code page lacks. A host
+	 * that reaches the network only through a proxy that asks for a Basic login names that login in its proxy URL, and
+	 * the JDK refuses to send a Basic login when it opens an HTTPS tunnel through a proxy unless the property
+	 * {@code jdk.http.auth.tunneling.disabledSchemes} is empty, so without it a release download from such a host
+	 * fails. The empty value stays one word in both launchers, because neither quotes nor splits within an option.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
 		"-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
-		"--enable-native-access=com.holdmyspot.cat.common.cli";
+		"-Djdk.http.auth.tunneling.disabledSchemes= --enable-native-access=com.holdmyspot.cat.common.cli";
 
 	static
 	{
