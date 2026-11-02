@@ -42,7 +42,7 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	earlier attempt keeps its outcome). Clean build 3,485 tests, 0 failures, 18 skipped; tests ≥1 s: the first
 	`ClaudeRoleRulesTest` cases 1.49 s and 1.48 s, `ClaudePromptOptimizerTest.statusPrintsFixtureCampaign` 1.42 s and
 	`statusDoesNotNeedTranscript` 1.40 s. E5 resumes after the next release, which the user asked to ship together
-	with the WI-119 placeholder fix (2026-11-02), is installed by the user. Release run 41463900909 failed on Windows only; fixed in `42f2593e0c`.
+	with the WI-119 placeholder fix (2026-11-02), is installed by the user. Release run 41463900909 failed on Windows only; fixed in `42f2593e0c`. Build run 41466577334 on `c0a52ba740` then failed on Windows only in `ClaudeSessionCommandLimitsTest`, which wrote Claude settings for the host and so met the native-Windows refusal; fixed in the test (`88d0dc02b0`).
 - **Open:** final gates 2, 4, 5, 6 and 7 (§9), which need G1, G2, G4, G6, G7 and G9 (interim mapping) and R-I1's native
 	evidence. Live checks: Codex E3 (the approved handbook-motto exemption as revision feedback, scope `weakest_cell`,
 	stop, accept without certification); the Codex halves of WI-121 and WI-122; both skills of WI-120; the WI-119 skill
