@@ -205,7 +205,8 @@ public final class SessionRequestBrokerTest
 
 	/**
 	 * Verifies that a request installs CAT in the requested session's home only when it asks for it, so that the
-	 * requested session has CAT's skills, such as the runner skills that request sessions in turn.
+	 * requested session has CAT's rules and launchers, such as the runner launchers through which it requests sessions in
+	 * turn.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */

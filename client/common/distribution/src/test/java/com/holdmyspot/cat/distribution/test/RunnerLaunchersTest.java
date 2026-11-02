@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
@@ -301,6 +302,56 @@ public final class RunnerLaunchersTest
 			contains("{\"type\":\"turn_completed\"").contains("assistant_response").contains("\"type\":\"turn_").
 			doesNotContain("printf").doesNotContain(" | ").doesNotContain("$(").doesNotContain("```bash").
 			doesNotContain("cannot start a harness");
+	}
+
+	/**
+	 * Verifies that the bundled rule on running a harness has the agent decide whether it runs inside a run before any
+	 * step that applies only outside one, says that inside a run the agent neither selects an artifact nor verifies one,
+	 * and does not present the launcher that the session's instructions name as the only one that works there, since
+	 * the plugin's runner launchers forward a launch inside a run as well.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleChecksForRunBeforeOutsideSteps() throws IOException
+	{
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
+		int check = rule.indexOf("First check whether the command environment sets `CAT_SESSION_REQUESTS`");
+		requireThat(check, "check").isNotNegative();
+		Map<String, String> outsideSteps = Map.of(
+			"outsideSection", "### Outside a run",
+			"artifactSelection", "selects. Run `<harness>-artifact` by its absolute path",
+			"prerequisites", "Before a run, require all of these exact prerequisites",
+			"artifactVerification", "`--verify-artifact <artifact>` succeeds");
+		for (Map.Entry<String, String> step : outsideSteps.entrySet())
+			requireThat(rule.indexOf(step.getValue()), step.getKey()).isGreaterThan(check);
+		requireThat(rule, "rule").
+			contains("Do not run `<harness>-artifact` or `--verify-artifact`, and do not check the prerequisites of " +
+				"\"Outside a run\"").
+			contains("the plugin's `<harness>-runner` behaves the same way inside a run").
+			doesNotContain("instead of the plugin's");
+	}
+
+	/**
+	 * Verifies that the bundled rule on running a harness has the agent write the records file that {@code --input}
+	 * names before the launch, and says that {@code --input} takes that file rather than a prompt file, which only the
+	 * {@code request-session} launcher takes.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleWritesRecordsBeforeLaunch() throws IOException
+	{
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
+		requireThat(rule, "rule").
+			contains("Before you run it, write the run's records with a file-writing tool into a file").
+			contains("`{\"type\":\"turn\",\"prompt\":\"<task>\"}`").
+			contains("`--input` takes only that records file, never a prompt file; prompt files are for the " +
+				"`request-session` launcher");
 	}
 
 	/**

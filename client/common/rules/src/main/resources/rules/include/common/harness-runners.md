@@ -29,11 +29,16 @@ Linux, so Claude Code runner sessions are supported there.
 
 ### Launcher
 
-Run the launcher by its absolute path. Give it the run's records in a file named with `--input <file>`: one line per
-turn, `{"type":"turn","prompt":"<task>"}`, followed by one `{"type":"complete"}` line. Write the file with a
-file-writing tool, and run the launcher as one command with no pipe or redirection. Use a command timeout of 600000
-milliseconds and keep waiting while the run writes `waiting` records, which it repeats every 30 seconds while a turn
-writes nothing else.
+First check whether the command environment sets `CAT_SESSION_REQUESTS` to a non-blank value. When it does, this
+session was started by a runner that lets it start sessions: follow "Inside a run" and skip "Outside a run". Do not run
+`<harness>-artifact` or `--verify-artifact`, and do not check the prerequisites of "Outside a run". When it does not,
+skip "Inside a run".
+
+Run the launcher by its absolute path, as one command with no pipe or redirection. Before you run it, write the run's
+records with a file-writing tool into a file, one line per turn, `{"type":"turn","prompt":"<task>"}`, followed by one
+`{"type":"complete"}` line, and name that file with `--input <file>`. `--input` takes only that records file, never a
+prompt file; prompt files are for the `request-session` launcher. Use a command timeout of 600000 milliseconds and keep
+waiting while the run writes `waiting` records, which it repeats every 30 seconds while a turn writes nothing else.
 
 Every run and every session request takes `--model <model>` and `--effort <effort>`, or for a run outside a run
 `--agent <name>` instead, and the launcher refuses a run or request without them. Always pass them yourself; never ask
@@ -45,12 +50,42 @@ effort of a model that lists none. When that listing command is unavailable, cho
 the harness accepts, such as the ones this session runs under when it runs the same harness. State the model and the
 effort that you chose with the run's evidence.
 
-First check whether the command environment defines `CAT_SESSION_REQUESTS`.
+### Inside a run
+
+Run the `claude-runner` or `codex-runner` launcher whose absolute path this session's instructions name; the plugin's
+`<harness>-runner` behaves the same way inside a run. The launcher does not start the harness itself, but asks the
+runner that started this session to start it outside this session's sandbox, and waits until it ends. Each launch
+counts against the sessions that this session may request. The parent runner chooses the run root, the artifact and
+the limits, so pass only these options, which do not include `--agent`:
+
+```text
+--project <project> --input <records> --model <model> --effort <effort> [--plugin <plugin>]...
+[--install-cat] [--session-transcripts] [--output <transcript>] [--receipt <receipt>]
+```
+
+The project and each plugin must contain no symbolic links. Inside a run, the launcher leaves out the files that the
+sandbox hides behind the null device, so the requested session sees the project as the session does. It writes the
+session's transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the
+session completed, `75` when no capacity was free, and `1` otherwise, with the reason.
+
+A session request made with the `request-session` launcher counts against the same sessions. Write each turn's prompt
+into its own file inside your project, and pass the model and the effort as above:
+
+```text
+--harness <claude|codex> --project <project> --prompt <file> [--prompt <file>]... --model <model> --effort <effort>
+[--plugin <plugin>]... [--install-cat] [--session-transcripts]
+```
+
+The launcher waits up to 300 seconds. When the session ends, it prints the path of the response, a JSON file whose
+`status` field is `completed` for a completed session, and whose `reason` field gives the reason for any other status.
+When the runner wrote them, its `transcript` field names the session's transcript and its `receipt` field names its
+receipt. If the wait ends first, the launcher prints `id=<id>`; run the launcher again by its absolute path with only
+`--await <id>` to keep waiting.
 
 ### Outside a run
 
-When `CAT_SESSION_REQUESTS` is not defined, run only the CAT artifact that `<harness>-artifact` selects. Run it by its
-absolute path, without arguments. It selects the CAT artifact of this CAT version and platform for that harness:
+Run only the CAT artifact that `<harness>-artifact` selects. Run `<harness>-artifact` by its absolute path, without
+arguments. It selects the CAT artifact of this CAT version and platform for that harness:
 
 - the CAT plugin installed for that harness, when its version matches;
 - otherwise the copy in `.cat/bundles` in the user's home directory;
@@ -98,39 +133,6 @@ none. The receipt lists each requested session and its response path.
 Running the launcher outside a run is a command that your harness's sandbox must allow, since the runner starts the
 harness with the user's login. If the sandbox refuses it, report the refusal and the configuration that CAT's
 installation guide gives for it; do not change sandbox settings yourself.
-
-### Inside a run
-
-When `CAT_SESSION_REQUESTS` is defined, this session was started by a runner that lets it start sessions. Skip the
-artifact selection and the prerequisites above, and run the `claude-runner` or `codex-runner` launcher whose absolute
-path this session's instructions name, which this session may run, instead of the plugin's. The launcher does not
-start the harness itself, but asks the runner that started this session to start it outside this session's sandbox,
-and waits until it ends. Each launch counts against the sessions that this session may request. The parent runner
-chooses the run root, the artifact and the limits, so pass only these options, which do not include `--agent`:
-
-```text
---project <project> --input <records> --model <model> --effort <effort> [--plugin <plugin>]...
-[--install-cat] [--session-transcripts] [--output <transcript>] [--receipt <receipt>]
-```
-
-The project and each plugin must contain no symbolic links. Inside a run, the launcher leaves out the files that the
-sandbox hides behind the null device, so the requested session sees the project as the session does. It writes the
-session's transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the
-session completed, `75` when no capacity was free, and `1` otherwise, with the reason.
-
-A session request made with the `request-session` launcher counts against the same sessions. Write each turn's prompt
-into its own file inside your project, and pass the model and the effort as above:
-
-```text
---harness <claude|codex> --project <project> --prompt <file> [--prompt <file>]... --model <model> --effort <effort>
-[--plugin <plugin>]... [--install-cat] [--session-transcripts]
-```
-
-The launcher waits up to 300 seconds. When the session ends, it prints the path of the response, a JSON file whose
-`status` field is `completed` for a completed session, and whose `reason` field gives the reason for any other status.
-When the runner wrote them, its `transcript` field names the session's transcript and its `receipt` field names its
-receipt. If the wait ends first, the launcher prints `id=<id>`; run the launcher again by its absolute path with only
-`--await <id>` to keep waiting.
 
 ### Replies
 
