@@ -59,9 +59,11 @@ public final class PortFakesTest
 
 	/**
 	 * Verifies that fake sessions end in the order the test chooses.
+	 *
+	 * @throws IOException if a fake session fails to start
 	 */
 	@Test
-	public void sessionsEndInTestOrder()
+	public void sessionsEndInTestOrder() throws IOException
 	{
 		FakeSessionPort port = new FakeSessionPort();
 		SessionHandle first = port.start(request("one"));

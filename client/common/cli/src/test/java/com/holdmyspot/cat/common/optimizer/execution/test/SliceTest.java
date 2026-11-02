@@ -383,7 +383,7 @@ public final class SliceTest
 		}
 
 		@Override
-		public SessionHandle start(SessionRequest request)
+		public SessionHandle start(SessionRequest request) throws IOException
 		{
 			FakeSession session = (FakeSession) delegate.start(request);
 			started.add(session);

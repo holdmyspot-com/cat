@@ -71,7 +71,9 @@ import tools.jackson.databind.node.ObjectNode;
  * @param attempt the certification index that the report describes, or 0 if none
  * @param candidate the number of the candidate that the report describes
  * @param snapshot the hexadecimal identity of that candidate's snapshot
- * @param outcome the label of the campaign's outcome, or {@code null} if it has none
+ * @param outcome {@code infrastructure failure} when a precise failure stopped the slice of an active campaign or
+ *   of a campaign without an outcome, otherwise the label of the campaign's outcome, {@code interrupted} if work
+ *   stopped without one, or {@code null}
  * @param outcomeDetail the precise infrastructure failure when the outcome is {@code infrastructure failure},
  *   otherwise {@code null}
  * @param delivery the label of the result that the campaign decided to deliver, or {@code null} if none
@@ -197,7 +199,9 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 * @param attempt the certification index that the report describes, or 0 if none
 	 * @param candidate the number of the candidate that the report describes
 	 * @param snapshot the hexadecimal identity of that candidate's snapshot
-	 * @param outcome the label of the campaign's outcome, or {@code null} if it has none
+	 * @param outcome {@code infrastructure failure} when a precise failure stopped the slice of an active campaign or
+	 *   of a campaign without an outcome, otherwise the label of the campaign's outcome, {@code interrupted} if work
+	 *   stopped without one, or {@code null}
 	 * @param outcomeDetail the precise infrastructure failure when the outcome is {@code infrastructure failure},
 	 *   otherwise {@code null}
 	 * @param delivery the label of the result that the campaign decided to deliver, or {@code null} if none
@@ -311,13 +315,18 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		AssumptionReport assumptions = AssumptionReport.of(evidence);
 		String outcome = null;
 		String outcomeDetail = null;
-		if (campaign.outcome() != null)
-			outcome = campaign.outcome().label();
-		else if (evidence.infrastructureFailure() != null)
+		// An active campaign's outcome is an earlier certification attempt's, which the attempts still report. Showing
+		// it instead of the failure would hide why the slice stopped, and the host agent would keep running slices
+		// that stop at once
+		boolean showsFailure = evidence.infrastructureFailure() != null &&
+			(campaign.lifecycle() == Lifecycle.ACTIVE || campaign.outcome() == null);
+		if (showsFailure)
 		{
 			outcome = INFRASTRUCTURE_FAILURE;
 			outcomeDetail = evidence.infrastructureFailure();
 		}
+		else if (campaign.outcome() != null)
+			outcome = campaign.outcome().label();
 		else if (evidence.interrupted())
 			outcome = INTERRUPTED;
 		String delivery = null;

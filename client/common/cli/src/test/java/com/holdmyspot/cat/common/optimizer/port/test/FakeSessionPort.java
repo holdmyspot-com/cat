@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * A {@link SessionPort} whose sessions end only when the test ends them, in any order.
@@ -56,6 +58,10 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	private volatile Function<Path, LoadedSources> loading = _ -> new LoadedSources(List.of(), List.of(), List.of(),
 		List.of(), List.of());
+	/**
+	 * Selects the requests whose sessions cannot start, which {@link #start(SessionRequest)} refuses.
+	 */
+	private volatile Predicate<SessionRequest> unstartable = _ -> false;
 
 	/**
 	 * Creates a port that has started no sessions and whose host login is not identified.
@@ -237,10 +243,25 @@ public final class FakeSessionPort implements SessionPort
 		}
 	}
 
+	/**
+	 * Sets the requests whose sessions cannot start. A real port reports such a session by throwing
+	 * {@code IOException} from {@link SessionPort#start(SessionRequest)}, as its contract documents.
+	 *
+	 * @param unstartable selects each request whose session cannot start; by default, every session starts
+	 * @throws NullPointerException if {@code unstartable} is null
+	 */
+	public void unstartable(Predicate<SessionRequest> unstartable)
+	{
+		requireThat(unstartable, "unstartable").isNotNull();
+		this.unstartable = unstartable;
+	}
+
 	@Override
-	public SessionHandle start(SessionRequest request)
+	public SessionHandle start(SessionRequest request) throws IOException
 	{
 		requireThat(request, "request").isNotNull();
+		if (unstartable.test(request))
+			throw new IOException("The fake " + request.role() + " session cannot start");
 		FakeSession session = new FakeSession(request);
 		synchronized (sessions)
 		{

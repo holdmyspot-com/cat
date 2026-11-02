@@ -5929,6 +5929,59 @@ public final class DriverTest
 	}
 
 	/**
+	 * Returns the campaign outcome that an earlier certification attempt left, or {@code null} if none ended.
+	 *
+	 * @return the earlier outcomes
+	 */
+	@DataProvider
+	public static Object[][] earlierOutcomes()
+	{
+		return new Object[][] {{null}, {Outcome.INCONCLUSIVE}};
+	}
+
+	/**
+	 * Verifies that a slice stopped by prompt author sessions that cannot start reports the infrastructure failure and
+	 * its text with the status of a campaign that has no outcome, whether or not an earlier certification attempt left
+	 * the campaign an outcome, and that the earlier attempt's outcome stays reported.
+	 *
+	 * @param earlier the outcome that an earlier certification attempt left, or {@code null} if none ended
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "earlierOutcomes")
+	public void unstartableAuthorReportsFailure(Outcome earlier) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Builder builder = authoring();
+			if (earlier != null)
+				builder.certificationAttempt(1).outcome(earlier).campaign().outcome(earlier);
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("unstartable-author")),
+				builder.build());
+			// Stands in for a harness whose prompt author sessions fail to launch, which the session port reports
+			harness.sessions().unstartable(request -> request.role() == SessionRole.PROMPT_AUTHOR);
+			try (Driver driver = harness.open())
+			{
+				StatusReport report = harness.runSlice(driver).status();
+				requireThat(harness.promptAuthor().briefs().size(), "briefs").
+					isEqualTo(Driver.PROMPT_AUTHOR_FAILURE_LIMIT);
+				requireThat(report.status(), "status").isEqualTo(new ReportStatus.Active(Status.RUNNING));
+				requireThat(report.outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(report.outcomeDetail(), "outcomeDetail").
+					startsWith("The prompt author session failed " + Driver.PROMPT_AUTHOR_FAILURE_LIMIT + " times. " +
+						"Last failure: The prompt author session could not start");
+				requireThat(report.summary(ZoneOffset.UTC), "summary").
+					contains("Outcome: infrastructure failure (" + report.outcomeDetail() + ")");
+				if (earlier != null)
+				{
+					requireThat(report.attempts().getFirst().outcome(), "earlierOutcome").isEqualTo(earlier.label());
+					requireThat(report.summary(ZoneOffset.UTC), "summary").
+						contains("Attempt 1: " + earlier.label());
+				}
+			}
+		}
+	}
+
+	/**
 	 * Returns prompt author edits of the target that import another file, with whether trials receive it.
 	 *
 	 * @return the target's edited text, the imported file and whether the attempt contributes a candidate
