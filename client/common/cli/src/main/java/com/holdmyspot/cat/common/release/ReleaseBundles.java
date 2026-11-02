@@ -14,12 +14,15 @@ import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -448,7 +451,7 @@ public final class ReleaseBundles
 		}
 		catch (IOException e)
 		{
-			throw new IOException("Cannot download " + uri + ": " + e.getMessage(), e);
+			throw new IOException("Cannot download " + uri + ": " + describeFailure(e), e);
 		}
 	}
 
@@ -499,6 +502,31 @@ public final class ReleaseBundles
 			Thread.currentThread().interrupt();
 			throw new IOException("Interrupted", e);
 		}
+	}
+
+	/**
+	 * Describes why a download failed, for an error message. Some exceptions, such as the connection failure of an
+	 * unresolved or blocked host, carry no message.
+	 *
+	 * @param failure the failure
+	 * @return the failure's message, otherwise the first message of its causes, otherwise a description of its kind
+	 */
+	private static String describeFailure(Throwable failure)
+	{
+		for (Throwable current = failure; current != null; current = current.getCause())
+		{
+			String message = current.getMessage();
+			if (message != null && !message.isBlank())
+				return message;
+		}
+		for (Throwable current = failure; current != null; current = current.getCause())
+		{
+			if (current instanceof UnresolvedAddressException || current instanceof UnknownHostException)
+				return "The host name could not be resolved";
+		}
+		if (failure instanceof ConnectException)
+			return "The connection was refused or blocked";
+		return "Failed with " + failure.getClass().getName();
 	}
 
 	/**

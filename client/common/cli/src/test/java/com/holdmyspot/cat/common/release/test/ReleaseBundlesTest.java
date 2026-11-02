@@ -509,6 +509,30 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
+	 * Verifies that a download from a host that does not resolve, a failure that the HTTP client reports without a
+	 * message, is reported with the URL and a reason that names the unresolved host, and leaves no copy.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void unresolvedHostNamesFailure() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-unresolved-"));
+			// The reserved top-level domain ".invalid" never resolves
+			URI uri = URI.create("http://release.invalid/download/v1.0");
+			Path bundlesDirectory = root.resolve("bundles");
+
+			IOException failure = expectFailure(new ReleaseBundles(bundlesDirectory, uri, Platform.current()), root);
+
+			requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("could not be resolved").
+				doesNotContain("null");
+			requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that a server that sends no response headers within the response limit is reported with the URL and the
 	 * expired limit, and leaves no copy, although the limit for the whole file has not expired.
 	 *
