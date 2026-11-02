@@ -39,23 +39,32 @@ public final class SessionRequestInstructionsTest
 	}
 
 	/**
-	 * Verifies that the instructions limit requests to work that needs an isolated session, naming a plugin check and
-	 * the other harness as such work, and send other work to a subagent.
+	 * Verifies that the instructions open with the decision, before they state how many sessions the session may
+	 * request: work that a subagent can do goes to a subagent, and a session is requested only for work that needs a
+	 * separate, isolated session, of which they name the four kinds.
 	 */
 	@Test
-	public void requestsOnlyIsolatedSessions()
+	public void decidesOnIsolationBeforeCount()
 	{
 		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
 		String text = SessionRequestInstructions.text(1, launcher, false);
 
-		requireThat(text, "text").contains("Request one only when the work needs an isolated session").
-			contains("checking a plugin that you wrote").contains("running the other harness").
-			contains("Otherwise use a subagent").doesNotContain("needs checking in a new session");
+		int subagent = text.indexOf("Give work that a subagent can do to a subagent, or do it yourself when you " +
+			"cannot start one");
+		int isolation = text.indexOf("Request a session only when the work needs a separate, isolated session");
+		int count = text.indexOf("You may request up to 1 session");
+		requireThat(subagent, "subagent").isNotNegative();
+		requireThat(isolation, "isolation").isGreaterThan(subagent);
+		requireThat(count, "count").isGreaterThan(isolation);
+		requireThat(text, "text").contains("running the other harness").
+			contains("checking a plugin that you wrote or a fresh CAT installation").
+			contains("starting from a fresh copy of the project").contains("keeping the work out of your own context");
 	}
 
 	/**
 	 * Verifies that the instructions tell a session whose task names no model or effort to choose them from the values
-	 * that the harness lists and to state its choice, rather than leaving it without an instruction.
+	 * that the harness lists and to state the model and the effort it chose, rather than leaving it without an
+	 * instruction.
 	 */
 	@Test
 	public void choosesModelAndEffortWhenTaskNamesNone()
@@ -64,7 +73,7 @@ public final class SessionRequestInstructionsTest
 		String text = SessionRequestInstructions.text(1, launcher, false);
 
 		requireThat(text, "text").contains("use the ones that your task names, and when it names none, choose them " +
-			"from the values that the harness lists").contains("state your choice in your reply");
+			"from the values that the harness lists").contains("state the model and the effort that you chose in your reply");
 	}
 
 	/**

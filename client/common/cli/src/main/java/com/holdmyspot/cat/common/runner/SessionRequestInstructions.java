@@ -37,11 +37,14 @@ public final class SessionRequestInstructions
 			sessions = "1 session";
 		else
 			sessions = sessionRequests + " sessions";
-		return "You may request up to " + sessions + " over this run. A requested session is a new session " +
-			"that the runner starts outside your sandbox, in a copy of a project directory that you name; your commands " +
-			"cannot start Claude Code or Codex themselves. Request one only when the work needs an isolated session, " +
-			"such as checking a plugin that you wrote or running the other harness. Otherwise use a subagent, or do " +
-			"the work yourself when you cannot start one.\n" +
+		return "Give work that a subagent can do to a subagent, or do it yourself when you cannot start one. Request " +
+			"a session only when the work needs a separate, isolated session: running the other harness, checking a " +
+			"plugin that you wrote or a fresh CAT installation, starting from a fresh copy of the project, or keeping " +
+			"the work out of your own context.\n" +
+			"\n" +
+			"You may request up to " + sessions + " over this run. A requested session is a new session that the " +
+			"runner starts outside your sandbox, in a copy of a project directory that you name; your commands cannot " +
+			"start Claude Code or Codex themselves.\n" +
 			"\n" +
 			"Write each prompt into a file inside your project, then run:\n" +
 			"\n" +
@@ -52,8 +55,8 @@ public final class SessionRequestInstructions
 			"Every input is a file path you can read: the project to copy, one prompt file per turn, and each " +
 			"plugin directory to install. Every request names the session's model and reasoning effort, and a request " +
 			"without either is refused: use the ones that your task names, and when it names none, choose them from the " +
-			"values that the harness lists, or ones you know it accepts if you cannot list them, and state your choice " +
-			"in your reply. " +
+			"values that the harness lists, or ones you know it accepts if you cannot list them, and state the model " +
+			"and the effort that you chose in your reply. " +
 			"--install-cat also installs CAT in the " +
 			"session. Inputs must contain no " +
 			"symbolic links. The command waits up to 300 seconds. " +
