@@ -509,7 +509,14 @@ change for the user to commit and tells the user. Implemented (Claude `optimize-
 when it first creates the session directories in a Git work tree that does not ignore them, and both SessionStart hooks
 show the user a notice; text that an agent sees tells it the change is the user's to commit; `start` no longer writes
 `info/exclude` and accepts a base whose only change is those lines). Clean build 3,465 tests, 0 failures, 18 skipped,
-90 s, no test of 1 s or more. `design.md` (storage paragraph, the `optimizer.workspace` row and D17) and R-W1 updated to match. Open: a rerun on a plugin built from this tree. |
+90 s, no test of 1 s or more. `design.md` (storage paragraph, the `optimizer.workspace` row and D17) and R-W1 updated to match. Claude rerun on the plugin built from `6ba6065f72` (2026-11-02 UTC, `opus`/`high`,
+`~/cat/worktrees/wi119-AzbitM`): inconclusive. The SessionStart notice said that CAT added `/.cat/sessions/` to the
+project's `.gitignore`, the file stayed untracked, the skill committed only `prompt.json` (`a436b74`) and ran `start`
+again, and `start` accepted the base; then `git worktree add --detach` failed with "could not create directory of
+'.../project/.git/worktrees/worktree': Read-only file system". The nested session's Claude Code sandbox mounts the
+copied project's `.git/worktrees` read-only, and the runner's nested `allowWrite` names only the Claude home, the
+dependency caches and the requests directory. Open: the user's choice of how `start` gets its optimization worktree in
+a sandboxed Claude Code session, then a rerun. |
 | WI-120 | In progress (R-I6). Integrated: `14665ac129` (Claude's `codex-runner` skill; `codex-artifact` and `claude-artifact` launchers that select the installed plugin of the same version, a bundle in `~/.cat/bundles`, or a verified download; `codex-runner` in the Codex plugin's `bin/`); full build passes; the built launchers downloaded, verified and reused both archives from a local release directory. Integrated: `c2507ee621` (each uninstaller removes `~/.cat/bundles`) and `61a51d4d06` (download time limits of 30 s to connect, 60 s for the response and 15 minutes for the file; other versions' bundles deleted after a download); full build passes; the built launcher deleted the other version's bundle and kept this version's. The Windows uninstaller test passed on the release workflow's Windows runner (run 39898874571, 2026-10-23). Integrated: `9b50fe0d56` (each check for a bundle deletes the bundles no run has used for more than three calendar months; a download or a run that uses a bundle restarts its age); full build passes. Open: the live run of each skill. User rulings (2026-10-22, `design.md` §8, D96): every harness's plugin has a runner skill for the other harness; a skill without the other harness's CAT artifact downloads that harness's release archive when the skill runs. |
 | WI-121 | Done (2026-10-23, commits `0f83f6bd60`, `dde96e2321`, `41cb6dca72`, `b218e62f79`). Record: [history](plan-history.md). |
 | WI-122 | Done (2026-10-23, commits `fecd992d13`, `7090217aa9`, `32307a817b`). Record: [history](plan-history.md). |
