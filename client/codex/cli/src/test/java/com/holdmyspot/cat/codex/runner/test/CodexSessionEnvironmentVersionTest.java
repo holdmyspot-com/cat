@@ -94,6 +94,12 @@ public final class CodexSessionEnvironmentVersionTest
 					[sandbox_workspace_write]
 					network_access = true
 
+					[features]
+					multi_agent_v2 = true
+
+					[agents]
+					max_threads = 3
+
 					[permissions.cat]
 					extends = ":workspace"
 					[permissions.cat.filesystem]

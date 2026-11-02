@@ -56,6 +56,10 @@ public final class CodexRunner
 	 */
 	private static final String CODEX_HOME = "CODEX_HOME";
 	/**
+	 * The variable in which Codex names the thread whose tool shell runs a command.
+	 */
+	private static final String THREAD_ID = "CODEX_THREAD_ID";
+	/**
 	 * The name of Codex's configuration file in the Codex home.
 	 */
 	private static final String CONFIGURATION = "config.toml";
@@ -179,9 +183,12 @@ public final class CodexRunner
 				shell = SessionRequestAccess.Shell.POWERSHELL;
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifact, sessionRequests,
 				Platform.current(), shell).orElse(null);
+			// A runner that a Codex thread starts gives the session the multi-agent state that the thread runs with
+			CodexParentMultiAgentState parentState = CodexParentMultiAgentState.read(scope.json(), hostHome,
+				environment.get(THREAD_ID));
 			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration,
 				run.directory().resolve("project"), caches,
-				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current());
+				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState);
 			List<String> appServer = appServerCommand(executable, installCat || !trialPlugins.isEmpty());
 			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, run, readOnlyEvidence, deniedReads,
 				Platform.current(), environment, requestAccess, appServer);

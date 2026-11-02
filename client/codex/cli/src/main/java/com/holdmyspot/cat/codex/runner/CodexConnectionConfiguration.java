@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -31,7 +33,7 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
- * Copies connection and project instruction settings for an isolated Codex process.
+ * Copies connection, project instruction and multi-agent settings for an isolated Codex process.
  */
 public final class CodexConnectionConfiguration
 {
@@ -43,6 +45,16 @@ public final class CodexConnectionConfiguration
 	private static final String TEMPORARY_DIRECTORY = ":tmpdir";
 	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
 		"model_reasoning_effort", "openai_base_url");
+	/**
+	 * The {@code [features]} entries that decide whether and how a session may start subagents.
+	 */
+	private static final List<String> MULTI_AGENT_FEATURES = List.of("multi_agent", "multi_agent_v2");
+	/**
+	 * The {@code [agents]} entries that enable the multi-agent tools and limit the subagents a session may start.
+	 * {@code max_concurrent_threads_per_session} is another name of {@code max_threads}.
+	 */
+	private static final Set<String> AGENT_LIMITS = Set.of("enabled", "max_threads",
+		"max_concurrent_threads_per_session", "max_depth", "job_max_runtime_seconds", "interrupt_message");
 	private static final Pattern NETWORK_ACCESS = Pattern.compile("^network_access\\s*=\\s*(true|false)\\s*(?:#.*)?$");
 	static final List<String> CAT_HOOK_KEYS = List.of("cat@cat:hooks/hooks.json:session_start:0:0",
 		"cat@cat:hooks/hooks.json:subagent_start:0:0", "cat@cat:hooks/hooks.json:post_tool_use:0:0");
@@ -64,39 +76,50 @@ public final class CodexConnectionConfiguration
 		if (!Files.isRegularFile(source))
 			return Optional.empty();
 		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
-		return instructionSettings(source, configuration);
+		return instructionSettings(parse(source, configuration));
 	}
 
 	/**
-	 * Extracts the explicitly configured instruction settings from an already bounded host configuration.
+	 * Parses an already bounded host configuration.
 	 *
-	 * @param source the source file, named when parsing fails
+	 * @param source        the source file, named when parsing fails
 	 * @param configuration the host configuration
-	 * @return the configured instruction settings, or empty when none are set
+	 * @return the configuration's values
 	 * @throws IOException if the configuration cannot be parsed
 	 */
-	private static Optional<String> instructionSettings(Path source, String configuration) throws IOException
+	private static JsonNode parse(Path source, String configuration) throws IOException
 	{
 		assert source != null;
 		assert configuration != null;
 		try
 		{
-			TomlMapper mapper = TomlMapper.builder().build();
-			JsonNode values = mapper.readTree(configuration);
-			ObjectNode selected = mapper.createObjectNode();
-			for (String name : List.of("project_doc_fallback_filenames", "project_doc_max_bytes"))
-			{
-				if (values.has(name))
-					selected.set(name, values.get(name));
-			}
-			if (selected.isEmpty())
-				return Optional.empty();
-			return Optional.of(mapper.writeValueAsString(selected));
+			return TomlMapper.builder().build().readTree(configuration);
 		}
 		catch (JacksonException e)
 		{
 			throw new IOException("Cannot parse Codex instruction settings from " + source, e);
 		}
+	}
+
+	/**
+	 * Extracts the explicitly configured instruction settings from a parsed host configuration.
+	 *
+	 * @param values the host configuration's values
+	 * @return the configured instruction settings, or empty when none are set
+	 */
+	private static Optional<String> instructionSettings(JsonNode values)
+	{
+		assert values != null;
+		TomlMapper mapper = TomlMapper.builder().build();
+		ObjectNode selected = mapper.createObjectNode();
+		for (String name : List.of("project_doc_fallback_filenames", "project_doc_max_bytes"))
+		{
+			if (values.has(name))
+				selected.set(name, values.get(name));
+		}
+		if (selected.isEmpty())
+			return Optional.empty();
+		return Optional.of(mapper.writeValueAsString(selected));
 	}
 
 	/**
@@ -180,10 +203,49 @@ public final class CodexConnectionConfiguration
 		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform)
 		throws IOException
 	{
+		copy(source, destination, project, caches, temporaryDirectory, toolOutputTokenLimit, requestAccess, platform,
+			CodexParentMultiAgentState.NONE);
+	}
+
+	/**
+	 * Copies the configuration as
+	 * {@link #copy(Path, Path, Path, HarnessDependencyCaches, Path, int, SessionRequestAccess, Platform)} does, and
+	 * gives the session the multi-agent settings of the Codex thread that starts it, so that the session may start
+	 * subagents exactly when that thread may: on its own initiative or only when asked.
+	 * <p>
+	 * The session gets the parent configuration's {@code [features]} entries {@code multi_agent} and
+	 * {@code multi_agent_v2}, in whichever form they take, and its {@code [agents]} entries {@code enabled},
+	 * {@code max_threads} (or its other name {@code max_concurrent_threads_per_session}), {@code max_depth},
+	 * {@code job_max_runtime_seconds} and {@code interrupt_message}. It gets an {@code [agents.<role>]} table only if the
+	 * table names no {@code config_file} or names one inside the session's own home or project, because the session
+	 * cannot use a role whose file lies elsewhere. It gets no other entry of those tables.
+	 * <p>
+	 * The thread's recorded state then applies over those entries, as
+	 * {@link CodexParentMultiAgentState#applyTo(ObjectNode, ObjectNode)} describes: where a configured entry and the
+	 * recorded state contradict each other, the recorded state wins, because it is what the thread actually runs with.
+	 *
+	 * @param source               the host configuration file
+	 * @param destination          the isolated configuration file
+	 * @param project              the copied project that the isolated session runs in
+	 * @param caches               the verified writable dependency caches
+	 * @param temporaryDirectory   the fresh temporary directory owned by the isolated runner
+	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
+	 *   Codex's default
+	 * @param requestAccess        the session's access to requested sessions, or {@code null} if it may request none
+	 * @param platform             the platform that the session runs on
+	 * @param parentState          the multi-agent state that the starting Codex thread recorded, or
+	 *   {@link CodexParentMultiAgentState#NONE} if no Codex thread starts the session
+	 * @throws IOException if configuration I/O fails
+	 */
+	public static void copy(Path source, Path destination, Path project, HarnessDependencyCaches caches,
+		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform,
+		CodexParentMultiAgentState parentState) throws IOException
+	{
 		requireThat(project, "project").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(parentState, "parentState").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		// The session's working directory, the copied project, holds its own Git repository and is therefore its
 		// project root anyway. Looking for a root marker in each directory above it costs one sandboxed helper process
@@ -196,10 +258,12 @@ public final class CodexConnectionConfiguration
 		if (toolOutputTokenLimit > 0)
 			copied.append("tool_output_token_limit = ").append(toolOutputTokenLimit).append(System.lineSeparator());
 		String networkAccess = null;
+		JsonNode parentConfiguration = null;
 		if (Files.isRegularFile(source))
 		{
 			String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
-			instructionSettings(source, configuration).ifPresent(copied::append);
+			parentConfiguration = parse(source, configuration);
+			instructionSettings(parentConfiguration).ifPresent(copied::append);
 			for (String line : configuration.lines().toList())
 			{
 				String trimmed = line.stripLeading();
@@ -250,17 +314,108 @@ public final class CodexConnectionConfiguration
 				append(System.lineSeparator());
 		}
 		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
+		TomlMapper mapper = TomlMapper.builder().build();
+		ObjectNode features = mapper.createObjectNode();
 		if (platform.isWindows())
 		{
 			// Without an administrator's setup, Windows offers only Codex's unelevated sandbox, which refuses a profile
 			// that denies reads, and MXC, which enforces it
-			copied.append(System.lineSeparator()).append("[features]").append(System.lineSeparator()).
-				append("prefer_mxc = true").append(System.lineSeparator());
+			features.put("prefer_mxc", true);
 		}
+		ObjectNode agents = mapper.createObjectNode();
+		if (parentConfiguration != null)
+			copyMultiAgentSettings(parentConfiguration, features, agents, destination.getParent(), project);
+		parentState.applyTo(features, agents);
+		appendTable(copied, mapper, "features", features);
+		appendTable(copied, mapper, "agents", agents);
 		appendRunnerProfile(copied, destination.getParent(), writable, temporaryDirectory, networkAccess, project,
 			platform);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
+	}
+
+	/**
+	 * Copies the parent configuration's multi-agent entries.
+	 *
+	 * @param parent       the parent configuration's values
+	 * @param features     receives the {@code [features]} entries
+	 * @param agents       receives the {@code [agents]} entries
+	 * @param isolatedHome the session's own home
+	 * @param project      the copied project that the session runs in
+	 */
+	private static void copyMultiAgentSettings(JsonNode parent, ObjectNode features, ObjectNode agents,
+		Path isolatedHome, Path project)
+	{
+		assert parent != null;
+		assert features != null;
+		assert agents != null;
+		JsonNode parentFeatures = parent.path("features");
+		for (String name : MULTI_AGENT_FEATURES)
+		{
+			if (parentFeatures.has(name))
+				features.set(name, parentFeatures.get(name));
+		}
+		JsonNode parentAgents = parent.path("agents");
+		if (!parentAgents.isObject())
+			return;
+		for (Entry<String, JsonNode> entry : parentAgents.properties())
+		{
+			String name = entry.getKey();
+			JsonNode value = entry.getValue();
+			if (AGENT_LIMITS.contains(name))
+				agents.set(name, value);
+			else if (value.isObject() && isAvailableRole(value, isolatedHome, project))
+				agents.set(name, value);
+		}
+	}
+
+	/**
+	 * Returns whether a session can use an agent role that the parent configures.
+	 *
+	 * @param role         the role's {@code [agents.<role>]} table
+	 * @param isolatedHome the session's own home
+	 * @param project      the copied project that the session runs in
+	 * @return {@code true} if the role names no {@code config_file}, or names one inside {@code isolatedHome} or
+	 *   {@code project}
+	 */
+	private static boolean isAvailableRole(JsonNode role, Path isolatedHome, Path project)
+	{
+		JsonNode configFile = role.get("config_file");
+		if (configFile == null)
+			return true;
+		if (!configFile.isString())
+			return false;
+		Path file;
+		try
+		{
+			file = Path.of(configFile.asString());
+		}
+		catch (InvalidPathException _)
+		{
+			return false;
+		}
+		if (!file.isAbsolute())
+			return false;
+		Path normalized = file.normalize();
+		return normalized.startsWith(isolatedHome.toAbsolutePath().normalize()) ||
+			normalized.startsWith(project.toAbsolutePath().normalize());
+	}
+
+	/**
+	 * Appends a table to the isolated configuration.
+	 *
+	 * @param configuration the isolated configuration being assembled
+	 * @param mapper        the TOML mapper
+	 * @param name          the table's name
+	 * @param entries       the table's entries; an empty table is not appended
+	 */
+	private static void appendTable(StringBuilder configuration, TomlMapper mapper, String name, ObjectNode entries)
+	{
+		if (entries.isEmpty())
+			return;
+		configuration.append(System.lineSeparator()).append('[').append(name).append(']').
+			append(System.lineSeparator()).append(mapper.writeValueAsString(entries).lines().
+				collect(Collectors.joining(System.lineSeparator()))).append(System.lineSeparator());
 	}
 
 	/**
