@@ -56,17 +56,16 @@ public final class ClaudeConnectionSettings
 	/**
 	 * The permission rules that the isolated settings allow, whatever the parent's settings say. Claude Code asks the
 	 * user before using the {@code Skill} tool, and a nested instance has no user to answer, so without this rule a
-	 * trial could use none of the skills of the prompt system it measures. Removing credentials from commands makes
-	 * Claude Code ignore the {@code acceptEdits} permission mode, so the rule for editing tools grants the same edits
-	 * inside the project and nowhere else.
+	 * trial could use none of the skills of the prompt system it measures. The runner starts the instance in the
+	 * {@code acceptEdits} permission mode, and the rule for editing tools also grants edits inside the project, and
+	 * nowhere else, without depending on that mode.
 	 */
 	private static final List<String> PERMISSION_GRANTS = List.of("Skill", "Edit(./**)");
 	/**
 	 * The permission rule that lets the isolated instance run every Bash command without asking the user, which a
-	 * nested instance has no user to answer. Removing credentials from commands also turns off Claude Code's
-	 * {@code sandbox.autoAllowBashIfSandboxed}, which otherwise runs the commands that the sandbox confines without
-	 * asking, so this rule takes its place where the settings require that sandbox. The parent's rules that deny a
-	 * command or ask before running it still take precedence over it.
+	 * nested instance has no user to answer. The rule does not depend on Claude Code's
+	 * {@code sandbox.autoAllowBashIfSandboxed}, and the settings require the sandbox that confines the commands. The
+	 * parent's rules that deny a command or ask before running it still take precedence over it.
 	 */
 	private static final String SANDBOXED_COMMAND_GRANT = "Bash";
 	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",

@@ -126,6 +126,17 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
+	 * Returns the harness credential variables that the runner under test lets the session's commands receive, because
+	 * its harness passes them to every command it starts.
+	 *
+	 * @return the variables; empty unless a subclass returns others
+	 */
+	protected Set<String> credentialsGivenToCommands()
+	{
+		return Set.of();
+	}
+
+	/**
 	 * Verifies that the session's commands run with the run's isolated home as their home directory, in every variable
 	 * that names it on the platform.
 	 *
@@ -150,7 +161,7 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * Verifies that the session's commands receive none of the harness credential variables that the user's
-	 * environment sets.
+	 * environment sets, other than those that the runner under test lets them receive.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -163,6 +174,7 @@ public abstract class SessionCommandLimitsContract
 			Limits limits = limits(fixture(cleanup), 0);
 			Set<String> received = new LinkedHashSet<>(limits.commandEnvironment().keySet());
 			received.retainAll(SessionCommandLimits.CREDENTIAL_VARIABLES);
+			received.removeAll(credentialsGivenToCommands());
 			requireThat(received, "received").isEmpty();
 		}
 	}

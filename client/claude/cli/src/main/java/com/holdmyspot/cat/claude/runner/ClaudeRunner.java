@@ -54,11 +54,6 @@ public final class ClaudeRunner
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"CLAUDE_CODE_OAUTH_TOKEN");
 	/**
-	 * The variable that has Claude Code remove its credentials from the environment of the commands and hooks that it
-	 * starts.
-	 */
-	public static final String SUBPROCESS_ENVIRONMENT_SCRUB = "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB";
-	/**
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
 	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
@@ -244,11 +239,15 @@ public final class ClaudeRunner
 	/**
 	 * Returns the environment of a run's Claude process. It holds the caller's generic operating-system variables, its
 	 * Claude connection variables, from its environment or else its Claude settings, and the shared dependency caches;
-	 * the run's home as the home directory and its {@code .claude} as Claude's configuration directory; Claude's
-	 * {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB}, which removes Claude's credentials and its configuration directory's
-	 * variable from the environment of the commands and hooks that it starts; and the request for Claude's session
-	 * state events, which the turn boundary depends on. CAT's hooks then find Claude's configuration directory through
-	 * the home directory, as {@code .claude} in it.
+	 * the run's home as the home directory and its {@code .claude} as Claude's configuration directory; and the
+	 * request for Claude's session state events, which the turn boundary depends on. CAT's hooks then find Claude's
+	 * configuration directory through the home directory, as {@code .claude} in it.
+	 * <p>
+	 * The environment never sets {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB}, so Claude Code passes its credentials and
+	 * its configuration directory's variable to the commands and hooks that it starts, and keeps protecting the
+	 * project's {@code .git/worktrees} at the lower priority that the session's settings grant overrides. The caller's
+	 * value of the variable is not inherited, because the environment copies only generic operating-system variables
+	 * and Claude's connection variables from the caller's environment.
 	 *
 	 * @param scope        services shared for the runner process lifetime
 	 * @param environment  the caller's environment
@@ -274,9 +273,6 @@ public final class ClaudeRunner
 		ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
 		ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
 		isolatedEnvironment.putAll(caches.environment());
-		// Claude Code needs the connection variables itself, but removes its credentials from the environment of every
-		// command and hook that it starts, so that a harness started from a command finds no login
-		isolatedEnvironment.put(SUBPROCESS_ENVIRONMENT_SCRUB, "1");
 		ClaudeConnectionSettings.copy(scope, hostSettings, isolatedEnvironment);
 		HarnessEnvironment.setHomeDirectory(isolatedEnvironment, processHome);
 		isolatedEnvironment.put("CLAUDE_CONFIG_DIR", processHome.resolve(".claude").toString());

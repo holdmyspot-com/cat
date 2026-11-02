@@ -7,14 +7,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -36,6 +40,33 @@ public final class ClaudeRunnerTest
 
 		requireThat(ClaudeRunner.launchConfigurationPath(temporaryDirectory), "launchConfiguration").isEqualTo(
 			Path.of("/system-temporary-directory/.cat/claude/claude/run-id/.claude/launch.json").toAbsolutePath());
+	}
+
+	/**
+	 * Verifies that the Claude process environment does not ask Claude Code to scrub the environment and sandbox
+	 * paths of its commands, even if the caller's environment does, so that the session's settings do not depend on
+	 * the caller and Claude Code leaves the project's {@code .git/worktrees} to the session's grant.
+	 *
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test
+	public void doesNotScrubSubprocessEnvironment() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-process-environment-"));
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put("ANTHROPIC_API_KEY", "credential");
+			environment.put("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB", "1");
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, home.resolve("missing-settings.json"), home, null);
+
+			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
+			requireThat(result.get("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY").isEqualTo("credential");
+		}
 	}
 
 	/**

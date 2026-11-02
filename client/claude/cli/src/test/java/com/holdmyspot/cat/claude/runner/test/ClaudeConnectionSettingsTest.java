@@ -183,9 +183,9 @@ public final class ClaudeConnectionSettingsTest
 	 * parent's grants: its allow rules, its added directories and its default permission mode, which would let the
 	 * isolated instance read and write the parent's directories, such as the project whose prompts CAT measures. They
 	 * allow the {@code Skill} tool, which a nested instance has no user to approve, and edits inside the project, which
-	 * the permission mode no longer grants once Claude removes credentials from commands, and the commands that the
-	 * sandbox confines. They do not retain the parent's writable paths, such as its Claude and CAT directories, and
-	 * allow writes only to the instance's home and the shared dependency caches.
+	 * they grant by a rule that does not depend on the permission mode, and the commands that the sandbox confines.
+	 * They do not retain the parent's writable paths, such as its Claude and CAT directories, and allow writes only to
+	 * the instance's home and the shared dependency caches.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */

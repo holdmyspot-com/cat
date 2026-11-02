@@ -12,9 +12,10 @@ import java.util.Set;
 
 /**
  * The limits of the commands that a session runs, the same in every harness. A session's commands run with the run's
- * isolated home as their home directory, receive no harness credential in their environment, and cannot read any
- * harness's login or configuration files, in the run's home or the user's, nor any run under the run root except
- * their own. A harness that a command starts directly therefore finds no login and cannot reach the model provider.
+ * isolated home as their home directory, and cannot read any harness's login or configuration files, in the run's
+ * home or the user's, nor any run under the run root except their own. The commands of a Codex session receive none
+ * of the {@link #CREDENTIAL_VARIABLES}. The commands of a Claude session receive Claude's connection credentials,
+ * which the session's parent has too.
  * <p>
  * The user's harness directories stay readable apart from those files, because the plugins installed in a session
  * link to files there. Each runner applies these limits through its harness's own sandbox settings and environment.
@@ -23,7 +24,8 @@ public final class SessionCommandLimits
 {
 	/**
 	 * The environment variables that carry a harness's credentials: Claude Code's API key, authentication token and
-	 * OAuth token, and the Codex and OpenAI API keys that Codex reads. A session's commands receive none of them.
+	 * OAuth token, and the Codex and OpenAI API keys that Codex reads. The commands of a Codex session receive none of
+	 * them; the commands of a Claude session receive Claude's three variables, which the session's parent has too.
 	 */
 	public static final Set<String> CREDENTIAL_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"CLAUDE_CODE_OAUTH_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY");
