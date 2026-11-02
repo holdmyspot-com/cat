@@ -2589,6 +2589,13 @@ or its `acceptEdits` mode. The runner does not set Claude Code's `CLAUDE_CODE_SU
 Claude Code also forbids writing the project's `.git/worktrees`, overriding the runner's grant, so the prompt optimizer
 could not create its worktree in a session. The user's deny and ask rules still apply first.
 
+A nested harness receives the parent's proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY`, in
+upper and lower case). When every proxy that the parent names is on a loopback address, as the proxy of Claude Code's
+command sandbox is, the child's `NO_PROXY` leaves out its loopback entries, so the child reaches services on this
+machine's loopback, such as an API gateway or a load balancer, through that proxy: a sandboxed command cannot connect
+to them directly. A remote proxy cannot reach this machine's loopback, so with one, or with none, `NO_PROXY` is copied
+unchanged (user ruling, 2026-11-02).
+
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
 request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
 trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
