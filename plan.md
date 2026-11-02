@@ -529,9 +529,12 @@ The skill committed only `prompt.json` (`8a5395c`) and ran `start` again, which 
 `.git/worktrees`; the skill showed it to the user and stopped. A probe session (`~/cat/worktrees/gitwt-probe-Cg0cWG`)
 listed its mounts: Claude Code 2.1.316 mounts the granted `.git/worktrees` read-write, then mounts it read-only again
 with the project's protected Git paths (`hooks`, `config`, `config.worktree`, `commondir`, `info/exclude`, `modules`),
-and `git worktree add` failed with "Read-only file system". No `allowWrite` entry makes a Claude Code project's own
-`.git/worktrees` writable, so the grant has no effect and the refusal's advice cannot be followed. Open: the user's
-choice of how `start` makes the optimization worktree without registering a linked worktree, then a rerun. |
+and `git worktree add` failed with "Read-only file system". Cause (Claude Code 2.1.316's bundled code): the runner sets
+`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` (`fecd992d13`), and in that scrub mode Claude Code adds `<working directory>/.git/
+worktrees`, `hooks`, `config`, `config.worktree`, `commondir`, `info/exclude`, `modules`, `package.json`, `.env*` and
+others to `denyWrite`, which it mounts after `allowWrite`, so no grant overrides it. A session without scrub mode, such
+as the orchestrator's, protects the Git directory's `worktrees` at a lower priority that its `allowWrite` overrides.
+Open: the user's choice between scrub mode and a worktree that needs no `.git/worktrees`, then a rerun. |
 | WI-120 | In progress (R-I6). Integrated: `14665ac129` (Claude's `codex-runner` skill; `codex-artifact` and `claude-artifact` launchers that select the installed plugin of the same version, a bundle in `~/.cat/bundles`, or a verified download; `codex-runner` in the Codex plugin's `bin/`); full build passes; the built launchers downloaded, verified and reused both archives from a local release directory. Integrated: `c2507ee621` (each uninstaller removes `~/.cat/bundles`) and `61a51d4d06` (download time limits of 30 s to connect, 60 s for the response and 15 minutes for the file; other versions' bundles deleted after a download); full build passes; the built launcher deleted the other version's bundle and kept this version's. The Windows uninstaller test passed on the release workflow's Windows runner (run 39898874571, 2026-10-23). Integrated: `9b50fe0d56` (each check for a bundle deletes the bundles no run has used for more than three calendar months; a download or a run that uses a bundle restarts its age); full build passes. Open: the live run of each skill. User rulings (2026-10-22, `design.md` §8, D96): every harness's plugin has a runner skill for the other harness; a skill without the other harness's CAT artifact downloads that harness's release archive when the skill runs. |
 | WI-121 | Done (2026-10-23, commits `0f83f6bd60`, `dde96e2321`, `41cb6dca72`, `b218e62f79`). Record: [history](plan-history.md). |
 | WI-122 | Done (2026-10-23, commits `fecd992d13`, `7090217aa9`, `32307a817b`). Record: [history](plan-history.md). |
