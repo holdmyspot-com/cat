@@ -281,7 +281,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-122 | `optimize-high` | Changes what a session's commands may read and receive in both runners; an error lets a command read a login or start a harness that reaches the provider, or breaks a tool that trials use. |
 | WI-123 | `optimize-high` | Adds requested sessions to both runners and the `request-session` launcher; an error gives a requested session more than its requester's permissions, puts a credential in reach of a command, escapes the shared capacity, or leaves a requested session running after its run ends. |
 | WI-124 | `optimize-medium` | Changes every Markdown file of both plugin artifacts; an error drops guidance that a model needs, breaks a directive, or ships design goals or maintainer comments. |
-| WI-128 | `optimize-high` | Lets a session's runner launchers start sessions through the run's runner, ships both launchers and both runner skills in both plugins, and adds `--request-depth`; an error gives a launch more than its requester's permissions or limits, puts a login or credential in reach of a command, or changes a run that allows no requested sessions. |
+| WI-128 | `optimize-high` | Lets a session's runner launchers start sessions through the run's runner, ships both launchers and both runner skills (later the runner rule; D123) in both plugins, and adds `--request-depth`; an error gives a launch more than its requester's permissions or limits, puts a login or credential in reach of a command, or changes a run that allows no requested sessions. |
 | WI-129 | `optimize-medium` | Changes only the prompt author’s earlier-attempt input and its recurrence instruction; an error hides a targeted kind or result, or keeps unbounded hunk evidence in the turn. |
 | WI-131 | `optimize-high` | Adds ranking before reservations, exact promotion-share tie breaks, persisted assignments and version-43 migration; an error repeats approaches, changes a resumed assignment, stops a campaign on ranking failure, or prevents a paused campaign from continuing. |
 | WI-132 | `optimize-high` | Changes the promotion rule, the scheduling of promotion runs, weak-round selection and the campaign format; an error promotes a regressing edit, rejects equally good edits, keeps spending runs on a rejected attempt, or prevents a paused version-44 campaign from continuing. |
@@ -3309,6 +3309,9 @@ including mappings of one source into several plugins; the old two-plugin refusa
 
 
 ### WI-120 — Runner skills that download the other harness's artifact (user rulings, 2026-10-22)
+
+The runner skills that this section names became the runner rule (D123, user rulings 2026-11-02); the artifact
+selection and download it describes are unchanged.
 
 - **Problem:** Codex's `claude-runner` skill runs `bin/claude-runner` from the installed Claude CAT plugin and fails
 	when it is not installed, so a user who installed CAT only for Codex took the missing launcher for a broken release;
