@@ -45,7 +45,7 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	with the WI-119 placeholder fix (2026-11-02), is installed by the user. Release run 41463900909 failed on Windows only; fixed in `42f2593e0c`. Build run 41466577334 on `c0a52ba740` then failed on Windows only in `ClaudeSessionCommandLimitsTest`, which wrote Claude settings for the host and so met the native-Windows refusal; fixed in the test (`88d0dc02b0`).
 - **Open:** final gates 2, 4, 5, 6 and 7 (§9), which need G1, G2, G4, G6, G7 and G9 (interim mapping) and R-I1's native
 	evidence. Live checks: Codex E3 (the approved handbook-motto exemption as revision feedback, scope `weakest_cell`,
-	stop, accept without certification); the Codex halves of WI-121 and WI-122; both skills of WI-120; the WI-119 skill
+	stop, accept without certification); WI-120's runner rule (Claude and Codex live checks passed, one run each, not certified); the WI-119 skill
 	writing `prompt.json`, in both harnesses; the Codex held-out denial check of G4; the arm C replay
 	(`.cat/sessions/3184ae68-7dad-45b6-b48f-c68707926440/temp/briefs/user-input-positive.md`). WI-71's certification and
 	WI-70's rule step run last; gate 8 removes the requirement tags after gates 1–7 pass. Claude E5 stays stopped and E8
