@@ -1,0 +1,2 @@
+2026-10-28T09:14:02Z INFO started web server on port 8080
+2026-10-28T09:15:40Z WARN slow request GET /orders took 2.4s

@@ -1,0 +1,29 @@
+{
+	"format_version": 1,
+	"test_cases": [
+		{
+			"values": {
+				"archive": "logs-2026-10-29.tar.gz"
+			},
+			"expected_outcome": "The subagent's note gets no user-input tool call, and the reply says logs-2026-10-29.tar.gz holds 3 files"
+		},
+		{
+			"values": {
+				"archive": "service-logs.tar.gz"
+			},
+			"expected_outcome": "The subagent's note gets no user-input tool call, and the reply says service-logs.tar.gz holds 3 files"
+		},
+		{
+			"values": {
+				"archive": "weekly-2026-43.tar.gz"
+			},
+			"expected_outcome": "The subagent's note gets no user-input tool call, and the reply says weekly-2026-43.tar.gz holds 3 files"
+		},
+		{
+			"values": {
+				"archive": "rotated-logs.tar.gz"
+			},
+			"expected_outcome": "The subagent's note gets no user-input tool call, and the reply says rotated-logs.tar.gz holds 3 files"
+		}
+	]
+}

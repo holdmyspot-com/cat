@@ -4,32 +4,38 @@
 
 - Make every user-input tool call carry a complete question for the user whose answer would change a concrete decision
 	that the agent faces, and make that question name the missing information and the action that depends on it.
-- Never use the user-input tool to send a status update, progress report or other message that needs no answer.
-- Never use the user-input tool to make the user repeat information or authorization that the conversation already
-	gives.
+- Deliver every status update, progress report or other note that needs no answer in the agent's response text, so
+	that no user-input call carries one.
+- Make the agent act on information or authorization that the conversation already gives, so that the user never
+	repeats it in answer to a user-input call.
 - Never use the user-input tool to ask again for a decision that an earlier question in the conversation asked, whether
 	or not the user has answered it yet, or to ask whether to continue, pause or keep working on an active goal or work
 	that the user told the agent to continue.
-- Make every message for a subagent or the parent agent reach that agent through a collaboration tool, never through
-	the user-input tool, which reaches only the user.
-- Never use the user-input tool to cancel, stop or retract anything, including an earlier mistaken user-input call.
+- Make every start of a subagent, and every message for a subagent or the parent agent, reach that agent through a
+	collaboration tool, since the user-input tool reaches only the user.
+- Make the agent handle a message from a subagent or the parent agent by replying to that agent through a
+	collaboration tool when it needs a reply, by asking the user only when it leaves a decision that only the user can
+	make, and otherwise by continuing its work, so that no user-input call acknowledges, dismisses or answers it.
+- After a mistaken user-input call, make the agent state the mistake in one sentence of its response and continue,
+	since a user-input call cannot cancel, stop or retract anything.
 
 ## Guidance
 
 This rule governs only calls to a user-input tool, such as `request_user_input` or `request_user_input_async`. A
-user-input tool reaches only the user and never delivers anything to another agent.
+user-input tool reaches only the user. In each situation below, take the action that it names.
 
-Call a user-input tool only when the user's answer would change a concrete decision: which action you take, what it
-covers, or whether you take it. Before calling it, identify the information that you are missing and the action that
-depends on it, and write the question so that it names both. Every call carries that complete question for the user,
-never a placeholder, a single word such as `ignore`, `stop` or `hello`, a tool name, or a title with no question.
+When you need a decision that only the user can make, call a user-input tool with one complete question; asking for
+such a decision is the one purpose of a user-input call. Such a decision is one where the user's answer would change
+which action you take, what it covers, or whether you take it. First identify the information that you are missing and
+the action that depends on it, then write the question in full sentences that name both, so that the user can answer
+it.
 
-Do not call a user-input tool to send a status update, progress report or other commentary that needs no answer, such
-as what you are doing, what you have finished, or that work is continuing. Such a message needs no answer even when it
-is worded as a question.
+When you have a status update, progress report or other note that needs no answer, such as what you are doing, what
+you have finished, or that work is continuing, put it in your response text and keep working. Such a note needs no
+answer even when it is worded as a question.
 
-Do not call a user-input tool to ask for information or authorization that the user has already given in this
-conversation, such as the option to use, the scope of a change, or permission to go ahead.
+When the user has already given information or authorization in this conversation, such as the option to use, the
+scope of a change, or permission to go ahead, act on it as given.
 
 Before a user-input call, compare its question with every question that you have asked in this conversation, answered
 or not. If one asks for the same decision, even in other words, do not call: act on its answer, or keep waiting for it.
@@ -37,11 +43,17 @@ The answer to a `request_user_input_async` call arrives later as a user message,
 reason to ask again. An active goal or an instruction to continue authorizes continuing that work: never ask whether to
 continue, pause or keep working on it.
 
-Send a message, update, follow-up, correction or progress question for a subagent or the parent agent with a
-collaboration tool, such as `send_message` or `followup_task`, addressed to that agent. This includes telling a
-subagent about a change to a file it works from, following up on a result it sent, and asking about its progress after
-a wait times out. Call collaboration tools directly, like any other function tool. They are not in `exec`'s `ALL_TOOLS`
-or `tools`, so their absence there does not mean that they are unavailable.
+When you decide to start a subagent, make `spawn_agent` your next tool call. When you have a message, update,
+follow-up, correction or progress question for a subagent or the parent agent, send it to that agent with
+`send_message` or `followup_task`. This includes telling a subagent about a change to a file it works from, following
+up on a result it sent, and asking about its progress after a wait times out. These collaboration tools are direct
+function tools that you call like any other function tool; `exec`'s `ALL_TOOLS` and `tools` do not list them, so call
+them directly.
 
-A user-input call never cancels, stops or retracts anything, including an earlier call made by mistake. After a
-mistaken call, say so in at most one sentence of your response, and do not make another user-input call about it.
+When a message from a subagent or the parent agent arrives, such as a `MESSAGE` or a `FINAL_ANSWER`, it comes from that
+agent. If it needs a reply, send the reply to that agent with `send_message` or `followup_task`. If it leaves a
+decision that only the user can make, ask the user as described above. Otherwise, continue with your next work step.
+
+A user-input call only asks the user a question, and it leaves earlier calls and work in progress as they are. After a
+mistaken user-input call, state that it was a mistake in one sentence of your response and continue your work; that
+sentence is the whole correction.
