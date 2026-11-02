@@ -199,6 +199,9 @@ public final class ClaudeSessions extends RunnerSessions
 	 * how Claude resolves paths. A file that is not a JSON object is reported too, because
 	 * the settings it holds cannot be checked. The host's user settings are not consulted, because the runner's
 	 * settings replace them.
+	 * <p>
+	 * A project settings file that is not a regular file, such as the placeholder that a sandbox mounts over an absent
+	 * file, counts as absent.
 	 */
 	@Override
 	public Optional<String> findHeldOutExposure(Path project) throws IOException
@@ -206,7 +209,11 @@ public final class ClaudeSessions extends RunnerSessions
 		requireThat(project, "project").isNotNull();
 		List<Path> files = new ArrayList<>(managedSettings);
 		for (String name : PROJECT_SETTINGS)
-			files.add(project.resolve(name));
+		{
+			Path file = project.resolve(name);
+			if (Files.isRegularFile(file))
+				files.add(file);
+		}
 		JsonMapper json = JsonMapper.builder().build();
 		for (Path file : files)
 		{

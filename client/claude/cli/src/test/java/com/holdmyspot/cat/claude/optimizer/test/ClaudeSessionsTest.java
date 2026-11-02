@@ -606,6 +606,55 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that a project settings file that is not a regular file, such as the {@code /dev/null} that a sandboxed
+	 * Claude Code session mounts over each project settings file that does not exist, counts as absent, so
+	 * {@code start} gets past the check as it does for a project without the file, and that a real settings file
+	 * beside such a placeholder is still read. A directory stands in for the placeholder, because a test cannot mount
+	 * a device and a directory is not a regular file on every platform.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 */
+	@Test
+	public void treatsNonRegularSettingsAsAbsent() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-exposure-")).
+					toRealPath();
+				Path project = Files.createDirectories(root.resolve("project"));
+				Path local = project.resolve(".claude/settings.local.json");
+				Files.createDirectories(project.resolve(".claude/settings.json"));
+				Files.createDirectories(local);
+				ClaudeSessions sessions = exposurePort(jvm, root, root.resolve("managed-settings.json"));
+
+				requireThat(sessions.findHeldOutExposure(project), "placeholders").isEmpty();
+
+				Files.delete(local);
+				Files.writeString(local, "{\"sandbox\": {\"enabled\": false}}", UTF_8);
+
+				requireThat(sessions.findHeldOutExposure(project).orElseThrow(), "realFile").
+					contains(local.toString()).contains("sandbox.enabled");
+			}
+		}
+	}
+
+	/**
+	 * Returns the runner settings of a port whose host configuration directory is {@code root} and that starts no
+	 * session.
+	 *
+	 * @param jvm  the borrowed process scope
+	 * @param root the host configuration directory
+	 * @return the settings
+	 */
+	private static RunnerSessions.Settings exposureSettings(JvmScope jvm, Path root)
+	{
+		return new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "", false, Map.of(), root,
+			HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+	}
+
+	/**
 	 * Creates a port that reads the given managed settings file and whose host configuration directory is
 	 * {@code root}.
 	 *
@@ -616,12 +665,11 @@ public final class ClaudeSessionsTest
 	 */
 	private static ClaudeSessions exposurePort(JvmScope jvm, Path root, Path managed)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "", false,
-			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
-		{
-			throw new AssertionError("No session may start");
-		}, List.of(managed));
+		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(exposureSettings(jvm, root),
+			(_, _, _) ->
+			{
+				throw new AssertionError("No session may start");
+			}, List.of(managed));
 	}
 
 	/**
