@@ -32,9 +32,10 @@ import java.util.Set;
  * A campaign's fork of a base worktree: the recorded prompt system and the detached optimization worktree at the base's
  * {@code HEAD}.
  * <p>
- * Creating a fork requires a clean base worktree, ensures through the base's {@code .gitignore} that Git ignores CAT's
- * session directories so that campaign files never make the base dirty, records the files, and adds the optimization
- * worktree. Every Git operation runs through {@link Git}.
+ * Creating a fork requires a clean base worktree and a directory in which this process can register the optimization
+ * worktree with Git, ensures through the base's {@code .gitignore} that Git ignores CAT's session directories so that
+ * campaign files never make the base dirty, records the files, and adds the optimization worktree. Every Git operation
+ * runs through {@link Git}.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -103,7 +104,8 @@ public final class Fork implements ForkView
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
 	 *   participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
-	 * @throws WorkspaceException if the base has uncommitted changes or a participant does not exist
+	 * @throws WorkspaceException if the base has uncommitted changes, a participant does not exist, or this process
+	 *   cannot write the directory in which Git registers linked worktrees
 	 * @throws IOException if Git fails or the files cannot be copied
 	 */
 	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer)
@@ -127,22 +129,53 @@ public final class Fork implements ForkView
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
 	 *                                  participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
-	 * @throws WorkspaceException       if the base has uncommitted changes or a participant does not exist
+	 * @throws WorkspaceException       if the base has uncommitted changes, a participant does not exist, or this
+	 *                                  process cannot write the directory in which Git registers linked worktrees
 	 * @throws IOException              if Git fails or the files cannot be copied
 	 */
 	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
 		CharacterDevices devices) throws IOException
+	{
+		return create(base, campaign, participants, replacer, devices, new FileSystemWritableDirectories());
+	}
+
+	/**
+	 * Forks a base worktree, as {@link #create(Path, Path, Set, FileReplacer, CharacterDevices)} does, confirming
+	 * through {@code writable} that this process can write the directory in which Git registers the optimization
+	 * worktree.
+	 *
+	 * @param base         the base worktree, which is the top-level directory of its repository
+	 * @param campaign     the campaign storage directory
+	 * @param participants ignored paths and ignored files relative to {@code base}, and absolute paths outside it, that
+	 *                     take part in the campaign; tracked files, and the existing targets outside {@code base} that
+	 *                     recorded links reach, always take part
+	 * @param replacer     replaces the fork's stored participant selection
+	 * @param devices      tells which files are character devices
+	 * @param writable     confirms that this process can write a directory
+	 * @return the fork
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
+	 *                                  participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
+	 * @throws WorkspaceException       if the base has uncommitted changes, a participant does not exist, or this
+	 *                                  process cannot write the directory in which Git registers linked worktrees
+	 * @throws IOException              if Git fails or the files cannot be copied
+	 */
+	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
+		CharacterDevices devices, WritableDirectories writable) throws IOException
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(participants, "participants").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(devices, "devices").isNotNull();
+		requireThat(writable, "writable").isNotNull();
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		Git git = new Git(normalizedBase);
 		requireTopLevel(git, normalizedBase);
 		requireClean(git, normalizedBase, devices);
+		Path registrations = worktreeRegistrations(git);
+		requireWritable(writable, registrations);
 		Optional<String> ignoreNotice = SessionIgnore.ensure(normalizedBase).
 			map(SessionIgnore.IgnoreNotice::forAgent);
 
@@ -157,7 +190,7 @@ public final class Fork implements ForkView
 		boolean worktreeAdded = false;
 		try
 		{
-			git.run("worktree", "add", "--detach", worktree.toString(), "HEAD");
+			addWorktree(git, worktree, registrations);
 			worktreeAdded = true;
 			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, ignoreNotice, replacer);
 			// Git checks out the tracked files only, so write the participants and the recorded modes as well
@@ -394,6 +427,86 @@ public final class Fork implements ForkView
 	static Path worktreeOf(Path campaign)
 	{
 		return campaign.resolve("worktree");
+	}
+
+	/**
+	 * Returns the directory in which Git registers a repository's linked worktrees: {@code worktrees} in its common Git
+	 * directory, which the main worktree and every linked worktree share.
+	 *
+	 * @param git the base's Git
+	 * @return the directory's absolute path
+	 * @throws IOException if Git fails
+	 */
+	private static Path worktreeRegistrations(Git git) throws IOException
+	{
+		String common = git.run("rev-parse", "--path-format=absolute", "--git-common-dir").strip();
+		return Path.of(common).resolve("worktrees").normalize();
+	}
+
+	/**
+	 * Requires that this process can write the directory in which Git registers linked worktrees, creating it if it
+	 * does not exist.
+	 *
+	 * @param writable      confirms that this process can write a directory
+	 * @param registrations the directory
+	 * @throws WorkspaceException if this process cannot write the directory
+	 */
+	private static void requireWritable(WritableDirectories writable, Path registrations) throws WorkspaceException
+	{
+		try
+		{
+			writable.requireWritable(registrations);
+		}
+		catch (IOException e)
+		{
+			WorkspaceException refusal = unwritableRegistrations(registrations);
+			refusal.initCause(e);
+			throw refusal;
+		}
+	}
+
+	/**
+	 * Adds the optimization worktree, detached at the base's {@code HEAD}.
+	 *
+	 * @param git           the base's Git
+	 * @param worktree      the optimization worktree's directory
+	 * @param registrations the directory in which Git registers linked worktrees
+	 * @throws WorkspaceException if Git cannot write {@code registrations} because the file system is read-only or
+	 *                            denies the write
+	 * @throws IOException        if Git fails otherwise
+	 */
+	private static void addWorktree(Git git, Path worktree, Path registrations) throws IOException
+	{
+		try
+		{
+			git.run("worktree", "add", "--detach", worktree.toString(), "HEAD");
+		}
+		catch (IOException e)
+		{
+			String message = e.getMessage();
+			if (message == null)
+				throw e;
+			// Git names the entry that it could not create below the registrations directory and the system's reason
+			boolean deniedWrite = message.contains("Read-only file system") || message.contains("Permission denied");
+			if (!deniedWrite || !message.contains(registrations.getFileName().toString()))
+				throw e;
+			WorkspaceException refusal = unwritableRegistrations(registrations);
+			refusal.initCause(e);
+			throw refusal;
+		}
+	}
+
+	/**
+	 * Returns the refusal, for the user, of a fork whose worktree Git cannot register.
+	 *
+	 * @param registrations the directory in which Git registers linked worktrees
+	 * @return the refusal
+	 */
+	private static WorkspaceException unwritableRegistrations(Path registrations)
+	{
+		return new WorkspaceException("CAT cannot create the optimization worktree: this session cannot write " +
+			registrations + ". Allow this session to write that directory, for example in your harness's sandbox " +
+			"settings, then run start again.");
 	}
 
 	/**

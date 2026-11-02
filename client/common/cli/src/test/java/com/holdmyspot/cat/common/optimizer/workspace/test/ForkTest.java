@@ -22,9 +22,11 @@ import com.holdmyspot.cat.common.test.FileTrees;
 import com.holdmyspot.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -709,6 +711,73 @@ public final class ForkTest
 				contains("check-ignore").contains("status 128");
 			requireThat(campaign.resolve("worktree"), "worktree").isDirectory();
 			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
+		}
+	}
+
+	/**
+	 * Verifies that a session that cannot write the directory in which Git registers linked worktrees is refused with
+	 * a message for the user that names that directory, before anything is created: no campaign storage, no worktree,
+	 * no {@code .gitignore} change. A check that denies every directory stands in for a sandbox that mounts the
+	 * repository's Git directory read-only.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void refusesUnwritableRegistrations() throws IOException
+	{
+		// Requirement: R-W2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Git git = new Git(base);
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
+			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
+			Path registrations = base.toRealPath().resolve(".git/worktrees");
+
+			try
+			{
+				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), (_, _) -> false, directory ->
+				{
+					throw new AccessDeniedException(directory.toString(), null, "Read-only file system");
+				});
+				throw new AssertionError("A session that cannot write the worktree registrations must be refused");
+			}
+			catch (WorkspaceException e)
+			{
+				requireThat(e.getMessage(), "message").contains("cannot create the optimization worktree").
+					contains("cannot write " + registrations + ".").contains("then run start again");
+			}
+			requireThat(Files.exists(campaign, NOFOLLOW_LINKS), "campaignExists").isFalse();
+			requireThat(worktreeCount(git), "worktrees").isEqualTo(1L);
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
+		}
+	}
+
+	/**
+	 * Verifies that a fork of a linked worktree checks the registrations directory of the repository's common Git
+	 * directory, where Git registers every linked worktree, and that a writable one lets the fork add its worktree.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void checksCommonRegistrationsOfLinkedBase() throws IOException
+	{
+		// Requirement: R-W2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path main = repository(root);
+			Path base = root.resolve("linked");
+			new Git(main).run("worktree", "add", "--quiet", "--detach", base.toString(), "HEAD");
+			writeFile(base.resolve("ignored.md"), "ignored", READ_WRITE);
+			List<Path> checked = new ArrayList<>();
+
+			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), (_, _) -> false,
+				checked::add);
+
+			requireThat(checked, "checked").isEqualTo(List.of(main.toRealPath().resolve(".git/worktrees")));
+			requireThat(base.resolve(CAMPAIGNS + "/c1/worktree/prompt.md"), "prompt").isRegularFile();
 		}
 	}
 

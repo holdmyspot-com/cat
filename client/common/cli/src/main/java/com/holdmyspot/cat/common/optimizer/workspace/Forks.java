@@ -17,7 +17,8 @@ public interface Forks
 	 * @param campaign the campaign storage directory
 	 * @param participants the paths to record beyond the tracked files
 	 * @return the fork
-	 * @throws WorkspaceException if the base has uncommitted changes or a participant does not exist
+	 * @throws WorkspaceException if the base has uncommitted changes, a participant does not exist, or this process
+	 *   cannot write the directory in which Git registers linked worktrees
 	 * @throws IOException if the fork cannot be created
 	 */
 	ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException;
