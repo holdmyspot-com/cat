@@ -33,6 +33,13 @@ namespace, so the launcher would fail. HotSpot shares a JVM's performance data t
 write the same file, so the launchers' JVM options include `-XX:+PerfDisableSharedMem`, which keeps that data inside the
 process. Do not hide part of the file system from a launcher or give one launcher a different template.
 
+A launcher's program downloads a release of CAT through the proxy that `HTTPS_PROXY` names, and a proxy that asks for a
+Basic login names it in the proxy URL. The JDK refuses to send a Basic login when it opens an HTTPS tunnel through a
+proxy unless the property `jdk.http.auth.tunneling.disabledSchemes` is empty, and without the login such a proxy
+answers 407, so the launchers' JVM options include `-Djdk.http.auth.tunneling.disabledSchemes=`, which clears the
+property. Do not remove it from the options or add `Basic` back to it. The download sends the login only to the proxy
+whose URL holds it.
+
 One Bats test, `jlink-launchers.bats`, verifies the launcher template for all launchers against a built image. Do not
 add a Bats test for a launcher or a harness merely to show that its launcher starts its program, runs from a path with
 spaces, or works in another locale; extend that test instead when the template changes. Test a program's own behavior,
