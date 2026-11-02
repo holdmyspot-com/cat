@@ -57,6 +57,10 @@ public final class ClaudeRunner
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
 	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
+	/**
+	 * The name of the file in Claude's configuration directory that holds Claude's login.
+	 */
+	private static final String LOGIN = ".credentials.json";
 	private final Waiting waiting;
 
 	/**
@@ -162,7 +166,7 @@ public final class ClaudeRunner
 				hostConfiguration.resolve("settings.json"), isolatedProcessHome, requestAccess);
 			if (requiresCredentialFiles(isolatedEnvironment))
 			{
-				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(".credentials.json"));
+				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(LOGIN));
 			}
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
 				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
@@ -289,9 +293,13 @@ public final class ClaudeRunner
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
 	 * file and directory under the run root except the session's project, home, Claude temporary directory and
 	 * evidence, and every harness's login and configuration files in the session's home and in the user's home, as
-	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The session therefore cannot read the
-	 * runner's records of its own run or of any other run, the workspace files of any run, or a login or configuration
-	 * that would let a harness started from a command reach the model provider. A denied directory that holds the
+	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except the session's own login: the
+	 * {@code .credentials.json} in the Claude configuration directory of the session's home, the copy of the user's
+	 * login that the runner puts there when the caller's environment holds no Claude authentication variable, which a
+	 * Claude process that the session starts from a command, such as the prompt optimizer's sessions, reads. The
+	 * session therefore cannot read the runner's records of its own run or of any other run, the workspace files of any
+	 * run, any login but that copy, such as the user's own Claude and Codex logins, or a configuration that would let a
+	 * harness started from a command reach the model provider. A denied directory that holds the
 	 * session's project, home, Claude temporary directory or evidence, such as the project that holds the run root, is
 	 * replaced by every file and directory under it except those and the directories that lead to them.
 	 * <p>
@@ -365,9 +373,11 @@ public final class ClaudeRunner
 		List<Path> harnessFiles = new ArrayList<>(SessionCommandLimits.harnessFiles(environment, platform));
 		harnessFiles.addAll(SessionCommandLimits.harnessFiles(SessionCommandLimits.homeEnvironment(home, platform),
 			platform));
+		// A Claude process that a command starts, such as a prompt optimizer's session, reads the session's own login
+		Path ownLogin = home.resolve(".claude").resolve(LOGIN).toAbsolutePath().normalize();
 		for (Path file : harnessFiles)
 		{
-			if (Files.exists(file, NOFOLLOW_LINKS))
+			if (!file.equals(ownLogin) && Files.exists(file, NOFOLLOW_LINKS))
 				result.add(file);
 		}
 		result.add(home.resolve(".claude").resolve("settings.json"));

@@ -60,6 +60,10 @@ public final class CodexRunner
 	 */
 	private static final String CONFIGURATION = "config.toml";
 	/**
+	 * The name of the file in the Codex home that holds Codex's login.
+	 */
+	private static final String LOGIN = "auth.json";
+	/**
 	 * The path of a Codex plugin's manifest, relative to the plugin directory.
 	 */
 	private static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
@@ -167,7 +171,7 @@ public final class CodexRunner
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);
-			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of("auth.json"));
+			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of(LOGIN));
 			Path isolatedConfiguration = isolatedHome.resolve(CONFIGURATION);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
 			SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
@@ -519,16 +523,18 @@ public final class CodexRunner
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
 	 * and directory under the run root except the session's project, home and evidence, the directory where Codex logs
 	 * the session's events, and every harness's login and configuration files in the session's home and in the user's
-	 * home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except the session's own
-	 * {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's tool
-	 * output limit. The session therefore cannot read the runner's records of its own run or of any other run, the
-	 * workspace files of any run, or a login or the user's configuration. The method creates the session log
-	 * directory, because the sandbox skips a denied path that does not exist yet; for the same reason, it leaves out a
-	 * login or configuration file that does not exist.
+	 * home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's
+	 * own Codex home: its {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads
+	 * the session's tool output limit, and its {@code auth.json}, the copy of the user's login that the runner puts
+	 * there, which a Codex process that the session starts from a command, such as the prompt optimizer's sessions,
+	 * reads. The session therefore cannot read the runner's records of its own run or of any other run, the workspace
+	 * files of any run, any login but that copy, such as the user's own Codex and Claude logins, or the user's
+	 * configuration. The method creates the session log directory, because the sandbox skips a denied path that does
+	 * not exist yet; for the same reason, it leaves out a login or configuration file that does not exist.
 	 * <p>
 	 * The result names the run root and each directory that the caller denies rather than each path under them, which
 	 * also denies the runs that start after the session. It omits a path inside another directory that it names, except
-	 * the session log directory and the login inside the session's home. Every platform's sandbox still lets the
+	 * the session log directory and the denied files inside the session's home. Every platform's sandbox still lets the
 	 * session read and write its project and home inside a denied directory, such as the project that holds the run
 	 * root, but the Linux sandbox would also hide read-only evidence there. The result therefore omits each directory
 	 * that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, which the app-server's
@@ -616,10 +622,13 @@ public final class CodexRunner
 		commandEnvironment.put(CODEX_HOME, home.toString());
 		List<Path> harnessFiles = new ArrayList<>(SessionCommandLimits.harnessFiles(environment, platform));
 		harnessFiles.addAll(SessionCommandLimits.harnessFiles(commandEnvironment, platform));
+		// CAT's read-part command reads the session's tool output limit from the session's configuration, and a Codex
+		// process that a command starts, such as a prompt optimizer's session, reads the session's own login
+		Set<Path> readable = Set.of(home.resolve(CONFIGURATION).toAbsolutePath().normalize(),
+			home.resolve(LOGIN).toAbsolutePath().normalize());
 		for (Path file : harnessFiles)
 		{
-			// CAT's read-part command reads the session's tool output limit from the session's configuration
-			if (file.equals(home.resolve(CONFIGURATION).toAbsolutePath().normalize()))
+			if (readable.contains(file))
 				continue;
 			if (Files.exists(file, NOFOLLOW_LINKS))
 				result.add(file);

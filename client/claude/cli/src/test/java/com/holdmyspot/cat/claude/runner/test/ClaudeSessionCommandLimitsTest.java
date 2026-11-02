@@ -74,6 +74,14 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 	}
 
 	@Override
+	protected Path ownLogin(Fixture fixture)
+	{
+		// The runner copies the user's login into the configuration directory in the run's home, which
+		// CLAUDE_CONFIG_DIR names for the session
+		return fixture.runHome().resolve(".claude/.credentials.json");
+	}
+
+	@Override
 	protected Set<String> credentialsGivenToCommands()
 	{
 		return Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN");

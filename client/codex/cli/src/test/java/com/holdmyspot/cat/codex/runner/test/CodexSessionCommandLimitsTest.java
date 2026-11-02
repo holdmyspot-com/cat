@@ -102,4 +102,11 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 		// no login
 		return List.of(fixture.runHome().resolve("config.toml"));
 	}
+
+	@Override
+	protected Path ownLogin(Fixture fixture)
+	{
+		// The runner copies the user's login into the run's home, which is the session's Codex home
+		return fixture.runHome().resolve("auth.json");
+	}
 }

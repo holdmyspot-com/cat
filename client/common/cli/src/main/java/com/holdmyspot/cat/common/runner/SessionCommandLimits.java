@@ -13,9 +13,13 @@ import java.util.Set;
 /**
  * The limits of the commands that a session runs, the same in every harness. A session's commands run with the run's
  * isolated home as their home directory, and cannot read any harness's login or configuration files, in the run's
- * home or the user's, nor any run under the run root except their own. The commands of a Codex session receive none
- * of the {@link #CREDENTIAL_VARIABLES}. The commands of a Claude session receive Claude's connection credentials,
- * which the session's parent has too.
+ * home or the user's, except the session's own, nor any run under the run root except their own. The session's own
+ * files are its login in the run's home, the copy of the user's login that its runner puts there, which a harness that
+ * the session starts from a command reads, and for a Codex session also its {@code config.toml}, which holds no login
+ * and from which CAT's {@code read-part} command reads the session's tool output limit. The user's own logins and the
+ * other harness's files in the run's home stay unreadable. The commands of a Codex session receive none of the
+ * {@link #CREDENTIAL_VARIABLES}. The commands of a Claude session receive Claude's connection credentials, which the
+ * session's parent has too.
  * <p>
  * The user's harness directories stay readable apart from those files, because the plugins installed in a session
  * link to files there. Each runner applies these limits through its harness's own sandbox settings and environment.
@@ -60,7 +64,8 @@ public final class SessionCommandLimits
 
 	/**
 	 * Returns the login and configuration files of every harness that an environment names, which a session's
-	 * commands must not read: Claude Code's {@code .credentials.json}, {@code settings.json} and
+	 * commands must not read, apart from the session's own files that a runner leaves readable, as
+	 * {@link SessionCommandLimits} describes: Claude Code's {@code .credentials.json}, {@code settings.json} and
 	 * {@code settings.local.json} in its configuration directory and its {@code .claude.json}, and Codex's
 	 * {@code auth.json} and {@code config.toml} in its home. The configuration directory is both the one that
 	 * {@code CLAUDE_CONFIG_DIR} names and {@code .claude} in the home directory, and the Codex home is both the one that

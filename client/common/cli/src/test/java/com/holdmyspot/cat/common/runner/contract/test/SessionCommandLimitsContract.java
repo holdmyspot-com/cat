@@ -35,6 +35,10 @@ public abstract class SessionCommandLimitsContract
 	 * The value of each credential variable in the user's environment.
 	 */
 	private static final String CREDENTIAL = "credential";
+	/**
+	 * The names of the files that hold a harness's login: Claude Code's and Codex's.
+	 */
+	private static final Set<String> LOGINS = Set.of(".credentials.json", "auth.json");
 
 	/**
 	 * Creates the contract.
@@ -126,6 +130,16 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
+	 * Returns the session's own login in the run's home: the copy of the user's login that the runner under test puts
+	 * there for its harness, and leaves readable to the session's commands, because a harness that the session starts
+	 * from a command, such as the prompt optimizer's sessions, reads it.
+	 *
+	 * @param fixture the user and run
+	 * @return the login file
+	 */
+	protected abstract Path ownLogin(Fixture fixture);
+
+	/**
 	 * Returns the harness credential variables that the runner under test lets the session's commands receive, because
 	 * its harness passes them to every command it starts.
 	 *
@@ -181,8 +195,8 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * Verifies that the session's commands may not read any harness's login or configuration files, in the user's
-	 * home, in the Codex home that the user names, or in the run's home, while the rest of the user's harness
-	 * directories, where installed plugins live, stay readable.
+	 * home, in the Codex home that the user names, or in the run's home, except the session's own login in the run's
+	 * home, while the rest of the user's harness directories, where installed plugins live, stay readable.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -213,6 +227,7 @@ public abstract class SessionCommandLimitsContract
 					expected.add(file.toRealPath());
 			}
 			expected.removeAll(realPaths(readableHarnessFiles(fixture)));
+			expected.removeAll(realPaths(List.of(ownLogin(fixture))));
 
 			Set<Path> denied = realPaths(limits.deniedReads());
 			for (Path file : expected)
@@ -226,6 +241,50 @@ public abstract class SessionCommandLimitsContract
 						withContext(directory, "directory").withContext(path, "deniedRead").isFalse();
 				}
 			}
+		}
+	}
+
+	/**
+	 * Verifies that the session's commands may read the session's own login in the run's home, which a harness that
+	 * they start reads, while every other login that a harness started from a command could find stays unreadable: the
+	 * user's logins of both harnesses, in the user's home and in the Codex home that the user names, and the other
+	 * harness's login in the run's home.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void commandsReadOwnLogin() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = fixture(cleanup);
+			Limits limits = limits(fixture, 0);
+			Platform platform = Platform.current();
+			Path ownLogin = ownLogin(fixture).toAbsolutePath().normalize();
+			Map<String, String> commandEnvironment = new HashMap<>(limits.commandEnvironment());
+			commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(fixture.runHome(), platform));
+			Set<Path> otherLogins = new LinkedHashSet<>();
+			for (Map<String, String> environment : List.of(fixture.userEnvironment(), commandEnvironment))
+			{
+				for (Path file : SessionCommandLimits.harnessFiles(environment, platform))
+				{
+					if (LOGINS.contains(file.getFileName().toString()) && Files.exists(file))
+						otherLogins.add(file.toAbsolutePath().normalize());
+				}
+			}
+			otherLogins.remove(ownLogin);
+			// The fixture gives the user both harnesses' logins and the run's home both harnesses' logins
+			Path codexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME")).toAbsolutePath().normalize();
+			Path userHome = fixture.userHome().toAbsolutePath().normalize();
+			Path runHome = fixture.runHome().toAbsolutePath().normalize();
+			requireThat(otherLogins, "otherLogins").containsAll(List.of(userHome.resolve(".claude/.credentials.json"),
+				userHome.resolve(".codex/auth.json"), codexHome.resolve("auth.json")));
+			requireThat(otherLogins.stream().anyMatch(login -> login.startsWith(runHome)), "runHomeLogin").isTrue();
+
+			requireThat(ownLogin, "ownLogin").isRegularFile();
+			requireThat(readable(limits, ownLogin), "ownLoginReadable").isTrue();
+			for (Path login : otherLogins)
+				requireThat(readable(limits, login), "readable").withContext(login, "login").isFalse();
 		}
 	}
 
@@ -348,17 +407,17 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Indicates whether the session's commands may read a directory: no denied path covers it, or the sandbox grants
-	 * it, as writable or readable, by a path deeper than every denied path that covers it.
+	 * Indicates whether the session's commands may read a file or directory: no denied path covers it, or the sandbox
+	 * grants it, as writable or readable, by a path deeper than every denied path that covers it.
 	 *
-	 * @param limits    the limits of the session's commands
-	 * @param directory an existing directory
+	 * @param limits the limits of the session's commands
+	 * @param path   an existing file or directory
 	 * @return {@code true} if the commands may read it
 	 * @throws IOException if a real path cannot be read
 	 */
-	private static boolean readable(Limits limits, Path directory) throws IOException
+	private static boolean readable(Limits limits, Path path) throws IOException
 	{
-		Path real = directory.toRealPath();
+		Path real = path.toRealPath();
 		int deepestDenial = -1;
 		for (Path denied : realPaths(limits.deniedReads()))
 		{

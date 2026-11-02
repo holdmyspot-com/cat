@@ -333,14 +333,15 @@ public final class ClaudeRunnerTest
 
 	/**
 	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
-	 * manifest, lock and initial project, the login that the run copied from the host, and the other runs and
-	 * workspaces under the run root, besides the paths that the caller denies. The session can still read its project,
-	 * the rest of its home, its Claude temporary directory and the evidence that it validates.
+	 * manifest, lock and initial project, its own settings, and the other runs and workspaces under the run root,
+	 * besides the paths that the caller denies. The session can still read its project, the rest of its home, including
+	 * the login that the run copied from the host, which a Claude process that a command starts reads, its Claude
+	 * temporary directory and the evidence that it validates.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesReadingRunRecordsOtherRunsAndLogin() throws IOException
+	public void deniesReadingRunRecordsAndOtherRuns() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -353,8 +354,8 @@ public final class ClaudeRunnerTest
 			Path directory = run.directory();
 			manager.snapshotProject(run);
 			Files.createDirectories(directory.resolve("claude"));
-			Path login = Files.writeString(Files.createDirectories(directory.resolve("home/.claude")).
-				resolve(".credentials.json"), "{}");
+			Files.writeString(Files.createDirectories(directory.resolve("home/.claude")).resolve(".credentials.json"),
+				"{}");
 			HarnessRun other = manager.create("claude");
 			HarnessRun evidence = manager.create("claude");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
@@ -366,7 +367,7 @@ public final class ClaudeRunnerTest
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
 				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
-				directory.resolve("initial-project"), login, other.directory(), evidence.directory().resolve("project"),
+				directory.resolve("initial-project"), other.directory(), evidence.directory().resolve("project"),
 				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
 				evidence.directory().resolve(".lock"), workspaces, directory.resolve("home/.claude/settings.json")));
 		}

@@ -626,10 +626,10 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that on Linux a session that reads no evidence under the run root is denied the whole run root as one
-	 * path, besides the Codex session logs and login in its home and the paths that the caller denies. The sandbox
-	 * keeps the session's project and home writable inside the denied root, so the session reads them while every
-	 * other run, including one that starts later, and the workspaces stay hidden. The session log directory exists so
-	 * that the sandbox can deny it.
+	 * path, besides the Codex session logs in its home and the paths that the caller denies, but not its own login in
+	 * its home, which a Codex process that a command starts reads. The sandbox keeps the session's project and home
+	 * writable inside the denied root, so the session reads them while every other run, including one that starts
+	 * later, and the workspaces stay hidden. The session log directory exists so that the sandbox can deny it.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -646,7 +646,7 @@ public final class CodexRunnerTest
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
-			Path login = Files.writeString(directory.resolve("home/auth.json"), "{}");
+			Files.writeString(directory.resolve("home/auth.json"), "{}");
 			manager.create("codex");
 			Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
@@ -655,7 +655,7 @@ public final class CodexRunnerTest
 				Platform.LINUX_X64, Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root,
-				directory.resolve("home/sessions"), login));
+				directory.resolve("home/sessions")));
 			requireThat(Files.isDirectory(directory.resolve("home/sessions")), "sessionLogsExist").isTrue();
 		}
 	}
@@ -704,8 +704,9 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that on macOS and Windows a session is denied the whole run root as one path, besides the Codex session
-	 * logs and login in its home and the paths that the caller denies. Their sandboxes keep the session's project and
-	 * home readable and writable inside the denied root.
+	 * logs in its home and the paths that the caller denies, but not its own login in its home, which a Codex process
+	 * that a command starts reads. Their sandboxes keep the session's project and home readable and writable inside the
+	 * denied root.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -722,7 +723,7 @@ public final class CodexRunnerTest
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
-			Path login = Files.writeString(directory.resolve("home/auth.json"), "{}");
+			Files.writeString(directory.resolve("home/auth.json"), "{}");
 			manager.create("codex");
 			Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
@@ -733,7 +734,7 @@ public final class CodexRunnerTest
 					platform, Map.of());
 
 				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(heldOut, root,
-					directory.resolve("home/sessions"), login));
+					directory.resolve("home/sessions")));
 			}
 		}
 	}
@@ -775,7 +776,8 @@ public final class CodexRunnerTest
 	/**
 	 * Verifies that on Linux a session that validates evidence under the run root is denied each other run by its own
 	 * path rather than the whole root, because the sandbox would hide read-only evidence inside a denied root. The
-	 * session can still read its project, the rest of its home and the evidence that it validates.
+	 * session can still read its project, the rest of its home, including its own login, and the evidence that it
+	 * validates.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -792,7 +794,7 @@ public final class CodexRunnerTest
 			HarnessRun run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
-			Path login = Files.writeString(directory.resolve("home/auth.json"), "{}");
+			Files.writeString(directory.resolve("home/auth.json"), "{}");
 			HarnessRun other = manager.create("codex");
 			HarnessRun evidence = manager.create("codex");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
@@ -804,7 +806,7 @@ public final class CodexRunnerTest
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
 				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
-				directory.resolve("initial-project"), directory.resolve("home/sessions"), login, other.directory(),
+				directory.resolve("initial-project"), directory.resolve("home/sessions"), other.directory(),
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
 				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"), workspaces));
 		}
