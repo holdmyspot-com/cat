@@ -31,6 +31,14 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	asked for another optimization round, then another certification round (2026-11-01). Each turn runs through the
 	unchanged `/home/gili/cat/worktrees/e5-codex3/step.sh <label> <prompt> <thread>`, with a receipt appended to
 	`receipts/authorization.txt` before it; the last label used is in `receipts/status.txt` and the latest event files.
+	Stalled since 2026-11-02T07:22Z (user asked to investigate): continue51, on the plugin of `d320cfb8b5`, ended at
+	08:16Z asking whether to fix CAT. Round 129 reserved attempts 516–518 after its approach ranking, and no author
+	session ever got a run directory. Cause, reproduced on the installed plugin: `RoleRules.fill` loads the prompt
+	author's rules with no rule variables, so `prompt-file-dependencies.md`'s `${CAT_RULE_STRONGEST_IMPLEMENTER}` (from
+	`ed84d09ab7`) throws "Unknown CAT rule variable STRONGEST_IMPLEMENTER" before the runner starts. After three failures
+	the driver stops each slice, and `StatusReport.of` drops that failure once any attempt has an outcome, so `run`
+	kept returning `running`. Fixes are delegated (rule variables for role rules; reporting the failure); E5 resumes
+	after they are integrated, released and installed by the user.
 - **Open:** final gates 2, 4, 5, 6 and 7 (§9), which need G1, G2, G4, G6, G7 and G9 (interim mapping) and R-I1's native
 	evidence. Live checks: Codex E3 (the approved handbook-motto exemption as revision feedback, scope `weakest_cell`,
 	stop, accept without certification); the Codex halves of WI-121 and WI-122; both skills of WI-120; the WI-119 skill
