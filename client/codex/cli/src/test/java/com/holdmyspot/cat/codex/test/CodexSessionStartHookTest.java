@@ -673,13 +673,17 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Copies the Codex rules that CAT bundles into a plugin directory.
+	 * Copies the bundled Codex rules and their common request-execution dependency into a plugin directory.
 	 *
 	 * @param plugin the plugin directory
 	 * @throws IOException if the rules cannot be copied
 	 */
 	static void copyBundledRules(Path plugin) throws IOException
 	{
+		Path commonRule = plugin.resolve("rules/common/request-execution.md");
+		Files.createDirectories(commonRule.getParent());
+		Files.copy(Path.of("../../common/rules/src/main/resources/rules/common/request-execution.md"), commonRule);
+
 		Path source = Path.of("../rules/src/main/resources/rules/codex");
 		Path target = plugin.resolve("rules/codex");
 		try (Stream<Path> files = Files.walk(source))

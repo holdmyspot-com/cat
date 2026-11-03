@@ -2,6 +2,8 @@
 
 ## Design Goals
 
+- Ask the user only for unresolved product decisions or material architecture/design decisions; choose and verify
+	implementation approaches that meet the governing contract and remain maintainable over the long term.
 - Reuse an established answer, investigation, or completed action when it still resolves the current request, instead
 	of repeating work because the current agent context is incomplete.
 - Answer a question about content already in the conversation from that content, consulting other sources first only
@@ -11,6 +13,18 @@
 	which the claim fails, so that the result does not silently rest on a false premise.
 
 ## Guidance
+
+Before asking the user a question, identify the unresolved product decision or material architecture/design decision
+that requires their input. Ask only when the request, prior decisions, governing contract, and available evidence do
+not settle it. Explain the concrete alternatives, their consequences, and your recommendation. A question about missing
+information qualifies only when that information is needed to settle such a decision.
+
+Resolve implementation questions yourself using the best long-term approach: satisfy the governing contract, preserve
+coherent boundaries and established conventions, address the cause, and prefer maintainable solutions with appropriate
+verification. Do not add speculative scope or abstractions. Worker assignments, agent messages, test reruns, fixture
+repairs, and routine choices of APIs, dependencies, or serialization are implementation work; perform them within the
+authorized scope without asking the user to choose or confirm them. Classify a choice by its material consequences,
+not by calling it architecture or design.
 
 Before escalating a choice during authorized implementation, such as asking the user or the delegating agent to choose
 or pausing work for that choice, and before deciding whether such a choice is a product-policy gap, lazy load

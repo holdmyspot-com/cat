@@ -1,8 +1,12 @@
+---
+depends-on:
+  - ../common/request-execution.md
+---
 # Requesting User Input
 
 ## Design Goals
 
-- Make every user-input tool call carry a complete question for the user whose answer would change a concrete decision
+- Make every user-input tool call carry a complete question eligible under Request Execution whose answer would change a concrete decision
 	that the agent faces, and make that question name the missing information and the action that depends on it.
 - Deliver every status update, progress report or other note that needs no answer in the agent's response text, so
 	that no user-input call carries one.
@@ -24,11 +28,10 @@
 This rule governs only calls to a user-input tool, such as `request_user_input` or `request_user_input_async`. A
 user-input tool reaches only the user. In each situation below, take the action that it names.
 
-When you need a decision that only the user can make, call a user-input tool with one complete question; asking for
-such a decision is the one purpose of a user-input call. Such a decision is one where the user's answer would change
-which action you take, what it covers, or whether you take it. First identify the information that you are missing and
-the action that depends on it, then write the question in full sentences that name both, so that the user can answer
-it.
+Apply Request Execution's question eligibility before selecting a user-input tool. For an eligible unresolved decision,
+call the tool with one complete question naming the missing input and the action that depends on it. An answer changing
+your next action is not sufficient eligibility: implementation alternatives also change actions and remain yours to
+resolve.
 
 When you have a status update, progress report or other note that needs no answer, such as what you are doing, what
 you have finished, or that work is continuing, put it in your response text and keep working. Such a note needs no

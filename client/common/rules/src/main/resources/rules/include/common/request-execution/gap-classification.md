@@ -8,8 +8,8 @@ Choosing a persistence schema for an already-selected recovery does not change t
 is outside the work. Only unresolved, contract-compliant alternatives with materially different observable consequences
 require the user's product-policy choice.
 -->
-- Escalate only unresolved product-policy choices, to the user or to the agent that delegated the work; resolve
-	required implementation and internal-design gaps from the governing contract and acceptance evidence without
+- Escalate only unresolved product-policy or material architecture/design choices, to the user or to the agent that
+	delegated the work; resolve required implementation and internal-design gaps from the governing contract and acceptance evidence without
 	transferring routine design work to the requester.
 
 ## Guidance
@@ -21,8 +21,8 @@ evidence from the governing contract, then classify the gap:
 	is absent or incorrect. Implement and verify that behavior in the responsible component.
 - An **internal-design gap** exists when the contract and acceptance evidence determine the observable behavior but an
 	API, schema, component boundary, failure mechanism, or other internal design is missing. Select the smallest coherent
-	design that preserves the contract, define its failure behavior and tests, and verify it without asking the
-	requester to choose routine implementation mechanics.
+	maintainable design that preserves the contract over the long term, define its failure behavior and tests, and verify
+	it without asking the requester to choose routine implementation mechanics.
 - A **product-policy gap** exists only when at least two resolutions remain compatible with the governing contract and
 	available evidence, but they differ in user-visible behavior, user authority, externally documented interface,
 	product scope, statistical meaning, irreversible external state, or another material trade-off. State the concrete
@@ -31,6 +31,12 @@ evidence from the governing contract, then classify the gap:
 - An **optional improvement** is not required to satisfy the governing contract. Keep it outside the authorized scope
 	and do not let it block required work.
 
+An unresolved architecture/design choice warrants a question only when its alternatives have material consequences
+that the governing contract and available evidence do not settle, such as different durability guarantees, trust
+boundaries, deployment models, or operating costs. Present those consequences and a recommendation; a missing internal
+API, schema, or component boundary by itself remains an internal-design gap.
+
 Do not classify a decision as product policy merely because the contract omits an internal mechanism, a reviewer prefers
-another design, or the implementation needs a new internal artifact or command option. While a genuine product-policy
-choice remains unresolved, pause only work whose behavior depends on it and continue independent authorized work.
+another design, or the implementation needs a new internal artifact or command option. While an eligible product-policy
+or architecture/design choice remains unresolved, pause only work whose behavior depends on it and continue independent
+authorized work.
