@@ -1,44 +1,61 @@
-## Install, update or uninstall
+## Install CAT or upgrade its trusted updater
 
-Ask your agent in Claude Code or Codex to install CAT from https://github.com/holdmyspot-com/cat/releases, or have it
-run one of these commands. Each downloads only this release's files and checks each one against the SHA-256 digest
-that it holds before it runs anything from it. Inside an agent session, `--harness` may be left out.
+Run setup yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Choose your harness explicitly.
+Each entry script downloads only ${GITHUB_REF_NAME} assets and verifies their embedded SHA-256 digests before use.
 
-Install or update to ${GITHUB_REF_NAME}, with CAT's updater:
+Install CAT and its separate trusted updater:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness claude
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness codex
 ```
 
-Install or update only CAT's updater:
+For an existing CAT installation, add the updater or upgrade only the updater and its policy:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness claude --updater-only
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness codex --updater-only
 ```
 
-Uninstall, keeping CAT's updater (in Codex, add `--delete-data` to delete CAT's data too):
+Codex on Windows, in PowerShell:
+
+```powershell
+& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex
+```
+
+Add `-UpdaterOnly` to migrate an existing installation or upgrade only the updater. Claude Code on Windows uses the
+POSIX command in Git Bash. If setup cannot write a required path, run the command it prints outside the agent sandbox.
+Setup prints the updater exemption for you to add; it never changes your permission settings. Restart the harness.
+
+## Routine updates and trust
+
+After setup and the exemption, CAT's `update` skill requests approved releases through the installed trusted updater.
+It verifies signed metadata and archive digests, stages the plugin, and activates it without reinstalling CAT or
+rewriting harness configuration. It cannot upgrade the updater or change its policy. Only the most recent successful
+activation has a rollback record; run the updater's `rollback --harness <id>` yourself to restore the previous
+installation.
+
+This release's manifest, `cat-release-manifest.json`, is signed with the Ed25519 public key whose X.509 encoding has
+SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`. Initial setup relies on HTTPS to GitHub and the release's embedded
+archive digests; compare this fingerprint through a source you trust. Hooks and MCP servers may execute outside the
+shell sandbox as your user: authentication approves release provenance, not the harmlessness of its code.
+
+See [installation, exemptions, supported platforms, migration, and rollback](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md).
+
+## Uninstall
+
+Uninstall CAT while keeping its updater:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness claude --uninstall
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness codex --uninstall
 ```
 
-Codex on Windows, in PowerShell, install or update to ${GITHUB_REF_NAME}:
+On Windows:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/${GITHUB_REF_NAME}/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Version ${GITHUB_REF_NAME}
+& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex -Uninstall
 ```
 
-Codex on Windows, in PowerShell, uninstall (add `-DeleteData` to delete CAT's data too):
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/${GITHUB_REF_NAME}/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Uninstall
-```
-
-If the command reports that it cannot write a path, it changed nothing: run the command that it prints outside the
-agent's sandbox, such as in a terminal or, in Claude Code, at the prompt prefixed with `! `.
-
-The release's signed manifest, `cat-release-manifest.json`, is signed with the Ed25519 key whose public key has the
-SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`.
+Codex keeps CAT's data unless you add `--delete-data` (PowerShell `-DeleteData`). Remove the updater separately as
+described in the installation guide.

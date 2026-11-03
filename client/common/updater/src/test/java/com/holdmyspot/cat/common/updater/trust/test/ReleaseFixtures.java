@@ -91,7 +91,8 @@ public final class ReleaseFixtures
 	{
 		return TrustPolicy.of(keys, RELEASE_BASE_URL,
 			ReleaseVersion.parse(minimum), maximumMajor,
-			Map.of("harness-a", Path.of("/harness-homes/harness-a").toAbsolutePath()));
+			Map.of("harness-a", Path.of(System.getProperty("cat.updater.test.directory")).
+				resolve("harness-homes/harness-a")));
 	}
 
 	/**

@@ -15,8 +15,8 @@ trap cat_finish EXIT HUP INT TERM
 # The Codex archive for Windows holds only batch launchers, which Codex runs from PowerShell
 case "$(uname -s)" in
 	MINGW*|MSYS*)
-		echo "On Windows, install CAT for Codex from PowerShell with bootstrap-codex.ps1, as described in" \
-			"https://github.com/holdmyspot-com/cat/blob/HEAD/docs/installation.md" >&2
+		echo "On Windows, install CAT for Codex by running this command in PowerShell:" >&2
+		echo "  & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v${CAT_VERSION}/cat.ps1))) -Harness codex" >&2
 		exit 1
 		;;
 esac

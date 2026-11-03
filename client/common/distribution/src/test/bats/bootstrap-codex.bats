@@ -16,7 +16,7 @@ load bootstrap-helpers
 	[[ "${output}" == *"CAT installer library not found"* ]]
 }
 
-@test "Codex installer on Windows names the PowerShell installer before changing anything" {
+@test "Codex installer on Windows names the pinned PowerShell entry before changing anything" {
 	create_fake_engine_command codex
 	create_fake_uname MINGW64_NT-10.0-26100
 	artifact="$(create_test_artifact codex)"
@@ -25,7 +25,8 @@ load bootstrap-helpers
 		sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
 
 	[ "${status}" -eq 1 ]
-	[[ "${output}" == *"bootstrap-codex.ps1"* ]]
+	[[ "${output}" == *"https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1"* ]]
+	[[ "${output}" == *"-Harness codex"* ]]
 	[ ! -e "${CODEX_HOME}/plugins" ]
 	[ ! -s "${COMMAND_LOG}" ]
 }

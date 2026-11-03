@@ -2,11 +2,16 @@ module com.holdmyspot.cat.distribution.test
 {
 	requires com.holdmyspot.cat.distribution;
 	requires com.holdmyspot.cat.common.cli;
+	requires com.holdmyspot.cat.common.updater;
+	requires com.holdmyspot.cat.claude.updater;
+	requires com.holdmyspot.cat.codex.updater;
 	requires com.holdmyspot.cat.common.cli.test;
 	requires io.github.cowwoc.requirements13.java;
 	requires org.apache.commons.compress;
 	requires org.testng;
 	requires tools.jackson.databind;
+
+	uses com.holdmyspot.cat.common.updater.activation.PluginActivation;
 
 	exports com.holdmyspot.cat.distribution.bundle.test to org.testng;
 	exports com.holdmyspot.cat.distribution.license.test to org.testng;

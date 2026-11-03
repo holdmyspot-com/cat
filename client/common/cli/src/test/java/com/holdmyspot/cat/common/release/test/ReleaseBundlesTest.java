@@ -236,7 +236,8 @@ public final class ReleaseBundlesTest
 
 	/**
 	 * Verifies that a missing installed plugin and a missing bundle lead to a download that is verified, extracted
-	 * into the bundle directory and used, with no temporary directory left beside it.
+	 * into the bundle directory and used, with no temporary directory left beside it. The explicit release location
+	 * is used even when the environment names a different source.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -251,8 +252,9 @@ public final class ReleaseBundlesTest
 			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
 			Path bundlesDirectory = root.resolve("bundles");
 
-			RunnerArtifact result = bundles(bundlesDirectory, release).resolve(root.resolve("not-installed"), HARNESS,
-				MANIFEST, RUNNER);
+			RunnerArtifact result = new ReleaseBundles(bundlesDirectory, release.toUri(), Platform.current(),
+				Map.of("CAT_RELEASE_BASE_URL", root.resolve("missing-release").toUri().toString())).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 
 			Path bundle = bundlesDirectory.resolve(bundleName()).toAbsolutePath().normalize();
 			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
@@ -1266,18 +1268,8 @@ public final class ReleaseBundlesTest
 	@Test
 	public void releaseUriDefaultsToGitHub()
 	{
-		requireThat(ReleaseBundles.releaseUri(Map.of()), "uri").isEqualTo(URI.create(
+		requireThat(ReleaseBundles.releaseUri(), "uri").isEqualTo(URI.create(
 			"https://github.com/holdmyspot-com/cat/releases/download/v" + PluginInfo.CAT_VERSION));
-	}
-
-	/**
-	 * Verifies that {@code CAT_RELEASE_BASE_URL} replaces the release's location, as it does for the installer.
-	 */
-	@Test
-	public void releaseUriHonorsOverride()
-	{
-		requireThat(ReleaseBundles.releaseUri(Map.of("CAT_RELEASE_BASE_URL", "file:///srv/release/")), "uri").
-			isEqualTo(URI.create("file:///srv/release"));
 	}
 
 	/**

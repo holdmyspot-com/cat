@@ -48,7 +48,7 @@ public final class ClaudeArtifact
 	 *                    Windows); {@code CLAUDE_CONFIG_DIR}, the Claude Code configuration directory, which defaults
 	 *                    to {@code .claude} in the home directory; {@code CAT_CLAUDE_MARKETPLACE_ROOT}, CAT's Claude
 	 *                    marketplace, which defaults to {@code plugins/cat-marketplace} in the configuration
-	 *                    directory; and {@code CAT_RELEASE_BASE_URL}, which replaces the release's location
+	 *                    directory
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
 	 * @throws NullPointerException if {@code environment} is null
 	 * @throws IOException          if the home directory is not set, or the artifact cannot be downloaded, verified or
@@ -73,7 +73,7 @@ public final class ClaudeArtifact
 			marketplace = configurationDirectory.resolve("plugins/cat-marketplace");
 		}
 		ReleaseBundles bundles = new ReleaseBundles(ReleaseBundles.directory(home),
-			ReleaseBundles.releaseUri(environment), Platform.current(), environment);
+			ReleaseBundles.releaseUri(), Platform.current(), environment);
 		return bundles.resolve(marketplace.resolve("plugins/cat"), "claude", Path.of(".claude-plugin/plugin.json"),
 			"claude-runner").format();
 	}

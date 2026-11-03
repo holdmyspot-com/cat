@@ -49,6 +49,14 @@ public final class CodexWindowsInstallerTest
 	 * The name of the Windows release archive of the Codex plugin, without its extension.
 	 */
 	private static final String RELEASE_NAME = "cat-codex-v1.0-windows-x64";
+	/**
+	 * The pinned download directory of the fixture's release.
+	 */
+	private static final String RELEASE_URL = "https://github.com/holdmyspot-com/cat/releases/download/v1.0";
+	/**
+	 * The top directory of the fixture's Windows updater archive.
+	 */
+	private static final String UPDATER_RELEASE_NAME = "cat-updater-v1.0-windows-x64";
 
 	/**
 	 * Returns the folder that holds the Codex installation scripts.
@@ -114,8 +122,8 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
-	 * Verifies that installing the release tag downloads the archive for Windows, verifies its checksum, and installs
-	 * the plugin that it holds.
+	 * Verifies that the release entry requests only its pinned plugin and updater URLs, installs the plugin, and
+	 * supplies the recorded Codex home to updater setup.
 	 *
 	 * @throws IOException          if the files cannot be written or the script cannot be run
 	 * @throws InterruptedException if the thread is interrupted while the script runs
@@ -128,12 +136,19 @@ public final class CodexWindowsInstallerTest
 			Fixture fixture = new Fixture(cleanup);
 			fixture.release(fixture.artifact(), false);
 
-			Result result = fixture.run(fixture.fakeDownloads() + install("-Source v1.0"));
+			Result result = fixture.run(fixture.fakeDownloads() + fixture.entry(""));
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
 			List<String> commands = fixture.commands();
-			requireThat(commands, "commands").contains("download " + RELEASE_NAME + ".tar.gz").
-				contains("download SHA256SUMS.txt").contains("codex plugin add cat@cat").contains("plugin-info");
+			requireThat(commands, "commands").
+				contains("download " + RELEASE_URL + "/" + RELEASE_NAME +
+					".tar.gz").contains("codex plugin add cat@cat").contains("plugin-info").
+				contains("updater setup --harness codex --home \"" + fixture.codexHome + "\"");
+			List<String> downloads = commands.stream().filter(line -> line.startsWith("download ")).toList();
+			requireThat(downloads, "downloads").isEqualTo(List.of(
+				"download " + RELEASE_URL + "/" + RELEASE_NAME + ".tar.gz",
+				"download " + RELEASE_URL + "/" +
+					UPDATER_RELEASE_NAME + ".tar.gz"));
 		}
 	}
 
@@ -151,12 +166,36 @@ public final class CodexWindowsInstallerTest
 			Fixture fixture = new Fixture(cleanup);
 			fixture.release(fixture.artifact(), true);
 
+			Result result = fixture.run(fixture.fakeDownloads() + fixture.entry(""));
+
+			requireThat(result.status(), "status").isNotEqualTo(0);
+			requireThat(result.output(), "output").contains("SHA-256 digest");
+			requireThat(fixture.commands(), "commands").doesNotContain("codex plugin add cat@cat");
+			requireThat(Files.exists(fixture.codexHome.resolve("plugins/cat-marketplace")), "marketplace").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the archive installer refuses a release tag without downloading or changing an installation.
+	 *
+	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
+	 * @throws InterruptedException if PowerShell is interrupted
+	 */
+	@Test
+	public void installerRefusesReleaseTag() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			fixture.installed();
+			Map<String, String> before = snapshot(fixture.codexHome);
+
 			Result result = fixture.run(fixture.fakeDownloads() + install("-Source v1.0"));
 
 			requireThat(result.status(), "status").isNotEqualTo(0);
-			requireThat(result.output(), "output").contains("checksum");
-			requireThat(fixture.commands(), "commands").doesNotContain("codex plugin add cat@cat");
-			requireThat(Files.exists(fixture.codexHome.resolve("plugins/cat-marketplace")), "marketplace").isFalse();
+			requireThat(result.output(), "output").contains("Expected an extracted artifact directory");
+			requireThat(fixture.commands(), "commands").isEmpty();
+			requireThat(snapshot(fixture.codexHome), "installation").isEqualTo(before);
 		}
 	}
 
@@ -270,9 +309,7 @@ public final class CodexWindowsInstallerTest
 				requireThat(result.output(), "output").
 					contains("CAT changed nothing because it cannot write " + fullPath(config) + ".").
 					contains("$env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
-						"https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/lifecycle/src/main/" +
-						"resources/install/install-codex.ps1))) -Source '").
-					contains(RELEASE_NAME + "'");
+						"https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness codex");
 				requireAgentToldToHandCommandToUser(result.output());
 				requireThat(fixture.commands(), "commands").isEmpty();
 				requireThat(snapshot(fixture.codexHome), "after").isEqualTo(before, "before");
@@ -407,8 +444,7 @@ public final class CodexWindowsInstallerTest
 				contains("CAT changed nothing because it cannot write " + root + ".");
 			requireThat(lines(result.output()), "outputLines").
 				contains("  $env:CODEX_HOME = " + literal(codexHome) + "; & ([scriptblock]::Create((irm " +
-					"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
-					"resources/install/bootstrap-codex.ps1))) -Uninstall");
+					"https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness codex -Uninstall");
 			requireThat(fixture.commands(), "commands").isEmpty();
 			requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
 		}
@@ -518,8 +554,7 @@ public final class CodexWindowsInstallerTest
 					contains("CAT changed nothing because it cannot write " + fullPath(config) + ".");
 				requireThat(lines(result.output()), "outputLines").
 					contains("  $env:CODEX_HOME = " + literal(fixture.codexHome) + "; & ([scriptblock]::Create((irm " +
-						"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/" +
-						"resources/install/bootstrap-codex.ps1))) -Uninstall");
+						"https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness codex -Uninstall");
 				requireAgentToldToHandCommandToUser(result.output());
 				requireThat(fixture.commands(), "commands").isEmpty();
 				requireThat(snapshot(fixture.root), "after").isEqualTo(before, "before");
@@ -532,38 +567,86 @@ public final class CodexWindowsInstallerTest
 	}
 
 	/**
-	 * Verifies that the bootstrap script runs the installer of the latest release, which it fetches from that
-	 * release's tag, and asks it to install that tag. A stand-in installer records the tag that it receives;
-	 * {@link #installsVerifiedRelease()} covers what the real installer does with a tag.
+	 * Verifies that repository and release URL overrides cannot redirect the pinned entry's downloads.
 	 *
-	 * @throws IOException          if the files cannot be written or the script cannot be run
-	 * @throws InterruptedException if the thread is interrupted while the script runs
+	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
+	 * @throws InterruptedException if PowerShell is interrupted
 	 */
 	@Test
-	public void bootstrapRunsLatestReleaseInstaller() throws IOException, InterruptedException
+	public void entryIgnoresRepositoryOverrides() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
-			String fakeRestMethod = """
-				function Invoke-RestMethod
-				{
-					param([string] $Uri, [switch] $UseBasicParsing)
-					Add-Content -LiteralPath $env:COMMAND_LOG -Value "fetch $Uri"
-					if ($Uri -like '*/releases/latest') { return [pscustomobject]@{ tag_name = 'v9.8' } }
-					return 'param([string] $Source) Add-Content -LiteralPath $env:COMMAND_LOG -Value "install $Source"'
-				}
-				""";
+			fixture.release(fixture.artifact(), false);
 
-			Result result = fixture.run(fakeRestMethod + "& ([scriptblock]::Create([IO.File]::ReadAllText(" +
-				literal(INSTALL.resolve("bootstrap-codex.ps1")) + ")))\n");
+			Result result = fixture.run(fixture.fakeDownloads() +
+				"$env:CAT_BOOTSTRAP_REPOSITORY = 'someone-else/cat'\n" +
+				"$env:CAT_RELEASE_BASE_URL = 'https://example.invalid/releases'\n" + fixture.entry("-UpdaterOnly"));
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
+			requireThat(fixture.commands().getFirst(), "download").isEqualTo(
+				"download " + RELEASE_URL + "/" +
+					UPDATER_RELEASE_NAME + ".tar.gz");
+		}
+	}
+
+	/**
+	 * Verifies that updater-only setup preserves the installed plugin and runs no installer.
+	 *
+	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
+	 * @throws InterruptedException if PowerShell is interrupted
+	 */
+	@Test
+	public void updaterOnlyKeepsPlugin() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			fixture.release(fixture.artifact(), false);
+			fixture.installed();
+			Map<String, String> before = snapshot(fixture.codexHome);
+
+			Result result = fixture.run(fixture.fakeDownloads() + fixture.entry("-UpdaterOnly"));
+
+			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
+			requireThat(snapshot(fixture.codexHome), "plugin").isEqualTo(before);
 			requireThat(fixture.commands(), "commands").isEqualTo(List.of(
-				"fetch https://api.github.com/repos/holdmyspot-com/cat/releases/latest",
-				"fetch https://raw.githubusercontent.com/holdmyspot-com/cat/v9.8/client/codex/lifecycle/src/main/resources/" +
-					"install/install-codex.ps1",
-				"install v9.8"));
+				"download " + RELEASE_URL + "/" +
+					UPDATER_RELEASE_NAME + ".tar.gz",
+				"updater setup --harness codex --home \"" + fixture.codexHome + "\""));
+		}
+	}
+
+	/**
+	 * Verifies that an altered updater archive is refused before installation or setup and preserves both existing
+	 * installations.
+	 *
+	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
+	 * @throws InterruptedException if PowerShell is interrupted
+	 */
+	@Test
+	public void tamperedUpdaterKeepsInstallations() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup);
+			fixture.release(fixture.artifact(), false);
+			Files.writeString(fixture.release.resolve(UPDATER_RELEASE_NAME + ".tar.gz"), "tampered");
+			fixture.installed();
+			Path updater = Files.createDirectories(fixture.root.resolve("local app data/cat-updater/1.0"));
+			Files.writeString(updater.resolve("marker"), "installed updater");
+			Map<String, String> pluginBefore = snapshot(fixture.codexHome);
+			Map<String, String> updaterBefore = snapshot(updater.getParent());
+
+			Result result = fixture.run(fixture.fakeDownloads() + fixture.entry(""));
+
+			requireThat(result.status(), "status").isNotEqualTo(0);
+			requireThat(result.output(), "output").contains("SHA-256 digest");
+			requireThat(snapshot(fixture.codexHome), "plugin").isEqualTo(pluginBefore);
+			requireThat(snapshot(updater.getParent()), "updater").isEqualTo(updaterBefore);
+			requireThat(fixture.commands().stream().filter(line -> !line.startsWith("download ")).toList(),
+				"programs").isEmpty();
 		}
 	}
 
@@ -726,11 +809,13 @@ public final class CodexWindowsInstallerTest
 		{
 			if (!Platform.current().isWindows())
 				throw new SkipException("The PowerShell installer installs CAT only on Windows");
-			this.root = cleanup.add(Files.createTempDirectory("codex installer-")).toAbsolutePath();
+			Path target = INSTALL.resolve("../../../../../../common/distribution/target").normalize();
+			this.root = cleanup.add(Files.createTempDirectory(target, "codex installer-")).toAbsolutePath();
 			this.codexHome = root.resolve("codex home");
 			this.bin = Files.createDirectories(root.resolve("bin"));
 			this.log = root.resolve("commands.log");
 			this.release = Files.createDirectories(root.resolve("release"));
+			Files.createDirectories(root.resolve("temp"));
 			Files.writeString(log, "");
 			Files.writeString(bin.resolve("codex.cmd"), "@echo codex %*>>\"%COMMAND_LOG%\"\r\n");
 		}
@@ -752,6 +837,7 @@ public final class CodexWindowsInstallerTest
 			Files.writeString(artifact.resolve("bin/plugin-info.cmd"),
 				"@echo plugin-info>>\"%COMMAND_LOG%\"\r\n");
 			Files.createDirectories(artifact.resolve("install/migrations"));
+			Files.copy(INSTALL.resolve("install-codex.ps1"), artifact.resolve("install/install-codex.ps1"));
 			Files.writeString(artifact.resolve("install/migrations/registry.tsv"),
 				"# target-version<TAB>script-relative-to-this-directory\n");
 			Files.writeString(artifact.resolve("install/codex-marketplace.json"), "{\"name\": \"cat\"}\n");
@@ -781,15 +867,38 @@ public final class CodexWindowsInstallerTest
 		}
 
 		/**
-		 * Publishes an artifact as the Windows release archive with its checksum list.
+		 * Publishes plugin and updater archives and fills the entry template with their pinned digests.
 		 *
-		 * @param artifact      the artifact
-		 * @param wrongChecksum {@code true} to publish a checksum that does not match the archive
-		 * @throws IOException if the files cannot be written
+		 * @param artifact      the extracted plugin
+		 * @param wrongChecksum indicates whether to alter the plugin after pinning its digest
+		 * @throws IOException if the fixture cannot be written
 		 */
 		private void release(Path artifact, boolean wrongChecksum) throws IOException
 		{
-			Path archive = release.resolve(RELEASE_NAME + ".tar.gz");
+			Path pluginArchive = archive(artifact);
+			Path updater = Files.createDirectories(root.resolve(UPDATER_RELEASE_NAME + "/bin")).getParent();
+			Files.writeString(updater.resolve("bin/cat-updater.cmd"),
+				"@echo updater %*>>\"%COMMAND_LOG%\"\r\n");
+			Path updaterArchive = archive(updater);
+			String sums = sha256(pluginArchive) + "  " + pluginArchive.getFileName() + "\n" +
+				sha256(updaterArchive) + "  " + updaterArchive.getFileName();
+			Path template = INSTALL.resolve("../../../../../../common/lifecycle/src/main/release/cat.ps1").normalize();
+			Files.writeString(release.resolve("cat.ps1"), Files.readString(template).
+				replace("@CAT_RELEASE_TAG@", "v1.0").replace("@CAT_SHA256SUMS@", sums));
+			if (wrongChecksum)
+				Files.writeString(pluginArchive, "tampered");
+		}
+
+		/**
+		 * Packs one fixture directory as a release asset.
+		 *
+		 * @param artifact the directory to pack, including its top directory name
+		 * @return the archive
+		 * @throws IOException if the files cannot be read or written
+		 */
+		private Path archive(Path artifact) throws IOException
+		{
+			Path archive = release.resolve(artifact.getFileName() + ".tar.gz");
 			try (OutputStream out = Files.newOutputStream(archive);
 				TarArchiveOutputStream tar = new TarArchiveOutputStream(new GzipCompressorOutputStream(out));
 				Stream<Path> files = Files.walk(artifact))
@@ -797,7 +906,7 @@ public final class CodexWindowsInstallerTest
 				tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
 				for (Path file : files.toList())
 				{
-					String name = RELEASE_NAME + "/" + artifact.relativize(file).toString().replace('\\', '/');
+					String name = artifact.getFileName() + "/" + artifact.relativize(file).toString().replace('\\', '/');
 					TarArchiveEntry entry = new TarArchiveEntry(file, name);
 					tar.putArchiveEntry(entry);
 					if (Files.isRegularFile(file))
@@ -805,12 +914,19 @@ public final class CodexWindowsInstallerTest
 					tar.closeArchiveEntry();
 				}
 			}
-			String checksum;
-			if (wrongChecksum)
-				checksum = "0".repeat(64);
-			else
-				checksum = sha256(archive);
-			Files.writeString(release.resolve("SHA256SUMS.txt"), checksum + "  " + RELEASE_NAME + ".tar.gz\n");
+			return archive;
+		}
+
+		/**
+		 * Returns the statement that invokes the generated release entry.
+		 *
+		 * @param arguments the entry's switches
+		 * @return the PowerShell statement
+		 */
+		private String entry(String arguments)
+		{
+			return "& ([scriptblock]::Create([IO.File]::ReadAllText(" + literal(release.resolve("cat.ps1")) +
+				"))) " + arguments + "\n";
 		}
 
 		/**
@@ -845,7 +961,7 @@ public final class CodexWindowsInstallerTest
 				{
 					param([string] $Uri, [string] $OutFile, [switch] $UseBasicParsing)
 					$name = $Uri.Substring($Uri.LastIndexOf('/') + 1)
-					Add-Content -LiteralPath $env:COMMAND_LOG -Value "download $name"
+					Add-Content -LiteralPath $env:COMMAND_LOG -Value "download $Uri"
 					Copy-Item -LiteralPath (Join-Path %s $name) -Destination $OutFile
 				}
 				""".formatted(literal(release));
@@ -883,6 +999,10 @@ public final class CodexWindowsInstallerTest
 			String script = "$ErrorActionPreference = 'Stop'\n" +
 				"$env:COMMAND_LOG = " + literal(log) + "\n" +
 				"$env:CODEX_HOME = " + literal(codexHome) + "\n" +
+				"$env:LOCALAPPDATA = " + literal(root.resolve("local app data")) + "\n" +
+				"$env:TEMP = " + literal(root.resolve("temp")) + "\n" +
+				"$env:USERPROFILE = " + literal(root) + "\n" +
+				"Remove-Item Env:CAT_CODEX_DATA_DIR, Env:CAT_CODEX_MARKETPLACE_ROOT -ErrorAction SilentlyContinue\n" +
 				"$env:PATH = " + literal(bin) + " + ';' + $env:PATH\n" +
 				"try\n{\n" + statements + "}\ncatch\n{\n" +
 				"\t[Console]::Out.WriteLine('error: ' + $_.Exception.Message)\n\texit 1\n}\n";

@@ -14,10 +14,23 @@
 	<name>Distribution</name>
 
 	<properties>
+		<cat.release.public-key></cat.release.public-key>
 		<cat.config.directory>${project.basedir}/../../config</cat.config.directory>
 	</properties>
 
 	<dependencies>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-common-updater</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-claude-updater</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-codex-updater</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-agents</artifactId>
@@ -155,6 +168,7 @@
 								<argument>${project.basedir}/../../..</argument>
 								<argument>${project.build.directory}/modules</argument>
 								<argument>${project.build.directory}/release</argument>
+								<argument>${cat.release.public-key}</argument>
 							</arguments>
 						</configuration>
 					</execution>

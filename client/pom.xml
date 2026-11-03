@@ -118,6 +118,11 @@
 			</dependency>
 			<dependency>
 				<groupId>com.holdmyspot.cat</groupId>
+				<artifactId>client-claude-updater</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-claude-cli</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -134,6 +139,11 @@
 			<dependency>
 				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-claude-skills</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.holdmyspot.cat</groupId>
+				<artifactId>client-codex-updater</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

@@ -32,6 +32,8 @@ setup()
 	export SINGLE_COMMAND_URL="${RELEASE_DOWNLOAD_URL}/cat.sh"
 	# The harness that runs the tests, and the user's own overrides, must not decide what the single command does
 	unset CLAUDECODE CODEX_THREAD_ID CAT_BOOTSTRAP_REPOSITORY CAT_RELEASE_BASE_URL
+	# Output capture belongs to the parent command, not the generated hook's isolated harness environment.
+	unset CAT_RUN_PART_OUTPUT
 	mkdir -p "${FAKE_BIN}" "${HOME}" "${INSTALL_DIRECTORY}" "${TMPDIR}"
 	cp -R "${COMMON_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	cp -R "${CLAUDE_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"

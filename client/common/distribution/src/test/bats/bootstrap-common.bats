@@ -366,6 +366,21 @@ v2.0" ''; do
 	done < "${TEST_ROOT}/SHA256SUMS.txt"
 }
 
+@test "generator writes the PowerShell entry with the pinned tag and every digest" {
+	printf '%064d  cat-harness-a-v1.0-windows-x64.tar.gz\n%064d  cat-updater-v1.0-windows-x64.tar.gz\n' 1 2 \
+		> "${TEST_ROOT}/SHA256SUMS.txt"
+
+	run sh "${COMMON_RELEASE_DIRECTORY}/generate-cat-sh.sh" "${COMMON_RELEASE_DIRECTORY}/cat.ps1" v1.0 \
+		"${TEST_ROOT}/SHA256SUMS.txt" "${TEST_ROOT}/cat.ps1"
+
+	[ "${status}" -eq 0 ]
+	grep -Fx "\$CatReleaseTag = 'v1.0'" "${TEST_ROOT}/cat.ps1"
+	while IFS= read -r line; do
+		grep -Fx "${line}" "${TEST_ROOT}/cat.ps1"
+	done < "${TEST_ROOT}/SHA256SUMS.txt"
+	! grep -E 'raw.githubusercontent.com|HEAD|api.github.com|@CAT_' "${TEST_ROOT}/cat.ps1" || false
+}
+
 @test "release notes give the release's entry commands, which download from that release" {
 	repository="${BATS_TEST_DIRNAME}/../../../../../.."
 	render="$(grep -F 'release-notes.md >' "${repository}/.github/workflows/release.yml" | sed 's/^ *//')"
@@ -384,11 +399,9 @@ v2.0" ''; do
 		grep -Fx "curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude${operation}" "${notes}"
 		grep -Fx "curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness codex${operation}" "${notes}"
 	done
-	grep -Fx "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/\
-lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Version v1.0" "${notes}"
-	grep -Fx "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/codex/\
-lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Uninstall" "${notes}"
-	grep -F "cannot write a path" "${notes}"
+	grep -Fx "& ([scriptblock]::Create((irm ${RELEASE_DOWNLOAD_URL}/cat.ps1))) -Harness codex" "${notes}"
+	grep -Fx "& ([scriptblock]::Create((irm ${RELEASE_DOWNLOAD_URL}/cat.ps1))) -Harness codex -Uninstall" "${notes}"
+	grep -F "cannot write a required path" "${notes}"
 	grep -F "outside the" "${notes}"
 	export PATH="${FAKE_BIN}:${PATH}"
 

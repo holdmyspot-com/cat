@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.security.KeyPair;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -87,6 +88,11 @@ public final class ManifestVerifierTest
 	/**
 	 * A manifest that a trusted key signed is accepted, its values are returned, and the result names the key that
 	 * verified it among the policy's keys.
+	 * <p>
+	 * Two keys are needed to check that verification identifies the signer rather than returning the first policy
+	 * key, and one plugin asset and one updater asset exercise both returned asset kinds. Generating the keys, signing
+	 * the manifest and verifying and parsing it can take one second or longer during a parallel build. A pre-verified
+	 * manifest would omit the signature verification that the key-identifier assertion checks.
 	 *
 	 * @throws TrustException if the manifest is refused
 	 * @throws IOException    if the bytes cannot be read
@@ -203,6 +209,9 @@ public final class ManifestVerifierTest
 
 	/**
 	 * A policy whose key list is empty parses, but no manifest verifies against it.
+	 * <p>
+	 * The signature has the documented base64 encoding of 64 bytes so that malformed-signature handling cannot mask
+	 * the empty-key refusal. No key generation or signing is needed: with no trusted key, authentication cannot run.
 	 *
 	 * @throws TrustException if the policy is refused
 	 * @throws IOException    if the bytes cannot be read
@@ -212,8 +221,9 @@ public final class ManifestVerifierTest
 	{
 		byte[] manifest = manifest("1.0").getBytes(UTF_8);
 		TrustPolicy policy = policy(List.of());
+		byte[] signature = Base64.getEncoder().encode(new byte[64]);
 
-		requireThat(refusal(manifest, sign(manifest, keyPair()), policy).reason(), "reason").
+		requireThat(refusal(manifest, signature, policy).reason(), "reason").
 			isEqualTo(Reason.NO_TRUSTED_KEYS);
 	}
 
@@ -279,12 +289,20 @@ public final class ManifestVerifierTest
 	/**
 	 * A signed manifest whose asset name disagrees with the asset's harness, kind, platform or the release version is
 	 * refused.
+	 * <p>
+	 * The five manifests independently exercise harness, version, platform, kind and path mismatches. They share one
+	 * test-local key and trust policy, but each needs its own signature: verification must accept those exact manifest
+	 * bytes before their asset fields are checked. Signing and verifying all five can take one second or longer during
+	 * a parallel build; omitting one would leave its mismatch unchecked by this test.
 	 *
-	 * @throws IOException if the bytes cannot be read
+	 * @throws TrustException if the policy is refused
+	 * @throws IOException    if the bytes cannot be read
 	 */
 	@Test
-	public void refusesAssetNameThatDisagreesWithFields() throws IOException
+	public void refusesAssetNameThatDisagreesWithFields() throws TrustException, IOException
 	{
+		KeyPair signer = keyPair();
+		TrustPolicy policy = policy(List.of(trusted("test-key", signer)));
 		List<String> assets = List.of(
 			asset("cat-harness-b-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
 				"1", ReleaseFixtures.SHA256, "cat-harness-b-v1.0-linux-x64"),
@@ -297,11 +315,19 @@ public final class ManifestVerifierTest
 			asset("../cat-harness-a-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
 				"1", ReleaseFixtures.SHA256, "../cat-harness-a-v1.0-linux-x64"));
 		for (String asset : assets)
-			requireThat(refusal(manifest("1.0", "v1.0", asset)), "reason").isEqualTo(Reason.MALFORMED_MANIFEST);
+		{
+			byte[] manifest = manifest("1.0", "v1.0", asset).getBytes(UTF_8);
+			requireThat(refusal(manifest, sign(manifest, signer), policy).reason(), "reason").
+				isEqualTo(Reason.MALFORMED_MANIFEST);
+		}
 	}
 
 	/**
 	 * A signed manifest that lists the same asset twice is refused.
+	 * <p>
+	 * One key, one signature and two copies of one asset are the minimum inputs that reach duplicate detection after
+	 * authentication. Generating the key, signing and verifying the manifest and parsing both entries can take one
+	 * second or longer during a parallel build. Using an unsigned manifest would test a signature refusal instead.
 	 *
 	 * @throws IOException if the bytes cannot be read
 	 */

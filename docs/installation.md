@@ -1,154 +1,211 @@
 # Install CAT
 
-CAT v1.0 supports Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, macOS ARM64, and Windows x64.
+CAT v1.0 provides distributions for Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, macOS ARM64, and
+Windows x64. Windows ARM64 is not supported. Installation, routine plugin updates, and upgrades of the trusted
+updater are separate operations.
 
-## Install or upgrade
+## Install or migrate an existing installation
 
-### Ask your agent or run the single command
+Run setup yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Setup installs the plugin through the
+harness's plugin mechanism, installs the trusted updater, and records the harness home in its policy. This operation
+may change harness configuration. It does not add sandbox exemptions or permission rules for you.
 
-Ask your agent in Claude Code or Codex: "Install CAT from https://github.com/holdmyspot-com/cat/releases". Each
-release's notes start with the commands that install, update and uninstall that release, which the agent runs. Once CAT
-is installed, ask your agent to update or upgrade CAT, and CAT's `update` skill compares the installed version with the
-latest release and installs the latest release only when they differ, or the release that you name.
+### Linux and macOS
 
-To run the single command yourself, run it in a Claude Code or Codex session, where it detects the harness that runs
-it; in Claude Code, type it at the prompt prefixed with `! `. It installs the latest release, or updates an existing
-installation to the latest release:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh
-```
-
-To install a particular release, such as `v1.0`, end the command with `| sh -s -- v1.0` instead of `| sh`.
-
-In a terminal, outside a session, the command cannot tell which harness to install for, so it exits without changing
-anything and asks you to name one. End the command with `| sh -s -- --harness claude` for Claude Code or
-`| sh -s -- --harness codex` for Codex, followed by a release tag if you want one.
-
-To install into a custom Claude Code configuration directory or Codex home directory, set `CLAUDE_CONFIG_DIR` or
-`CODEX_HOME` for `sh`, as in `| CODEX_HOME=/path/to/codex-home sh`.
-
-Before the command removes or writes anything, it checks that it can write every file and directory that the
-installation changes, such as Codex's `config.toml` or Claude Code's `settings.json`. When it cannot write one, it
-changes nothing, exits with status 77, and prints the path and the command to run. An agent's sandbox usually causes
-this, because it makes the harness's configuration read-only: run the printed command in a terminal, or in Claude Code
-at the prompt prefixed with `! `. If a later step fails, the command prints the same command to run again to finish the
-installation.
-
-Codex on Windows runs commands in PowerShell and installs CAT with the PowerShell command under
-[Codex on Windows](#2-choose-a-coding-harness) below.
-
-After the single command succeeds, [start or resume a session](#3-start-or-resume-a-session).
-
-### 1. Select a release
-
-The per-harness commands below install one harness, as the single command does. Each installs the latest release by
-default. Append a release tag such as `v1.0` after `sh -s`, or `-Version v1.0` after the PowerShell command, to select a
-specific version. Re-run the same command to upgrade CAT to the latest release, or append a release tag to install that
-specific version.
-
-### 2. Choose a coding harness
-
-<details>
-<summary>Claude Code</summary>
-
-On Windows, run these commands in Git Bash, which Claude Code on Windows uses to run commands.
+Choose your harness explicitly. The release URL selects the version; there is no version argument to the script.
 
 ```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh | sh
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex
 ```
 
-To install into a custom Claude Code configuration directory, set `CLAUDE_CONFIG_DIR`:
+For a custom harness home, supply the appropriate variable to setup:
 
 ```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh \
-	| CLAUDE_CONFIG_DIR=/path/to/claude-home sh
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | CLAUDE_CONFIG_DIR=/path/to/claude-home sh -s -- --harness claude
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | CODEX_HOME=/path/to/codex-home sh -s -- --harness codex
 ```
 
-</details>
+### Windows
 
-<details>
-<summary>Codex</summary>
-
-```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh | sh
-```
-
-To install into a custom Codex home directory, set `CODEX_HOME`:
-
-```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh \
-	| CODEX_HOME=/path/to/codex-home sh
-```
-
-</details>
-
-<details>
-<summary>Codex on Windows</summary>
-
-Run this command in PowerShell. It runs the installer as a script block, which PowerShell's execution policy allows:
+For Codex, run the per-release entry script in PowerShell:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.ps1)))
+& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness codex
 ```
 
-To install into a custom Codex home directory, first run `$env:CODEX_HOME = 'C:\path\to\codex-home'`.
+For a custom Codex home, set `$env:CODEX_HOME = 'C:\path\to\codex-home'` before setup. For Claude Code, use the
+POSIX command above in Git Bash with `--harness claude`.
 
-</details>
+### Existing installations and updater upgrades
 
-### 3. Start or resume a session
+To add the trusted updater to an existing CAT installation, run the chosen release's command with `--updater-only`.
+The same mode upgrades the updater and its policy without reinstalling the plugin:
 
-The installer selects the matching platform archive, verifies the release checksum, and installs CAT through the
-harness's plugin mechanism. Start or resume a session after installation.
+```bash
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude --updater-only
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex --updater-only
+```
+
+On Windows, add `-UpdaterOnly` to the PowerShell setup command. Run this yourself; routine updates never replace the
+trusted updater or change its policy. Setup refreshes the trust settings from that release's default policy and
+preserves the other harness's recorded home when you set up both harnesses.
+
+### Add the updater exemption, then restart
+
+Setup prints entries containing the installed launcher's absolute path. Copy the complete entries into your user
+settings, including any quoting and escaping; do not construct them by concatenating a raw path.
+Exempt only the `update` operation, not the entire updater launcher. Then start or restart the harness.
+
+For Claude Code, add the printed command to both `sandbox.excludedCommands` and `permissions.allow`. With the default
+POSIX location, replacing `/home/me` with your actual home directory, the entries are:
+
+```json
+{
+  "sandbox": {
+    "excludedCommands": ["/home/me/.local/share/cat-updater/bin/cat-updater update --harness claude"]
+  },
+  "permissions": {
+    "allow": ["Bash(/home/me/.local/share/cat-updater/bin/cat-updater update --harness claude)"]
+  }
+}
+```
+
+Merge these entries into your existing user settings rather than replacing the file. This exact form permits a
+request for GitHub's latest release, subject to your updater policy. To permit a named release, add an exact entry
+ending in that release, such as `v1.0`, in both lists. A looser `update:*` prefix permits all arguments after `update`;
+the updater still rejects arguments outside its fixed grammar. `permissions.allow` alone does not take a command outside the sandbox. Claude Code may still ask
+you to approve another unsandboxed command unless you set `sandbox.allowUnsandboxedCommands` to `false`.
+
+For Codex, create `~/.codex/rules/cat-updater.rules` (under your recorded Codex home when customized):
+
+```python
+prefix_rule(
+    pattern = ["/home/me/.local/share/cat-updater/bin/cat-updater", "update", "--harness", "codex"],
+    decision = "allow",
+    justification = "Request an authenticated CAT release through the trusted updater",
+)
+```
+
+Use the absolute launcher path printed by setup; on Windows it ends in `.cmd`. This permits appended arguments, so the
+updater validates the whole command itself. Environment prefixes, substitutions, redirections, or compound commands
+may prevent these exemptions from matching. Invoke the launcher directly as one command.
+
+## Permission boundary and installed locations
+
+A project's agent can request only a release version through the updater's `update` operation. It cannot supply a
+repository, download URL, command, installation destination, or replacement trust policy. Setup records the updater's
+protected data and policy paths and the harness homes; later changes to `HOME`, XDG variables, `CLAUDE_CONFIG_DIR`,
+`CODEX_HOME`, or `LOCALAPPDATA` cannot redirect a routine update.
+
+| Location | Linux and macOS | Windows |
+| --- | --- | --- |
+| Updater data | `${XDG_DATA_HOME:-$HOME/.local/share}/cat-updater` | `%LOCALAPPDATA%\cat-updater` |
+| Policy | `${XDG_CONFIG_HOME:-$HOME/.config}/cat-updater/policy.json` | `%LOCALAPPDATA%\cat-updater\policy.json` |
+| Stable launcher | `<data>/bin/cat-updater` | `<data>\bin\cat-updater.cmd` |
+| Runtime | `<data>/<updater-version>/` | `<data>\<updater-version>\` |
+| State and log | `<data>/state/<harness>/` | `<data>\state\<harness>\` |
+
+These environment variables select locations during setup. Relative XDG values are ignored. Setup refuses data or
+policy locations inside the setup working directory, any recorded harness home, or `~/.cat`. Keep these paths outside
+locations writable by your projects and plugins, and exempt only the installed launcher. No step requires root.
+
+The boundary is the harness's shell sandbox plus the updater's validation. Routine activation changes CAT plugin
+files and CAT-owned Codex agent files, while leaving Claude Code's `.claude.json`, `settings.json`,
+`installed_plugins.json`, and `known_marketplaces.json`, and Codex's `config.toml` unchanged.
+
+Hooks and MCP servers can run outside the shell sandbox as your user. Such code can change anything you can change,
+including updater files and policy. Signed release approval authenticates the code you activate; it does not make
+that code harmless. Project-controlled harness hooks, MCP servers, sandbox settings, or injected process variables
+such as `LD_PRELOAD` are outside CAT's boundary. Administrator ownership of updater files is optional additional
+hardening, not a requirement of the per-user installation.
+
+## Approved releases and first-download trust
+
+Each release publishes `cat-release-manifest.json` and its Ed25519 signature. The updater verifies the exact manifest
+bytes against a key in its protected policy, then checks every downloaded plugin archive against the signed size and
+SHA-256 digest. A checksum beside an unauthenticated archive is insufficient.
+
+The default policy permits versions at least `1.0` with major version at most `1`, and refuses versions below the
+active version during routine updates. A maintainer signature and these version limits jointly approve a release.
+Changing keys, release source, or version limits requires an explicit user updater or policy upgrade. A build without
+a release key refuses setup. HTTPS proxies may route downloads, but cannot change which signed bytes are accepted.
+
+The initial `cat.sh` or `cat.ps1` download relies on HTTPS to GitHub. It contains the selected release tag and pinned
+archive digests, including the updater archive that supplies the default public key. The release notes publish the
+SHA-256 fingerprint of the public key's X.509 encoding; confirm that fingerprint through a source you trust before
+authorizing setup. Entry scripts never fetch bootstrap code from a branch or `HEAD`.
+
+## Routine updates and rollback
+
+After setup and the exemption, ask your agent to update CAT, or invoke the stable launcher directly:
+
+```bash
+/home/me/.local/share/cat-updater/bin/cat-updater update --harness claude
+/home/me/.local/share/cat-updater/bin/cat-updater update --harness codex v1.0
+/home/me/.local/share/cat-updater/bin/cat-updater status --harness codex
+```
+
+Replace the launcher path with the one setup printed. Omitting the version, or passing `latest`, requests GitHub's
+latest release. That release must satisfy the policy; the updater refuses an unapproved latest release rather than
+searching older releases. A named version requests that release and must satisfy the same policy. An already active,
+consistent version reports `up_to_date` without changing it. If the updater is absent, CAT's `update` skill gives you
+the setup command; it does not run installation from the project's sandbox.
+
+Updates lock the selected harness, download and validate into staging, then activate without executing any downloaded
+installer or migration script. Unsafe archive paths, escaping symlinks, unsupported entries, and mismatched contents
+are refused before activation. A second update waits up to ten minutes for the lock. Each result is a JSON object;
+diagnostics go to standard error and the log is `<data>/state/<harness>/update.log`.
+
+If a release requires a data migration, routine update refuses it. Run that release's explicit setup command yourself
+to authorize the migration. A validation failure keeps the active installation. An activation failure restores the
+previous installation; a restoration failure reports the affected paths for recovery. If the updater stops during
+activation, its next mutating operation recovers the recorded activation before proceeding.
+
+Only the most recent successful activation has a rollback record. Older Codex cache directories may remain, but
+rollback consumes the record; it does not provide a second rollback to toggle between versions. To restore the previous
+installation, run rollback yourself outside the project sandbox; do not exempt rollback:
+
+```bash
+/home/me/.local/share/cat-updater/bin/cat-updater rollback --harness codex
+```
+
+`status` reads the active and previous versions and policy key IDs without creating state or recovering an unfinished
+activation. Run an update or rollback to recover an unfinished activation. Restart the harness after updating or rolling
+back. Claude Code's plugin list may continue showing the version registered at initial installation; use updater
+status for the active version. Codex needs a restart to reliably observe swapped plugin copies. A new or changed Codex
+hook command may also require your review before it runs. Plugin-loading behavior was checked with Claude Code
+2.1.317 and Codex 0.160.0; whether a long-running shared Codex app-server notices an update without restart remains
+unverified.
+
+| Exit status | Meaning and next action |
+| --- | --- |
+| `0` | Operation succeeded, or the approved release is already active. |
+| `2` | Invalid arguments; correct the command. |
+| `3` | Release, signature, archive, policy, or migration refused; inspect the message. |
+| `4` | Download failed; retry after restoring connectivity. |
+| `5` | Activation failed and the previous installation was restored. |
+| `6` | Activation and restoration failed; recover the paths reported in the result. |
+| `75` | Lock wait expired; retry after the other update finishes. |
+| `77` | A required path is not writable; add only the printed updater exemption or run the user operation yourself. |
 
 ## Uninstall
 
-Ask your agent to uninstall or remove CAT, which runs CAT's `uninstall` skill with the uninstaller that the installed
-plugin holds, or run the single command with `--uninstall`, as for an installation:
+Ask your agent to uninstall CAT using its installed `uninstall` skill, or run the selected release's entry script
+yourself with an explicit harness:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh -s -- --uninstall
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude --uninstall
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex --uninstall
 ```
 
-In a terminal, name the harness as for an installation, as in `| sh -s -- --harness codex --uninstall`. Like the
-installation, the uninstaller changes nothing and prints the command to run outside the sandbox when it cannot write a
-path that it changes.
+For Codex on Windows, add `-Uninstall` to the PowerShell command. Codex keeps CAT's data for later migration; add
+`--delete-data` (PowerShell `-DeleteData`) to remove it. The Codex uninstaller removes only CAT-owned custom agents
+recorded in its ownership manifest. Claude Code removes CAT's bundled agents with the plugin.
 
-### Choose a coding harness
-
-#### Claude Code
-
-```bash
-curl -fsSL \
-	"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/"\
-	"bootstrap-uninstall-claude.sh" | sh
-```
-
-#### Codex
-
-```bash
-curl -fsSL \
-	"https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/"\
-	"bootstrap-uninstall-codex.sh" | sh
-```
-
-#### Codex on Windows
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.ps1))) -Uninstall
-```
-
-The Codex uninstallers keep CAT's data, so that a later installation can migrate it. To delete it too, end the single
-command with `| sh -s -- --uninstall --delete-data`, end the Codex command above with `| sh -s -- --delete-data` instead
-of `| sh`, or add `-DeleteData` after `-Uninstall` on Windows.
-
-The Codex uninstaller removes only the CAT-owned custom agents recorded in `~/.codex/agents`
-(`%USERPROFILE%\.codex\agents` on Windows), then asks Codex to remove the plugin. Claude Code removes CAT's bundled
-custom agents with the plugin.
+Uninstalling CAT leaves the updater and policy in place. To remove them, first remove their exemption entries, ensure
+no update is running, and delete the recorded updater data directory and policy directory. If data and policy share
+one directory, delete it only once. This removes updater logs and rollback records too.
 
 ## Let sessions run CAT's runners
 

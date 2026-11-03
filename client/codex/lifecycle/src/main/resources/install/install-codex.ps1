@@ -1,14 +1,9 @@
 # Installs, upgrades or removes CAT's Codex plugin on Windows.
 #
-# Windows PowerShell's execution policy blocks script files by default but not script blocks, so run this script as a
-# script block:
-#
-#   & ([scriptblock]::Create((Invoke-RestMethod <url of this script>))) [-Source v1.0 | -Source <extracted artifact>]
-#   & ([scriptblock]::Create((Invoke-RestMethod <url of this script>))) -Uninstall [-DeleteData]
-#
-# -Source names the release tag to download, which is the default, or a folder that holds an extracted artifact.
-# -Uninstall removes the plugin and the Claude CAT artifacts that a runner launcher downloaded into .cat\bundles, and
-# keeps CAT's data, so that a later installation can use it; -DeleteData deletes it too.
+# Run the verified archive's script as a script block, with -Source naming its extracted artifact directory:
+#   & ([scriptblock]::Create([IO.File]::ReadAllText(<path to this script>))) -Source <extracted artifact>
+# Use -Uninstall [-DeleteData] to remove the plugin and optionally its data, keeping the trusted updater.
+# Initial setup and updater upgrades use the release's cat.ps1 entry, which verifies downloads before running it.
 #
 # Before it changes anything, the script checks that it can write every file and folder that the operation changes,
 # including those that Codex changes. If it cannot, as in an agent's sandbox, it changes nothing and fails with the
@@ -29,12 +24,6 @@ $ProgressPreference = 'SilentlyContinue'
 
 $CatVersion = '1.0'
 $CatReleaseTag = "v$CatVersion"
-$CatReleaseBaseUrl = $env:CAT_RELEASE_BASE_URL
-if (-not $CatReleaseBaseUrl)
-{
-	$CatReleaseBaseUrl = "https://github.com/holdmyspot-com/cat/releases/download/$CatReleaseTag"
-}
-
 # Returns -1, 0 or 1 when the dotted numeric version $Left precedes, equals or follows $Right.
 function Compare-CatVersion([string] $Left, [string] $Right)
 {
@@ -112,19 +101,18 @@ function ConvertTo-CatLiteral([string] $Value)
 	return "'" + $Value.Replace("'", "''") + "'"
 }
 
-# Returns the command that repeats this operation in a PowerShell window: it sets the environment variables that the
-# operation reads, then runs a script of the CAT repository at a Git reference with arguments.
-function Get-CatRerunCommand([string] $Reference, [string] $Script, [string] $Arguments)
+# Returns the command that repeats this operation through this release's cat.ps1 entry outside the sandbox,
+# preserving the explicit harness-home, data and marketplace settings and adding the entry's Arguments.
+function Get-CatRerunCommand([string] $Arguments)
 {
 	$command = ''
-	foreach ($name in @('CODEX_HOME', 'CAT_CODEX_DATA_DIR', 'CAT_CODEX_MARKETPLACE_ROOT', 'CAT_RELEASE_BASE_URL'))
+	foreach ($name in @('CODEX_HOME', 'CAT_CODEX_DATA_DIR', 'CAT_CODEX_MARKETPLACE_ROOT'))
 	{
 		$value = [Environment]::GetEnvironmentVariable($name)
 		if ($value) { $command += "`$env:$name = $(ConvertTo-CatLiteral $value); " }
 	}
-	$url = "https://raw.githubusercontent.com/holdmyspot-com/cat/$Reference/client/codex/lifecycle/src/main/" +
-		"resources/install/$Script"
-	return "$command& ([scriptblock]::Create((irm $url))) $Arguments"
+	$url = "https://github.com/holdmyspot-com/cat/releases/download/$CatReleaseTag/cat.ps1"
+	return "$command& ([scriptblock]::Create((irm $url))) -Harness codex$Arguments"
 }
 
 # Returns whether an existing file or folder can be written, without changing it. A folder is writable when a probe
@@ -209,50 +197,6 @@ function Assert-CatRemovable([string] $Command, [string[]] $Paths)
 			if (-not (Test-CatWritable $checked)) { Stop-CatNotWritable $checked $Command }
 		}
 	}
-}
-
-# Returns the release platform of this computer.
-function Get-CatPlatform
-{
-	$architecture = $env:PROCESSOR_ARCHITEW6432
-	if (-not $architecture) { $architecture = $env:PROCESSOR_ARCHITECTURE }
-	if ($architecture -eq 'AMD64') { return 'windows-x64' }
-	throw "Unsupported platform: Windows $architecture"
-}
-
-# Downloads, verifies and extracts the release archive into a folder, and returns the extracted artifact's folder.
-function Expand-CatRelease([string] $Folder)
-{
-	$archiveName = "cat-codex-v$CatVersion-$(Get-CatPlatform).tar.gz"
-	$archive = Join-Path $Folder $archiveName
-	$checksums = Join-Path $Folder 'SHA256SUMS.txt'
-	# Windows PowerShell 5.1 does not offer TLS 1.2, which GitHub requires, unless asked to
-	$protocols = [Net.ServicePointManager]::SecurityProtocol
-	[Net.ServicePointManager]::SecurityProtocol = $protocols -bor [Net.SecurityProtocolType]::Tls12
-	Invoke-WebRequest -Uri "$CatReleaseBaseUrl/$archiveName" -OutFile $archive -UseBasicParsing
-	Invoke-WebRequest -Uri "$CatReleaseBaseUrl/SHA256SUMS.txt" -OutFile $checksums -UseBasicParsing
-	$expected = $null
-	foreach ($line in [IO.File]::ReadAllLines($checksums))
-	{
-		$fields = $line.Trim() -split '\s+', 2
-		if ($fields.Count -eq 2 -and ($fields[1] -eq $archiveName -or $fields[1] -eq "*$archiveName"))
-		{
-			$expected = $fields[0]
-		}
-	}
-	if (-not $expected) { throw "No checksum published for $archiveName" }
-	$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
-	if ($actual -ne $expected)
-	{
-		throw "The checksum of $archiveName does not match SHA256SUMS.txt: expected $expected, got $actual"
-	}
-	Invoke-CatProgram (Join-Path $env:SystemRoot 'System32\tar.exe') @('-xzf', $archive, '-C', $Folder)
-	$artifact = Join-Path $Folder $archiveName.Substring(0, $archiveName.Length - '.tar.gz'.Length)
-	if (-not (Test-Path -LiteralPath $artifact -PathType Container))
-	{
-		throw "Archive did not contain the expected directory: $(Split-Path -Leaf $artifact)"
-	}
-	return $artifact
 }
 
 # Rejects a folder that is not an extracted CAT artifact for Codex on Windows.
@@ -422,7 +366,7 @@ if ($Uninstall)
 	$bundles = [IO.Path]::Combine($userProfile, '.cat\bundles')
 	$arguments = '-Uninstall'
 	if ($DeleteData) { $arguments += ' -DeleteData' }
-	$rerunCommand = Get-CatRerunCommand 'HEAD' 'bootstrap-codex.ps1' $arguments
+	$rerunCommand = Get-CatRerunCommand " $arguments"
 	# "codex plugin remove" records the removal in config.toml and deletes the plugin from the plugin cache
 	$writable = @($codexHome, [IO.Path]::Combine($codexHome, 'config.toml'), [IO.Path]::Combine($codexHome, 'tmp'),
 		[IO.Path]::Combine($codexHome, 'plugins\cache'))
@@ -453,60 +397,37 @@ if ($Uninstall)
 	return
 }
 if ($DeleteData) { throw '-DeleteData can only be used with -Uninstall' }
-if (-not $Source) { $Source = $CatReleaseTag }
-
-$downloads = $null
-try
+if (-not $Source -or -not (Test-Path -LiteralPath $Source -PathType Container))
 {
-	if (Test-Path -LiteralPath $Source -PathType Container)
-	{
-		$artifact = (Resolve-Path -LiteralPath $Source).ProviderPath
-		$rerunCommand = Get-CatRerunCommand $CatReleaseTag 'install-codex.ps1' "-Source $(ConvertTo-CatLiteral $artifact)"
-	}
-	elseif ($Source -eq $CatReleaseTag)
-	{
-		$downloads = Join-Path ([IO.Path]::GetTempPath()) ('cat-codex-install-' + [Guid]::NewGuid().ToString('N'))
-		New-Item -ItemType Directory -Path $downloads | Out-Null
-		$artifact = Expand-CatRelease $downloads
-		$rerunCommand = Get-CatRerunCommand $CatReleaseTag 'bootstrap-codex.ps1' "-Version $CatReleaseTag"
-	}
-	else
-	{
-		throw "Expected $CatReleaseTag or an extracted artifact directory: $Source"
-	}
-	Assert-CatArtifact $artifact
-	# Codex replaces config.toml by renaming a temporary file from its home folder over it when "codex plugin
-	# marketplace add" and "codex plugin add" record the marketplace and the plugin, and "codex plugin add" copies the
-	# plugin into the plugin cache
-	Assert-CatWritable $rerunCommand @($codexHome, [IO.Path]::Combine($codexHome, 'config.toml'),
-		[IO.Path]::Combine($codexHome, '.tmp'), [IO.Path]::Combine($codexHome, 'tmp'),
-		[IO.Path]::Combine($codexHome, 'plugins\cache'), [IO.Path]::Combine($codexHome, 'agents'), $dataDirectory,
-		[IO.Path]::Combine($marketplaceRoot, '..'))
-	Assert-CatRemovable $rerunCommand @($marketplaceRoot)
-
-	Update-CatData $dataDirectory (Join-Path $artifact 'install\migrations')
-	Install-CatAgents $artifact $codexHome $dataDirectory
-	Invoke-CatProgramQuietly 'codex' @('plugin', 'remove', 'cat@cat')
-	Invoke-CatProgramQuietly 'codex' @('plugin', 'marketplace', 'remove', 'cat')
-	if (Test-Path -LiteralPath $marketplaceRoot)
-	{
-		Remove-Item -LiteralPath $marketplaceRoot -Recurse -Force
-	}
-	$plugin = Join-Path $marketplaceRoot 'plugins\cat'
-	$metadata = Join-Path $marketplaceRoot '.agents\plugins'
-	New-Item -ItemType Directory -Force -Path $plugin, $metadata | Out-Null
-	Get-ChildItem -LiteralPath $artifact -Force | Copy-Item -Destination $plugin -Recurse -Force
-	Copy-Item -LiteralPath (Join-Path $artifact 'install\codex-marketplace.json') `
-		-Destination (Join-Path $metadata 'marketplace.json')
-
-	Invoke-CatProgram 'codex' @('plugin', 'marketplace', 'add', $marketplaceRoot)
-	Invoke-CatProgram 'codex' @('plugin', 'add', 'cat@cat')
-	Invoke-CatProgram (Join-Path $plugin 'bin\plugin-info.cmd') @()
+	throw "Expected an extracted artifact directory: $Source"
 }
-finally
+$artifact = (Resolve-Path -LiteralPath $Source).ProviderPath
+$rerunCommand = Get-CatRerunCommand ''
+Assert-CatArtifact $artifact
+# Codex replaces config.toml by renaming a temporary file from its home folder over it when "codex plugin
+# marketplace add" and "codex plugin add" record the marketplace and the plugin, and "codex plugin add" copies the
+# plugin into the plugin cache
+Assert-CatWritable $rerunCommand @($codexHome, [IO.Path]::Combine($codexHome, 'config.toml'),
+	[IO.Path]::Combine($codexHome, '.tmp'), [IO.Path]::Combine($codexHome, 'tmp'),
+	[IO.Path]::Combine($codexHome, 'plugins\cache'), [IO.Path]::Combine($codexHome, 'agents'), $dataDirectory,
+	[IO.Path]::Combine($marketplaceRoot, '..'))
+Assert-CatRemovable $rerunCommand @($marketplaceRoot)
+
+Update-CatData $dataDirectory (Join-Path $artifact 'install\migrations')
+Install-CatAgents $artifact $codexHome $dataDirectory
+Invoke-CatProgramQuietly 'codex' @('plugin', 'remove', 'cat@cat')
+Invoke-CatProgramQuietly 'codex' @('plugin', 'marketplace', 'remove', 'cat')
+if (Test-Path -LiteralPath $marketplaceRoot)
 {
-	if ($downloads -and (Test-Path -LiteralPath $downloads))
-	{
-		Remove-Item -LiteralPath $downloads -Recurse -Force
-	}
+	Remove-Item -LiteralPath $marketplaceRoot -Recurse -Force
 }
+$plugin = Join-Path $marketplaceRoot 'plugins\cat'
+$metadata = Join-Path $marketplaceRoot '.agents\plugins'
+New-Item -ItemType Directory -Force -Path $plugin, $metadata | Out-Null
+Get-ChildItem -LiteralPath $artifact -Force | Copy-Item -Destination $plugin -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $artifact 'install\codex-marketplace.json') `
+	-Destination (Join-Path $metadata 'marketplace.json')
+
+Invoke-CatProgram 'codex' @('plugin', 'marketplace', 'add', $marketplaceRoot)
+Invoke-CatProgram 'codex' @('plugin', 'add', 'cat@cat')
+Invoke-CatProgram (Join-Path $plugin 'bin\plugin-info.cmd') @()

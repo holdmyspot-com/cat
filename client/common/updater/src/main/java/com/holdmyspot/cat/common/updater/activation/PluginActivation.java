@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.updater.activation;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -55,6 +57,34 @@ public interface PluginActivation
 	 * @throws IOException              if the harness's files cannot be read
 	 */
 	List<ActivationStep> plan(Path home, String newVersion) throws IOException;
+
+	/**
+	 * Reconstructs the original activation plan to authorize recovery and rollback journal paths.
+	 * <p>
+	 * The returned steps must equal those planned before activating {@code newVersion} over {@code previousVersion},
+	 * even when a stopped operation left a live directory absent or when the new release is already active. This
+	 * method must retain the provider's canonical destination and symbolic-link checks without requiring a complete
+	 * live installation. It must not mutate any path. Providers whose plan depends on the active version must override
+	 * this method and use the recorded versions instead of observing the current active version.
+	 * <p>
+	 * The default delegates to {@link #plan(Path, String)} for providers whose plans depend only on the protected home
+	 * and requested version and remain available while live paths are absent.
+	 *
+	 * @param home the absolute, normalized harness home from protected policy
+	 * @param previousVersion the canonical version active before the recorded activation
+	 * @param newVersion the canonical version that the recorded activation installed
+	 * @return the original ordered steps with absolute, normalized paths
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if any version is blank or a path redirects the provider's authority
+	 * @throws IOException if canonical destinations cannot be safely established
+	 */
+	default List<ActivationStep> recoveryPlan(Path home, String previousVersion, String newVersion) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(previousVersion, "previousVersion").isNotBlank();
+		requireThat(newVersion, "newVersion").isNotBlank();
+		return plan(home, newVersion);
+	}
 
 	/**
 	 * Returns the file that records the version of the last data migration applied to CAT's data in this harness. After

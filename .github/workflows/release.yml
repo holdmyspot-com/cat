@@ -64,6 +64,7 @@ jobs:
           bats --version
       # The build embeds the public half of the release signing key, so that CAT can check the release's signed manifest
       - name: Derive release public key
+        id: release-key
         env:
           CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
         run: |
@@ -79,9 +80,15 @@ jobs:
             echo "CAT_RELEASE_SIGNING_KEY holds no private key that openssl can read." >&2
             exit 1
           fi
-          echo "CAT_RELEASE_PUBLIC_KEY=${public_key}" >> "${GITHUB_ENV}"
+          echo "public-key=${public_key}" >> "${GITHUB_OUTPUT}"
       - name: Verify and package
+        env:
+          CAT_RELEASE_PUBLIC_KEY: ${{ steps.release-key.outputs.public-key }}
         run: client/mvnw -f client/pom.xml verify "-Dcat.release.public-key=${CAT_RELEASE_PUBLIC_KEY}"
+      - name: Verify native release checksums
+        if: runner.os != 'macOS'
+        working-directory: client/common/distribution/target/release
+        run: sha256sum --check --strict SHA256SUMS.txt
       - name: Verify release tag
         run: |
           version="$(client/mvnw -q -f client/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)"
@@ -96,12 +103,14 @@ jobs:
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
+          client/common/distribution/src/test/bats/updater-launcher.bats
       # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests
       - name: Verify bootstrap boundaries on Windows
         if: runner.os == 'Windows'
         run: >-
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
+          client/common/distribution/src/test/bats/updater-launcher.bats
       - name: Upload native release files
         uses: actions/upload-artifact@v7
         with:
@@ -134,8 +143,8 @@ jobs:
           mkdir release
           find native -type f -name 'cat-*-*.tar.gz' -exec cp '{}' release/ \;
           find native -type f -name SHA256SUMS.txt -exec cat '{}' \; | LC_ALL=C sort > release/SHA256SUMS.txt
-          test "$(find release -type f -name 'cat-*-*.tar.gz' | wc -l)" -eq 10
-          test "$(wc -l < release/SHA256SUMS.txt)" -eq 10
+          test "$(find release -type f -name 'cat-*-*.tar.gz' | wc -l)" -eq 15
+          test "$(wc -l < release/SHA256SUMS.txt)" -eq 15
           mkdir fragments
           find native -type f -name 'cat-release-assets-*.json' -exec cp '{}' fragments/ \;
           test "$(find fragments -type f | wc -l)" -eq 5
@@ -145,7 +154,7 @@ jobs:
           jq -s --arg tag "${GITHUB_REF_NAME}" --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{format: 1, product: "cat", version: ($tag | ltrimstr("v")), tag: $tag, published: $published,
               assets: (add | sort_by(.name))}' fragments/*.json > release/cat-release-manifest.json
-          test "$(jq '.assets | length' release/cat-release-manifest.json)" -eq 10
+          test "$(jq '.assets | length' release/cat-release-manifest.json)" -eq 15
       - name: Sign release manifest
         env:
           CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
@@ -172,13 +181,15 @@ jobs:
           echo "CAT_KEY_FINGERPRINT=${fingerprint}" >> "${GITHUB_ENV}"
       # The entry script embeds the release's tag and every archive's SHA-256 digest, and downloads only from the
       # release
-      - name: Write entry script
+      - name: Write entry scripts
         run: |
           release_sources=client/common/lifecycle/src/main/release
           sh "${release_sources}/generate-cat-sh.sh" "${release_sources}/cat.sh" "${GITHUB_REF_NAME}" \
             release/SHA256SUMS.txt release/cat.sh
-          # 10 archives, SHA256SUMS.txt, the manifest, its signature and cat.sh
-          test "$(find release -type f | wc -l)" -eq 14
+          sh "${release_sources}/generate-cat-sh.sh" "${release_sources}/cat.ps1" "${GITHUB_REF_NAME}" \
+            release/SHA256SUMS.txt release/cat.ps1
+          # 15 archives, SHA256SUMS.txt, the manifest, its signature, cat.sh and cat.ps1
+          test "$(find release -type f | wc -l)" -eq 20
       # The notes start with the commands that install, update and uninstall this release, followed by the notes that
       # GitHub generates, which end with the link to the full changelog
       - name: Write release notes

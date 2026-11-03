@@ -20,7 +20,8 @@ public final class ActivationStepTest
 	/**
 	 * An absolute, normalized directory on the current platform. Nothing is written there.
 	 */
-	private static final Path HOME = Path.of("/harness-homes/harness-a").toAbsolutePath();
+	private static final Path HOME = Path.of(System.getProperty("cat.updater.test.directory")).
+		resolve("harness-homes/harness-a");
 
 	/**
 	 * Creates a test instance.

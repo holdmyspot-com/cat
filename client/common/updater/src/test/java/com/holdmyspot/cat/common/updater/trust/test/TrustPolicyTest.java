@@ -23,12 +23,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link TrustPolicy}: which trust policies the updater accepts, and how setup writes them.
  */
 public final class TrustPolicyTest
 {
+	/**
+	 * Serializes fixture paths as JSON strings without assuming the build directory's characters.
+	 */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
+
 	/**
 	 * Creates a test instance.
 	 */
@@ -74,7 +80,7 @@ public final class TrustPolicyTest
 	 */
 	private static Path absoluteHome()
 	{
-		return Path.of("/harness-homes/harness-a").toAbsolutePath();
+		return Path.of(System.getProperty("cat.updater.test.directory")).resolve("harness-homes/harness-a");
 	}
 
 	/**
@@ -85,7 +91,7 @@ public final class TrustPolicyTest
 	 */
 	private static String jsonString(String text)
 	{
-		return "\"" + text.replace("\\", "\\\\") + "\"";
+		return JSON.writeValueAsString(text);
 	}
 
 	/**

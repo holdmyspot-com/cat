@@ -31,7 +31,7 @@ their changes easier to understand in review.
 - **Use the coding harness you prefer.** CAT supports both Claude Code and Codex while keeping project guidance in one
 	place.
 - **Install with confidence.** CAT provides native distributions for supported Linux and macOS platforms, including
-	checksum-verified installation and an uninstall path.
+	authenticated routine updates and an uninstall path.
 
 ## How CAT checks its rules
 
@@ -47,78 +47,43 @@ a team, see Pricing (docs/PRICING.md) for commercial plans and features.
 
 ## Get Started
 
-### 1. Install or update CAT
+### 1. Install CAT and its updater
 
-Ask your agent in Claude Code or Codex: "Install CAT from https://github.com/holdmyspot-com/cat/releases". Each
-release's notes give the agent the command for that release, and CAT's `update` skill updates CAT later.
-
-Or run the single command yourself. Inside a Claude Code or Codex session it detects which harness runs it; in Claude
-Code, type it at the prompt prefixed with `! `. It installs the latest release, or updates an existing installation to
-it:
+Run setup yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Choose the command for your harness:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex
 ```
 
-- To install a particular release, end the command with `| sh -s -- v1.0` instead of `| sh`.
-- In a terminal, outside a session, name the harness: end the command with `| sh -s -- --harness claude` or
-	`| sh -s -- --harness codex`. Without it, the command exits without changing anything and asks for it.
-- When the command reports that it cannot write a path, it has changed nothing. An agent's sandbox usually causes this:
-	run the command that it prints in a terminal, or in Claude Code at the prompt prefixed with `! `.
-- Codex on Windows installs from PowerShell; see [Install CAT](docs/installation.md).
-
-The per-harness commands below do the same for one harness, and also accept a release tag after `| sh -s`:
-
-<details>
-<summary>Claude Code</summary>
-
-```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh | sh
-```
-
-To install into a custom Claude Code configuration directory, set `CLAUDE_CONFIG_DIR`:
-
-```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/claude/lifecycle/src/main/resources/install/bootstrap-claude.sh \
-	| CLAUDE_CONFIG_DIR=/path/to/claude-home sh
-```
-
-</details>
-
-<details>
-<summary>Codex</summary>
-
-```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh | sh
-```
-
-To install into a custom Codex home directory, set `CODEX_HOME`:
-
-```bash
-curl -fsSL \
-	https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/codex/lifecycle/src/main/resources/install/bootstrap-codex.sh \
-	| CODEX_HOME=/path/to/codex-home sh
-```
-
-</details>
+Each command installs that release and a separate trusted updater. Setup may change your harness configuration. It
+prints the narrow updater exemption for you to add; CAT does not change your permission settings. Windows commands,
+custom harness homes, migration, and the permission boundary are in [Install CAT](docs/installation.md).
 
 ### 2. Start or resume a session
 
 Start or resume a session. CAT then injects its default rules and your project's applicable rules.
 
+### Routine updates
+
+After setup and the exemption, ask your agent to update CAT. CAT's `update` skill requests GitHub's latest release,
+which must satisfy your updater policy. It verifies signed release metadata and the plugin archive before activation,
+without reinstalling the plugin or rewriting harness configuration. The project cannot use this operation to replace the
+updater or its policy. Restart the harness after an update.
+
+To migrate an existing CAT installation or upgrade the updater itself, run the selected release's setup command
+with `--updater-only`. These remain explicit user operations. See [updates and rollback](docs/installation.md#routine-updates-and-rollback).
+
 ### Uninstall
 
-Ask your agent to uninstall CAT, which runs CAT's `uninstall` skill, or run the single command with `--uninstall`:
+Ask your agent to uninstall CAT, or run the release command yourself with an explicit harness:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/holdmyspot-com/cat/HEAD/client/common/lifecycle/src/main/resources/install/cat.sh | sh -s -- --uninstall
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex --uninstall
 ```
 
-In Codex, CAT keeps its data, so that a later installation can migrate it; end the command with
-`| sh -s -- --uninstall --delete-data` to delete it too.
+Use `--harness claude` for Claude Code. Codex keeps CAT's data unless you add `--delete-data`. Uninstalling CAT leaves
+the updater installed; [the installation guide](docs/installation.md#uninstall) explains how to remove it too.
 
 ## Learn More
 

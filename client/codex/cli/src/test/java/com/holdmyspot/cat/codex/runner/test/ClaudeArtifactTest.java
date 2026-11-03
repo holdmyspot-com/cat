@@ -87,29 +87,28 @@ public final class ClaudeArtifactTest
 	}
 
 	/**
-	 * Verifies that without the Claude CAT plugin, the Claude release archive of this CAT version and platform is
-	 * downloaded from the release that {@code CAT_RELEASE_BASE_URL} names into CAT's per-user bundle directory.
+	 * Verifies that without the Claude CAT plugin, an existing bundle of this CAT version and platform is used
+	 * even when the environment names a different release source.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
 	@Test
-	public void downloadsClaudeArchiveWithoutPlugin() throws IOException
+	public void usesClaudeBundleWithoutPlugin() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-download-"));
+			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-bundle-"));
 			String name = "cat-claude-v" + PluginInfo.CAT_VERSION + "-" + Platform.current().id();
-			Path release = root.resolve("release");
-			FakeRelease.publish(release, name, FakeRelease.artifact(root.resolve("source"),
-				".claude-plugin/plugin.json", "claude-runner", PluginInfo.CAT_VERSION, Platform.current()));
 			Path home = root.resolve("home");
+			Path bundle = home.resolve(".cat/bundles").resolve(name).toAbsolutePath().normalize();
+			FakeRelease.artifact(bundle, ".claude-plugin/plugin.json", "claude-runner", PluginInfo.CAT_VERSION,
+				Platform.current());
 
 			String output = ClaudeArtifact.execute(Map.of(Platform.current().homeVariable(), home.toString(),
-				"CAT_RELEASE_BASE_URL", release.toUri().toString()));
+				"CAT_RELEASE_BASE_URL", root.resolve("missing-release").toUri().toString()));
 
-			Path bundle = home.resolve(".cat/bundles").resolve(name).toAbsolutePath().normalize();
 			requireThat(output, "output").isEqualTo("artifact=" + bundle + "\nrunner=" + runner(bundle) +
-				"\nsource=download\n");
+				"\nsource=bundle\n");
 		}
 	}
 }

@@ -15,6 +15,7 @@
 
 	<modules>
 		<module>cli</module>
+		<module>updater</module>
 		<module>skills</module>
 		<module>rules</module>
 		<module>plugin</module>

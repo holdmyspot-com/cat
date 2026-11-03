@@ -18,6 +18,7 @@ import com.holdmyspot.cat.distribution.bundle.ReleaseAssetsFragment;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import com.holdmyspot.cat.distribution.bundle.RuleReferences;
+import com.holdmyspot.cat.distribution.bundle.UpdaterArtifactBuilder;
 import com.holdmyspot.cat.distribution.license.LegalMaterialsBuilder;
 import com.holdmyspot.cat.distribution.license.ThirdPartyComponent;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
@@ -27,12 +28,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Builds the platform-specific Claude and Codex CAT release archives from Maven module outputs.
+ * Builds the platform-specific CAT plugin and trusted updater archives from Maven module outputs.
  */
 public final class DistributionMain
 {
@@ -88,47 +90,50 @@ public final class DistributionMain
 	/**
 	 * Builds distributions for the current platform.
 	 *
-	 * @param args the project root, module directory, and release directory
+	 * @param args the project root, module directory, release directory, and base64 release public key (empty for a
+	 *             development build); Maven represents the empty key argument as null
 	 * @throws NullPointerException if {@code args} is null
-	 * @throws IllegalArgumentException if {@code args} does not contain exactly three values
+	 * @throws IllegalArgumentException if {@code args} does not contain exactly four values
 	 * @throws IOException if distribution assembly fails
 	 */
 	public static void main(String[] args) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		if (args.length != 3)
+		if (args.length != 4)
 		{
 			throw new IllegalArgumentException(
-				"Usage: DistributionMain <project-root> <module-directory> <release-directory>");
+				"Usage: DistributionMain <project-root> <module-directory> <release-directory> <release-public-key>");
 		}
 		try (JvmScope scope = new MainJvmScope(Platform.current().environment(System.getenv()), Pause::sleeping))
 		{
-			build(scope, Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Platform.current());
+			build(scope, Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Platform.current(),
+				Objects.requireNonNullElse(args[3], ""));
 		}
 	}
 
 	/**
-	 * Builds the harness distributions for a platform.
+	 * Builds plugin and updater distributions with the release key that setup installs into the user's policy.
 	 *
-	 * @param scope the process scope, whose YAML mapper reads the rules and whose JSON mapper writes the list of the
-	 *        platform's release archives
-	 * @param projectRoot the repository root
-	 * @param moduleDirectory the directory containing dependency JARs
-	 * @param releaseDirectory the output directory for release archives, their {@code SHA256SUMS.txt} and their list
-	 *        {@code cat-release-assets-<platform>.json}
-	 * @param platform the target platform
-	 * @throws NullPointerException if any argument is null
+	 * @param scope            the build's process scope
+	 * @param projectRoot      the repository root
+	 * @param moduleDirectory  the directory containing dependency JARs
+	 * @param releaseDirectory the output directory for archives, checksums and the release assets fragment
+	 * @param platform         the target platform
+	 * @param publicKey        the base64 X.509 Ed25519 release key, or empty for a build that trusts no key
+	 * @throws NullPointerException     if any argument is null
 	 * @throws IllegalArgumentException if {@code releaseDirectory} is the filesystem root
-	 * @throws IOException if distribution assembly fails
+	 * @throws IOException              if distribution assembly fails or the public key is invalid
 	 */
 	public static void build(JvmScope scope, Path projectRoot, Path moduleDirectory, Path releaseDirectory,
-		Platform platform) throws IOException
+		Platform platform, String publicKey) throws IOException
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(projectRoot, "projectRoot").isNotNull();
 		requireThat(moduleDirectory, "moduleDirectory").isNotNull();
 		requireThat(releaseDirectory, "releaseDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(publicKey, "publicKey").isNotNull();
+		UpdaterArtifactBuilder updaterArtifacts = new UpdaterArtifactBuilder(scope, PluginInfo.CAT_VERSION, publicKey);
 		projectRoot = projectRoot.toAbsolutePath().normalize();
 		moduleDirectory = moduleDirectory.toAbsolutePath().normalize();
 		releaseDirectory = releaseDirectory.toAbsolutePath().normalize();
@@ -188,6 +193,10 @@ public final class DistributionMain
 			modularizeJavaDiff(javaDiff.path(), jlinkModules));
 		Path packagedClaudeCli = copyModule(claudeCli, jlinkModules);
 		Path packagedCodexCli = copyModule(codexCli, jlinkModules);
+		Path commonUpdater = findDependencyJar(moduleDirectory, "client-common-updater");
+		List<Path> updaterModules = List.of(copyModule(commonUpdater, jlinkModules),
+			copyModule(findDependencyJar(moduleDirectory, "client-claude-updater"), jlinkModules),
+			copyModule(findDependencyJar(moduleDirectory, "client-codex-updater"), jlinkModules));
 		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), jlinkModules),
 			copyModule(jacksonAnnotations.path(), jlinkModules), copyModule(jacksonDatabind.path(), jlinkModules),
 			copyModule(jacksonYaml.path(), jlinkModules), copyModule(snakeyaml.path(), jlinkModules),
@@ -199,6 +208,11 @@ public final class DistributionMain
 			claudeLaunchers(), jlinkDirectory.resolve("claude"));
 		List<Path> codexModules = append(append(sharedRuntimeModules, packagedCodexCli), jsonRuntimeModules);
 		Path codexImage = codexImage(imageBuilder, codexModules, jlinkDirectory.resolve("codex"), platform);
+
+		Path updaterImage = imageBuilder.build(append(append(sharedRuntimeModules, updaterModules), jsonRuntimeModules),
+			Set.of("com.holdmyspot.cat.common.updater", "com.holdmyspot.cat.claude.updater",
+				"com.holdmyspot.cat.codex.updater", "com.holdmyspot.cat.common.cli", "java.net.http", "org.slf4j.nop"),
+			List.of(), jlinkDirectory.resolve("updater"));
 
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
 		LegalMaterialsBuilder legalMaterialsBuilder = new LegalMaterialsBuilder(PluginInfo.CAT_VERSION);
@@ -280,12 +294,17 @@ public final class DistributionMain
 		RuleReferences.requireResolvable(claudeRoot);
 		RuleReferences.requireResolvable(codexRoot);
 
+		updaterArtifacts.build(updaterImage, commonUpdater, legalMaterials);
+
 		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
 		Path codexArchive = packager.packageArtifact("codex", platform, codexRoot, releaseDirectory);
-		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive), releaseDirectory.resolve("SHA256SUMS.txt"));
+		Path updaterArchive = packager.packageArtifact("updater", platform, updaterImage, releaseDirectory);
+		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive, updaterArchive),
+			releaseDirectory.resolve("SHA256SUMS.txt"));
 		new ReleaseAssetsFragment(scope).write(platform, List.of(ReleaseAsset.plugin("claude", platform, claudeArchive),
-			ReleaseAsset.plugin("codex", platform, codexArchive)), releaseDirectory);
+			ReleaseAsset.plugin("codex", platform, codexArchive),
+			ReleaseAsset.updater(platform, updaterArchive)), releaseDirectory);
 	}
 
 	/**

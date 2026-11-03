@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Writes the entry script of one CAT release by filling the release's tag and SHA-256 digests into the cat.sh template.
+# Writes a CAT release entry script by filling its tag and SHA-256 digests into a POSIX or PowerShell template.
 #
 #   generate-cat-sh.sh TEMPLATE TAG SHA256SUMS OUTPUT
 #

@@ -47,8 +47,7 @@ public final class CodexArtifact
 	 * @param environment the process environment: the user's home directory ({@code HOME}, or {@code USERPROFILE} on
 	 *                    Windows); {@code CODEX_HOME}, the Codex home, which defaults to {@code .codex} in the home
 	 *                    directory; {@code CAT_CODEX_MARKETPLACE_ROOT}, CAT's Codex marketplace, which defaults to
-	 *                    {@code plugins/cat-marketplace} in the Codex home; and {@code CAT_RELEASE_BASE_URL}, which
-	 *                    replaces the release's location
+	 *                    {@code plugins/cat-marketplace} in the Codex home
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
 	 * @throws NullPointerException if {@code environment} is null
 	 * @throws IOException          if the home directory is not set, or the artifact cannot be downloaded, verified or
@@ -73,7 +72,7 @@ public final class CodexArtifact
 			marketplace = codexHome.resolve("plugins/cat-marketplace");
 		}
 		ReleaseBundles bundles = new ReleaseBundles(ReleaseBundles.directory(home),
-			ReleaseBundles.releaseUri(environment), Platform.current(), environment);
+			ReleaseBundles.releaseUri(), Platform.current(), environment);
 		return bundles.resolve(marketplace.resolve("plugins/cat"), "codex", Path.of(".codex-plugin/plugin.json"),
 			"codex-runner").format();
 	}

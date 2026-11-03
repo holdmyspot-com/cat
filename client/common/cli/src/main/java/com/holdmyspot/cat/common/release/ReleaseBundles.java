@@ -129,12 +129,8 @@ public final class ReleaseBundles
 	/**
 	 * The release of this CAT version on GitHub, which holds every harness's archive for every platform.
 	 */
-	private static final URI DEFAULT_RELEASE = URI.create(PluginInfo.CAT_REPOSITORY + "/releases/download/v" +
+	private static final URI RELEASE = URI.create(PluginInfo.CAT_REPOSITORY + "/releases/download/v" +
 		PluginInfo.CAT_VERSION);
-	/**
-	 * The environment variable that replaces the release's location, as it does for CAT's installers.
-	 */
-	private static final String RELEASE_VARIABLE = "CAT_RELEASE_BASE_URL";
 	/**
 	 * The release's checksum file.
 	 */
@@ -168,24 +164,13 @@ public final class ReleaseBundles
 			collect(Collectors.joining("|")) + ")");
 
 	/**
-	 * Returns the location of this CAT version's release.
+	 * Returns the fixed GitHub release location of this CAT version.
 	 *
-	 * @param environment the process environment
-	 * @return {@code CAT_RELEASE_BASE_URL} without a trailing {@code /} when it is set and not blank, otherwise the
-	 *   GitHub release of this CAT version
-	 * @throws NullPointerException     if {@code environment} is null
-	 * @throws IllegalArgumentException if {@code CAT_RELEASE_BASE_URL} is not a URI
+	 * @return the GitHub release of this CAT version
 	 */
-	public static URI releaseUri(Map<String, String> environment)
+	public static URI releaseUri()
 	{
-		requireThat(environment, "environment").isNotNull();
-		String configured = environment.get(RELEASE_VARIABLE);
-		if (configured == null || configured.isBlank())
-			return DEFAULT_RELEASE;
-		String location = configured.strip();
-		while (location.endsWith("/"))
-			location = location.substring(0, location.length() - 1);
-		return URI.create(location);
+		return RELEASE;
 	}
 
 	/**

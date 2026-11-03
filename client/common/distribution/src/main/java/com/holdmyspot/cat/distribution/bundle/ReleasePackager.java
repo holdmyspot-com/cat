@@ -20,6 +20,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -27,7 +28,7 @@ import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream;
 import org.apache.commons.compress.compressors.gzip.GzipParameters;
 
 /**
- * Packages a harness's assembled CAT plugin directory into a reproducible archive and writes its checksum manifest.
+ * Packages an assembled CAT distribution directory into a reproducible archive and writes its checksum manifest.
  */
 public final class ReleasePackager
 {
@@ -52,32 +53,38 @@ public final class ReleasePackager
 	}
 
 	/**
-	 * Packages a plugin artifact as a deterministic archive, replacing an existing archive at its generated path.
+	 * Packages a plugin or updater artifact as a deterministic archive, replacing an existing archive at its generated
+	 * path.
 	 *
-	 * @param harness supported harness identifier used in the generated archive filename
-	 * @param platform distribution platform whose identifier is included in the generated archive filename
-	 * @param pluginRoot assembled plugin directory whose complete contents are archived
+	 * @param component        the plugin harness identifier or {@code updater}, used in the generated archive filename
+	 * @param platform         distribution platform whose identifier is included in the generated archive filename
+	 * @param artifactRoot     assembled distribution directory whose complete contents are archived
 	 * @param releaseDirectory directory that receives the generated archive, creating it when needed
 	 * @return the created archive file
-	 * @throws NullPointerException if {@code harness}, {@code platform}, {@code pluginRoot}, or {@code releaseDirectory}
-	 *         are null
-	 * @throws IllegalArgumentException if {@code harness} is blank or unsupported
+	 * @throws NullPointerException if {@code component}, {@code platform}, {@code artifactRoot}, or
+	 *         {@code releaseDirectory} are null
+	 * @throws IllegalArgumentException if {@code component} is blank or unsupported
 	 * @throws IOException if the archive cannot be created
 	 */
-	public Path packageArtifact(String harness, Platform platform, Path pluginRoot, Path releaseDirectory)
+	public Path packageArtifact(String component, Platform platform, Path artifactRoot, Path releaseDirectory)
 		throws IOException
 	{
-		requireThat(harness, "harness").isNotBlank();
+		requireThat(component, "component").isNotBlank();
 		requireThat(platform, "platform").isNotNull();
-		requireThat(pluginRoot, "pluginRoot").isNotNull();
+		requireThat(artifactRoot, "artifactRoot").isNotNull();
 		requireThat(releaseDirectory, "releaseDirectory").isNotNull();
-		if (!harness.equals("claude") && !harness.equals("codex"))
-			throw new IllegalArgumentException("Unsupported harness: " + harness);
-		if (!Files.isDirectory(pluginRoot, NOFOLLOW_LINKS))
-			throw new IOException("Plugin root is not a directory: " + pluginRoot);
+		switch (component)
+		{
+			case "claude", "codex", "updater" ->
+			{
+			}
+			default -> throw new IllegalArgumentException("Unsupported distribution component: " + component);
+		}
+		if (!Files.isDirectory(artifactRoot, NOFOLLOW_LINKS))
+			throw new IOException("Artifact root is not a directory: " + artifactRoot);
 
 		Files.createDirectories(releaseDirectory);
-		String baseName = "cat-" + harness + "-v" + version + "-" + platform.id();
+		String baseName = "cat-" + component + "-v" + version + "-" + platform.id();
 		Path archive = releaseDirectory.resolve(baseName + ".tar.gz");
 		GzipParameters gzipParameters = new GzipParameters();
 		gzipParameters.setModificationInstant(Instant.EPOCH);
@@ -87,12 +94,12 @@ public final class ReleasePackager
 		{
 			tar.setLongFileMode(TarArchiveOutputStream.LONGFILE_POSIX);
 			tar.setBigNumberMode(TarArchiveOutputStream.BIGNUMBER_POSIX);
-			try (Stream<Path> stream = Files.walk(pluginRoot))
+			try (Stream<Path> stream = Files.walk(artifactRoot))
 			{
-				for (Path path : stream.sorted(Comparator.comparing(candidate -> pluginRoot.relativize(candidate).toString())).
-					toList())
+				for (Path path : stream.sorted(Comparator.comparing(candidate ->
+					artifactRoot.relativize(candidate).toString())).toList())
 				{
-					Path relative = pluginRoot.relativize(path);
+					Path relative = artifactRoot.relativize(path);
 					String relativeName = "/";
 					if (!relative.toString().isEmpty())
 						relativeName = "/" + relative.toString().replace(path.getFileSystem().getSeparator(), "/");
@@ -127,11 +134,11 @@ public final class ReleasePackager
 
 		List<Path> sorted = new ArrayList<>(archives);
 		sorted.sort(Comparator.comparing(path -> path.getFileName().toString()));
-		List<String> lines = new ArrayList<>(sorted.size());
+		StringJoiner lines = new StringJoiner("\n", "", "\n").setEmptyValue("");
 		for (Path archive : sorted)
 			lines.add(sha256(archive) + "  " + archive.getFileName());
 		Files.createDirectories(manifest.toAbsolutePath().normalize().getParent());
-		Files.write(manifest, lines);
+		Files.writeString(manifest, lines.toString());
 		return manifest;
 	}
 

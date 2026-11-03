@@ -20,8 +20,8 @@ import java.util.stream.Stream;
 /**
  * Audits the Java sources for isolation and testability properties that a source scan can establish.
  * <p>
- * The test-suite checks and the sleep checks cover every production and test source of the Java modules
- * ({@code common/cli}, {@code claude/cli}, {@code codex/cli} and {@code common/distribution}). The other checks cover
+ * The test-suite checks and the sleep checks cover every production and test source of every Java module discovered
+ * below {@code client}, including modules added later. The other checks cover
  * the production and test sources of {@code com.holdmyspot.cat.common.optimizer},
  * {@code com.holdmyspot.cat.claude.optimizer} and {@code com.holdmyspot.cat.codex.optimizer}, including their
  * subpackages, and the {@code HarnessCapacity*.java} files of {@code com.holdmyspot.cat.common.runner}. A scope that
@@ -59,11 +59,6 @@ public final class TestabilityAuditTest
 	 * The package, relative to a source root, of the harness capacity files.
 	 */
 	private static final String RUNNER_PACKAGE = "com/holdmyspot/cat/common/runner";
-	/**
-	 * The modules, relative to the {@code client} directory, whose sources the audit scans.
-	 */
-	private static final List<String> MODULES = List.of("common/cli", "claude/cli", "codex/cli",
-		"common/distribution");
 	/**
 	 * The module of the harness-neutral core.
 	 */
@@ -213,7 +208,10 @@ public final class TestabilityAuditTest
 			"codex/cli/src/test/java/com/holdmyspot/cat/codex/runner/test/CodexProcessTest.java",
 			"claude/cli/src/test/java/com/holdmyspot/cat/claude/runner/test/MaintenanceTest.java",
 			"common/cli/src/test/java/com/holdmyspot/cat/common/test/HookScopeTest.java",
-			"common/distribution/src/test/java/com/holdmyspot/cat/distribution/bundle/test/JlinkImageBuilderTest.java"))
+			"common/distribution/src/test/java/com/holdmyspot/cat/distribution/bundle/test/JlinkImageBuilderTest.java",
+			"common/updater/src/test/java/com/holdmyspot/cat/common/updater/engine/test/HttpsReleaseSourceTest.java",
+			"claude/updater/src/test/java/com/holdmyspot/cat/claude/updater/test/ActivationTest.java",
+			"codex/updater/src/test/java/com/holdmyspot/cat/codex/updater/test/ActivationTest.java"))
 		{
 			requireThat(scanned, "scanned").contains(client.resolve(source));
 		}
@@ -755,22 +753,51 @@ public final class TestabilityAuditTest
 	}
 
 	/**
+	 * Finds module directories containing standard Java source roots, without a fixed module list or depth limit.
+	 * Source, build-output and hidden directories are not module containers, so fixtures and generated copies do not
+	 * contribute modules. Symbolic links are not followed, so a link cannot duplicate sources or create a cycle.
+	 *
+	 * @param directory the directory to search
+	 * @return the module directories in path order
+	 * @throws IOException if a directory cannot be listed
+	 */
+	private static List<Path> findModules(Path directory) throws IOException
+	{
+		List<Path> modules = new ArrayList<>();
+		if (Files.isDirectory(directory.resolve("src/main/java")) ||
+			Files.isDirectory(directory.resolve("src/test/java")))
+			modules.add(directory);
+		try (Stream<Path> children = Files.list(directory))
+		{
+			for (Path child : children.filter(path -> Files.isDirectory(path) && !Files.isSymbolicLink(path)).
+				sorted().toList())
+			{
+				String name = child.getFileName().toString();
+				if (!name.equals("src") && !name.equals("target") && !name.startsWith("."))
+					modules.addAll(findModules(child));
+			}
+		}
+		return List.copyOf(modules);
+	}
+
+	/**
 	 * Parses every source file of the Java modules.
 	 *
-	 * @param client the {@code client} directory
+	 * @param client  the {@code client} directory
+	 * @param modules the discovered module directories
 	 * @return the files
 	 * @throws IOException if a source cannot be read
 	 */
-	private static List<SourceFile> scanModules(Path client) throws IOException
+	private static List<SourceFile> scanModules(Path client, List<Path> modules) throws IOException
 	{
 		List<SourceFile> files = new ArrayList<>();
-		for (String module : MODULES)
+		for (Path module : modules)
 		{
 			for (String sourceSet : List.of("main", "test"))
 			{
-				Path root = client.resolve(module).resolve("src").resolve(sourceSet).resolve("java");
+				Path root = module.resolve("src").resolve(sourceSet).resolve("java");
 				boolean isProduction = sourceSet.equals("main");
-				boolean isCore = module.equals(CORE_MODULE);
+				boolean isCore = module.equals(client.resolve(CORE_MODULE));
 				for (Path path : listJavaFiles(root))
 					files.add(new SourceFile(path, isProduction, isCore, JavaSource.parse(Files.readString(path))));
 			}
@@ -781,17 +808,17 @@ public final class TestabilityAuditTest
 	/**
 	 * Returns the source files in the audit's scope: those of the optimizer packages and the harness capacity files.
 	 *
-	 * @param client the {@code client} directory
-	 * @param files  every source file of the Java modules
+	 * @param modules the discovered module directories
+	 * @param files   every source file of the Java modules
 	 * @return the files in the audit's scope
 	 */
-	private static List<SourceFile> selectAudited(Path client, List<SourceFile> files)
+	private static List<SourceFile> selectAudited(List<Path> modules, List<SourceFile> files)
 	{
 		List<Path> roots = new ArrayList<>();
-		for (String module : MODULES)
+		for (Path module : modules)
 		{
 			for (String sourceSet : List.of("main", "test"))
-				roots.add(client.resolve(module).resolve("src").resolve(sourceSet).resolve("java"));
+				roots.add(module.resolve("src").resolve(sourceSet).resolve("java"));
 		}
 		List<SourceFile> audited = new ArrayList<>();
 		for (SourceFile file : files)
@@ -847,16 +874,16 @@ public final class TestabilityAuditTest
 	/**
 	 * Returns the qualified names of the types in every test source tree.
 	 *
-	 * @param client the {@code client} directory
+	 * @param modules the discovered module directories
 	 * @return the names
 	 * @throws IOException if a test source tree cannot be listed
 	 */
-	private static Set<String> findTestTypes(Path client) throws IOException
+	private static Set<String> findTestTypes(List<Path> modules) throws IOException
 	{
 		Set<String> types = new HashSet<>();
-		for (String module : MODULES)
+		for (Path module : modules)
 		{
-			Path root = client.resolve(module).resolve("src/test/java");
+			Path root = module.resolve("src/test/java");
 			for (Path path : listJavaFiles(root))
 			{
 				String relative = root.relativize(path).toString().replace(path.getFileSystem().getSeparator(), ".");
@@ -1291,9 +1318,10 @@ public final class TestabilityAuditTest
 			Path client = clientDirectory();
 			try
 			{
-				MODULE_FILES = scanModules(client);
-				FILES = selectAudited(client, MODULE_FILES);
-				TEST_TYPES = Set.copyOf(findTestTypes(client));
+				List<Path> modules = findModules(client);
+				MODULE_FILES = scanModules(client, modules);
+				FILES = selectAudited(modules, MODULE_FILES);
+				TEST_TYPES = Set.copyOf(findTestTypes(modules));
 			}
 			catch (IOException e)
 			{
