@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.secrets.HarnessRunnerMaintenanceSecrets;
 import org.testng.annotations.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -28,6 +29,8 @@ import java.util.Map;
 
 /**
  * Tests the filesystem and output effects of each shared maintenance operation.
+ * <p>
+ * Operations on runs use a {@link FakeProcessLiveness} in place of the operating system's process table.
  */
 public final class MaintenanceTest
 {
@@ -37,6 +40,14 @@ public final class MaintenanceTest
 	 */
 	private static final HarnessTemporaryRoot NO_SESSION = HarnessTemporaryRoot.withoutSession(
 		"No harness session variable is set");
+	/**
+	 * The identifier of the recorded owner process that a test's process table may report alive.
+	 */
+	private static final long OWNER_PID = 4001;
+	/**
+	 * The start time of the recorded owner process that a test's process table may report alive.
+	 */
+	private static final Instant OWNER_START = Instant.parse("2026-07-20T00:00:00Z");
 
 	/**
 	 * Creates the test.
@@ -85,11 +96,10 @@ public final class MaintenanceTest
 			HarnessRun run = new HarnessRunManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harnessa");
 			Path manifest = run.directory().resolve("run.json");
-			Files.writeString(manifest, Files.readString(manifest).replaceFirst(
-				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\"owner_started_at\": \"1970-01-01T00:00:00Z\""));
 
-			execute(jvm, root, "--fail-run", "--run-id", run.id(), "--diagnostic", "supervisor failure",
-				"--exit-code", "17");
+			// No process is alive, so the runner that owns the run has ended
+			execute(jvm, root, new FakeProcessLiveness(), "--fail-run", "--run-id", run.id(), "--diagnostic",
+				"supervisor failure", "--exit-code", "17");
 
 			requireThat(Files.readString(manifest), "manifest").contains("supervisor failure").
 				contains("\"exit_code\": 17").contains("\"state\": \"failed\"");
@@ -97,7 +107,7 @@ public final class MaintenanceTest
 	}
 
 	/**
-	 * Verifies stale deletion removes an old terminal run and keeps a current run.
+	 * Verifies stale deletion removes an old terminal run and keeps a current run whose owner is alive.
 	 *
 	 * @throws IOException if fixture or maintenance I/O fails
 	 */
@@ -115,8 +125,13 @@ public final class MaintenanceTest
 			oldManager.markCompleted(old);
 			HarnessRun current = new HarnessRunManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harnessa");
+			Path manifest = current.directory().resolve("run.json");
+			Files.writeString(manifest, Files.readString(manifest).
+				replaceFirst("\"owner_pid\": [0-9]+", "\"owner_pid\": " + OWNER_PID).
+				replaceFirst("\"owner_started_at\": \"[^\"]+\"", "\"owner_started_at\": \"" + OWNER_START + "\""));
 
-			execute(jvm, root, "--delete-stale-runs", "--older-than", "PT1H");
+			execute(jvm, root, new FakeProcessLiveness().alive(OWNER_PID, OWNER_START), "--delete-stale-runs",
+				"--older-than", "PT1H");
 
 			requireThat(Files.notExists(old.directory()), "oldDeleted").isTrue();
 			requireThat(current.directory(), "currentRun").isDirectory();
@@ -191,21 +206,37 @@ public final class MaintenanceTest
 	}
 
 	/**
-	 * Executes maintenance with isolated output and a caller-owned root.
+	 * Executes maintenance with isolated output and a caller-owned root, with no process alive.
 	 *
-	 * @param jvm the process scope
+	 * @param jvm  the process scope
 	 * @param root the test-owned run root
 	 * @param args the operation and its additional options
 	 * @throws IOException if maintenance I/O fails
 	 */
 	private static void execute(JvmScope jvm, Path root, String... args) throws IOException
 	{
+		execute(jvm, root, new FakeProcessLiveness(), args);
+	}
+
+	/**
+	 * Executes maintenance with isolated output and a caller-owned root.
+	 *
+	 * @param jvm      the process scope
+	 * @param root     the test-owned run root
+	 * @param liveness the process table that tells whether each run's owner and harness processes are alive
+	 * @param args     the operation and its additional options
+	 * @throws IOException if maintenance I/O fails
+	 */
+	private static void execute(JvmScope jvm, Path root, FakeProcessLiveness liveness, String... args)
+		throws IOException
+	{
 		String[] command = Arrays.copyOf(args, args.length + 2);
 		command[args.length] = "--run-root";
 		command[args.length + 1] = root.toString();
 		try (PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8))
 		{
-			HarnessRunnerMaintenance.execute(jvm, command, "harnessa", NO_SESSION, Map.of(), out);
+			HarnessRunnerMaintenanceSecrets.getHarnessRunnerMaintenanceAccess().execute(jvm, command, "harnessa",
+				NO_SESSION, Map.of(), out, liveness);
 		}
 	}
 }

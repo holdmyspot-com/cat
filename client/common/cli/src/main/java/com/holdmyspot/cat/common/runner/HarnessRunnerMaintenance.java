@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.secrets.HarnessRunnerMaintenanceSecrets;
 
 import java.io.IOException;
 import java.io.PrintStream;
@@ -15,6 +16,11 @@ import java.util.Map;
  */
 public final class HarnessRunnerMaintenance
 {
+	static
+	{
+		HarnessRunnerMaintenanceSecrets.setHarnessRunnerMaintenanceAccess(HarnessRunnerMaintenance::execute);
+	}
+
 	/**
 	 * Prevents utility-class construction.
 	 */
@@ -60,11 +66,35 @@ public final class HarnessRunnerMaintenance
 		Map<String, String> environment,
 		PrintStream out) throws IOException
 	{
+		execute(scope, args, harness, temporaryRoot, environment, out, new ProcessHandleLiveness());
+	}
+
+	/**
+	 * Executes one maintenance command for the selected harness, asking a liveness service whether each run's owner
+	 * and harness processes are alive.
+	 *
+	 * @param scope           the process scope, whose lock coordinator and waiting the run manager uses
+	 * @param args            the lifecycle command and its options
+	 * @param harness         the non-blank harness identifier used to select owned runs
+	 * @param temporaryRoot   where the runs are kept when the command line names no {@code --run-root}
+	 * @param environment     the parent environment used to verify the dependency cache
+	 * @param out             receives the verified cache path; other operations produce no output
+	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if the command is invalid, if {@code harness} is blank, or if the operation
+	 *                                  acts on runs while the command line names no {@code --run-root} outside a
+	 *                                  harness session
+	 * @throws IOException              if run maintenance or dependency-cache verification fails
+	 */
+	private static void execute(JvmScope scope, String[] args, String harness, HarnessTemporaryRoot temporaryRoot,
+		Map<String, String> environment, PrintStream out, HarnessProcessLiveness processLiveness) throws IOException
+	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(out, "out").isNotNull();
+		requireThat(processLiveness, "processLiveness").isNotNull();
 		HarnessRunnerMaintenanceOptions options = HarnessRunnerMaintenanceOptions.parse(args, temporaryRoot);
 		if (options.operation() == HarnessRunnerMaintenanceOptions.Operation.VERIFY_DEPENDENCY_CACHE)
 		{
@@ -72,7 +102,7 @@ public final class HarnessRunnerMaintenance
 			return;
 		}
 		HarnessRunManager manager = new HarnessRunManager(scope.fileLocks(), options.runRoot(), Clock.systemUTC(),
-			FileReplacer.retrying(scope.waiting()));
+			FileReplacer.retrying(scope.waiting()), processLiveness);
 		switch (options.operation())
 		{
 			case DELETE_RUN -> manager.deleteRun(harness, options.runId());
