@@ -3,14 +3,14 @@ package com.holdmyspot.cat.codex.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.codex.CodexSessionStartHook;
-import com.holdmyspot.cat.codex.CodexSubagentStartHook;
+import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
+import com.holdmyspot.cat.codex.secrets.CodexSubagentStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -570,7 +570,7 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies that the SessionStart that creates the session's CAT session directory in a Git work tree that does not
+	 * Verifies that the SessionStart that creates the session's CAT session directory in a project where Git does not
 	 * ignore it adds CAT's lines to the project's {@code .gitignore} and tells the user through {@code systemMessage},
 	 * which Codex shows the user, and that a later SessionStart of the same session says nothing about it.
 	 *
@@ -581,15 +581,14 @@ public final class CodexSessionStartHookTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = GitWorkTrees.create(cleanup.add(Files.createTempDirectory("cat-session-start-")).
-				toAbsolutePath().normalize().resolve("project"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-")).toAbsolutePath().normalize();
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			copyBundledRules(plugin);
 			Map<String, String> environment = Map.of("PLUGIN_ROOT", plugin.toString(),
 				Platform.current().homeVariable(), project.resolve("home").toString());
 
-			HookResult first = invoke(event(project), environment, project);
-			HookResult second = invoke(event(project), environment, project);
+			HookResult first = invoke(event(project), environment, project, GitAnswers.NOT_IGNORED);
+			HookResult second = invoke(event(project), environment, project, GitAnswers.NOT_IGNORED);
 
 			requireThat(readResponse(first).path("systemMessage").asString(), "systemMessage").
 				contains("CAT added /.cat/sessions/ to " + project.resolve(".gitignore")).
@@ -623,10 +622,12 @@ public final class CodexSessionStartHookTest
 			ByteArrayOutputStream subagentOutput = new ByteArrayOutputStream();
 			ByteArrayOutputStream subagentError = new ByteArrayOutputStream();
 
-			CodexSubagentStartHook.run(new String[0], new ByteArrayInputStream(("{\"session_id\":\"" + sessionId() +
-					"\",\"cwd\":" + jsonString(project) + ",\"agent_type\":\"cat:worker\"}").getBytes(UTF_8)),
-				subagentOutput, new PrintStream(subagentError, true, UTF_8), Map.of("PLUGIN_ROOT", plugin.toString(),
-					Platform.current().homeVariable(), project.resolve("home").toString()), project, Yielding.waiting());
+			CodexSubagentStartHookSecrets.getCodexSubagentStartHookAccess().run(new String[0],
+				new ByteArrayInputStream(("{\"session_id\":\"" + sessionId() + "\",\"cwd\":" + jsonString(project) +
+					",\"agent_type\":\"cat:worker\"}").getBytes(UTF_8)), subagentOutput,
+				new PrintStream(subagentError, true, UTF_8), Map.of("PLUGIN_ROOT", plugin.toString(),
+					Platform.current().homeVariable(), project.resolve("home").toString()), project, Yielding.waiting(),
+				GitAnswers.IGNORED);
 			requireThat(readJson(subagentOutput.toString(UTF_8)).has("systemMessage"), "subagent.hasSystemMessage").
 				isFalse();
 			requireThat(Files.exists(listFile), "listFileAfterSubagentStart").isFalse();
@@ -902,7 +903,8 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Runs the SessionStart hook with supplied input and process state, then captures its standard streams.
+	 * Runs the SessionStart hook with supplied input and process state in a project whose Git ignores the CAT session
+	 * directories, then captures its standard streams.
 	 *
 	 * @param input the hook input
 	 * @param environment the process environment
@@ -911,15 +913,33 @@ public final class CodexSessionStartHookTest
 	 */
 	private static HookResult invoke(String input, Map<String, String> environment, Path workingDirectory)
 	{
+		return invoke(input, environment, workingDirectory, GitAnswers.IGNORED);
+	}
+
+	/**
+	 * Runs the SessionStart hook with supplied input, process state and Git answers, then captures its standard
+	 * streams.
+	 *
+	 * @param input the hook input
+	 * @param environment the process environment
+	 * @param workingDirectory the process working directory
+	 * @param git what Git answers about the project
+	 * @return the captured standard streams
+	 */
+	private static HookResult invoke(String input, Map<String, String> environment, Path workingDirectory,
+		GitAnswers git)
+	{
 		assert input != null;
 		assert environment != null;
 		assert workingDirectory != null;
+		assert git != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
-		CodexSessionStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory, Yielding.waiting());
+		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
+			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+			harnessEnvironment, workingDirectory, Yielding.waiting(), git);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

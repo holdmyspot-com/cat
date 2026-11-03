@@ -145,7 +145,7 @@ public final class SessionDirectory
 	 * @throws IOException          if {@code sessionId} is not a UUID in canonical form, or if the directory or marker
 	 *                              cannot be created
 	 */
-	private static SessionDirectory open(Path projectRoot, String sessionId, SessionHarness harness,
+	static SessionDirectory open(Path projectRoot, String sessionId, SessionHarness harness,
 		Path configurationDirectory, Instant now, JsonMapper json, SessionIgnore.GitQueries git) throws IOException
 	{
 		requireThat(projectRoot, "projectRoot").isNotNull();

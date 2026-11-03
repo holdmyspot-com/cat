@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
@@ -195,7 +196,24 @@ public final class CodexRunnerCli
 	 */
 	public static ToolScope toolScope(Path workingDirectory, Map<String, String> environment, Waiting waiting)
 	{
-		return ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(), waiting);
+		return toolScope(workingDirectory, environment, waiting, SessionIgnore.GIT_PROCESS);
+	}
+
+	/**
+	 * Opens the tool scope of a runner command, as {@link #toolScope(Path, Map, Waiting)} does, whose CAT session
+	 * directory decides what to add to the project's {@code .gitignore} from the answers that a given Git gives.
+	 *
+	 * @param workingDirectory the directory from which the command was invoked
+	 * @param environment      the command's environment, whose session variable names the session
+	 * @param waiting          how the command waits between the attempts of a retried operation
+	 * @param git              answers what Git ignores in the project
+	 * @return an open tool scope
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static ToolScope toolScope(Path workingDirectory, Map<String, String> environment, Waiting waiting,
+		SessionIgnore.GitQueries git)
+	{
+		return ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(), waiting, git);
 	}
 
 	/**

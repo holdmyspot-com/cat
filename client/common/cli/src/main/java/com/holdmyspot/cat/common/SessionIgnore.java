@@ -49,9 +49,10 @@ public final class SessionIgnore
 	 */
 	private static final Object MONITOR = new Object();
 	/**
-	 * Answers {@link #ensure(Path)}'s questions by running Git in the project.
+	 * Answers {@link #ensure(Path)}'s questions by running Git in the project, as every CAT session directory that a
+	 * harness's hook or tool opens asks them.
 	 */
-	static final GitQueries GIT_PROCESS = new GitQueries()
+	public static final GitQueries GIT_PROCESS = new GitQueries()
 	{
 		@Override
 		public int checkIgnore(Path directory, String path) throws IOException

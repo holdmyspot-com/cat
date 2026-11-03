@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.HookScope;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.Waiting;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -36,6 +37,24 @@ final class ClaudeHookScope
 	{
 		return HookScope.fromEnvironment(environment, "Claude", "CLAUDE_PLUGIN_ROOT",
 			Platform.current().homeVariable(), ClaudeSessionHarness.HARNESS, waiting);
+	}
+
+	/**
+	 * Opens a scope for one Claude hook invocation whose session directories decide what to add to the project's
+	 * {@code .gitignore} from the answers that a given Git gives.
+	 *
+	 * @param environment the non-null harness hook environment
+	 * @param waiting     how the hook waits between the attempts of a retried operation
+	 * @param git         answers what Git ignores in the project
+	 * @return the scope
+	 * @throws IOException if Claude did not supply a usable plugin root or home directory, or if a CAT variable
+	 *   conflicts with the plugin root
+	 */
+	static HookScope open(Map<String, String> environment, Waiting waiting, SessionIgnore.GitQueries git)
+		throws IOException
+	{
+		return HookScope.fromEnvironment(environment, "Claude", "CLAUDE_PLUGIN_ROOT",
+			Platform.current().homeVariable(), ClaudeSessionHarness.HARNESS, waiting, git);
 	}
 
 	/**

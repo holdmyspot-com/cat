@@ -1,7 +1,9 @@
 package com.holdmyspot.cat.claude;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import com.holdmyspot.cat.claude.secrets.ClaudeSessionStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.Pause;
 import java.io.InputStream;
@@ -22,6 +24,24 @@ import java.util.Map;
  */
 public final class ClaudeSessionStartHook
 {
+	static
+	{
+		ClaudeSessionStartHookSecrets.setClaudeSessionStartHookAccess((args, input, output, error, environment,
+			workingDirectory, waiting, git) ->
+		{
+			requireThat(args, "args").isNotNull();
+			requireThat(input, "input").isNotNull();
+			requireThat(output, "output").isNotNull();
+			requireThat(error, "error").isNotNull();
+			requireThat(environment, "environment").isNotNull();
+			requireThat(workingDirectory, "workingDirectory").isNotNull();
+			requireThat(waiting, "waiting").isNotNull();
+			requireThat(git, "git").isNotNull();
+			ClaudeRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting,
+				git);
+		});
+	}
+
 	/**
 	 * Runs the harness SessionStart hook.
 	 *
@@ -58,7 +78,8 @@ public final class ClaudeSessionStartHook
 		requireThat(environment, "environment").isNotNull();
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
-		ClaudeRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting);
+		ClaudeRuleInjectionHook.run("SessionStart", args, input, output, error, environment, workingDirectory, waiting,
+			SessionIgnore.GIT_PROCESS);
 	}
 
 	/**

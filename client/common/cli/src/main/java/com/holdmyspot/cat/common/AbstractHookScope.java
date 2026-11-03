@@ -32,6 +32,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	private final Path userRulesRoot;
 	private final SessionHarness harness;
 	private final Path configurationDirectory;
+	private final SessionIgnore.GitQueries git;
 
 	/**
 	 * Creates an open hook scope from explicit directories.
@@ -42,16 +43,19 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	 * @param harness the harness that runs the hook, whose sessions own the CAT session directories that the hook
 	 *   obtains
 	 * @param configurationDirectory the harness's configuration directory, which a new session marker records
+	 * @param git answers what Git ignores in the project, which a session directory asks when this scope creates it
 	 * @throws NullPointerException if any argument is null
 	 */
 	protected AbstractHookScope(JvmScope parent, Path pluginRoot, Path userHome, SessionHarness harness,
-		Path configurationDirectory)
+		Path configurationDirectory, SessionIgnore.GitQueries git)
 	{
 		super(parent);
 		requireThat(pluginRoot, "pluginRoot").isNotNull();
 		requireThat(userHome, "userHome").isNotNull();
 		requireThat(harness, "harness").isNotNull();
 		requireThat(configurationDirectory, "configurationDirectory").isNotNull();
+		requireThat(git, "git").isNotNull();
+		this.git = git;
 		this.pluginRoot = pluginRoot.toAbsolutePath().normalize();
 		this.userRulesRoot = ProjectRuleLoader.rulesDirectory(userHome.toAbsolutePath().normalize());
 		this.harness = harness;
@@ -81,6 +85,34 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
 		String homeVariable, SessionHarness sessionHarness, Waiting waiting) throws IOException
 	{
+		return fromEnvironment(environment, harness, pluginRootVariable, homeVariable, sessionHarness, waiting,
+			SessionIgnore.GIT_PROCESS);
+	}
+
+	/**
+	 * Creates an open hook scope from the environment of a harness hook invocation, as
+	 * {@link #fromEnvironment(Map, String, String, String, SessionHarness, Waiting)} does, whose session directories
+	 * decide what to add to the project's {@code .gitignore} from the answers that a given Git gives.
+	 *
+	 * @param environment        the hook environment
+	 * @param harness            the harness's display name
+	 * @param pluginRootVariable the variable through which the harness supplies CAT's installation directory
+	 * @param homeVariable       the variable that names the current user's home directory
+	 * @param sessionHarness     the harness's session values
+	 * @param waiting            how the hook waits between the attempts of a retried operation
+	 * @param git                answers what Git ignores in the project
+	 * @return the scope
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code harness}, {@code pluginRootVariable} or {@code homeVariable} are
+	 *   blank
+	 * @throws IOException if either variable is unset or blank, or if the environment sets a conflicting {@code CAT_}
+	 *   variable
+	 */
+	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
+		String homeVariable, SessionHarness sessionHarness, Waiting waiting, SessionIgnore.GitQueries git)
+		throws IOException
+	{
+		requireThat(git, "git").isNotNull();
 		requireThat(sessionHarness, "sessionHarness").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(environment, "environment").isNotNull();
@@ -108,7 +140,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 			throw new IOException(name + " conflicts with " + harness + " " + pluginRootVariable);
 		}
 		return new MainHookScope(new MainJvmScope(environment, waiting), resolvedPluginRoot, userHome, sessionHarness,
-			sessionHarness.configurationDirectory(environment, homeVariable));
+			sessionHarness.configurationDirectory(environment, homeVariable), git);
 	}
 
 	@Override
@@ -182,7 +214,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 		if (!sessionId.isString())
 			throw new IOException("The hook input lacks " + property);
 		return SessionDirectory.open(projectDir, sessionId.stringValue(), harness, configurationDirectory,
-			clock().instant(), json());
+			clock().instant(), json(), git);
 	}
 
 	/**

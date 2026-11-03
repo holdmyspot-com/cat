@@ -109,7 +109,7 @@ public final class SessionDirectoryTest
 				Map<String, String> environment = Map.of(variable.getKey(), variable.getValue(), "HOME", home.toString(),
 					"USERPROFILE", home.toString());
 				try (ToolScope scope = ToolScope.forSession(nested, environment, List.of(HARNESS_A, HARNESS_B),
-					Yielding.waiting()))
+					Yielding.waiting(), GitAnswers.IGNORED))
 				{
 					SessionDirectory session = scope.sessionDirectory().orElseThrow();
 
@@ -150,7 +150,7 @@ public final class SessionDirectoryTest
 			Map<String, String> environment = Map.of(HARNESS_A.sessionVariable(), SESSION_ID,
 				HARNESS_A.configurationVariable(), configuration.toString());
 			try (ToolScope scope = ToolScope.forSession(project, environment, List.of(HARNESS_A, HARNESS_B),
-				Yielding.waiting()))
+				Yielding.waiting(), GitAnswers.IGNORED))
 			{
 				SessionDirectory session = scope.sessionDirectory().orElseThrow();
 				JsonNode marker = JsonMapper.builder().build().readTree(Files.readString(session.marker(), UTF_8));
@@ -273,7 +273,7 @@ public final class SessionDirectoryTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
 			Files.createDirectories(project.resolve(".cat"));
 			try (ToolScope scope = ToolScope.forSession(project, Map.of("HOME", project.toString()),
-				List.of(HARNESS_A, HARNESS_B), Yielding.waiting()))
+				List.of(HARNESS_A, HARNESS_B), Yielding.waiting(), GitAnswers.IGNORED))
 			{
 				requireThat(scope.sessionDirectory(), "sessionDirectory").isEqualTo(Optional.empty());
 				try

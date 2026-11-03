@@ -3,12 +3,13 @@ package com.holdmyspot.cat.codex.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.codex.CodexSessionStartHook;
 import com.holdmyspot.cat.codex.secrets.CodexGetHistorySecrets;
+import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -296,8 +297,9 @@ public final class KeptRequestStatusTest
 		environment.put(Platform.current().homeVariable(), project.resolve("home").toString());
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		CodexSessionStartHook.run(new String[0], new ByteArrayInputStream(writeJson(event).getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), environment, project, Yielding.waiting());
+		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
+			new ByteArrayInputStream(writeJson(event).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+			environment, project, Yielding.waiting(), GitAnswers.IGNORED);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

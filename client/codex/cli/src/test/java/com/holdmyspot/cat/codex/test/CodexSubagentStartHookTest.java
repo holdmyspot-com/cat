@@ -3,12 +3,13 @@ package com.holdmyspot.cat.codex.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.codex.CodexSubagentStartHook;
+import com.holdmyspot.cat.codex.secrets.CodexSubagentStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -216,8 +217,9 @@ public final class CodexSubagentStartHookTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
-		CodexSubagentStartHook.run(new String[0], new ByteArrayInputStream(input.getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory, Yielding.waiting());
+		CodexSubagentStartHookSecrets.getCodexSubagentStartHookAccess().run(new String[0],
+			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+			harnessEnvironment, workingDirectory, Yielding.waiting(), GitAnswers.IGNORED);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

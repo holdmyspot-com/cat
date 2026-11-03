@@ -4,14 +4,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.ClaudeSessionEndHook;
-import com.holdmyspot.cat.claude.ClaudeSessionStartHook;
-import com.holdmyspot.cat.claude.ClaudeSubagentStartHook;
+import com.holdmyspot.cat.claude.secrets.ClaudeSessionStartHookSecrets;
+import com.holdmyspot.cat.claude.secrets.ClaudeSubagentStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -33,7 +33,7 @@ import tools.jackson.databind.JsonNode;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
- * Tests {@link ClaudeSessionStartHook}.
+ * Tests {@link com.holdmyspot.cat.claude.ClaudeSessionStartHook}.
  */
 public final class ClaudeSessionStartHookTest
 {
@@ -732,7 +732,7 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies that the SessionStart that creates the session's CAT session directory in a Git work tree that does not
+	 * Verifies that the SessionStart that creates the session's CAT session directory in a project where Git does not
 	 * ignore it adds CAT's lines to the project's {@code .gitignore} and tells the user through {@code systemMessage},
 	 * which Claude Code shows the user, and that a later SessionStart of the same session says nothing about it.
 	 *
@@ -743,16 +743,15 @@ public final class ClaudeSessionStartHookTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path project = GitWorkTrees.create(cleanup.add(Files.createTempDirectory("cat-project-rules-")).
-				toAbsolutePath().normalize().resolve("project"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			copyBundledRules(plugin);
 			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_CONFIG_DIR",
 				project.resolve(".claude").toString());
 			String input = "{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID + "\"}";
 
-			HookResult first = invoke(input, environment, project);
-			HookResult second = invoke(input, environment, project);
+			HookResult first = invoke(new String[0], input, environment, project, GitAnswers.NOT_IGNORED);
+			HookResult second = invoke(new String[0], input, environment, project, GitAnswers.NOT_IGNORED);
 
 			requireThat(scope.json().readTree(first.output()).path("systemMessage").asString(), "systemMessage").
 				contains("CAT added /.cat/sessions/ to " + project.resolve(".gitignore")).
@@ -1161,7 +1160,8 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Runs the SessionStart hook with supplied arguments and captures its standard streams.
+	 * Runs the SessionStart hook with supplied arguments in a project whose Git ignores the CAT session directories,
+	 * and captures its standard streams.
 	 *
 	 * @param args the command-line arguments
 	 * @param input the hook input
@@ -1171,16 +1171,34 @@ public final class ClaudeSessionStartHookTest
 	 */
 	private static HookResult invoke(String[] args, String input, Map<String, String> environment, Path workingDirectory)
 	{
+		return invoke(args, input, environment, workingDirectory, GitAnswers.IGNORED);
+	}
+
+	/**
+	 * Runs the SessionStart hook with supplied arguments and Git answers, and captures its standard streams.
+	 *
+	 * @param args the command-line arguments
+	 * @param input the hook input
+	 * @param environment the process environment
+	 * @param workingDirectory the process working directory
+	 * @param git what Git answers about the project
+	 * @return the captured standard streams
+	 */
+	private static HookResult invoke(String[] args, String input, Map<String, String> environment, Path workingDirectory,
+		GitAnswers git)
+	{
 		assert args != null;
 		assert input != null;
 		assert environment != null;
 		assert workingDirectory != null;
+		assert git != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
-		ClaudeSessionStartHook.run(args, new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory, Yielding.waiting());
+		ClaudeSessionStartHookSecrets.getClaudeSessionStartHookAccess().run(args,
+			new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+			harnessEnvironment, workingDirectory, Yielding.waiting(), git);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
@@ -1201,8 +1219,9 @@ public final class ClaudeSessionStartHookTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
-		ClaudeSubagentStartHook.run(new String[0], new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output,
-			new PrintStream(error, true, UTF_8), harnessEnvironment, workingDirectory, Yielding.waiting());
+		ClaudeSubagentStartHookSecrets.getClaudeSubagentStartHookAccess().run(new String[0],
+			new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+			harnessEnvironment, workingDirectory, Yielding.waiting(), GitAnswers.IGNORED);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

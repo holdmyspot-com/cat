@@ -34,6 +34,30 @@ public interface HookScope extends JvmScope
 	}
 
 	/**
+	 * Creates a hook scope from the harness environment whose session directories decide what to add to the
+	 * project's {@code .gitignore} from the answers that a given Git gives.
+	 *
+	 * @param environment        the hook environment
+	 * @param harness            the harness display name
+	 * @param pluginRootVariable the installation variable
+	 * @param homeVariable       the user home variable
+	 * @param sessionHarness     the harness session contract
+	 * @param waiting            how the hook waits between the attempts of a retried operation
+	 * @param git                answers what Git ignores in the project
+	 * @return the open scope
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if any variable name or harness name is blank
+	 * @throws IOException if a required variable is absent or a CAT variable conflicts
+	 */
+	static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
+		String homeVariable, SessionHarness sessionHarness, Waiting waiting, SessionIgnore.GitQueries git)
+		throws IOException
+	{
+		return AbstractHookScope.fromEnvironment(environment, harness, pluginRootVariable, homeVariable, sessionHarness,
+			waiting, git);
+	}
+
+	/**
 	 * Returns CAT's installation directory for this hook invocation.
 	 *
 	 * @return the normalized CAT installation directory

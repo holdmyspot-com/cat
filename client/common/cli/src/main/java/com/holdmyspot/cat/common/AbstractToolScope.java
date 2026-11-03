@@ -21,6 +21,7 @@ public abstract class AbstractToolScope extends AbstractJvmScope implements Tool
 	private final boolean inProject;
 	private final Map<String, String> environment;
 	private final List<SessionHarness> harnesses;
+	private final SessionIgnore.GitQueries git;
 	private SessionDirectory sessionDirectory;
 
 	/**
@@ -41,7 +42,31 @@ public abstract class AbstractToolScope extends AbstractJvmScope implements Tool
 		requireThat(environment, "environment").isNotNull();
 		requireThat(harnesses, "harnesses").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
-		return new MainToolScope(new MainJvmScope(environment, waiting), workingDirectory, environment, harnesses);
+		return forSession(workingDirectory, environment, harnesses, waiting, SessionIgnore.GIT_PROCESS);
+	}
+
+	/**
+	 * Creates an open tool scope for the session whose tool shell runs a tool, whose session directory decides what to
+	 * add to the project's {@code .gitignore} from the answers that a given Git gives.
+	 *
+	 * @param workingDirectory the directory from which the tool was invoked
+	 * @param environment      the tool's environment
+	 * @param harnesses        the harnesses whose session variables may name the session, in the order in which they
+	 *                         are consulted
+	 * @param waiting          how the tool waits between the attempts of a retried operation
+	 * @param git              answers what Git ignores in the project
+	 * @return an open tool scope
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static ToolScope forSession(Path workingDirectory, Map<String, String> environment,
+		List<SessionHarness> harnesses, Waiting waiting, SessionIgnore.GitQueries git)
+	{
+		requireThat(workingDirectory, "workingDirectory").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(harnesses, "harnesses").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
+		requireThat(git, "git").isNotNull();
+		return new MainToolScope(new MainJvmScope(environment, waiting), workingDirectory, environment, harnesses, git);
 	}
 
 	/**
@@ -51,11 +76,14 @@ public abstract class AbstractToolScope extends AbstractJvmScope implements Tool
 	 * @param workingDirectory the directory from which the tool was invoked
 	 * @param environment the tool's environment
 	 * @param harnesses the harnesses whose session variables may name the session
+	 * @param git answers what Git ignores in the project, which the session directory asks when this scope creates it
 	 */
 	protected AbstractToolScope(JvmScope parent, Path workingDirectory, Map<String, String> environment,
-		List<SessionHarness> harnesses)
+		List<SessionHarness> harnesses, SessionIgnore.GitQueries git)
 	{
 		super(parent);
+		requireThat(git, "git").isNotNull();
+		this.git = git;
 		Path current = workingDirectory.toAbsolutePath().normalize();
 		Path root = null;
 		for (Path candidate = current; candidate != null && root == null; candidate = candidate.getParent())
@@ -90,7 +118,7 @@ public abstract class AbstractToolScope extends AbstractJvmScope implements Tool
 			Path configurationDirectory = harness.configurationDirectory(environment,
 				Platform.current().homeVariable());
 			sessionDirectory = SessionDirectory.open(projectRoot, sessionId.strip(), harness,
-				configurationDirectory, clock().instant(), json());
+				configurationDirectory, clock().instant(), json(), git);
 			return Optional.of(sessionDirectory);
 		}
 		return Optional.empty();

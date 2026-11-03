@@ -6,7 +6,8 @@ import com.holdmyspot.cat.common.SessionHarness;
 import java.nio.file.Path;
 
 /**
- * Supplies {@link HookScope} services with explicit harness directories and the build's temporary directory.
+ * Supplies {@link HookScope} services with explicit harness directories and the build's temporary directory. A
+ * session directory that it opens starts no Git: Git answers that it already ignores the CAT session directories.
  */
 public final class TestHookScope extends AbstractHookScope
 {
@@ -21,6 +22,6 @@ public final class TestHookScope extends AbstractHookScope
 	 */
 	public TestHookScope(Path pluginRoot, Path userHome, SessionHarness harness, Path configurationDirectory)
 	{
-		super(new TestJvmScope(), pluginRoot, userHome, harness, configurationDirectory);
+		super(new TestJvmScope(), pluginRoot, userHome, harness, configurationDirectory, GitAnswers.IGNORED);
 	}
 }

@@ -21,6 +21,23 @@ public final class MainToolScope extends AbstractToolScope
 	public MainToolScope(JvmScope parent, Path workingDirectory, Map<String, String> environment,
 		List<SessionHarness> harnesses)
 	{
-		super(parent, workingDirectory, environment, harnesses);
+		this(parent, workingDirectory, environment, harnesses, SessionIgnore.GIT_PROCESS);
+	}
+
+	/**
+	 * Creates a tool scope whose session directory decides what to add to the project's {@code .gitignore} from the
+	 * answers that a given Git gives.
+	 *
+	 * @param parent           the owned process scope
+	 * @param workingDirectory the tool working directory
+	 * @param environment      the session environment
+	 * @param harnesses        the supported harnesses in consultation order
+	 * @param git              answers what Git ignores in the project
+	 * @throws NullPointerException if any argument is null
+	 */
+	MainToolScope(JvmScope parent, Path workingDirectory, Map<String, String> environment,
+		List<SessionHarness> harnesses, SessionIgnore.GitQueries git)
+	{
+		super(parent, workingDirectory, environment, harnesses, git);
 	}
 }

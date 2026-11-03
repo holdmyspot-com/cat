@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RelativeRuleReference;
 import com.holdmyspot.cat.common.SessionRules;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.Waiting;
 import java.io.IOException;
 import java.io.InputStream;
@@ -90,11 +91,12 @@ final class CodexRuleInjectionHook
 	 * @param environment the hook environment
 	 * @param workingDirectory the hook process directory
 	 * @param waiting how the hook waits between the attempts of a retried operation
+	 * @param git answers what Git ignores in the project when the event creates a CAT session directory
 	 */
 	static void run(String eventName, String[] args, InputStream input, OutputStream output, PrintStream error,
-		Map<String, String> environment, Path workingDirectory, Waiting waiting)
+		Map<String, String> environment, Path workingDirectory, Waiting waiting, SessionIgnore.GitQueries git)
 	{
-		try (HookScope scope = CodexHookScope.open(environment, waiting))
+		try (HookScope scope = CodexHookScope.open(environment, waiting, git))
 		{
 			try
 			{

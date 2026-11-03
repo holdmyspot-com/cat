@@ -28,6 +28,24 @@ public interface ToolScope extends JvmScope
 	}
 
 	/**
+	 * Creates a tool scope from the session environment whose session directory decides what to add to the project's
+	 * {@code .gitignore} from the answers that a given Git gives.
+	 *
+	 * @param workingDirectory the tool working directory
+	 * @param environment      the tool environment
+	 * @param harnesses        the supported harnesses in consultation order
+	 * @param waiting          how the tool waits between the attempts of a retried operation
+	 * @param git              answers what Git ignores in the project
+	 * @return the open scope
+	 * @throws NullPointerException if any argument is null
+	 */
+	static ToolScope forSession(Path workingDirectory, Map<String, String> environment,
+		List<SessionHarness> harnesses, Waiting waiting, SessionIgnore.GitQueries git)
+	{
+		return AbstractToolScope.forSession(workingDirectory, environment, harnesses, waiting, git);
+	}
+
+	/**
 	 * Indicates whether a CAT project encloses the tool's working directory.
 	 *
 	 * @return {@code true} if the working directory or one of its parents holds a {@code .cat} directory

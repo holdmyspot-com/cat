@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
@@ -479,7 +480,7 @@ public final class HarnessRunnerOptionsTest
 			// Windows locates the harness's default configuration directory through USERPROFILE rather than HOME
 			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
 				"HOME", project.toString(), "USERPROFILE", project.toString()), List.of(HARNESS_A, HARNESS_B),
-					Yielding.waiting()))
+					Yielding.waiting(), GitAnswers.IGNORED))
 			{
 				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch(), "harness", HarnessTemporaryRoot.from(scope));
 
@@ -505,7 +506,7 @@ public final class HarnessRunnerOptionsTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));
 			Files.createDirectories(project.resolve(".cat"));
 			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
-				"HOME", project.toString()), List.of(HARNESS_A, HARNESS_B), Yielding.waiting()))
+				"HOME", project.toString()), List.of(HARNESS_A, HARNESS_B), Yielding.waiting(), GitAnswers.IGNORED))
 			{
 				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--run-root", absolute("runs")),
 					"harness", HarnessTemporaryRoot.from(scope));
@@ -530,7 +531,7 @@ public final class HarnessRunnerOptionsTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));
 			Files.createDirectories(project.resolve(".cat"));
 			try (ToolScope scope = ToolScope.forSession(project, Map.of("HOME", project.toString()),
-				List.of(HARNESS_A, HARNESS_B), Yielding.waiting()))
+				List.of(HARNESS_A, HARNESS_B), Yielding.waiting(), GitAnswers.IGNORED))
 			{
 				HarnessTemporaryRoot temporaryRoot = HarnessTemporaryRoot.from(scope);
 				try
