@@ -100,6 +100,37 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	`c58febb58c` and `60a567b889` (session `.gitignore` decisions from given Git answers; one real-Git check remains).
 	Each boundary keeps one end-to-end check. Clean builds end at 3,585 tests, 0 failures, 17 skipped; 63 Bats tests
 	pass. Tests of 1 s or more varied between builds with machine load; none was a changed test.
+- **Trusted updater (user request, 2026-11-03; handoff, in progress):** projects may request routine plugin updates
+	without gaining permission to edit harness configuration or replace the updater. The request's nine requirements
+	and its test list are in the 2026-11-03 conversation; the governing design, including decisions 12.1–12.14, is
+	`/home/gili/cat/worktrees/v1.0/.cat/sessions/3184ae68-7dad-45b6-b48f-c68707926440/temp/fixes/briefs/u-design.md`, untracked. The shared implementer terms are `briefs/u-common.md` (clone per task, never
+	commit, never run an installer or the CLI against the real harness configuration or updater locations). Each task
+	brief is `briefs/<task>.md`. Work runs in a `git clone --shared` at `/home/gili/cat/worktrees/fix-<task>` with
+	a `cat:claude:optimize-high` subagent. The orchestrator integrates the clone's staged binary diff after grepping its
+	added lines for design or plan citations and reflection, runs the full build and Bats, then commits per topic.
+	- **Integrated:** `b73bf0c0bb` (u1: the archive extractor refuses hostile archives completely), `3f3113683d` (u5a
+		and u7: a per-release `cat.sh` with the tag and SHA-256 sums embedded, a signed asset manifest in the release
+		workflow, the HEAD bootstraps retired; the update and uninstall skills go through the updater) and `0d48668540`
+		(u2a: the `client/common/updater` module, with `trust` verifying the Ed25519 manifest signature against the
+		protected policy before parsing and approving releases, and the `activation` SPI). Clean build 3,643 tests, 0
+		failures, 17 skipped; 61 Bats tests pass.
+	- **Next, interrupted by API 503s and to be relaunched from fresh clones of `0d48668540` or later:** u3a (engine),
+		u4c (Claude provider) and u4x (Codex provider) in parallel. Their briefs already name `0d48668540`; recreate
+		each clone, because u4c left a partial `client/claude/updater` and u3a and u4x left nothing. u5b (PowerShell
+		`cat.ps1`, `install-codex.ps1` limited to `-Source` and `-Uninstall`, `bootstrap-codex.ps1` retired) left partial
+		changes in `fix-u5b` at `3f3113683d`. Relaunch it from a fresh clone; its brief names that commit.
+	- **Then:** u6 (the `UpdaterMain` CLI, `setup`, the launchers, the updater jlink image and release asset) after
+		u3a, u4c and u4x; then a docs brief for `docs/installation.md` and `README.md` (the permission boundary,
+		locations, platforms, update command, approval policy, migration with `--updater-only`, rollback, one-time
+		exemption entries versus what projects can then do, the limitations), which also removes the remaining
+		`CAT_RELEASE_BASE_URL` and HEAD URLs in `ReleaseBundles`, `CodexArtifact`, `ClaudeArtifact` and the docs; then a
+		full build and the report to the user.
+	- **Limitations to report:** the Windows PowerShell path is unverified on Windows; restart Codex after an update,
+		since whether a shared app-server notices the swap is unknown; Codex asks for hook-trust review of a new or
+		changed hook; Claude's `excludedCommands` is not a security boundary; `LD_PRELOAD` and other environment
+		injected through harness configuration; Claude's `installed_plugins.json` goes stale; the first download's
+		trust rests on HTTPS and the published key fingerprint. The release workflow's signing and jq steps were
+		linted only (actionlint), never run.
 - **Prompt-prerequisites audit (user request, 2026-11-01):** the tree was audited against the new bundled rule
 	`prompt-prerequisites.md`, and the user ruled on each confirmed finding. Integrated: `cc7fd21219`, `8a3debeda1`,
 	`35c4790223`, `2a5b2653f6`, `a5b5b1b478`, `980a4599fb` (native Windows Claude sessions refused, pointing to WSL2),
