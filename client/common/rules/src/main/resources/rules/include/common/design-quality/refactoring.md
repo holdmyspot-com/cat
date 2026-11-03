@@ -19,8 +19,9 @@ target component, and coordinator composition points. Produce independent manife
 responsibilities do not share a coordinator; use an authoritative symbol or reference inventory so reviewers do not
 rediscover the same closure independently.
 
-Parallel implementers working on an extracted component must use isolated worktrees and change only that component's
-target files and focused tests. They must not edit a shared coordinator source. Assign one integrator to each shared
+Parallel implementers working on an extracted component must each use an isolated worktree and change only that
+component's target files and focused tests. Before creating those worktrees, lazy load `../delegation.md`. They must
+not edit a shared coordinator source. Assign one integrator to each shared
 coordinator source; independent coordinators may have independent integrators. The integrator applies the target changes,
 removes the complete dependency closure from the coordinator, and wires the resulting components in one controlled
 integration.

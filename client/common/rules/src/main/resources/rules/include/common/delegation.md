@@ -159,7 +159,22 @@ and focused tests; include every path required by the selected verification-clos
 real integration boundary. Do not infer a narrow allowlist from the first named type when the contract requires its
 implementations or callers to change.
 
-Run concurrent write-capable delegates only in separate isolated worktrees created from an immutable shared snapshot.
+Run a write-capable delegate in its own isolated worktree, created from an immutable shared snapshot, whenever another
+delegate or the parent works in the same project while it runs. An isolated worktree has its own working files and its
+own repository state: named references such as branches and tags, configuration, hooks, and set-aside changes such as
+a stash. It shares none of that state with the parent's repository or with another delegate's, so a command that the
+delegate runs there cannot change a reference, setting, hook, or set-aside change that another writer depends on.
+Create it as a separate repository from the repository that holds the snapshot's objects, with an object store that
+reads those objects without copying them when the version-control tool supports that, and check out the snapshot. Such
+a worktree works only while the source keeps those objects and the delegate can read them: use it only until the
+delegate's result is integrated, and until then do not prune the source's objects or run an aggressive garbage
+collection on it. Give the delegate an independent copy of the repository instead when its worktree must outlive that
+period or the delegate cannot read the source's object store. For example, in Git a `git worktree` of the parent's
+repository shares its references, configuration, hooks, and stash, so it is not isolated; `git clone --shared <source>
+<worktree root>` followed by a checkout of the snapshot commit is, and a clone without `--shared` is an independent
+copy. The isolated worktree changes only where the delegate works: its result still reaches the parent through the
+integration described below.
+
 Include each worktree root and snapshot identity in its task contract. Build a scheduling conflict graph from both write
 sets and verification dependencies; file-disjoint tasks are not independent when either task's verification consumes
 the other's changing output. If the actor responsible for workspace integration cannot create and later integrate
