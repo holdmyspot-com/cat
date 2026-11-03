@@ -1709,13 +1709,13 @@ own harness configuration, which trials do not use beyond what the runner copies
 harness home: the user's hooks, MCP servers, enabled plugins and other customizations play no part. For Codex the runner
 copies the connection settings of the user's `config.toml`, such as the login method, model and provider, and its
 multi-agent settings, over which the multi-agent mode of a Codex thread that starts the runner applies (D125); for
-Claude Code, the connection variables and the `deny` and `ask` permission rules of the user's `settings.json`. The line
-ends `with your connection settings and tool restrictions carried over`, so a project without settings files reads
-`Harness settings: defaults, with your connection settings and tool restrictions carried over`. `Trial setup` reports
-the session environment version as the CAT release that introduced it, so a later CAT release that left it unchanged
-does not read as a different environment. A condition that the reporting session could not check says so, as for
-applicability (D51). After the lines, the block states the host machine limitation and its container recommendation
-(D95).
+Claude Code, the connection and subagent variables and the `deny` and `ask` permission rules of the user's
+`settings.json`. The line ends `with your connection settings and tool restrictions carried over`, so a project without
+settings files reads `Harness settings: defaults, with your connection settings and tool restrictions carried over`.
+`Trial setup` reports the session environment version as the CAT release that introduced it, so a later CAT release that
+left it unchanged does not read as a different environment. A condition that the reporting session could not check says
+so, as for applicability (D51). After the lines, the block states the host machine limitation and its container
+recommendation (D95).
 
 **Versions (user ruling, 2026-10-22).** CAT's own version, in `Plugins` and in `Trial setup`, has two parts, such as
 `1.0`; CAT's releases are numbered that way, and CAT records the trial setup's release the same way. A third-party
@@ -2599,6 +2599,14 @@ machine's loopback, such as an API gateway or a load balancer, through that prox
 to them directly. A remote proxy cannot reach this machine's loopback, so with one, or with none, `NO_PROXY` is copied
 unchanged (user ruling, 2026-11-02).
 
+A nested session starts subagents the way its parent does (D125). A nested Codex session gets the parent
+configuration's `multi_agent` and `multi_agent_v2` features, its `[agents]` limits and the agent roles whose
+configuration file it can read; when a Codex thread starts the runner, the multi-agent version and mode that the thread
+last recorded apply over them, so a proactive parent has a proactive child. A nested Claude session gets the parent's
+Claude Code variables that decide whether and how a session starts subagents, such as how many run at once, how deeply
+they nest, which model and effort they use and which built-in agents are offered, from the parent's process or, when
+absent there, its settings file's `env`.
+
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
 request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
 trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
@@ -2962,7 +2970,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D122 | A run without an outcome, a provider error, crash, rate-limit rejection or refusal, halves every unit's window, to at least 1, and a full window of trials that complete with an outcome undoes one halving (user ruling, 2026-10-31). A trial that CAT itself interrupts, such as one discarded after a fail-fast, is not such a run. | Runs without an outcome report a provider or harness that cannot keep up; each one wastes a session without measuring anything, and keeping the window would repeat the waste at the same rate. Halving responds at once and recovers as soon as runs complete again, unlike the rejection hold, which waits for a reset time. | Up to 4 halvings are kept, after which every window is 1; the rejection hold still holds the window at 1 while it lasts. The status report shows the halvings in effect. |
 | D123 | Turn the `claude-runner` and `codex-runner` skills into one bundled rule that agents follow when they run either runner launcher, and have the agent always pass `--model` and `--effort`: those its task or instructions name, otherwise ones it chooses from the values that the harness lists, never asking the user (user rulings, 2026-11-02: "the runner skills should get the model and effort from the caller, so when an agent provides it it should provide the model and effort"; "Convert the skills to rule files, always invoked by the agent, never by the user"). | A live check of Codex's `claude-runner` skill chose a model and effort itself against the skill's rule to ask, while earlier runs asked; asked who the caller is, the user ruled that agents, never users, invoke the runners. Keeping skills that ask the user: a user-facing skill for an agent-only operation, whose question stops a delegated run. A launcher default: rejected by D119. | A run whose task names no model or effort runs on the agent's choice, which the agent states with the run's evidence; neither plugin lists a runner skill. |
 | D124 | A campaign's requirements come only from the user's goal, or without a goal from the target prompt file; other prompt files are context, and a prompt test checks another file's obligation only where a requirement depends on it (user ruling, 2026-11-02, superseding D70's extra requirements). | With extra requirements, the contract author of a four-obligation `AGENTS.md` campaign proposed the loaded CAT rules' obligations too, drafted 32 prompt tests, about 24 of them for CAT's own rules, and reached its 30-minute limit; its draft for the target alone had passed CAT's check after about 13 minutes. The user expects a campaign to test only the target. | An obligation of another prompt file that the target does not depend on is neither measured nor certified; the user optimizes that file in its own campaign. A stored proposal that marks extra requirements shows them as ordinary requirements. |
-| D125 | A nested session starts subagents the way its parent does: a nested Codex session gets the parent configuration's `multi_agent` and `multi_agent_v2` features, its `[agents]` limits and the agent roles whose configuration file it can read, and when a Codex thread starts the runner, the multi-agent version and mode that the thread last recorded apply over them (user ruling, 2026-11-02). | The user wants nested instances to inherit whatever setting the parent uses. Codex decides from configuration and the thread's reasoning effort whether a session starts subagents on its own initiative, and its app server ignores a requested mode, so only configuration carries it; the recorded state also captures features enabled by command-line flags and the mode that the effort implies. | Where the parent's configuration and its recorded state disagree, the recorded state wins. A missing or unreadable rollout leaves only the configured entries. The Codex session environment moves to 16. |
+| D125 | A nested session starts subagents the way its parent does: a nested Codex session gets the parent configuration's `multi_agent` and `multi_agent_v2` features, its `[agents]` limits and the agent roles whose configuration file it can read, and when a Codex thread starts the runner, the multi-agent version and mode that the thread last recorded apply over them; a nested Claude session gets the parent's subagent variables, such as `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` and `CLAUDE_CODE_SUBAGENT_MODEL` (user ruling, 2026-11-02). | The user wants nested instances to inherit whatever setting the parent uses. Codex decides from configuration and the thread's reasoning effort whether a session starts subagents on its own initiative, and its app server ignores a requested mode, so only configuration carries it; the recorded state also captures features enabled by command-line flags and the mode that the effort implies. | Where the parent's configuration and its recorded state disagree, the recorded state wins. A missing or unreadable rollout leaves only the configured entries. The Codex session environment moves to 16 and the Claude one to 17. |
 
 ## 14. Acceptance evidence
 
