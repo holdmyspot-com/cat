@@ -3,7 +3,9 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
+import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
+import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -38,23 +40,43 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class LeftoverRuns
 {
+	static
+	{
+		LeftoverRunsSecrets.setLeftoverRunsAccess(LeftoverRuns::new);
+	}
+
 	private final SessionPort sessions;
 	private final JsonMapper json;
-	private final ProcessHandleLiveness liveness = new ProcessHandleLiveness();
+	private final HarnessProcessLiveness liveness;
 
 	/**
-	 * Creates a finder.
+	 * Creates a finder that asks the operating system's process table whether each owner process is alive.
 	 *
 	 * @param sessions the session port that declares the run roots
-	 * @param json the JSON mapper that parses run manifests
+	 * @param json     the JSON mapper that parses run manifests
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public LeftoverRuns(SessionPort sessions, JsonMapper json)
 	{
+		this(sessions, json, new ProcessHandleLiveness());
+	}
+
+	/**
+	 * Creates a finder that asks a liveness service whether each owner process is alive.
+	 *
+	 * @param sessions the session port that declares the run roots
+	 * @param json     the JSON mapper that parses run manifests
+	 * @param liveness answers whether a recorded owner process is alive
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	private LeftoverRuns(SessionPort sessions, JsonMapper json, HarnessProcessLiveness liveness)
+	{
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(liveness, "liveness").isNotNull();
 		this.sessions = sessions;
 		this.json = json;
+		this.liveness = liveness;
 	}
 
 	/**

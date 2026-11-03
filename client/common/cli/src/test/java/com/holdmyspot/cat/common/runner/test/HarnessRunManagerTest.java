@@ -10,7 +10,6 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import static java.time.ZoneOffset.UTC;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
@@ -31,9 +30,21 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link HarnessRunManager}.
+ * <p>
+ * Tests that depend on whether a run's owner process is alive use a {@link FakeProcessLiveness} in place of the
+ * operating system's process table; only {@link #readsOwnerLivenessFromProcessTable()} reads the real table.
  */
 public final class HarnessRunManagerTest
 {
+	/**
+	 * The identifier of the recorded owner process that a test's process table may report alive.
+	 */
+	private static final long OWNER_PID = 4001;
+	/**
+	 * The start time of the recorded owner process that a test's process table may report alive.
+	 */
+	private static final Instant OWNER_START = Instant.parse("2026-07-20T00:00:00Z");
+
 	/**
 	 * Creates the test fixture.
 	 */
@@ -307,13 +318,10 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
-				Clock.systemUTC(), Yielding.fileReplacer());
+			// No process is alive, so the runner that owns the run has ended
+			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), new FakeProcessLiveness());
 			HarnessRun run = manager.create("harness");
 			Path manifestPath = run.directory().resolve("run.json");
-			String inactiveOwnerManifest = Files.readString(manifestPath).replaceFirst(
-				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\\\"owner_started_at\\\": \\\"1970-01-01T00:00:00Z\\\"");
-			Files.writeString(manifestPath, inactiveOwnerManifest);
 
 			manager.fail("harness", run.id(), "capture timed out after 600 seconds", 143);
 
@@ -337,14 +345,11 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
-				Clock.systemUTC(), Yielding.fileReplacer());
+			// No process is alive, so the runner that owns the run has ended
+			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), new FakeProcessLiveness());
 			HarnessRun run = manager.create("harness");
 			Path manifestPath = run.directory().resolve("run.json");
 			manager.fail(run, "harness exited with exit status 2");
-			String inactiveOwnerManifest = Files.readString(manifestPath).replaceFirst(
-				"\\\"owner_started_at\\\": \\\"[^\\\"]+\\\"", "\\\"owner_started_at\\\": \\\"1970-01-01T00:00:00Z\\\"");
-			Files.writeString(manifestPath, inactiveOwnerManifest);
 
 			manager.fail("harness", run.id(), "runner ended with exit status 1", 1);
 
@@ -426,11 +431,12 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies an active run cannot be deleted while its owner holds the exclusive lock.
+	 * Verifies an active run cannot be deleted while its owner holds the exclusive lock, even when the process table
+	 * no longer reports the recorded owner alive.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
-	@Test(expectedExceptions = IOException.class)
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Run is already active: .*")
 	public void refusesToDeleteLockedRun() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -439,8 +445,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
-				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), new FakeProcessLiveness());
 			HarnessRun run = manager.create("harness");
 			try (HarnessRunLock lock = manager.acquireLock(run))
 			{
@@ -455,8 +460,34 @@ public final class HarnessRunManagerTest
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
-	@Test(expectedExceptions = IOException.class)
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Run is still owned by a live process: .*")
 	public void refusesToDeleteRunWithLiveOwner() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				jvm.temporaryDirectory(),
+				"cat-run-root-"));
+			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(),
+				new FakeProcessLiveness().alive(OWNER_PID, OWNER_START));
+			HarnessRun run = manager.create("harness");
+			recordOwner(run, OWNER_PID, OWNER_START);
+
+			manager.deleteRun("harness", run.id());
+		}
+	}
+
+	/**
+	 * Verifies, against the operating system's real process table, that a manager created for production finds the
+	 * owner of a run it just created, the test's own process, alive and refuses to delete the run.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Run is still owned by a live process: .*")
+	public void readsOwnerLivenessFromProcessTable() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -477,7 +508,8 @@ public final class HarnessRunManagerTest
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
-	@Test(expectedExceptions = IOException.class)
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Run is still owned by a live process: .*")
 	public void refusesDirectDeletionOfRunWithLiveOwner() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -486,9 +518,10 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
-				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(),
+				new FakeProcessLiveness().alive(OWNER_PID, OWNER_START));
 			HarnessRun run = manager.create("harness");
+			recordOwner(run, OWNER_PID, OWNER_START);
 
 			manager.deleteRun(run);
 		}
@@ -1035,15 +1068,13 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
+			// No process is alive, so the orchestrator that owns the run has ended
+			FakeProcessLiveness liveness = new FakeProcessLiveness();
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRun run = new HarnessRunManager(jvm.fileLocks(),
-				root, oldClock, Yielding.fileReplacer()).create("harness");
+			HarnessRun run = manager(jvm, root, oldClock, liveness).create("harness");
 			Path manifest = run.directory().resolve("run.json");
-			String content = Files.readString(manifest).replaceFirst("\"owner_pid\": [0-9]+", "\"owner_pid\": 999999");
-			Files.writeString(manifest, content);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-20T00:00:01Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
-				root, currentClock, Yielding.fileReplacer());
+			HarnessRunManager manager = manager(jvm, root, currentClock, liveness);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -1068,32 +1099,25 @@ public final class HarnessRunManagerTest
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			FakeProcessLiveness processLiveness = new FakeProcessLiveness(12_345,
-				Instant.parse("2026-07-20T00:00:01Z"));
-			HarnessRunManager oldManager = HarnessRunManagerSecrets.getHarnessRunManagerAccess().
-				newHarnessRunManager(jvm.fileLocks(), root, oldClock,
-				Yielding.fileReplacer(), processLiveness);
+			Instant harnessStart = Instant.parse("2026-07-20T00:00:01Z");
+			// Only the harness process is alive: the orchestrator that owns the run has ended
+			FakeProcessLiveness liveness = new FakeProcessLiveness().alive(12_345, harnessStart);
+			HarnessRunManager oldManager = manager(jvm, root, oldClock, liveness);
 			HarnessRun run = oldManager.create("harness");
-			oldManager.recordHarnessProcess(run, 12_345, Instant.parse("2026-07-20T00:00:01Z"));
-			Path manifest = run.directory().resolve("run.json");
-			String orphanedManifest = Files.readString(manifest).replaceFirst("\"owner_pid\": [0-9]+",
-				"\"owner_pid\": 999999");
-			Files.writeString(manifest, orphanedManifest);
+			oldManager.recordHarnessProcess(run, 12_345, harnessStart);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = HarnessRunManagerSecrets.getHarnessRunManagerAccess().
-				newHarnessRunManager(jvm.fileLocks(), root, currentClock,
-				Yielding.fileReplacer(), processLiveness);
+			HarnessRunManager manager = manager(jvm, root, currentClock, liveness);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
-			requireThat(processLiveness.terminationRequested, "terminationRequested").isTrue();
+			requireThat(liveness.wasTerminated(12_345, harnessStart), "terminationRequested").isTrue();
 			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains(
 				"\"state\": \"failed\"");
 		}
 	}
 
 	/**
-	 * Verifies stale cleanup retains an unlocked running run whose recorded owner remains alive.
+	 * Verifies stale cleanup retains an unlocked running run whose recorded owner remains alive, and leaves it running.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1106,16 +1130,17 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
+			FakeProcessLiveness liveness = new FakeProcessLiveness().alive(OWNER_PID, OWNER_START);
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRun run = new HarnessRunManager(jvm.fileLocks(),
-				root, oldClock, Yielding.fileReplacer()).create("harness");
+			HarnessRun run = manager(jvm, root, oldClock, liveness).create("harness");
+			recordOwner(run, OWNER_PID, OWNER_START);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
-				root, currentClock, Yielding.fileReplacer());
+			HarnessRunManager manager = manager(jvm, root, currentClock, liveness);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
-			requireThat(Files.exists(run.directory()), "runDirectory").isTrue();
+			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+				contains("\"state\": \"running\"");
 		}
 	}
 
@@ -1153,47 +1178,34 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * A controllable recorded-harness-process liveness service.
+	 * Creates a manager that asks a fake process table whether each recorded process is alive.
+	 *
+	 * @param jvm      the test's JVM scope, which supplies the lock coordinator
+	 * @param root     the absolute owned-run root
+	 * @param clock    the clock used for generated identifiers
+	 * @param liveness the process table
+	 * @return the manager
 	 */
-	private static final class FakeProcessLiveness implements HarnessProcessLiveness
+	private static HarnessRunManager manager(TestJvmScope jvm, Path root, Clock clock, FakeProcessLiveness liveness)
 	{
-		private final long pid;
-		private final Instant startedAt;
-		private boolean alive = true;
-		private boolean terminationRequested;
+		return HarnessRunManagerSecrets.getHarnessRunManagerAccess().newHarnessRunManager(jvm.fileLocks(), root, clock,
+			Yielding.fileReplacer(), liveness);
+	}
 
-		/**
-		 * Creates a live fake process.
-		 *
-		 * @param pid the positive process identifier
-		 * @param startedAt the process start marker
-		 */
-		private FakeProcessLiveness(long pid, Instant startedAt)
-		{
-			assert pid > 0;
-			assert startedAt != null;
-			this.pid = pid;
-			this.startedAt = startedAt;
-		}
-
-		@Override
-		public boolean isAlive(long pid, Instant startedAt)
-		{
-			assert pid > 0;
-			assert startedAt != null;
-			return alive && this.pid == pid && this.startedAt.equals(startedAt);
-		}
-
-		@Override
-		public boolean terminate(long pid, Instant startedAt)
-		{
-			assert pid > 0;
-			assert startedAt != null;
-			if (!isAlive(pid, startedAt))
-				return false;
-			terminationRequested = true;
-			alive = false;
-			return true;
-		}
+	/**
+	 * Replaces the owner process that a run's manifest records, standing in for a run that another orchestrator
+	 * process created.
+	 *
+	 * @param run       the run
+	 * @param pid       the owner's process identifier
+	 * @param startedAt the owner's start time
+	 * @throws IOException if the manifest cannot be read or written
+	 */
+	private static void recordOwner(HarnessRun run, long pid, Instant startedAt) throws IOException
+	{
+		Path manifest = run.directory().resolve("run.json");
+		Files.writeString(manifest, Files.readString(manifest).
+			replaceFirst("\"owner_pid\": [0-9]+", "\"owner_pid\": " + pid).
+			replaceFirst("\"owner_started_at\": \"[^\"]+\"", "\"owner_started_at\": \"" + startedAt + "\""));
 	}
 }

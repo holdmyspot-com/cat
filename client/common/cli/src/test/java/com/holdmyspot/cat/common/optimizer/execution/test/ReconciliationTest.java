@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -420,8 +421,8 @@ public final class ReconciliationTest
 	/**
 	 * Verifies that reconciliation requests termination of the harness processes of runs, in each run root that the
 	 * session port declares, that are marked running and whose owner no longer exists, and leaves the processes of
-	 * runs that ended and of runs whose owner is alive. The recording terminator records requests without stopping
-	 * real processes.
+	 * runs that ended and of runs whose owner is alive. A fake process table reports which owners are alive, and the
+	 * recording terminator records requests without stopping real processes.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -434,8 +435,9 @@ public final class ReconciliationTest
 			Path directory = cleanup.add(Files.createTempDirectory("reconcile"));
 			DriverHarness harness = new DriverHarness(directory, developing().build());
 			List<Path> runRoots = harness.sessions().runRoots();
+			Instant ownerStart = Instant.parse("2026-10-01T11:00:00Z");
 			Instant harnessStart = Instant.parse("2026-10-01T11:00:01Z");
-			ProcessHandle current = ProcessHandle.current();
+			harness.liveness(new FakeProcessLiveness().alive(6001, ownerStart));
 			writeManifest(runRoots.get(0).resolve("claude/run-1"), """
 				{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
 				"harness_pid": "4002", "harness_started_at": "2026-10-01T11:00:01Z"}""");
@@ -446,9 +448,8 @@ public final class ReconciliationTest
 				{"state": "completed", "owner_pid": 5001, "owner_started_at": "2026-10-01T11:00:00Z",
 				"harness_pid": 5002, "harness_started_at": "2026-10-01T11:00:01Z"}""");
 			writeManifest(runRoots.get(1).resolve("claude/run-4"), """
-				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
-				"harness_pid": 6002, "harness_started_at": "2026-10-01T11:00:01Z"}""".formatted(current.pid(),
-				current.info().startInstant().orElseThrow()));
+				{"state": "running", "owner_pid": 6001, "owner_started_at": "2026-10-01T11:00:00Z",
+				"harness_pid": 6002, "harness_started_at": "2026-10-01T11:00:01Z"}""");
 			try (Driver _ = harness.open())
 			{
 				requireThat(harness.terminator().terminated(), "terminated").isEqualTo(List.of(

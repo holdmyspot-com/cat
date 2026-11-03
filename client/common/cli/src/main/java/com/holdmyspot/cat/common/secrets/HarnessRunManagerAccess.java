@@ -27,7 +27,7 @@ public interface HarnessRunManagerAccess
 	 * @param root the absolute owned-run root
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
-	 * @param processLiveness the exact-process liveness service
+	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
 	 * @return the manager
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code root} is relative

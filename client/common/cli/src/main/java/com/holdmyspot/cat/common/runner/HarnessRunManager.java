@@ -125,7 +125,7 @@ public final class HarnessRunManager
 	 * @param root the absolute owned-run root
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
-	 * @param processLiveness the exact-process liveness service
+	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
@@ -1083,10 +1083,10 @@ public final class HarnessRunManager
 	 * @param manifest the validated run manifest
 	 * @return {@code true} if the original owner remains alive
 	 */
-	private static boolean isOwnerAlive(Manifest manifest)
+	private boolean isOwnerAlive(Manifest manifest)
 	{
 		assert manifest != null;
-		return new ProcessHandleLiveness().isAlive(manifest.ownerPid(), manifest.ownerStartedAt());
+		return processLiveness.isAlive(manifest.ownerPid(), manifest.ownerStartedAt());
 	}
 
 	/**

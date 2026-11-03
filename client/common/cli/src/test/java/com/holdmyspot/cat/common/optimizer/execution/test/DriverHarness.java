@@ -15,7 +15,6 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
-import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
@@ -43,6 +42,9 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.test.InMemoryOverlays;
+import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
+import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
+import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -136,6 +138,7 @@ public final class DriverHarness
 	private Function<SessionRequest, SessionResult> contractAuthors = this::newValues;
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
 	private CapCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
+	private HarnessProcessLiveness liveness = new FakeProcessLiveness();
 	private SliceSettings settings = SliceSettings.DEFAULT;
 	private Set<Path> promptSources = Set.of(PROMPT);
 	private final List<Integer> openTrials = new ArrayList<>();
@@ -257,7 +260,7 @@ public final class DriverHarness
 		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
 			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, deliverer, calibrator,
 			terminator,
-			new LeftoverRuns(sessions, JsonMapper.builder().build()),
+			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);
 	}
@@ -567,6 +570,17 @@ public final class DriverHarness
 	public void calibrator(CapCalibrator value)
 	{
 		this.calibrator = value;
+	}
+
+	/**
+	 * Replaces the process table that tells whether the owner process of a recorded run is alive. Until replaced, no
+	 * owner process is alive.
+	 *
+	 * @param value the process table
+	 */
+	public void liveness(HarnessProcessLiveness value)
+	{
+		this.liveness = value;
 	}
 
 	/**
