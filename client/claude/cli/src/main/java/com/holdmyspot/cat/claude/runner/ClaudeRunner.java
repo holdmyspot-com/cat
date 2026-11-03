@@ -242,7 +242,8 @@ public final class ClaudeRunner
 
 	/**
 	 * Returns the environment of a run's Claude process. It holds the caller's generic operating-system variables, its
-	 * Claude connection variables, from its environment or else its Claude settings, and the shared dependency caches;
+	 * Claude connection variables and its settings for starting subagents, each from its environment or else its Claude
+	 * settings, so that the session starts subagents the way the caller does, and the shared dependency caches;
 	 * the run's home as the home directory and its {@code .claude} as Claude's configuration directory; and the
 	 * request for Claude's session state events, which the turn boundary depends on. CAT's hooks then find Claude's
 	 * configuration directory through the home directory, as {@code .claude} in it.
@@ -250,8 +251,8 @@ public final class ClaudeRunner
 	 * The environment never sets {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB}, so Claude Code passes its credentials and
 	 * its configuration directory's variable to the commands and hooks that it starts, and keeps protecting the
 	 * project's {@code .git/worktrees} at the lower priority that the session's settings grant overrides. The caller's
-	 * value of the variable is not inherited, because the environment copies only generic operating-system variables
-	 * and Claude's connection variables from the caller's environment.
+	 * value of the variable is not inherited, because the environment copies only generic operating-system variables,
+	 * Claude's connection variables and its subagent settings from the caller's environment.
 	 *
 	 * @param scope        services shared for the runner process lifetime
 	 * @param environment  the caller's environment

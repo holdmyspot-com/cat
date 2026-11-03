@@ -30,6 +30,16 @@ import org.testng.annotations.Test;
 public final class ClaudeRunnerTest
 {
 	/**
+	 * The Claude Code variables that decide whether and how a session starts subagents.
+	 */
+	private static final List<String> SUBAGENT_VARIABLES = List.of("CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS",
+		"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "CLAUDE_CODE_SUBAGENT_MODEL", "CLAUDE_CODE_SUBAGENT_MODEL_FORCE",
+		"CLAUDE_CODE_SUBAGENT_EFFORT", "CLAUDE_CODE_FORK_SUBAGENT", "CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS",
+		"CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS",
+		"CLAUDE_CODE_PLAN_V2_AGENT_COUNT", "CLAUDE_CODE_PLAN_V2_EXPLORE_AGENT_COUNT",
+		"CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS", "CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL");
+
+	/**
 	 * Verifies the Claude launcher creates its Bubblewrap launch configuration beside the run-owned Claude temporary
 	 * directory so run cleanup removes the workaround with the completed run.
 	 */
@@ -66,6 +76,94 @@ public final class ClaudeRunnerTest
 
 			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
 			requireThat(result.get("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY").isEqualTo("credential");
+		}
+	}
+
+	/**
+	 * Verifies that a nested Claude process receives each of the parent's settings for starting subagents with the
+	 * parent's value, so that it starts subagents the way its parent does.
+	 *
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test
+	public void inheritsParentSubagentSettings() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-subagent-settings-"));
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			for (String variable : SUBAGENT_VARIABLES)
+				environment.put(variable, "parent-" + variable);
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, home.resolve("missing-settings.json"), home, null);
+
+			for (String variable : SUBAGENT_VARIABLES)
+				requireThat(result.get(variable), variable).isEqualTo("parent-" + variable);
+		}
+	}
+
+	/**
+	 * Verifies that a subagent setting that the parent's Claude settings file sets in its {@code env}, and its process
+	 * environment does not, reaches the nested Claude process, while a value in the process environment wins over the
+	 * settings file's.
+	 *
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test
+	public void inheritsSubagentSettingsFromHostSettings() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-subagent-host-settings-"));
+			Path settings = Files.writeString(home.resolve("settings.json"), """
+				{
+				  "env": {
+				    "CLAUDE_CODE_SUBAGENT_MODEL": "settings-model",
+				    "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "2"
+				  }
+				}
+				""");
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put("CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS", "5");
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, settings, home, null);
+
+			requireThat(result.get("CLAUDE_CODE_SUBAGENT_MODEL"), "settingsOnly").isEqualTo("settings-model");
+			requireThat(result.get("CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS"), "processWins").isEqualTo("5");
+		}
+	}
+
+	/**
+	 * Verifies that a subagent setting that the parent sets nowhere stays unset in the nested Claude process, and that
+	 * a Claude Code variable that does not control subagents does not reach it from either source.
+	 *
+	 * @throws IOException if the fixture or the environment cannot be built
+	 */
+	@Test
+	public void copiesOnlySetSubagentSettings() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-unset-subagent-settings-"));
+			Path settings = Files.writeString(home.resolve("settings.json"), """
+				{"env": {"CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1"}}
+				""");
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put("CLAUDE_CODE_EFFORT_LEVEL", "high");
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, settings, home, null);
+
+			requireThat(result.keySet(), "variables").doesNotContainAny(SUBAGENT_VARIABLES).
+				doesNotContain("CLAUDE_CODE_EFFORT_LEVEL").doesNotContain("CLAUDE_CODE_DISABLE_TERMINAL_TITLE");
 		}
 	}
 

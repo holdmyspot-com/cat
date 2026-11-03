@@ -23,7 +23,8 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Supplies allow-listed Claude connection variables from the parent process and its settings file.
+ * Supplies the allow-listed Claude variables that a nested Claude process inherits, its connection variables and
+ * its subagent settings, from the parent process and its settings file.
  */
 public final class ClaudeConnectionSettings
 {
@@ -68,8 +69,21 @@ public final class ClaudeConnectionSettings
 	 * parent's rules that deny a command or ask before running it still take precedence over it.
 	 */
 	private static final String SANDBOXED_COMMAND_GRANT = "Bash";
-	private static final Set<String> CONNECTION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
-		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN");
+	/**
+	 * The variables that a nested Claude process takes from its parent: the connection variables, and the variables
+	 * that decide whether and how a session starts subagents, such as how many run at once, how deeply they nest,
+	 * which model and effort they use, and whether the built-in, fork, plan, workflow and team agents are offered. A
+	 * nested session therefore starts subagents the way its parent does. Claude Code has no other setting for this:
+	 * it reads these from its environment, where a user sets them directly or through a settings file's {@code env}.
+	 */
+	private static final Set<String> INHERITED_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN",
+		"CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS", "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", "CLAUDE_CODE_SUBAGENT_MODEL",
+		"CLAUDE_CODE_SUBAGENT_MODEL_FORCE", "CLAUDE_CODE_SUBAGENT_EFFORT", "CLAUDE_CODE_FORK_SUBAGENT",
+		"CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS", "CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS",
+		"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "CLAUDE_CODE_PLAN_V2_AGENT_COUNT",
+		"CLAUDE_CODE_PLAN_V2_EXPLORE_AGENT_COUNT", "CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS",
+		"CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL");
 
 	/**
 	 * Refuses a platform on which Claude Code cannot confine a session's commands.
@@ -89,21 +103,24 @@ public final class ClaudeConnectionSettings
 	}
 
 	/**
-	 * Copies approved connection variables from the parent process into an isolated environment.
+	 * Copies the parent's connection variables and subagent settings from the parent process into an isolated
+	 * environment. A variable that the parent does not set stays unset.
 	 *
-	 * @param source the parent process environment
+	 * @param source      the parent process environment
 	 * @param destination the mutable isolated process environment
 	 */
 	public static void copyProcessEnvironment(Map<String, String> source, Map<String, String> destination)
 	{
-		HarnessEnvironment.copyAllowed(source, destination, CONNECTION_VARIABLES);
+		HarnessEnvironment.copyAllowed(source, destination, INHERITED_VARIABLES);
 	}
 
 	/**
-	 * Copies absent connection variables from a host Claude settings file into an isolated process environment.
+	 * Copies the connection variables and subagent settings that a host Claude settings file sets in its {@code env}
+	 * into an isolated process environment, except those that the environment already holds, so that a value from the
+	 * parent process wins over the settings file's.
 	 *
-	 * @param scope services shared for the runner process lifetime
-	 * @param source the host settings file
+	 * @param scope       services shared for the runner process lifetime
+	 * @param source      the host settings file
 	 * @param environment the mutable isolated process environment
 	 * @throws IOException if the settings file cannot be read
 	 */
@@ -115,7 +132,7 @@ public final class ClaudeConnectionSettings
 			"Claude settings")).path("env");
 		if (!configured.isObject())
 			return;
-		for (String variable : CONNECTION_VARIABLES)
+		for (String variable : INHERITED_VARIABLES)
 		{
 			JsonNode value = configured.path(variable);
 			if (!environment.containsKey(variable) && value.isString() && !value.stringValue().isBlank())
