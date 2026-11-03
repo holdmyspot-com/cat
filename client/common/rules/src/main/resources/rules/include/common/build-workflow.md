@@ -4,6 +4,8 @@
 
 - Preserve valid successful-step outputs while repairing a build workflow until it passes end to end incrementally.
 - Follow incremental success with verification of the same revision from a clean start before claiming the build passes.
+- Reduce a slow build step's wall time through independent concurrent work and final combination only when the result
+	preserves the one-shot build's required behavior and artifact quality.
 
 ## Guidance
 
@@ -14,3 +16,15 @@ an earlier step's outputs, resume from that earliest affected step and rebuild i
 
 Do not restart from a clean state on each attempt. First get the workflow to pass end to end incrementally, reusing
 valid outputs. Then, before verifying that same revision from a clean start, lazy load `build-verification.md`.
+
+When a single build step is slow, investigate whether it can be split into independent parts that run concurrently,
+followed by a final combination. Before trying the split, establish from the build's dependencies and toolchain contract
+that each part has its required inputs, concurrent work cannot corrupt shared state, and the final combination preserves
+the one-shot result. Retain required ordering and failure handling. Do not try a split whose equivalence is unknown or
+that loses optimization, debug information, validation, or other required artifact quality.
+
+Before adopting the split, compare its result with a one-shot baseline using the same inputs, toolchain, settings, and
+required checks. Verify equivalent behavior and artifact quality; do not require identical bytes for metadata that the
+contract permits to vary. Measure total wall time, including preparation and final combination, under comparable
+conditions. Keep the split only when equivalence is demonstrated and total wall time improves; otherwise retain the
+one-shot step.
