@@ -33,8 +33,9 @@ constructor, lazy load `../include/java/optional.md`.
 When declaring a Java field, record component, parameter, return type, local variable or collection element that holds
 a filesystem path, or changing its type, lazy load `../include/java/paths.md`.
 
-When a Java test needs direct access to non-public production behavior to avoid unrelated caller work, lazy load
-`../include/java/test-access.md`.
+When writing or reviewing Java code, including a test, that obtains a class or member by name, invokes or reads a
+member through `java.lang.reflect` or a `MethodHandles` lookup, calls `setAccessible`, or needs non-public behavior of a
+class in another package, lazy load `../include/java/reflection.md`.
 
 When adding or changing a public or protected declaration in a package that a `module-info.java` exports, changing a
 module's `exports` or `requires transitive` directives, or resolving a warning that a type is not exported from a

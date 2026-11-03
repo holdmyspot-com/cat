@@ -37,4 +37,8 @@ configuration, or tests, lazy load `../environment.md`.
 When adding or widening a command-line option, launch or build setting, manifest entry, or module declaration that
 grants code a permission or access, or that adds modules to a runtime or image, lazy load `../minimal-grants.md`.
 
+When writing or changing code, including a test, that looks up or invokes a type, function, method, field, or module by
+a name at runtime or overrides access control to reach a non-public member, or that needs non-public behavior of
+another package or module of the same project, lazy load `../reflection.md`.
+
 When editing source code or configuration, lazy load `../semantic-blank-lines.md`.
