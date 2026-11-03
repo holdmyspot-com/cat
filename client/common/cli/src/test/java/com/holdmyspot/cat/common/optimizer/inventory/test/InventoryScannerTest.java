@@ -8,7 +8,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.inventory.CharacterDevices;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
@@ -51,12 +50,10 @@ public final class InventoryScannerTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-inventory-project-"));
 			Path external = cleanup.add(Files.createTempDirectory("cat-inventory-external-"));
 			Path shared = writeFile(external.resolve("shared.md"), "shared", READ_WRITE);
-			Git git = new Git(project);
-			git.run("init", "--quiet");
+			// The scan omits Git's metadata directory by its name and records ignored files, so it needs no Git repository
+			writeFile(project.resolve(".git/HEAD"), "ref: refs/heads/main\n", READ_WRITE);
 			writeFile(project.resolve(".gitignore"), "ignored.md\n", READ_WRITE);
 			writeFile(project.resolve("ignored.md"), "ignored", READ_WRITE);
-			// git check-ignore fails unless Git ignores the file, which makes this fixture's ignored file real
-			git.run("check-ignore", "--quiet", "ignored.md");
 			writeFile(project.resolve("prompt.md"), "prompt", READ_WRITE);
 			writeFile(project.resolve(ProgramFixture.name("run")), ProgramFixture.TEXT, EXECUTABLE);
 			writeFile(project.resolve("sub/inner.md"), "inner", READ_WRITE);

@@ -97,6 +97,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.ComparisonBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
+import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -3165,7 +3166,7 @@ public final class OptimizerCoreTest
 			{
 			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
 			Path root = repository.root();
-			writeBuildProgram(root);
+			buildInMemory(repository);
 			configure(root, buildConfiguration("cat", 0, "out"));
 			Path stale = root.resolve("out/stale.md");
 			Files.createDirectories(stale.getParent());
@@ -3200,6 +3201,9 @@ public final class OptimizerCoreTest
 	 * Verifies that a build that fails stops {@code start} with its exit status and the end of its output, and that
 	 * the target is startable again: once the configuration names a build that succeeds, {@code start} builds the
 	 * plugin and records it.
+	 * <p>
+	 * Unlike the other build tests, this one starts the build program as a process, so it also proves that a real
+	 * program's exit status, output and plugin directory reach {@code start}.
 	 */
 	@Test
 	public void failedBuildLeavesTargetStartable() throws Exception
@@ -3240,7 +3244,7 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
-			writeBuildProgram(repository.root());
+			buildInMemory(repository);
 			Path manifest = Path.of(".claude-plugin", "plugin.json");
 			configure(repository.root(), buildConfiguration("cat", 0, "missing"));
 			String missing = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
@@ -3496,6 +3500,35 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Writes the build program {@link #buildProgram()} into a project and makes the project's builds run in memory
+	 * instead of starting it. Each build behaves as the program does in the directory that it runs in: it prints
+	 * {@code building <name>}, writes a plugin directory {@code out} whose manifest holds the name and CAT's
+	 * repository, and exits with the status that its arguments name.
+	 *
+	 * @param repository the repository whose builds run in memory
+	 * @throws IOException if the program cannot be written
+	 */
+	private static void buildInMemory(Repository repository) throws IOException
+	{
+		writeBuildProgram(repository.root());
+		repository.scope().launchProcesses(builder ->
+		{
+			List<String> command = builder.command();
+			String name = command.get(1);
+			Path manifest = builder.directory().toPath().resolve("out/.claude-plugin/plugin.json");
+			Files.createDirectories(manifest.getParent());
+			Files.writeString(manifest, "{\"name\": \"" + name + "\", \"repository\": \"" +
+				PluginInfo.CAT_REPOSITORY + "\"}\n");
+			FakeHarnessCli process = new FakeHarnessCli(_ ->
+			{
+			}, Integer.parseInt(command.get(2)));
+			process.emit("building " + name);
+			process.exit();
+			return process;
+		});
+	}
+
+	/**
 	 * Verifies that the contract author's request lists the files that load in trials, including those that load from
 	 * a trial plugin's base copy, and leaves out the files that load only in the user's own sessions.
 	 *
@@ -3513,7 +3546,7 @@ public final class OptimizerCoreTest
 			{
 			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
 			Path root = repository.root();
-			writeBuildProgram(root);
+			buildInMemory(repository);
 			configure(root, buildConfiguration("cat", 0, "out"));
 			Path rule = Path.of("rules/common/rule-routing.md");
 			repository.sessions().setPluginSources(List.of(rule));
@@ -3554,7 +3587,7 @@ public final class OptimizerCoreTest
 			{
 			}), Set.of(Path.of("CLAUDE.md"), buildProgram()));
 			Path root = repository.root();
-			writeBuildProgram(root);
+			buildInMemory(repository);
 			configure(root, buildConfiguration("cat", 0, "out"));
 			Path rule = Path.of("rules/common/rule-routing.md");
 			repository.sessions().setPluginSources(List.of(rule));
@@ -3602,7 +3635,7 @@ public final class OptimizerCoreTest
 			{
 			}), Set.of(Path.of("CLAUDE.md"), buildProgram(), rule));
 			Path root = repository.root();
-			writeBuildProgram(root);
+			buildInMemory(repository);
 			configure(root, buildConfiguration("cat", 0, "out"));
 			Files.createDirectories(root.resolve(rule).getParent());
 			Files.writeString(root.resolve(rule), "Answer in a formal tone.\n");

@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -18,10 +19,12 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
+import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +73,9 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private SymbolicLinkProbe symbolicLinkProbe = () ->
 	{
 	};
+	private volatile ExecutableFiles.ProcessLauncher processes = ProcessBuilder::start;
+	private final ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(
+		Thread::yield, Clock.systemUTC(), this::startProcess);
 
 	/**
 	 * Creates a scope whose sessions end only when the test ends them.
@@ -192,6 +198,38 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	void supplySymbolicLinkProbe(SymbolicLinkProbe symbolicLinkProbe)
 	{
 		this.symbolicLinkProbe = symbolicLinkProbe;
+	}
+
+	@Override
+	public ExecutableFiles executableFiles()
+	{
+		ensureOpen();
+		return executableFiles;
+	}
+
+	/**
+	 * Starts the command's executable files through a test's launcher instead of the operating system. Until a test
+	 * calls this, they start as real processes.
+	 *
+	 * @param processes starts each configured process
+	 * @throws NullPointerException if {@code processes} is null
+	 */
+	void launchProcesses(ExecutableFiles.ProcessLauncher processes)
+	{
+		requireThat(processes, "processes").isNotNull();
+		this.processes = processes;
+	}
+
+	/**
+	 * Starts a process through the launcher that the test chose last.
+	 *
+	 * @param builder the configured process
+	 * @return the started process
+	 * @throws IOException if the process cannot be started
+	 */
+	private Process startProcess(ProcessBuilder builder) throws IOException
+	{
+		return processes.start(builder);
 	}
 
 	@Override
