@@ -1,9 +1,11 @@
 package com.holdmyspot.cat.common.release;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,8 +15,11 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -23,16 +28,54 @@ import java.util.zip.GZIPInputStream;
  * without a {@code tar} program.
  * <p>
  * It reads the ustar entries that CAT's release packager writes: directories, regular files and symbolic links, with
- * a PAX extended header holding a name that the ustar header cannot. It rejects every other entry type, every entry
- * outside the top-level directory and every symbolic link whose target lies outside it, before writing the entry.
+ * a PAX extended header holding a name that the ustar header cannot. Because an archive can come from a release that
+ * an attacker controls, it refuses an archive, with an {@link IOException} that names the entry, when an entry:
+ * <ul>
+ *   <li>has an absolute name, or a name that holds a {@code ..} segment, a backslash or a colon, or that lies outside
+ *   the top-level directory;</li>
+ *   <li>lies below a symbolic link that the archive created, which would let it write where the link points;</li>
+ *   <li>names a file or symbolic link that an earlier entry already created;</li>
+ *   <li>is a symbolic link whose target is absolute, or resolves outside the top-level directory once the archive is
+ *   extracted, following every symbolic link that it passes through, or passes through more than
+ *   {@value #MAXIMUM_LINK_DEPTH} symbolic links;</li>
+ *   <li>is a hard link, which could share a file outside the target directory;</li>
+ *   <li>is a character or block device, a FIFO, a contiguous file, a GNU long-name header or any other type than a
+ *   directory, a regular file, a symbolic link or a PAX header;</li>
+ *   <li>is a regular file or directory whose mode holds the setuid, setgid or sticky bit;</li>
+ *   <li>declares a size that would take the total of the regular files' bytes past the byte limit, which it checks
+ *   before writing the file's content;</li>
+ *   <li>would take the number of entries past the entry limit. PAX headers do not count as entries.</li>
+ * </ul>
+ * It also refuses an archive that is not gzip-compressed, has a damaged header or a malformed number or PAX header, or
+ * ends early. Every refusal and every other failure deletes whatever the extraction wrote, so the target directory is
+ * empty again, and nothing is ever written outside the top-level directory.
+ * <p>
+ * This class is not thread-safe with respect to its target directory: no other process or thread may change the
+ * target directory while it is extracted into.
  */
-final class TarGzExtractor
+public final class TarGzExtractor
 {
 	private static final int BLOCK = 512;
 	/**
 	 * The largest PAX extended header that an archive may hold.
 	 */
 	private static final int MAXIMUM_PAX_BYTES = 1_048_576;
+	/**
+	 * The default limit of the total bytes of an archive's regular files: 1 GiB, far above any CAT release.
+	 */
+	private static final long DEFAULT_MAXIMUM_BYTES = 1L << 30;
+	/**
+	 * The default limit of an archive's entries, far above any CAT release.
+	 */
+	private static final int DEFAULT_MAXIMUM_ENTRIES = 100_000;
+	/**
+	 * The most symbolic links that resolving one link may pass through, which bounds a loop of links.
+	 */
+	private static final int MAXIMUM_LINK_DEPTH = 40;
+	/**
+	 * The setuid, setgid and sticky bits of a POSIX mode.
+	 */
+	private static final int SPECIAL_MODE_BITS = 07000;
 	/**
 	 * The permission of each POSIX mode bit, from the owner's read bit down to the others' execute bit.
 	 */
@@ -51,24 +94,99 @@ final class TarGzExtractor
 	}
 
 	/**
-	 * Extracts an archive into an empty directory.
+	 * Extracts an archive into an empty directory, refusing an archive whose regular files hold more than 1 GiB in
+	 * total or that holds more than 100,000 entries. The class description lists every refusal.
 	 *
 	 * @param archive  the compressed archive
 	 * @param target   the empty directory that receives the top-level directory
 	 * @param topLevel the name of the top-level directory that holds every entry
-	 * @throws IOException if the archive is malformed, ends early, holds an unsupported entry or an entry outside
-	 *                     {@code topLevel}, or a file cannot be written
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code target} is not an empty directory, or {@code topLevel} is blank
+	 * @throws IOException              if the archive is refused or malformed, or a file cannot be read or written;
+	 *                                  {@code target} is then empty
 	 */
-	static void extract(InputStream archive, Path target, String topLevel) throws IOException
+	public static void extract(InputStream archive, Path target, String topLevel) throws IOException
 	{
-		assert archive != null;
-		assert target != null;
-		assert topLevel != null;
+		extract(archive, target, topLevel, DEFAULT_MAXIMUM_BYTES, DEFAULT_MAXIMUM_ENTRIES);
+	}
+
+	/**
+	 * Extracts an archive into an empty directory. The class description lists every refusal.
+	 *
+	 * @param archive        the compressed archive
+	 * @param target         the empty directory that receives the top-level directory
+	 * @param topLevel       the name of the top-level directory that holds every entry
+	 * @param maximumBytes   the most bytes that the archive's regular files may hold in total
+	 * @param maximumEntries the most entries that the archive may hold, not counting PAX headers
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code target} is not an empty directory, {@code topLevel} is blank, or
+	 *                                  {@code maximumBytes} or {@code maximumEntries} is not positive
+	 * @throws IOException              if the archive is refused or malformed, or a file cannot be read or written;
+	 *                                  {@code target} is then empty
+	 */
+	public static void extract(InputStream archive, Path target, String topLevel, long maximumBytes,
+		int maximumEntries) throws IOException
+	{
+		requireThat(archive, "archive").isNotNull();
+		requireThat(target, "target").isDirectory();
+		requireThat(topLevel, "topLevel").isNotBlank();
+		requireThat(maximumBytes, "maximumBytes").isPositive();
+		requireThat(maximumEntries, "maximumEntries").isPositive();
+		requireThat(children(target), "children(target)").isEmpty();
+
 		Path root = target.toAbsolutePath().normalize();
-		Path top = root.resolve(topLevel);
-		InputStream in = new GZIPInputStream(archive);
+		try
+		{
+			extractEntries(new GZIPInputStream(archive), root, root.resolve(topLevel), maximumBytes, maximumEntries);
+		}
+		catch (IOException | RuntimeException e)
+		{
+			try
+			{
+				for (Path child : children(root))
+					TemporaryDirectories.deleteRecursively(child);
+			}
+			catch (IOException cleanupFailure)
+			{
+				e.addSuppressed(cleanupFailure);
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * Returns the files and directories directly in a directory.
+	 *
+	 * @param directory the directory
+	 * @return the paths
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static List<Path> children(Path directory) throws IOException
+	{
+		try (Stream<Path> paths = Files.list(directory))
+		{
+			return paths.toList();
+		}
+	}
+
+	/**
+	 * Extracts an archive's entries, refusing each hostile entry before writing it.
+	 *
+	 * @param in             the uncompressed archive
+	 * @param root           the extraction directory
+	 * @param top            the top-level directory
+	 * @param maximumBytes   the most bytes that the archive's regular files may hold in total
+	 * @param maximumEntries the most entries that the archive may hold, not counting PAX headers
+	 * @throws IOException if the archive is refused or malformed, or a file cannot be read or written
+	 */
+	private static void extractEntries(InputStream in, Path root, Path top, long maximumBytes, int maximumEntries)
+		throws IOException
+	{
 		byte[] header = new byte[BLOCK];
 		Map<String, String> extended = Map.of();
+		Map<Path, String> links = new LinkedHashMap<>();
+		long remainingBytes = maximumBytes;
+		int entries = 0;
 		while (true)
 		{
 			readFully(in, header);
@@ -90,16 +208,31 @@ final class TarGzExtractor
 			String name = extended.getOrDefault("path", entryName(header));
 			String link = extended.getOrDefault("linkpath", text(header, 157, 100));
 			extended = Map.of();
+			entries += 1;
+			if (entries > maximumEntries)
+			{
+				throw new IOException("The archive holds more than " + maximumEntries + " entries, the limit, at " +
+					"the entry " + name);
+			}
 			Path path = resolveEntry(root, top, name);
 			switch (type)
 			{
 				case '5' ->
 				{
+					requireOrdinaryMode(header, name);
 					Files.createDirectories(path);
 					skip(in, size);
 				}
 				case '0', '\0' ->
 				{
+					requireOrdinaryMode(header, name);
+					if (size > remainingBytes)
+					{
+						throw new IOException("The archive's regular files hold more than " + maximumBytes +
+							" bytes, the limit: the entry " + name + " declares " + size + " bytes, and " +
+							remainingBytes + " bytes remain");
+					}
+					remainingBytes -= size;
 					Files.createDirectories(path.getParent());
 					try (OutputStream out = Files.newOutputStream(path))
 					{
@@ -115,11 +248,79 @@ final class TarGzExtractor
 						throw new IOException("The symbolic link " + name + " points outside the archive: " + link);
 					Files.createDirectories(path.getParent());
 					Files.createSymbolicLink(path, Path.of(link));
+					links.put(path, name);
 					skip(in, size);
 				}
+				case '1' -> throw new IOException("The archive holds a hard link, which is not supported: " + name);
 				default -> throw new IOException("Unsupported archive entry type '" + type + "': " + name);
 			}
 		}
+		// A link's target can pass through links that later entries create, so only the finished tree shows where
+		// it leads
+		for (Map.Entry<Path, String> entry : links.entrySet())
+		{
+			Path linkPath = entry.getKey();
+			follow(top, linkPath.getParent(), Files.readSymbolicLink(linkPath), entry.getValue(), 0);
+		}
+	}
+
+	/**
+	 * Refuses a regular file or directory whose mode holds the setuid, setgid or sticky bit.
+	 *
+	 * @param header the entry's header
+	 * @param name   the entry's name
+	 * @throws IOException if the mode holds one of those bits or is malformed
+	 */
+	private static void requireOrdinaryMode(byte[] header, String name) throws IOException
+	{
+		long mode = number(header, 100, 8);
+		if ((mode & SPECIAL_MODE_BITS) != 0)
+		{
+			throw new IOException("The archive entry has the setuid, setgid or sticky bit in its mode " +
+				Long.toOctalString(mode) + ": " + name);
+		}
+	}
+
+	/**
+	 * Returns where a symbolic link's target leads from a directory in the extracted tree, following every symbolic
+	 * link that it passes through. A segment that names nothing is taken as it is written.
+	 *
+	 * @param top       the top-level directory
+	 * @param directory the directory that the target is relative to, inside {@code top}
+	 * @param target    the link's target
+	 * @param name      the archive entry of the link being checked
+	 * @param depth     the number of links followed so far
+	 * @return the path that the target leads to
+	 * @throws IOException if the target leads outside {@code top}, passes through more than
+	 *                     {@value #MAXIMUM_LINK_DEPTH} links, or a link cannot be read
+	 */
+	private static Path follow(Path top, Path directory, Path target, String name, int depth) throws IOException
+	{
+		if (depth > MAXIMUM_LINK_DEPTH)
+		{
+			throw new IOException("The symbolic link " + name + " passes through more than " + MAXIMUM_LINK_DEPTH +
+				" symbolic links");
+		}
+		Path current = directory;
+		for (Path segment : target)
+		{
+			String text = segment.toString();
+			if (text.equals("."))
+				continue;
+			if (text.equals(".."))
+				current = current.getParent();
+			else
+			{
+				Path next = current.resolve(text);
+				if (Files.isSymbolicLink(next))
+					current = follow(top, current, Files.readSymbolicLink(next), name, depth + 1);
+				else
+					current = next;
+			}
+			if (current == null || !current.startsWith(top))
+				throw new IOException("The symbolic link " + name + " points outside the archive: " + target);
+		}
+		return current;
 	}
 
 	/**
@@ -129,7 +330,8 @@ final class TarGzExtractor
 	 * @param top  the top-level directory
 	 * @param name the entry's name
 	 * @return the path
-	 * @throws IOException if the name is absolute or lies outside {@code top}
+	 * @throws IOException if the name is absolute, lies outside {@code top} or below a symbolic link, or names an
+	 *                     existing file or link
 	 */
 	private static Path resolveEntry(Path root, Path top, String name) throws IOException
 	{
@@ -147,8 +349,12 @@ final class TarGzExtractor
 		Path path = root.resolve(relative).normalize();
 		if (!path.startsWith(top))
 			throw new IOException("The archive entry lies outside the archive's directory: " + name);
-		if (Files.isSymbolicLink(path.getParent()))
-			throw new IOException("The archive entry lies below a symbolic link: " + name);
+		// Creating the entry's directories or file would follow a link anywhere above it, not only its parent
+		for (Path ancestor = path.getParent(); ancestor.startsWith(top); ancestor = ancestor.getParent())
+		{
+			if (Files.isSymbolicLink(ancestor))
+				throw new IOException("The archive entry lies below a symbolic link: " + name);
+		}
 		if (Files.exists(path, NOFOLLOW_LINKS) && !Files.isDirectory(path, NOFOLLOW_LINKS))
 			throw new IOException("The archive holds the entry twice: " + name);
 		return path;
