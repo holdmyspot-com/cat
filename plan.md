@@ -77,7 +77,8 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	code gives the same behavior; cross-package access by the project's own code goes through a SharedSecrets façade,
 	replacing the test-only test-access rule) and `b0fbec2f4b` (a `git worktree` is not an isolated
 	worktree; use a separate clone that shares objects). Clean builds 3,548 tests, 0 failures, 18 skipped. The
-	flaky-test rule (temporary amplified tests; no flaky tests kept) is in progress.
+	flaky-test rule (`3eca24c380`: make an intermittent reproduction reliable, or confirm the fix with a temporary
+	amplified test that is then removed; no flaky test is kept) followed.
 - **Prompt-prerequisites audit (user request, 2026-11-01):** the tree was audited against the new bundled rule
 	`prompt-prerequisites.md`, and the user ruled on each confirmed finding. Integrated: `cc7fd21219`, `8a3debeda1`,
 	`35c4790223`, `2a5b2653f6`, `a5b5b1b478`, `980a4599fb` (native Windows Claude sessions refused, pointing to WSL2),
