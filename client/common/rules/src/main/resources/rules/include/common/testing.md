@@ -8,9 +8,10 @@
 	exercised and observed.
 - Make application behavior directly and safely testable in the same process by passing environmental dependencies
 	explicitly when shared process state would otherwise prevent isolation.
-- Keep test-support behavior at the narrowest boundary that can establish the claimed outcome. Prefer a direct
-	primary-language operation with test-owned inputs and collaborators over a fixture process; reserve a script or
-	native-process fixture for a claim about that boundary's own behavior.
+- Prove each claim that application code in the test's own process decides with a unit test of the production method
+	that makes the decision, not with a test that runs or fakes an executable, network service, or operating-system
+	facility. Keep integration tests only for claims about the boundary's own behavior and one end-to-end check per
+	boundary, and lose no claim when converting an existing test.
 - Verify meaningful changes efficiently with the narrowest relevant test and the complete suite before handoff.
 
 ## Guidance
@@ -31,19 +32,51 @@ when the claimed behavior depends on POSIX-shell parsing, expansion, exit handli
 interface. Do not use a shell test merely because application code invokes another command; do not use a facade that
 skips shell behavior a shell contract must prove.
 
-Before creating a fixture process, name the observable property that requires it. If the assertion concerns only
-application-owned request construction, rule expansion, ordering, protocol interpretation, or result handling, invoke
-the focused application operation directly with fixture files or in-memory inputs and an in-memory collaborator. Reuse
-an existing operation when it already owns that behavior; otherwise have the production entry point delegate to a
-focused operation that accepts the needed inputs and collaborator. That operation must remain a real production
-responsibility, not a test-only alternate path.
+Before writing or keeping an integration test, list each claim it makes. An integration test is a test that crosses
+an external boundary: an executable, network service, or operating-system facility that production code calls, such as
+a version-control binary, a search tool, an HTTP service, a file lock, or a process launcher. A unit test runs in the
+test's own process and calls production code without crossing such a boundary. A temporary file or directory that a
+test creates and passes in as input is test data, not a boundary. Classify each claim:
 
-Do not write a shell script merely to emit protocol data, create files, return an exit status, or stand in for a
-runner. A fixture process is justified only when the asserted outcome depends on process-only behavior, such as native
-command construction and launch, operating-system stream closure, exit status, signal handling, or the target shell's
-parsing, expansion, or packaged-launcher contract. When that boundary is required, use the smallest fixture in the
-project's primary language unless the assertion is specifically about the shell. A command invocation alone does not
-make shell or process behavior part of the claim.
+- A decided claim is one that application code in the test's process decides: the command, arguments, or request it
+	sends, how it interprets an output, response, or status it receives, and what it reports or does next. Prove every
+	decided claim with a unit test instead of an integration test, and do not also assert it in an integration test. Do
+	not prove it by putting a fake executable on the search path, running a fake server, using a real operating-system
+	facility only to deliver a result, or waiting in real time for a deadline to pass.
+- A boundary claim is about the boundary's own behavior: how a launcher or shell parses and expands arguments, the exit
+	status or signal that a real process delivers, stream closure, a lock held across processes, or how the real
+	program, service, or facility reacts to a request. Keep each boundary claim in an integration test. A double cannot
+	establish how the real dependency reacts: prove that reaction against the real dependency, and unit-test only what
+	the code does with it. When a boundary claim needs a stand-in process, write the smallest one in the project's
+	primary language unless the claim is about the shell.
+
+To make a decided claim unit-testable, split the decision from the interaction. The production code calls a method that
+returns the decision as a value: the command and arguments to run, the request to send, or its interpretation of a given
+output, response, or status. The production entry point performs the interaction with that value and passes the result
+back for interpretation. Reuse an existing operation when it already owns the decision. Pass the current time, the
+environment, and other shared process state to the method as parameters, so that a deadline decision is tested with a
+given time instead of a real wait. Give the method an in-memory collaborator instead of having it return a value only
+when the code exchanges several messages with the boundary and a later message depends on an earlier reply. The method
+is a real production responsibility that the entry point uses, not a test-only path.
+
+A unit test of that method asserts the outcome that the requirement names, as the method's result shows it. For
+example, the method behind a search that must skip hidden files returns a command that excludes them, and the method
+that reads an HTTP 503 response reports a retryable failure. The test does not assert that the method was called, how
+often, or how it assembles its result.
+
+Keep one end-to-end check per boundary: an integration test that runs the production entry point across the real
+boundary. A retained boundary-claim test that does so already is that check. Its assertion shows only that the
+interaction ran and its result reached the caller; it does not repeat the decided claims. When the real boundary is
+unavailable where the tests run, report that instead of replacing it with a fake.
+
+When the task does not permit changing the production code that makes a decision, a unit test cannot prove that claim.
+Keep the integration test that proves it, and report the claim and the split that would make it unit-testable. This is
+the only case in which an integration test asserts a decided claim.
+
+When converting an existing integration test, classify each of its assertions as above. For each decided claim, add or
+reuse the production method and write its unit test. Narrow the integration test to its boundary claims and the
+end-to-end check. Remove each decided claim's assertion from the integration test only after you name the unit test
+that now proves that claim and that test passes; until then, keep the assertion.
 
 Do not fork a process merely to isolate the current directory, environment variables, standard streams, clocks, random
 sources, or other shared process state. Refactor the owned behavior to accept that dependency explicitly, and have the

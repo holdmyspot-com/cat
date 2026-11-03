@@ -49,8 +49,9 @@ reports the negative quantity.
 
 - **kind**: effect
 - **description**: For request 2: The agent rejects the assertion because `ok` comes from the stub's output rather than
-	from the script's decision. It asks for assertions on the script's exit status, using a stub response of `error` that
-	must produce status 1 and one of `ok` that must not.
+	from the script's decision. It asks for the script's interpretation of the response to be tested in the test's own
+	process, without the stub `curl`, by calling the script code that reads the response: a response of `error` must
+	produce the failure that exits with status 1, and one of `ok` must not.
 
 ### allowed_double
 
