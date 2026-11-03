@@ -44,7 +44,7 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	`statusDoesNotNeedTranscript` 1.40 s. E5 resumes after the next release, which the user asked to ship together
 	with the WI-119 placeholder fix (2026-11-02), is installed by the user. Release run 41463900909 failed on Windows only; fixed in `42f2593e0c`. Build run 41466577334 on `c0a52ba740` then failed on Windows only in `ClaudeSessionCommandLimitsTest`, which wrote Claude settings for the host and so met the native-Windows refusal; fixed in the test (`88d0dc02b0`).
 - **Open:** final gates 2, 4, 5, 6 and 7 (§9), which need G1, G2, G4, G6, G7 and G9 (interim mapping) and R-I1's native
-	evidence. Live checks: Codex E3's uncertified acceptance (see the E3 record below); WI-120's runner rule (Claude and Codex live checks passed, one run each, not certified); the WI-119 skill
+	evidence. Live checks: WI-120's runner rule (Claude and Codex live checks passed, one run each, not certified); the WI-119 skill
 	writing `prompt.json`, in both harnesses; none for the user-input fix (arm C integrated as `4c91a16ee0`, not certified). WI-71's certification and
 	WI-70's rule step run last; gate 8 removes the requirement tags after gates 1–7 pass. Claude E5 stays stopped and E8
 	waits for the user; neither waives gate 4. WI-123's Codex requested-session check passed and is reused.
@@ -59,6 +59,12 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	run until a candidate other than the incumbent exists, then accept it without certification. The next v1.0
 	republish waits for the bundled unit-testable-boundary rule and the follow-up test scan (user ruling, 2026-11-03).
 	Release run 41613170916 on `6e1a7a7c60` passed (11 assets, published 2026-11-03T09:49Z).
+	`resume1` failed in the prompt author on the unknown rule variable `STRONGEST_IMPLEMENTER`, because the installed
+	Codex plugin predated `744af7e126`. After the user reinstalled the v1.0 release of 2026-11-03T13:44:35Z in Codex,
+	`resume2` chose keep identity and `resume3` ran until candidate 1 existed (development 41/41 at
+	`gpt-6-luna`/low; incumbent 0/25, proven deficient) and accepted it without certification: the campaign ended
+	`not certified`, delivery `not certified`, and `AGENTS.md` in the trial project is modified and uncommitted on base
+	`03ed995`. Both halves of E3 have now passed.
 - **Order:** the only ordering limit between harnesses is the user's budget: one model-spending campaign or probe per
 	harness at a time (user ruling, 2026-10-21). Each harness's live checks are separate evidence, so a Claude check runs
 	while a Codex campaign runs. A check that starts a session in the other harness, such as WI-120's skills, waits until
