@@ -59,6 +59,15 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	harness at a time (user ruling, 2026-10-21). Each harness's live checks are separate evidence, so a Claude check runs
 	while a Codex campaign runs. A check that starts a session in the other harness, such as WI-120's skills, waits until
 	that harness is free. A harness's plugin cache is never refreshed while its campaign runs.
+- **Integration tests replaced by unit tests (user request, 2026-11-02):** three scans of the test tree, each
+	proving a moved claim with a named unit test and keeping one wiring test per boundary, without production changes.
+	Integrated: `6e1a7a7c60` (four rg override Bats tests run without the `run-part` JVM), `81c14172fc` (seven bootstrap
+	integration tests moved to Bats and Java unit tests, ten narrowed to their boundary claims; 56 Bats tests pass) and
+	`f201580124` (five optimizer build tests run the build in memory; the inventory scanner test runs no Git). Clean
+	builds 3,546, 3,548 and 3,548 tests, 0 failures, 18 skipped; the only test of 1 s or more was
+	`TestabilityAuditTest.onlyMainCreatesSleepingPause` at 1.00 s. Tests that need a new production method stayed
+	integration tests; the user then asked for a bundled rule that requires such a method (2026-11-03, t48), and a
+	follow-up scan adds those methods after the rule lands.
 - **Prompt-prerequisites audit (user request, 2026-11-01):** the tree was audited against the new bundled rule
 	`prompt-prerequisites.md`, and the user ruled on each confirmed finding. Integrated: `cc7fd21219`, `8a3debeda1`,
 	`35c4790223`, `2a5b2653f6`, `a5b5b1b478`, `980a4599fb` (native Windows Claude sessions refused, pointing to WSL2),
