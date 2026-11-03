@@ -63,10 +63,6 @@ import tools.jackson.databind.json.JsonMapper;
 final class Session implements SessionHandle
 {
 	/**
-	 * How often the driver wakes to check the clock and the interrupt request.
-	 */
-	private static final Duration POLL = Duration.ofMillis(250);
-	/**
 	 * How long the runner may take to start its harness.
 	 */
 	private static final Duration STARTUP_LIMIT = Duration.ofMinutes(10);
@@ -78,6 +74,10 @@ final class Session implements SessionHandle
 	private final RunnerSessions.Settings settings;
 	private final SessionRequest request;
 	private final Clock clock;
+	/**
+	 * The longest time that the driver waits for the runner's next message before it checks the clock again.
+	 */
+	private final Duration poll;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 	private final LineFeed feed = new LineFeed();
@@ -101,14 +101,16 @@ final class Session implements SessionHandle
 	 * Creates a session that has not started.
 	 *
 	 * @param sessions the port that starts the session
-	 * @param request what the session does
+	 * @param request  what the session does
+	 * @param poll     the longest time that the driver waits for the runner before it checks the clock again
 	 */
-	Session(RunnerSessions sessions, SessionRequest request)
+	Session(RunnerSessions sessions, SessionRequest request, Duration poll)
 	{
 		this.sessions = sessions;
 		this.settings = sessions.settings();
 		this.request = request;
 		this.clock = settings.clock();
+		this.poll = poll;
 		this.events = sessions.newEvents(json);
 		Map<String, Path> placeholders = Map.of("source", request.source(), "artifact", settings.artifact());
 		this.sink = new EventSink(json, events, directories -> sessions.newPromptSources(json, directories),
@@ -435,7 +437,7 @@ final class Session implements SessionHandle
 		Message message;
 		try
 		{
-			message = messages.poll(POLL.toMillis(), TimeUnit.MILLISECONDS);
+			message = messages.poll(poll.toNanos(), TimeUnit.NANOSECONDS);
 		}
 		catch (InterruptedException e)
 		{

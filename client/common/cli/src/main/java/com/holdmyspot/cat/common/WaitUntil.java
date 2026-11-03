@@ -3,6 +3,9 @@ package com.holdmyspot.cat.common;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.secrets.WaitUntilSecrets;
+import com.holdmyspot.cat.common.secrets.WaitUntilTimer;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -51,6 +54,11 @@ import java.util.regex.Pattern;
  */
 public final class WaitUntil
 {
+	static
+	{
+		WaitUntilSecrets.setWaitUntilAccess(WaitUntil::new);
+	}
+
 	/**
 	 * Starts the process that runs one command.
 	 */
@@ -94,11 +102,29 @@ public final class WaitUntil
 	 */
 	private static final Duration OUTPUT_GRACE = Duration.ofSeconds(1);
 	private static final Pattern DURATION = Pattern.compile("(\\d+)(ms|s|m|h)");
+	/**
+	 * Reads {@link System#nanoTime()} and waits in real time.
+	 */
+	private static final WaitUntilTimer SYSTEM_TIMER = new WaitUntilTimer()
+	{
+		@Override
+		public long nanoTime()
+		{
+			return System.nanoTime();
+		}
+
+		@Override
+		public <E> E poll(BlockingQueue<E> queue, Duration timeout) throws InterruptedException
+		{
+			return queue.poll(timeout.toNanos(), TimeUnit.NANOSECONDS);
+		}
+	};
 	private static final String USAGE = "usage: wait-until --deadline <duration> [--interval <duration>] " +
 		"(--check <command> | --watch <command>)...\n" +
 		"A duration is a whole number followed by ms, s, m or h, such as 30m.";
 
 	private final CommandStarter starter;
+	private final WaitUntilTimer timer;
 	private final PrintStream output;
 	private final PrintStream error;
 	/**
@@ -120,10 +146,26 @@ public final class WaitUntil
 	 */
 	public WaitUntil(CommandStarter starter, PrintStream output, PrintStream error)
 	{
+		this(starter, SYSTEM_TIMER, output, error);
+	}
+
+	/**
+	 * Creates a wait that measures time through a timer.
+	 *
+	 * @param starter starts the commands
+	 * @param timer   measures the deadline and the intervals, and waits for runs to end
+	 * @param output  receives the outcome
+	 * @param error   receives usage errors
+	 * @throws NullPointerException if any argument is null
+	 */
+	private WaitUntil(CommandStarter starter, WaitUntilTimer timer, PrintStream output, PrintStream error)
+	{
 		requireThat(starter, "starter").isNotNull();
+		requireThat(timer, "timer").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(error, "error").isNotNull();
 		this.starter = starter;
+		this.timer = timer;
 		this.output = output;
 		this.error = error;
 	}
@@ -260,7 +302,7 @@ public final class WaitUntil
 	 */
 	private int await(Duration deadline, Duration interval) throws InterruptedException
 	{
-		long start = System.nanoTime();
+		long start = timer.nanoTime();
 		long deadlineAt = start + deadline.toNanos();
 		for (Command command : commands)
 		{
@@ -270,7 +312,7 @@ public final class WaitUntil
 		}
 		while (true)
 		{
-			long now = System.nanoTime();
+			long now = timer.nanoTime();
 			long wakeAt = deadlineAt;
 			for (Command command : commands)
 			{
@@ -288,7 +330,7 @@ public final class WaitUntil
 			}
 			if (deadlineAt - now <= 0)
 				return deadlinePassed(deadline);
-			Command command = ended.poll(wakeAt - now, TimeUnit.NANOSECONDS);
+			Command command = timer.poll(ended, Duration.ofNanos(wakeAt - now));
 			if (command == null)
 				continue;
 			int status = command.finish();
@@ -312,7 +354,7 @@ public final class WaitUntil
 						return commandError(command);
 				}
 			}
-			command.nextRunAt = System.nanoTime() + interval.toNanos();
+			command.nextRunAt = timer.nanoTime() + interval.toNanos();
 		}
 	}
 
@@ -422,7 +464,7 @@ public final class WaitUntil
 		 */
 		String lastOutput = "";
 		/**
-		 * The {@link System#nanoTime()} at which a check's next run is due.
+		 * The {@link WaitUntilTimer#nanoTime()} reading at which a check's next run is due.
 		 */
 		long nextRunAt;
 		/**

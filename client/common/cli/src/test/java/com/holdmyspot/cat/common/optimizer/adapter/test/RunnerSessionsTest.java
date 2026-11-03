@@ -33,6 +33,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
+import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -73,6 +74,11 @@ public final class RunnerSessionsTest
 	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
 	private static final Duration LIMIT = Duration.ofMinutes(5);
 	private static final Instant START = Instant.parse("2026-10-01T00:00:00Z");
+	/**
+	 * How often the driver of a session that reaches its time limit checks the test's clock. It is short so that the
+	 * driver sees the advanced clock at once instead of after the production interval.
+	 */
+	private static final Duration TIME_LIMIT_POLL = Duration.ofMillis(1);
 
 	/**
 	 * Creates the test.
@@ -164,6 +170,18 @@ public final class RunnerSessionsTest
 		String... turns)
 	{
 		return new SessionRequest(role, partOf(role), source, List.of(turns), readOnly, LIMIT, profile);
+	}
+
+	/**
+	 * Starts a session whose driver checks the clock every {@link #TIME_LIMIT_POLL}.
+	 *
+	 * @param sessions the port that starts the session
+	 * @param request  what the session does
+	 * @return the session
+	 */
+	private static SessionHandle startPollingOften(TestSessions sessions, SessionRequest request)
+	{
+		return RunnerSessionsSecrets.getRunnerSessionsAccess().start(sessions, request, TIME_LIMIT_POLL);
 	}
 
 	/**
@@ -990,7 +1008,7 @@ public final class RunnerSessionsTest
 					Turn.blocksUntilInterrupted(TestSessions.OUTPUT_EVENT).announcing(entered));
 				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
 					new CopyOnWriteArrayList<>(), script);
-				SessionHandle handle = sessions.start(request(source, List.of(), "one", "two", "three"));
+				SessionHandle handle = startPollingOften(sessions, request(source, List.of(), "one", "two", "three"));
 				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
 				clock.advance(LIMIT.plusSeconds(1));
@@ -1048,8 +1066,8 @@ public final class RunnerSessionsTest
 				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 				TestSessions sessions = port(jvm, artifact, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
 					new CopyOnWriteArrayList<>(), script);
-				SessionHandle handle = sessions.start(request(role, SESSION_PROFILE, source, List.of(), "one",
-					"two", "three"));
+				SessionHandle handle = startPollingOften(sessions, request(role, SESSION_PROFILE, source, List.of(),
+					"one", "two", "three"));
 				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
 				clock.advance(LIMIT.plusSeconds(1));
@@ -1088,7 +1106,7 @@ public final class RunnerSessionsTest
 				new CopyOnWriteArrayList<>(), script);
 			String[] turns = new String[script.size()];
 			Arrays.fill(turns, "turn");
-			SessionHandle handle = sessions.start(request(source, List.of(), turns));
+			SessionHandle handle = startPollingOften(sessions, request(source, List.of(), turns));
 			requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
 
 			clock.advance(LIMIT.plusSeconds(1));

@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginManifest;
+import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -79,6 +80,15 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public abstract class RunnerSessions implements SessionPort
 {
+	static
+	{
+		RunnerSessionsSecrets.setRunnerSessionsAccess(RunnerSessions::start);
+	}
+
+	/**
+	 * How often a session's driver wakes to check the clock and the interrupt request.
+	 */
+	private static final Duration POLL = Duration.ofMillis(250);
 	/**
 	 * The directory of a CAT installation that holds its rules.
 	 */
@@ -137,8 +147,22 @@ public abstract class RunnerSessions implements SessionPort
 	@Override
 	public final SessionHandle start(SessionRequest request)
 	{
+		return start(request, POLL);
+	}
+
+	/**
+	 * Starts a session whose driver wakes at an interval to check the clock and the interrupt request.
+	 *
+	 * @param request what the session does
+	 * @param poll    the longest time that the driver waits for the runner before it checks the clock again
+	 * @return the session
+	 * @throws NullPointerException if any argument is null
+	 */
+	private SessionHandle start(SessionRequest request, Duration poll)
+	{
 		requireThat(request, "request").isNotNull();
-		Session session = new Session(this, request);
+		requireThat(poll, "poll").isNotNull();
+		Session session = new Session(this, request, poll);
 		session.begin();
 		return session;
 	}
