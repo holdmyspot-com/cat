@@ -93,6 +93,36 @@ public final class ReleaseBundles
 				return new ReleaseBundles(directory, release, platform, Map.of(), connectLimit, responseLimit,
 					downloadLimit, clock);
 			}
+
+			@Override
+			public HttpClient newHttpClient(ReleaseBundles bundles, URI location) throws IOException
+			{
+				return bundles.newHttpClient(location);
+			}
+
+			@Override
+			public HttpRequest newHttpRequest(ReleaseBundles bundles, URI location)
+			{
+				return bundles.newHttpRequest(location);
+			}
+
+			@Override
+			public IOException httpFailure(ReleaseBundles bundles, HttpClient client, Throwable failure)
+			{
+				return bundles.httpFailure(client, failure);
+			}
+
+			@Override
+			public void checkStatus(int statusCode) throws IOException
+			{
+				ReleaseBundles.checkStatus(statusCode);
+			}
+
+			@Override
+			public IOException fetchFailure(URI location, IOException failure)
+			{
+				return ReleaseBundles.fetchFailure(location, failure);
+			}
 		});
 	}
 
@@ -471,8 +501,20 @@ public final class ReleaseBundles
 		}
 		catch (IOException e)
 		{
-			throw new IOException("Cannot download " + uri + ": " + describeFailure(e), e);
+			throw fetchFailure(uri, e);
 		}
+	}
+
+	/**
+	 * Returns the failure that a download of a release file reports.
+	 *
+	 * @param location the file's location
+	 * @param failure  why the file could not be fetched
+	 * @return a failure that names the location and why it failed, caused by {@code failure}
+	 */
+	private static IOException fetchFailure(URI location, IOException failure)
+	{
+		return new IOException("Cannot download " + location + ": " + describeFailure(failure), failure);
 	}
 
 	/**
@@ -489,23 +531,9 @@ public final class ReleaseBundles
 	 */
 	private void fetchHttp(URI uri, Path target) throws IOException
 	{
-		HttpClient.Builder builder = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).
-			connectTimeout(connectLimit);
-		EnvironmentProxy proxy = findProxy(uri);
-		ProxyLogin login = null;
-		if (proxy != null)
+		try (HttpClient client = newHttpClient(uri))
 		{
-			builder.proxy(ProxySelector.of(proxy.address()));
-			if (proxy.user() != null)
-			{
-				login = new ProxyLogin(proxy);
-				builder.authenticator(login);
-			}
-		}
-		try (HttpClient client = builder.build())
-		{
-			HttpRequest request = HttpRequest.newBuilder(uri).timeout(responseLimit).GET().build();
-			CompletableFuture<HttpResponse<Path>> future = client.sendAsync(request,
+			CompletableFuture<HttpResponse<Path>> future = client.sendAsync(newHttpRequest(uri),
 				HttpResponse.BodyHandlers.ofFile(target));
 			HttpResponse<Path> response;
 			try
@@ -516,38 +544,103 @@ public final class ReleaseBundles
 			{
 				future.cancel(true);
 				client.shutdownNow();
-				throw new IOException("The download did not finish within " + describe(downloadLimit), e);
+				throw httpFailure(client, e);
 			}
 			catch (ExecutionException e)
 			{
 				client.shutdownNow();
-				Throwable cause = e.getCause();
-				if (cause instanceof HttpConnectTimeoutException)
-					throw new IOException("No connection within " + describe(connectLimit), cause);
-				if (cause instanceof HttpTimeoutException)
-					throw new IOException("No response within " + describe(responseLimit), cause);
-				if (login != null && login.wasRejected())
-				{
-					throw new IOException("The proxy that " + proxy.variable() + " names rejected the login of its URL",
-						cause);
-				}
-				if (login != null && login.serverAskedForLogin())
-				{
-					throw new IOException("The release's server asks for a login, which a download does not send",
-						cause);
-				}
-				if (cause instanceof IOException ioe)
-					throw ioe;
-				throw new IOException(String.valueOf(cause), cause);
+				throw httpFailure(client, e.getCause());
 			}
-			if (response.statusCode() != 200)
-				throw new IOException("HTTP status " + response.statusCode());
+			checkStatus(response.statusCode());
 		}
 		catch (InterruptedException e)
 		{
 			Thread.currentThread().interrupt();
 			throw new IOException("Interrupted", e);
 		}
+	}
+
+	/**
+	 * Returns the HTTP client that downloads a release file: it follows the redirects that GitHub answers a release
+	 * download with, waits at most the connect limit of this resolution to connect, and goes through the proxy that the
+	 * environment names for the file's location, if any, answering that proxy's login challenge with the login of its
+	 * URL.
+	 *
+	 * @param location the file's location
+	 * @return the client
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	private HttpClient newHttpClient(URI location) throws IOException
+	{
+		HttpClient.Builder builder = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).
+			connectTimeout(connectLimit);
+		EnvironmentProxy proxy = findProxy(location);
+		if (proxy != null)
+		{
+			builder.proxy(ProxySelector.of(proxy.address()));
+			if (proxy.user() != null)
+				builder.authenticator(new ProxyLogin(proxy));
+		}
+		return builder.build();
+	}
+
+	/**
+	 * Returns the request that downloads a release file, which waits at most the response limit of this resolution for
+	 * the server's response headers.
+	 *
+	 * @param location the file's location
+	 * @return the request
+	 */
+	private HttpRequest newHttpRequest(URI location)
+	{
+		return HttpRequest.newBuilder(location).timeout(responseLimit).GET().build();
+	}
+
+	/**
+	 * Returns the failure that a download over HTTP reports, naming the time limit that expired or the login that was
+	 * refused.
+	 *
+	 * @param client  the client of the download, whose login, if any, recorded the challenges it received
+	 * @param failure the {@link TimeoutException} of a download that did not finish within the download limit, or the
+	 *                cause of a request that failed
+	 * @return the failure to report
+	 */
+	private IOException httpFailure(HttpClient client, Throwable failure)
+	{
+		if (failure instanceof TimeoutException)
+			return new IOException("The download did not finish within " + describe(downloadLimit), failure);
+		if (failure instanceof HttpConnectTimeoutException)
+			return new IOException("No connection within " + describe(connectLimit), failure);
+		if (failure instanceof HttpTimeoutException)
+			return new IOException("No response within " + describe(responseLimit), failure);
+		if (client.authenticator().orElse(null) instanceof ProxyLogin login)
+		{
+			if (login.wasRejected())
+			{
+				return new IOException("The proxy that " + login.proxyVariable() +
+					" names rejected the login of its URL", failure);
+			}
+			if (login.serverAskedForLogin())
+			{
+				return new IOException("The release's server asks for a login, which a download does not send",
+					failure);
+			}
+		}
+		if (failure instanceof IOException ioe)
+			return ioe;
+		return new IOException(String.valueOf(failure), failure);
+	}
+
+	/**
+	 * Checks the status of a release file's response.
+	 *
+	 * @param statusCode the response's status code
+	 * @throws IOException if the status is not 200
+	 */
+	private static void checkStatus(int statusCode) throws IOException
+	{
+		if (statusCode != 200)
+			throw new IOException("HTTP status " + statusCode);
 	}
 
 	/**
@@ -751,6 +844,16 @@ public final class ReleaseBundles
 			}
 			proxyChallenges.incrementAndGet();
 			return new PasswordAuthentication(proxy.user(), proxy.password().toCharArray());
+		}
+
+		/**
+		 * Returns the name of the environment variable that names the proxy.
+		 *
+		 * @return the variable's name
+		 */
+		private String proxyVariable()
+		{
+			return proxy.variable();
 		}
 
 		/**

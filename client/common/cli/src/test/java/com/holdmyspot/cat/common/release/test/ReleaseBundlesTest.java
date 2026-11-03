@@ -10,17 +10,29 @@ import com.holdmyspot.cat.common.release.ReleaseBundles;
 import com.holdmyspot.cat.common.release.RunnerArtifact;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease.Entry;
+import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import com.sun.net.httpserver.HttpServer;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.Authenticator;
+import java.net.Authenticator.RequestorType;
+import java.net.ConnectException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.ProxySelector;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.URI;
+import java.net.UnknownHostException;
+import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpRequest;
+import java.net.http.HttpTimeoutException;
+import java.nio.channels.UnresolvedAddressException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -29,13 +41,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Base64;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -458,6 +470,7 @@ public final class ReleaseBundlesTest
 
 	/**
 	 * Verifies that the release is downloaded over HTTP, which a published release uses, from an in-process server.
+	 * This is the end-to-end check of a download over HTTP.
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
@@ -490,39 +503,9 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
-	 * Verifies that an HTTP error status is reported with the URL and leaves no copy.
-	 *
-	 * @throws IOException if the fixture cannot be written or the server cannot start
-	 */
-	// Requirement: R-I6
-	@Test
-	public void httpErrorLeavesNoCopy() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("release-http-error-"));
-			HttpServer server = serve(Files.createDirectories(root.resolve("empty")));
-			try
-			{
-				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
-				Path bundlesDirectory = root.resolve("bundles");
-
-				IOException failure = expectFailure(new ReleaseBundles(bundlesDirectory, uri, Platform.current(), Map.of()),
-					root);
-
-				requireThat(failure.getMessage(), "message").contains("404").contains(uri.toString());
-				requireThat(entries(bundlesDirectory), "bundles").isEmpty();
-			}
-			finally
-			{
-				server.stop(0);
-			}
-		}
-	}
-
-	/**
-	 * Verifies that a download from a host that does not resolve, a failure that the HTTP client reports without a
-	 * message, is reported with the URL and a reason that names the unresolved host, and leaves no copy.
+	 * Verifies that the JDK's HTTP client reports a host that does not resolve in the form that a download recognizes
+	 * as an unresolved host, a failure that it reports without a message. How a download describes that form is
+	 * verified by {@link #messagelessFailureNamesReason(IOException, String)}.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -534,49 +517,49 @@ public final class ReleaseBundlesTest
 			Path root = cleanup.add(Files.createTempDirectory("release-unresolved-"));
 			// The reserved top-level domain ".invalid" never resolves
 			URI uri = URI.create("http://release.invalid/download/v1.0");
-			Path bundlesDirectory = root.resolve("bundles");
 
-			IOException failure = expectFailure(new ReleaseBundles(bundlesDirectory, uri, Platform.current(), Map.of()),
-				root);
+			IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
+				Map.of()), root);
 
-			requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("could not be resolved").
-				doesNotContain("null");
-			requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+			requireThat(failure.getMessage(), "message").contains("could not be resolved");
 		}
 	}
 
 	/**
 	 * Verifies that a release whose host the machine cannot resolve is downloaded through the proxy that
-	 * {@code HTTP_PROXY} names, including the redirect to another download host that GitHub answers a release download
-	 * with. The release's server and its download host, which only the proxy reaches, are modeled by an in-process
-	 * HTTP server that the download reaches as its proxy: it answers a request for the release host with a redirect to
-	 * the download host, and a request for the download host with the release's file.
+	 * {@code HTTP_PROXY} names, which requires a login, including the redirect to another download host that GitHub
+	 * answers a release download with: the JDK's HTTP client sends its requests to that proxy, answers the proxy's login
+	 * challenge through the download's login and follows the redirect through the proxy. The release's server and its
+	 * download host, which only the proxy reaches, and the proxy are modeled by an in-process HTTP server that the
+	 * download reaches as its proxy. It answers every request without the expected {@code Proxy-Authorization} header
+	 * with status 407 and a {@code Proxy-Authenticate: Basic} challenge, a request for the release host with a redirect
+	 * to the download host, and a request for the download host with the release's file. Which proxy and login a
+	 * download uses is verified by {@link #proxySelection(String, Map, String)} and
+	 * {@link #proxyLoginAnswersOnlyTheProxy()}.
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
 	@Test
-	public void downloadsThroughHttpProxy() throws IOException
+	public void downloadsThroughAuthenticatingProxy() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("release-proxy-"));
+			Path root = cleanup.add(Files.createTempDirectory("release-proxy-login-"));
 			Path release = root.resolve("release");
 			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
 			Queue<String> requested = new ConcurrentLinkedQueue<>();
-			HttpServer proxy = serveAsProxy(release, requested, null);
+			HttpServer proxy = serveAsProxy(release, requested, "agent:secret");
 			try
 			{
 				// The reserved top-level domain ".invalid" never resolves, so only the proxy reaches these hosts
 				URI uri = URI.create("http://release.invalid/download/v1.0");
-				Path bundlesDirectory = root.resolve("bundles");
-				Map<String, String> environment = Map.of("HTTP_PROXY", "http://127.0.0.1:" +
+				Map<String, String> environment = Map.of("HTTP_PROXY", "http://agent:secret@127.0.0.1:" +
 					proxy.getAddress().getPort());
 
-				RunnerArtifact result = new ReleaseBundles(bundlesDirectory, uri, Platform.current(), environment).
-					resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+				RunnerArtifact result = new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
+					environment).resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 
 				requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
-				requireThat(entries(bundlesDirectory), "bundles").isEqualTo(List.of(bundleName()));
 				requireThat(List.copyOf(requested), "requested").containsAll(List.of(
 					"http://release.invalid/download/v1.0/" + bundleName() + ".tar.gz",
 					"http://objects.invalid/download/v1.0/" + bundleName() + ".tar.gz"));
@@ -589,51 +572,14 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
-	 * Verifies that a download through a proxy that requires a login answers the proxy's challenge with the user name and
-	 * password of the proxy's URL, percent-decoded. The proxy is modeled by the in-process server of
-	 * {@link #downloadsThroughHttpProxy()}, which answers every request without the expected
-	 * {@code Proxy-Authorization} header with status 407 and a {@code Proxy-Authenticate: Basic} challenge.
+	 * Verifies that the JDK's HTTP client asks the download's login again when the proxy rejects the URL's credentials,
+	 * so that the download recognizes the rejection. How the download reports a rejected login is verified by
+	 * {@link #rejectedProxyLoginReported()}.
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
 	@Test
-	public void proxyLoginUsesUrlCredentials() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("release-proxy-login-"));
-			Path release = root.resolve("release");
-			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
-			Queue<String> requested = new ConcurrentLinkedQueue<>();
-			HttpServer proxy = serveAsProxy(release, requested, "agent:p@ss word");
-			try
-			{
-				URI uri = URI.create("http://release.invalid/download/v1.0");
-				Path bundlesDirectory = root.resolve("bundles");
-				Map<String, String> environment = Map.of("HTTP_PROXY", "http://agent:p%40ss%20word@127.0.0.1:" +
-					proxy.getAddress().getPort());
-
-				RunnerArtifact result = new ReleaseBundles(bundlesDirectory, uri, Platform.current(), environment).
-					resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
-
-				requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
-				requireThat(entries(bundlesDirectory), "bundles").isEqualTo(List.of(bundleName()));
-			}
-			finally
-			{
-				proxy.stop(0);
-			}
-		}
-	}
-
-	/**
-	 * Verifies that a proxy that rejects the URL's credentials fails the download with a message that says the proxy
-	 * named by the variable rejected the login, and does not reveal the credentials.
-	 *
-	 * @throws IOException if the fixture cannot be written or the server cannot start
-	 */
-	@Test
-	public void rejectedProxyLoginHidesCredentials() throws IOException
+	public void proxyRejectionReachesLogin() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -650,9 +596,7 @@ public final class ReleaseBundlesTest
 				IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
 					environment), root);
 
-				requireThat(failure.getMessage(), "message").contains("HTTP_PROXY").contains("rejected the login").
-					doesNotContain("wrong-s3cret").doesNotContain("agent");
-				requireThat(entries(root.resolve("bundles")), "bundles").isEmpty();
+				requireThat(failure.getMessage(), "message").contains("rejected the login");
 			}
 			finally
 			{
@@ -662,10 +606,12 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
-	 * Verifies that the proxy's credentials are not sent to a release server that asks for a login, and that the
-	 * failure says the server asks for one. The release server
+	 * Verifies that the JDK's HTTP client asks the download's login when a release server asks for a login, so that
+	 * the download sends the server no credentials and recognizes the server's request. The release server
 	 * {@code private.invalid}, reached through the in-process proxy, answers with status 401 and a
-	 * {@code WWW-Authenticate: Basic} challenge and records the {@code Authorization} header of each request.
+	 * {@code WWW-Authenticate: Basic} challenge and records the {@code Authorization} header of each request. Which
+	 * challenges the login answers, and how the download reports a server's request, are verified by
+	 * {@link #proxyLoginAnswersOnlyTheProxy()} and {@link #serverLoginRequestReported()}.
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
@@ -686,7 +632,7 @@ public final class ReleaseBundlesTest
 				IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
 					environment), root);
 
-				requireThat(failure.getMessage(), "message").contains("server asks for a login").doesNotContain("secret");
+				requireThat(failure.getMessage(), "message").contains("server asks for a login");
 				requireThat(List.copyOf(requested), "requested").contains(
 					"http://private.invalid/download/v1.0/" + bundleName() + ".tar.gz").
 					doesNotContain("Authorization sent");
@@ -699,108 +645,27 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
-	 * Returns the process environments that name a proxy for a release on {@code https://release.invalid}.
+	 * Verifies that the JDK's HTTP client opens the tunnel of a download over HTTPS through the proxy that the download
+	 * selects, naming the release's host and port. The proxy is modeled by a local socket that records the request it
+	 * receives and refuses it, so the download fails after the proxy has received it. Which proxy a download selects
+	 * is verified by {@link #proxySelection(String, Map, String)}.
 	 *
-	 * @return for each environment, the name of the variable that names the proxy, whose value the test sets to the
-	 *   proxy's address, and the environment's other variables
-	 */
-	@DataProvider(name = "httpsProxyVariables")
-	public static Object[][] httpsProxyVariables()
-	{
-		return new Object[][]
-		{
-			{"HTTPS_PROXY", Map.of()},
-			{"https_proxy", Map.of()},
-			{"ALL_PROXY", Map.of()},
-			{"all_proxy", Map.of()},
-			{"HTTPS_PROXY", Map.of("NO_PROXY", "example.com,other.invalid")},
-			{"ALL_PROXY", Map.of("HTTPS_PROXY", "socks5://127.0.0.1:1")}
-		};
-	}
-
-	/**
-	 * Verifies that a download over HTTPS opens its tunnel through the proxy that the environment names for HTTPS,
-	 * passing over a variable that names a proxy of a scheme that the download cannot use. The
-	 * proxy is modeled by a local socket that records the request it receives and refuses it, so the download fails
-	 * after the proxy has received it.
-	 *
-	 * @param variable the variable that names the proxy
-	 * @param others   the other variables of the environment
 	 * @throws IOException if the fixture cannot be written or the socket cannot be opened
 	 */
-	@Test(dataProvider = "httpsProxyVariables")
-	public void httpsDownloadUsesProxy(String variable, Map<String, String> others) throws IOException
+	@Test
+	public void httpsDownloadTunnelsThroughProxy() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			RefusingProxy proxy = new RefusingProxy())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("release-https-proxy-"));
 			URI uri = URI.create("https://release.invalid/download/v1.0");
-			Map<String, String> environment = new HashMap<>(others);
-			environment.put(variable, "http://127.0.0.1:" + proxy.port());
+			Map<String, String> environment = Map.of("HTTPS_PROXY", "http://127.0.0.1:" + proxy.port());
 
 			expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(), environment), root);
 
 			requireThat(List.copyOf(proxy.requested()), "requested").
 				isEqualTo(List.of("CONNECT release.invalid:443 HTTP/1.1"));
-		}
-	}
-
-	/**
-	 * Returns the process environments that name a proxy that a download from {@code release.invalid} must not use.
-	 *
-	 * @return for each environment, the release's location and the environment's variables, in which the test replaces
-	 *   each empty value by the proxy's address
-	 */
-	@DataProvider(name = "bypassedProxy")
-	public static Object[][] bypassedProxy()
-	{
-		return new Object[][]
-		{
-			{"http://release.invalid/download/v1.0", Map.of("HTTP_PROXY", "", "NO_PROXY", "release.invalid")},
-			{"http://release.invalid/download/v1.0", Map.of("HTTP_PROXY", "", "no_proxy", "other.example, invalid")},
-			{"http://release.invalid/download/v1.0", Map.of("HTTP_PROXY", "", "NO_PROXY", ".invalid")},
-			{"http://release.invalid/download/v1.0", Map.of("HTTP_PROXY", "", "NO_PROXY", "*")},
-			{"https://release.invalid/download/v1.0", Map.of("HTTPS_PROXY", "", "NO_PROXY", "RELEASE.invalid")},
-			{"https://release.invalid/download/v1.0", Map.of("HTTP_PROXY", "")},
-			{"http://release.invalid/download/v1.0", Map.of("HTTPS_PROXY", "")},
-			{"https://release.invalid/download/v1.0", Map.of("HTTPS_PROXY", "socks5://agent:s3cret@127.0.0.1:1")}
-		};
-	}
-
-	/**
-	 * Verifies that a download connects directly, without the proxy, when {@code NO_PROXY} lists its host, as an exact
-	 * name, a domain with or without a leading dot, or {@code *}, when the environment names a proxy only for the other
-	 * scheme, or when it names only a proxy of a scheme that the download cannot use. The proxy is modeled by a local
-	 * socket that records the requests it receives; the direct connection fails because the release's host does not
-	 * resolve.
-	 *
-	 * @param release   the release's location
-	 * @param variables the environment, in which each empty value is replaced by the proxy's address
-	 * @throws IOException if the fixture cannot be written or the socket cannot be opened
-	 */
-	@Test(dataProvider = "bypassedProxy")
-	public void downloadBypassesProxy(String release, Map<String, String> variables) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			RefusingProxy proxy = new RefusingProxy())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("release-no-proxy-"));
-			URI uri = URI.create(release);
-			Map<String, String> environment = new HashMap<>();
-			variables.forEach((name, value) ->
-			{
-				if (value.isEmpty())
-					environment.put(name, "http://127.0.0.1:" + proxy.port());
-				else
-					environment.put(name, value);
-			});
-
-			IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
-				environment), root);
-
-			requireThat(failure.getMessage(), "message").contains("could not be resolved").doesNotContain("s3cret");
-			requireThat(List.copyOf(proxy.requested()), "requested").isEmpty();
 		}
 	}
 
@@ -829,8 +694,349 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
-	 * Verifies that a server that sends no response headers within the response limit is reported with the URL and the
-	 * expired limit, and leaves no copy, although the limit for the whole file has not expired.
+	 * Returns the process environments of a download from {@code release.invalid} and the proxy that each selects.
+	 *
+	 * @return for each environment, the release file's location, the environment's variables and the proxy's address
+	 *   as {@code host:port}, or {@code null} if the download connects directly
+	 */
+	@DataProvider(name = "proxySelection")
+	public static Object[][] proxySelection()
+	{
+		String https = "https://release.invalid/download/v1.0/file";
+		String http = "http://release.invalid/download/v1.0/file";
+		return new Object[][]
+		{
+			{https, Map.of("HTTPS_PROXY", "http://localhost:3128"), "localhost:3128"},
+			{https, Map.of("https_proxy", "http://localhost:3128"), "localhost:3128"},
+			{https, Map.of("ALL_PROXY", "http://localhost:3128"), "localhost:3128"},
+			{https, Map.of("all_proxy", "http://localhost:3128"), "localhost:3128"},
+			{https, Map.of("HTTPS_PROXY", "http://localhost:3128", "ALL_PROXY", "http://localhost:1080"),
+				"localhost:3128"},
+			{https, Map.of("HTTPS_PROXY", "http://localhost:3128", "NO_PROXY", "example.com,other.invalid"),
+				"localhost:3128"},
+			{https, Map.of("HTTPS_PROXY", "socks5://localhost:1", "ALL_PROXY", "http://localhost:3128"),
+				"localhost:3128"},
+			{http, Map.of("HTTP_PROXY", "localhost"), "localhost:80"},
+			{http, Map.of("HTTP_PROXY", "http://localhost:3128", "NO_PROXY", "release.invalid"), null},
+			{http, Map.of("HTTP_PROXY", "http://localhost:3128", "no_proxy", "other.example, invalid"), null},
+			{http, Map.of("HTTP_PROXY", "http://localhost:3128", "NO_PROXY", ".invalid"), null},
+			{http, Map.of("HTTP_PROXY", "http://localhost:3128", "NO_PROXY", "*"), null},
+			{https, Map.of("HTTPS_PROXY", "http://localhost:3128", "NO_PROXY", "RELEASE.invalid"), null},
+			{https, Map.of("HTTP_PROXY", "http://localhost:3128"), null},
+			{http, Map.of("HTTPS_PROXY", "http://localhost:3128"), null},
+			{https, Map.of("HTTPS_PROXY", "socks5://agent:s3cret@localhost:1"), null}
+		};
+	}
+
+	/**
+	 * Verifies that a download goes through the proxy that the environment names for its scheme, in the order
+	 * {@code HTTPS_PROXY} or {@code HTTP_PROXY}, its lower-case form, {@code ALL_PROXY} and {@code all_proxy}, with
+	 * port 80 when the proxy names none, and passes over a proxy of a scheme that it cannot use; and that it connects
+	 * directly when {@code NO_PROXY} or {@code no_proxy} lists its host, as an exact name in any case, a domain with or
+	 * without a leading dot, or {@code *}, or when the environment names a proxy only for the other scheme.
+	 *
+	 * @param location    the release file's location
+	 * @param environment the process environment
+	 * @param expected    the proxy's address as {@code host:port}, or {@code null} if the download connects directly
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	@Test(dataProvider = "proxySelection")
+	public void proxySelection(String location, Map<String, String> environment, String expected) throws IOException
+	{
+		URI uri = URI.create(location);
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(), environment);
+
+		try (HttpClient client = ReleaseBundlesSecrets.getReleaseBundlesAccess().newHttpClient(bundles, uri))
+		{
+			requireThat(proxyOf(client, uri), "proxy").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Returns the proxy through which a client sends a request.
+	 *
+	 * @param client the client
+	 * @param uri    the request's location
+	 * @return the proxy's address as {@code host:port}, or {@code null} if the client sets no proxy
+	 */
+	private static String proxyOf(HttpClient client, URI uri)
+	{
+		ProxySelector selector = client.proxy().orElse(null);
+		if (selector == null)
+			return null;
+		InetSocketAddress address = (InetSocketAddress) selector.select(uri).getFirst().address();
+		return address.getHostString() + ":" + address.getPort();
+	}
+
+	/**
+	 * Verifies that a download answers its proxy's login challenge with the user name and password of the proxy's URL,
+	 * percent-decoded with a {@code +} kept as it is, and gives no login to a release server or to another host that
+	 * asks for one.
+	 *
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	@Test
+	public void proxyLoginAnswersOnlyTheProxy() throws IOException
+	{
+		URI uri = URI.create("http://release.invalid/download/v1.0/file");
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
+			Map.of("HTTP_PROXY", "http://agent:p%40ss%20wo+rd@localhost:3128"));
+
+		try (HttpClient client = ReleaseBundlesSecrets.getReleaseBundlesAccess().newHttpClient(bundles, uri))
+		{
+			Authenticator login = client.authenticator().orElseThrow();
+			PasswordAuthentication proxyLogin = askLogin(login, "localhost", 3128, RequestorType.PROXY);
+			requireThat(proxyLogin.getUserName(), "user").isEqualTo("agent");
+			requireThat(new String(proxyLogin.getPassword()), "password").isEqualTo("p@ss wo+rd");
+			requireThat(askLogin(login, "release.invalid", 80, RequestorType.SERVER), "serverLogin").isNull();
+			requireThat(askLogin(login, "localhost", 3128, RequestorType.SERVER), "serverOnProxyAddress").isNull();
+			requireThat(askLogin(login, "localhost", 8080, RequestorType.PROXY), "otherProxy").isNull();
+		}
+	}
+
+	/**
+	 * Verifies that a download through a proxy whose URL names no login sends no login to anyone.
+	 *
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	@Test
+	public void proxyWithoutLoginSendsNone() throws IOException
+	{
+		URI uri = URI.create("http://release.invalid/download/v1.0/file");
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
+			Map.of("HTTP_PROXY", "http://localhost:3128"));
+
+		try (HttpClient client = ReleaseBundlesSecrets.getReleaseBundlesAccess().newHttpClient(bundles, uri))
+		{
+			requireThat(client.authenticator().isPresent(), "hasLogin").isFalse();
+		}
+	}
+
+	/**
+	 * Asks an authenticator for a login, as the JDK's HTTP client asks it when a host answers with a Basic challenge.
+	 *
+	 * @param login the authenticator
+	 * @param host  the host that asks
+	 * @param port  the host's port
+	 * @param type  whether the host is a proxy or a server
+	 * @return the login, or {@code null} if the authenticator gives none
+	 */
+	private static PasswordAuthentication askLogin(Authenticator login, String host, int port, RequestorType type)
+	{
+		return login.requestPasswordAuthenticationInstance(host, null, port, "http", "realm", "Basic", null, type);
+	}
+
+	/**
+	 * Verifies that a download whose proxy asks again for a login after receiving the login of its URL fails with a
+	 * message that names the release file and says that the proxy named by the variable rejected the login, without
+	 * revealing the login.
+	 *
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	@Test
+	public void rejectedProxyLoginReported() throws IOException
+	{
+		URI uri = URI.create("http://release.invalid/download/v1.0/file");
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
+			Map.of("HTTP_PROXY", "http://agent:wrong-s3cret@localhost:3128"));
+		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
+
+		try (HttpClient client = access.newHttpClient(bundles, uri))
+		{
+			Authenticator login = client.authenticator().orElseThrow();
+			askLogin(login, "localhost", 3128, RequestorType.PROXY);
+			askLogin(login, "localhost", 3128, RequestorType.PROXY);
+			IOException failure = access.fetchFailure(uri, access.httpFailure(bundles, client,
+				new IOException("No credentials provided")));
+
+			requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("HTTP_PROXY").
+				contains("rejected the login").doesNotContain("wrong-s3cret").doesNotContain("agent");
+		}
+	}
+
+	/**
+	 * Verifies that a download whose release server asked for a login fails with a message that says the server asks
+	 * for one, without revealing the proxy's login.
+	 *
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	@Test
+	public void serverLoginRequestReported() throws IOException
+	{
+		URI uri = URI.create("http://private.invalid/download/v1.0/file");
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
+			Map.of("HTTP_PROXY", "http://agent:secret@localhost:3128"));
+		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
+
+		try (HttpClient client = access.newHttpClient(bundles, uri))
+		{
+			askLogin(client.authenticator().orElseThrow(), "private.invalid", 80, RequestorType.SERVER);
+			IOException failure = access.fetchFailure(uri, access.httpFailure(bundles, client,
+				new IOException("No credentials provided")));
+
+			requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("server asks for a login").
+				doesNotContain("secret");
+		}
+	}
+
+	/**
+	 * Verifies that a download follows redirects, waits for a connection no longer than its connect limit and sends a
+	 * {@code GET} of the release file that waits for the response headers no longer than its response limit, which are
+	 * 30 and 60 seconds by default.
+	 *
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	@Test
+	public void requestUsesDefaultLimits() throws IOException
+	{
+		URI uri = URI.create("https://release.invalid/download/v1.0/file");
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(), Map.of());
+		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
+
+		HttpRequest request = access.newHttpRequest(bundles, uri);
+		try (HttpClient client = access.newHttpClient(bundles, uri))
+		{
+			requireThat(client.followRedirects(), "redirects").isEqualTo(HttpClient.Redirect.NORMAL);
+			requireThat(client.connectTimeout().orElseThrow(), "connectLimit").isEqualTo(Duration.ofSeconds(30));
+		}
+		requireThat(request.method(), "method").isEqualTo("GET");
+		requireThat(request.uri(), "uri").isEqualTo(uri);
+		requireThat(request.timeout().orElseThrow(), "responseLimit").isEqualTo(Duration.ofSeconds(60));
+	}
+
+	/**
+	 * Returns the failures of a download over HTTP whose time limit expired and the message that names each limit.
+	 *
+	 * @return for each failure, the failure that the download received and the description of the expired limit
+	 */
+	@DataProvider(name = "expiredLimits")
+	public static Object[][] expiredLimits()
+	{
+		return new Object[][]
+		{
+			{new HttpConnectTimeoutException("HTTP connect timed out"), "No connection within 1 second"},
+			{new HttpTimeoutException("request timed out"), "No response within 300 milliseconds"},
+			{new TimeoutException(), "The download did not finish within 15 minutes"}
+		};
+	}
+
+	/**
+	 * Verifies that a download whose connect, response or download limit expired fails with a message that names the
+	 * release file and the limit that expired.
+	 *
+	 * @param received the failure that the download received
+	 * @param expected the description of the expired limit
+	 * @throws IOException if the environment names a proxy URL that cannot be parsed
+	 */
+	@Test(dataProvider = "expiredLimits")
+	public void expiredLimitNamed(Throwable received, String expected) throws IOException
+	{
+		URI uri = URI.create("https://release.invalid/download/v1.0/file");
+		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
+		ReleaseBundles bundles = access.create(Path.of("bundles"), uri, Platform.current(), Duration.ofSeconds(1),
+			Duration.ofMillis(300), Duration.ofMinutes(15), Clock.systemUTC());
+
+		try (HttpClient client = access.newHttpClient(bundles, uri))
+		{
+			IOException failure = access.fetchFailure(uri, access.httpFailure(bundles, client, received));
+
+			requireThat(failure.getMessage(), "message").contains(uri.toString()).contains(expected);
+		}
+	}
+
+	/**
+	 * Verifies that a response of status 200 is accepted.
+	 *
+	 * @throws IOException if the status is rejected
+	 */
+	@Test
+	public void successStatusAccepted() throws IOException
+	{
+		ReleaseBundlesSecrets.getReleaseBundlesAccess().checkStatus(200);
+	}
+
+	/**
+	 * Returns the statuses of a response that a download rejects.
+	 *
+	 * @return for each case, the status
+	 */
+	@DataProvider(name = "errorStatuses")
+	public static Object[][] errorStatuses()
+	{
+		return new Object[][]
+		{
+			{404},
+			{302},
+			{500}
+		};
+	}
+
+	/**
+	 * Verifies that a response whose status is not 200, including a redirect that is not followed, fails the download
+	 * with a message that names the release file and the status.
+	 *
+	 * @param status the response's status
+	 */
+	@Test(dataProvider = "errorStatuses")
+	public void errorStatusNamed(int status)
+	{
+		URI uri = URI.create("https://release.invalid/download/v1.0/file");
+		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
+		try
+		{
+			access.checkStatus(status);
+		}
+		catch (IOException e)
+		{
+			requireThat(access.fetchFailure(uri, e).getMessage(), "message").contains(uri.toString()).
+				contains("HTTP status " + status);
+			return;
+		}
+		throw new AssertionError("Status " + status + " was accepted");
+	}
+
+	/**
+	 * Returns the messageless failures of a download and the reason that its message names for each. The JDK's HTTP
+	 * client reports a host that does not resolve as a {@link ConnectException} without a message whose cause is an
+	 * {@link UnresolvedAddressException}, as {@link #unresolvedHostNamesFailure()} shows against the real client.
+	 *
+	 * @return for each failure, the failure and the reason
+	 */
+	@DataProvider(name = "messagelessFailures")
+	public static Object[][] messagelessFailures()
+	{
+		return new Object[][]
+		{
+			{new ConnectException().initCause(new UnresolvedAddressException()), "could not be resolved"},
+			{new IOException(null, new UnknownHostException()), "could not be resolved"},
+			{new ConnectException(), "refused or blocked"},
+			{new IOException(), "Failed with java.io.IOException"}
+		};
+	}
+
+	/**
+	 * Verifies that a download that fails without a message reports the release file and a reason derived from the
+	 * failure's kind, rather than {@code null}.
+	 *
+	 * @param received the failure
+	 * @param expected the reason that the message names
+	 */
+	@Test(dataProvider = "messagelessFailures")
+	public void messagelessFailureNamesReason(IOException received, String expected)
+	{
+		URI uri = URI.create("http://release.invalid/download/v1.0/file");
+
+		IOException failure = ReleaseBundlesSecrets.getReleaseBundlesAccess().fetchFailure(uri, received);
+
+		requireThat(failure.getMessage(), "message").contains(uri.toString()).contains(expected).
+			doesNotContain("null");
+	}
+
+	/**
+	 * Verifies that the JDK's HTTP client gives up on a server that sends no response headers within the response
+	 * limit of the request, although the limit for the whole file has not expired, and reports it as an expired
+	 * response limit. How the download describes that failure is verified by
+	 * {@link #expiredLimitNamed(Throwable, String)}.
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
@@ -846,16 +1052,13 @@ public final class ReleaseBundlesTest
 			try
 			{
 				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
-				Path bundlesDirectory = root.resolve("bundles");
-				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundlesDirectory, uri,
-					Platform.current(), Duration.ofSeconds(30), Duration.ofMillis(300), Duration.ofSeconds(30),
+				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(root.resolve("bundles"),
+					uri, Platform.current(), Duration.ofSeconds(30), Duration.ofMillis(100), Duration.ofSeconds(30),
 					Clock.systemUTC());
 
 				IOException failure = expectFailure(bundles, root);
 
-				requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("No response").
-					contains("300 milliseconds");
-				requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+				requireThat(failure.getMessage(), "message").contains("No response");
 			}
 			finally
 			{
@@ -866,8 +1069,10 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
-	 * Verifies that a server that sends headers but never finishes the body is reported with the URL and the expired
-	 * limit for the whole file, and leaves no copy, although the response limit has not expired.
+	 * Verifies that a download from a server that sends headers but never finishes the body stops the JDK's HTTP client
+	 * once the limit for the whole file expires, although the response limit has not expired, instead of waiting for
+	 * the server. How the download describes that failure is verified by
+	 * {@link #expiredLimitNamed(Throwable, String)}.
 	 *
 	 * @throws IOException if the fixture cannot be written or the server cannot start
 	 */
@@ -883,16 +1088,13 @@ public final class ReleaseBundlesTest
 			try
 			{
 				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
-				Path bundlesDirectory = root.resolve("bundles");
-				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundlesDirectory, uri,
-					Platform.current(), Duration.ofSeconds(30), Duration.ofSeconds(30), Duration.ofMillis(400),
+				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(root.resolve("bundles"),
+					uri, Platform.current(), Duration.ofSeconds(30), Duration.ofSeconds(30), Duration.ofMillis(100),
 					Clock.systemUTC());
 
 				IOException failure = expectFailure(bundles, root);
 
-				requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("did not finish").
-					contains("400 milliseconds");
-				requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+				requireThat(failure.getMessage(), "message").contains("did not finish");
 			}
 			finally
 			{

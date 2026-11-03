@@ -5,6 +5,7 @@ module com.holdmyspot.cat.common.cli.test
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
+	requires java.net.http;
 	requires jdk.httpserver;
 	requires org.testng;
 	requires org.apache.commons.compress;
