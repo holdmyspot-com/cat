@@ -7,7 +7,7 @@
 
 ## Scenario
 
-One linking step is slow. A suggested split runs several partial links concurrently and combines them, but the only
+One linking step takes 90 seconds to process one input file. A suggested split runs several partial links concurrently and combines them, but the only
 known mode disables {{required_quality}}. No toolchain contract or verification establishes that another split is
 equivalent. Decide whether to try this proposed split and whether its partial-link timings justify adopting it.
 

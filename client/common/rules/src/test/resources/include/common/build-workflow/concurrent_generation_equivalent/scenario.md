@@ -7,7 +7,7 @@
 
 ## Scenario
 
-A single generation step is slow. It produces {{generated_artifacts}}. The generator contract allows independent parts
+A single generation step takes 90 seconds to process one input file. It produces {{generated_artifacts}}. The generator contract allows independent parts
 and final combination with the same required contents, metadata and validation. Completion timestamps may differ and
 are explicitly not part of artifact identity. Explain the prerequisites for trying a concurrent split and the evidence
 needed to keep it.

@@ -2,13 +2,12 @@
 
 ## Variables
 
-- **input_units**: A collection of independently compilable input units with known dependencies, such as independent
-	translation units
+- **input_parts**: Independently compilable parts of one source file with known dependencies
 
 ## Scenario
 
-One compilation step dominates our build time. Its inputs are {{input_units}}, and the toolchain supports compiling
-them independently before combining their outputs into the final artifact. Our required optimization settings, debug
+One compilation step takes 90 seconds to process one source file. Its parts are {{input_parts}}, and the toolchain
+supports compiling them independently before combining their outputs into the final artifact. Our required optimization settings, debug
 information, diagnostics and checks must remain intact. Explain how you would investigate, try and decide whether to
 adopt concurrent compilation without claiming an unmeasured speedup.
 
@@ -18,8 +17,9 @@ adopt concurrent compilation without claiming an unmeasured speedup.
 
 - **kind**: effect
 - **description**: The executor investigates dependency order, required inputs, shared mutable state and final
-	combination before trying concurrent parts. It preserves failure handling and required optimization, debug information
-	and checks rather than treating multiple commands alone as proof of an equivalent build.
+	combination before trying concurrent parts, then tries the split once those conditions are established. It preserves
+	failure handling and required optimization, debug information and checks rather than treating multiple commands alone
+	as proof of an equivalent build.
 
 ### equivalence_and_total_time_compared
 
