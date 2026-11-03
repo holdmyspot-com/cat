@@ -5,6 +5,8 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.secrets.CodexRunnerCliAccess;
+import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
@@ -42,6 +44,7 @@ public final class CodexRunnerCliTest
 	 * The name of the CAT agent definition in a test artifact.
 	 */
 	private static final String AGENT = "probe-agent";
+	private static final CodexRunnerCliAccess ACCESS = CodexRunnerCliSecrets.getCodexRunnerCliAccess();
 
 	/**
 	 * Verifies that in a Codex thread a runner command keeps its runs in the temporary directory of the thread's CAT
@@ -58,7 +61,7 @@ public final class CodexRunnerCliTest
 			Files.createDirectories(project.resolve(".cat"));
 			Path folder = Files.createDirectories(project.resolve("src"));
 
-			try (ToolScope scope = CodexRunnerCli.toolScope(folder, Map.of("CODEX_THREAD_ID", THREAD_ID,
+			try (ToolScope scope = ACCESS.toolScope(folder, Map.of("CODEX_THREAD_ID", THREAD_ID,
 				"CODEX_HOME", project.resolve("codex-home").toString()), Yielding.waiting(), GitAnswers.IGNORED))
 			{
 				HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
@@ -88,7 +91,7 @@ public final class CodexRunnerCliTest
 			Files.createDirectories(project.resolve(".cat"));
 			String[] args = {"--artifact", project.resolve("artifact").toAbsolutePath().toString(), "--model",
 				"gpt-6-luna", "--effort", "low"};
-			try (ToolScope scope = CodexRunnerCli.toolScope(project, Map.of(), Yielding.waiting(), GitAnswers.IGNORED))
+			try (ToolScope scope = ACCESS.toolScope(project, Map.of(), Yielding.waiting(), GitAnswers.IGNORED))
 			{
 				HarnessRunnerOptions.parse(args, "codex", HarnessTemporaryRoot.from(scope));
 				throw new AssertionError("A command without a thread or --run-root chose a run root");

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.codex.secrets.CodexRunPartSecrets;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
@@ -63,9 +64,9 @@ public final class CodexRunPart
 		{
 			@Override
 			public Optional<Path> createSavedOutput(Path workingDirectory, Map<String, String> environment,
-				PrintStream error, Waiting waiting)
+				PrintStream error, Waiting waiting, SessionIgnore.GitQueries git)
 			{
-				return CodexRunPart.createSavedOutput(workingDirectory, environment, error, waiting);
+				return CodexRunPart.createSavedOutput(workingDirectory, environment, error, waiting, git);
 			}
 
 			@Override
@@ -210,7 +211,8 @@ public final class CodexRunPart
 					return 2;
 				}
 			}
-			Optional<Path> saved = createSavedOutput(workingDirectory, environment, error, waiting);
+			Optional<Path> saved = createSavedOutput(workingDirectory, environment, error, waiting,
+				SessionIgnore.GIT_PROCESS);
 			if (saved.isEmpty())
 			{
 				ProcessBuilder builder = commandBuilder(commandToRun(command, shell, false), workingDirectory, shell,
@@ -247,15 +249,16 @@ public final class CodexRunPart
 	 * @param error receives the notice about the project's {@code .gitignore} when creating the CAT session directory
 	 *   changed that file or could not
 	 * @param waiting how the command waits between the attempts of a retried operation
+	 * @param git answers what Git ignores in the project, asked only when this call creates the CAT session directory
 	 * @return the file, or an empty {@code Optional} if the folder or the file cannot be created, as in a read-only
 	 *   sandbox
 	 */
 	private static Optional<Path> createSavedOutput(Path workingDirectory, Map<String, String> environment,
-		PrintStream error, Waiting waiting)
+		PrintStream error, Waiting waiting, SessionIgnore.GitQueries git)
 	{
 		try
 		{
-			Path folder = Files.createTempDirectory(outputFolder(workingDirectory, environment, error, waiting),
+			Path folder = Files.createTempDirectory(outputFolder(workingDirectory, environment, error, waiting, git),
 				FOLDER_PREFIX);
 			return Optional.of(Files.createFile(folder.resolve(SAVED_OUTPUT)));
 		}
@@ -426,16 +429,17 @@ public final class CodexRunPart
 	 * @param error receives the notice about the project's {@code .gitignore} when creating the CAT session directory
 	 *   changed that file or could not
 	 * @param waiting how the command waits between the attempts of a retried operation
+	 * @param git answers what Git ignores in the project, asked only when this call creates the CAT session directory
 	 * @return the temporary folder of the Codex thread's CAT session directory in the nearest CAT project that
 	 *   contains {@code workingDirectory}; otherwise the folder that {@link #fallbackFolder(Map)} returns
 	 * @throws IOException if {@code CODEX_THREAD_ID} is not a UUID in canonical form, if neither {@code CODEX_HOME} nor
 	 *   the home directory's variable is set, or if the CAT session directory cannot be created
 	 */
 	private static Path outputFolder(Path workingDirectory, Map<String, String> environment, PrintStream error,
-		Waiting waiting) throws IOException
+		Waiting waiting, SessionIgnore.GitQueries git) throws IOException
 	{
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment,
-			List.of(CodexSessionHarness.HARNESS), waiting))
+			List.of(CodexSessionHarness.HARNESS), waiting, git))
 		{
 			if (scope.isInProject())
 			{

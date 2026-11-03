@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
@@ -52,6 +53,11 @@ import java.util.function.IntFunction;
  */
 public final class CodexRunnerCli
 {
+	static
+	{
+		CodexRunnerCliSecrets.setCodexRunnerCliAccess(CodexRunnerCli::toolScope);
+	}
+
 	/**
 	 * The Codex-only bridge option that limits the tokens that the session keeps of each tool output.
 	 */
@@ -210,7 +216,7 @@ public final class CodexRunnerCli
 	 * @return an open tool scope
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static ToolScope toolScope(Path workingDirectory, Map<String, String> environment, Waiting waiting,
+	private static ToolScope toolScope(Path workingDirectory, Map<String, String> environment, Waiting waiting,
 		SessionIgnore.GitQueries git)
 	{
 		return ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(), waiting, git);

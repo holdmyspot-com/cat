@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.secrets;
 
 import com.holdmyspot.cat.codex.CodexRunPart;
 import com.holdmyspot.cat.codex.CommandShell;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.Waiting;
 
 import java.io.IOException;
@@ -25,10 +26,12 @@ public interface CodexRunPartAccess
 	 * @param error            receives the notice about the project's {@code .gitignore} when creating the CAT
 	 *                         session directory changed that file or could not
 	 * @param waiting          how the command waits between the attempts of a retried operation
+	 * @param git              answers what Git ignores in the project, asked only when this call creates the CAT
+	 *                         session directory
 	 * @return the file, or an empty {@code Optional} if the folder or the file cannot be created
 	 */
 	Optional<Path> createSavedOutput(Path workingDirectory, Map<String, String> environment, PrintStream error,
-		Waiting waiting);
+		Waiting waiting, SessionIgnore.GitQueries git);
 
 	/**
 	 * Returns the command that the shell runs.

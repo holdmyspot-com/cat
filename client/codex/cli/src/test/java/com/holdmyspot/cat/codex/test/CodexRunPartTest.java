@@ -8,7 +8,7 @@ import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.secrets.CodexRunPartAccess;
 import com.holdmyspot.cat.codex.secrets.CodexRunPartSecrets;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -116,7 +116,7 @@ public final class CodexRunPartTest
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
 			Path saved = ACCESS.createSavedOutput(OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()),
-				new PrintStream(error, true, UTF_8), Yielding.waiting()).orElseThrow();
+				new PrintStream(error, true, UTF_8), Yielding.waiting(), GitAnswers.IGNORED).orElseThrow();
 
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
 			requireThat(saved.getFileName().toString(), "name").isEqualTo("output.txt");
@@ -196,7 +196,7 @@ public final class CodexRunPartTest
 
 			Optional<Path> saved = ACCESS.createSavedOutput(folder, Map.of("TMPDIR", temporary.toString(),
 				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()), new PrintStream(
-				new ByteArrayOutputStream(), true, UTF_8), Yielding.waiting());
+				new ByteArrayOutputStream(), true, UTF_8), Yielding.waiting(), GitAnswers.IGNORED);
 
 			requireThat(saved.orElseThrow().getParent().getParent(), "folder").isEqualTo(sessionTemp);
 			requireThat(sessionTemp.resolveSibling("session.json"), "marker").isRegularFile();
@@ -236,16 +236,15 @@ public final class CodexRunPartTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = GitWorkTrees.create(cleanup.add(Files.createTempDirectory("run-part-test-")).
-				resolve("project"));
+			Path project = cleanup.add(Files.createTempDirectory("run-part-test-"));
 			Files.createDirectories(project.resolve(".cat"));
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
 			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
 			ACCESS.createSavedOutput(project, Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", THREAD_ID,
-				"CODEX_HOME", temporary.toString()), new PrintStream(error, true, UTF_8), Yielding.waiting()).
-				orElseThrow();
+				"CODEX_HOME", temporary.toString()), new PrintStream(error, true, UTF_8), Yielding.waiting(),
+				GitAnswers.NOT_IGNORED).orElseThrow();
 
 			requireThat(error.toString(UTF_8), "error").contains("CAT added /.cat/sessions/ to " + project.toAbsolutePath().
 				normalize().resolve(".gitignore")).
@@ -271,7 +270,7 @@ public final class CodexRunPartTest
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
 			Path saved = ACCESS.createSavedOutput(project, Map.of("TMPDIR", temporary.toString()), new PrintStream(
-				new ByteArrayOutputStream(), true, UTF_8), Yielding.waiting()).orElseThrow();
+				new ByteArrayOutputStream(), true, UTF_8), Yielding.waiting(), GitAnswers.IGNORED).orElseThrow();
 
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
 			try (Stream<Path> entries = Files.list(shared))
@@ -501,9 +500,10 @@ public final class CodexRunPartTest
 			PrintStream errorStream = new PrintStream(error, true, UTF_8);
 
 			Optional<Path> outside = ACCESS.createSavedOutput(OUTSIDE_PROJECT, Map.of("TMPDIR",
-				file.resolve("temp").toString()), errorStream, Yielding.waiting());
+				file.resolve("temp").toString()), errorStream, Yielding.waiting(), GitAnswers.IGNORED);
 			Optional<Path> session = ACCESS.createSavedOutput(project, Map.of("TMPDIR", temporary.toString(),
-				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()), errorStream, Yielding.waiting());
+				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()), errorStream, Yielding.waiting(),
+				GitAnswers.IGNORED);
 
 			requireThat(outside, "outside").isEmpty();
 			requireThat(session, "session").isEmpty();
@@ -669,7 +669,7 @@ public final class CodexRunPartTest
 	private static Path savedOutput(Map<String, String> environment, String content) throws IOException
 	{
 		Path saved = ACCESS.createSavedOutput(OUTSIDE_PROJECT, environment, new PrintStream(new ByteArrayOutputStream(),
-			true, UTF_8), Yielding.waiting()).orElseThrow();
+			true, UTF_8), Yielding.waiting(), GitAnswers.IGNORED).orElseThrow();
 		return Files.writeString(saved, content, UTF_8);
 	}
 
