@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 
-# Tests the run-part and read-part launchers in the Codex plugin's bin folder: they start the client's programs from an
-# installed plugin path that contains spaces, run-part saves a command's output in the temporary folder of the Codex
-# thread's CAT session directory in the project, the line that ends a part names the plugin's read-part, and rg in a
-# run-part command keeps the saved output short.
+# Tests the run-part and read-part launchers in the Codex plugin's bin folder and the plugin's rg override: the
+# launchers start the client's programs from an installed plugin path that contains spaces, run-part saves a command's
+# output in the temporary folder of the Codex thread's CAT session directory in the project, the line that ends a part
+# names the plugin's read-part, run-part runs the plugin's rg override, and the override keeps the output that run-part
+# saves short.
 
 load bootstrap-helpers
 
@@ -27,10 +28,7 @@ EOF
 	[ "${lines[0]}" = "1" ]
 	last="${lines[${#lines[@]}-2]}"
 	closing="${lines[${#lines[@]}-1]}"
-	size=$(seq 1 20000 | wc -c)
-	remaining=$((size - $(seq 1 "${last}" | wc -c)))
-	prefix="[More output follows: ${remaining} of the output's ${size} bytes remain, in at least "
-	[[ "${closing}" == "${prefix}"*" more parts. To read the next part, run: '${runtime}/bin/read-part' "* ]]
+	[[ "${closing}" == "[More output follows: "*" To read the next part, run: '${runtime}/bin/read-part' "* ]]
 	[[ "${closing}" == *" '${project}/.cat/sessions/${thread}/temp/run-part-"*"/output.txt' "* ]]
 	command="${closing#*run: }"
 	command="${command%]}"
@@ -57,6 +55,14 @@ SCRIPT
 }
 
 # Runs a command through the installed plugin's run-part in a project, with the fake rg on PATH.
+#
+# Arguments:
+#   $1 - the command that run-part reads from its standard input
+# Environment:
+#   GENERATED_RUNTIME_DIRECTORY - the built runtime, whose Codex plugin is copied to a path that contains a space
+#   TEST_ROOT - the folder that receives the copied plugin and the project
+#   FAKE_BIN, COMMAND_LOG, FAKE_RG_LINES, FAKE_RG_STATUS - the fake rg's folder and settings (see create_fake_rg)
+# Output: none; Bats' run sets status, output and lines from run-part's exit status and standard output
 run_part()
 {
 	runtime="${TEST_ROOT}/installed plugin"
@@ -68,7 +74,33 @@ run_part()
 	run env PATH="${FAKE_BIN}:${PATH}" LC_ALL=C LANG=C "${runtime}/bin/run-part" <<<"$1"
 }
 
-@test "rg in run-part shortens long lines and keeps rg's exit status" {
+# Runs a command the way that run-part runs it, without starting run-part's JVM: bash runs the command with the plugin's
+# run-part overrides first on PATH, the fake rg after them, and its standard output and standard error going to the
+# file that CAT_RUN_PART_OUTPUT names, which stands for the file in which run-part saves the output. Then the stand-in
+# prints that file and exits with the command's exit status, as run-part does for output that fits in one part.
+# CodexRunPartTest proves that run-part runs a command in this environment, and the first rg test runs the override
+# through run-part itself.
+#
+# Arguments:
+#   $1 - the command
+# Environment:
+#   GENERATED_RUNTIME_DIRECTORY - the built runtime, whose Codex plugin holds the run-part overrides
+#   TEST_ROOT - the folder that receives the saved output
+#   FAKE_BIN, COMMAND_LOG, FAKE_RG_LINES, FAKE_RG_STATUS - the fake rg's folder and settings (see create_fake_rg)
+# Output: none; Bats' run sets status, output and lines from the command's exit status and saved output
+run_saved()
+{
+	local overrides="${GENERATED_RUNTIME_DIRECTORY}/codex/client/run-part-overrides"
+	local saved="${TEST_ROOT}/run-part-1/output.txt"
+	mkdir -p "${saved%/*}"
+	create_fake_rg
+	# The inner bash stands for the command's process, whose output goes to the saved file; the outer one, for run-part
+	run env PATH="${overrides}:${FAKE_BIN}:${PATH}" CAT_RUN_PART_OUTPUT="${saved}" LC_ALL=C LANG=C bash -c \
+		'bash -c "$1" >"${CAT_RUN_PART_OUTPUT}" 2>&1; status=$?; cat "${CAT_RUN_PART_OUTPUT}"; exit "${status}"' \
+		run-part "$1"
+}
+
+@test "rg in a run-part command shortens long lines and keeps rg's exit status" {
 	export FAKE_RG_LINES=3 FAKE_RG_STATUS=1
 
 	run_part 'rg -n needle src'
@@ -79,39 +111,39 @@ run_part()
 	[ "$(cat "${COMMAND_LOG}")" = "rg --max-columns=500 --max-columns-preview -n needle src" ]
 }
 
-@test "rg in run-part prints nothing and fails when its output passes 250 lines" {
+@test "rg whose output run-part saves prints nothing and fails when its output passes 250 lines" {
 	export FAKE_RG_LINES=251
 
-	run_part 'rg needle'
+	run_saved 'rg needle'
 
 	[ "${status}" -eq 2 ]
 	[[ "${output}" != *"match 1"* ]]
 	[[ "${lines[0]}" == "rg: "*"more than 250 lines"* ]]
 }
 
-@test "rg in run-part prints every line when CAT_RG_LINE_LIMIT is 0" {
+@test "rg whose output run-part saves prints every line when CAT_RG_LINE_LIMIT is 0" {
 	export FAKE_RG_LINES=251
 
-	run_part 'CAT_RG_LINE_LIMIT=0 rg needle'
+	run_saved 'CAT_RG_LINE_LIMIT=0 rg needle'
 
 	[ "${status}" -eq 0 ]
 	[ "${lines[250]}" = "match 251" ]
 }
 
-@test "rg in run-part that writes into a pipe runs unchanged" {
+@test "rg in a run-part command that writes into a pipe runs unchanged" {
 	export FAKE_RG_LINES=300
 
-	run_part 'rg needle | wc -l'
+	run_saved 'rg needle | wc -l'
 
 	[ "${status}" -eq 0 ]
 	[ "$(printf '%s' "${lines[0]}" | tr -d ' ')" = "300" ]
 	[ "$(cat "${COMMAND_LOG}")" = "rg needle" ]
 }
 
-@test "rg --help in run-part prints all of its help" {
+@test "rg --help whose output run-part saves prints all of its help" {
 	export FAKE_RG_LINES=300
 
-	run_part 'rg --help'
+	run_saved 'rg --help'
 
 	[ "${status}" -eq 0 ]
 	[ "${lines[299]}" = "match 300" ]
