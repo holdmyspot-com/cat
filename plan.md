@@ -55,6 +55,10 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	campaign is `interrupted` and offers only `resume`; the trial project's base is unchanged (`03ed995`, clean tree).
 	The explicit-stop half of E3 passed. The uncertified-acceptance half is unrun: stopping offers no acceptance, and
 	the working candidate is still the incumbent (candidate 0), so there is nothing to accept.
+	User ruling (2026-11-03): resume with keep identity, since no outcomes were recorded under the old conditions,
+	run until a candidate other than the incumbent exists, then accept it without certification. The next v1.0
+	republish waits for the bundled unit-testable-boundary rule and the follow-up test scan (user ruling, 2026-11-03).
+	Release run 41613170916 on `6e1a7a7c60` passed (11 assets, published 2026-11-03T09:49Z).
 - **Order:** the only ordering limit between harnesses is the user's budget: one model-spending campaign or probe per
 	harness at a time (user ruling, 2026-10-21). Each harness's live checks are separate evidence, so a Claude check runs
 	while a Codex campaign runs. A check that starts a session in the other harness, such as WI-120's skills, waits until
