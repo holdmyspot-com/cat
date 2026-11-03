@@ -242,7 +242,7 @@ public final class ReleasePackager
 	 * @return the lowercase hexadecimal digest
 	 * @throws IOException if the archive cannot be read
 	 */
-	private static String sha256(Path archive) throws IOException
+	static String sha256(Path archive) throws IOException
 	{
 		MessageDigest digest;
 		try

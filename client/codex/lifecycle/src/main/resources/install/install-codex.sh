@@ -11,7 +11,7 @@ COMMON_SCRIPT="${SCRIPT_DIRECTORY}/common.sh"
 . "${COMMON_SCRIPT}"
 trap cat_finish EXIT HUP INT TERM
 
-[ "$#" -le 1 ] || cat_print_install_usage "$0"
+[ "$#" -eq 1 ] || cat_print_install_usage "$0" codex
 # The Codex archive for Windows holds only batch launchers, which Codex runs from PowerShell
 case "$(uname -s)" in
 	MINGW*|MSYS*)
@@ -20,11 +20,10 @@ case "$(uname -s)" in
 		exit 1
 		;;
 esac
-CAT_SOURCE="${1:-${CAT_RELEASE_TAG}}"
-[ ! -d "${CAT_SOURCE}" ] || CAT_SOURCE="$(CDPATH='' cd -- "${CAT_SOURCE}" && pwd)"
+CAT_ARTIFACT_DIRECTORY="$(cat_resolve_artifact_directory "$1")"
 RERUN_COMMAND="$(cat_rerun_command codex \
 	"$(cat_environment_assignments "CODEX_HOME CAT_CODEX_DATA_DIR CAT_CODEX_MARKETPLACE_ROOT")" \
-	"${CAT_SOURCE}" "${SCRIPT_DIRECTORY}/install-codex.sh" "" "${CAT_SOURCE}")"
+	"${CAT_ARTIFACT_DIRECTORY}" "${SCRIPT_DIRECTORY}/install-codex.sh" "" "${CAT_ARTIFACT_DIRECTORY}")"
 
 CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 CAT_DATA_DIR="${CAT_CODEX_DATA_DIR:-${CODEX_HOME}/plugins/data/cat-cat}"
@@ -39,7 +38,6 @@ cat_require_writable codex "${RERUN_COMMAND}" "${CODEX_HOME}" "${CODEX_HOME}/.tm
 	"$(dirname -- "${MARKETPLACE_ROOT}")"
 cat_require_removable codex "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
 
-cat_resolve_artifact_directory "codex" "${CAT_SOURCE}"
 cat_validate_artifact "${CAT_ARTIFACT_DIRECTORY}" ".codex-plugin/plugin.json" "Codex"
 MARKETPLACE_METADATA="${CAT_ARTIFACT_DIRECTORY}/install/codex-marketplace.json"
 cat_migrate_data "${CAT_DATA_DIR}" "${CAT_ARTIFACT_DIRECTORY}/install/migrations"

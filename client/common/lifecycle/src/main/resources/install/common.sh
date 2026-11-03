@@ -1,12 +1,6 @@
 #!/usr/bin/env sh
 
 CAT_VERSION="1.0"
-CAT_RELEASE_TAG="v${CAT_VERSION}"
-CAT_RELEASE_DOWNLOAD_URL="${CAT_RELEASE_BASE_URL:-https://github.com/holdmyspot-com/cat/releases/download/\
-${CAT_RELEASE_TAG}}"
-CAT_DOWNLOAD_TEMP_ROOT="${TMPDIR:-/tmp}"
-CAT_DOWNLOAD_TEMP_DIRECTORY=""
-CAT_REPOSITORY="${CAT_BOOTSTRAP_REPOSITORY:-holdmyspot-com/cat}"
 # The exit status of an installer or uninstaller that stops before any change because it cannot write a path
 CAT_NOT_WRITABLE_STATUS=77
 # The harness that CAT_RECOVERY_COMMAND operates on, which selects the hint printed with it
@@ -139,119 +133,45 @@ cat_migrate_data()
 	printf '%s\n' "${CAT_VERSION}" > "${cat_migration_version_file}"
 }
 
-# Deletes the temporary directory created while downloading an artifact, if any.
-#
-# Side effects:
-#   Deletes the directory named by CAT_DOWNLOAD_TEMP_DIRECTORY when it exists.
-#
-# Exit status:
-#   Preserves the invoking script's exit status when installed as an exit trap.
-cat_delete_download_temp_directory()
-{
-	if [ -n "${CAT_DOWNLOAD_TEMP_DIRECTORY}" ] && [ -d "${CAT_DOWNLOAD_TEMP_DIRECTORY}" ]; then
-		rm -rf "${CAT_DOWNLOAD_TEMP_DIRECTORY}"
-	fi
-}
-
 # Prints the shared installer usage contract and exits with the command-line usage status.
 #
 # Arguments:
 #   $1 - Path of the invoking script.
+#   $2 - Harness identifier, which the release's entry command passes to --harness.
 #
 # Errors:
-#   Writes the release-download and extracted-artifact invocation forms to standard error.
+#   Writes the extracted-artifact invocation form, and the entry command that downloads and installs this release, to
+#   standard error.
 #
 # Exit status:
 #   Exits with status 2.
 cat_print_install_usage()
 {
 	echo "Usage:" >&2
-	echo "  $1" >&2
-	echo "    Download and install CAT ${CAT_RELEASE_TAG}." >&2
-	echo "  $1 ${CAT_RELEASE_TAG}" >&2
-	echo "    Download and install CAT ${CAT_RELEASE_TAG}." >&2
 	echo "  $1 EXTRACTED_ARTIFACT_DIRECTORY" >&2
 	echo "    Install an already extracted CAT artifact directory." >&2
+	echo "To download, verify and install CAT v${CAT_VERSION}, run:" >&2
+	echo "  $(cat_entry_command "$2" "v${CAT_VERSION}" "")" >&2
 	exit 2
 }
 
-# Detects the supported platform identifier used in CAT release archive names.
-#
-# Output:
-#   Writes the release-platform identifier to standard output.
-#
-# Exit status:
-#   Returns zero when the operating system and architecture are supported; otherwise reports them to standard error
-#   and returns nonzero.
-cat_detect_platform()
-{
-	cat_os="$(uname -s)"
-	cat_architecture="$(uname -m)"
-	case "${cat_os}:${cat_architecture}" in
-		Linux:x86_64|Linux:amd64) echo "linux-x64" ;;
-		Linux:aarch64|Linux:arm64) echo "linux-arm64" ;;
-		Darwin:x86_64|Darwin:amd64) echo "macos-x64" ;;
-		Darwin:aarch64|Darwin:arm64) echo "macos-arm64" ;;
-		MINGW64_NT*:x86_64|MINGW64_NT*:amd64|MSYS_NT*:x86_64|MSYS_NT*:amd64) echo "windows-x64" ;;
-		*) echo "Unsupported platform: ${cat_os} ${cat_architecture}" >&2; return 1 ;;
-	esac
-}
-
-# Resolves an installer input to an extracted artifact directory.
+# Resolves an installer input to the absolute path of an extracted artifact directory.
 #
 # Arguments:
-#   $1 - Harness name used in release archive names.
-#   $2 - Existing artifact directory or the current release tag.
+#   $1 - An existing extracted artifact directory.
 #
-# Environment:
-#   Sets CAT_ARTIFACT_DIRECTORY and, when downloading, CAT_DOWNLOAD_TEMP_DIRECTORY.
-#
-# Side effects:
-#   Downloads, verifies, and extracts the requested release when given the release tag. The temporary extraction
-#   directory is removed at exit.
+# Output:
+#   Writes the directory's absolute path to standard output.
 #
 # Exit status:
-#   Exits nonzero after reporting an invalid input, download, checksum, or archive-layout failure.
+#   Exits with status 2 after reporting an input that is not a directory.
 cat_resolve_artifact_directory()
 {
-	cat_harness="$1"
-	cat_source="$2"
-	if [ -d "${cat_source}" ]; then
-		CAT_ARTIFACT_DIRECTORY="$(cd "${cat_source}" && pwd)"
-		return
-	fi
-	if [ "${cat_source}" != "${CAT_RELEASE_TAG}" ]; then
-		echo "Expected ${CAT_RELEASE_TAG} or an extracted artifact directory: ${cat_source}" >&2
+	[ -d "$1" ] || {
+		echo "Expected an extracted CAT artifact directory: $1" >&2
 		exit 2
-	fi
-
-	cat_platform="$(cat_detect_platform)"
-	cat_archive_name="cat-${cat_harness}-v${CAT_VERSION}-${cat_platform}.tar.gz"
-	cat_expected_directory="${cat_archive_name%.tar.gz}"
-	mkdir -p "${CAT_DOWNLOAD_TEMP_ROOT}"
-	CAT_DOWNLOAD_TEMP_DIRECTORY="$(mktemp -d "${CAT_DOWNLOAD_TEMP_ROOT}/cat-${cat_harness}-install.XXXXXX")"
-	curl -fsSL "${CAT_RELEASE_DOWNLOAD_URL}/${cat_archive_name}" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/${cat_archive_name}"
-	curl -fsSL "${CAT_RELEASE_DOWNLOAD_URL}/SHA256SUMS.txt" -o "${CAT_DOWNLOAD_TEMP_DIRECTORY}/SHA256SUMS.txt"
-	cat_checksum_line="$(
-		awk -v archive="${cat_archive_name}" \
-			'$2 == archive || $2 == "*" archive { print; found = 1 } END { if (!found) exit 1 }' \
-			"${CAT_DOWNLOAD_TEMP_DIRECTORY}/SHA256SUMS.txt"
-	)" || {
-		echo "No checksum published for ${cat_archive_name}" >&2
-		exit 1
 	}
-	if [ "$(uname -s)" = "Darwin" ]; then
-		printf '%s\n' "${cat_checksum_line}" | (cd "${CAT_DOWNLOAD_TEMP_DIRECTORY}" && shasum -a 256 -c -)
-	else
-		printf '%s\n' "${cat_checksum_line}" | (cd "${CAT_DOWNLOAD_TEMP_DIRECTORY}" && sha256sum -c -)
-	fi
-	# GNU tar reads an archive path that starts with a Windows drive, such as C:, as a remote host's name
-	(cd "${CAT_DOWNLOAD_TEMP_DIRECTORY}" && tar -xzf "${cat_archive_name}")
-	CAT_ARTIFACT_DIRECTORY="${CAT_DOWNLOAD_TEMP_DIRECTORY}/${cat_expected_directory}"
-	[ -d "${CAT_ARTIFACT_DIRECTORY}" ] || {
-		echo "Archive did not contain the expected directory: ${cat_expected_directory}" >&2
-		exit 1
-	}
+	CDPATH='' cd -- "$1" && pwd
 }
 
 # Verifies that an extracted directory is a CAT artifact for one harness.
@@ -436,45 +356,68 @@ cat_shell_quote()
 #        CODEX_HOME. Call this before the script gives any of them a default value.
 #
 # Output:
-#   Writes one assignment, followed by a space, for each named variable that holds a value and for
-#   CAT_BOOTSTRAP_REPOSITORY and CAT_RELEASE_BASE_URL when they hold one; writes nothing when none does.
+#   Writes one assignment, followed by a space, for each named variable that holds a value; writes nothing when none
+#   does.
 cat_environment_assignments()
 {
-	for cat_variable in $1 CAT_BOOTSTRAP_REPOSITORY CAT_RELEASE_BASE_URL; do
+	for cat_variable in $1; do
 		eval "cat_value=\${${cat_variable}:-}"
 		[ -z "${cat_value}" ] || printf '%s=%s ' "${cat_variable}" "$(cat_shell_quote "${cat_value}")"
 	done
 }
 
+# Writes the command that downloads a release's entry script and pipes it to sh for one harness.
+#
+# Arguments:
+#   $1 - Harness identifier, which the command passes to --harness.
+#   $2 - Release tag, such as v1.0, whose entry script the command downloads.
+#   $3 - Environment assignments from cat_environment_assignments, which the command gives sh.
+#
+# Output:
+#   Writes the command to standard output.
+cat_entry_command()
+{
+	printf 'curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/%s/cat.sh | %ssh -s -- --harness %s\n' \
+		"$2" "$3" "$1"
+}
+
 # Writes the command that repeats the running installer or uninstaller with the same arguments.
 #
 # Arguments:
-#   $1 - Harness identifier, which the single command passes to --harness.
+#   $1 - Harness identifier, which the entry command passes to --harness.
 #   $2 - Environment assignments from cat_environment_assignments.
-#   $3 - Git reference, such as v1.0 or HEAD, from which the single command downloads cat.sh.
+#   $3 - The CAT artifact directory whose client/VERSION names the release whose entry command repeats the operation.
+#        When the directory holds no client/VERSION, the release is CAT_VERSION.
 #   $4 - Absolute path of the running script.
-#   $5 - The option that selects the operation in cat.sh: empty to install, or --uninstall.
-#   $6... - The running script's arguments, each a release tag, an absolute directory or an option.
+#   $5 - The option that selects the operation in the entry command: empty to install, or --uninstall.
+#   $6... - The running script's arguments: the artifact directory or an option.
 #
 # Environment:
-#   CAT_BOOTSTRAPPED - Nonempty when cat.sh or a bootstrap script started the running script, which may then be a
-#                      temporary copy.
+#   CAT_BOOTSTRAPPED - Nonempty when the release's entry script started the running script from a temporary extracted
+#                      artifact, which the repeated command cannot rely on.
 #
 # Output:
-#   Writes the command to standard output: when CAT_BOOTSTRAPPED is set, the single command that downloads cat.sh and
-#   pipes it to sh; otherwise the running script with its arguments.
+#   Writes the command to standard output: when CAT_BOOTSTRAPPED is set, the release's entry command with the
+#   operation's option and the arguments after the artifact directory; otherwise the running script with its
+#   arguments.
 cat_rerun_command()
 {
 	cat_harness="$1"
 	cat_environment="$2"
-	cat_reference="$3"
+	cat_artifact="$3"
 	cat_script="$4"
 	cat_operation="$5"
 	shift 5
 	if [ -n "${CAT_BOOTSTRAPPED:-}" ]; then
-		cat_command="curl -fsSL https://raw.githubusercontent.com/${CAT_REPOSITORY}/${cat_reference}/client/common/\
-lifecycle/src/main/resources/install/cat.sh | ${cat_environment}sh -s -- --harness ${cat_harness}"
+		cat_release_version="${CAT_VERSION}"
+		[ ! -f "${cat_artifact}/client/VERSION" ] ||
+			cat_release_version="$(tr -d '\r\n' < "${cat_artifact}/client/VERSION")"
+		cat_command="$(cat_entry_command "${cat_harness}" "v${cat_release_version}" "${cat_environment}")"
 		[ -z "${cat_operation}" ] || cat_command="${cat_command} ${cat_operation}"
+		# The entry command downloads its own artifact, so it takes no directory
+		if [ -z "${cat_operation}" ] && [ "$#" -gt 0 ]; then
+			shift
+		fi
 	else
 		cat_command="${cat_environment}sh $(cat_shell_quote "${cat_script}")"
 	fi
@@ -619,11 +562,7 @@ cat_begin_harness_changes()
 	CAT_RECOVERY_COMMAND="$3"
 }
 
-# Deletes the download directory and, when the operation failed after it began changing the harness, tells the user
-# how to finish it.
-#
-# Side effects:
-#   Deletes the directory named by CAT_DOWNLOAD_TEMP_DIRECTORY when it exists.
+# Tells the user how to finish the operation when it failed after it began changing the harness.
 #
 # Errors:
 #   After cat_begin_harness_changes and a nonzero exit status, explains that CAT may be incomplete and gives the
@@ -634,7 +573,6 @@ cat_begin_harness_changes()
 cat_finish()
 {
 	cat_exit_status="$?"
-	cat_delete_download_temp_directory
 	if [ "${cat_exit_status}" -ne 0 ] && [ -n "${CAT_RECOVERY_COMMAND}" ]; then
 		echo "CAT's ${CAT_RECOVERY_OPERATION} stopped partway, so CAT may be missing or incomplete. If an error above" \
 			"says that a file could not be written, such as \"Read-only file system\", run the command again to finish." >&2

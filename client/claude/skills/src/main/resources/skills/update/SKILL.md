@@ -3,7 +3,7 @@ description: Use when the user asks to install, update or upgrade CAT, to instal
 allowed-tools: [Bash]
 ---
 
-This skill belongs to CAT's Claude Code plugin, so wherever its instructions run `install/cat.sh`, give
-`--harness claude` as the first arguments after the script's path.
+This skill belongs to CAT's Claude Code plugin, whose harness identifier is `claude`, as in `--harness claude`.
+Wherever its instructions write `<h>`, write `claude` in its place.
 
 <!-- cat:include ../shared-lazy-body.md -->

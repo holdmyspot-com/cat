@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
-# Tests Codex plugin installation, removal, release bootstrapping, and generated hook behavior.
+# Tests Codex plugin installation and removal, directly and through the release's entry script, and generated hook
+# behavior.
 
 load bootstrap-helpers
 
@@ -131,64 +132,40 @@ load bootstrap-helpers
 	[ ! -s "${COMMAND_LOG}" ]
 }
 
-@test "release uninstall bootstrap passes --delete-data to the Codex uninstaller" {
+@test "entry script passes --delete-data to the release's Codex uninstaller" {
 	create_fake_engine_command codex
-	create_fake_release codex > /dev/null
-	cp "${INSTALL_DIRECTORY}/common.sh" "${INSTALL_DIRECTORY}/uninstall-codex.sh" "${FAKE_RELEASE_DIRECTORY}/"
+	create_fake_release codex shipped > /dev/null
 	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat"
 	printf '0.9\n' > "${CODEX_HOME}/plugins/data/cat-cat/migration-version"
+	export PATH="${FAKE_BIN}:${PATH}"
 
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		FAKE_RELEASE_DIRECTORY="${FAKE_RELEASE_DIRECTORY}" \
-		sh "${INSTALL_DIRECTORY}/bootstrap-uninstall-codex.sh" --delete-data
+	run single_command --harness codex --uninstall --delete-data
 
 	[ "${status}" -eq 0 ]
 	grep -Fx "codex plugin remove cat@cat" "${COMMAND_LOG}"
 	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat" ]
+	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
 }
 
-@test "release bootstrap registers Codex using marketplace metadata from the verified archive" {
+@test "entry script registers Codex using marketplace metadata from the verified archive" {
+	case "$(uname -s)" in
+		MINGW*|MSYS*) skip "CAT installs for Codex on Windows from PowerShell" ;;
+	esac
 	create_fake_engine_command codex
-	create_fake_release codex > /dev/null
-	cp "${INSTALL_DIRECTORY}/common.sh" "${INSTALL_DIRECTORY}/install-codex.sh" "${FAKE_RELEASE_DIRECTORY}/"
+	create_fake_release codex shipped > /dev/null
+	export PATH="${FAKE_BIN}:${PATH}"
 
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		FAKE_RELEASE_DIRECTORY="${FAKE_RELEASE_DIRECTORY}" \
-		sh "${INSTALL_DIRECTORY}/bootstrap.sh" codex v1.0
+	run single_command --harness codex
 
 	[ "${status}" -eq 0 ]
 	cmp "${CODEX_INSTALL_DIRECTORY}/codex-marketplace.json" \
 		"${CODEX_HOME}/plugins/cat-marketplace/.agents/plugins/marketplace.json"
 	grep -Fx "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 	grep -Fx "codex plugin add cat@cat" "${COMMAND_LOG}"
-}
-
-@test "release bootstrap installs the Codex archive for the current platform after verifying its checksum" {
-	create_fake_engine_command codex
-	archive="$(create_fake_release codex)"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.0
-
-	[ "${status}" -eq 0 ]
-	grep -F "https://github.com/holdmyspot-com/cat/releases/download/v1.0/${archive}" "${COMMAND_LOG}"
-	grep -F "https://github.com/holdmyspot-com/cat/releases/download/v1.0/SHA256SUMS.txt" "${COMMAND_LOG}"
 	[ -f "${CODEX_HOME}/plugins/cat-marketplace/plugins/cat/.codex-plugin/plugin.json" ]
+	grep -Fx "cat-updater setup --harness codex --home ${CODEX_HOME}" "${COMMAND_LOG}"
 }
 
-@test "release bootstrap rejects a Codex archive whose checksum does not match before installing it" {
-	create_fake_engine_command codex
-	archive="$(create_fake_release codex)"
-	printf '%064d  %s\n' 0 "${archive}" > "${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/install-codex.sh" v1.0
-
-	[ "${status}" -ne 0 ]
-	[[ "${output}" == *"FAILED"* ]]
-	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
-	! grep -q '^codex ' "${COMMAND_LOG}"
-}
 @test "generated Codex SessionStart launcher injects the packaged routing and the project's rules" {
 	project="${TEST_ROOT}/generated session project"
 	mkdir -p "${project}/.cat/rules/common"
@@ -223,119 +200,71 @@ load bootstrap-helpers
 
 @test "single command changes nothing and gives the command to run outside the sandbox when config.toml is read-only" {
 	create_fake_engine_command codex
-	create_fake_release codex > /dev/null
-	publish_install_scripts
+	create_fake_release codex shipped > /dev/null
 	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
 	mkdir -p "${CODEX_HOME}"
 	printf '[features]\nplugins = true\n' > "${CODEX_HOME}/config.toml"
 	make_read_only "${CODEX_HOME}/config.toml"
-	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex v1.0"
-	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL/v1.0/HEAD} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
+	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
+	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
 
-	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${install_command}"
 
 	chmod u+w "${CODEX_HOME}/config.toml"
-	run single_command v1.0
+	run single_command
 	[ "${status}" -eq 0 ]
 	[ -f "${CODEX_HOME}/agents/cat-reviewer.toml" ]
 	make_read_only "${CODEX_HOME}/config.toml"
 
-	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${install_command}"
 	expect_unchanged_by_single_command codex "${CODEX_HOME}/config.toml" "${uninstall_command} --uninstall --delete-data" \
 		--uninstall --delete-data
 }
 
 @test "single command changes nothing when the directory that holds Codex's marketplace is read-only" {
 	create_fake_engine_command codex
-	create_fake_release codex > /dev/null
-	publish_install_scripts
+	create_fake_release codex shipped > /dev/null
 	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
-	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex v1.0"
-	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL/v1.0/HEAD} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
+	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
+	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
 	mkdir -p "${CODEX_HOME}/plugins"
 	make_read_only "${CODEX_HOME}/plugins"
 
-	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${install_command}"
 
 	chmod u+w "${CODEX_HOME}/plugins"
-	run single_command v1.0
+	run single_command
 	[ "${status}" -eq 0 ]
 	[ -d "${CODEX_HOME}/plugins/cat-marketplace" ]
 	make_read_only "${CODEX_HOME}/plugins"
 
-	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${install_command}"
 	expect_unchanged_by_single_command codex "${CODEX_HOME}/plugins" "${uninstall_command} --uninstall" --uninstall
 }
 
 # Codex writes a helper program into CODEX_HOME/tmp whenever it installs or removes a plugin
 @test "single command changes nothing when Codex's tmp directory is read-only" {
 	create_fake_engine_command codex
-	create_fake_release codex > /dev/null
-	publish_install_scripts
+	create_fake_release codex shipped > /dev/null
 	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
-	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex v1.0"
-	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL/v1.0/HEAD} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
+	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
+	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL} | CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"
 	mkdir -p "${CODEX_HOME}/tmp"
 	make_read_only "${CODEX_HOME}/tmp"
 
-	expect_unchanged_by_single_command codex "${CODEX_HOME}/tmp" "${install_command}" v1.0
+	expect_unchanged_by_single_command codex "${CODEX_HOME}/tmp" "${install_command}"
 	expect_unchanged_by_single_command codex "${CODEX_HOME}/tmp" "${uninstall_command} --uninstall" --uninstall
 }
 
 @test "single command that stops partway tells an agent to hand the command to the user without the prompt prefix" {
 	create_fake_engine_command codex
 	printf '%s\n' '#!/usr/bin/env sh' 'exit 1' > "${FAKE_BIN}/codex"
-	create_fake_release codex > /dev/null
-	publish_install_scripts
+	create_fake_release codex shipped > /dev/null
 	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
 
-	run single_command v1.0
+	run single_command
 
 	[ "${status}" -ne 0 ]
 	[[ "${output}" == *"stopped partway"* ]]
 	expect_agent_told_to_hand_command_to_user codex
-}
-
-@test "single command reaches the same Codex state as the Codex bootstrap scripts" {
-	create_fake_engine_command codex
-	create_fake_release codex > /dev/null
-	publish_install_scripts
-	export PATH="${FAKE_BIN}:${PATH}"
-	single_record="${TEST_ROOT}/single command record"
-	bootstrap_record="${TEST_ROOT}/bootstrap record"
-
-	record_operation "${single_record}" single_command --harness codex v1.0
-	record_operation "${single_record}" single_command --harness codex v1.0
-	record_operation "${single_record}" single_command --harness codex --uninstall --delete-data
-	rm -rf "${HOME}"
-	mkdir -p "${HOME}"
-	record_operation "${bootstrap_record}" sh "${INSTALL_DIRECTORY}/bootstrap-codex.sh" v1.0
-	record_operation "${bootstrap_record}" sh "${INSTALL_DIRECTORY}/bootstrap-codex.sh" v1.0
-	record_operation "${bootstrap_record}" sh "${INSTALL_DIRECTORY}/bootstrap-uninstall-codex.sh" --delete-data
-
-	diff "${bootstrap_record}" "${single_record}"
-	grep -Fx "codex plugin add cat@cat" "${single_record}"
-	grep -Fx "codex plugin remove cat@cat" "${single_record}"
-}
-
-@test "the installed plugin's single command uninstalls CAT from Codex without downloading anything" {
-	create_fake_engine_command codex
-	artifact="$(create_test_artifact codex)"
-	cp "${INSTALL_DIRECTORY}"/*.sh "${artifact}/install/"
-	run env PATH="${FAKE_BIN}:${PATH}" sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
-	[ "${status}" -eq 0 ]
-	installed_plugin="${CODEX_HOME}/plugins/cat-marketplace/plugins/cat"
-	printf '#!/bin/sh\nprintf "curl %%s\\n" "$*" >> "${COMMAND_LOG}"\nexit 22\n' > "${FAKE_BIN}/curl"
-	chmod +x "${FAKE_BIN}/curl"
-	: > "${COMMAND_LOG}"
-
-	run env PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000 \
-		sh "${installed_plugin}/install/cat.sh" --uninstall --delete-data
-
-	[ "${status}" -eq 0 ]
-	grep -Fx "codex plugin remove cat@cat" "${COMMAND_LOG}"
-	! grep -q '^curl ' "${COMMAND_LOG}" || false
-	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
-	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat" ]
-	[ ! -e "${CODEX_HOME}/agents/cat-reviewer.toml" ]
 }

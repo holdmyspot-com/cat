@@ -11,12 +11,11 @@ COMMON_SCRIPT="${SCRIPT_DIRECTORY}/common.sh"
 . "${COMMON_SCRIPT}"
 trap cat_finish EXIT HUP INT TERM
 
-[ "$#" -le 1 ] || cat_print_install_usage "$0"
-CAT_SOURCE="${1:-${CAT_RELEASE_TAG}}"
-[ ! -d "${CAT_SOURCE}" ] || CAT_SOURCE="$(CDPATH='' cd -- "${CAT_SOURCE}" && pwd)"
+[ "$#" -eq 1 ] || cat_print_install_usage "$0" claude
+CAT_ARTIFACT_DIRECTORY="$(cat_resolve_artifact_directory "$1")"
 RERUN_COMMAND="$(cat_rerun_command claude \
 	"$(cat_environment_assignments "CLAUDE_CONFIG_DIR CAT_CLAUDE_DATA_DIR CLAUDE_PLUGIN_DATA CAT_CLAUDE_MARKETPLACE_ROOT")" \
-	"${CAT_SOURCE}" "${SCRIPT_DIRECTORY}/install-claude.sh" "" "${CAT_SOURCE}")"
+	"${CAT_ARTIFACT_DIRECTORY}" "${SCRIPT_DIRECTORY}/install-claude.sh" "" "${CAT_ARTIFACT_DIRECTORY}")"
 
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
 	CLAUDE_GLOBAL_CONFIG_FILE="${CLAUDE_CONFIG_DIR}/.claude.json"
@@ -40,7 +39,6 @@ cat_require_writable claude "${RERUN_COMMAND}" "${CLAUDE_GLOBAL_CONFIG_FILE}" "$
 	"$(dirname -- "${MARKETPLACE_ROOT}")"
 cat_require_removable claude "${RERUN_COMMAND}" "${MARKETPLACE_ROOT}"
 
-cat_resolve_artifact_directory "claude" "${CAT_SOURCE}"
 cat_validate_artifact "${CAT_ARTIFACT_DIRECTORY}" ".claude-plugin/plugin.json" "Claude"
 MARKETPLACE_METADATA="${CAT_ARTIFACT_DIRECTORY}/install/claude-marketplace.json"
 cat_migrate_data "${CAT_DATA_DIR}" "${CAT_ARTIFACT_DIRECTORY}/install/migrations"

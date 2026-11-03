@@ -62,8 +62,26 @@ jobs:
           "${shellcheck_directory}/shellcheck.exe" --version
           npm install --global bats@1.11.1
           bats --version
+      # The build embeds the public half of the release signing key, so that CAT can check the release's signed manifest
+      - name: Derive release public key
+        env:
+          CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "${CAT_RELEASE_SIGNING_KEY}" ]; then
+            echo "The secret CAT_RELEASE_SIGNING_KEY is empty or unavailable to this workflow." >&2
+            exit 1
+          fi
+          key_file="${RUNNER_TEMP}/cat-release-signing-key.pem"
+          (umask 077 && printf '%s\n' "${CAT_RELEASE_SIGNING_KEY}" > "${key_file}")
+          public_key="$(openssl pkey -in "${key_file}" -pubout -outform DER | base64 | tr -d '\r\n')"
+          rm -f "${key_file}"
+          if [ -z "${public_key}" ]; then
+            echo "CAT_RELEASE_SIGNING_KEY holds no private key that openssl can read." >&2
+            exit 1
+          fi
+          echo "CAT_RELEASE_PUBLIC_KEY=${public_key}" >> "${GITHUB_ENV}"
       - name: Verify and package
-        run: client/mvnw -f client/pom.xml verify
+        run: client/mvnw -f client/pom.xml verify "-Dcat.release.public-key=${CAT_RELEASE_PUBLIC_KEY}"
       - name: Verify release tag
         run: |
           version="$(client/mvnw -q -f client/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)"
@@ -93,6 +111,7 @@ jobs:
           path: |
             client/common/distribution/target/release/cat-*-*.tar.gz
             client/common/distribution/target/release/SHA256SUMS.txt
+            client/common/distribution/target/release/cat-release-assets-*.json
 
   publish:
     name: Publish release
@@ -101,7 +120,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/release-notes.md
+          sparse-checkout: |
+            .github/release-notes.md
+            client/common/lifecycle/src/main/release/
           sparse-checkout-cone-mode: false
       - name: Download native release files
         uses: actions/download-artifact@v8
@@ -115,17 +136,62 @@ jobs:
           find native -type f -name SHA256SUMS.txt -exec cat '{}' \; | LC_ALL=C sort > release/SHA256SUMS.txt
           test "$(find release -type f -name 'cat-*-*.tar.gz' | wc -l)" -eq 10
           test "$(wc -l < release/SHA256SUMS.txt)" -eq 10
+          mkdir fragments
+          find native -type f -name 'cat-release-assets-*.json' -exec cp '{}' fragments/ \;
+          test "$(find fragments -type f | wc -l)" -eq 5
+      # The manifest lists every platform's archives, sorted by name, under the release's tag and publication time
+      - name: Write release manifest
+        run: |
+          jq -s --arg tag "${GITHUB_REF_NAME}" --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{format: 1, product: "cat", version: ($tag | ltrimstr("v")), tag: $tag, published: $published,
+              assets: (add | sort_by(.name))}' fragments/*.json > release/cat-release-manifest.json
+          test "$(jq '.assets | length' release/cat-release-manifest.json)" -eq 10
+      - name: Sign release manifest
+        env:
+          CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
+        run: |
+          if [ -z "${CAT_RELEASE_SIGNING_KEY}" ]; then
+            echo "The secret CAT_RELEASE_SIGNING_KEY is empty or unavailable to this workflow." >&2
+            exit 1
+          fi
+          key_file="${RUNNER_TEMP}/cat-release-signing-key.pem"
+          trap 'rm -f "${key_file}"' EXIT
+          (umask 077 && printf '%s\n' "${CAT_RELEASE_SIGNING_KEY}" > "${key_file}")
+          openssl pkey -in "${key_file}" -pubout -out "${RUNNER_TEMP}/cat-release-public-key.pem"
+          openssl pkeyutl -sign -inkey "${key_file}" -rawin -in release/cat-release-manifest.json \
+            -out "${RUNNER_TEMP}/cat-release-manifest.sig.bin"
+          base64 < "${RUNNER_TEMP}/cat-release-manifest.sig.bin" | tr -d '\r\n' > release/cat-release-manifest.json.sig
+          # Verifies the published signature, decoded again, against the public key that the build embedded
+          base64 -d < release/cat-release-manifest.json.sig > "${RUNNER_TEMP}/cat-release-manifest.check.bin"
+          if ! openssl pkeyutl -verify -pubin -inkey "${RUNNER_TEMP}/cat-release-public-key.pem" -rawin \
+            -in release/cat-release-manifest.json -sigfile "${RUNNER_TEMP}/cat-release-manifest.check.bin"; then
+            echo "The release manifest's signature does not verify against the release public key." >&2
+            exit 1
+          fi
+          fingerprint="$(openssl pkey -in "${key_file}" -pubout -outform DER | sha256sum | awk '{ print $1 }')"
+          echo "CAT_KEY_FINGERPRINT=${fingerprint}" >> "${GITHUB_ENV}"
+      # The entry script embeds the release's tag and every archive's SHA-256 digest, and downloads only from the
+      # release
+      - name: Write entry script
+        run: |
+          release_sources=client/common/lifecycle/src/main/release
+          sh "${release_sources}/generate-cat-sh.sh" "${release_sources}/cat.sh" "${GITHUB_REF_NAME}" \
+            release/SHA256SUMS.txt release/cat.sh
+          # 10 archives, SHA256SUMS.txt, the manifest, its signature and cat.sh
+          test "$(find release -type f | wc -l)" -eq 14
       # The notes start with the commands that install, update and uninstall this release, followed by the notes that
       # GitHub generates, which end with the link to the full changelog
       - name: Write release notes
         run: |
-          # The template's placeholder is matched literally, not expanded
+          test -n "${CAT_KEY_FINGERPRINT}"
+          # The template's placeholders are matched literally, not expanded
           # shellcheck disable=SC2016
-          sed 's/${GITHUB_REF_NAME}/'"${GITHUB_REF_NAME}"'/g' .github/release-notes.md > "${RUNNER_TEMP}/release-notes.md"
+          sed -e 's/${GITHUB_REF_NAME}/'"${GITHUB_REF_NAME}"'/g' -e 's/${CAT_KEY_FINGERPRINT}/'"${CAT_KEY_FINGERPRINT}"'/g' .github/release-notes.md > "${RUNNER_TEMP}/release-notes.md"
           # A literal ${ left in the notes is a placeholder that was not replaced
           # shellcheck disable=SC2016
           if grep -F '${' "${RUNNER_TEMP}/release-notes.md"; then
-            echo "The release notes template holds a placeholder other than \${GITHUB_REF_NAME}." >&2
+            echo "The release notes template holds a placeholder other than \${GITHUB_REF_NAME} and" \
+              "\${CAT_KEY_FINGERPRINT}." >&2
             exit 1
           fi
       - name: Create GitHub release

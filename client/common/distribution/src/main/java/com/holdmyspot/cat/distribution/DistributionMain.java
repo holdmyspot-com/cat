@@ -13,6 +13,8 @@ import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
 import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
+import com.holdmyspot.cat.distribution.bundle.ReleaseAsset;
+import com.holdmyspot.cat.distribution.bundle.ReleaseAssetsFragment;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import com.holdmyspot.cat.distribution.bundle.RuleReferences;
@@ -108,10 +110,12 @@ public final class DistributionMain
 	/**
 	 * Builds the harness distributions for a platform.
 	 *
-	 * @param scope the process scope, whose YAML mapper reads the rules
+	 * @param scope the process scope, whose YAML mapper reads the rules and whose JSON mapper writes the list of the
+	 *        platform's release archives
 	 * @param projectRoot the repository root
 	 * @param moduleDirectory the directory containing dependency JARs
-	 * @param releaseDirectory the output directory for release archives
+	 * @param releaseDirectory the output directory for release archives, their {@code SHA256SUMS.txt} and their list
+	 *        {@code cat-release-assets-<platform>.json}
 	 * @param platform the target platform
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code releaseDirectory} is the filesystem root
@@ -280,6 +284,8 @@ public final class DistributionMain
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
 		Path codexArchive = packager.packageArtifact("codex", platform, codexRoot, releaseDirectory);
 		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive), releaseDirectory.resolve("SHA256SUMS.txt"));
+		new ReleaseAssetsFragment(scope).write(platform, List.of(ReleaseAsset.plugin("claude", platform, claudeArchive),
+			ReleaseAsset.plugin("codex", platform, codexArchive)), releaseDirectory);
 	}
 
 	/**

@@ -16,7 +16,7 @@ trap cat_finish EXIT HUP INT TERM
 	exit 2
 }
 RERUN_COMMAND="$(cat_rerun_command claude "$(cat_environment_assignments "CLAUDE_CONFIG_DIR CAT_CLAUDE_MARKETPLACE_ROOT")" \
-	HEAD "${SCRIPT_DIRECTORY}/uninstall-claude.sh" --uninstall)"
+	"${SCRIPT_DIRECTORY}/.." "${SCRIPT_DIRECTORY}/uninstall-claude.sh" --uninstall)"
 
 if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
 	CLAUDE_GLOBAL_CONFIG_FILE="${CLAUDE_CONFIG_DIR}/.claude.json"

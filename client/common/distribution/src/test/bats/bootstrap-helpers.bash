@@ -1,28 +1,43 @@
-# Sets up one isolated filesystem and harness homes for a bootstrap test file.
+# Sets up one isolated filesystem, harness homes, updater directory and temporary directory for a test file.
 setup()
 {
 	export TEST_ROOT="${BATS_TEST_TMPDIR}/root with spaces"
 	export FAKE_BIN="${TEST_ROOT}/bin"
 	export COMMAND_LOG="${TEST_ROOT}/commands.log"
+	export URL_LOG="${TEST_ROOT}/urls.log"
 	export HOME="${TEST_ROOT}/home"
 	export CODEX_HOME="${HOME}/.codex"
 	export CLAUDE_CONFIG_DIR="${HOME}/.claude"
+	export TMPDIR="${TEST_ROOT}/tmp"
+	# The updater's data directory lies outside HOME, so that the tests that compare HOME before and after an
+	# operation see only the installer's changes
+	if command -v cygpath >/dev/null 2>&1; then
+		LOCALAPPDATA="$(cygpath -w "${TEST_ROOT}/local app data")"
+		export LOCALAPPDATA
+		unset XDG_DATA_HOME
+	else
+		export XDG_DATA_HOME="${TEST_ROOT}/data"
+		unset LOCALAPPDATA
+	fi
 	export COMMON_INSTALL_DIRECTORY="${BATS_TEST_DIRNAME}/../../../../lifecycle/src/main/resources/install"
+	export COMMON_RELEASE_DIRECTORY="${BATS_TEST_DIRNAME}/../../../../lifecycle/src/main/release"
 	export CLAUDE_INSTALL_DIRECTORY="${BATS_TEST_DIRNAME}/../../../../../claude/lifecycle/src/main/resources/install"
 	export CODEX_INSTALL_DIRECTORY="${BATS_TEST_DIRNAME}/../../../../../codex/lifecycle/src/main/resources/install"
 	export INSTALL_DIRECTORY="${TEST_ROOT}/install"
 	export GENERATED_RUNTIME_DIRECTORY="${BATS_TEST_DIRNAME}/../../../target/runtime"
 	export FAKE_RELEASE_DIRECTORY="${TEST_ROOT}/release"
+	# Every asset of the release under test, the entry script included, is downloaded from below this URL
+	export RELEASE_DOWNLOAD_URL="https://github.com/holdmyspot-com/cat/releases/download/v1.0"
 	# The single command as users paste it, which the fake curl serves from FAKE_RELEASE_DIRECTORY
-	export SINGLE_COMMAND_URL="https://raw.githubusercontent.com/holdmyspot-com/cat/v1.0/client/common/lifecycle/src/\
-main/resources/install/cat.sh"
-	# The harness that runs the tests must not decide which harness the single command installs for
-	unset CLAUDECODE CODEX_THREAD_ID
-	mkdir -p "${FAKE_BIN}" "${HOME}" "${INSTALL_DIRECTORY}"
+	export SINGLE_COMMAND_URL="${RELEASE_DOWNLOAD_URL}/cat.sh"
+	# The harness that runs the tests, and the user's own overrides, must not decide what the single command does
+	unset CLAUDECODE CODEX_THREAD_ID CAT_BOOTSTRAP_REPOSITORY CAT_RELEASE_BASE_URL
+	mkdir -p "${FAKE_BIN}" "${HOME}" "${INSTALL_DIRECTORY}" "${TMPDIR}"
 	cp -R "${COMMON_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	cp -R "${CLAUDE_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	cp -R "${CODEX_INSTALL_DIRECTORY}/." "${INSTALL_DIRECTORY}/"
 	: > "${COMMAND_LOG}"
+	: > "${URL_LOG}"
 }
 
 # Restores write permission on everything a test made read-only, so that Bats can delete the test's directory.
@@ -31,31 +46,19 @@ teardown()
 	chmod -R u+w "${TEST_ROOT}" 2>/dev/null || true
 }
 
-# Runs the single command as a user pastes it into a shell: curl downloads cat.sh and pipes it to sh.
+# Runs the single command as a user pastes it into a shell: curl downloads the release's cat.sh and pipes it to sh.
 #
 # Arguments:
-#   $@ - The arguments that the user passes to cat.sh, such as v1.0 or --uninstall.
+#   $@ - The arguments that the user passes to cat.sh, such as --harness claude or --uninstall.
 #
 # Environment:
-#   PATH must find the fake curl from create_fake_release first, and publish_install_scripts must have published the
-#   scripts that cat.sh downloads.
+#   PATH must find the fake curl from create_fake_release first.
 #
 # Exit status:
 #   Returns the exit status of cat.sh.
 single_command()
 {
 	curl -fsSL "${SINGLE_COMMAND_URL}" | sh -s -- "$@"
-}
-
-# Publishes the installer scripts in the fake release, so that the fake curl serves them as GitHub serves them to the
-# single command and to the per-harness bootstrap scripts.
-publish_install_scripts()
-{
-	mkdir -p "${FAKE_RELEASE_DIRECTORY}"
-	cp "${INSTALL_DIRECTORY}/cat.sh" "${INSTALL_DIRECTORY}/bootstrap.sh" "${INSTALL_DIRECTORY}/bootstrap-uninstall.sh" \
-		"${INSTALL_DIRECTORY}/common.sh" "${INSTALL_DIRECTORY}/install-claude.sh" \
-		"${INSTALL_DIRECTORY}/uninstall-claude.sh" "${INSTALL_DIRECTORY}/install-codex.sh" \
-		"${INSTALL_DIRECTORY}/uninstall-codex.sh" "${FAKE_RELEASE_DIRECTORY}/"
 }
 
 # Removes write permission from a file or directory, and skips the test when the file system still lets it be written,
@@ -192,32 +195,103 @@ current_platform()
 	esac
 }
 
-# Publishes a release archive of a minimal CAT artifact for the current platform with its checksum list, and creates a
-# fake curl that serves the release's files by name and appends each invocation to the test command log.
+# Writes the SHA-256 digest line of a file in the form that sha256sum writes, naming the file by its base name.
 #
 # Arguments:
-#   $1 - Harness identifier, such as claude or codex.
+#   $1 - The file.
 #
 # Output:
-#   Writes the archive's file name to standard output.
+#   Writes the digest, two spaces and the file's base name to standard output.
+sha256_line()
+{
+	if command -v sha256sum >/dev/null 2>&1; then
+		digest="$(sha256sum < "$1" | awk '{ print $1 }')"
+	else
+		digest="$(shasum -a 256 < "$1" | awk '{ print $1 }')"
+	fi
+	printf '%s  %s\n' "${digest}" "$(basename -- "$1")"
+}
+
+# Adds the shipped installer, uninstaller and installer library of a harness to a fake extracted artifact.
+#
+# Arguments:
+#   $1 - The artifact directory.
+#   $2 - Harness identifier, claude or codex.
+add_shipped_installers()
+{
+	cp "${INSTALL_DIRECTORY}/common.sh" "${INSTALL_DIRECTORY}/install-$2.sh" "${INSTALL_DIRECTORY}/uninstall-$2.sh" \
+		"$1/install/"
+}
+
+# Adds an installer and an uninstaller to a fake extracted artifact that only append their names and arguments to the
+# test command log.
+#
+# Arguments:
+#   $1 - The artifact directory.
+#   $2 - Harness identifier, claude or codex.
+add_recording_installers()
+{
+	for script in "install-$2.sh" "uninstall-$2.sh"; do
+		printf '#!/usr/bin/env sh\nprintf "%%s %%s\\n" %s "$*" >> "${COMMAND_LOG}"\n' "${script}" > "$1/install/${script}"
+	done
+}
+
+# Packs a directory into a release archive that holds it as its one top directory.
+#
+# Arguments:
+#   $1 - The directory, whose name becomes the archive's top directory.
+#   $2 - The archive to write.
+pack_archive()
+{
+	# Reading and writing through redirections keeps GNU tar from taking a Windows drive, such as C:, for a host
+	tar -czf - -C "$(dirname -- "$1")" "$(basename -- "$1")" > "$2"
+}
+
+# Publishes a fake CAT release for the current platform: a harness's plugin archive, the updater's archive, their
+# SHA-256 list and the release's cat.sh, which the generator fills with that list. Also creates a fake curl that serves
+# the release's files by name.
+#
+# The fake updater's launcher appends its arguments to the test command log and prints a setup result. The fake curl
+# appends each invocation to the test command log and each URL that it is asked for to URL_LOG.
+#
+# Arguments:
+#   $1 - Harness identifier, claude or codex.
+#   $2 - shipped to package the harness's shipped installer scripts, or recording to package installers that only
+#        record their arguments.
+#
+# Output:
+#   Writes the plugin archive's file name to standard output.
 #
 # Side effects:
 #   Creates FAKE_RELEASE_DIRECTORY and FAKE_BIN/curl.
 create_fake_release()
 {
 	harness="$1"
-	archive_directory="cat-${harness}-v1.0-$(current_platform)"
-	mkdir -p "${FAKE_RELEASE_DIRECTORY}/staging"
-	cp -R "$(create_test_artifact "${harness}")" "${FAKE_RELEASE_DIRECTORY}/staging/${archive_directory}"
-	# GNU tar reads an archive path that starts with a Windows drive, such as C:, as a remote host's name
-	(cd "${FAKE_RELEASE_DIRECTORY}" && tar -czf "${archive_directory}.tar.gz" -C staging "${archive_directory}")
-	if command -v sha256sum >/dev/null 2>&1; then
-		(cd "${FAKE_RELEASE_DIRECTORY}" && sha256sum "${archive_directory}.tar.gz") > \
-			"${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
+	plugin_directory="cat-${harness}-v1.0-$(current_platform)"
+	updater_directory="cat-updater-v1.0-$(current_platform)"
+	staging="${TEST_ROOT}/release staging"
+	mkdir -p "${FAKE_RELEASE_DIRECTORY}" "${staging}/${updater_directory}/bin"
+	cp -R "$(create_test_artifact "${harness}")" "${staging}/${plugin_directory}"
+	if [ "$2" = shipped ]; then
+		add_shipped_installers "${staging}/${plugin_directory}" "${harness}"
 	else
-		(cd "${FAKE_RELEASE_DIRECTORY}" && shasum -a 256 "${archive_directory}.tar.gz") > \
-			"${FAKE_RELEASE_DIRECTORY}/SHA256SUMS.txt"
+		add_recording_installers "${staging}/${plugin_directory}" "${harness}"
 	fi
+	cat > "${staging}/${updater_directory}/bin/cat-updater" <<'SCRIPT'
+#!/usr/bin/env sh
+printf 'cat-updater %s\n' "$*" >> "${COMMAND_LOG}"
+printf '%s\n' '{"result":"set_up"}'
+SCRIPT
+	chmod +x "${staging}/${updater_directory}/bin/cat-updater"
+	printf 'release updater\n' > "${staging}/${updater_directory}/marker"
+	pack_archive "${staging}/${plugin_directory}" "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz"
+	pack_archive "${staging}/${updater_directory}" "${FAKE_RELEASE_DIRECTORY}/${updater_directory}.tar.gz"
+	{
+		sha256_line "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz"
+		sha256_line "${FAKE_RELEASE_DIRECTORY}/${updater_directory}.tar.gz"
+	} > "${TEST_ROOT}/SHA256SUMS.txt"
+	sh "${COMMON_RELEASE_DIRECTORY}/generate-cat-sh.sh" "${COMMON_RELEASE_DIRECTORY}/cat.sh" v1.0 \
+		"${TEST_ROOT}/SHA256SUMS.txt" "${FAKE_RELEASE_DIRECTORY}/cat.sh"
 	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
 #!/usr/bin/env sh
 printf 'curl %s\n' "$*" >> "${COMMAND_LOG}"
@@ -227,11 +301,11 @@ while [ "$#" -gt 0 ]; do
 	case "$1" in
 		-o) shift; output="$1" ;;
 		-*) ;;
-		https://*) url="$1" ;;
-		*) exit 22 ;;
+		*) url="$1" ;;
 	esac
 	shift
 done
+printf '%s\n' "${url}" >> "${URL_LOG}"
 source="${FAKE_RELEASE_DIRECTORY}/${url##*/}"
 [ -f "${source}" ] || exit 22
 if [ -n "${output}" ]; then
@@ -241,7 +315,36 @@ else
 fi
 SCRIPT
 	chmod +x "${FAKE_BIN}/curl"
-	printf '%s\n' "${archive_directory}.tar.gz"
+	printf '%s\n' "${plugin_directory}.tar.gz"
+}
+
+# Writes the directory in which the release's cat.sh installs the updater, given the test's environment.
+#
+# Output:
+#   Writes the directory to standard output.
+updater_data_directory()
+{
+	if [ -n "${LOCALAPPDATA:-}" ]; then
+		printf '%s/cat-updater\n' "$(cygpath -u "${LOCALAPPDATA}")"
+	else
+		printf '%s/cat-updater\n' "${XDG_DATA_HOME}"
+	fi
+}
+
+# Writes a path in the form that native programs on the current platform read.
+#
+# Arguments:
+#   $1 - The path.
+#
+# Output:
+#   Writes the Windows form of the path under Git Bash, and the path unchanged elsewhere.
+native_path()
+{
+	if command -v cygpath >/dev/null 2>&1; then
+		cygpath -w "$1"
+	else
+		printf '%s\n' "$1"
+	fi
 }
 
 # Runs one operation through the single command and checks that it changed nothing because a path was not writable.
@@ -297,24 +400,4 @@ exactly as printed, ask them to run it outside the sandbox, and end your turn th
 		[[ "${output}" != *"prefixed with"* ]]
 		[[ "${output}" != *'"! "'* ]]
 	fi
-}
-
-# Appends the outcome of an operation to a record: its exit status, the harness commands that it ran and a digest of
-# the user's home afterwards.
-#
-# Arguments:
-#   $1 - The file that receives the record.
-#   $2... - The operation's command and arguments.
-record_operation()
-{
-	record="$1"
-	shift
-	: > "${COMMAND_LOG}"
-	operation_status=0
-	"$@" >/dev/null 2>&1 || operation_status="$?"
-	{
-		printf 'exit status %s\n' "${operation_status}"
-		grep -v '^curl ' "${COMMAND_LOG}" || true
-		tree_digest "${HOME}"
-	} >> "${record}"
 }

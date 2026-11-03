@@ -4,6 +4,7 @@
 
 - Remove CAT with the uninstaller that its installed plugin already holds, so that removal downloads nothing.
 - Keep CAT's data unless the user asks to delete it, so that a later installation can migrate it.
+- Leave CAT's trusted updater to the user, who set it up, and tell them how to remove it.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
 - Give the user the exact command that a blocked change needs, so that they can run it without asking for it.
 
@@ -17,9 +18,8 @@ delete CAT's data as well.
 
 Run one command, writing the installed plugin directory's absolute path in place of `<plugin>`:
 
-- In a POSIX shell, including Git Bash on Windows, run `sh` with the arguments `<plugin>/install/cat.sh`, the
-	`--harness` arguments that this skill's `SKILL.md` names, and `--uninstall`. In Codex, add the argument
-	`--delete-data` only when the user asks to delete CAT's data.
+- In a POSIX shell, including Git Bash on Windows, run `sh` with the argument `<plugin>/install/uninstall-<h>.sh`. In
+	Codex, add the argument `--delete-data` only when the user asks to delete CAT's data.
 - In PowerShell, where Codex runs commands on Windows, read the text of `<plugin>\install\install-codex.ps1`, create a
 	script block from it, and run the script block with the argument `-Uninstall`, followed by `-DeleteData` only when
 	the user asks to delete CAT's data. Do not run the file itself, which PowerShell's execution policy can block.
@@ -32,4 +32,17 @@ work the user asked for earlier. Do not run it again, with other permissions, or
 sandbox. Report any other failure with the command's output.
 
 After the command succeeds, tell the user that CAT is uninstalled and that sessions they start from now on run without
-it.
+it. Also tell them that CAT's trusted updater, if they set it up, stays installed, and that they can remove it
+themselves outside the sandbox. To do so, they delete the updater's data and configuration directories, and remove
+the entries for the updater's launcher that they added to their harness's sandbox and permission settings. The
+launcher is `cat-updater/bin/cat-updater`, or `cat-updater\bin\cat-updater.cmd` on Windows, in the directory that holds
+the data directory. The directories are:
+
+- On Linux, macOS and Git Bash, the data directory `cat-updater` in the directory that the environment variable
+	`XDG_DATA_HOME` names, or in `.local/share` in their home directory when that variable does not hold an absolute
+	path, and the configuration directory `cat-updater` in the directory that `XDG_CONFIG_HOME` names, or in `.config`
+	in their home directory when that variable does not hold an absolute path.
+- On Windows in PowerShell, `cat-updater` in the directory that the environment variable `LOCALAPPDATA` names, which
+	is both the data and the configuration directory.
+
+Do not delete them yourself.

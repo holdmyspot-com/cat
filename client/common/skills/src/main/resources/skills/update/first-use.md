@@ -2,39 +2,70 @@
 
 ## Design Goals
 
-- Install another CAT release only when it differs from the installed one or the user names it, so that an update with
-	nothing to do changes nothing.
-- Install with the installer that CAT's installed plugin already holds, which detects the harness and checks that it
-	can write every path it changes before it changes any.
+- Install another CAT release only when it differs from the active one, so that an update with nothing to do changes
+	nothing.
+- Update routinely only through CAT's trusted updater, which accepts only signed releases that the user's policy
+	approves.
+- Leave setting up, upgrading and rolling back the trusted updater to the user, because those operations change what
+	the updater trusts.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
-- Give the user the exact command that a blocked change needs, so that they can run it without asking for it.
+- Give the user the exact command or setting that a blocked change needs, so that they can apply it without asking for
+	it.
 
 ## Guidance
 
-CAT's installed plugin directory is two levels above this skill's directory. Write its absolute path in place of
-`<plugin>` below.
+1. Find the trusted updater's launcher, and write its absolute path in place of `<launcher>` below:
+	- In a POSIX shell, including Git Bash on Windows, it is `cat-updater/bin/cat-updater` in the directory that the
+		environment variable `XDG_DATA_HOME` names when that variable holds an absolute path, and otherwise in
+		`.local/share` in the user's home directory.
+	- In PowerShell, where Codex runs commands on Windows, it is `cat-updater\bin\cat-updater.cmd` in the directory
+		that the environment variable `LOCALAPPDATA` names.
 
-1. Find the installed version: run `bin/plugin-info` in the installed plugin directory by its absolute path. Its
-	`version=` line names the installed version, such as `1.0`, whose release tag is `v1.0`.
-2. Choose the release. When the user names a version, use its release tag, such as `v1.1`, and go to step 3 even when
-	it is the installed version. Otherwise read the latest release's tag from the `tag_name` field of the JSON at
-	`https://api.github.com/repos/holdmyspot-com/cat/releases/latest`, which `curl -fsSL` with that URL writes in a
-	POSIX shell and `Invoke-RestMethod` with that URL returns in PowerShell. When that tag names the installed version,
-	tell the user that the installed CAT is the latest release, and stop. When the tag cannot be read, report why and
-	stop.
-3. Install the release:
-	- In a POSIX shell, including Git Bash on Windows, run `sh` with the arguments `<plugin>/install/cat.sh`, the
-		`--harness` arguments that this skill's `SKILL.md` names, and the release tag.
-	- In PowerShell, where Codex runs commands on Windows, read the text of `<plugin>\install\bootstrap-codex.ps1`,
-		create a script block from it, and run the script block with the arguments `-Version` and the release tag. Do not
-		run the file itself, which PowerShell's execution policy can block.
+	Read the variable's value first, then write the launcher's absolute path literally in every command that runs it,
+	because the user's sandbox exemption matches that exact text. Write each such command as the launcher followed by
+	its arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of commands.
+2. When the launcher does not exist, the trusted updater is not set up. End your turn with a reply that says so and
+	gives the user, each in its own code block, two commands to run in a POSIX shell outside the sandbox. Each command
+	downloads the release's entry script with `curl -fsSL` and pipes it to `sh -s --` with the arguments `--harness`
+	and `<h>`:
+	- The setup command, which installs that release and sets up the trusted updater.
+	- The same command with the extra argument `--updater-only`, which sets up the trusted updater and leaves the
+		existing CAT installation unchanged. Say that this form is the one for an existing CAT installation.
 
-When the command exits with status 77, or its output says that CAT cannot write a path and gives a command to run
-outside the sandbox, end your turn with a reply that names that path, shows the command in a code block character for
-character as printed, never as a summary or a description of it, and asks the user to run it in a terminal outside the
-sandbox or, in Claude Code only, to type it at the prompt prefixed with `! `. Do no other work in that turn, including
-work the user asked for earlier. Do not run it again, with other permissions, or in any other way to get around the
-sandbox. Report any other failure with the command's output.
+	The entry script's address is `https://github.com/holdmyspot-com/cat/releases/download/<tag>/cat.sh` for a release
+	that the user names, with its tag such as `v1.1`, and otherwise
+	`https://github.com/holdmyspot-com/cat/releases/latest/download/cat.sh`. Say that the user asks for the update
+	again once setup is done. Do not run an installer, the entry script or the updater's setup yourself instead.
+3. Run the launcher:
+	- When the user names a release, run `<launcher> update --harness <h> <tag>`, with the release's tag such as
+		`v1.1`.
+	- When the user asks only whether a newer release exists, run `<launcher> status --harness <h>`, report what it
+		prints, and stop.
+	- Otherwise run `<launcher> update --harness <h>`.
+4. The launcher prints one line of JSON. Act on its `result` field:
+	- `updated`: tell the user that the release that `version` names replaced the one that `previous_version` names,
+		and that it takes effect once they restart or resume the session. In Codex, also say that Codex asks them to
+		review a new or changed CAT hook before it runs.
+	- `up_to_date`: tell the user that the active CAT release, which `version` names, is already the release they asked
+		for, so nothing changed.
+	- `refused`: CAT's release policy rejected the release. Report its `message`, and do not try to install the release
+		in any other way.
+	- `download_failed`: report its `message`.
+	- `restored`: report that the update failed and that the previous release is still active, with its `message`.
+	- `not_restored`: report that the update failed and that the previous release could not be restored, show each of
+		its `paths`, and give the user the command `<launcher> rollback --harness <h>` to run themselves.
+	- `locked`: report that another update of CAT is running, and that the user can ask again once it finishes.
+	- `usage`: report its `message` as a defect in CAT.
 
-After the command succeeds, tell the user which release is installed and that it takes effect once they restart or
-resume the session.
+	When the launcher prints anything else, report its output.
+
+Never run the launcher's `rollback`, `setup` or `upgrade-self` operation yourself. These are the user's operations:
+when one is needed, give the user its command.
+
+When the launcher exits with status 77, or its `result` is `not_writable`, the user's sandbox exemption for the trusted
+updater is missing, and the launcher could not write a path that the result's `paths` names. Then end your turn with a
+reply that names that path, shows the result's `exemption` text in a code block character for character as printed,
+never as a summary or a description of it, and asks the user to add it to their harness's settings, or else to run the
+command you ran in a terminal outside the sandbox or, in Claude Code only, to type it at the prompt prefixed with `! `.
+Do no other work in that turn, including work the user asked for earlier. Do not run it again, with other permissions,
+or in any other way to get around the sandbox.

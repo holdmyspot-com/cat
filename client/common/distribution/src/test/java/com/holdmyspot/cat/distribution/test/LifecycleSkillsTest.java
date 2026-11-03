@@ -26,8 +26,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests that both plugins hold the {@code update} and {@code uninstall} skills, through which an agent installs another
- * CAT release or removes CAT with the installer that the installed plugin holds.
+ * Tests that both plugins hold the {@code update} and {@code uninstall} skills, through which an agent updates CAT
+ * through the trusted updater or removes CAT with the uninstaller that the installed plugin holds.
  */
 public final class LifecycleSkillsTest
 {
@@ -42,7 +42,8 @@ public final class LifecycleSkillsTest
 	}
 
 	/**
-	 * Supplies each harness with the installer files that its skills run from the installed plugin's {@code install/}.
+	 * Supplies each harness with the installer files that its {@code uninstall} skill runs from the installed plugin's
+	 * {@code install/}, together with the library and installer that they rely on.
 	 *
 	 * @return the harness's name and the installer files
 	 */
@@ -50,18 +51,18 @@ public final class LifecycleSkillsTest
 	public Object[][] harnesses()
 	{
 		return new Object[][]{
-			{"claude", List.of("cat.sh", "common.sh", "bootstrap.sh", "uninstall-claude.sh")},
-			{"codex", List.of("cat.sh", "common.sh", "bootstrap.sh", "uninstall-codex.sh", "install-codex.ps1",
-				"bootstrap-codex.ps1")}};
+			{"claude", List.of("common.sh", "install-claude.sh", "uninstall-claude.sh")},
+			{"codex", List.of("common.sh", "install-codex.sh", "uninstall-codex.sh", "install-codex.ps1")}};
 	}
 
 	/**
 	 * Verifies that a harness's plugin, assembled from the skill layers, holds the {@code update} and
-	 * {@code uninstall} skills with routing descriptions, its own harness's frontmatter and argument, and the shared
-	 * body, and that its {@code install/} holds each installer file that the skills run.
+	 * {@code uninstall} skills with routing descriptions, its own harness's frontmatter and identifier, and the shared
+	 * body, which runs the trusted updater and the packaged uninstaller and leaves a sandbox-blocked change to the user,
+	 * and that its {@code install/} holds each installer file that the skills rely on.
 	 *
 	 * @param harness        the harness whose plugin to assemble
-	 * @param installerFiles the installer files that the skills run
+	 * @param installerFiles the installer files that the skills rely on
 	 * @throws IOException        if a skill or installer cannot be read, or the plugin cannot be assembled
 	 * @throws URISyntaxException if the class path returns a malformed resource location
 	 */
@@ -83,24 +84,34 @@ public final class LifecycleSkillsTest
 
 			requireThat(description(Files.readString(plugin.resolve("skills/update/SKILL.md"))), "updateDescription").
 				startsWith("Use when the user asks").contains("install").contains("update").contains("upgrade");
-			requireThat(Files.readString(plugin.resolve("skills/update/first-use.md")), "updateBody").
-				contains("bin/plugin-info").contains("releases/latest").contains("install/cat.sh").
-				contains("restart or").contains("resume the session");
+			String updateBody = Files.readString(plugin.resolve("skills/update/first-use.md")).replaceAll("\\s+", " ");
+			requireThat(updateBody, "updateBody").contains("cat-updater/bin/cat-updater").
+				contains("cat-updater\\bin\\cat-updater.cmd").contains("`<launcher> update --harness <h>`").
+				contains("`<launcher> update --harness <h> <tag>`").contains("`<launcher> status --harness <h>`").
+				contains("`--updater-only`").contains("releases/latest/download/cat.sh").
+				contains("releases/download/<tag>/cat.sh").contains("`not_writable`").contains("`exemption`").
+				contains("Never run the launcher's `rollback`, `setup` or `upgrade-self` operation yourself").
+				contains("restart or resume the session").doesNotContain("install/cat.sh").doesNotContain("bootstrap");
 			requireThat(description(Files.readString(plugin.resolve("skills/uninstall/SKILL.md"))),
 				"uninstallDescription").startsWith("Use when the user asks").contains("uninstall").contains("remove");
-			requireThat(Files.readString(plugin.resolve("skills/uninstall/first-use.md")), "uninstallBody").
-				contains("install/cat.sh").contains("`--uninstall`").contains("`--delete-data` only when the user asks");
+			String uninstallBody = Files.readString(plugin.resolve("skills/uninstall/first-use.md")).
+				replaceAll("\\s+", " ");
+			requireThat(uninstallBody, "uninstallBody").contains("`<plugin>/install/uninstall-<h>.sh`").
+				contains("`--delete-data` only when the user asks").contains("`-Uninstall`").contains("`-DeleteData`").
+				contains("trusted updater, if they set it up, stays installed").contains("`XDG_DATA_HOME`").
+				contains("`XDG_CONFIG_HOME`").contains("`LOCALAPPDATA`").doesNotContain("cat.sh");
 			for (String skill : SKILLS)
 			{
 				String manifest = Files.readString(plugin.resolve("skills/" + skill + "/SKILL.md"));
-				requireThat(manifest, skill).contains("--harness " + harness).contains("Read `first-use.md`").
-					doesNotContain("cat:include");
+				requireThat(manifest, skill).contains("--harness " + harness).
+					contains("write `" + harness + "` in its place").contains("Read `first-use.md`").
+					doesNotContain("cat:include").doesNotContain("cat.sh");
 				String body = Files.readString(plugin.resolve("skills/" + skill + "/first-use.md"));
 				// The skill's source wraps lines, so phrases are matched across line breaks
 				String flattened = body.replaceAll("\\s+", " ");
 				requireThat(flattened, skill + "Body").contains("status 77").contains("outside the sandbox").
 					contains("end your turn with a reply that names that path").
-					contains("shows the command in a code block character for character as printed").
+					contains("in a code block character for character as printed").
 					contains("never as a summary or a description of it").contains("prefixed with `! `").
 					contains("Do no other work in that turn").contains("Do not run it again").
 					doesNotContain("${CAT_PLUGIN_ROOT}");

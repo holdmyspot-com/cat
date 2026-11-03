@@ -12,8 +12,8 @@ COMMON_SCRIPT="${SCRIPT_DIRECTORY}/common.sh"
 trap cat_finish EXIT HUP INT TERM
 
 RERUN_COMMAND="$(cat_rerun_command codex \
-	"$(cat_environment_assignments "CODEX_HOME CAT_CODEX_DATA_DIR CAT_CODEX_MARKETPLACE_ROOT")" HEAD \
-	"${SCRIPT_DIRECTORY}/uninstall-codex.sh" --uninstall "$@")"
+	"$(cat_environment_assignments "CODEX_HOME CAT_CODEX_DATA_DIR CAT_CODEX_MARKETPLACE_ROOT")" \
+	"${SCRIPT_DIRECTORY}/.." "${SCRIPT_DIRECTORY}/uninstall-codex.sh" --uninstall "$@")"
 CODEX_HOME="${CODEX_HOME:-${HOME}/.codex}"
 CAT_DATA_DIR="${CAT_CODEX_DATA_DIR:-${CODEX_HOME}/plugins/data/cat-cat}"
 MARKETPLACE_ROOT="${CAT_CODEX_MARKETPLACE_ROOT:-${CODEX_HOME}/plugins/cat-marketplace}"
