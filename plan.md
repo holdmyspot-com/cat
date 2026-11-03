@@ -72,6 +72,12 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	`TestabilityAuditTest.onlyMainCreatesSleepingPause` at 1.00 s. Tests that need a new production method stayed
 	integration tests; the user then asked for a bundled rule that requires such a method (2026-11-03, t48), and a
 	follow-up scan adds those methods after the rule lands.
+- **Bundled rules added on user request (2026-11-03), uncertified:** `74aec73636` (claims decided in the test's own
+	process are proved by unit tests; boundary decisions return values), `ec9e6b91cc` (avoid reflection when direct
+	code gives the same behavior; cross-package access by the project's own code goes through a SharedSecrets façade,
+	replacing the test-only test-access rule) and the delegate-isolation change (a `git worktree` is not an isolated
+	worktree; use a separate clone that shares objects). Clean builds 3,548 tests, 0 failures, 18 skipped. The
+	flaky-test rule (temporary amplified tests; no flaky tests kept) is in progress.
 - **Prompt-prerequisites audit (user request, 2026-11-01):** the tree was audited against the new bundled rule
 	`prompt-prerequisites.md`, and the user ruled on each confirmed finding. Integrated: `cc7fd21219`, `8a3debeda1`,
 	`35c4790223`, `2a5b2653f6`, `a5b5b1b478`, `980a4599fb` (native Windows Claude sessions refused, pointing to WSL2),
