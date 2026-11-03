@@ -8,7 +8,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
@@ -1217,21 +1217,18 @@ public final class OptimizerCoreTest
 	 * @param tracked the files, relative to the project, that Git tracks
 	 * @param contractAuthorEnd how every contract author session ends instead of completing with
 	 *   {@code contractAuthor}'s response, or null to let the contract author complete
-	 * @param gitWorkTree {@code true} to make the project a real Git work tree that ignores nothing, so that the first
-	 *   command's session directory adds CAT's lines to its {@code .gitignore}; {@code false} for a {@code .git}
-	 *   directory that only marks the project
+	 * @param notIgnored {@code true} if Git answers that it does not ignore the CAT session directories, so that the
+	 *   first command's session directory adds CAT's lines to the project's {@code .gitignore}; {@code false} if Git
+	 *   answers that it ignores them and the host session's CAT session directory exists before any command runs
 	 * @return the repository
 	 * @throws IOException if the repository cannot be written
 	 */
 	private static Repository repository(TemporaryDirectories scope, Function<Integer, String> contractAuthor,
-		Set<Path> tracked, SessionResult contractAuthorEnd, boolean gitWorkTree) throws IOException
+		Set<Path> tracked, SessionResult contractAuthorEnd, boolean notIgnored) throws IOException
 	{
 		Path root = scope.add(Files.createTempDirectory("optimizer-flow")).toRealPath();
 		Path scratch = Files.createDirectory(root.resolve("scratch-outside-git"));
-		if (gitWorkTree)
-			GitWorkTrees.create(root);
-		else
-			Files.createDirectory(root.resolve(".git"));
+		Files.createDirectory(root.resolve(".git"));
 		Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
 		Files.writeString(root.resolve(".env.example"), "TOKEN=fixture\n");
 		Files.writeString(root.resolve("extra.local.md"), "Local rules.\n");
@@ -1260,9 +1257,11 @@ public final class OptimizerCoreTest
 		};
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
-		// Except in a real work tree, the host session's CAT session directory exists before any command runs in it
-		if (!gitWorkTree)
+		if (notIgnored)
+			command.answerGit(GitAnswers.NOT_IGNORED);
+		else
 		{
+			// The host session's CAT session directory exists before any command runs in it
 			try
 			{
 				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
@@ -2251,7 +2250,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that when a command, rather than a SessionStart hook, creates the session's CAT session directory in a
-	 * Git work tree that does not ignore it, the command adds CAT's lines to the project's {@code .gitignore}, and its
+	 * project whose Git does not ignore it, the command adds CAT's lines to the project's {@code .gitignore}, and its
 	 * result says so in the agent's form, which leaves the commit to the user; a later command says nothing more.
 	 */
 	@Test

@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
@@ -39,7 +40,9 @@ import java.util.random.RandomGenerator;
  * calibration, a manual clock, a fake version launcher and the campaign store of a project directory that the test
  * creates.
  * <p>
- * The command runs in the host session {@link #SESSION_ID} unless the test names another one.
+ * The command runs in the host session {@link #SESSION_ID} unless the test names another one. Opening its CAT session
+ * directory starts no Git: the scope answers that Git already ignores the CAT session directories unless the test
+ * gives other answers.
  * <p>
  * The launcher reports version {@code 1.0} and counts how often it runs. The clock starts at
  * {@code 2026-10-01T00:00:00Z}, and campaign identifiers, split salts and draw seeds come from a seeded generator.
@@ -74,6 +77,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 	};
 	private volatile ExecutableFiles.ProcessLauncher processes = ProcessBuilder::start;
+	private volatile GitAnswers git = GitAnswers.IGNORED;
 	private final ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(
 		Thread::yield, Clock.systemUTC(), this::startProcess);
 
@@ -232,6 +236,19 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 		return processes.start(builder);
 	}
 
+	/**
+	 * Sets what Git answers when a command opens the session's CAT session directory and asks whether Git ignores the
+	 * CAT session directories.
+	 *
+	 * @param git the answers
+	 * @throws NullPointerException if {@code git} is null
+	 */
+	void answerGit(GitAnswers git)
+	{
+		requireThat(git, "git").isNotNull();
+		this.git = git;
+	}
+
 	@Override
 	public FakeProfileInventory profiles()
 	{
@@ -284,7 +301,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	@Override
 	protected SessionDirectory openSessionDirectory(Path projectRoot) throws IOException
 	{
-		return SessionDirectory.open(projectRoot, sessionId, SessionHarnesses.HARNESS_A,
+		return git.open(projectRoot, sessionId, SessionHarnesses.HARNESS_A,
 			directory.resolve("configuration"), clock().instant(), json());
 	}
 

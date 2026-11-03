@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.workspace.Fork;
+import com.holdmyspot.cat.common.secrets.SessionDirectorySecrets;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.DirectoryNotEmptyException;
@@ -47,6 +48,11 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class SessionDirectory
 {
+	static
+	{
+		SessionDirectorySecrets.setSessionDirectoryAccess(SessionDirectory::open);
+	}
+
 	/**
 	 * The directory, relative to a project, that holds the CAT session directories. Code that excludes them from a copy,
 	 * a listing or a Git operation takes the directory from this constant.
@@ -118,12 +124,37 @@ public final class SessionDirectory
 	public static SessionDirectory open(Path projectRoot, String sessionId, SessionHarness harness,
 		Path configurationDirectory, Instant now, JsonMapper json) throws IOException
 	{
+		return open(projectRoot, sessionId, harness, configurationDirectory, now, json, SessionIgnore.GIT_PROCESS);
+	}
+
+	/**
+	 * Returns a session's CAT session directory, as
+	 * {@link #open(Path, String, SessionHarness, Path, Instant, JsonMapper)} does, deciding whether to add the CAT
+	 * session directories to the project's {@code .gitignore} from the answers that a given Git gives.
+	 *
+	 * @param projectRoot            the session's project
+	 * @param sessionId              the harness's session ID, a UUID in canonical form
+	 * @param harness                the harness whose session owns the directory
+	 * @param configurationDirectory the harness's configuration directory
+	 * @param now                    the current time, which a new marker records
+	 * @param json                   the JSON mapper that writes and reads markers
+	 * @param git                    answers what Git ignores in the project, asked only when this call creates the
+	 *                               directory
+	 * @return the CAT session directory
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if {@code sessionId} is not a UUID in canonical form, or if the directory or marker
+	 *                              cannot be created
+	 */
+	private static SessionDirectory open(Path projectRoot, String sessionId, SessionHarness harness,
+		Path configurationDirectory, Instant now, JsonMapper json, SessionIgnore.GitQueries git) throws IOException
+	{
 		requireThat(projectRoot, "projectRoot").isNotNull();
 		requireThat(sessionId, "sessionId").isNotNull();
 		requireThat(harness, "harness").isNotNull();
 		requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 		requireThat(now, "now").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(git, "git").isNotNull();
 		if (!isSessionId(sessionId))
 			throw new IOException("The session ID is not a UUID in canonical form: " + sessionId);
 		Path directory = root(projectRoot).resolve(sessionId);
@@ -135,7 +166,7 @@ public final class SessionDirectory
 		Path project = projectRoot.toAbsolutePath().normalize();
 		Optional<SessionIgnore.IgnoreNotice> ignoreNotice;
 		if (created)
-			ignoreNotice = SessionIgnore.ensure(project);
+			ignoreNotice = SessionIgnore.ensure(project, git);
 		else
 			ignoreNotice = Optional.empty();
 		return new SessionDirectory(project, directory, sessionId, json, ignoreNotice);

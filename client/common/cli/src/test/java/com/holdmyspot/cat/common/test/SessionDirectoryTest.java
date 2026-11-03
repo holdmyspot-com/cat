@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.HookScope;
+import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.TestHookScope;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -177,7 +178,7 @@ public final class SessionDirectoryTest
 			{
 				try
 				{
-					SessionDirectory.open(project, sessionId, HARNESS_A, project.resolve("configuration"), CREATED,
+					GitAnswers.openSession(project, sessionId, HARNESS_A, project.resolve("configuration"), CREATED,
 						json);
 					throw new AssertionError("Accepted session ID: " + sessionId);
 				}
@@ -215,7 +216,7 @@ public final class SessionDirectoryTest
 			for (int index = 0; index < 16; ++index)
 			{
 				Instant created = CREATED.plusSeconds(index);
-				uses.add(() -> SessionDirectory.open(project, SESSION_ID, HARNESS_A, configuration, created, json));
+				uses.add(() -> GitAnswers.openSession(project, SESSION_ID, HARNESS_A, configuration, created, json));
 			}
 			for (Future<SessionDirectory> use : executor.invokeAll(uses))
 				use.get();
@@ -246,11 +247,11 @@ public final class SessionDirectoryTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
 			JsonMapper json = JsonMapper.builder().build();
-			SessionDirectory first = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory first = GitAnswers.openSession(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, json);
 			String marker = Files.readString(first.marker(), UTF_8);
 
-			SessionDirectory.open(project, SESSION_ID, HARNESS_B, project.resolve("other"),
+			GitAnswers.openSession(project, SESSION_ID, HARNESS_B, project.resolve("other"),
 				CREATED.plusSeconds(3600), json);
 
 			requireThat(Files.readString(first.marker(), UTF_8), "marker").isEqualTo(marker);
@@ -303,7 +304,7 @@ public final class SessionDirectoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = GitAnswers.openSession(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 
 			requireThat(session.rulesFile(), "rulesFile").isEqualTo(session.directory().resolve("rules.md"));
@@ -331,7 +332,7 @@ public final class SessionDirectoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = GitAnswers.openSession(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 
 			Path directory = project.toAbsolutePath().normalize().resolve(".cat/sessions/" + SESSION_ID);
@@ -357,9 +358,9 @@ public final class SessionDirectoryTest
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
 			JsonMapper json = JsonMapper.builder().build();
 			String other = "01a147d8-bf56-7283-92b4-12dcaeb53738";
-			SessionDirectory otherSession = SessionDirectory.open(project, other, HARNESS_B,
+			SessionDirectory otherSession = GitAnswers.openSession(project, other, HARNESS_B,
 				project.resolve("configuration-b"), CREATED, json);
-			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = GitAnswers.openSession(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, json);
 			Files.createDirectories(session.directory().resolveSibling("temp"));
 			Files.createDirectories(session.directory().resolveSibling("optimizer/20261015-0900-abc123"));
@@ -384,7 +385,7 @@ public final class SessionDirectoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-"));
-			SessionDirectory session = SessionDirectory.open(project, SESSION_ID, HARNESS_A,
+			SessionDirectory session = GitAnswers.openSession(project, SESSION_ID, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 			session.subagentRulesFile("../escape");
 		}

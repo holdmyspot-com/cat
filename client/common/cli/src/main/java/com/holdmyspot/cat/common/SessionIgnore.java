@@ -48,6 +48,23 @@ public final class SessionIgnore
 	 * it, so two threads must not hold channels on {@code .gitignore} at once.
 	 */
 	private static final Object MONITOR = new Object();
+	/**
+	 * Answers {@link #ensure(Path)}'s questions by running Git in the project.
+	 */
+	static final GitQueries GIT_PROCESS = new GitQueries()
+	{
+		@Override
+		public int checkIgnore(Path directory, String path) throws IOException
+		{
+			return new Git(directory).status("check-ignore", "--quiet", "--no-index", path);
+		}
+
+		@Override
+		public List<String> isInsideWorkTree(Path directory) throws IOException
+		{
+			return new Git(directory).lines("rev-parse", "--is-inside-work-tree");
+		}
+	};
 
 	/**
 	 * Prevents instantiation.
@@ -69,17 +86,32 @@ public final class SessionIgnore
 	 */
 	public static Optional<IgnoreNotice> ensure(Path projectRoot)
 	{
+		return ensure(projectRoot, GIT_PROCESS);
+	}
+
+	/**
+	 * Adds {@link #BLOCK} to the {@code .gitignore} of a project's root directory, as {@link #ensure(Path)} does,
+	 * deciding from the answers that a given Git gives.
+	 *
+	 * @param projectRoot the project's root directory
+	 * @param git         answers what Git ignores in the project and whether the project is in a work tree
+	 * @return the notice that CAT added the lines, or that it could not add them and why; empty if CAT changed nothing
+	 *   because nothing needed to change
+	 * @throws NullPointerException if any argument is null
+	 */
+	static Optional<IgnoreNotice> ensure(Path projectRoot, GitQueries git)
+	{
 		requireThat(projectRoot, "projectRoot").isNotNull();
+		requireThat(git, "git").isNotNull();
 		// Git runs in a directory of the default file system only
 		if (!projectRoot.getFileSystem().equals(FileSystems.getDefault()))
 			return Optional.empty();
 		Path project = projectRoot.toAbsolutePath().normalize();
 		Path file = project.resolve(FILE_NAME);
-		Git git = new Git(project);
 		int status;
 		try
 		{
-			status = git.status("check-ignore", "--quiet", "--no-index", SessionDirectory.ROOT + "/probe");
+			status = git.checkIgnore(project, SessionDirectory.ROOT + "/probe");
 		}
 		catch (IOException _)
 		{
@@ -90,7 +122,7 @@ public final class SessionIgnore
 			return Optional.empty();
 		if (status != 1)
 		{
-			if (!isInsideWorkTree(git))
+			if (!isInsideWorkTree(git, project))
 				return Optional.empty();
 			return Optional.of(failure(file, "Git could not tell whether it ignores " + SessionDirectory.ROOT +
 				" (git check-ignore exited with status " + status + ")"));
@@ -132,14 +164,15 @@ public final class SessionIgnore
 	/**
 	 * Indicates whether a directory is in a Git work tree.
 	 *
-	 * @param git the directory's Git access
+	 * @param git       answers whether the directory is in a work tree
+	 * @param directory the directory
 	 * @return {@code true} if Git reports that the directory is inside a work tree
 	 */
-	private static boolean isInsideWorkTree(Git git)
+	private static boolean isInsideWorkTree(GitQueries git, Path directory)
 	{
 		try
 		{
-			List<String> lines = git.lines("rev-parse", "--is-inside-work-tree");
+			List<String> lines = git.isInsideWorkTree(directory);
 			return lines.equals(List.of("true"));
 		}
 		catch (IOException _)
@@ -232,6 +265,33 @@ public final class SessionIgnore
 		if (message != null)
 			description += ": " + message;
 		return description.replaceAll("\\R", " ");
+	}
+
+	/**
+	 * The questions that {@link #ensure(Path)} asks Git about a project, each answered as Git answers it.
+	 */
+	public interface GitQueries
+	{
+		/**
+		 * Returns how {@code git check-ignore --quiet --no-index <path>} exits in a directory: {@code 0} if Git ignores
+		 * the path, {@code 1} if it does not, and another status if Git fails.
+		 *
+		 * @param directory the directory that Git runs in
+		 * @param path      the path, relative to {@code directory}, to check
+		 * @return Git's exit status
+		 * @throws IOException if Git cannot start
+		 */
+		int checkIgnore(Path directory, String path) throws IOException;
+
+		/**
+		 * Returns what {@code git rev-parse --is-inside-work-tree} prints in a directory: {@code true} inside a work
+		 * tree and {@code false} elsewhere in a repository.
+		 *
+		 * @param directory the directory that Git runs in
+		 * @return the lines of Git's output
+		 * @throws IOException if Git cannot start or fails, such as outside any repository
+		 */
+		List<String> isInsideWorkTree(Path directory) throws IOException;
 	}
 
 	/**
