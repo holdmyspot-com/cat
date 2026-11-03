@@ -79,6 +79,15 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	worktree; use a separate clone that shares objects). Clean builds 3,548 tests, 0 failures, 18 skipped. The
 	flaky-test rule (`3eca24c380`: make an intermittent reproduction reliable, or confirm the fix with a temporary
 	amplified test that is then removed; no flaky test is kept) followed.
+- **Boundary decisions moved to unit tests (user request, 2026-11-03):** after the unit-testable-boundary rule, a
+	follow-up scan split each boundary's decision from its interaction, with production entry points unchanged and
+	test access through SharedSecrets façades (no reflection, no widened visibility). Integrated: `715227ffbc`
+	(release downloads: proxy, login and failure decisions; socket-test runs 23 to 8), `aa10c7aa75` and `cbfc5fd105`
+	(run-owner liveness from an injected process table), `86cf36574b` (wait deadlines and session time limits
+	without real waiting, about 2.85 s saved), `49e853b745` (run-part and hook-check decisions), `5f309a6a5d`,
+	`c58febb58c` and `60a567b889` (session `.gitignore` decisions from given Git answers; one real-Git check remains).
+	Each boundary keeps one end-to-end check. Clean builds end at 3,585 tests, 0 failures, 17 skipped; 63 Bats tests
+	pass. Tests of 1 s or more varied between builds with machine load; none was a changed test.
 - **Prompt-prerequisites audit (user request, 2026-11-01):** the tree was audited against the new bundled rule
 	`prompt-prerequisites.md`, and the user ruled on each confirmed finding. Integrated: `cc7fd21219`, `8a3debeda1`,
 	`35c4790223`, `2a5b2653f6`, `a5b5b1b478`, `980a4599fb` (native Windows Claude sessions refused, pointing to WSL2),
