@@ -85,6 +85,12 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	worktree; use a separate clone that shares objects). Clean builds 3,548 tests, 0 failures, 18 skipped. The
 	flaky-test rule (`3eca24c380`: make an intermittent reproduction reliable, or confirm the fix with a temporary
 	amplified test that is then removed; no flaky test is kept) followed.
+- **Remote-runner lifecycle (user request, 2026-11-03, `94e32e20ce`):** the provider-neutral decisions of
+	codex-unleashed's `remote-runner-ssh.md` joined the `remote-runner-session` skill and `remote-runner-testing.md`:
+	deadlines as absolute times, claim at once, foreground keepalive, needed-and-progressing waits, in-session stall
+	ending, explicit early release, and a 10-minute idle limit (was 30). Its GitHub Actions companion stayed out as
+	project-specific. Two new organic scenarios, not run. Clean build: 3,585 tests, 0 failures, 17 skipped; 63/63 Bats.
+	Not certified; not released.
 - **Boundary decisions moved to unit tests (user request, 2026-11-03):** after the unit-testable-boundary rule, a
 	follow-up scan split each boundary's decision from its interaction, with production entry points unchanged and
 	test access through SharedSecrets façades (no reflection, no widened visibility). Integrated: `715227ffbc`
