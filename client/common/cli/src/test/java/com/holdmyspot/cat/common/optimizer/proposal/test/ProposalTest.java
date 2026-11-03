@@ -54,6 +54,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.Conflict;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftChange;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
+import com.holdmyspot.cat.common.optimizer.proposal.HookReport;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.JsonResponse;
 import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
@@ -1601,6 +1602,44 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that the proposal lists each hook whose output differs between a trial's workspace and the user's
+	 * sessions, capitalized, with its differing lines in each place as inline code and {@code no output} for a place
+	 * that printed none, and that it states the hook check's limitation only when hooks ran.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	// Requirement: R-C28
+	@Test
+	public void listsHooksWhoseOutputDiffers() throws InvalidProposalException
+	{
+		HookReport differing = new HookReport(2, List.of(
+			new HookReport.HookDifference("the SessionStart hook `pwd` of `.claude/settings.json`",
+				List.of("/trial/project"), List.of("/session/project", "more")),
+			new HookReport.HookDifference("the SessionStart hook `date` of `.claude/settings.json`", List.of(),
+				List.of("Tuesday"))));
+
+		String text = hookProposal(differing).render();
+		String same = hookProposal(new HookReport(1, List.of())).render();
+		String none = hookProposal(HookReport.NONE).render();
+
+		requireThat(text, "text").contains("""
+			These hooks print different output in a trial's workspace than in your sessions, which a time or Git \
+			state can explain:
+
+			- The SessionStart hook `pwd` of `.claude/settings.json`, from its first line that differs:
+			  - In trials: ` /trial/project `
+			  - In your sessions: ` /session/project ` ` more `
+			- The SessionStart hook `date` of `.claude/settings.json`, from its first line that differs:
+			  - In trials: no output
+			  - In your sessions: ` Tuesday `
+			""").contains(Proposal.HOOK_CHECK_LIMIT);
+		requireThat(same, "same").doesNotContain("These hooks print different output").
+			contains(Proposal.HOOK_CHECK_LIMIT);
+		requireThat(none, "none").doesNotContain("These hooks print different output").
+			doesNotContain(Proposal.HOOK_CHECK_LIMIT);
+	}
+
+	/**
 	 * Returns a trial plugin that the project builds, whose one mapping writes the project's {@code source/rules} over
 	 * the build output's {@code rules/codex}.
 	 *
@@ -1635,6 +1674,22 @@ public final class ProposalTest
 			SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check);
+	}
+
+	/**
+	 * Returns the proposal of the valid contract author output with what running the hooks showed.
+	 *
+	 * @param hooks what running the hooks that run before the model acts showed
+	 * @return the proposal
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	private Proposal hookProposal(HookReport hooks) throws InvalidProposalException
+	{
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
+		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), PluginCheck.NONE, List.of(),
+			List.of(), hooks);
 	}
 
 	/**

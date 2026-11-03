@@ -85,7 +85,6 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
 import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.OutputFile;
-import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
 import com.holdmyspot.cat.common.optimizer.proposal.test.DraftFixtures;
 import com.holdmyspot.cat.common.optimizer.proposal.test.ProposalTest;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
@@ -3037,8 +3036,10 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code start} refuses, before the contract author starts, a hook that runs at session start and
-	 * reads a project file that trials do not receive, naming the hook, its exit status and its error output.
+	 * Verifies, as the end-to-end check of the hook processes that {@code start} runs, that {@code start} refuses,
+	 * before the contract author starts, a real hook that runs at session start and reads a project file that trials
+	 * do not receive: the exit status and error output of the real process reach the refusal. How the check judges a
+	 * hook's outcome is tested in {@code HookComparisonTest}.
 	 */
 	@Test
 	public void startRefusesHookThatFailsInTrials() throws Exception
@@ -3066,8 +3067,10 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that the proposal lists a hook whose output differs between a trial's workspace and the user's
-	 * sessions, with the first lines that differ.
+	 * Verifies that each real hook process runs in its own copy of the project, a trial's workspace or the user's
+	 * session, and receives the environment that the harness sets for it, such as the root of its plugin, and that
+	 * its output reaches the proposal. How the check compares the outputs is tested in {@code HookComparisonTest},
+	 * and how the proposal shows the hooks in {@code ProposalTest}.
 	 */
 	@Test
 	public void proposalListsHookWhoseOutputDiffers() throws Exception
@@ -3078,45 +3081,15 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			repository.sessions().earlyHooks(List.of("echo same; pwd"), repository.root());
-
-			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
-
-			requireThat(result.proposal(), "proposal").isNotNull().
-				contains("These hooks print different output in a trial's workspace than in your sessions").
-				contains("- The SessionStart hook `echo same; pwd` of `.claude/settings.json`, from its first line " +
-					"that differs:\n  - In trials: ` ").
-				contains("/trial/project `\n  - In your sessions: ` ").
-				contains("/session/project `\n").
-				doesNotContain("` same `").
-				contains(Proposal.HOOK_CHECK_LIMIT);
-		}
-	}
-
-	/**
-	 * Verifies that a hook that reads only its plugin's files passes the hook check and is not listed.
-	 *
-	 * This test can exceed one second because it starts a complete campaign through the scripted session port
-	 * and checks hook output against a physical plugin context file.
-	 */
-	@Test
-	public void hookThatReadsItsPluginPasses() throws Exception
-	{
-		// Requirement: R-C28
-		try (TemporaryDirectories scope = new TemporaryDirectories())
-		{
-			Repository repository = repository(scope, _ -> derivation(_ ->
-			{
-			}));
 			Path plugin = scope.add(Files.createTempDirectory("optimizer-plugin"));
-			Files.writeString(plugin.resolve("context.md"), "Plugin context.\n");
-			repository.sessions().earlyHooks(List.of("cat \"$PLUGIN_ROOT/context.md\""), plugin);
+			repository.sessions().earlyHooks(List.of("printf '%s|' \"$PLUGIN_ROOT\"; pwd"), plugin);
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 
 			requireThat(result.proposal(), "proposal").isNotNull().
-				doesNotContain("These hooks print different output").
-				contains(Proposal.HOOK_CHECK_LIMIT);
+				contains(plugin + "|").
+				contains("/trial/project").
+				contains("/session/project");
 		}
 	}
 

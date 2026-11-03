@@ -5,6 +5,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.CodexRunPart;
 import com.holdmyspot.cat.codex.CommandShell;
+import com.holdmyspot.cat.codex.secrets.CodexRunPartAccess;
+import com.holdmyspot.cat.codex.secrets.CodexRunPartSecrets;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import java.io.ByteArrayInputStream;
@@ -18,6 +20,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,6 +32,11 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 /**
  * Verifies that {@code run-part} saves a command's output and exit status, then prints the output's first part the way
  * {@code read-part} prints a file.
+ * <p>
+ * Where the output is saved, when it cannot be, and what {@code run-part} prints around a command's output are
+ * tested through {@link CodexRunPartAccess} with given command output and exit status. The tests that run a real
+ * command through {@code bash} or PowerShell prove only how the shell and the process deliver the command, its input,
+ * environment, output and exit status.
  */
 public final class CodexRunPartTest
 {
@@ -60,6 +68,7 @@ public final class CodexRunPartTest
 	 * A Codex thread ID in canonical form.
 	 */
 	private static final String THREAD_ID = "01a147d8-bf56-7283-92b4-12dcaeb53738";
+	private static final CodexRunPartAccess ACCESS = CodexRunPartSecrets.getCodexRunPartAccess();
 
 	/**
 	 * Creates a test instance.
@@ -69,9 +78,9 @@ public final class CodexRunPartTest
 	}
 
 	/**
-	 * Verifies that the command's standard output and standard error are saved in one file under {@code TMPDIR} when no
-	 * CAT project contains the folder that the command runs in, that the last part exits with the command's exit status,
-	 * and that the status is saved next to the output for {@code read-part}.
+	 * Verifies, as the end-to-end check of the processes that {@code run-part} starts, that a real command's standard
+	 * output and standard error both reach the saved output that {@code run-part} prints, and that its exit status
+	 * reaches the caller.
 	 *
 	 * @throws IOException if the temporary folder cannot be created or read
 	 */
@@ -86,16 +95,63 @@ public final class CodexRunPartTest
 				"Write-Output out\n[Console]::Error.WriteLine('err')\nexit 3\n"), false, OUTSIDE_PROJECT,
 				Map.of("TMPDIR", temporary.toString()));
 
-			Matcher lastPart = LAST_PART.matcher(call.output());
-			requireThat(lastPart.find(), "lastPart").isTrue();
-			Path saved = Path.of(lastPart.group("path"));
-			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
-			requireThat(call.output(), "output").isEqualTo("out" + EOL + "err" + EOL + "[End of " + saved +
-				". The file was deleted]\n");
+			requireThat(call.output(), "output").startsWith("out" + EOL + "err" + EOL + "[End of ");
 			requireThat(call.status(), "status").isEqualTo(3);
-			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("3\n");
-			requireThat(call.error(), "error").isEmpty();
 			requireThat(call.commandError(), "commandError").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that the output of a command is saved in a new, empty {@code output.txt} under {@code TMPDIR} when no
+	 * CAT project contains the folder that the command runs in.
+	 *
+	 * @throws IOException if the temporary folder cannot be created or read
+	 */
+	@Test
+	public void savesOutsideProjectUnderTmpdir() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			Path saved = ACCESS.createSavedOutput(OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()),
+				new PrintStream(error, true, UTF_8), Yielding.waiting()).orElseThrow();
+
+			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
+			requireThat(saved.getFileName().toString(), "name").isEqualTo("output.txt");
+			requireThat(saved.getParent().getFileName().toString(), "folderName").startsWith("run-part-");
+			requireThat(Files.size(saved), "size").isEqualTo(0L);
+			requireThat(error.toString(UTF_8), "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a saved output that fits in one part is printed whole, ending with the line that names the saved
+	 * file and says that it was deleted, that the call exits with the command's exit status, and that the status is
+	 * saved next to the output for {@code read-part}.
+	 *
+	 * @throws IOException if the temporary folder cannot be created or read
+	 */
+	@Test
+	public void lastPartExitsWithCommandStatus() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Map<String, String> environment = Map.of("TMPDIR", temporary.toString());
+			Path saved = savedOutput(environment, "out\nerr\n");
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+
+			int status = ACCESS.printSaved(saved, 3, 0, SHELL, READ_PART, environment, output,
+				new PrintStream(error, true, UTF_8));
+
+			requireThat(output.toString(UTF_8), "output").isEqualTo("out\nerr\n[End of " + saved +
+				". The file was deleted]\n");
+			requireThat(status, "status").isEqualTo(3);
+			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("3\n");
+			requireThat(error.toString(UTF_8), "error").isEmpty();
 		}
 	}
 
@@ -120,9 +176,9 @@ public final class CodexRunPartTest
 	}
 
 	/**
-	 * Verifies that a command runs in its folder and that, in a Codex thread, its output is saved in the temporary folder
-	 * of the thread's CAT session directory in the nearest project that contains that folder, so that it stays inside the
-	 * project.
+	 * Verifies that in a Codex thread, the output of a command is saved in the temporary folder of the thread's CAT
+	 * session directory in the nearest project that contains the folder that the command runs in, so that it stays
+	 * inside the project, and that the session directory's marker is created.
 	 *
 	 * @throws IOException if the temporary folders cannot be created
 	 */
@@ -138,17 +194,33 @@ public final class CodexRunPartTest
 			Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(THREAD_ID).
 				resolve("temp");
 
-			Call call = runPart(script("pwd", "(Get-Location).Path"), false, folder, Map.of("TMPDIR", temporary.toString(),
-				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()));
+			Optional<Path> saved = ACCESS.createSavedOutput(folder, Map.of("TMPDIR", temporary.toString(),
+				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()), new PrintStream(
+				new ByteArrayOutputStream(), true, UTF_8), Yielding.waiting());
 
-			Matcher lastPart = LAST_PART.matcher(call.output());
-			requireThat(lastPart.find(), "lastPart").isTrue();
-			Path saved = Path.of(lastPart.group("path"));
-			requireThat(saved.getParent().getParent(), "folder").isEqualTo(sessionTemp);
+			requireThat(saved.orElseThrow().getParent().getParent(), "folder").isEqualTo(sessionTemp);
 			requireThat(sessionTemp.resolveSibling("session.json"), "marker").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that a command whose output is saved runs in its folder.
+	 *
+	 * @throws IOException if the temporary folders cannot be created
+	 */
+	@Test
+	public void commandRunsInItsFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path folder = Files.createDirectories(temporary.resolve("folder"));
+
+			Call call = runPart(script("pwd", "(Get-Location).Path"), false, folder, Map.of("TMPDIR",
+				temporary.toString()));
+
 			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
-			requireThat(call.output(), "output").isEqualTo(folder.toRealPath() + EOL + "[End of " + saved +
-				". The file was deleted]\n");
+			requireThat(call.output(), "output").startsWith(folder.toRealPath() + EOL + "[End of ");
 		}
 	}
 
@@ -169,10 +241,13 @@ public final class CodexRunPartTest
 			Files.createDirectories(project.resolve(".cat"));
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
-			Call call = runPart(script("pwd", "(Get-Location).Path"), false, project, Map.of("TMPDIR",
-				temporary.toString(), "CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()));
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
 
-			requireThat(call.error(), "error").contains("CAT added /.cat/sessions/ to " + project.toAbsolutePath().
+			ACCESS.createSavedOutput(project, Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", THREAD_ID,
+				"CODEX_HOME", temporary.toString()), new PrintStream(error, true, UTF_8), Yielding.waiting()).
+				orElseThrow();
+
+			requireThat(error.toString(UTF_8), "error").contains("CAT added /.cat/sessions/ to " + project.toAbsolutePath().
 				normalize().resolve(".gitignore")).
 				contains("Tell the user that this change is theirs to commit; do not stage or commit it.");
 			requireThat(Files.readString(project.resolve(".gitignore"), UTF_8), "gitignore").
@@ -195,12 +270,9 @@ public final class CodexRunPartTest
 			Path shared = Files.createDirectories(project.resolve(".cat/work/temp"));
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 
-			Call call = runPart(script("pwd", "(Get-Location).Path"), false, project, Map.of("TMPDIR",
-				temporary.toString()));
+			Path saved = ACCESS.createSavedOutput(project, Map.of("TMPDIR", temporary.toString()), new PrintStream(
+				new ByteArrayOutputStream(), true, UTF_8), Yielding.waiting()).orElseThrow();
 
-			Matcher lastPart = LAST_PART.matcher(call.output());
-			requireThat(lastPart.find(), "lastPart").isTrue();
-			Path saved = Path.of(lastPart.group("path"));
 			requireThat(saved.getParent().getParent(), "folder").isEqualTo(temporary);
 			try (Stream<Path> entries = Files.list(shared))
 			{
@@ -226,14 +298,52 @@ public final class CodexRunPartTest
 			Map<String, String> environment = Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", "thread",
 				"CODEX_HOME", temporary.toString());
 			Files.writeString(temporary.resolve("config.toml"), "tool_output_token_limit = 250\n");
+			StringBuilder lines = new StringBuilder();
+			for (int line = 1; line <= 200; ++line)
+				lines.append(line).append('\n');
+			Path saved = savedOutput(environment, lines.toString());
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-			Call call = runPart(script("seq 1 200; exit 4", "1..200; exit 4"), false, OUTSIDE_PROJECT, environment);
+			int status = ACCESS.printSaved(saved, 4, 0, SHELL, READ_PART, environment, output,
+				new PrintStream(new ByteArrayOutputStream(), true, UTF_8));
 
-			requireThat(call.output(), "output").startsWith("1" + EOL + "2" + EOL + "3" + EOL).
+			requireThat(output.toString(UTF_8), "output").startsWith("1\n2\n3\n").
 				matches("(?s).*\\[More output follows: [0-9]+ of the output's [0-9]+ bytes remain, in at least [0-9]+ " +
 					"more parts?\\. To read the next part, run: " +
 					Pattern.quote(SHELL.command(READ_PART.toString())) + " .+[/\\\\]output\\.txt[\"']* [1-9][0-9]*]\n");
-			requireThat(call.status(), "status").isEqualTo(0);
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(Files.readString(Path.of(saved + ".exit-status")), "exitStatus").isEqualTo("4\n");
+		}
+	}
+
+	/**
+	 * Verifies that the saved output of a PowerShell {@code rg} search with more lines than the line limit is replaced
+	 * by a request to narrow the search, with exit status 2, and that output within the limit keeps its lines and the
+	 * search's exit status.
+	 *
+	 * @throws IOException if the temporary folder cannot be created or read
+	 */
+	@Test
+	public void searchAboveLineLimitIsReplaced() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Map<String, String> environment = Map.of("TMPDIR", temporary.toString());
+			PrintStream error = new PrintStream(new ByteArrayOutputStream(), true, UTF_8);
+
+			Path within = savedOutput(environment, "a\nb\nc\n");
+			ByteArrayOutputStream withinOutput = new ByteArrayOutputStream();
+			int withinStatus = ACCESS.printSaved(within, 1, 3, SHELL, READ_PART, environment, withinOutput, error);
+			requireThat(withinOutput.toString(UTF_8), "within").startsWith("a\nb\nc\n[End of ");
+			requireThat(withinStatus, "withinStatus").isEqualTo(1);
+
+			Path above = savedOutput(environment, "a\nb\nc\n");
+			ByteArrayOutputStream aboveOutput = new ByteArrayOutputStream();
+			int aboveStatus = ACCESS.printSaved(above, 1, 2, SHELL, READ_PART, environment, aboveOutput, error);
+			requireThat(aboveOutput.toString(UTF_8), "above").startsWith("rg: the search produced more than 2 lines");
+			requireThat(aboveStatus, "aboveStatus").isEqualTo(2);
+			requireThat(Files.readString(Path.of(above + ".exit-status")), "aboveExitStatus").isEqualTo("2\n");
 		}
 	}
 
@@ -328,15 +438,13 @@ public final class CodexRunPartTest
 
 			Matcher lastPart = LAST_PART.matcher(call.output());
 			requireThat(lastPart.find(), "lastPart").withContext(call.error(), "error").isTrue();
-			requireThat(call.output(), "output").isEqualTo(expected + "|" + lastPart.group("path") + EOL +
-				"[End of " + lastPart.group("path") + ". The file was deleted]\n");
+			requireThat(call.output(), "output").startsWith(expected + "|" + lastPart.group("path") + EOL);
 		}
 	}
 
 	/**
-	 * Verifies that a PowerShell command that is one {@code rg} search runs with each line cut to its first 500 bytes,
-	 * keeps its output and exit status within the line limit, and is replaced by a request to narrow the search, with
-	 * exit status 2, above it.
+	 * Verifies that PowerShell runs a command that is one {@code rg} search with the arguments that cut each line to its
+	 * first 500 bytes, and that the search's output and exit status reach the caller.
 	 *
 	 * @throws IOException if the temporary files cannot be written
 	 */
@@ -367,22 +475,46 @@ public final class CodexRunPartTest
 			requireThat(within.output(), "within").startsWith("--max-columns=500 --max-columns-preview -n needle" +
 				EOL + "b" + EOL + "c" + EOL);
 			requireThat(within.status(), "withinStatus").withContext(within.output(), "output").isEqualTo(1);
-
-			environment.put("CAT_RG_LINE_LIMIT", "2");
-			Call above = runPart("rg -n needle", false, OUTSIDE_PROJECT, environment);
-			requireThat(above.output(), "above").startsWith("rg: the search produced more than 2 lines");
-			requireThat(above.status(), "aboveStatus").withContext(above.output(), "output").isEqualTo(2);
 		}
 	}
 
 	/**
-	 * Verifies that when {@code run-part} cannot create the folder that would save the output, as in a read-only
-	 * sandbox, the command still runs and behaves as it would without {@code run-part}: its standard output and
-	 * standard error reach the caller's, unsaved and unchanged, {@code run-part} prints only the line
-	 * {@code [End of output]} after the standard output, and the call exits with the command's exit status. Outside a
-	 * CAT project the folder's parent is {@code TMPDIR}; in a Codex thread inside a CAT project it is the project's
+	 * Verifies that {@code run-part} finds no file to save the output in when it cannot create the folder that would
+	 * hold it, as in a read-only sandbox, so that the command runs without {@code run-part}. Outside a CAT project the
+	 * folder's parent is {@code TMPDIR}; in a Codex thread inside a CAT project it is the project's
 	 * {@code .cat/sessions}. Each of them is a regular file here, so no folder can be created inside it whatever the
 	 * user's permissions.
+	 *
+	 * @throws IOException if the temporary files cannot be written
+	 */
+	@Test
+	public void unsavableOutputHasNoFile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			Path file = Files.writeString(temporary.resolve("file"), "");
+			Path project = Files.createDirectories(temporary.resolve("project"));
+			Files.createDirectories(project.resolve(".cat"));
+			Files.writeString(project.resolve(".cat/sessions"), "");
+			ByteArrayOutputStream error = new ByteArrayOutputStream();
+			PrintStream errorStream = new PrintStream(error, true, UTF_8);
+
+			Optional<Path> outside = ACCESS.createSavedOutput(OUTSIDE_PROJECT, Map.of("TMPDIR",
+				file.resolve("temp").toString()), errorStream, Yielding.waiting());
+			Optional<Path> session = ACCESS.createSavedOutput(project, Map.of("TMPDIR", temporary.toString(),
+				"CODEX_THREAD_ID", THREAD_ID, "CODEX_HOME", temporary.toString()), errorStream, Yielding.waiting());
+
+			requireThat(outside, "outside").isEmpty();
+			requireThat(session, "session").isEmpty();
+			requireThat(error.toString(UTF_8), "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that when {@code run-part} cannot save the output, a real command's standard output and standard error
+	 * reach the caller's unchanged, the command is not told of a saved output, and the call exits with the command's
+	 * exit status.
 	 *
 	 * @throws IOException if the temporary files cannot be written
 	 */
@@ -393,59 +525,45 @@ public final class CodexRunPartTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
 			Path file = Files.writeString(temporary.resolve("file"), "");
-			Path project = Files.createDirectories(temporary.resolve("project"));
-			Files.createDirectories(project.resolve(".cat"));
-			Files.writeString(project.resolve(".cat/sessions"), "");
 			String command = script("printf 'out|%s\\n' \"${CAT_RUN_PART_OUTPUT-unset}\"\necho err >&2\nexit 3\n",
 				"Write-Output \"out|$(if ($null -eq $env:CAT_RUN_PART_OUTPUT) { 'unset' } else { 'set' })\"\n" +
 					"[Console]::Error.WriteLine('err')\nexit 3\n");
 
-			List<Call> calls = List.of(
-				runPart(command, false, OUTSIDE_PROJECT, Map.of("TMPDIR", file.resolve("temp").toString())),
-				runPart(command, false, project, Map.of("TMPDIR", temporary.toString(), "CODEX_THREAD_ID", THREAD_ID,
-					"CODEX_HOME", temporary.toString())));
+			Call call = runPart(command, false, OUTSIDE_PROJECT, Map.of("TMPDIR", file.resolve("temp").toString()));
 
-			for (Call call : calls)
-			{
-				requireThat(call.output(), "output").withContext(call.error(), "error").
-					isEqualTo("out|unset" + EOL + UNSAVED_END);
-				requireThat(call.commandError(), "commandError").isEqualTo("err" + EOL);
-				requireThat(call.error(), "error").isEmpty();
-				requireThat(call.status(), "status").isEqualTo(3);
-			}
+			requireThat(call.output(), "output").withContext(call.error(), "error").
+				startsWith("out|unset" + EOL);
+			requireThat(call.commandError(), "commandError").isEqualTo("err" + EOL);
+			requireThat(call.error(), "error").isEmpty();
+			requireThat(call.status(), "status").isEqualTo(3);
 		}
 	}
 
 	/**
-	 * Verifies that when {@code run-part} cannot save the output, the line {@code [End of output]} that ends its
-	 * standard output is on a line of its own: after a standard output that does not end with a line feed, a line feed
-	 * comes first, and a command that writes no standard output gives only that line. The command's standard error and
-	 * exit status stay unchanged.
+	 * Verifies that when {@code run-part} cannot save the output, it copies the command's standard output unchanged
+	 * and ends it with the line {@code [End of output]} on a line of its own: after a standard output that does not
+	 * end with a line feed, a line feed comes first, and a command that writes no standard output gives only that line.
 	 *
-	 * @throws IOException if the temporary files cannot be written
+	 * @throws IOException if the output cannot be copied
 	 */
 	@Test
 	public void unsavableOutputEndsWithLine() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
-			Path file = Files.writeString(temporary.resolve("file"), "");
-			Map<String, String> environment = Map.of("TMPDIR", file.resolve("temp").toString());
+		ByteArrayOutputStream unfinished = new ByteArrayOutputStream();
+		boolean unfinishedEndsWithLine = ACCESS.copyOutput(new ByteArrayInputStream("a\nb".getBytes(UTF_8)),
+			unfinished);
+		unfinished.write(ACCESS.unsavedEnd(unfinishedEndsWithLine).getBytes(UTF_8));
+		requireThat(unfinished.toString(UTF_8), "unfinished").isEqualTo("a\nb\n" + UNSAVED_END);
 
-			Call unfinished = runPart(script("printf 'a\\nb'\necho err >&2\nexit 3\n",
-				"[Console]::Out.Write(\"a`nb\")\n[Console]::Error.WriteLine('err')\nexit 3\n"), false, OUTSIDE_PROJECT,
-				environment);
-			requireThat(unfinished.output(), "unfinished").withContext(unfinished.error(), "error").
-				isEqualTo("a\nb\n" + UNSAVED_END);
-			requireThat(unfinished.commandError(), "unfinishedError").isEqualTo("err" + EOL);
-			requireThat(unfinished.status(), "unfinishedStatus").isEqualTo(3);
+		ByteArrayOutputStream finished = new ByteArrayOutputStream();
+		boolean finishedEndsWithLine = ACCESS.copyOutput(new ByteArrayInputStream("a\nb\n".getBytes(UTF_8)), finished);
+		finished.write(ACCESS.unsavedEnd(finishedEndsWithLine).getBytes(UTF_8));
+		requireThat(finished.toString(UTF_8), "finished").isEqualTo("a\nb\n" + UNSAVED_END);
 
-			Call empty = runPart("exit 4", false, OUTSIDE_PROJECT, environment);
-			requireThat(empty.output(), "empty").withContext(empty.error(), "error").isEqualTo(UNSAVED_END);
-			requireThat(empty.commandError(), "emptyError").isEmpty();
-			requireThat(empty.status(), "emptyStatus").isEqualTo(4);
-		}
+		ByteArrayOutputStream empty = new ByteArrayOutputStream();
+		boolean emptyEndsWithLine = ACCESS.copyOutput(new ByteArrayInputStream(new byte[0]), empty);
+		empty.write(ACCESS.unsavedEnd(emptyEndsWithLine).getBytes(UTF_8));
+		requireThat(empty.toString(UTF_8), "empty").isEqualTo(UNSAVED_END);
 	}
 
 	/**
@@ -477,46 +595,27 @@ public final class CodexRunPartTest
 
 			// pwd prints the folder's real path, which differs where the temporary folder is a symbolic link, as on macOS
 			requireThat(call.output(), "output").withContext(call.error(), "error").
-				isEqualTo(folder.toRealPath() + EOL + expected + EOL + UNSAVED_END);
+				startsWith(folder.toRealPath() + EOL + expected + EOL);
 		}
 	}
 
 	/**
-	 * Verifies that a PowerShell command that is one {@code rg} search, whose output cannot be saved, runs as written,
-	 * without the line width and line limit that apply to a saved search, as it would without {@code run-part}.
-	 *
-	 * @throws IOException if the temporary files cannot be written
+	 * Verifies that a PowerShell command that is one {@code rg} search runs with each line cut to its first 500 bytes
+	 * only when its output is saved: when its output cannot be saved it runs as written, without the line width that
+	 * applies to a saved search, as it would without {@code run-part}. Other commands, and a search in a POSIX shell,
+	 * run as written.
 	 */
 	@Test
-	public void unsavableSearchIsNotLimited() throws IOException
+	public void unsavableSearchIsNotLimited()
 	{
-		if (SHELL != CommandShell.POWERSHELL)
-			throw new SkipException("A POSIX shell runs the plugin's rg override, which Bats tests");
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
-			Path file = Files.writeString(temporary.resolve("file"), "");
-			Path caller = Files.createDirectories(temporary.resolve("caller"));
-			Files.writeString(caller.resolve("rg.cmd"), "@echo %*\r\n@echo b\r\n@echo c\r\n@exit /b 1\r\n");
-			// The caller's rg.cmd runs in cmd.exe, which Windows finds through the system folders
-			Map<String, String> environment = new HashMap<>();
-			for (String name : List.of("SystemRoot", "ComSpec"))
-			{
-				String value = System.getenv(name);
-				if (value != null)
-					environment.put(name, value);
-			}
-			environment.put("PATH", caller + File.pathSeparator + System.getenv("PATH"));
-			environment.put("PATHEXT", ".COM;.EXE;.BAT;.CMD");
-			environment.put("TMPDIR", file.resolve("temp").toString());
-			environment.put("CAT_RG_LINE_LIMIT", "1");
+		String search = "rg -n needle";
 
-			Call call = runPart("rg -n needle", false, OUTSIDE_PROJECT, environment);
-
-			requireThat(call.output(), "output").withContext(call.error(), "error").
-				isEqualTo("-n needle" + EOL + "b" + EOL + "c" + EOL + UNSAVED_END);
-			requireThat(call.status(), "status").isEqualTo(1);
-		}
+		requireThat(ACCESS.commandToRun(search, CommandShell.POWERSHELL, true), "saved").
+			isEqualTo("rg --max-columns=500 --max-columns-preview -n needle");
+		requireThat(ACCESS.commandToRun(search, CommandShell.POWERSHELL, false), "unsaved").isEqualTo(search);
+		requireThat(ACCESS.commandToRun(search, CommandShell.POSIX, true), "posix").isEqualTo(search);
+		requireThat(ACCESS.commandToRun("Get-ChildItem", CommandShell.POWERSHELL, true), "other").
+			isEqualTo("Get-ChildItem");
 	}
 
 	/**
@@ -556,6 +655,22 @@ public final class CodexRunPartTest
 		if (SHELL == CommandShell.POWERSHELL)
 			return powerShell;
 		return posix;
+	}
+
+	/**
+	 * Returns a file in which {@code run-part} saves a command's output, holding output that the test supplies in place
+	 * of a command's.
+	 *
+	 * @param environment the environment, whose {@code TMPDIR} holds the file
+	 * @param content     the command's output
+	 * @return the file
+	 * @throws IOException if the file cannot be created or written
+	 */
+	private static Path savedOutput(Map<String, String> environment, String content) throws IOException
+	{
+		Path saved = ACCESS.createSavedOutput(OUTSIDE_PROJECT, environment, new PrintStream(new ByteArrayOutputStream(),
+			true, UTF_8), Yielding.waiting()).orElseThrow();
+		return Files.writeString(saved, content, UTF_8);
 	}
 
 	/**

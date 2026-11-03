@@ -3,6 +3,8 @@ package com.holdmyspot.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.hooks.HookComparison;
+import com.holdmyspot.cat.common.optimizer.hooks.HookComparison.Outcome;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
@@ -35,10 +37,6 @@ final class HookCheck
 	 * The prompt that the hooks receive when the user submits a prompt.
 	 */
 	static final String PROMPT = "Describe this project.";
-	/**
-	 * The number of lines that a difference or a failure shows.
-	 */
-	private static final int SHOWN_LINES = 3;
 
 	/**
 	 * Prevents instantiation.
@@ -82,9 +80,7 @@ final class HookCheck
 				trialHooks.computeIfAbsent(hook.name(), _ -> new ArrayDeque<>()).add(hook);
 			List<HookInvocation> sessionHooks = sessions.earlyHooks(sessionProject, plugins, Optional.empty(),
 				PROMPT);
-			List<String> failures = new ArrayList<>();
-			List<HookReport.HookDifference> differences = new ArrayList<>();
-			int checked = 0;
+			List<HookComparison.Run> runs = new ArrayList<>();
 			for (HookInvocation sessionHook : sessionHooks)
 			{
 				// A hook whose file trials do not receive does not run in trials
@@ -92,48 +88,18 @@ final class HookCheck
 				if (matching == null || matching.isEmpty())
 					continue;
 				HookInvocation trialHook = matching.remove();
-				++checked;
-				Outcome session = execute(sessionHook, sessionProject, directory, "session-" + checked);
-				Outcome trial = execute(trialHook, trialProject, directory, "trial-" + checked);
-				if (session.succeeded() && !trial.succeeded())
-				{
-					failures.add(sessionHook.name() + " " + trial.describeFailure());
-					continue;
-				}
-				List<String> sessionLines = session.output().lines().toList();
-				List<String> trialLines = trial.output().lines().toList();
-				int first = 0;
-				while (first < sessionLines.size() && first < trialLines.size() &&
-					sessionLines.get(first).equals(trialLines.get(first)))
-				{
-					++first;
-				}
-				if (first < sessionLines.size() || first < trialLines.size())
-				{
-					differences.add(new HookReport.HookDifference(sessionHook.name(),
-						from(trialLines, first), from(sessionLines, first)));
-				}
+				int number = runs.size() + 1;
+				Outcome session = execute(sessionHook, sessionProject, directory, "session-" + number);
+				Outcome trial = execute(trialHook, trialProject, directory, "trial-" + number);
+				runs.add(new HookComparison.Run(sessionHook.name(), session, trial));
 			}
-			return new Result(failures, new HookReport(checked, differences));
+			HookComparison.Verdict verdict = HookComparison.compare(runs);
+			return new Result(verdict.failures(), verdict.report());
 		}
 		finally
 		{
 			TemporaryDirectories.deleteRecursively(directory);
 		}
-	}
-
-	/**
-	 * Returns the lines that a difference shows.
-	 *
-	 * @param lines the hook's output
-	 * @param first the index of the first line that differs
-	 * @return at most {@link #SHOWN_LINES} lines from {@code first}
-	 */
-	private static List<String> from(List<String> lines, int first)
-	{
-		if (first >= lines.size())
-			return List.of();
-		return lines.subList(first, Math.min(lines.size(), first + SHOWN_LINES));
 	}
 
 	/**
@@ -174,47 +140,7 @@ final class HookCheck
 			}
 		}
 		return new Outcome(exitStatus, new String(Files.readAllBytes(output), StandardCharsets.UTF_8),
-			new String(Files.readAllBytes(error), StandardCharsets.UTF_8), hook.timeout().toSeconds());
-	}
-
-	/**
-	 * How a hook ended.
-	 *
-	 * @param exitStatus the hook's exit status, or empty if it did not end before its timeout
-	 * @param output     the hook's standard output
-	 * @param error      the hook's error output
-	 * @param timeout    the hook's timeout, in seconds
-	 */
-	private record Outcome(Optional<Integer> exitStatus, String output, String error, long timeout)
-	{
-		/**
-		 * Returns whether the hook succeeded.
-		 *
-		 * @return {@code true} if it exited with status 0
-		 */
-		boolean succeeded()
-		{
-			return exitStatus.isPresent() && exitStatus.get() == 0;
-		}
-
-		/**
-		 * Describes how the hook failed, with the end of its error output.
-		 *
-		 * @return the end of a sentence that starts with the hook's name
-		 */
-		String describeFailure()
-		{
-			String failure;
-			if (exitStatus.isEmpty())
-				failure = "does not end within " + timeout + " seconds in a trial's workspace";
-			else
-				failure = "exits with status " + exitStatus.get() + " in a trial's workspace";
-			List<String> lines = error.strip().lines().toList();
-			if (lines.isEmpty())
-				return failure + ", with no error output";
-			List<String> end = lines.subList(Math.max(0, lines.size() - SHOWN_LINES), lines.size());
-			return failure + ", and its error output ends with: " + String.join(" / ", end);
-		}
+			new String(Files.readAllBytes(error), StandardCharsets.UTF_8), hook.timeout());
 	}
 
 	/**

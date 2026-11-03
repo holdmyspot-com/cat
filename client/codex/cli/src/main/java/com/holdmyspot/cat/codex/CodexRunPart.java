@@ -3,6 +3,8 @@ package com.holdmyspot.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.secrets.CodexRunPartAccess;
+import com.holdmyspot.cat.codex.secrets.CodexRunPartSecrets;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -55,6 +57,44 @@ import java.util.Optional;
  */
 public final class CodexRunPart
 {
+	static
+	{
+		CodexRunPartSecrets.setCodexRunPartAccess(new CodexRunPartAccess()
+		{
+			@Override
+			public Optional<Path> createSavedOutput(Path workingDirectory, Map<String, String> environment,
+				PrintStream error, Waiting waiting)
+			{
+				return CodexRunPart.createSavedOutput(workingDirectory, environment, error, waiting);
+			}
+
+			@Override
+			public String commandToRun(String command, CommandShell shell, boolean saved)
+			{
+				return CodexRunPart.commandToRun(command, shell, saved);
+			}
+
+			@Override
+			public int printSaved(Path saved, int status, int lineLimit, CommandShell shell, Path readPart,
+				Map<String, String> environment, OutputStream output, PrintStream error) throws IOException
+			{
+				return CodexRunPart.printSaved(saved, status, lineLimit, shell, readPart, environment, output, error);
+			}
+
+			@Override
+			public boolean copyOutput(InputStream commandOutput, OutputStream output) throws IOException
+			{
+				return CodexRunPart.copyOutput(commandOutput, output);
+			}
+
+			@Override
+			public String unsavedEnd(boolean endsWithLine)
+			{
+				return CodexRunPart.unsavedEnd(endsWithLine);
+			}
+		});
+	}
+
 	/**
 	 * The locale variables that the launcher changes for the JVM and saves for the programs that it starts.
 	 */
@@ -157,42 +197,34 @@ public final class CodexRunPart
 				error.println(shell.runPartUsage());
 				return 2;
 			}
-			Optional<String> search = Optional.empty();
 			int lineLimit = 0;
-			if (shell == CommandShell.POWERSHELL)
+			if (shell == CommandShell.POWERSHELL && RipgrepOutputLimit.limitedCommand(command).isPresent())
 			{
-				search = RipgrepOutputLimit.limitedCommand(command);
-				if (search.isPresent())
+				try
 				{
-					try
-					{
-						lineLimit = RipgrepOutputLimit.lineLimit(environment);
-					}
-					catch (IllegalArgumentException e)
-					{
-						error.println("run-part: " + e.getMessage());
-						return 2;
-					}
+					lineLimit = RipgrepOutputLimit.lineLimit(environment);
+				}
+				catch (IllegalArgumentException e)
+				{
+					error.println("run-part: " + e.getMessage());
+					return 2;
 				}
 			}
 			Optional<Path> saved = createSavedOutput(workingDirectory, environment, error, waiting);
 			if (saved.isEmpty())
 			{
-				// The command runs as it would without run-part
-				ProcessBuilder builder = commandBuilder(command, workingDirectory, shell, overrides, environment).
+				ProcessBuilder builder = commandBuilder(commandToRun(command, shell, false), workingDirectory, shell,
+					overrides, environment).
 					redirectError(commandError);
 				return runUnsaved(builder, output);
 			}
-			ProcessBuilder builder = commandBuilder(search.orElse(command), workingDirectory, shell, overrides,
-				environment).
+			ProcessBuilder builder = commandBuilder(commandToRun(command, shell, true), workingDirectory, shell,
+				overrides, environment).
 				redirectErrorStream(true).
 				redirectOutput(saved.get().toFile());
 			builder.environment().put("CAT_RUN_PART_OUTPUT", saved.get().toString());
 			int status = runCommand(builder);
-			if (search.isPresent())
-				status = RipgrepOutputLimit.limitOutput(saved.get(), status, lineLimit);
-			Files.writeString(Path.of(saved.get() + EXIT_STATUS_SUFFIX), status + "\n");
-			return CodexReadPart.run(new String[]{saved.get().toString()}, shell, readPart, environment, output, error);
+			return printSaved(saved.get(), status, lineLimit, shell, readPart, environment, output, error);
 		}
 		catch (IOException | InvalidPathException e)
 		{
@@ -234,9 +266,51 @@ public final class CodexRunPart
 	}
 
 	/**
+	 * Returns the command that the shell runs. A PowerShell command that is one {@code rg} search, whose output is
+	 * saved, runs with each line cut to its first 500 bytes (see {@link RipgrepOutputLimit#limitedCommand(String)}).
+	 * Every other command, including such a search whose output cannot be saved, runs as written, as it would without
+	 * {@code run-part}.
+	 *
+	 * @param command the command as written
+	 * @param shell   the shell that runs the command
+	 * @param saved   {@code true} if the command's output is saved
+	 * @return the command to run
+	 */
+	private static String commandToRun(String command, CommandShell shell, boolean saved)
+	{
+		if (!saved || shell != CommandShell.POWERSHELL)
+			return command;
+		return RipgrepOutputLimit.limitedCommand(command).orElse(command);
+	}
+
+	/**
+	 * Saves the exit status of a command whose output was saved, then prints the output's first part. When
+	 * {@code lineLimit} is not 0, the output of a search with more lines than the limit is first replaced by a request
+	 * to narrow the search, and the status saved is then 2.
+	 *
+	 * @param saved       the file that saves the command's output
+	 * @param status      the command's exit status
+	 * @param lineLimit   the most lines that the agent receives from a PowerShell {@code rg} search, or 0 for a
+	 *                    command whose output is not limited
+	 * @param shell       the shell that runs the commands that this program prints
+	 * @param readPart    the {@code read-part} launcher that the line that ends a part names
+	 * @param environment the environment of the JVM
+	 * @param output      receives the part
+	 * @param error       receives diagnostics
+	 * @return the exit status of {@code read-part}
+	 * @throws IOException if the output cannot be read or replaced, or the status cannot be saved
+	 */
+	private static int printSaved(Path saved, int status, int lineLimit, CommandShell shell, Path readPart,
+		Map<String, String> environment, OutputStream output, PrintStream error) throws IOException
+	{
+		int savedStatus = RipgrepOutputLimit.limitOutput(saved, status, lineLimit);
+		Files.writeString(Path.of(saved + EXIT_STATUS_SUFFIX), savedStatus + "\n");
+		return CodexReadPart.run(new String[]{saved.toString()}, shell, readPart, environment, output, error);
+	}
+
+	/**
 	 * Runs a command whose output cannot be saved, without input, copies its standard output as it arrives, then ends
-	 * it with the line {@code [End of output]} on a line of its own. The line ends with {@code \n} on every platform,
-	 * as do the lines that {@code read-part} adds to a part.
+	 * it with the line {@code [End of output]} on a line of its own.
 	 *
 	 * @param builder the process builder of the command, whose standard output is a pipe
 	 * @param output receives the command's standard output, then the line
@@ -251,25 +325,53 @@ public final class CodexRunPart
 		{
 			// The command reads no input: closing its standard input ends any read at once, on every platform
 			process.getOutputStream().close();
-			byte last = '\n';
+			boolean endsWithLine;
 			try (InputStream commandOutput = process.getInputStream())
 			{
-				byte[] buffer = new byte[8192];
-				for (int count = commandOutput.read(buffer); count >= 0; count = commandOutput.read(buffer))
-				{
-					output.write(buffer, 0, count);
-					output.flush();
-					last = buffer[count - 1];
-				}
+				endsWithLine = copyOutput(commandOutput, output);
 			}
 			int status = process.waitFor();
-			String end = UNSAVED_END + "\n";
-			if (last != '\n')
-				end = "\n" + end;
-			output.write(end.getBytes(UTF_8));
+			output.write(unsavedEnd(endsWithLine).getBytes(UTF_8));
 			output.flush();
 			return status;
 		}
+	}
+
+	/**
+	 * Copies the standard output of a command whose output cannot be saved, unchanged, as it arrives.
+	 *
+	 * @param commandOutput the command's standard output
+	 * @param output        receives the command's standard output
+	 * @return {@code true} if the standard output is empty or ends with a line feed
+	 * @throws IOException if the output cannot be read or written
+	 */
+	private static boolean copyOutput(InputStream commandOutput, OutputStream output) throws IOException
+	{
+		byte last = '\n';
+		byte[] buffer = new byte[8192];
+		for (int count = commandOutput.read(buffer); count >= 0; count = commandOutput.read(buffer))
+		{
+			output.write(buffer, 0, count);
+			output.flush();
+			last = buffer[count - 1];
+		}
+		return last == '\n';
+	}
+
+	/**
+	 * Returns the text that ends the standard output of {@code run-part} when it cannot save the output: the line
+	 * {@code [End of output]} on a line of its own. The line ends with {@code \n} on every platform, as do the lines
+	 * that {@code read-part} adds to a part.
+	 *
+	 * @param endsWithLine {@code true} if the command's standard output is empty or ends with a line feed
+	 * @return the line, after a line feed if {@code endsWithLine} is {@code false}
+	 */
+	private static String unsavedEnd(boolean endsWithLine)
+	{
+		String end = UNSAVED_END + "\n";
+		if (!endsWithLine)
+			end = "\n" + end;
+		return end;
 	}
 
 	/**
