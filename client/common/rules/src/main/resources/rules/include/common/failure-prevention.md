@@ -301,7 +301,8 @@ the reported failure and the included variants.
 When the failure has a reproducible observable boundary, write or revise the smallest behavior-level regression check
 before changing the correction when practical. The check must fail for the reported behavior and pass only when the
 claimed outcome occurs. If the correction already exists, promptly demonstrate the same distinction against a controlled
-reproduction or the known defective revision. Exercise the operation that produces the claimed outcome; do not replace
+reproduction or the known defective revision. A reproduction that triggers the failure on only some runs is an
+executable boundary, not a missing one. Exercise the operation that produces the claimed outcome; do not replace
 that check with assertions about source text, generated files, or third-party behavior. When no executable boundary is
 available, record the specific limitation, the closest available evidence, and why it cannot provide the regression
 check. Keep the check with the correction and run it before broader verification.
