@@ -7,8 +7,9 @@
 	session is not that evidence.
 - A failure on the remote runner is diagnosed and retried on the same retained worker and workspace, and the original
 	failure stays distinct from the retry's result.
-- The agent ends the session deliberately once the required verification is done, and observes the worker's cleanup
-	instead of assuming it.
+- The agent ends the session deliberately as soon as no remaining command, retry or required verification needs the
+	worker, and observes the job's terminal result and the worker's cleanup instead of assuming them, or reports the
+	cleanup as unobserved when it deliberately cancelled steps whose results nobody needed.
 - Reading workflow files and running the changed commands on the agent's own machine start no remote session.
 
 ## Guidance
@@ -42,7 +43,9 @@ Record the live connection, the commands you ran, their results, and the state t
 original failure and a later successful retry as separate results. Starting a session, publishing its connection
 details, or printing a login banner does not show that a command ran.
 
-After the changed commands and any retries have passed and the task's required clean verification has finished, exit
-the remote shell deliberately, wait for your client process to end, and observe the provider's terminal job and cleanup
-result. If the session expires before anyone connects, report that outcome with the original logs instead of a passing
-test.
+As soon as the changed commands, any retries and the task's required clean verification no longer need the worker,
+exit the remote shell deliberately, wait for your client process to end, and observe the provider's terminal job and
+cleanup result. If you cancelled the job's remaining steps after the shell exited because nobody needed their results,
+report a deliberate shutdown whose cleanup was not observed, not a passing or failing job. If the session expires
+before anyone connects, or ends because it was left idle, report that outcome with the original logs instead of a
+passing test.

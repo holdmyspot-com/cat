@@ -1,0 +1,32 @@
+=== check 1, 2026-11-03T14:22:04Z ===
+$ ps -o pid,ppid,pgid,stat,etime,time,args --forest -g 4182
+    PID    PPID    PGID STAT     ELAPSED     TIME COMMAND
+   4182    3977    4182 S          28:51 00:00:00 make integration-test
+   4190    4182    4182 S          28:51 00:00:00  \_ /bin/bash scripts/integration.sh
+   4197    4190    4182 Sl         28:50 00:00:41      \_ ./build/service --port 8080
+   4263    4190    4182 Sl         28:44 00:06:12      \_ java -jar build/integration-tests.jar --base-url http://localhost:8080
+$ wc -c build/integration.log
+183702 build/integration.log
+$ tail -n 2 build/integration.log
+[integration] InventoryApiTest.reservesStock ... ok
+[integration] InventoryApiTest.releasesExpiredReservations ...
+
+=== check 2, 2026-11-03T14:28:11Z ===
+$ ps -o pid,ppid,pgid,stat,etime,time,args --forest -g 4182
+    PID    PPID    PGID STAT     ELAPSED     TIME COMMAND
+   4182    3977    4182 S          34:58 00:00:00 make integration-test
+   4190    4182    4182 S          34:58 00:00:00  \_ /bin/bash scripts/integration.sh
+   4197    4190    4182 Sl         34:57 00:00:41      \_ ./build/service --port 8080
+   4263    4190    4182 Sl         34:51 00:06:12      \_ java -jar build/integration-tests.jar --base-url http://localhost:8080
+$ wc -c build/integration.log
+183702 build/integration.log
+
+=== check 3, 2026-11-03T14:34:20Z ===
+$ ps -o pid,ppid,pgid,stat,etime,time,args --forest -g 4182
+    PID    PPID    PGID STAT     ELAPSED     TIME COMMAND
+   4182    3977    4182 S          41:07 00:00:00 make integration-test
+   4190    4182    4182 S          41:07 00:00:00  \_ /bin/bash scripts/integration.sh
+   4197    4190    4182 Sl         41:06 00:00:41      \_ ./build/service --port 8080
+   4263    4190    4182 Sl         41:00 00:06:12      \_ java -jar build/integration-tests.jar --base-url http://localhost:8080
+$ wc -c build/integration.log
+183702 build/integration.log

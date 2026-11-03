@@ -1,0 +1,13 @@
+2026-11-02T15:41:07Z client: connected to uptermd.upterm.dev
+runner@fv-az1024-77:~/work/app/app$ ls build
+integration-tests  service
+runner@fv-az1024-77:~/work/app/app$ scripts/integration.sh > /tmp/integration.log 2>&1; echo "exit=$?"
+exit=1
+runner@fv-az1024-77:~/work/app/app$ tail -n 5 /tmp/integration.log
+[integration] OrderApiTest.createsOrder ... ok
+[integration] OrderApiTest.rejectsEmptyCart ... ok
+[integration] InventoryApiTest.reservesStock ... FAILED
+  expected status 201 but was 409 (Conflict): reservation already exists
+[integration] 41 passed, 1 failed
+runner@fv-az1024-77:~/work/app/app$ timed out waiting for input: auto-logout
+2026-11-02T16:02:15Z client: Connection to uptermd.upterm.dev closed.

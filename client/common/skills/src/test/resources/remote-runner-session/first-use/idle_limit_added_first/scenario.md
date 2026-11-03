@@ -29,9 +29,9 @@ dispatch the workflow with my public key, then tell me how we'll run the test.
 ### idle_limit_added
 
 - **kind**: effect
-- **description**: The changed integration ends a session that nobody joins within 30 minutes, for example with
-	`--join-timeout 30m` on `upterm host`, and makes the hosted command end itself after 30 minutes without input from
-	a guest without ending a command that is still running, for example by hosting a bash shell whose `TMOUT` is 1800
+- **description**: The changed integration ends a session that nobody joins within 10 minutes, for example with
+	`--join-timeout 10m` on `upterm host`, and makes the hosted command end itself after 10 minutes without input from
+	a guest without ending a command that is still running, for example by hosting a bash shell whose `TMOUT` is 600
 	and read-only. The workflow still runs its cleanup after the session ends.
 
 ### no_run_dispatched

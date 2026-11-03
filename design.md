@@ -2551,7 +2551,15 @@ when an agent runs a CI or hosted workflow on a remote runner to test changed co
 requires an authenticated Upterm session to the worker, verified by a command's effect in the job's workspace, before
 the changed commands run; a session that opens only after a failure does not count. Failures are diagnosed and retried
 on the same retained worker through the incremental build-workflow rule, the original failure stays apart from the
-retry, and the agent ends the session itself and observes the worker's cleanup. Reading workflow files and running the
+retry, and the agent ends the session itself and observes the worker's cleanup. User request (2026-11-03), adopting
+the generic parts of a project's remote-runner SSH rule: the idle limit is 10 minutes unless the task states another or
+the integration cannot be set below a longer one; before dispatch the agent records every limit that can end the worker
+(join deadline, idle limit, job timeout, provider lifetime) as absolute times, claims the worker as soon as its details
+are published, and keeps a foreground keepalive whenever the shell would wait at its prompt; it waits only for remote
+commands that are still needed, checks their progress within minutes, and ends a stalled command's process tree from
+inside the session, never by cancelling the job or killing the client; and it releases the worker as soon as nothing
+needs it. After `exit` it may cancel remaining steps whose results nobody needs, reporting a deliberate shutdown whose
+cleanup was not observed. Reading workflow files and running the
 changed commands locally load neither the rule nor the skill. Both harnesses' plugins hold the `remote-runner-session`
 skill, thin wrappers over one shared body, whose procedure the rule names. The skill is provider neutral: it states
 what any runner provider's integration must supply (a worker kept past the changed commands, a readiness signal or
