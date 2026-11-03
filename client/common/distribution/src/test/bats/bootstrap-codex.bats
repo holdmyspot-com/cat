@@ -29,17 +29,6 @@ load bootstrap-helpers
 	[ ! -s "${COMMAND_LOG}" ]
 }
 
-@test "generated Codex plugin-info launcher reports its harness, version, and platform" {
-	expected_platform="$(current_platform)"
-
-	run "${GENERATED_RUNTIME_DIRECTORY}/codex/bin/plugin-info"
-
-	[ "${status}" -eq 0 ]
-	[ "${output}" = "harness=codex
-version=1.0
-platform=${expected_platform}" ]
-}
-
 @test "Codex installs an extracted artifact through an artifact-local marketplace" {
 	create_fake_engine_command codex
 	artifact="$(create_test_artifact codex)"
@@ -77,7 +66,6 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "0.9->0.10" ]
 	[ "$(sed -n '2p' "${COMMAND_LOG}")" = "0.9->1.0" ]
-	[ "$(cat "${data_directory}/migration-version")" = "1.0" ]
 	grep -F "codex plugin marketplace add ${CODEX_HOME}/plugins/cat-marketplace" "${COMMAND_LOG}"
 }
 
@@ -93,16 +81,15 @@ platform=${expected_platform}" ]
 		CAT_CODEX_DATA_DIR="${data_directory}" sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
 
 	[ "${status}" -eq 7 ]
-	[ "$(cat "${data_directory}/migration-version")" = "0.9" ]
 	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
 	[ ! -s "${COMMAND_LOG}" ]
 }
 
-@test "Codex uninstall removes only CAT-owned user agents before running codex plugin remove" {
+@test "Codex uninstall removes CAT's agents, marketplace and downloaded bundles through codex plugin remove and keeps CAT's data" {
 	create_fake_engine_command codex
-	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat" "${CODEX_HOME}/agents"
+	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${CODEX_HOME}/plugins/data/cat-cat" "${CODEX_HOME}/agents" \
+		"${HOME}/.cat/bundles/cat-claude-v1.0-linux-x64/bin"
 	printf 'cat agent\n' > "${CODEX_HOME}/agents/cat-reviewer.toml"
-	printf 'user agent\n' > "${CODEX_HOME}/agents/reviewer.toml"
 	printf 'cat-reviewer.toml\n' > "${CODEX_HOME}/plugins/data/cat-cat/codex-agent-files"
 	printf '0.9\n' > "${CODEX_HOME}/plugins/data/cat-cat/migration-version"
 
@@ -112,10 +99,9 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "codex plugin remove cat@cat" ]
 	[ ! -e "${CODEX_HOME}/agents/cat-reviewer.toml" ]
-	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
-	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat/codex-agent-files" ]
 	[ "$(cat "${CODEX_HOME}/plugins/data/cat-cat/migration-version")" = "0.9" ]
 	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
+	[ ! -e "${HOME}/.cat/bundles" ]
 }
 
 @test "Codex uninstall deletes CAT's data only when asked to" {
@@ -129,20 +115,6 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat" ]
 	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
-}
-
-@test "Codex uninstall deletes the downloaded bundles and keeps the rest of CAT's user directory" {
-	create_fake_engine_command codex
-	mkdir -p "${CODEX_HOME}/plugins/cat-marketplace" "${HOME}/.cat/bundles/cat-claude-v1.0-linux-x64/bin" \
-		"${HOME}/.cat/rules"
-	printf 'rule\n' > "${HOME}/.cat/rules/user.md"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/uninstall-codex.sh"
-
-	[ "${status}" -eq 0 ]
-	[ ! -e "${HOME}/.cat/bundles" ]
-	[ -f "${HOME}/.cat/rules/user.md" ]
 }
 
 @test "Codex uninstall rejects an unknown argument before removing anything" {
@@ -173,25 +145,6 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	grep -Fx "codex plugin remove cat@cat" "${COMMAND_LOG}"
 	[ ! -e "${CODEX_HOME}/plugins/data/cat-cat" ]
-}
-
-@test "Codex upgrade replaces recorded agents without overwriting unrelated agents" {
-	create_fake_engine_command codex
-	artifact="$(create_test_artifact codex)"
-	mkdir -p "${CODEX_HOME}/agents"
-	printf 'user agent\n' > "${CODEX_HOME}/agents/reviewer.toml"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
-	[ "${status}" -eq 0 ]
-	printf 'old CAT agent\n' > "${CODEX_HOME}/agents/cat-reviewer.toml"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CODEX_HOME="${CODEX_HOME}" \
-		sh "${INSTALL_DIRECTORY}/install-codex.sh" "${artifact}"
-
-	[ "${status}" -eq 0 ]
-	grep -F "Review evidence without editing." "${CODEX_HOME}/agents/cat-reviewer.toml"
-	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
 }
 
 @test "release bootstrap registers Codex using marketplace metadata from the verified archive" {
@@ -236,7 +189,7 @@ platform=${expected_platform}" ]
 	[ ! -e "${CODEX_HOME}/plugins/cat-marketplace" ]
 	! grep -q '^codex ' "${COMMAND_LOG}"
 }
-@test "generated Codex SessionStart launcher injects bundled routing and project rules" {
+@test "generated Codex SessionStart launcher injects the packaged routing and the project's rules" {
 	project="${TEST_ROOT}/generated session project"
 	mkdir -p "${project}/.cat/rules/common"
 	printf 'project session rule\n' > "${project}/.cat/rules/common/session.md"
@@ -250,15 +203,12 @@ platform=${expected_platform}" ]
 	[[ "${output}" == *'"hookSpecificOutput"'* ]]
 	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*rules for this session are in `\([^`]*\)`.*/\1/p')
 	grep -F "CAT Rule Routing" "${context_file}"
-	grep -F "when selecting a platform or available project API" "${context_file}"
-	grep -F "/rules/include/common/rule-routing/interfaces.md" "${context_file}"
 	grep -F "project session rule" "${context_file}"
 }
 
-@test "generated Codex SubagentStart launcher injects only addressed project rules" {
+@test "generated Codex SubagentStart launcher injects the project rule addressed to the subagent" {
 	project="${TEST_ROOT}/generated subagent project"
 	mkdir -p "${project}/.cat/rules/codex"
-	printf '%s\n' '---' 'agents: ["main"]' '---' 'main rule' > "${project}/.cat/rules/codex/main.md"
 	printf '%s\n' '---' 'agents: ["cat:reviewer"]' '---' 'reviewer rule' > "${project}/.cat/rules/codex/reviewer.md"
 	runtime="${GENERATED_RUNTIME_DIRECTORY}/codex"
 
@@ -269,7 +219,6 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"hookEventName":"SubagentStart"'* ]]
 	[[ "${output}" == *"reviewer rule"* ]]
-	[[ "${output}" != *"main rule"* ]]
 }
 
 @test "single command changes nothing and gives the command to run outside the sandbox when config.toml is read-only" {

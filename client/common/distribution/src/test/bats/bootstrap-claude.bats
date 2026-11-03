@@ -55,7 +55,6 @@ platform=${expected_platform}" ]
 		CAT_CLAUDE_DATA_DIR="${data_directory}" sh "${INSTALL_DIRECTORY}/install-claude.sh" "${artifact}"
 
 	[ "${status}" -eq 7 ]
-	[ "$(cat "${data_directory}/migration-version")" = "0.9" ]
 	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
 	[ ! -s "${COMMAND_LOG}" ]
 }
@@ -76,13 +75,12 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "0.9->0.10" ]
 	[ "$(sed -n '2p' "${COMMAND_LOG}")" = "0.9->1.0" ]
-	[ "$(cat "${data_directory}/migration-version")" = "1.0" ]
 	grep -F "claude plugin marketplace add ${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${COMMAND_LOG}"
 }
 
-@test "Claude removal delegates to claude plugin uninstall" {
+@test "Claude removal delegates to claude plugin uninstall and deletes the marketplace and the downloaded bundles" {
 	create_fake_engine_command claude
-	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace"
+	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${HOME}/.cat/bundles/cat-codex-v1.0-linux-x64/bin"
 
 	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
 		sh "${INSTALL_DIRECTORY}/uninstall-claude.sh"
@@ -90,20 +88,7 @@ platform=${expected_platform}" ]
 	[ "${status}" -eq 0 ]
 	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "claude plugin uninstall cat@cat" ]
 	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
-}
-
-@test "Claude removal deletes the downloaded bundles and keeps the rest of CAT's user directory" {
-	create_fake_engine_command claude
-	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${HOME}/.cat/bundles/cat-codex-v1.0-linux-x64/bin" \
-		"${HOME}/.cat/rules"
-	printf 'rule\n' > "${HOME}/.cat/rules/user.md"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
-		sh "${INSTALL_DIRECTORY}/uninstall-claude.sh"
-
-	[ "${status}" -eq 0 ]
 	[ ! -e "${HOME}/.cat/bundles" ]
-	[ -f "${HOME}/.cat/rules/user.md" ]
 }
 
 @test "release bootstrap installs the Claude archive for the current platform after verifying its checksum" {
@@ -133,7 +118,7 @@ platform=${expected_platform}" ]
 	! grep -q '^claude ' "${COMMAND_LOG}"
 }
 
-@test "generated Claude SessionStart launcher injects bundled routing and project rules" {
+@test "generated Claude SessionStart launcher injects the packaged routing and the project's rules" {
 	project="${TEST_ROOT}/generated session project"
 	mkdir -p "${project}/.cat/rules/common"
 	printf 'project session rule\n' > "${project}/.cat/rules/common/session.md"
@@ -146,15 +131,12 @@ platform=${expected_platform}" ]
 	[[ "${output}" == *'"hookEventName":"SessionStart"'* ]]
 	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*Read the whole file `\([^`]*\)`.*/\1/p')
 	grep -F "CAT Rule Routing" "${context_file}"
-	grep -F "when selecting a platform or available project API" "${context_file}"
-	grep -F "/rules/include/common/rule-routing/interfaces.md" "${context_file}"
 	grep -F "project session rule" "${context_file}"
 }
 
-@test "generated Claude SubagentStart launcher injects only addressed project rules" {
+@test "generated Claude SubagentStart launcher injects the project rule addressed to the subagent" {
 	project="${TEST_ROOT}/generated subagent project"
 	mkdir -p "${project}/.cat/rules/claude"
-	printf '%s\n' '---' 'agents: ["main"]' '---' 'main rule' > "${project}/.cat/rules/claude/main.md"
 	printf '%s\n' '---' 'agents: ["cat:reviewer"]' '---' 'reviewer rule' > "${project}/.cat/rules/claude/reviewer.md"
 	runtime="${GENERATED_RUNTIME_DIRECTORY}/claude"
 
@@ -165,7 +147,6 @@ platform=${expected_platform}" ]
 	[[ "${output}" == *'"hookEventName":"SubagentStart"'* ]]
 	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*Read the whole file `\([^`]*\)`.*/\1/p')
 	grep -F "reviewer rule" "${context_file}"
-	! grep -F "main rule" "${context_file}"
 }
 
 @test "single command changes nothing and gives the command to run outside the sandbox when Claude's settings are read-only" {

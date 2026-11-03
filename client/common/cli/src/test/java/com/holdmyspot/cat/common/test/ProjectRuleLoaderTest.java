@@ -285,6 +285,36 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies that a subagent of either harness receives the project's harness rules addressed to its agent type and
+	 * not those addressed only to the main agent.
+	 *
+	 * @throws IOException if the rules or test filesystem cannot be read
+	 */
+	@Test
+	public void filtersProjectRulesByAgentAudience() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Files.createDirectories(plugin.resolve("rules/common"));
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			for (String harness : List.of("claude", "codex"))
+			{
+				write(project, ".cat/rules/" + harness + "/main.md", "---\nagents: [\"main\"]\n---\n" + harness +
+					" main rule");
+				write(project, ".cat/rules/" + harness + "/reviewer.md", "---\nagents: [\"cat:reviewer\"]\n---\n" +
+					harness + " reviewer rule");
+
+				String reviewer = loader.loadForSubagent(plugin, project, harness, "cat:reviewer");
+
+				requireThat(reviewer, harness + "Reviewer").contains(harness + " reviewer rule").
+					doesNotContain(harness + " main rule");
+			}
+		}
+	}
+
+	/**
 	 * Verifies direct lazy-rule routes precede other common guidance.
 	 */
 	@Test

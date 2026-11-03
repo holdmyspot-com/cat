@@ -147,7 +147,8 @@ public final class BundledRuleAudienceTest
 	 * Verifies a session receives the bundled Java and Bash routes only through instructions to load their routing
 	 * files when it reads or edits a matching file, so a session that never touches such a file does not carry them,
 	 * while the route for choosing a Java API, which arises while designing before any Java file exists, stays
-	 * reachable from the always-loaded routing through the interface-design area index.
+	 * reachable from the always-loaded routing through the interface-design area index. The main agent of either harness
+	 * receives that routing.
 	 *
 	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -164,9 +165,14 @@ public final class BundledRuleAudienceTest
 			Path include = plugin.toAbsolutePath().normalize().resolve("rules/include/common");
 			Path interfaces = include.resolve("rule-routing/interfaces.md");
 
-			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "claude");
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			String context = loader.loadForMainAgent(plugin, project, "claude");
+			String codexContext = loader.loadForMainAgent(plugin, project, "codex");
 
-			requireThat(context, "context").
+			requireThat(codexContext, "codexContext").contains("# CAT Rule Routing").
+				contains("when selecting a platform or available project API").
+				contains("include/common/rule-routing/interfaces.md`");
+			requireThat(context, "context").contains("# CAT Rule Routing").
 				contains("Load `" + include.resolve("java.md") + "` only when you read or edit a file").
 				contains("Load `" + include.resolve("bash.md") + "` only when you read or edit a file").
 				contains("when selecting a platform or available project API").

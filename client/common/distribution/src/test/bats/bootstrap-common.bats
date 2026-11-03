@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 
 # Tests the installers that both harnesses share: the single command's harness detection and its release notes, the
-# downloaded per-harness bootstraps, and the shared installer library.
+# downloaded per-harness bootstraps, and the functions of the shared installer library, which the tests call with
+# set -eu, as the installers run them.
 
 load bootstrap-helpers
 
@@ -23,6 +24,82 @@ load bootstrap-helpers
 		[ "${status}" -eq 0 ]
 		[ "${output}" = windows-x64 ]
 	done
+}
+
+@test "data migration runs each pending migration in registry order and then records CAT's version" {
+	data_directory="${TEST_ROOT}/data"
+	artifact="$(create_test_artifact claude)"
+	mkdir -p "${data_directory}"
+	printf '0.9\n' > "${data_directory}/migration-version"
+	migration_record='printf "%s\\n" "${CAT_MIGRATION_FROM_VERSION}->${CAT_MIGRATION_TO_VERSION}" >> "${COMMAND_LOG}"'
+	add_test_migration "${artifact}" "0.10" "${migration_record}"
+	add_test_migration "${artifact}" "1.0" "${migration_record}"
+
+	run sh -c 'set -eu; . "$1"; cat_migrate_data "$2" "$3"' sh "${INSTALL_DIRECTORY}/common.sh" "${data_directory}" \
+		"${artifact}/install/migrations"
+
+	[ "${status}" -eq 0 ]
+	[ "$(cat "${COMMAND_LOG}")" = "0.9->0.10
+0.9->1.0" ]
+	[ "$(cat "${data_directory}/migration-version")" = "1.0" ]
+}
+
+@test "data migration that fails keeps the recorded version and stops with the migration's exit status" {
+	data_directory="${TEST_ROOT}/data"
+	artifact="$(create_test_artifact claude)"
+	mkdir -p "${data_directory}"
+	printf '0.9\n' > "${data_directory}/migration-version"
+	add_test_migration "${artifact}" "1.0" 'exit 7'
+
+	run sh -c 'set -eu; . "$1"; cat_migrate_data "$2" "$3"' sh "${INSTALL_DIRECTORY}/common.sh" "${data_directory}" \
+		"${artifact}/install/migrations"
+
+	[ "${status}" -eq 7 ]
+	[ "$(cat "${data_directory}/migration-version")" = "0.9" ]
+}
+
+@test "installing Codex agents again replaces the agents CAT recorded and leaves the user's own agents alone" {
+	artifact="$(create_test_artifact codex)"
+	data_directory="${CODEX_HOME}/plugins/data/cat-cat"
+	mkdir -p "${CODEX_HOME}/agents"
+	printf 'user agent\n' > "${CODEX_HOME}/agents/reviewer.toml"
+	install_agents='set -eu; . "$1"; cat_install_codex_agents "$2" "$3" "$4"'
+	run sh -c "${install_agents}" sh "${INSTALL_DIRECTORY}/common.sh" "${artifact}" "${CODEX_HOME}" "${data_directory}"
+	[ "${status}" -eq 0 ]
+	printf 'old CAT agent\n' > "${CODEX_HOME}/agents/cat-reviewer.toml"
+
+	run sh -c "${install_agents}" sh "${INSTALL_DIRECTORY}/common.sh" "${artifact}" "${CODEX_HOME}" "${data_directory}"
+
+	[ "${status}" -eq 0 ]
+	grep -F "Review evidence without editing." "${CODEX_HOME}/agents/cat-reviewer.toml"
+	[ "$(cat "${CODEX_HOME}/agents/reviewer.toml")" = "user agent" ]
+}
+
+@test "removing Codex agents deletes only the agents and record that CAT wrote" {
+	data_directory="${CODEX_HOME}/plugins/data/cat-cat"
+	mkdir -p "${CODEX_HOME}/agents" "${data_directory}"
+	printf 'cat agent\n' > "${CODEX_HOME}/agents/cat-reviewer.toml"
+	printf 'user agent\n' > "${CODEX_HOME}/agents/reviewer.toml"
+	printf 'cat-reviewer.toml\n' > "${data_directory}/codex-agent-files"
+
+	run sh -c 'set -eu; . "$1"; cat_remove_codex_agents "$2" "$3"' sh "${INSTALL_DIRECTORY}/common.sh" \
+		"${CODEX_HOME}" "${data_directory}"
+
+	[ "${status}" -eq 0 ]
+	[ ! -e "${CODEX_HOME}/agents/cat-reviewer.toml" ]
+	[ -f "${CODEX_HOME}/agents/reviewer.toml" ]
+	[ ! -e "${data_directory}/codex-agent-files" ]
+}
+
+@test "removing the downloaded bundles keeps the rest of CAT's user directory" {
+	mkdir -p "${HOME}/.cat/bundles/cat-codex-v1.0-linux-x64/bin" "${HOME}/.cat/rules"
+	printf 'rule\n' > "${HOME}/.cat/rules/user.md"
+
+	run sh -c 'set -eu; . "$1"; cat_remove_downloaded_bundles "$2"' sh "${INSTALL_DIRECTORY}/common.sh" "${HOME}"
+
+	[ "${status}" -eq 0 ]
+	[ ! -e "${HOME}/.cat/bundles" ]
+	[ -f "${HOME}/.cat/rules/user.md" ]
 }
 
 @test "downloaded Codex bootstrap installs supported platforms and directs Windows users to PowerShell" {
