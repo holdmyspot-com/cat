@@ -116,6 +116,31 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Status without a harness argument reports this installation's one harness in the same result as status that
+	 * names it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void statusWithoutHarnessMatchesNamedHarness() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-status-flat-")));
+			installation.writePolicy(installation.trustPolicy());
+
+			Run named = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+				"--harness", "harness-a");
+			Run unnamed = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+				"status");
+
+			requireThat(unnamed.status, "status").isEqualTo(0);
+			requireThat(unnamed.result(), "unnamed").isEqualTo(named.result());
+		}
+	}
+
+	/**
 	 * An installation without its setup record or its policy refuses status with one JSON result that names the one
 	 * entry command which sets the harness up again.
 	 *

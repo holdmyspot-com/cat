@@ -262,8 +262,6 @@ public final class Invocation
 					return finish(engine, engine.rollback(), arguments, locations);
 				UpdateResult status = engine.status();
 				ObjectNode encoded = encodeStatus(status, engine.pendingSwap());
-				if (arguments.harness().isEmpty())
-					return statusAll(encoded, policy);
 				return print(status, encoded, arguments, locations);
 			}
 		}
@@ -359,23 +357,6 @@ public final class Invocation
 			entry.getValue().forEach(entries::add);
 		}
 		stdout.println(mapper.writeValueAsString(object));
-		return 0;
-	}
-
-	/**
-	 * Reports the installation's harness in the result shape that lists every installation.
-	 *
-	 * @param status the encoding of the harness's status
-	 * @param policy the protected policy
-	 * @return zero after printing the status object
-	 */
-	private int statusAll(ObjectNode status, TrustPolicy policy)
-	{
-		ObjectNode result = encode(failure(Result.STATUS, "all", "Reported the configured installations.",
-			List.of()));
-		result.set("key_ids", mapper.valueToTree(policy.keys().stream().map(TrustedKey::id).toList()));
-		result.putArray("installations").add(status);
-		stdout.println(mapper.writeValueAsString(result));
 		return 0;
 	}
 
