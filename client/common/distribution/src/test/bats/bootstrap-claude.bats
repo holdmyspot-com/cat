@@ -1,19 +1,30 @@
 #!/usr/bin/env bats
 
-# Tests Claude plugin installation and removal, directly and through the release's entry script, and generated hook
-# behavior.
+# Tests how the release's entry script cat.sh runs updater setup for Claude Code, from detecting a Claude Code shell to
+# choosing Claude Code's configuration directory as the harness home, and what the generated Claude plugin launchers and
+# hooks report.
 
 load bootstrap-helpers
 
-@test "Claude installer reports a missing shared library" {
-	standalone_directory="${TEST_ROOT}/standalone Claude installer"
-	mkdir -p "${standalone_directory}"
-	cp "${INSTALL_DIRECTORY}/install-claude.sh" "${standalone_directory}/install-claude.sh"
+@test "entry script sets up the updater for Claude Code in a Claude Code shell" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
 
-	run sh "${standalone_directory}/install-claude.sh"
+	run single_command
 
-	[ "${status}" -eq 1 ]
-	[[ "${output}" == *"CAT installer library not found"* ]]
+	[ "${status}" -eq 0 ]
+	expect_setup_ran_for claude "${CLAUDE_CONFIG_DIR}"
+}
+
+@test "entry script gives setup the default Claude Code home when CLAUDE_CONFIG_DIR is unset" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}"
+	unset CLAUDE_CONFIG_DIR
+
+	run single_command --harness claude
+
+	[ "${status}" -eq 0 ]
+	expect_setup_ran_for claude "${HOME}/.claude"
 }
 
 @test "generated Claude plugin-info launcher reports its harness, version, and platform" {
@@ -25,71 +36,6 @@ load bootstrap-helpers
 	[ "${output}" = "harness=claude
 version=1.0
 platform=${expected_platform}" ]
-}
-
-@test "Claude installs an extracted artifact through an artifact-local marketplace" {
-	create_fake_engine_command claude
-	artifact="$(create_test_artifact claude)"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
-		sh "${INSTALL_DIRECTORY}/install-claude.sh" "${artifact}"
-
-	[ "${status}" -eq 0 ]
-	[ -f "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/.claude-plugin/marketplace.json" ]
-	cmp "${INSTALL_DIRECTORY}/claude-marketplace.json" \
-		"${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/.claude-plugin/marketplace.json"
-	[ -f "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace/plugins/cat/.claude-plugin/plugin.json" ]
-	grep -F "claude plugin marketplace add ${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${COMMAND_LOG}"
-	grep -F "claude plugin install cat@cat" "${COMMAND_LOG}"
-	[ "$(cat "${CLAUDE_CONFIG_DIR}/plugins/data/cat-cat/migration-version")" = "1.0" ]
-}
-
-@test "Claude installation preserves the recorded version when a data migration fails" {
-	create_fake_engine_command claude
-	artifact="$(create_test_artifact claude)"
-	data_directory="${TEST_ROOT}/claude data"
-	mkdir -p "${data_directory}"
-	printf '0.9\n' > "${data_directory}/migration-version"
-	add_test_migration "${artifact}" "1.0" 'exit 7'
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
-		CAT_CLAUDE_DATA_DIR="${data_directory}" sh "${INSTALL_DIRECTORY}/install-claude.sh" "${artifact}"
-
-	[ "${status}" -eq 7 ]
-	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
-	[ ! -s "${COMMAND_LOG}" ]
-}
-
-@test "Claude installation runs each pending data migration before replacing the marketplace" {
-	create_fake_engine_command claude
-	artifact="$(create_test_artifact claude)"
-	data_directory="${TEST_ROOT}/claude data"
-	mkdir -p "${data_directory}"
-	printf '0.9\n' > "${data_directory}/migration-version"
-	migration_record='printf "%s\\n" "${CAT_MIGRATION_FROM_VERSION}->${CAT_MIGRATION_TO_VERSION}" >> "${COMMAND_LOG}"'
-	add_test_migration "${artifact}" "0.10" "${migration_record}"
-	add_test_migration "${artifact}" "1.0" "${migration_record}"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
-		CAT_CLAUDE_DATA_DIR="${data_directory}" sh "${INSTALL_DIRECTORY}/install-claude.sh" "${artifact}"
-
-	[ "${status}" -eq 0 ]
-	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "0.9->0.10" ]
-	[ "$(sed -n '2p' "${COMMAND_LOG}")" = "0.9->1.0" ]
-	grep -F "claude plugin marketplace add ${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${COMMAND_LOG}"
-}
-
-@test "Claude removal delegates to claude plugin uninstall and deletes the marketplace and the downloaded bundles" {
-	create_fake_engine_command claude
-	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" "${HOME}/.cat/bundles/cat-codex-v1.0-linux-x64/bin"
-
-	run env PATH="${FAKE_BIN}:${PATH}" COMMAND_LOG="${COMMAND_LOG}" CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR}" \
-		sh "${INSTALL_DIRECTORY}/uninstall-claude.sh"
-
-	[ "${status}" -eq 0 ]
-	[ "$(sed -n '1p' "${COMMAND_LOG}")" = "claude plugin uninstall cat@cat" ]
-	[ ! -e "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
-	[ ! -e "${HOME}/.cat/bundles" ]
 }
 
 @test "generated Claude SessionStart launcher injects the packaged routing and the project's rules" {
@@ -121,87 +67,4 @@ platform=${expected_platform}" ]
 	[[ "${output}" == *'"hookEventName":"SubagentStart"'* ]]
 	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*Read the whole file `\([^`]*\)`.*/\1/p')
 	grep -F "reviewer rule" "${context_file}"
-}
-
-@test "single command changes nothing and gives the command to run outside the sandbox when Claude's settings are read-only" {
-	create_fake_engine_command claude
-	create_fake_release claude shipped > /dev/null
-	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
-	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- --harness claude"
-	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL} | CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- \
---harness claude --uninstall"
-	mkdir -p "${CLAUDE_CONFIG_DIR}"
-	printf '{}\n' > "${CLAUDE_CONFIG_DIR}/settings.json"
-	make_read_only "${CLAUDE_CONFIG_DIR}/settings.json"
-
-	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/settings.json" "${install_command}"
-
-	chmod u+w "${CLAUDE_CONFIG_DIR}/settings.json"
-	run single_command
-	[ "${status}" -eq 0 ]
-	[ -d "${CLAUDE_CONFIG_DIR}/plugins/cat-marketplace" ]
-	make_read_only "${CLAUDE_CONFIG_DIR}/settings.json"
-
-	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/settings.json" "${install_command}"
-	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/settings.json" "${uninstall_command}" --uninstall
-}
-
-@test "single command changes nothing when the directory that holds Claude's marketplace is read-only" {
-	create_fake_engine_command claude
-	create_fake_release claude shipped > /dev/null
-	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
-	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- --harness claude"
-	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL} | CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- \
---harness claude --uninstall"
-	mkdir -p "${CLAUDE_CONFIG_DIR}/plugins"
-	make_read_only "${CLAUDE_CONFIG_DIR}/plugins"
-
-	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/plugins" "${install_command}"
-
-	chmod u+w "${CLAUDE_CONFIG_DIR}/plugins"
-	run single_command
-	[ "${status}" -eq 0 ]
-	make_read_only "${CLAUDE_CONFIG_DIR}/plugins"
-
-	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/plugins" "${install_command}"
-	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/plugins" "${uninstall_command}" --uninstall
-}
-
-# Without CLAUDE_CONFIG_DIR, Claude Code keeps .claude.json directly in the home directory, outside .claude
-@test "single command changes nothing when the home directory that holds Claude's .claude.json is read-only" {
-	create_fake_engine_command claude
-	create_fake_release claude shipped > /dev/null
-	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
-	unset CLAUDE_CONFIG_DIR
-	install_command="curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude"
-	mkdir -p "${HOME}/.claude"
-	make_read_only "${HOME}"
-
-	expect_unchanged_by_single_command claude "${HOME}" "${install_command}"
-}
-
-@test "single command changes nothing when the .claude.json in Claude's configuration directory is read-only" {
-	create_fake_engine_command claude
-	create_fake_release claude shipped > /dev/null
-	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
-	uninstall_command="curl -fsSL ${SINGLE_COMMAND_URL} | CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- \
---harness claude --uninstall"
-	mkdir -p "${CLAUDE_CONFIG_DIR}"
-	printf '{}\n' > "${CLAUDE_CONFIG_DIR}/.claude.json"
-	make_read_only "${CLAUDE_CONFIG_DIR}/.claude.json"
-
-	expect_unchanged_by_single_command claude "${CLAUDE_CONFIG_DIR}/.claude.json" "${uninstall_command}" --uninstall
-}
-
-@test "single command that stops partway tells an agent to hand the command to the user and offers the prompt prefix" {
-	create_fake_engine_command claude
-	printf '%s\n' '#!/usr/bin/env sh' 'exit 1' > "${FAKE_BIN}/claude"
-	create_fake_release claude shipped > /dev/null
-	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
-
-	run single_command
-
-	[ "${status}" -ne 0 ]
-	[[ "${output}" == *"stopped partway"* ]]
-	expect_agent_told_to_hand_command_to_user claude
 }

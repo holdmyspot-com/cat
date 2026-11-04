@@ -20,6 +20,16 @@
 
 	<dependencies>
 		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-common-cli</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-compress</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
 			<groupId>io.github.cowwoc.requirements</groupId>
 			<artifactId>requirements-java</artifactId>
 		</dependency>
