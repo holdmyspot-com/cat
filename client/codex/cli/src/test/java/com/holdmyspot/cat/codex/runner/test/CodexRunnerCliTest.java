@@ -303,74 +303,26 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a one-shot {@code run} without {@code --model} or {@code --effort} is refused, naming the missing
-	 * option, before it takes a capacity slot or starts Codex.
+	 * Returns the profile options that a launch naming {@code --agent} adds.
 	 *
-	 * @param profile  the run's profile options
-	 * @param expected the start of the refusal
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test(dataProvider = "incompleteProfiles")
-	public void refusesOneShotRunWithoutProfile(List<String> profile, String expected) throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope())
-		{
-			// Requirement: R-I11
-			try (TemporaryDirectories cleanup = new TemporaryDirectories())
-			{
-				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-				Path prompt = Files.writeString(root.resolve("prompt.txt"), "task");
-				List<String> args = new ArrayList<>(List.of("run", "--artifact", root.resolve("artifact").toString(),
-					"--project", root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(),
-					"--prompt-file", prompt.toString(), "--output", root.resolve("output").toString()));
-				args.addAll(profile);
-				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(), root.resolve("locks"), 1, () ->
-				{
-					throw new AssertionError("The run waited for capacity");
-				}, new ManualClock(Instant.parse("2026-10-30T12:00:00Z")));
-				try (HarnessCapacity.Permit _ = capacity.acquire())
-				{
-					// The only slot is taken, so a run that tried to take one would wait and fail the test
-					CodexRunnerCli.run(jvm, root, args.toArray(String[]::new), Map.of(), capacity);
-					throw new AssertionError("The run was not refused");
-				}
-				catch (IllegalArgumentException e)
-				{
-					requireThat(e.getMessage(), "message").startsWith(expected).contains("`codex debug models`");
-				}
-				requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
-			}
-		}
-	}
-
-	/**
-	 * Returns the profile options that a launch naming {@code --agent} adds, for a bridge and a one-shot run.
-	 *
-	 * @return the command of each launch and its profile options
+	 * @return the profile options of each launch
 	 */
 	@DataProvider
 	public Object[][] profilesBesideAgent()
 	{
-		List<List<String>> profiles = List.of(List.of("--model", "gpt-6-luna"), List.of("--effort", "low"),
-			List.of("--model", "gpt-6-luna", "--effort", "low"));
-		List<Object[]> launches = new ArrayList<>();
-		for (String command : List.of("serve", "run"))
-			for (List<String> profile : profiles)
-				launches.add(new Object[]{command, profile});
-		return launches.toArray(Object[][]::new);
+		return new Object[][]{{List.of("--model", "gpt-6-luna")}, {List.of("--effort", "low")},
+			{List.of("--model", "gpt-6-luna", "--effort", "low")}};
 	}
 
 	/**
-	 * Verifies that a bridge or one-shot launch that names {@code --agent} together with {@code --model} or
-	 * {@code --effort} is refused, because the agent definition supplies the profile, before it takes a capacity slot
-	 * or starts Codex.
+	 * Verifies that a bridge launch that names {@code --agent} together with {@code --model} or {@code --effort} is
+	 * refused, because the agent definition supplies the profile, before it takes a capacity slot or starts Codex.
 	 *
-	 * @param command the launch's command, {@code serve} or {@code run}
 	 * @param profile the launch's profile options
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test(dataProvider = "profilesBesideAgent")
-	public void refusesProfileBesideAgent(String command, List<String> profile) throws IOException
+	public void refusesProfileBesideAgent(List<String> profile) throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -379,7 +331,7 @@ public final class CodexRunnerCliTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				Path artifact = artifactWithAgent(root, "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"high\"\n");
-				List<String> args = launch(root, command, artifact);
+				List<String> args = launch(root, artifact);
 				args.addAll(profile);
 				try
 				{
@@ -396,33 +348,27 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Returns agent definitions that lack a model or an effort, for a bridge and a one-shot run.
+	 * Returns agent definitions that lack a model or an effort.
 	 *
-	 * @return the command of each launch, the definition's profile fields and the field it lacks
+	 * @return each definition's profile fields and the field it lacks
 	 */
 	@DataProvider
 	public Object[][] incompleteAgents()
 	{
-		List<Object[]> launches = new ArrayList<>();
-		for (String command : List.of("serve", "run"))
-		{
-			launches.add(new Object[]{command, "model_reasoning_effort = \"high\"\n", "model"});
-			launches.add(new Object[]{command, "model = \"gpt-6-luna\"\n", "model_reasoning_effort"});
-		}
-		return launches.toArray(Object[][]::new);
+		return new Object[][]{{"model_reasoning_effort = \"high\"\n", "model"},
+			{"model = \"gpt-6-luna\"\n", "model_reasoning_effort"}};
 	}
 
 	/**
 	 * Verifies that an {@code --agent} launch whose agent definition does not name both a model and an effort is
 	 * refused, naming the missing field, before it takes a capacity slot or starts Codex.
 	 *
-	 * @param command the launch's command, {@code serve} or {@code run}
 	 * @param fields  the definition's profile fields
 	 * @param missing the field that the definition lacks
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test(dataProvider = "incompleteAgents")
-	public void refusesAgentWithoutProfile(String command, String fields, String missing) throws IOException
+	public void refusesAgentWithoutProfile(String fields, String missing) throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -433,7 +379,7 @@ public final class CodexRunnerCliTest
 				Path artifact = artifactWithAgent(root, fields);
 				try
 				{
-					start(jvm, root, launch(root, command, artifact));
+					start(jvm, root, launch(root, artifact));
 					throw new AssertionError("The launch was not refused");
 				}
 				catch (IOException e)
@@ -471,25 +417,17 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Returns the options of an {@code --agent} launch without a profile.
+	 * Returns the options of an {@code --agent} bridge launch without a profile.
 	 *
 	 * @param root     the test's directory
-	 * @param command  the launch's command, {@code serve} or {@code run}
 	 * @param artifact the artifact that holds the agent definition
 	 * @return the launch's arguments
-	 * @throws IOException if the prompt file cannot be written
 	 */
-	private static List<String> launch(Path root, String command, Path artifact) throws IOException
+	private static List<String> launch(Path root, Path artifact)
 	{
-		List<String> args = new ArrayList<>(List.of(command, "--artifact", artifact.toString(), "--project",
+		return new ArrayList<>(List.of("serve", "--artifact", artifact.toString(), "--project",
 			root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--agent", AGENT,
 			"--install-cat"));
-		if (command.equals("run"))
-		{
-			Path prompt = Files.writeString(root.resolve("prompt.txt"), "task");
-			args.addAll(List.of("--prompt-file", prompt.toString(), "--output", root.resolve("output").toString()));
-		}
-		return args;
 	}
 
 	/**
@@ -502,24 +440,11 @@ public final class CodexRunnerCliTest
 	 */
 	private static void start(TestJvmScope jvm, Path root, List<String> args) throws IOException
 	{
-		String[] arguments = args.toArray(String[]::new);
-		if (arguments[0].equals("serve"))
+		CodexRunnerCli.serve(jvm, root, args.toArray(String[]::new), new StringReader(""), new StringWriter(),
+			Map.of(), _ ->
 		{
-			CodexRunnerCli.serve(jvm, root, arguments, new StringReader(""), new StringWriter(), Map.of(), _ ->
-			{
-				throw new AssertionError("The launch took a capacity slot");
-			});
-			return;
-		}
-		HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(), root.resolve("locks"), 1, () ->
-		{
-			throw new AssertionError("The run waited for capacity");
-		}, new ManualClock(Instant.parse("2026-10-30T12:00:00Z")));
-		try (HarnessCapacity.Permit _ = capacity.acquire())
-		{
-			// The only slot is taken, so a run that tried to take one would wait and fail the test
-			CodexRunnerCli.run(jvm, root, arguments, Map.of(), capacity);
-		}
+			throw new AssertionError("The launch took a capacity slot");
+		});
 	}
 
 	/**
@@ -530,13 +455,12 @@ public final class CodexRunnerCliTest
 	@DataProvider
 	public Object[][] overrides()
 	{
-		return new Object[][]{{List.of(), "--artifact"}, {List.of("serve"), "--artifact"},
-			{List.of("run"), "--artifact"}};
+		return new Object[][]{{List.of(), "--artifact"}, {List.of("serve"), "--artifact"}};
 	}
 
 	/**
-	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, in the bridge
-	 * and the one-shot forms, with the reason, before it does anything else.
+	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, with or
+	 * without {@code serve}, with the reason, before it does anything else.
 	 *
 	 * @param command the command's leading arguments
 	 * @param option  the refused option
@@ -584,25 +508,6 @@ public final class CodexRunnerCliTest
 
 		requireThat(refused, "refused").isFalse();
 		requireThat(errors.toString(), "errors").isEmpty();
-	}
-
-	/**
-	 * Verifies that inside a run a one-shot {@code run}, which the launcher runs itself rather than forwarding, is
-	 * refused for the option.
-	 *
-	 * @param option the refused option
-	 */
-	@Test(dataProvider = "bridgeOverrides")
-	public void refusesOneShotOverrideInsideRun(String option)
-	{
-		StringWriter errors = new StringWriter();
-
-		boolean refused = CodexRunnerCli.refusesOverride(new String[]{"run", option, "elsewhere", "--model",
-			"gpt-6-luna", "--effort", "low"}, Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests"),
-			new PrintWriter(errors, true));
-
-		requireThat(refused, "refused").isTrue();
-		requireThat(errors.toString(), "errors").contains(option);
 	}
 
 	/**

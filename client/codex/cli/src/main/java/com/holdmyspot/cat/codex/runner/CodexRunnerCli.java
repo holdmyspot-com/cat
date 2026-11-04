@@ -20,8 +20,6 @@ import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
-import com.holdmyspot.cat.common.runner.HarnessOneShotRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
@@ -50,7 +48,7 @@ import java.util.Set;
 import java.util.function.IntFunction;
 
 /**
- * Parses Codex runner commands to serve JSON requests, run one prompt, or maintain isolated execution directories.
+ * Parses Codex runner commands to serve JSON requests or maintain isolated execution directories.
  */
 public final class CodexRunnerCli
 {
@@ -65,13 +63,13 @@ public final class CodexRunnerCli
 	private static final String TOOL_OUTPUT_TOKEN_LIMIT = "--tool-output-token-limit";
 
 	/**
-	 * Prints the usage, verifies an artifact, runs a lifecycle-only command or one prompt, or serves JSONL turns
+	 * Prints the usage, verifies an artifact, runs a lifecycle-only command, or serves JSONL turns
 	 * through one persistent isolated Codex process, as the arguments select. The launcher always runs the artifact
 	 * that holds it and the {@code codex} command that the {@code PATH} finds: before anything else, it refuses
 	 * {@code --artifact} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the
 	 * launch as a session request.
 	 * <p>
-	 * Inside a run whose runner lets its session request sessions, a bridge launch becomes a session request instead:
+	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead:
 	 * the run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
 	 * receipt.
 	 *
@@ -100,7 +98,7 @@ public final class CodexRunnerCli
 			return;
 		}
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
-		if (requests != null && !requests.isBlank() && !isOneShotCommand(args))
+		if (requests != null && !requests.isBlank())
 		{
 			String[] launch = args;
 			if (launch.length > 0 && launch[0].equals("serve"))
@@ -113,12 +111,6 @@ public final class CodexRunnerCli
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, Pause::sleeping))
 		{
-			if (isOneShotCommand(args))
-			{
-				run(process, Path.of(""), args, environment, HarnessCapacity.forHome(process.fileLocks(), home,
-					HARNESS_ID, HarnessCapacity.MAXIMUM_CONCURRENCY, process.waiting()));
-				return;
-			}
 			try
 			{
 				serve(process, Path.of(""), args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
@@ -134,9 +126,8 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Refuses a launch that names {@code --artifact}, other than a bridge launch inside a run whose runner lets its
-	 * session request sessions. That launch becomes a session request, whose runner ignores the option; a one-shot
-	 * {@code run} is never forwarded, so it is refused inside a run as well.
+	 * Refuses a launch that names {@code --artifact}, other than inside a run whose runner lets its session request
+	 * sessions. There every launch becomes a session request, whose runner ignores the option.
 	 *
 	 * @param args        the command and its options
 	 * @param environment the launcher's environment
@@ -150,45 +141,8 @@ public final class CodexRunnerCli
 		requireThat(environment, "environment").isNotNull();
 		requireThat(errors, "errors").isNotNull();
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
-		boolean forwarded = requests != null && !requests.isBlank() && !isOneShotCommand(args);
+		boolean forwarded = requests != null && !requests.isBlank();
 		return !forwarded && HarnessRunnerOptions.refusesOverride(HARNESS_ID, args, errors);
-	}
-
-	/**
-	 * Executes one prompt through an isolated Codex session.
-	 *
-	 * @param process the process scope, whose lock coordinator and waiting the run uses
-	 * @param workingDirectory the directory from which the command was invoked
-	 * @param args the {@code run} command and its options
-	 * @param environment the host environment
-	 * @param capacity the shared harness capacity. The prompt waits for a permit before it starts Codex.
-	 * @throws NullPointerException if any argument is null
-	 * @throws IOException if the prompt, harness, output, or cleanup I/O fails
-	 */
-	public static void run(JvmScope process, Path workingDirectory, String[] args, Map<String, String> environment,
-		HarnessCapacity capacity) throws IOException
-	{
-		requireThat(args, "args").isNotNull();
-		requireThat(environment, "environment").isNotNull();
-		requireThat(process, "process").isNotNull();
-		requireThat(capacity, "capacity").isNotNull();
-		String agentName = agentName(args);
-		HarnessOneShotOptions options;
-		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
-		{
-			options = HarnessOneShotOptions.parse(withAgentProfile(withoutOptions(args, Set.of("--agent")),
-				agentName), "codex", HarnessTemporaryRoot.from(scope));
-		}
-		CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
-		HarnessRunManager manager = new HarnessRunManager(process.fileLocks(), options.runRoot(), Clock.systemUTC(),
-			FileReplacer.retrying(process.waiting()));
-		String prompt = options.prompt();
-		try (HarnessCapacity.Permit _ = capacity.acquire())
-		{
-			HarnessOneShotRunner.run(() -> new CodexRunner(process.waiting()).start(options.artifact(),
-				options.project(), manager, "codex", environment, options.model(), options.effort(),
-				options.installCat(), agent), manager, prompt, options.output(), options.keepRun());
-		}
 	}
 
 	/**
@@ -346,19 +300,6 @@ public final class CodexRunnerCli
 	 */
 	private CodexRunnerCli()
 	{
-	}
-
-
-	/**
-	 * Indicates whether the arguments select a one-shot run.
-	 *
-	 * @param args command-line arguments
-	 * @return {@code true} if the first argument is {@code run}
-	 */
-	private static boolean isOneShotCommand(String[] args)
-	{
-		assert args != null;
-		return args.length > 0 && args[0].equals("run");
 	}
 
 	/**

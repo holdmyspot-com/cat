@@ -90,30 +90,6 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Starts one persistent Codex app-server process in an owned run directory with an optional direct CAT agent.
-	 *
-	 * @param artifact the complete Codex artifact
-	 * @param project the source project to copy
-	 * @param manager the run manager
-	 * @param executable the Codex executable
-	 * @param environment the scrubbed isolated environment
-	 * @param model the Codex model name
-	 * @param effort the reasoning effort of each turn
-	 * @param installCat whether CAT is installed in the isolated home
-	 * @param agent the optional direct CAT agent definition, whose model and effort replace {@code model} and
-	 *   {@code effort}
-	 * @return the live owned Codex run session
-	 * @throws IOException if validation, copying, or process startup fails
-	 */
-	HarnessRunSession start(Path artifact, Path project, HarnessRunManager manager, String executable,
-		Map<String, String> environment, String model, String effort, boolean installCat, CodexAgentDefinition agent)
-		throws IOException
-	{
-		return start(artifact, project, null, List.of(), manager, executable, environment, model, effort, installCat,
-			agent, List.of(), List.of(), 0, false, 0);
-	}
-
-	/**
 	 * Starts a runner whose validator may read, but not modify, completed executor evidence.
 	 *
 	 * @param artifact the complete Codex artifact

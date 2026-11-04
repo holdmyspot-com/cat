@@ -245,7 +245,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	/**
 	 * Returns a runner command that names an artifact.
 	 *
-	 * @param args     the runner command, optionally starting with {@code serve} or {@code run}
+	 * @param args     the runner command, optionally starting with {@code serve}
 	 * @param artifact the artifact to name when the command names none
 	 * @return {@code args} if it names {@code --artifact}; otherwise {@code args} with {@code --artifact <artifact>}
 	 *   after its command
@@ -259,7 +259,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			return args;
 		List<String> result = new ArrayList<>(Arrays.asList(args));
 		int position = 0;
-		if (!result.isEmpty() && (result.getFirst().equals("serve") || result.getFirst().equals("run")))
+		if (!result.isEmpty() && result.getFirst().equals("serve"))
 			position = 1;
 		result.addAll(position, List.of("--artifact", artifact.toString()));
 		return result.toArray(String[]::new);

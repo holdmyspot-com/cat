@@ -6,7 +6,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import java.io.IOException;
@@ -251,21 +250,6 @@ public final class HarnessRunnerOptionsTest
 		requireThat(unnamed.project(), "project").isEqualTo(path("project"));
 		requireThat(named.artifact(), "named").isEqualTo(path("artifact"));
 		requireThat(served.artifact(), "served").isEqualTo(own);
-	}
-
-	/**
-	 * Verifies that a one-shot {@code run} without {@code --artifact} runs the artifact that holds the launcher.
-	 */
-	@Test
-	public void oneShotDefaultsToLauncherArtifact()
-	{
-		Path own = path("own-artifact");
-
-		HarnessOneShotOptions run = HarnessOneShotOptions.parse(HarnessRunnerOptions.withArtifact(
-			new String[] {"run", "--prompt-file", absolute("prompt.txt"), "--output", absolute("output"), "--model",
-				"model-a", "--effort", "effort-a"}, own), "harness", SESSION);
-
-		requireThat(run.artifact(), "artifact").isEqualTo(own);
 	}
 
 	/**
