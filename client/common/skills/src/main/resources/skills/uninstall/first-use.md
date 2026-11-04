@@ -2,7 +2,7 @@
 
 ## Design Goals
 
-- Remove this harness's whole CAT installation with the trusted updater that is installed with it, so that removal
+- Remove this harness's whole CAT installation with the trusted installer that is installed with it, so that removal
 	downloads nothing, leaves the other harness's installation untouched, and leaves nothing behind that the user did
 	not choose to keep.
 - Keep CAT's plugin data unless the user asks to delete it, so that a later installation can migrate it, and ask the
@@ -13,7 +13,7 @@
 
 ## Guidance
 
-1. Find the trusted updater's launcher, and write its absolute path in place of `<launcher>` below. This harness has
+1. Find the trusted installer's launcher, and write its absolute path in place of `<launcher>` below. This harness has
 	its own installation, so the path contains the harness identifier `<h>`:
 	- On Linux and macOS, it is `cat-updater/<h>/bin/cat-updater` in the directory that the environment variable
 		`XDG_DATA_HOME` names when that variable holds an absolute path, and otherwise in `.local/share` in the user's
@@ -26,13 +26,13 @@
 	because the user's permission entries match that exact text. Write the command as the launcher followed by its
 	arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of commands.
 
-	When the launcher does not exist, there is no trusted updater to remove CAT with for this harness; the other
+	When the launcher does not exist, there is no trusted installer to remove CAT with for this harness; the other
 	harness's installation does not count. End your turn with a reply that says so, and that the user can install CAT's
-	updater again with the entry command from the `update` skill and then ask you to uninstall. Run nothing else.
+	installer again with the entry command from the `update` skill and then ask you to uninstall. Run nothing else.
 2. Before you run anything, ask the user whether to also delete CAT's plugin data, and state that the default is to
 	keep it. Say that uninstalling removes this harness's whole CAT installation: its plugin and registration, the
-	updater, the Java runtime and the cached bundle of an earlier release that CAT kept for it, and the permission
-	entries that let you run the updater, and the runner artifacts in `~/.cat/bundles`, which the other harness's
+	installer, the Java runtime and the cached bundle of an earlier release that CAT kept for it, and the permission
+	entries that let you run the installer, and the runner artifacts in `~/.cat/bundles`, which the other harness's
 	installation downloads again when it next needs them, but not the other harness's CAT installation, and not the
 	user's own files or rules. End your turn with the question, and continue only when the user answers. Skip the
 	question when the user's request already says whether to delete the data.

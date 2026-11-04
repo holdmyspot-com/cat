@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Tests how the release's entry script cat.sh runs updater setup for Codex, from detecting a Codex shell to choosing
+# Tests how the release's entry script cat.sh runs installer setup for Codex, from detecting a Codex shell to choosing
 # Codex's home as the harness home, and what the generated Codex hooks report when Codex runs them on this platform.
 
 load bootstrap-helpers
@@ -38,7 +38,7 @@ codex_hook()
 	esac
 }
 
-@test "entry script sets up the updater for Codex in a Codex shell" {
+@test "entry script sets up the installer for Codex in a Codex shell" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
 

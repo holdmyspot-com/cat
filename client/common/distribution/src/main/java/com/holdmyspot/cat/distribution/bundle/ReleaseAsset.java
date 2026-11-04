@@ -38,7 +38,7 @@ public record ReleaseAsset(String name, Kind kind, Optional<String> harness, Pla
 	 * @throws NullPointerException     if any argument is null
 	 * @throws IllegalArgumentException if {@code name} does not end in {@code .tar.gz}, {@code size} is negative,
 	 *                                  {@code sha256} is not 64 lowercase hexadecimal digits, {@code topDirectory} is
-	 *                                  blank, or a plugin has no harness or an updater has one
+	 *                                  blank, or a plugin has no harness or an installer has one
 	 */
 	public ReleaseAsset
 	{
@@ -71,7 +71,7 @@ public record ReleaseAsset(String name, Kind kind, Optional<String> harness, Pla
 	}
 
 	/**
-	 * Describes the trusted updater's archive, which serves every harness.
+	 * Describes the trusted installer's archive, which serves every harness.
 	 *
 	 * @param platform the platform that the archive runs on
 	 * @param archive  the archive, whose file name without {@code .tar.gz} is its top directory
@@ -80,9 +80,9 @@ public record ReleaseAsset(String name, Kind kind, Optional<String> harness, Pla
 	 * @throws IllegalArgumentException if the archive's name does not end in {@code .tar.gz}
 	 * @throws IOException              if the archive cannot be read
 	 */
-	public static ReleaseAsset updater(Platform platform, Path archive) throws IOException
+	public static ReleaseAsset installer(Platform platform, Path archive) throws IOException
 	{
-		return of(Kind.UPDATER, Optional.empty(), platform, archive);
+		return of(Kind.INSTALLER, Optional.empty(), platform, archive);
 	}
 
 	/**
@@ -116,9 +116,9 @@ public record ReleaseAsset(String name, Kind kind, Optional<String> harness, Pla
 		 */
 		PLUGIN("plugin"),
 		/**
-		 * The trusted updater.
+		 * The trusted installer.
 		 */
-		UPDATER("updater");
+		INSTALLER("updater");
 
 		private final String id;
 

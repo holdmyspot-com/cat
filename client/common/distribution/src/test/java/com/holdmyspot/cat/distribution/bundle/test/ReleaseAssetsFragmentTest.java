@@ -65,20 +65,20 @@ public final class ReleaseAssetsFragmentTest
 	}
 
 	/**
-	 * Verifies that the updater's archive, which serves every harness, is listed with the kind {@code updater} and
+	 * Verifies that the installer's archive, which serves every harness, is listed with the kind {@code installer} and
 	 * without a harness.
 	 */
 	@Test
-	public void describesUpdaterArchiveWithoutHarness() throws IOException
+	public void describesInstallerArchiveWithoutHarness() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			TestJvmScope scope = new TestJvmScope())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-assets-"));
-			Path updater = Files.writeString(temporary.resolve("cat-updater-v1.0-macos-arm64.tar.gz"), "updater");
+			Path installer = Files.writeString(temporary.resolve("cat-updater-v1.0-macos-arm64.tar.gz"), "updater");
 
 			Path fragment = new ReleaseAssetsFragment(scope).write(Platform.MACOS_ARM64,
-				List.of(ReleaseAsset.updater(Platform.MACOS_ARM64, updater)), temporary);
+				List.of(ReleaseAsset.installer(Platform.MACOS_ARM64, installer)), temporary);
 
 			JsonNode entry = JsonMapper.builder().build().readTree(Files.readString(fragment)).get(0);
 			requireThat(entry.propertyNames(), "propertyNames").containsExactly(List.of("name", "kind", "platform",

@@ -58,7 +58,7 @@ curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh |
 ```
 
 The command installs everything CAT needs for that harness: a Java runtime that CAT keeps for itself, a trusted
-updater, the CAT plugin, and the permission entries that let your agent install, update and uninstall CAT afterwards.
+installer, the CAT plugin, and the permission entries that let your agent install, update and uninstall CAT afterwards.
 Each harness gets its own separate installation, so using both puts two Java runtimes on disk and lets each harness run
 a different CAT release. There is nothing to copy into your settings. Windows commands, custom harness homes, and the
 permission boundary are in [Install CAT](docs/installation.md).
@@ -69,16 +69,16 @@ Start or resume a session. CAT then injects its default rules and your project's
 
 ### Install, update, reinstall and uninstall
 
-Afterwards, ask your agent. CAT's `update` skill installs and updates CAT through the trusted updater, and
-installs the plugin again if you removed it by other means. An update moves the Java runtime, the updater and the
+Afterwards, ask your agent. CAT's `update` skill installs and updates CAT through the trusted installer, and
+installs the plugin again if you removed it by other means. An update moves the Java runtime, the installer and the
 plugin to the new release together. It requests GitHub's latest release unless you name one; the release must satisfy
-your updater policy. Naming an older release goes back to it, unless CAT's data structures changed since that release.
+your installer policy. Naming an older release goes back to it, unless CAT's data structures changed since that release.
 It verifies signed release metadata and the release archives before activation. Restart the harness after an update.
 See [updates](docs/installation.md#routine-operations).
 
 CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes that harness's whole CAT
-installation: the plugin, the updater, the Java runtime and the permission entries. It keeps the plugin data unless you
-ask to delete it, and never deletes your own files or rules. The other harness's installation is not touched, apart
+installation: the plugin, the installer, the Java runtime and the permission entries. It keeps the plugin data unless
+you ask to delete it, and never deletes your own files or rules. The other harness's installation is not touched, apart
 from the runner artifacts in `~/.cat/bundles`, which uninstall always deletes and which it downloads again when it next
 needs them. Installing CAT again after that is a new installation that uses the one command above. See
 [uninstall](docs/installation.md#uninstall).

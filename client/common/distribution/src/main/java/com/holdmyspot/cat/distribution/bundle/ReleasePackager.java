@@ -35,7 +35,7 @@ public final class ReleasePackager
 {
 	/**
 	 * The file of an assembled plugin that names the Java runtime that the plugin runs on. Only a plugin assembled in a
-	 * source checkout holds it, naming the runtime that the build wrote; the trusted updater writes it for an installed
+	 * source checkout holds it, naming the runtime that the build wrote; the trusted installer writes it for an installed
 	 * plugin.
 	 */
 	public static final Path RUNTIME_BINDING = Path.of("client", "runtime-binding");
@@ -60,11 +60,11 @@ public final class ReleasePackager
 	}
 
 	/**
-	 * Packages a plugin or updater artifact as a deterministic archive, replacing an existing archive at its generated
+	 * Packages a plugin or installer artifact as a deterministic archive, replacing an existing archive at its generated
 	 * path. The archive leaves out {@link #RUNTIME_BINDING}, which names a runtime on the building machine, and the
 	 * {@link StartupCache startup cache}, which Java accepts only at the location where it was written.
 	 *
-	 * @param component        the plugin harness identifier or {@code updater}, used in the generated archive filename
+	 * @param component        the plugin harness identifier or {@code installer}, used in the generated archive filename
 	 * @param platform         distribution platform whose identifier is included in the generated archive filename
 	 * @param artifactRoot     assembled distribution directory whose contents are archived
 	 * @param releaseDirectory directory that receives the generated archive, creating it when needed

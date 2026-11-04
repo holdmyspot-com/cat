@@ -1,12 +1,12 @@
 #!/usr/bin/env bats
 
-# Tests how the release's entry script cat.sh runs updater setup for Claude Code, from detecting a Claude Code shell to
-# choosing Claude Code's configuration directory as the harness home, and what the generated Claude plugin launchers and
-# hooks report.
+# Tests how the release's entry script cat.sh runs installer setup for Claude Code, from detecting a Claude Code shell
+# to choosing Claude Code's configuration directory as the harness home, and what the generated Claude plugin launchers
+# and hooks report.
 
 load bootstrap-helpers
 
-@test "entry script sets up the updater for Claude Code in a Claude Code shell" {
+@test "entry script sets up the installer for Claude Code in a Claude Code shell" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
 

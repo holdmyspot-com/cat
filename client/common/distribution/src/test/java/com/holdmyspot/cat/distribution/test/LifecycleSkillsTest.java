@@ -7,7 +7,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
+import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
 import java.io.IOException;
@@ -40,7 +40,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests that both plugins hold the {@code update} and {@code uninstall} skills, through which an agent installs,
- * updates and removes CAT only through the installed trusted updater.
+ * updates and removes CAT only through the installed trusted installer.
  */
 public final class LifecycleSkillsTest
 {
@@ -77,7 +77,7 @@ public final class LifecycleSkillsTest
 	/**
 	 * Verifies that a harness's plugin, assembled from the skill layers, holds the {@code update} and
 	 * {@code uninstall} skills with routing descriptions, its own harness's frontmatter and identifier, and the shared
-	 * body, which runs only the trusted updater's launcher, never installs through a script of the plugin, and leaves a
+	 * body, which runs only the trusted installer's launcher, never installs through a script of the plugin, and leaves a
 	 * sandbox-blocked change to the user.
 	 *
 	 * @param harness the harness whose plugin to assemble
@@ -179,7 +179,7 @@ public final class LifecycleSkillsTest
 	}
 
 	/**
-	 * Verifies that every updater command that the {@code update} and {@code uninstall} skills tell an agent to run
+	 * Verifies that every installer command that the {@code update} and {@code uninstall} skills tell an agent to run
 	 * matches a permission entry that setup installs for the harness, so that the harness lets the agent run it.
 	 *
 	 * @param harness the harness whose permission entries to install

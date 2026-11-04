@@ -2,7 +2,7 @@
 // Windows program and clear its environment, so the fake learns what to do only from files beside its runtime.
 //
 // The runtime is the folder above the fake's bin folder; the fake's folder of files is the folder above the runtime,
-// which is the updater data directory when the runtime is an installation's runtime.
+// which is the installer data directory when the runtime is an installation's runtime.
 //
 // Run with the single argument -version, it exits with the number in <runtime>\version-status, or 0 without that
 // file, as a runtime's java -version does. Otherwise it writes what it received to <folder>\java-invocation.txt: one

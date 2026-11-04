@@ -5,9 +5,9 @@ setup()
 	export FAKE_BIN="${TEST_ROOT}/bin"
 	export COMMAND_LOG="${TEST_ROOT}/commands.log"
 	export URL_LOG="${TEST_ROOT}/urls.log"
-	# The fake updater writes the arguments that setup received here, one per line
+	# The fake installer writes the arguments that setup received here, one per line
 	export SETUP_ARGUMENTS="${TEST_ROOT}/setup-arguments"
-	# The fake updater writes the path that it ran from, and what it found beside its version directory, here
+	# The fake installer writes the path that it ran from, and what it found beside its version directory, here
 	export SETUP_LOCATION="${TEST_ROOT}/setup-location"
 	export HOME="${TEST_ROOT}/home"
 	export CODEX_HOME="${HOME}/codex home"
@@ -127,12 +127,12 @@ pack_archive()
 	tar -czf - -C "$(dirname -- "$1")" "$(basename -- "$1")" > "$2"
 }
 
-# Publishes a fake CAT release v1.0 for the current platform: the updater's archive, a plugin archive that the entry
+# Publishes a fake CAT release v1.0 for the current platform: the installer's archive, a plugin archive that the entry
 # script must not download, their SHA-256 list and the release's cat.sh, which the generator fills with that list. Also
 # creates a fake curl that serves the release's files by name.
 #
-# The updater archive mirrors the installed layout: a runtime directory beside the version directory 1.0, whose
-# bin/cat-updater stands for the release's updater. That launcher writes each argument it receives on its own line to
+# The installer archive mirrors the installed layout: a runtime directory beside the version directory 1.0, whose
+# bin/cat-updater stands for the release's installer. That launcher writes each argument it receives on its own line to
 # SETUP_ARGUMENTS, writes the path it ran from and the content of the runtime marker beside its version directory to
 # SETUP_LOCATION, prints a setup result and exits with FAKE_SETUP_STATUS, or zero when that is unset. The fake curl
 # appends each URL that it is asked for to URL_LOG and fails as curl -f does when the release has no such file.
@@ -141,13 +141,13 @@ pack_archive()
 #   Creates FAKE_RELEASE_DIRECTORY and FAKE_BIN/curl.
 create_fake_release()
 {
-	updater_directory="cat-updater-v1.0-$(current_platform)"
+	installer_directory="cat-updater-v1.0-$(current_platform)"
 	plugin_directory="cat-claude-v1.0-$(current_platform)"
 	staging="${TEST_ROOT}/release staging"
-	mkdir -p "${FAKE_RELEASE_DIRECTORY}" "${staging}/${updater_directory}/1.0/bin" \
-		"${staging}/${updater_directory}/runtime" "${staging}/${plugin_directory}"
-	printf 'release runtime\n' > "${staging}/${updater_directory}/runtime/marker"
-	cat > "${staging}/${updater_directory}/1.0/bin/cat-updater" <<'SCRIPT'
+	mkdir -p "${FAKE_RELEASE_DIRECTORY}" "${staging}/${installer_directory}/1.0/bin" \
+		"${staging}/${installer_directory}/runtime" "${staging}/${plugin_directory}"
+	printf 'release runtime\n' > "${staging}/${installer_directory}/runtime/marker"
+	cat > "${staging}/${installer_directory}/1.0/bin/cat-updater" <<'SCRIPT'
 #!/usr/bin/env sh
 printf '%s\n' "$@" > "${SETUP_ARGUMENTS}"
 version_directory="$(cd "$(dirname -- "$0")/.." && pwd)"
@@ -155,13 +155,13 @@ printf '%s\n%s\n' "$0" "$(cat "${version_directory}/../runtime/marker")" > "${SE
 printf '%s\n' '{"result":"set_up"}'
 exit "${FAKE_SETUP_STATUS:-0}"
 SCRIPT
-	chmod +x "${staging}/${updater_directory}/1.0/bin/cat-updater"
+	chmod +x "${staging}/${installer_directory}/1.0/bin/cat-updater"
 	printf 'plugin\n' > "${staging}/${plugin_directory}/marker"
-	pack_archive "${staging}/${updater_directory}" "${FAKE_RELEASE_DIRECTORY}/${updater_directory}.tar.gz"
+	pack_archive "${staging}/${installer_directory}" "${FAKE_RELEASE_DIRECTORY}/${installer_directory}.tar.gz"
 	pack_archive "${staging}/${plugin_directory}" "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz"
 	{
 		sha256_line "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz"
-		sha256_line "${FAKE_RELEASE_DIRECTORY}/${updater_directory}.tar.gz"
+		sha256_line "${FAKE_RELEASE_DIRECTORY}/${installer_directory}.tar.gz"
 	} > "${TEST_ROOT}/SHA256SUMS.txt"
 	sh "${COMMON_RELEASE_DIRECTORY}/generate-cat-sh.sh" "${COMMON_RELEASE_DIRECTORY}/cat.sh" v1.0 \
 		"${TEST_ROOT}/SHA256SUMS.txt" "${FAKE_RELEASE_DIRECTORY}/cat.sh"
@@ -205,7 +205,7 @@ native_path()
 	fi
 }
 
-# Checks that the last single command ran the updater setup from the release's extracted updater archive, for a
+# Checks that the last single command ran the installer setup from the release's extracted installer archive, for a
 # harness and home, with exactly the arguments setup accepts, and that the temporary directory it used is gone.
 #
 # Arguments:
@@ -213,7 +213,7 @@ native_path()
 #   $2 - The harness home that setup must receive.
 #
 # Environment:
-#   SETUP_ARGUMENTS and SETUP_LOCATION hold what the fake updater recorded; TMPDIR is the entry script's temporary
+#   SETUP_ARGUMENTS and SETUP_LOCATION hold what the fake installer recorded; TMPDIR is the entry script's temporary
 #   directory parent.
 expect_setup_ran_for()
 {

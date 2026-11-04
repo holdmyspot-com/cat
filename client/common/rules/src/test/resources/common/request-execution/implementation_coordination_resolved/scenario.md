@@ -7,7 +7,7 @@
 
 ## Scenario
 
-The product behavior and design are settled. I have authorized you to finish the updater, coordinate its workers, and
+The product behavior and design are settled. I have authorized you to finish the installer, coordinate its workers, and
 verify the result without routine confirmations. The next step is {{implementation_action}}. Do you have any questions
 for me before continuing?
 

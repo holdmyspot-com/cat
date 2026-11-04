@@ -1,16 +1,16 @@
 #!/usr/bin/env bats
 
 # Tests what does not depend on the harness in the entry script cat.sh: which assets it downloads and verifies, the
-# platform it names them for, the options it refuses, how it runs the updater's setup from the extracted archive, the
+# platform it names them for, the options it refuses, how it runs the installer's setup from the extracted archive, the
 # exit status and cleanup that follow, and the generator that fills the script and its PowerShell peer with the
 # release's tag and SHA-256 digests, together with the release notes' entry commands.
 #
-# The tests publish a fake release whose updater only records how it was run, so that they decide what cat.sh
+# The tests publish a fake release whose installer only records how it was run, so that they decide what cat.sh
 # downloads, verifies and runs.
 
 load bootstrap-helpers
 
-@test "entry script downloads only the updater archive from the release's download URL" {
+@test "entry script downloads only the installer archive from the release's download URL" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 
@@ -33,7 +33,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 }
 
-@test "entry script runs setup from the extracted updater archive and prints setup's result" {
+@test "entry script runs setup from the extracted installer archive and prints setup's result" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 
@@ -90,7 +90,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	[ ! -e "${SETUP_ARGUMENTS}" ]
 }
 
-@test "entry script stops before extracting or running an updater that does not match the release's digest" {
+@test "entry script stops before extracting or running an installer that does not match the release's digest" {
 	create_fake_release
 	printf 'tampered\n' > "${FAKE_RELEASE_DIRECTORY}/cat-updater-v1.0-$(current_platform).tar.gz"
 	real_tar="$(command -v tar)"
@@ -108,7 +108,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script stops and deletes its temporary directory when the updater download fails" {
+@test "entry script stops and deletes its temporary directory when the installer download fails" {
 	create_fake_release
 	rm "${FAKE_RELEASE_DIRECTORY}/cat-updater-v1.0-$(current_platform).tar.gz"
 	export PATH="${FAKE_BIN}:${PATH}"
@@ -120,7 +120,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script refuses an updater archive that holds anything beside its one top directory" {
+@test "entry script refuses an installer archive that holds anything beside its one top directory" {
 	create_fake_release
 	archive_root="${TEST_ROOT}/extra"
 	mkdir -p "${archive_root}/cat-updater-v1.0-$(current_platform)" "${archive_root}/other"
@@ -139,7 +139,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script names the updater asset of each supported operating system and processor" {
+@test "entry script names the installer asset of each supported operating system and processor" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 	for case in "Linux x86_64 linux-x64" "Linux amd64 linux-x64" "Linux aarch64 linux-arm64" "Linux arm64 linux-arm64" \
@@ -158,7 +158,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script refuses an unsupported operating system or processor before downloading the updater" {
+@test "entry script refuses an unsupported operating system or processor before downloading the installer" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 	for case in "FreeBSD x86_64" "Linux riscv64" "MINGW32_NT-10.0 i686"; do
@@ -184,7 +184,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	expect_setup_ran_for codex "${CODEX_HOME}"
 }
 
-@test "entry script refuses before downloading the updater when it cannot tell the harness" {
+@test "entry script refuses before downloading the installer when it cannot tell the harness" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 
@@ -202,7 +202,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	[ ! -e "${SETUP_ARGUMENTS}" ]
 }
 
-@test "entry script refuses an unknown harness before downloading the updater" {
+@test "entry script refuses an unknown harness before downloading the installer" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
 

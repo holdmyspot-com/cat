@@ -172,7 +172,7 @@ public final class TestabilityAuditTest
 		// A gate command run in its own process, whose working directory the gate runner sets to the worktree
 		"common/cli/src/test/java/com/holdmyspot/cat/common/git/replay/test/GateCommandFixture.java|.",
 		// A fake harness program that reports the working directory its caller started it in
-		"common/updater/src/test/java/com/holdmyspot/cat/common/updater/cli/internal/test/FakeHarnessProgram.java|");
+		"common/installer/src/test/java/com/holdmyspot/cat/common/installer/cli/internal/test/FakeHarnessProgram.java|");
 
 	/**
 	 * Creates a test instance.
@@ -211,9 +211,9 @@ public final class TestabilityAuditTest
 			"claude/cli/src/test/java/com/holdmyspot/cat/claude/runner/test/ClaudeRunnerCliTest.java",
 			"common/cli/src/test/java/com/holdmyspot/cat/common/test/HookScopeTest.java",
 			"common/distribution/src/test/java/com/holdmyspot/cat/distribution/bundle/test/JlinkImageBuilderTest.java",
-			"common/updater/src/test/java/com/holdmyspot/cat/common/updater/engine/test/HttpsReleaseSourceTest.java",
-			"claude/updater/src/test/java/com/holdmyspot/cat/claude/updater/test/ActivationTest.java",
-			"codex/updater/src/test/java/com/holdmyspot/cat/codex/updater/test/ActivationTest.java"))
+			"common/installer/src/test/java/com/holdmyspot/cat/common/installer/engine/test/HttpsReleaseSourceTest.java",
+			"claude/installer/src/test/java/com/holdmyspot/cat/claude/installer/test/ActivationTest.java",
+			"codex/installer/src/test/java/com/holdmyspot/cat/codex/installer/test/ActivationTest.java"))
 		{
 			requireThat(scanned, "scanned").contains(client.resolve(source));
 		}

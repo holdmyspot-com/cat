@@ -16,7 +16,7 @@
 	<modules>
 		<module>agents</module>
 		<module>cli</module>
-		<module>updater</module>
+		<module>installer</module>
 		<module>plugin</module>
 		<module>skills</module>
 		<module>rules</module>

@@ -4,16 +4,16 @@
 
 - Install another CAT release only when it differs from the active one, so that an update with nothing to do changes
 	no installed file and only registers the plugin again when the harness lost it.
-- Install, update and inspect CAT only through CAT's trusted updater, which accepts only signed releases that the
+- Install, update and inspect CAT only through CAT's trusted installer, which accepts only signed releases that the
 	user's policy approves.
-- Treat CAT's Java runtime, updater and plugin as one bundle that moves between releases together.
-- Leave setting up the trusted updater to the user, because that operation changes what the updater trusts.
+- Treat CAT's Java runtime, installer and plugin as one bundle that moves between releases together.
+- Leave setting up the trusted installer to the user, because that operation changes what the installer trusts.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
 - Give the user the exact command that a blocked change needs, so that they can apply it without asking for it.
 
 ## Guidance
 
-1. Find the trusted updater's launcher, and write its absolute path in place of `<launcher>` below. This harness has
+1. Find the trusted installer's launcher, and write its absolute path in place of `<launcher>` below. This harness has
 	its own installation, so the path contains the harness identifier `<h>`:
 	- On Linux and macOS, it is `cat-updater/<h>/bin/cat-updater` in the directory that the environment variable
 		`XDG_DATA_HOME` names when that variable holds an absolute path, and otherwise in `.local/share` in the user's
@@ -25,7 +25,7 @@
 	Read the variable's value first, then write the launcher's absolute path literally in every command that runs it,
 	because the user's permission entries match that exact text. Write each such command as the launcher followed by
 	its arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of commands.
-2. When the launcher does not exist, CAT's trusted updater is not installed for this harness: CAT was never installed
+2. When the launcher does not exist, CAT's trusted installer is not installed for this harness: CAT was never installed
 	for it or was uninstalled from it. The other harness's installation does not count. End your turn with a reply that
 	says so and gives the user, in its own code block, the one command that installs CAT for this harness. The user
 	runs it in a terminal outside the sandbox. The command downloads the release's entry script `cat.sh` with
@@ -36,9 +36,9 @@
 	The entry script's address is `https://github.com/holdmyspot-com/cat/releases/download/<tag>/cat.sh` for a release
 	that the user names, with its tag such as `v1.1`, and otherwise
 	`https://github.com/holdmyspot-com/cat/releases/latest/download/cat.sh`. Say that the command installs the
-	updater, a Java runtime for it, CAT and the permissions that let you install, update and uninstall CAT afterwards,
+	installer, a Java runtime for it, CAT and the permissions that let you install, update and uninstall CAT afterwards,
 	so that the user runs it only this once for this harness, and that they ask you again once it is done. Do not run
-	an installer, the entry script or the updater's setup yourself instead.
+	an installer, the entry script or the installer's setup yourself instead.
 3. Run the launcher:
 	- When the user asks to install CAT, including when CAT's plugin was removed by other means, run
 		`<launcher> install --harness <h>` with no release argument. It installs only the release that this
@@ -47,7 +47,7 @@
 		after `install` reports `installed`, with the release's tag such as `v1.1`.
 	- When the user asks to update CAT to a release they name, run `<launcher> update --harness <h> <tag>`, with the
 		release's tag such as `v1.1`. This is also how to move to a release other than the one that the installation
-		runs. An update moves the Java runtime, the updater and the plugin together.
+		runs. An update moves the Java runtime, the installer and the plugin together.
 	- When the user asks to go back to an earlier release, run `<launcher> update --harness <h> <tag>` with the tag of
 		the release they name, such as `v1.1`. When they do not name one, run `<launcher> status --harness <h>` first,
 		and use the release that its `previous_version` field names; when that field is absent, ask the user which

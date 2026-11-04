@@ -4,8 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.updater.engine.StagedRelease;
-import com.holdmyspot.cat.common.updater.trust.TrustException;
+import com.holdmyspot.cat.common.installer.engine.StagedRelease;
+import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.file.Files;

@@ -23,7 +23,7 @@ powershell_command()
 	env "$@" powershell.exe -NoProfile -NonInteractive -EncodedCommand "${encoded}"
 }
 
-# Runs a PowerShell script file through -File, as CAT's Windows commands start the updater's launchers.
+# Runs a PowerShell script file through -File, as CAT's Windows commands start the installer's launchers.
 #
 # Arguments:
 #   $1 - The script file.

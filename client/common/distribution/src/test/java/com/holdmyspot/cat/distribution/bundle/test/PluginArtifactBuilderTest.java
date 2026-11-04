@@ -43,7 +43,7 @@ public final class PluginArtifactBuilderTest
 	/**
 	 * Verifies that resources, the client folder, generated legal materials, migrations and marketplace metadata are
 	 * assembled, that agent launchers move to {@code bin/} and find {@code client/} from there, and that the plugin
-	 * ships no installer scripts, which the trusted updater replaces.
+	 * ships no installer scripts, which the trusted installer replaces.
 	 */
 	@Test
 	public void assemblesCompleteArtifact() throws IOException

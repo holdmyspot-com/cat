@@ -1,7 +1,7 @@
 module com.holdmyspot.cat.distribution
 {
 	requires com.holdmyspot.cat.common.cli;
-	requires com.holdmyspot.cat.common.updater;
+	requires com.holdmyspot.cat.common.installer;
 	requires io.github.cowwoc.requirements13.java;
 	requires org.apache.commons.compress;
 	requires tools.jackson.databind;

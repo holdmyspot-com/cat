@@ -21,15 +21,15 @@
 	<dependencies>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
-			<artifactId>client-common-updater</artifactId>
+			<artifactId>client-common-installer</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
-			<artifactId>client-claude-updater</artifactId>
+			<artifactId>client-claude-installer</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
-			<artifactId>client-codex-updater</artifactId>
+			<artifactId>client-codex-installer</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>

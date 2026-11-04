@@ -23,7 +23,7 @@ import com.holdmyspot.cat.distribution.bundle.ReleaseAssetsFragment;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import com.holdmyspot.cat.distribution.bundle.RuleReferences;
-import com.holdmyspot.cat.distribution.bundle.UpdaterArtifactBuilder;
+import com.holdmyspot.cat.distribution.bundle.InstallerArtifactBuilder;
 import com.holdmyspot.cat.distribution.license.LegalMaterialsBuilder;
 import com.holdmyspot.cat.distribution.license.ThirdPartyComponent;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
@@ -43,7 +43,7 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Builds the platform-specific CAT plugin and trusted updater archives from Maven module outputs.
+ * Builds the platform-specific CAT plugin and trusted installer archives from Maven module outputs.
  */
 public final class DistributionMain
 {
@@ -149,7 +149,7 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Builds plugin and updater distributions with the release key that setup installs into the user's policy.
+	 * Builds plugin and installer distributions with the release key that setup installs into the user's policy.
 	 *
 	 * @param scope            the build's process scope
 	 * @param projectRoot      the repository root
@@ -170,7 +170,8 @@ public final class DistributionMain
 		requireThat(releaseDirectory, "releaseDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(publicKey, "publicKey").isNotNull();
-		UpdaterArtifactBuilder updaterArtifacts = new UpdaterArtifactBuilder(scope, PluginInfo.CAT_VERSION, publicKey);
+		InstallerArtifactBuilder installerArtifacts = new InstallerArtifactBuilder(scope, PluginInfo.CAT_VERSION,
+			publicKey);
 		projectRoot = projectRoot.toAbsolutePath().normalize();
 		moduleDirectory = moduleDirectory.toAbsolutePath().normalize();
 		releaseDirectory = releaseDirectory.toAbsolutePath().normalize();
@@ -233,29 +234,29 @@ public final class DistributionMain
 			modularizeJavaDiff(javaDiff.path(), staged));
 		Path packagedClaudeCli = copyModule(claudeCli, staged);
 		Path packagedCodexCli = copyModule(codexCli, staged);
-		Path commonUpdater = findDependencyJar(moduleDirectory, "client-common-updater");
-		List<Path> updaterModules = List.of(copyModule(commonUpdater, staged),
-			copyModule(findDependencyJar(moduleDirectory, "client-claude-updater"), staged),
-			copyModule(findDependencyJar(moduleDirectory, "client-codex-updater"), staged));
+		Path commonInstaller = findDependencyJar(moduleDirectory, "client-common-installer");
+		List<Path> installerModules = List.of(copyModule(commonInstaller, staged),
+			copyModule(findDependencyJar(moduleDirectory, "client-claude-installer"), staged),
+			copyModule(findDependencyJar(moduleDirectory, "client-codex-installer"), staged));
 		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), staged),
 			copyModule(jacksonAnnotations.path(), staged), copyModule(jacksonDatabind.path(), staged),
 			copyModule(jacksonYaml.path(), staged), copyModule(snakeyaml.path(), staged),
 			copyModule(jacksonToml.path(), staged));
 
 		List<Path> applicationModules = append(append(append(append(sharedRuntimeModules, packagedClaudeCli),
-			packagedCodexCli), updaterModules), jsonRuntimeModules);
+			packagedCodexCli), installerModules), jsonRuntimeModules);
 		ApplicationModules claudeApplication = ApplicationModules.resolve(applicationModules,
 			roots(Set.of("com.holdmyspot.cat.claude.cli", "org.slf4j.nop"), claudeLaunchers()));
 		ApplicationModules codexApplication = ApplicationModules.resolve(applicationModules,
 			roots(Set.of("com.holdmyspot.cat.codex.cli", "org.slf4j.nop"), codexLaunchers()));
-		ApplicationModules updaterApplication = ApplicationModules.resolve(applicationModules,
-			Set.of("com.holdmyspot.cat.common.updater", "com.holdmyspot.cat.claude.updater",
-				"com.holdmyspot.cat.codex.updater", "com.holdmyspot.cat.common.cli", "java.net.http", "org.slf4j.nop"));
-		Set<String> runtimeModules = new TreeSet<>(updaterApplication.systemModules());
+		ApplicationModules installerApplication = ApplicationModules.resolve(applicationModules,
+			Set.of("com.holdmyspot.cat.common.installer", "com.holdmyspot.cat.claude.installer",
+				"com.holdmyspot.cat.codex.installer", "com.holdmyspot.cat.common.cli", "java.net.http", "org.slf4j.nop"));
+		Set<String> runtimeModules = new TreeSet<>(installerApplication.systemModules());
 		runtimeModules.addAll(claudeApplication.systemModules());
 		runtimeModules.addAll(codexApplication.systemModules());
-		Path updaterDirectory = runtimeDirectory.resolve("updater");
-		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, updaterDirectory.resolve("runtime"),
+		Path installerDirectory = runtimeDirectory.resolve("installer");
+		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, installerDirectory.resolve("runtime"),
 			scope.json());
 		Path claudeClient = stageClient(claudeApplication, clientDirectory.resolve("claude"), scope.json());
 		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeClient);
@@ -344,7 +345,7 @@ public final class DistributionMain
 		RuleReferences.requireResolvable(claudeRoot);
 		RuleReferences.requireResolvable(codexRoot);
 
-		updaterArtifacts.build(updaterDirectory.resolve(PluginInfo.CAT_VERSION), commonUpdater, updaterApplication,
+		installerArtifacts.build(installerDirectory.resolve(PluginInfo.CAT_VERSION), commonInstaller, installerApplication,
 			legalMaterials);
 		writeRuntimeBinding(claudeRoot, releaseRuntime);
 		writeRuntimeBinding(codexRoot, releaseRuntime);
@@ -352,12 +353,12 @@ public final class DistributionMain
 		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
 		Path codexArchive = packager.packageArtifact("codex", platform, codexRoot, releaseDirectory);
-		Path updaterArchive = packager.packageArtifact("updater", platform, updaterDirectory, releaseDirectory);
-		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive, updaterArchive),
+		Path installerArchive = packager.packageArtifact("updater", platform, installerDirectory, releaseDirectory);
+		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive, installerArchive),
 			releaseDirectory.resolve("SHA256SUMS.txt"));
 		new ReleaseAssetsFragment(scope).write(platform, List.of(ReleaseAsset.plugin("claude", platform, claudeArchive),
 			ReleaseAsset.plugin("codex", platform, codexArchive),
-			ReleaseAsset.updater(platform, updaterArchive)), releaseDirectory);
+			ReleaseAsset.installer(platform, installerArchive)), releaseDirectory);
 	}
 
 	/**
@@ -585,7 +586,7 @@ public final class DistributionMain
 
 	/**
 	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote, so that the plugin
-	 * runs from the checkout without the trusted updater. The binding is written after the plugin's runtime manifest,
+	 * runs from the checkout without the trusted installer. The binding is written after the plugin's runtime manifest,
 	 * because it names a path on the building machine, and release archives leave it out.
 	 *
 	 * @param plugin  the assembled plugin

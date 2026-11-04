@@ -17,8 +17,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Uses the JDK's {@code jlink} tool to build a release's Java runtime, which each harness's installation of the release
- * holds for its trusted updater and CAT plugin. The runtime holds only JDK modules and no launchers; each application's
- * modules stay in its own JARs, on its launchers' module path.
+ * holds for its trusted installer and CAT plugin. The runtime holds only JDK modules and no launchers; each
+ * application's modules stay in its own JARs, on its launchers' module path.
  */
 public final class JlinkImageBuilder
 {
