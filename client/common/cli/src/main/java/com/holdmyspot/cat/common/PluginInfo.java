@@ -11,7 +11,7 @@ import java.util.Optional;
  * Identifies a CAT plugin distribution for one supported AI coding harness and native platform.
  *
  * @param harness the supported harness identifier, such as {@code claude} or {@code codex}
- * @param version the CAT release version packaged in the distribution
+ * @param version the full plugin version of the distribution, such as {@code 1.0+b0123456789ab}
  * @param platform the native platform targeted by the distribution
  */
 public record PluginInfo(String harness, String version, Platform platform)
@@ -88,7 +88,7 @@ public record PluginInfo(String harness, String version, Platform platform)
 	 * Creates a CAT plugin distribution identity.
 	 *
 	 * @param harness the supported harness identifier
-	 * @param version the CAT release version packaged in the distribution
+	 * @param version the full plugin version of the distribution, such as {@code 1.0+b0123456789ab}
 	 * @param platform the native platform targeted by the distribution
 	 * @throws NullPointerException if {@code harness}, {@code version}, or {@code platform} are null
 	 * @throws IllegalArgumentException if {@code harness} or {@code version} are blank
@@ -101,7 +101,8 @@ public record PluginInfo(String harness, String version, Platform platform)
 	}
 
 	/**
-	 * Formats the harness identity for command-line output.
+	 * Formats the harness identity for command-line output, one {@code name=value} line each for the harness, the
+	 * version and the platform.
 	 *
 	 * @return the formatted identity
 	 */

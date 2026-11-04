@@ -27,14 +27,16 @@ load bootstrap-helpers
 	expect_setup_ran_for claude "${HOME}/.claude"
 }
 
-@test "generated Claude plugin-info launcher reports its harness, version, and platform" {
+@test "generated Claude plugin-info launcher reports its harness, full plugin version, and platform" {
 	expected_platform="$(current_platform)"
+	expected_version="$(< "${GENERATED_RUNTIME_DIRECTORY}/claude/bin/VERSION")"
 
 	run "${GENERATED_RUNTIME_DIRECTORY}/claude/bin/plugin-info"
 
+	[[ "${expected_version}" =~ ^1\.0\+b[0-9a-f]{12}$ ]]
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "harness=claude
-version=1.0
+version=${expected_version}
 platform=${expected_platform}" ]
 }
 
