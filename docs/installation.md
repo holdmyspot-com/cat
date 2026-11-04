@@ -261,8 +261,8 @@ Uninstall removes this harness's whole CAT installation, and no other harness's:
 - the permission entries that setup added for this harness;
 - the installation directory `<data>` and the policy: the updater, its state and logs, the Java runtime, and the
 	previous bundle that `rollback` would restore;
-- the artifacts that CAT's runner launchers downloaded into `~/.cat/bundles`, but only when no other CAT installation
-	remains. When the other harness still has its installation, `~/.cat/bundles` stays and keeps working for it.
+- the artifacts that CAT's runner launchers downloaded into `~/.cat/bundles`, also while the other harness still has
+	its installation. That installation downloads a copy again the next time it launches the other harness.
 
 It keeps CAT's plugin data unless you ask to delete it, and it never deletes unrelated settings, agents that CAT does
 not own, or your own files, including `~/.cat/rules`. The updater deletes its own directory last, after its Java process

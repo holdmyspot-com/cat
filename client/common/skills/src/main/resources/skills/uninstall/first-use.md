@@ -32,9 +32,10 @@
 2. Before you run anything, ask the user whether to also delete CAT's plugin data, and state that the default is to
 	keep it. Say that uninstalling removes this harness's whole CAT installation: its plugin and registration, the
 	updater, the Java runtime and previous release that CAT kept for it, and the permission entries that let you run
-	the updater, but not the other harness's CAT installation, and not the user's own files or rules. End your turn
-	with the question, and continue only when the user answers. Skip the question when the user's request already says
-	whether to delete the data.
+	the updater, and the runner artifacts in `~/.cat/bundles`, which the other harness's installation downloads again
+	when it next needs them, but not the other harness's CAT installation, and not the user's own files or rules. End
+	your turn with the question, and continue only when the user answers. Skip the question when the user's request
+	already says whether to delete the data.
 3. Run one command: `<launcher> uninstall` to keep CAT's plugin data, or `<launcher> uninstall --delete-data` only when
 	the user asked to delete it. The harness may ask the user to approve this command before it runs; that approval is
 	separate from the user's answer in step 2. When the user declines it, stop and report that nothing was

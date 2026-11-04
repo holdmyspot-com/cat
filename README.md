@@ -78,8 +78,9 @@ and the release archives before activation. Restart the harness after an update.
 
 CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes that harness's whole CAT
 installation: the plugin, the updater, the Java runtime and the permission entries. It keeps the plugin data unless you
-ask to delete it, and never deletes your own files or rules. The other harness's installation is not touched. Installing
-CAT again after that is a new installation that uses the one command above. See
+ask to delete it, and never deletes your own files or rules. The other harness's installation is not touched, apart
+from the runner artifacts in `~/.cat/bundles`, which uninstall always deletes and which it downloads again when it next
+needs them. Installing CAT again after that is a new installation that uses the one command above. See
 [uninstall](docs/installation.md#uninstall).
 
 ## Learn More

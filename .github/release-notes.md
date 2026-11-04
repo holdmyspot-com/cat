@@ -42,6 +42,7 @@ See [installation, permissions, supported platforms, and rollback](https://githu
 
 Ask your agent to uninstall CAT in the harness you use. It asks whether to also delete CAT's plugin data, then removes
 that harness's whole CAT installation: the plugin and its registration, the Codex agents that CAT owns, the trusted
-updater, the Java runtime, the previous bundle and the permission entries. The other harness's installation is not
-touched. CAT's plugin data is kept unless you ask to delete it, and your own files, including `~/.cat/rules`, are never
+updater, the Java runtime, the previous bundle and the permission entries. It also deletes the runner artifacts in
+`~/.cat/bundles`; the other harness's installation is otherwise not touched and downloads them again when it next needs
+them. CAT's plugin data is kept unless you ask to delete it, and your own files, including `~/.cat/rules`, are never
 deleted. Installing CAT again after an uninstall is a new installation: run the one command above again.
