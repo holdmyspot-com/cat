@@ -428,7 +428,7 @@ public final class TestabilityAuditTest
 	public void reportsMutableTestClassFields()
 	{
 		// Requirement: R-T1
-		SourceFile file = new SourceFile(Path.of("SampleTest.java"), false, false, JavaSource.parse("""
+		SourceFile file = new SourceFile(Path.of("SampleTest.java"), false, false, """
 			public final class SampleTest
 			{
 				private int calls;
@@ -437,14 +437,14 @@ public final class TestabilityAuditTest
 				{
 					private int state;
 				}
-			}"""));
+			}""");
 		requireThat(findMutableTestClassFields(file), "violations").isEqualTo(List.of(
 			"SampleTest.java:3: test class field is not final: private int calls"));
-		SourceFile helper = new SourceFile(Path.of("Helper.java"), false, false, JavaSource.parse("""
+		SourceFile helper = new SourceFile(Path.of("Helper.java"), false, false, """
 			final class Helper
 			{
 				private int state;
-			}"""));
+			}""");
 		requireThat(findMutableTestClassFields(helper), "helperViolations").isEmpty();
 	}
 
@@ -498,8 +498,8 @@ public final class TestabilityAuditTest
 					List<String> local = new ArrayList<>();
 				}
 			}""";
-		requireThat(findMutableSharedFixtures(new SourceFile(Path.of("SampleTest.java"), false, false,
-			JavaSource.parse(text))), "violations").isEqualTo(List.of(
+		requireThat(findMutableSharedFixtures(new SourceFile(Path.of("SampleTest.java"), false, false, text)),
+			"violations").isEqualTo(List.of(
 			"SampleTest.java:3: shared fixture is mutable: private static final byte[] BYTES",
 			"SampleTest.java:4: shared fixture is mutable: private static final Set<PosixFilePermission> MODE",
 			"SampleTest.java:6: shared fixture is mutable: private final List<String> calls",
@@ -633,14 +633,14 @@ public final class TestabilityAuditTest
 
 		String scope = library.replace("class Sample", "class SampleScope");
 		Path scopePath = Path.of("SampleScope.java");
-		requireThat(findEnvironmentReads(new SourceFile(scopePath, true, false, JavaSource.parse(scope)), true),
+		requireThat(findEnvironmentReads(new SourceFile(scopePath, true, false, scope), true),
 			"harnessScopeViolations").isEmpty();
-		requireThat(findEnvironmentReads(new SourceFile(scopePath, true, true, JavaSource.parse(scope)), true),
+		requireThat(findEnvironmentReads(new SourceFile(scopePath, true, true, scope), true),
 			"coreScopeViolations").isEqualTo(List.of(
 				"SampleScope.java:5: reads the process environment",
 				"SampleScope.java:6: names the home directory: user.home",
 				"SampleScope.java:7: names the home directory: HOME"));
-		requireThat(findEnvironmentReads(new SourceFile(scopePath, false, false, JavaSource.parse(scope)), true),
+		requireThat(findEnvironmentReads(new SourceFile(scopePath, false, false, scope), true),
 			"testScopeViolations").isEqualTo(List.of(
 				"SampleScope.java:5: reads the process environment",
 				"SampleScope.java:6: names the home directory: user.home",
@@ -727,7 +727,7 @@ public final class TestabilityAuditTest
 	 */
 	private static SourceFile sample(boolean isProduction, boolean isCore, String text)
 	{
-		return new SourceFile(Path.of("Sample.java"), isProduction, isCore, JavaSource.parse(text));
+		return new SourceFile(Path.of("Sample.java"), isProduction, isCore, text);
 	}
 
 	/**
@@ -783,7 +783,7 @@ public final class TestabilityAuditTest
 	}
 
 	/**
-	 * Parses every source file of the Java modules.
+	 * Reads every source file of the Java modules. A file is parsed only when a check needs it.
 	 *
 	 * @param client  the {@code client} directory
 	 * @param modules the discovered module directories
@@ -801,7 +801,7 @@ public final class TestabilityAuditTest
 				boolean isProduction = sourceSet.equals("main");
 				boolean isCore = module.equals(client.resolve(CORE_MODULE));
 				for (Path path : listJavaFiles(root))
-					files.add(new SourceFile(path, isProduction, isCore, JavaSource.parse(Files.readString(path))));
+					files.add(new SourceFile(path, isProduction, isCore, Files.readString(path)));
 			}
 		}
 		return List.copyOf(files);
@@ -816,20 +816,23 @@ public final class TestabilityAuditTest
 	 */
 	private static List<SourceFile> selectAudited(List<Path> modules, List<SourceFile> files)
 	{
-		List<Path> roots = new ArrayList<>();
+		List<Path> optimizerRoots = new ArrayList<>();
+		List<Path> runnerRoots = new ArrayList<>();
 		for (Path module : modules)
 		{
 			for (String sourceSet : List.of("main", "test"))
-				roots.add(module.resolve("src").resolve(sourceSet).resolve("java"));
+			{
+				Path root = module.resolve("src").resolve(sourceSet).resolve("java");
+				for (String optimizerPackage : OPTIMIZER_PACKAGES)
+					optimizerRoots.add(root.resolve(optimizerPackage));
+				runnerRoots.add(root.resolve(RUNNER_PACKAGE));
+			}
 		}
 		List<SourceFile> audited = new ArrayList<>();
 		for (SourceFile file : files)
 		{
-			for (Path root : roots)
-			{
-				if (isAudited(root, file.path()))
-					audited.add(file);
-			}
+			if (isAudited(optimizerRoots, runnerRoots, file.path()))
+				audited.add(file);
 		}
 		return List.copyOf(audited);
 	}
@@ -837,20 +840,20 @@ public final class TestabilityAuditTest
 	/**
 	 * Indicates whether a source file is in the audit's scope.
 	 *
-	 * @param root the source root
-	 * @param path the source file
-	 * @return {@code true} if {@code path} is below an optimizer package of {@code root}, or is a harness capacity file
-	 *   directly in its runner package
+	 * @param optimizerRoots the optimizer package directories of every source root
+	 * @param runnerRoots    the runner package directories of every source root
+	 * @param path           the source file
+	 * @return {@code true} if {@code path} is below an optimizer package, or is a harness capacity file directly in a
+	 *   runner package
 	 */
-	private static boolean isAudited(Path root, Path path)
+	private static boolean isAudited(List<Path> optimizerRoots, List<Path> runnerRoots, Path path)
 	{
-		for (String optimizerPackage : OPTIMIZER_PACKAGES)
+		for (Path optimizerRoot : optimizerRoots)
 		{
-			if (path.startsWith(root.resolve(optimizerPackage)))
+			if (path.startsWith(optimizerRoot))
 				return true;
 		}
-		return path.getParent().equals(root.resolve(RUNNER_PACKAGE)) &&
-			path.getFileName().toString().startsWith("HarnessCapacity");
+		return runnerRoots.contains(path.getParent()) && path.getFileName().toString().startsWith("HarnessCapacity");
 	}
 
 	/**
@@ -1085,9 +1088,9 @@ public final class TestabilityAuditTest
 	 */
 	private static List<String> findSleepingOutsideMain(SourceFile file)
 	{
-		String code = file.source().code();
-		if (!code.contains("sleeping"))
+		if (!file.text().contains("sleeping"))
 			return List.of();
+		String code = file.source().code();
 		List<int[]> bodies = new ArrayList<>();
 		Matcher main = MAIN.matcher(code);
 		while (main.find())
@@ -1146,7 +1149,7 @@ public final class TestabilityAuditTest
 	 */
 	private static List<String> findProductionMainCalls(SourceFile file, Set<String> testTypes)
 	{
-		if (file.isProduction())
+		if (file.isProduction() || !file.text().contains("main"))
 			return List.of();
 		Set<String> testNames = new HashSet<>();
 		for (String type : testTypes)
@@ -1172,10 +1175,10 @@ public final class TestabilityAuditTest
 	 */
 	private static List<String> findSleeps(SourceFile file)
 	{
-		String code = file.source().code();
 		// Every match contains the literal, which a plain search finds faster than the expression
-		if (!code.contains("sleep"))
+		if (!file.text().contains("sleep"))
 			return List.of();
+		String code = file.source().code();
 		List<String> violations = new ArrayList<>();
 		Matcher matcher = SLEEP.matcher(code);
 		while (matcher.find())
@@ -1291,14 +1294,13 @@ public final class TestabilityAuditTest
 	}
 
 	/**
-	 * The sources in the audit's scope, parsed once for every test of the class because parsing them dominates each
-	 * check's runtime. The holder is initialized on first use, so a failure to read the sources fails only the tests
-	 * that need them.
+	 * The sources in the audit's scope, read once for every test of the class. The holder is initialized on first use,
+	 * so a failure to read the sources fails only the tests that need them.
 	 * <p>
-	 * The scan reads and parses every source of the Java modules, about 1,100 files and 10 MB, and finds their fields.
-	 * During a parallel build this can take one second or longer, and the time counts against whichever test first
-	 * reads the holder, so any test that reads it can exceed one second. The checks cover every source in their scope,
-	 * so scanning fewer sources would let a violation in an unscanned source pass.
+	 * The scan reads every source of the Java modules, about 1,100 files and 10 MB, but parses a file only when a check
+	 * examines it, and the sleep checks examine only the files whose text contains their word. Parsing every source
+	 * up front made each test wait for it, about one second during a parallel build. The checks cover every source in
+	 * their scope, so scanning fewer sources would let a violation in an unscanned source pass.
 	 */
 	private static final class Scan
 	{
@@ -1342,29 +1344,114 @@ public final class TestabilityAuditTest
 	/**
 	 * A scanned source file.
 	 * <p>
-	 * Its fields are found once, when it is created, because three checks read them and finding them in every source
-	 * of the Java modules once per check took more than a second.
-	 *
-	 * @param path         the file's path
-	 * @param isProduction {@code true} if the file is in a production source tree
-	 * @param isCore       {@code true} if the file belongs to the harness-neutral core
-	 * @param source       the parsed contents
-	 * @param fields       the field declarations of {@code source}, in source order
+	 * The file is parsed, and its fields are found, the first time a check needs them, and then once for every check.
+	 * Parsing all of the sources up front made every test wait for the parse, although the sleep checks need only the
+	 * files whose text contains their word.
 	 */
-	private record SourceFile(Path path, boolean isProduction, boolean isCore, JavaSource source,
-		List<JavaSource.Field> fields)
+	private static final class SourceFile
 	{
+		private final Path path;
+		private final boolean isProduction;
+		private final boolean isCore;
+		private final String text;
 		/**
-		 * Creates a scanned source file and finds its fields.
+		 * Guards {@code source} and {@code fields}, which concurrent tests fill on demand.
+		 */
+		private final Object lock = new Object();
+		/**
+		 * The parsed contents, or {@code null} if no check has needed them yet.
+		 */
+		private JavaSource source;
+		/**
+		 * The field declarations of {@code source}, in source order, or {@code null} if no check has needed them yet.
+		 */
+		private List<JavaSource.Field> fields;
+
+		/**
+		 * Creates a scanned source file.
 		 *
 		 * @param path         the file's path
 		 * @param isProduction {@code true} if the file is in a production source tree
 		 * @param isCore       {@code true} if the file belongs to the harness-neutral core
-		 * @param source       the parsed contents
+		 * @param text         the file's contents
 		 */
-		SourceFile(Path path, boolean isProduction, boolean isCore, JavaSource source)
+		SourceFile(Path path, boolean isProduction, boolean isCore, String text)
 		{
-			this(path, isProduction, isCore, source, source.fields());
+			this.path = path;
+			this.isProduction = isProduction;
+			this.isCore = isCore;
+			this.text = text;
+		}
+
+		/**
+		 * Returns the file's path.
+		 *
+		 * @return the path
+		 */
+		Path path()
+		{
+			return path;
+		}
+
+		/**
+		 * Indicates whether the file is in a production source tree.
+		 *
+		 * @return {@code true} if it is
+		 */
+		boolean isProduction()
+		{
+			return isProduction;
+		}
+
+		/**
+		 * Indicates whether the file belongs to the harness-neutral core.
+		 *
+		 * @return {@code true} if it does
+		 */
+		boolean isCore()
+		{
+			return isCore;
+		}
+
+		/**
+		 * Returns the file's contents, including comments. Every piece of code that the parsed source holds is also in
+		 * the text, so a check may skip a file whose text lacks what the check looks for.
+		 *
+		 * @return the contents
+		 */
+		String text()
+		{
+			return text;
+		}
+
+		/**
+		 * Returns the parsed contents.
+		 *
+		 * @return the contents
+		 */
+		JavaSource source()
+		{
+			synchronized (lock)
+			{
+				if (source == null)
+					source = JavaSource.parse(text);
+				return source;
+			}
+		}
+
+		/**
+		 * Returns the field declarations.
+		 *
+		 * @return the fields, in source order
+		 */
+		List<JavaSource.Field> fields()
+		{
+			synchronized (lock)
+			{
+				if (fields == null)
+					fields = source().fields();
+				return fields;
+			}
 		}
 
 		/**
@@ -1376,7 +1463,7 @@ public final class TestabilityAuditTest
 		 */
 		String describe(int offset, String message)
 		{
-			return path + ":" + source.lineOf(offset) + ": " + message;
+			return path + ":" + source().lineOf(offset) + ": " + message;
 		}
 	}
 
