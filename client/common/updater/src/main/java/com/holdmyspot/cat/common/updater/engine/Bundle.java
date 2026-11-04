@@ -5,6 +5,8 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.runner.RuntimeDescription;
+import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;

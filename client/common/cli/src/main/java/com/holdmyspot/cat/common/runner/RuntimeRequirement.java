@@ -1,4 +1,4 @@
-package com.holdmyspot.cat.common.updater.engine;
+package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -71,15 +71,17 @@ public record RuntimeRequirement(int javaFeature, SortedSet<String> modules)
 	}
 
 	/**
-	 * Reads one strict JSON object of format 1 with exactly the given members.
+	 * Reads one strict JSON object of format 1 with exactly the given members, as CAT reads each small description
+	 * file that it writes into a release: duplicate members, trailing content and symbolic links are refused.
 	 *
 	 * @param file        the file to read
 	 * @param members     the complete member names
 	 * @param description the document's name in diagnostics
 	 * @return the object
-	 * @throws IOException if the file is absent, a symbolic link, unreadable or malformed
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the file is absent, a symbolic link, unreadable or malformed
 	 */
-	static JsonNode readObject(Path file, Set<String> members, String description) throws IOException
+	public static JsonNode readObject(Path file, Set<String> members, String description) throws IOException
 	{
 		requireThat(file, "file").isNotNull();
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))

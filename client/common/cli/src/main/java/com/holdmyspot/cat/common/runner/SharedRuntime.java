@@ -17,9 +17,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
@@ -49,18 +46,13 @@ public final class SharedRuntime
 	/**
 	 * The runtime description's location, relative to the runtime directory.
 	 */
-	public static final Path DESCRIPTION = Path.of("cat-runtime.json");
+	public static final Path DESCRIPTION = RuntimeDescription.FILE;
 	private static final String MANIFEST_HEADER = "CAT runtime manifest v1";
 	/**
 	 * The largest runtime manifest that CAT reads. A runtime image holds a few hundred files, so each manifest line
 	 * fits easily within this bound.
 	 */
 	private static final int MAXIMUM_MANIFEST_BYTES = 16_777_216;
-	/**
-	 * The largest runtime description or requirement that CAT reads.
-	 */
-	private static final int MAXIMUM_DESCRIPTION_BYTES = 1_048_576;
-	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Writes the manifest of a complete runtime directory.
@@ -134,7 +126,8 @@ public final class SharedRuntime
 	}
 
 	/**
-	 * Verifies that a runtime satisfies an application's runtime requirement.
+	 * Verifies that a runtime satisfies an application's runtime requirement. Both files are read as strictly as the
+	 * updater reads them before it activates a release.
 	 *
 	 * @param runtime     the runtime directory, which holds the runtime description
 	 * @param requirement the application's runtime requirement file
@@ -148,100 +141,24 @@ public final class SharedRuntime
 		requireThat(runtime, "runtime").isNotNull();
 		requireThat(requirement, "requirement").isNotNull();
 		Path description = runtime.resolve(DESCRIPTION);
-		JsonNode runtimeJson = readObject(description, "The Java runtime " + runtime + " has no description " +
-			description + ", so it is not a CAT runtime.", Set.of("format", "java_version", "java_feature", "modules"));
-		JsonNode requirementJson = readObject(requirement, "The plugin has no runtime requirement " + requirement +
-			".", Set.of("format", "java_feature", "modules"));
-		JsonNode javaVersion = runtimeJson.get("java_version");
-		if (javaVersion == null || !javaVersion.isString() || javaVersion.asString().isBlank())
-			throw new IOException("The runtime description " + description + " has no java_version string.");
-		int runtimeFeature = feature(runtimeJson, description);
-		int requiredFeature = feature(requirementJson, requirement);
-		Set<String> requiredModules = modules(requirementJson, requirement);
-		Set<String> missingModules = new TreeSet<>(requiredModules);
-		missingModules.removeAll(modules(runtimeJson, description));
-
-		if (runtimeFeature < requiredFeature || !missingModules.isEmpty())
+		if (Files.notExists(description, NOFOLLOW_LINKS))
 		{
-			throw new IOException("The Java runtime " + runtime + " (Java " + runtimeFeature + ") does not satisfy " +
-				requirement + ", which requires Java " + requiredFeature + " or later with the modules " +
-				requiredModules + "; missing modules: " + missingModules + ". Rerun the entry command of a newer CAT " +
-				"release to install a runtime that satisfies it.");
+			throw new IOException("The Java runtime " + runtime + " has no description " + description + ", so it is " +
+				"not a CAT runtime.");
 		}
-	}
-
-	/**
-	 * Reads a format 1 JSON object.
-	 *
-	 * @param file    the JSON file
-	 * @param missing the message of the failure when the file is missing
-	 * @param fields  the fields that the object may hold
-	 * @return the object
-	 * @throws IOException if the file is missing, is not a format 1 JSON object, or holds another field
-	 */
-	private static JsonNode readObject(Path file, String missing, Set<String> fields) throws IOException
-	{
-		if (!Files.isRegularFile(file))
-			throw new IOException(missing);
-		JsonNode root;
-		try
+		if (Files.notExists(requirement, NOFOLLOW_LINKS))
+			throw new IOException("The plugin has no runtime requirement " + requirement + ".");
+		RuntimeDescription runtimeDescription = RuntimeDescription.read(runtime);
+		RuntimeRequirement required = RuntimeRequirement.read(requirement);
+		if (!runtimeDescription.satisfies(required))
 		{
-			root = JSON.readTree(BoundedInput.readUtf8(file, MAXIMUM_DESCRIPTION_BYTES, "Runtime description"));
+			Set<String> missingModules = new TreeSet<>(required.modules());
+			missingModules.removeAll(runtimeDescription.modules());
+			throw new IOException("The Java runtime " + runtime + " (Java " + runtimeDescription.javaFeature() +
+				") does not satisfy " + requirement + ", which requires Java " + required.javaFeature() + " or later " +
+				"with the modules " + required.modules() + "; missing modules: " + missingModules + ". Rerun the entry " +
+				"command of a newer CAT release to install a runtime that satisfies it.");
 		}
-		catch (JacksonException e)
-		{
-			throw new IOException(file + " is not valid JSON: " + e.getOriginalMessage(), e);
-		}
-		if (!root.isObject())
-			throw new IOException(file + " is not a JSON object.");
-		for (String name : root.propertyNames())
-		{
-			if (!fields.contains(name))
-				throw new IOException(file + " holds the unsupported field " + name + ".");
-		}
-		JsonNode format = root.get("format");
-		if (format == null || !format.isInt() || format.intValue() != 1)
-			throw new IOException(file + " does not have format 1.");
-		return root;
-	}
-
-	/**
-	 * Returns the Java feature release that a description or requirement states.
-	 *
-	 * @param root the JSON object
-	 * @param file the file that holds it
-	 * @return the positive feature release
-	 * @throws IOException if {@code java_feature} is not a positive integer
-	 */
-	private static int feature(JsonNode root, Path file) throws IOException
-	{
-		JsonNode feature = root.get("java_feature");
-		if (feature == null || !feature.isInt() || feature.intValue() < 1)
-			throw new IOException(file + " has no positive integer java_feature.");
-		return feature.intValue();
-	}
-
-	/**
-	 * Returns the modules that a description or requirement lists.
-	 *
-	 * @param root the JSON object
-	 * @param file the file that holds it
-	 * @return a sorted modifiable set of the module names
-	 * @throws IOException if {@code modules} is not an array of non-blank strings
-	 */
-	private static Set<String> modules(JsonNode root, Path file) throws IOException
-	{
-		JsonNode modules = root.get("modules");
-		if (modules == null || !modules.isArray())
-			throw new IOException(file + " has no modules array.");
-		Set<String> result = new TreeSet<>();
-		for (JsonNode module : modules)
-		{
-			if (!module.isString() || module.asString().isBlank())
-				throw new IOException(file + " lists a module that is not a non-blank string: " + module);
-			result.add(module.asString());
-		}
-		return result;
 	}
 
 	/**

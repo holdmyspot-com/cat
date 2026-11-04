@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.release.TarGzExtractor;
+import com.holdmyspot.cat.common.runner.RuntimeDescription;
+import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
 import com.holdmyspot.cat.common.updater.activation.AddDirectory;

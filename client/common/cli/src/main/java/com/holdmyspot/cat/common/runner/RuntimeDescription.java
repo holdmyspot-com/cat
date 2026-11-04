@@ -1,4 +1,4 @@
-package com.holdmyspot.cat.common.updater.engine;
+package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 

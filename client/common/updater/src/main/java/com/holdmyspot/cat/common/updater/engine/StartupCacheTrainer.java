@@ -6,6 +6,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
 import java.nio.file.Files;
