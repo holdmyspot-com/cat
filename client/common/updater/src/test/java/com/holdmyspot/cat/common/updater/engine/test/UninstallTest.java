@@ -222,6 +222,31 @@ public final class UninstallTest
 	}
 
 	/**
+	 * An uninstall that kept the plugin data and stopped at a later step leaves the data step to the next uninstall, so
+	 * that continuing with data deletion deletes the data.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void continuedUninstallDeletesKeptData() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-continued-data-")));
+			RecordingIntegration integration = new RecordingIntegration().fail("removePermissions");
+			fixture.uninstaller(integration).uninstall(false);
+			requireThat(Files.exists(fixture.home.resolve("plugin-data"), NOFOLLOW_LINKS), "keptData").isTrue();
+
+			UpdateResult result = fixture.uninstaller(integration.succeed("removePermissions")).uninstall(true).
+				outcome();
+
+			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
+			requireThat(Files.exists(fixture.home.resolve("plugin-data"), NOFOLLOW_LINKS), "data").isFalse();
+		}
+	}
+
+	/**
 	 * Returns how many steps an interrupted uninstall completed.
 	 *
 	 * @return each count of completed steps

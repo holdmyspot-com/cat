@@ -42,10 +42,14 @@ public final class Uninstaller
 	 */
 	private static final String UNREGISTER = "unregister";
 	/**
+	 * The step that deletes the plugin's data directory when the user asked for that.
+	 */
+	private static final String DATA = "data";
+	/**
 	 * The steps in the order in which they run. The permission entries are removed last, so that an agent can still
 	 * run an uninstall that stopped earlier.
 	 */
-	private static final List<String> STEPS = List.of(UNREGISTER, "plugin", "bundles", "data", "permissions",
+	private static final List<String> STEPS = List.of(UNREGISTER, "plugin", "bundles", DATA, "permissions",
 		"policy");
 	/**
 	 * The largest supported progress record.
@@ -98,7 +102,8 @@ public final class Uninstaller
 	/**
 	 * Runs every step that an earlier uninstall did not complete. When the harness program that setup recorded no
 	 * longer exists, the plugin cannot be unregistered, so that step is skipped without being recorded as completed and
-	 * every other step still runs.
+	 * every other step still runs. The data step is recorded as completed only when it deleted the plugin's data, so
+	 * that a later uninstall asked to delete the data deletes it.
 	 *
 	 * @param deleteData true to delete the plugin's data directory, false to keep it
 	 * @return {@code uninstalled} when every step that it could run completed; otherwise the outcome names the failed
@@ -132,6 +137,9 @@ public final class Uninstaller
 						continue;
 					step = next;
 					run(next, home, deleteData, progress);
+					// Data that this run kept stays for a later uninstall that is asked to delete it
+					if (next.equals(DATA) && !deleteData)
+						continue;
 					progress.completed().add(next);
 					writeProgress(progress);
 				}
@@ -200,7 +208,7 @@ public final class Uninstaller
 					LinkSafeDeletion.delete(path, home);
 			}
 			case "bundles" -> deleteBundles();
-			case "data" ->
+			case DATA ->
 			{
 				if (deleteData)
 					LinkSafeDeletion.delete(activation.dataDirectory(home), home);
