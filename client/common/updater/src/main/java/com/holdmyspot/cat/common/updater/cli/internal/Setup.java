@@ -126,6 +126,8 @@ public final class Setup
 	 * then installs the runtime, the updater, the policy, the stable launcher and the current selection, deletes every
 	 * other updater version, activates the plugin of this release (also when the harness already has it) and installs
 	 * the permission entries. A failure of the plugin step leaves the updater installed and is reported in the outcome.
+	 * After a successful plugin step, setup removes the harness from the single updater installation that earlier
+	 * builds shared between harnesses, and deletes that installation once it serves no harness.
 	 *
 	 * @param harness     the harness
 	 * @param home        the existing absolute harness home
@@ -222,6 +224,7 @@ public final class Setup
 		{
 			permissions = PermissionRecord.add(UpdaterState.of(locations.data(), harness).permissions(),
 				integration.installPermissions(home, launcher));
+			new SharedLayout(locations.data().getParent(), locations.sharedPolicy(), replacer).retire(harness);
 		}
 		return new Outcome(version, pluginResult, launcher, permissions, policy);
 	}
@@ -445,7 +448,7 @@ public final class Setup
 	 * @param name the name
 	 * @return true if it is a release version
 	 */
-	private static boolean isVersion(String name)
+	static boolean isVersion(String name)
 	{
 		try
 		{

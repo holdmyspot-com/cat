@@ -181,6 +181,17 @@ public record Locations(Path image, Path data, Path policy)
 	}
 
 	/**
+	 * Returns the policy file of the single updater installation that earlier builds shared between harnesses, kept
+	 * directly in the directory that now holds one installation per harness.
+	 *
+	 * @return the absolute policy file, the sibling of the directory that holds this installation's policy
+	 */
+	public Path sharedPolicy()
+	{
+		return policy.getParent().resolveSibling("policy.json");
+	}
+
+	/**
 	 * Returns the stable launcher path for the platform.
 	 *
 	 * @param platform the current platform

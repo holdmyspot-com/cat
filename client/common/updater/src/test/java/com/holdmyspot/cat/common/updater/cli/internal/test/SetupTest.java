@@ -234,6 +234,74 @@ public final class SetupTest
 	}
 
 	/**
+	 * Setup removes its harness from the single updater installation that earlier builds kept directly in the
+	 * directory that holds every installation and, when no harness is left in that installation's policy, deletes the
+	 * installation and its policy without following a link inside it and without touching another harness's own
+	 * installation.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void retiresSharedLayout() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-shared-")));
+			Path base = fixture.data().getParent();
+			fixture.writeSharedLayout(Map.of("harness-a", fixture.home));
+			Path outside = Files.createDirectories(fixture.root.resolve("outside"));
+			Files.writeString(outside.resolve("file"), "kept");
+			Files.createSymbolicLink(base.resolve("state/link"), outside);
+			Files.createDirectories(base.resolve("harness-b"));
+			Files.writeString(base.resolve("harness-b/current"), "1.1\n");
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.INSTALLED);
+			for (String name : List.of("current", "bin", "1.0", "state"))
+				requireThat(Files.exists(base.resolve(name), NOFOLLOW_LINKS), name).isFalse();
+			requireThat(Files.exists(fixture.sharedPolicy(), NOFOLLOW_LINKS), "sharedPolicy").isFalse();
+			requireThat(Files.readString(outside.resolve("file")), "linkTarget").isEqualTo("kept");
+			requireThat(Files.readString(base.resolve("harness-b/current")), "otherInstallation").isEqualTo("1.1\n");
+			requireThat(Files.readString(fixture.data().resolve("current")), "current").isEqualTo("1.2\n");
+			requireThat(TrustPolicy.read(fixture.policy()).harnesses(), "policy").
+				isEqualTo(Map.of("harness-a", fixture.home));
+		}
+	}
+
+	/**
+	 * Setup removes only its own harness from the single updater installation of earlier builds while that
+	 * installation's policy still names another harness, keeping the installation for that harness.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void keepsSharedLayoutForOthers() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-shared-other-")));
+			Path base = fixture.data().getParent();
+			Path otherHome = Files.createDirectories(fixture.root.resolve("other-home"));
+			fixture.writeSharedLayout(Map.of("harness-a", fixture.home, "harness-b", otherHome));
+			Files.createDirectories(base.resolve("state/harness-b"));
+			Files.writeString(base.resolve("state/harness-b/lock"), "");
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.INSTALLED);
+			requireThat(Files.exists(base.resolve("state/harness-a"), NOFOLLOW_LINKS), "ownState").isFalse();
+			requireThat(Files.exists(base.resolve("state/harness-b/lock"), NOFOLLOW_LINKS), "otherState").isTrue();
+			requireThat(Files.readString(base.resolve("current")), "sharedCurrent").isEqualTo("1.0\n");
+			requireThat(base.resolve("1.0/bin/java"), "sharedImage").isRegularFile();
+			requireThat(TrustPolicy.read(fixture.sharedPolicy()).harnesses(), "sharedPolicy").
+				isEqualTo(Map.of("harness-b", otherHome));
+		}
+	}
+
+	/**
 	 * Setup with a local plugin tree installs a copy of it, bound to the runtime, also when the release has no key;
 	 * the user's tree is not changed.
 	 *
@@ -489,6 +557,41 @@ public final class SetupTest
 		private Path policy()
 		{
 			return root.resolve("xdg-config/cat-updater/harness-a/policy.json");
+		}
+
+		/**
+		 * Returns the policy file of the single updater installation that earlier builds kept.
+		 *
+		 * @return the file
+		 */
+		private Path sharedPolicy()
+		{
+			return root.resolve("xdg-config/cat-updater/policy.json");
+		}
+
+		/**
+		 * Creates the single updater installation that earlier builds kept directly in the directory that holds every
+		 * installation: its current selection, stable launcher, updater image with its own Java, the state of its first
+		 * harness and its policy.
+		 *
+		 * @param harnesses the harnesses that the installation's policy records, mapped to their homes
+		 * @throws IOException    if the installation cannot be written
+		 * @throws TrustException if the policy is invalid
+		 */
+		private void writeSharedLayout(Map<String, Path> harnesses) throws IOException, TrustException
+		{
+			Path base = data().getParent();
+			Files.createDirectories(base.resolve("bin"));
+			Files.writeString(base.resolve("bin/cat-updater"), "#!/bin/sh\n");
+			Files.writeString(base.resolve("current"), "1.0\n");
+			Files.createDirectories(base.resolve("1.0/bin"));
+			Files.writeString(base.resolve("1.0/bin/java"), "java");
+			Files.createDirectories(base.resolve("state/harness-a"));
+			Files.writeString(base.resolve("state/harness-a/lock"), "");
+			TrustPolicy release = source.policy(home);
+			Files.createDirectories(sharedPolicy().getParent());
+			TrustPolicy.of(release.keys(), release.releaseBaseUrl(), release.minimum(), release.maximumMajor(),
+				harnesses).write(sharedPolicy(), replacer());
 		}
 
 		/**
