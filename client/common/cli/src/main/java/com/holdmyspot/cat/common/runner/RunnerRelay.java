@@ -19,7 +19,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * Outside a run, the launcher runs the runner of the other harness's CAT artifact that the plugin selects, which runs
  * that artifact. Inside a run whose runner lets its session request sessions, it requests a session of its harness
- * from the run's runner instead, as the harness's own runner launcher does.
+ * from the run's runner instead, as the harness's own runner launcher does. Either way, the launcher starts nothing
+ * from a Codex sandbox that has network off.
  */
 public final class RunnerRelay
 {
@@ -73,8 +74,9 @@ public final class RunnerRelay
 	 * @param output      receives the session's transcript inside a run when {@code --output} is absent
 	 * @param errors      receives the reason when the launcher refuses the launch or a requested session does not
 	 *                    complete
-	 * @return the runner's exit status, or {@link HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch outside a
-	 *   run names {@code --artifact}, which the launcher refuses before it selects an artifact
+	 * @return the runner's exit status, or {@link HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch is made from
+	 *   a Codex sandbox that has network off, or if the launch outside a run names {@code --artifact}. The launcher
+	 *   refuses before it selects an artifact
 	 * @throws IllegalArgumentException if the options are invalid inside a run
 	 * @throws IOException              if no artifact can be selected, the runner cannot be run, or the launch cannot
 	 *                                  be forwarded
@@ -88,6 +90,8 @@ public final class RunnerRelay
 		requireThat(selector, "selector").isNotNull();
 		requireThat(starter, "starter").isNotNull();
 		requireThat(pause, "pause").isNotNull();
+		if (ParentSandbox.refusesNetworkOff(harness, environment, errors))
+			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 		String requests = environment.get(REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
 		{

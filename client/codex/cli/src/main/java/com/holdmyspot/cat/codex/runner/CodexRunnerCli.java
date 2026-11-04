@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
@@ -64,7 +65,8 @@ public final class CodexRunnerCli
 	 * Prints the usage, verifies an artifact, or serves JSONL turns through one persistent isolated Codex process, as
 	 * the arguments select. The launcher always runs the artifact that holds it and the {@code codex} command that the
 	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
-	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request.
+	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request. It also
+	 * refuses, with the same status, any launch that starts a session from a Codex sandbox that has network off.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -77,7 +79,7 @@ public final class CodexRunnerCli
 	{
 		args = CommandLineArguments.recover(args);
 		Map<String, String> environment = Platform.current().environment(System.getenv());
-		if (refusesOverride(args, environment, new PrintWriter(System.err, true, UTF_8)))
+		if (refusesLaunch(args, environment, new PrintWriter(System.err, true, UTF_8)))
 			System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 		if (args.length == 1 && args[0].equals("--help"))
 		{
@@ -135,6 +137,30 @@ public final class CodexRunnerCli
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		boolean forwarded = requests != null && !requests.isBlank();
 		return !forwarded && HarnessRunnerOptions.refusesOverride(HARNESS_ID, args, errors);
+	}
+
+	/**
+	 * Refuses a launch that would start a session, but cannot. That is a launch that names {@code --artifact}, as
+	 * {@link #refusesOverride} refuses it, and any launch from a Codex sandbox that has network off, whose session
+	 * could not reach its model. Printing the usage and verifying an artifact start no session, so they are never
+	 * refused for the sandbox.
+	 *
+	 * @param args        the command and its options
+	 * @param environment the launcher's environment
+	 * @param errors      receives the reason for a refusal
+	 * @return {@code true} if the launch is refused
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean refusesLaunch(String[] args, Map<String, String> environment, PrintWriter errors)
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		if (refusesOverride(args, environment, errors))
+			return true;
+		boolean startsNothing = args.length == 1 && args[0].equals("--help") ||
+			args.length == 2 && args[0].equals("--verify-artifact");
+		return !startsNothing && ParentSandbox.refusesNetworkOff(HARNESS_ID, environment, errors);
 	}
 
 	/**

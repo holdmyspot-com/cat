@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -569,6 +570,75 @@ public final class CodexRunnerCliTest
 		requireThat(refused, "refused").isTrue();
 		requireThat(errors.toString(), "errors").contains("codex-runner").contains(option).
 			contains("its own CAT artifact").contains("PATH");
+	}
+
+	/**
+	 * Returns each command form of the launcher that starts a session.
+	 *
+	 * @return the command
+	 */
+	@DataProvider
+	public Object[][] sessionCommands()
+	{
+		return new Object[][]{{List.of("--project", "project", "--model", "gpt-6-luna", "--effort", "low")},
+			{List.of("serve", "--project", "project", "--model", "gpt-6-luna", "--effort", "low")}};
+	}
+
+	/**
+	 * Verifies that when the Codex sandbox that holds the launcher has network off, the launcher refuses a launch
+	 * that starts a session, whether or not the launch is forwarded as a session request, with a reason that names the
+	 * setting that enables network.
+	 *
+	 * @param command the launch
+	 */
+	@Test(dataProvider = "sessionCommands")
+	public void refusesWhenSandboxHasNoNetwork(List<String> command)
+	{
+		StringWriter errors = new StringWriter();
+
+		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new),
+			Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1"), new PrintWriter(errors, true));
+
+		requireThat(refused, "refused").isTrue();
+		requireThat(errors.toString(), "errors").contains("codex-runner").
+			contains("sandbox_workspace_write.network_access = true");
+	}
+
+	/**
+	 * Verifies that the launcher answers {@code --help} and verifies an artifact when the sandbox has no network,
+	 * since neither starts a session.
+	 */
+	@Test
+	public void answersHelpWhenSandboxHasNoNetwork()
+	{
+		StringWriter errors = new StringWriter();
+		Map<String, String> environment = Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1");
+
+		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, environment,
+			new PrintWriter(errors, true));
+		boolean verifyRefused = CodexRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"}, environment,
+			new PrintWriter(errors, true));
+
+		requireThat(helpRefused, "helpRefused").isFalse();
+		requireThat(verifyRefused, "verifyRefused").isFalse();
+		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Verifies that the launcher does not refuse a launch when the sandbox's network is on.
+	 *
+	 * @param command the launch
+	 */
+	@Test(dataProvider = "sessionCommands")
+	public void startsWhenSandboxHasNetwork(List<String> command)
+	{
+		StringWriter errors = new StringWriter();
+
+		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new), Map.of(),
+			new PrintWriter(errors, true));
+
+		requireThat(refused, "refused").isFalse();
+		requireThat(errors.toString(), "errors").isEmpty();
 	}
 
 	/**

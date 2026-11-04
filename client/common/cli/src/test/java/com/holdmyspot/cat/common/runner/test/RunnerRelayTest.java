@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.RunnerRelay;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -110,6 +111,34 @@ public final class RunnerRelayTest
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b-runner").contains(option).
 			contains("its own CAT artifact").contains("PATH");
+		requireThat(output.size(), "outputBytes").isEqualTo(0);
+	}
+
+	/**
+	 * Verifies that when the Codex sandbox that holds the launcher has network off, the launcher exits with status 2
+	 * and a reason that names the setting that enables network, before it selects an artifact, starts a runner or
+	 * writes output.
+	 *
+	 * @throws IOException if the relay fails
+	 */
+	@Test
+	public void refusesWhenCodexSandboxHasNoNetwork() throws IOException
+	{
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		StringWriter errors = new StringWriter();
+
+		int status = RunnerRelay.relay("harness-b", new String[]{"--project", "project"},
+			Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1"), () ->
+			{
+				throw new AssertionError("No artifact is selected");
+			}, (_, _) ->
+			{
+				throw new AssertionError("No runner starts");
+			}, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+
+		requireThat(status, "status").isEqualTo(2);
+		requireThat(errors.toString(), "errors").contains("harness-b-runner").
+			contains("sandbox_workspace_write.network_access = true");
 		requireThat(output.size(), "outputBytes").isEqualTo(0);
 	}
 
