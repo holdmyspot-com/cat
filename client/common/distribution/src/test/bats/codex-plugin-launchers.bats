@@ -11,7 +11,10 @@ load bootstrap-helpers
 # The command runs in a folder below the CAT project, so run-part must look upward for the project that receives the
 # output. In a Codex thread whose configuration sets no limit, a part holds about 40,000
 # bytes, so the command's output takes several parts; the second is printed by running the command the first names.
+# The project is not in a Git work tree; Git's search for one stops at the test's folder, so a test folder inside
+# another work tree does not make run-part treat the project as part of it.
 @test "the plugin's run-part saves output in the project and the next part's command runs the plugin's read-part" {
+	export GIT_CEILING_DIRECTORIES="${TEST_ROOT}"
 	runtime="${TEST_ROOT}/installed plugin"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${runtime}"
 	project="${TEST_ROOT}/project"
