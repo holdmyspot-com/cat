@@ -104,6 +104,62 @@ public final class ActivationTest
 	}
 
 	/**
+	 * A plugin version that names its build is read as installed, and the highest release wins over a lower release
+	 * built later.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void readsPluginVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, "1.10+b0123456789ab", "1.10+b0123456789ab", "1.10+b0123456789ab");
+			cache(home, "1.9+bffffffffffff", "1.9+bffffffffffff");
+			cache(home, "1.11+bnot-a-commit", "1.11+bnot-a-commit");
+
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.of("1.10+b0123456789ab"), true));
+		}
+	}
+
+	/**
+	 * A plugin copy that names another build of the same release does not count as the installed version.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void detectsOtherBuild() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, "1.0+b0123456789ab", "1.0+b0123456789ab", "1.0+bffffffffffff");
+
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.of("1.0+b0123456789ab"), false));
+		}
+	}
+
+	/**
+	 * Installation plans the cache folder named by the full plugin version.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void plansPluginVersionFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			requireThat(provider().installPlan(home, "1.1+b0123456789ab").getLast(), "cacheStep").
+				isEqualTo(new AddDirectory(home.resolve("plugins/cache/cat/cat/1.1+b0123456789ab"),
+					home.resolve("plugins/cache/cat")));
+		}
+	}
+
+	/**
 	 * A developer's local directory wins over numeric releases and prevents routine activation.
 	 *
 	 * @throws IOException if a fixture cannot be written or read

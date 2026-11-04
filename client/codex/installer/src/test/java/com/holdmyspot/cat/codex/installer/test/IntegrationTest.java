@@ -37,6 +37,11 @@ public final class IntegrationTest
 	private static final String METADATA = "{\"name\":\"cat\",\"plugins\":[]}\n";
 
 	/**
+	 * The plugin version of the activated release, which names its build.
+	 */
+	private static final String VERSION = "1.0+b0123456789ab";
+
+	/**
 	 * Setup finds the Codex command-line program {@code codex}.
 	 */
 	@Test
@@ -491,10 +496,10 @@ public final class IntegrationTest
 	private static void activate(Path home) throws IOException
 	{
 		Path plugin = home.resolve("plugins/cat-marketplace/plugins/cat");
-		write(plugin.resolve(".codex-plugin/plugin.json"), "{\"name\":\"cat\",\"version\":\"1.0\"}\n");
+		write(plugin.resolve(".codex-plugin/plugin.json"), "{\"name\":\"cat\",\"version\":\"" + VERSION + "\"}\n");
 		write(plugin.resolve("install/codex-marketplace.json"), METADATA);
 		write(plugin.resolve("client/runtime-binding"), "/runtime\n");
-		copy(plugin, home.resolve("plugins/cache/cat/cat/1.0"));
+		copy(plugin, home.resolve("plugins/cache/cat/cat").resolve(VERSION));
 	}
 
 	/**
@@ -508,9 +513,9 @@ public final class IntegrationTest
 	{
 		Path cache = home.resolve("plugins/cache/cat/cat");
 		TemporaryDirectories.deleteRecursively(cache);
-		copy(home.resolve("plugins/cat-marketplace/plugins/cat"), cache.resolve("1.0"));
+		copy(home.resolve("plugins/cat-marketplace/plugins/cat"), cache.resolve(VERSION));
 		if (!extra.isEmpty())
-			write(cache.resolve("1.0").resolve(extra), "extra");
+			write(cache.resolve(VERSION).resolve(extra), "extra");
 	}
 
 	/**

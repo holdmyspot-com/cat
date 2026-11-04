@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.installer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.ActivationStep;
 import com.holdmyspot.cat.common.installer.activation.AddDirectory;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
@@ -117,7 +118,7 @@ public final class CodexActivation implements PluginActivation
 
 	/**
 	 * Reads the selected cache version. A real {@code local} directory takes precedence and is always inconsistent;
-	 * otherwise both plugin manifests must equal the highest numeric directory name for the state to be consistent.
+	 * otherwise both plugin manifests must equal the highest release directory name for the state to be consistent.
 	 * Without a cache version, the state is consistent only when neither the marketplace root nor any entry of the
 	 * plugin's cache directory remains. Leftover custom agents and their ownership manifest do not make it
 	 * inconsistent, because installation replaces the agents that the manifest lists.
@@ -345,22 +346,46 @@ public final class CodexActivation implements PluginActivation
 	}
 
 	/**
-	 * Validates a canonical release version before resolving paths derived from it.
+	 * Validates a plugin version, or a bare release version, before resolving paths derived from it.
 	 *
-	 * @param version the release version
+	 * @param version the plugin version {@code <release>+b<commit>}, or a bare release version
 	 * @param name    the parameter name used in validation diagnostics
-	 * @throws IllegalArgumentException if the version is blank or is not a CAT release
+	 * @throws IllegalArgumentException if the version is blank or names no CAT release
 	 */
 	private static void validateVersion(String version, String name)
 	{
 		requireThat(version, name).isNotBlank();
+		if (release(version) == null)
+			throw new IllegalArgumentException("Invalid CAT release version: " + version);
+	}
+
+	/**
+	 * Reads the release of a version folder's name.
+	 *
+	 * @param name a plugin version {@code <release>+b<commit>}, or a bare release version
+	 * @return the release, or null when the name is neither
+	 */
+	private static ReleaseVersion release(String name)
+	{
+		String release = name;
+		if (name.contains(PluginVersion.BUILD_SEPARATOR))
+		{
+			try
+			{
+				release = PluginVersion.parse(name).release();
+			}
+			catch (IllegalArgumentException _)
+			{
+				return null;
+			}
+		}
 		try
 		{
-			ReleaseVersion.parse(version);
+			return ReleaseVersion.parse(release);
 		}
-		catch (TrustException e)
+		catch (TrustException _)
 		{
-			throw new IllegalArgumentException("Invalid CAT release version: " + version, e);
+			return null;
 		}
 	}
 
@@ -437,7 +462,8 @@ public final class CodexActivation implements PluginActivation
 	}
 
 	/**
-	 * Selects a real local directory first, otherwise the highest CAT numeric release directory.
+	 * Selects a real local directory first, otherwise the directory of the highest CAT release, whether its name is a
+	 * plugin version or a bare release version.
 	 *
 	 * @param cache the directory Codex scans for versions
 	 * @return the selected name, or null when the cache has no real version directories
@@ -448,31 +474,27 @@ public final class CodexActivation implements PluginActivation
 		if (Files.notExists(cache, LinkOption.NOFOLLOW_LINKS))
 			return null;
 		ReleaseVersion highest = null;
+		String selected = null;
 		try (Stream<Path> entries = Files.list(cache))
 		{
-			for (Path entry : (Iterable<Path>) entries::iterator)
+			for (Path entry : (Iterable<Path>) entries.sorted()::iterator)
 			{
 				if (!Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
 					continue;
 				String name = entry.getFileName().toString();
 				if (name.equals("local"))
 					return name;
-				ReleaseVersion version;
-				try
-				{
-					version = ReleaseVersion.parse(name);
-				}
-				catch (TrustException _)
-				{
+				ReleaseVersion version = release(name);
+				if (version == null)
 					continue;
-				}
 				if (highest == null || version.compareTo(highest) > 0)
+				{
 					highest = version;
+					selected = name;
+				}
 			}
 		}
-		if (highest == null)
-			return null;
-		return highest.toString();
+		return selected;
 	}
 
 	/**
