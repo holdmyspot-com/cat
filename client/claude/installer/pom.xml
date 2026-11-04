@@ -30,6 +30,11 @@
 			<artifactId>client-common-cli</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-codex-layout</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
 			<groupId>tools.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
 		</dependency>

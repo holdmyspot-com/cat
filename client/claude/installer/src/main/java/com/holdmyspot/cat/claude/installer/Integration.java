@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -23,7 +24,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.StringJoiner;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.util.DefaultIndenter;
@@ -36,8 +39,9 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Registers CAT with Claude Code through its {@code claude} program, and lets agents run the trusted installer through
- * entries in Claude Code's user {@code settings.json}.
+ * Registers CAT's version folders with Claude Code through its {@code claude} program, lets agents run the trusted
+ * installer through entries in Claude Code's user {@code settings.json}, and keeps sandboxed commands from writing the
+ * other harness's CAT installation.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Its methods change files that Claude Code also writes; the installer
  * holds its harness lock while calling them, but a running Claude Code session can still rewrite {@code settings.json}.
@@ -61,6 +65,31 @@ public final class Integration implements HarnessIntegration
 	 * The tool uses that Claude Code allows without asking the user.
 	 */
 	private static final String ALLOWED_TOOLS = "permissions.allow";
+	/**
+	 * The paths that sandboxed commands may not write, even inside a path that they may write.
+	 */
+	private static final String DENY_WRITE = "sandbox.filesystem.denyWrite";
+	/**
+	 * The paths that sandboxed commands may write in addition to the working directory.
+	 */
+	private static final String ALLOW_WRITE = "sandbox.filesystem.allowWrite";
+	/**
+	 * Every setting that this integration adds entries to.
+	 */
+	private static final List<String> MAINTAINED_SETTINGS = List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS, DENY_WRITE,
+		ALLOW_WRITE);
+	/**
+	 * Claude Code's record of its installed plugins, relative to the configuration directory.
+	 */
+	private static final Path INSTALLED_PLUGINS = Path.of("plugins/installed_plugins.json");
+	/**
+	 * The marketplace metadata that a plugin version folder ships, relative to that folder.
+	 */
+	private static final Path MARKETPLACE_METADATA = Path.of("install/claude-marketplace.json");
+	/**
+	 * The scope that {@code claude plugin install} installs CAT in.
+	 */
+	private static final String USER_SCOPE = "user";
 	/**
 	 * Claude Code 2.1.318's answer, with exit status 1, to {@code plugin uninstall cat@cat} when CAT is not installed.
 	 */
@@ -190,15 +219,17 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Refuses a {@code settings.json} that permission installation cannot change safely.
+	 * Refuses a {@code settings.json} that permission and sandbox entry installation cannot change safely.
 	 *
 	 * @param home the absolute Claude Code configuration directory recorded in policy
 	 * @throws NullPointerException     if {@code home} is null
 	 * @throws IllegalArgumentException if {@code home} is relative
 	 * @throws IOException              if {@code settings.json} or the configuration directory is a symbolic link,
 	 *                                  {@code settings.json} is not a regular file or not a JSON object, or its
-	 *                                  {@code sandbox} or {@code permissions} member is not an object or its
-	 *                                  {@code excludedCommands} or {@code allow} member is not an array
+	 *                                  {@code sandbox}, {@code sandbox.filesystem} or {@code permissions} member is not
+	 *                                  an object, or its {@code sandbox.excludedCommands}, {@code permissions.allow},
+	 *                                  {@code sandbox.filesystem.denyWrite} or {@code sandbox.filesystem.allowWrite}
+	 *                                  member is not an array
 	 */
 	@Override
 	public void validateConfiguration(Path home) throws IOException
@@ -218,32 +249,24 @@ public final class Integration implements HarnessIntegration
 		Path settings = settingsFile(home);
 		if (Files.notExists(settings, LinkOption.NOFOLLOW_LINKS))
 			return MAPPER.createObjectNode();
-		if (!Files.isRegularFile(settings, LinkOption.NOFOLLOW_LINKS))
-			throw new IOException("Claude Code's settings file is not a regular file: " + settings);
-		JsonNode root;
-		try
-		{
-			// The settings file is small user configuration whose merge needs the whole document.
-			root = MAPPER.readTree(Files.readString(settings));
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("Claude Code's settings file is not valid JSON: " + settings + ": " +
-				e.getOriginalMessage(), e);
-		}
-		if (!(root instanceof ObjectNode object))
-			throw new IOException("Claude Code's settings file does not hold a JSON object: " + settings);
-		for (String setting : List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS))
+		// The settings file is small user configuration whose merge needs the whole document.
+		ObjectNode object = readObject(settings, "Claude Code's settings file");
+		for (String setting : MAINTAINED_SETTINGS)
 		{
 			String[] names = setting.split("\\.");
-			JsonNode parent = object.get(names[0]);
-			if (parent == null)
-				continue;
-			if (!parent.isObject())
-				throw new IOException(settings + ": the \"" + names[0] + "\" member is not a JSON object");
-			JsonNode member = parent.get(names[1]);
-			if (member != null && !member.isArray())
-				throw new IOException(settings + ": the \"" + setting + "\" member is not a JSON array");
+			JsonNode node = object;
+			for (int index = 0; index < names.length; ++index)
+			{
+				node = node.get(names[index]);
+				if (node == null)
+					break;
+				String member = String.join(".", Arrays.copyOf(names, index + 1));
+				boolean leaf = index == names.length - 1;
+				if (leaf && !node.isArray())
+					throw new IOException(settings + ": the \"" + member + "\" member is not a JSON array");
+				if (!leaf && !node.isObject())
+					throw new IOException(settings + ": the \"" + member + "\" member is not a JSON object");
+			}
 		}
 		return object;
 	}
@@ -264,30 +287,99 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Writes the release's marketplace manifest beside the activated plugin, adds the marketplace and installs CAT
-	 * from it. Claude Code answers success when either is already registered.
+	 * Registers the only plugin version folder that CAT's marketplace holds, as
+	 * {@link #register(Path, PluginVersion, HarnessCli, FileReplacer)} does. Install writes the new version's folder
+	 * before it calls this method, so a first install finds exactly that folder.
 	 *
 	 * @param home     the absolute Claude Code configuration directory recorded in policy
 	 * @param cli      runs the recorded {@code claude} program
 	 * @param replacer replaces the marketplace manifest
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative
-	 * @throws IOException              if the activated release lacks its marketplace metadata, a path component is
-	 *                                  a symbolic link, or Claude Code refuses a command
+	 * @throws IOException              if the marketplace holds no version folder or more than one, or registration of
+	 *                                  that version fails
 	 */
 	@Override
 	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
+		ClaudeInstallation installation = new ClaudeInstallation(home);
+		Path folders = installation.versionFolders();
+		Locations.checkLinks(home, folders);
+		List<PluginVersion> versions = new ArrayList<>();
+		if (Files.isDirectory(folders, LinkOption.NOFOLLOW_LINKS))
+		{
+			try (DirectoryStream<Path> children = Files.newDirectoryStream(folders))
+			{
+				for (Path child : children)
+				{
+					if (Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS))
+						parseVersion(child.getFileName().toString()).ifPresent(versions::add);
+				}
+			}
+		}
+		if (versions.size() != 1)
+		{
+			throw new IOException("CAT's marketplace " + folders + " holds " + versions.size() + " version folders, " +
+				"so registration cannot tell which version to register; name the version.");
+		}
+		register(home, versions.getFirst(), cli, replacer);
+	}
+
+	/**
+	 * Parses a version folder's name.
+	 *
+	 * @param name the folder's name
+	 * @return the plugin version, or empty if the name is not a plugin version
+	 */
+	private static Optional<PluginVersion> parseVersion(String name)
+	{
+		try
+		{
+			return Optional.of(PluginVersion.parse(name));
+		}
+		catch (IllegalArgumentException _)
+		{
+			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Points CAT's marketplace at a plugin version folder and asks Claude Code to load CAT from it. Claude Code loads a
+	 * directory marketplace's plugin in place, from the folder that the marketplace manifest's source names.
+	 * <ol>
+	 *   <li>Writes the marketplace manifest from the version folder's marketplace metadata, with CAT's source set to
+	 *   the version folder.</li>
+	 *   <li>Adds the marketplace, which Claude Code accepts when it is already added.</li>
+	 *   <li>Runs {@code plugin install cat@cat} when Claude Code records no CAT installation in the user scope, and
+	 *   otherwise {@code plugin update cat@cat}, because install leaves an installed plugin as it is.</li>
+	 *   <li>Requires Claude Code to record {@code version} as CAT's installed version.</li>
+	 * </ol>
+	 *
+	 * @param home     the absolute Claude Code configuration directory recorded in policy
+	 * @param version  the plugin version, whose version folder install has written
+	 * @param cli      runs the recorded {@code claude} program
+	 * @param replacer replaces the marketplace manifest
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the version folder lacks its marketplace metadata, a path component is a
+	 *                                  symbolic link, Claude Code refuses a command, or Claude Code records another
+	 *                                  version afterwards
+	 */
+	public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer) throws IOException
+	{
+		requireThat(version, "version").isNotNull();
 		requireThat(cli, "cli").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
-		Path root = Locations.marketplaceRoot(home);
-		Path metadata = Locations.pluginDirectory(home).resolve("install/claude-marketplace.json");
+		ClaudeInstallation installation = new ClaudeInstallation(home);
+		Path root = installation.marketplaceRoot();
+		Path versionFolder = installation.versionFolder(version);
+		Path metadata = versionFolder.resolve(MARKETPLACE_METADATA);
 		Path manifest = root.resolve(".claude-plugin/marketplace.json");
 		Locations.checkLinks(home, metadata);
 		Locations.checkLinks(home, manifest);
 		if (!Files.isRegularFile(metadata, LinkOption.NOFOLLOW_LINKS))
-			throw new IOException("The activated release lacks its marketplace metadata: " + metadata);
-		byte[] content = Files.readAllBytes(metadata);
+			throw new IOException("The plugin version folder lacks its marketplace metadata: " + metadata);
+		byte[] content = marketplaceManifest(metadata, root.relativize(versionFolder));
 		if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS) ||
 			!Arrays.equals(Files.readAllBytes(manifest), content))
 		{
@@ -295,7 +387,94 @@ public final class Integration implements HarnessIntegration
 		}
 
 		require(cli, List.of("plugin", "marketplace", "add", root.toString()), "");
-		require(cli, List.of("plugin", "install", "cat@cat"), "");
+		String operation;
+		if (installedVersion(home).isPresent())
+			operation = "update";
+		else
+			operation = "install";
+		require(cli, List.of("plugin", operation, "cat@cat"), "");
+		Optional<String> installed = installedVersion(home);
+		if (!installed.equals(Optional.of(version.toString())))
+		{
+			throw new IOException("claude plugin " + operation + " cat@cat did not switch CAT to " + version + ": " +
+				home.resolve(INSTALLED_PLUGINS) + " records " + installed.orElse("no CAT installation") + ".");
+		}
+	}
+
+	/**
+	 * Returns the marketplace manifest that names a version folder as CAT's source.
+	 *
+	 * @param metadata the version folder's marketplace metadata
+	 * @param source   the version folder relative to the marketplace root
+	 * @return the manifest's content, with a final line feed
+	 * @throws IOException if the metadata cannot be read, is not a JSON object or has no {@code cat} plugin entry
+	 */
+	private static byte[] marketplaceManifest(Path metadata, Path source) throws IOException
+	{
+		ObjectNode root = readObject(metadata, "The plugin version folder's marketplace metadata");
+		StringJoiner relative = new StringJoiner("/", "./", "");
+		for (Path name : source)
+			relative.add(name.toString());
+		boolean named = false;
+		for (JsonNode entry : root.path("plugins"))
+		{
+			if (entry instanceof ObjectNode plugin && plugin.path("name").asString("").equals("cat"))
+			{
+				plugin.put("source", relative.toString());
+				named = true;
+			}
+		}
+		if (!named)
+			throw new IOException("The marketplace metadata " + metadata + " has no plugin entry named cat");
+		return (WRITER.writeValueAsString(root) + "\n").getBytes(UTF_8);
+	}
+
+	/**
+	 * Returns the version that Claude Code records for CAT's installation in the user scope.
+	 *
+	 * @param home the absolute Claude Code configuration directory
+	 * @return the version, or empty if Claude Code records no such installation
+	 * @throws IOException if the record is a symbolic link, cannot be read or is not a JSON object
+	 */
+	private static Optional<String> installedVersion(Path home) throws IOException
+	{
+		Path record = home.resolve(INSTALLED_PLUGINS);
+		Locations.checkLinks(home, record);
+		if (Files.notExists(record, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		ObjectNode root = readObject(record, "Claude Code's installed plugin record");
+		for (JsonNode installation : root.path("plugins").path("cat@cat"))
+		{
+			if (installation.path("scope").asString("").equals(USER_SCOPE) && installation.path("version").isString())
+				return Optional.of(installation.path("version").asString());
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Reads a small JSON file that holds an object.
+	 *
+	 * @param file        the file
+	 * @param description the file's description in error messages
+	 * @return the object
+	 * @throws IOException if the file is not a regular file, cannot be read or does not hold a JSON object
+	 */
+	private static ObjectNode readObject(Path file, String description) throws IOException
+	{
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			throw new IOException(description + " is not a regular file: " + file);
+		JsonNode root;
+		try
+		{
+			root = MAPPER.readTree(Files.readString(file));
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException(description + " is not valid JSON: " + file + ": " + e.getOriginalMessage(), e);
+		}
+		if (!(root instanceof ObjectNode object))
+			throw new IOException(description + " does not hold a JSON object: " + file);
+		return object;
 	}
 
 	/**
@@ -318,11 +497,12 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Uninstalls CAT and then removes its marketplace. Claude Code's answers that either is absent are success.
+	 * Uninstalls CAT and then removes its marketplace. Claude Code's answers that either is absent are success. Claude
+	 * Code's uninstall deletes the plugin's data directory unless it is given {@code --keep-data}.
 	 *
-	 * @param home the absolute Claude Code configuration directory recorded in policy
+	 * @param home     the absolute Claude Code configuration directory recorded in policy
 	 * @param cli      runs the recorded {@code claude} program
-	 * @param keepData whether the plugin's data folder stays
+	 * @param keepData true to pass {@code --keep-data}, which keeps the plugin's data directory
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative
 	 * @throws IOException              if Claude Code refuses a command for another reason
@@ -332,7 +512,11 @@ public final class Integration implements HarnessIntegration
 	{
 		requireThat(home, "home").isAbsolute();
 		requireThat(cli, "cli").isNotNull();
-		require(cli, List.of("plugin", "uninstall", "cat@cat"), PLUGIN_NOT_FOUND);
+		List<String> uninstall = new ArrayList<>(List.of("plugin", "uninstall"));
+		if (keepData)
+			uninstall.add("--keep-data");
+		uninstall.add("cat@cat");
+		require(cli, uninstall, PLUGIN_NOT_FOUND);
 		require(cli, List.of("plugin", "marketplace", "remove", "cat"), MARKETPLACE_NOT_FOUND);
 	}
 
@@ -342,9 +526,9 @@ public final class Integration implements HarnessIntegration
 	 * sandbox; install, update and status are also allowed without asking the user, while uninstall keeps Claude
 	 * Code's approval prompt.
 	 *
-	 * @param home           the absolute Claude Code configuration directory recorded in policy
+	 * @param home      the absolute Claude Code configuration directory recorded in policy
 	 * @param installer the absolute path of the installer launcher in the plugin's version folder
-	 * @param replacer       replaces {@code settings.json}
+	 * @param replacer  replaces {@code settings.json}
 	 * @return the added entries, keyed {@code settings.json#sandbox.excludedCommands} and
 	 * 	{@code settings.json#permissions.allow}; a key is absent when nothing was added to it
 	 * @throws NullPointerException     if any of the arguments are null
@@ -358,7 +542,22 @@ public final class Integration implements HarnessIntegration
 	{
 		requireThat(installer, "installer").isAbsolute();
 		requireThat(replacer, "replacer").isNotNull();
-		Map<String, List<String>> entries = entries(installer);
+		return addEntries(home, entries(installer), replacer);
+	}
+
+	/**
+	 * Adds the entries that a setting's array lacks, creating the file, objects and arrays when absent, and writes the
+	 * settings only when something was added.
+	 *
+	 * @param home     the absolute Claude Code configuration directory
+	 * @param entries  the entries, by dotted setting name
+	 * @param replacer replaces {@code settings.json}
+	 * @return the added entries, by entry key; a key is absent when nothing was added to its setting
+	 * @throws IOException if the settings cannot be changed safely
+	 */
+	private static Map<String, List<String>> addEntries(Path home, Map<String, List<String>> entries,
+		FileReplacer replacer) throws IOException
+	{
 		ObjectNode root = readSettings(home);
 
 		Map<String, List<String>> added = new LinkedHashMap<>();
@@ -404,8 +603,19 @@ public final class Integration implements HarnessIntegration
 	public Map<String, List<String>> permissions(Path installer) throws IOException
 	{
 		requireThat(installer, "installer").isAbsolute();
+		return keyed(entries(installer));
+	}
+
+	/**
+	 * Keys entries by entry key.
+	 *
+	 * @param entries the entries, by dotted setting name
+	 * @return the entries, keyed {@code settings.json#<setting>}, in the same order
+	 */
+	private static Map<String, List<String>> keyed(Map<String, List<String>> entries)
+	{
 		Map<String, List<String>> keyed = new LinkedHashMap<>();
-		for (Map.Entry<String, List<String>> setting : entries(installer).entrySet())
+		for (Map.Entry<String, List<String>> setting : entries.entrySet())
 			keyed.put(SETTINGS + "#" + setting.getKey(), setting.getValue());
 		return keyed;
 	}
@@ -490,7 +700,7 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns a setting's array, creating it and its parent object when absent.
+	 * Returns a setting's array, creating it and its parent objects when absent.
 	 *
 	 * @param root    the validated settings
 	 * @param setting the setting's dotted name
@@ -499,14 +709,36 @@ public final class Integration implements HarnessIntegration
 	private static ArrayNode settingArray(ObjectNode root, String setting)
 	{
 		String[] names = setting.split("\\.");
-		ObjectNode parent;
-		if (root.get(names[0]) instanceof ObjectNode existing)
-			parent = existing;
-		else
-			parent = root.putObject(names[0]);
-		if (parent.get(names[1]) instanceof ArrayNode existing)
+		ObjectNode parent = root;
+		for (int index = 0; index < names.length - 1; ++index)
+		{
+			if (parent.get(names[index]) instanceof ObjectNode existing)
+				parent = existing;
+			else
+				parent = parent.putObject(names[index]);
+		}
+		if (parent.get(names[names.length - 1]) instanceof ArrayNode existing)
 			return existing;
-		return parent.putArray(names[1]);
+		return parent.putArray(names[names.length - 1]);
+	}
+
+	/**
+	 * Finds a setting's array.
+	 *
+	 * @param root    the validated settings
+	 * @param setting the setting's dotted name
+	 * @return the array, or empty if the setting or one of its parent objects is absent
+	 */
+	private static Optional<ArrayNode> findArray(ObjectNode root, String setting)
+	{
+		JsonNode node = root;
+		for (String name : setting.split("\\."))
+		{
+			node = node.get(name);
+			if (node == null)
+				return Optional.empty();
+		}
+		return Optional.of((ArrayNode) node);
 	}
 
 	/**
@@ -546,51 +778,78 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Adds no sandbox entries: Claude Code's sandbox does not keep CAT's commands from the other harness's
-	 * installation.
+	 * Merges the sandbox entries into {@code sandbox.filesystem.denyWrite} and {@code sandbox.filesystem.allowWrite}
+	 * of {@code settings.json}, creating the file and members when absent.
 	 *
 	 * @param home     the absolute Claude Code configuration directory
 	 * @param other    the other harness's CAT installation
-	 * @param catLocks the capacity lock directory
+	 * @param catLocks the absolute capacity lock directory
 	 * @param replacer replaces {@code settings.json}
-	 * @return no entries
-	 * @throws NullPointerException if any of the arguments are null
+	 * @return the added entries, keyed {@code settings.json#sandbox.filesystem.denyWrite} and
+	 * 	{@code settings.json#sandbox.filesystem.allowWrite}; a key is absent when nothing was added to it
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 * @throws IOException              if the settings cannot be changed safely
 	 */
 	@Override
 	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		FileReplacer replacer)
+		FileReplacer replacer) throws IOException
 	{
 		requireThat(replacer, "replacer").isNotNull();
-		return sandboxEntries(home, other, catLocks);
+		return addEntries(home, filesystemEntries(home, other, catLocks), replacer);
 	}
 
 	/**
-	 * Returns no sandbox entries.
+	 * Returns the entries that keep sandboxed commands from writing the other harness's CAT installation, and that let
+	 * them take the capacity locks. The denied folders are the other harness's marketplace folder, which decides what
+	 * that harness installs, its CAT version folders, from which it runs CAT, and CAT's data directory there, which
+	 * holds the installer's policy. Claude Code's sandbox already denies writes below its own {@code plugins} folder.
 	 *
 	 * @param home     the absolute Claude Code configuration directory
 	 * @param other    the other harness's CAT installation
-	 * @param catLocks the capacity lock directory
-	 * @return no entries
-	 * @throws NullPointerException if any of the arguments are null
+	 * @param catLocks the absolute capacity lock directory
+	 * @return the entries, keyed {@code settings.json#sandbox.filesystem.denyWrite} and
+	 * 	{@code settings.json#sandbox.filesystem.allowWrite}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
 	 */
 	@Override
 	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
 	{
-		requireThat(home, "home").isNotNull();
+		return keyed(filesystemEntries(home, other, catLocks));
+	}
+
+	/**
+	 * Returns the sandbox entries for each setting.
+	 *
+	 * @param home     the absolute Claude Code configuration directory
+	 * @param other    the other harness's CAT installation
+	 * @param catLocks the absolute capacity lock directory
+	 * @return the denied and the allowed paths, by dotted setting name, in a stable order
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 */
+	private static Map<String, List<String>> filesystemEntries(Path home, HarnessInstallation other, Path catLocks)
+	{
+		requireThat(home, "home").isAbsolute();
 		requireThat(other, "other").isNotNull();
-		requireThat(catLocks, "catLocks").isNotNull();
-		return Map.of();
+		requireThat(catLocks, "catLocks").isAbsolute();
+		Map<String, List<String>> entries = new LinkedHashMap<>();
+		entries.put(DENY_WRITE, List.of(other.marketplaceRoot().toString(), other.versionFolders().toString(),
+			other.dataDirectory().toString()));
+		entries.put(ALLOW_WRITE, List.of(catLocks.toString()));
+		return entries;
 	}
 
 	/**
 	 * Removes the given entries that {@code settings.json} still holds, keeping every other member and entry.
 	 *
 	 * @param home     the absolute Claude Code configuration directory recorded in policy
-	 * @param added    the entries that {@link #installPermissions} returned
+	 * @param added    the entries that {@link #installPermissions} or {@link #installSandboxEntries} returned
 	 * @param replacer replaces {@code settings.json}
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or {@code added} has a key that
-	 *                                  {@link #installPermissions} does not return
+	 * @throws IllegalArgumentException if {@code home} is relative or {@code added} has a key that neither
+	 *                                  {@link #installPermissions} nor {@link #installSandboxEntries} returns
 	 * @throws IOException              if the settings cannot be changed safely
 	 */
 	@Override
@@ -604,7 +863,7 @@ public final class Integration implements HarnessIntegration
 		{
 			String key = entry.getKey();
 			String setting = key.substring(key.indexOf('#') + 1);
-			if (!key.equals(SETTINGS + "#" + setting) || !List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS).contains(setting))
+			if (!key.equals(SETTINGS + "#" + setting) || !MAINTAINED_SETTINGS.contains(setting))
 				throw new IllegalArgumentException("added has a key that this integration never returns: " + key);
 			removals.put(setting, entry.getValue());
 		}
@@ -616,12 +875,10 @@ public final class Integration implements HarnessIntegration
 		boolean changed = false;
 		for (Map.Entry<String, List<String>> removal : removals.entrySet())
 		{
-			String[] names = removal.getKey().split("\\.");
-			if (!(root.get(names[0]) instanceof ObjectNode parent) ||
-				!(parent.get(names[1]) instanceof ArrayNode array))
-			{
+			Optional<ArrayNode> found = findArray(root, removal.getKey());
+			if (found.isEmpty())
 				continue;
-			}
+			ArrayNode array = found.get();
 			for (int index = array.size() - 1; index >= 0; --index)
 			{
 				JsonNode element = array.get(index);

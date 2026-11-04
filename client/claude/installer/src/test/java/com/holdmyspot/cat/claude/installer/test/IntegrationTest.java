@@ -3,10 +3,14 @@ package com.holdmyspot.cat.claude.installer.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.installer.Integration;
+import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
@@ -18,7 +22,9 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.StringJoiner;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -41,6 +47,16 @@ public final class IntegrationTest
 	private static final String MARKETPLACE_NOT_FOUND = "✘ Failed to remove marketplace: Marketplace 'cat' not found\n";
 	private static final String SETTINGS_KEY_EXCLUDED = "settings.json#sandbox.excludedCommands";
 	private static final String SETTINGS_KEY_ALLOW = "settings.json#permissions.allow";
+	private static final String SETTINGS_KEY_DENY_WRITE = "settings.json#sandbox.filesystem.denyWrite";
+	private static final String SETTINGS_KEY_ALLOW_WRITE = "settings.json#sandbox.filesystem.allowWrite";
+	/**
+	 * The plugin version that registration installs first.
+	 */
+	private static final PluginVersion VERSION = PluginVersion.parse("1.0+b0123456789ab");
+	/**
+	 * A later build of the same release.
+	 */
+	private static final PluginVersion NEW_VERSION = PluginVersion.parse("1.0+bfedcba987654");
 
 	/**
 	 * Creates a test instance.
@@ -168,31 +184,105 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Registration writes the release's marketplace manifest, adds the marketplace and then installs CAT from it.
+	 * A first registration points the marketplace manifest at the new version folder, adds the marketplace and
+	 * installs CAT, so that Claude Code loads the plugin in place from that version folder.
 	 *
 	 * @throws IOException if the fixture cannot be created or registration fails
 	 */
 	@Test
-	public void registerAddsMarketplaceThenInstalls() throws IOException
+	public void registerInstallsFromVersionFolder() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path root = activatedMarketplace(home);
-			// Claude Code 2.1.318's answers when the marketplace and plugin were already registered.
-			RecordingCli cli = new RecordingCli(List.of(
-				new CommandResult(0, "Adding marketplace…✔ Marketplace 'cat' already on disk — declared in user " +
-					"settings\n"),
-				new CommandResult(0, "Installing plugin \"cat@cat\"...✔ Plugin \"cat@cat\" is already installed " +
-					"(scope: user)\n")));
+			Path versionFolder = writeVersionFolder(home, VERSION);
+			FakeClaude claude = new FakeClaude(home);
 
-			integration().register(home, cli, replacer());
+			integration().register(home, VERSION, claude, replacer());
 
-			requireThat(cli.calls(), "calls").isEqualTo(List.of(
-				List.of("plugin", "marketplace", "add", root.toString()),
+			ClaudeInstallation installation = new ClaudeInstallation(home);
+			requireThat(claude.calls(), "calls").isEqualTo(List.of(
+				List.of("plugin", "marketplace", "add", installation.marketplaceRoot().toString()),
 				List.of("plugin", "install", "cat@cat")));
-			requireThat(Files.readString(root.resolve(".claude-plugin/marketplace.json")), "marketplaceManifest").
-				isEqualTo(Files.readString(root.resolve("plugins/cat/install/claude-marketplace.json")));
+			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(versionFolder));
+		}
+	}
+
+	/**
+	 * Registering a new version of an installed CAT points the marketplace manifest at the new version folder and
+	 * updates CAT, because Claude Code's install leaves an installed plugin unchanged.
+	 *
+	 * @throws IOException if the fixture cannot be created or registration fails
+	 */
+	@Test
+	public void registerUpdatesToNewVersionFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			writeVersionFolder(home, VERSION);
+			FakeClaude.recordInstalled(home, VERSION.toString());
+			Path newFolder = writeVersionFolder(home, NEW_VERSION);
+			FakeClaude claude = new FakeClaude(home);
+
+			integration().register(home, NEW_VERSION, claude, replacer());
+
+			requireThat(claude.calls().getLast(), "lastCall").isEqualTo(List.of("plugin", "update", "cat@cat"));
+			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(newFolder));
+		}
+	}
+
+	/**
+	 * Registration fails, naming both versions, when Claude Code answers success but still records another version, so
+	 * that install does not report a version that Claude Code does not load.
+	 *
+	 * @throws IOException if the fixture cannot be created or the failure is returned
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*1\\.0\\+bfedcba987654.*1\\.0\\+b0123456789ab.*")
+	public void registerRefusesUnswitchedVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			writeVersionFolder(home, VERSION);
+			FakeClaude.recordInstalled(home, VERSION.toString());
+			writeVersionFolder(home, NEW_VERSION);
+			// Claude Code answers success without switching versions, as it would for a plugin it read elsewhere.
+			RecordingCli claude = new RecordingCli(List.of(new CommandResult(0, "ok"), new CommandResult(0, "ok")));
+
+			integration().register(home, NEW_VERSION, claude, replacer());
+		}
+	}
+
+	/**
+	 * Registration without a named version registers the only version folder, and refuses to guess between several.
+	 *
+	 * @throws IOException if the fixture cannot be created or registration fails
+	 */
+	@Test
+	public void registerFindsOnlyVersionFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path versionFolder = writeVersionFolder(home, VERSION);
+			FakeClaude claude = new FakeClaude(home);
+			Integration integration = integration();
+
+			integration.register(home, claude, replacer());
+			writeVersionFolder(home, NEW_VERSION);
+
+			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(versionFolder));
+			try
+			{
+				integration.register(home, new FakeClaude(home), replacer());
+				throw new AssertionError("Registration chose between two version folders");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("2 version folders");
+			}
 		}
 	}
 
@@ -208,16 +298,16 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path root = activatedMarketplace(home);
-			Path manifest = Files.createDirectories(root.resolve(".claude-plugin")).resolve("marketplace.json");
+			Path versionFolder = writeVersionFolder(home, VERSION);
+			Path manifest = Files.createDirectories(new ClaudeInstallation(home).marketplaceRoot().
+				resolve(".claude-plugin")).resolve("marketplace.json");
 			Files.writeString(manifest, "{\"name\": \"outdated\"}\n");
 			TransientRefusal refusal = new TransientRefusal(manifest);
+			FakeClaude claude = new FakeClaude(home);
 
-			integration().register(home, new RecordingCli(List.of(new CommandResult(0, "ok"),
-				new CommandResult(0, "ok"))), refusal.replacer());
+			integration().register(home, VERSION, claude, refusal.replacer());
 
-			requireThat(Files.readString(manifest), "marketplaceManifest").
-				isEqualTo(Files.readString(root.resolve("plugins/cat/install/claude-marketplace.json")));
+			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(versionFolder));
 			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
 		}
 	}
@@ -235,7 +325,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 			Path settings = Files.writeString(home.resolve("settings.json"), "{}\n");
-			Path launcher = home.resolve("data/bin/cat-updater");
+			Path launcher = launcher(home);
 			TransientRefusal adding = new TransientRefusal(settings);
 
 			Map<String, List<String>> added = integration().installPermissions(home, launcher,
@@ -254,36 +344,36 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Registration fails, naming Claude Code's answer, when either command fails.
+	 * Registration fails, naming Claude Code's answer, when a command fails.
 	 *
-	 * @param failingCall the zero-based call that fails
+	 * @param refused the subcommand that Claude Code refuses
+	 * @param earlier the version that Claude Code has installed, or empty
 	 * @throws IOException if the fixture cannot be created or the failure is returned
 	 */
 	@Test(dataProvider = "registrationCalls", expectedExceptions = IOException.class,
 		expectedExceptionsMessageRegExp = "(?s).*network unavailable.*")
-	public void registerFailsOnRefusal(int failingCall) throws IOException
+	public void registerFailsOnRefusal(String refused, String earlier) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			activatedMarketplace(home);
-			List<CommandResult> answers = new ArrayList<>(List.of(new CommandResult(0, "ok"),
-				new CommandResult(0, "ok")));
-			answers.set(failingCall, new CommandResult(1, "✘ network unavailable"));
+			writeVersionFolder(home, VERSION);
+			if (!earlier.isEmpty())
+				FakeClaude.recordInstalled(home, earlier);
 
-			integration().register(home, new RecordingCli(answers), replacer());
+			integration().register(home, VERSION, new FakeClaude(home, refused), replacer());
 		}
 	}
 
 	/**
 	 * Supplies the registration commands that can fail.
 	 *
-	 * @return each command's position
+	 * @return each refused subcommand and the version installed before registration
 	 */
 	@DataProvider
 	public Object[][] registrationCalls()
 	{
-		return new Object[][] {{0}, {1}};
+		return new Object[][] {{"add", ""}, {"install", ""}, {"update", NEW_VERSION.toString()}};
 	}
 
 	/**
@@ -304,6 +394,27 @@ public final class IntegrationTest
 			integration().unregister(home, cli, false);
 
 			requireThat(cli.calls(), "calls").isEqualTo(List.of(List.of("plugin", "uninstall", "cat@cat"),
+				List.of("plugin", "marketplace", "remove", "cat")));
+		}
+	}
+
+	/**
+	 * Unregistration that keeps the data asks Claude Code to keep the plugin's data directory, which its uninstall
+	 * deletes otherwise.
+	 *
+	 * @throws IOException if the fixture cannot be created or unregistration fails
+	 */
+	@Test
+	public void unregisterKeepsData() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			RecordingCli cli = new RecordingCli(List.of(new CommandResult(0, ""), new CommandResult(0, "")));
+
+			integration().unregister(home, cli, true);
+
+			requireThat(cli.calls(), "calls").isEqualTo(List.of(List.of("plugin", "uninstall", "--keep-data", "cat@cat"),
 				List.of("plugin", "marketplace", "remove", "cat")));
 		}
 	}
@@ -351,7 +462,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater");
+			Path launcher = launcher(home);
 			Map<String, List<String>> expected = posixEntries(launcher);
 
 			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
@@ -388,7 +499,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater");
+			Path launcher = launcher(home);
 
 			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
@@ -425,7 +536,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater");
+			Path launcher = launcher(home);
 
 			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
@@ -443,74 +554,29 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Permission installation on an installation whose settings hold the earlier exact-only exclusions adds the
-	 * named-release update exclusion and returns only that entry, so that the permission record gains it.
+	 * Installing a new version replaces the entries that name the earlier version folder's launcher with entries that
+	 * name the new one: install removes the recorded entries that it no longer maintains, then adds the new ones.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
 	@Test
-	public void permissionsUpgradeEarlierEntries() throws IOException
+	public void versionBumpRewritesEntries() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater");
-			Map<String, List<String>> expected = posixEntries(launcher);
-			String quoted = ShellQuoting.posix(launcher.toString());
-			String updateWildcard = pattern(quoted + " update --harness claude");
-			StringJoiner earlierExcluded = new StringJoiner(",");
-			for (String entry : expected.get(SETTINGS_KEY_EXCLUDED))
-			{
-				if (!entry.equals(updateWildcard))
-					earlierExcluded.add(json(entry));
-			}
-			StringJoiner allowed = new StringJoiner(",");
-			for (String entry : expected.get(SETTINGS_KEY_ALLOW))
-				allowed.add(json(entry));
-			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" + earlierExcluded +
-				"]},\"permissions\":{\"allow\":[" + allowed + "]}}");
-
-			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
-
-			requireThat(added, "added").isEqualTo(Map.of(SETTINGS_KEY_EXCLUDED, List.of(updateWildcard)));
-			requireThat(Files.readString(home.resolve("settings.json")), "settings").contains(json(updateWildcard));
-		}
-	}
-
-	/**
-	 * The entries that the integration maintains are the ones that it installs, and removing an entry that an earlier
-	 * build installed for an operation that the installer no longer has, the exact sandbox exclusion of
-	 * {@code rollback --harness claude}, leaves {@code settings.json} with exactly the maintained entries.
-	 *
-	 * @throws IOException if the fixture cannot be created or the settings cannot be written
-	 */
-	@Test
-	public void obsoleteEntryIsRemoved() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater");
-			Map<String, List<String>> expected = posixEntries(launcher);
-			String retired = ShellQuoting.posix(launcher.toString()) + " rollback --harness claude";
-			StringJoiner earlierExcluded = new StringJoiner(",");
-			for (String entry : expected.get(SETTINGS_KEY_EXCLUDED))
-				earlierExcluded.add(json(entry));
-			earlierExcluded.add(json(retired));
-			StringJoiner allowed = new StringJoiner(",");
-			for (String entry : expected.get(SETTINGS_KEY_ALLOW))
-				allowed.add(json(entry));
-			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" + earlierExcluded +
-				"]},\"permissions\":{\"allow\":[" + allowed + "]}}");
+			Path earlier = launcher(home);
+			Path next = new ClaudeInstallation(home).versionFolder(NEW_VERSION).resolve("bin/installer");
 			Integration integration = integration();
+			Map<String, List<String>> recorded = integration.installPermissions(home, earlier, replacer());
 
-			requireThat(integration.installPermissions(home, launcher, replacer()), "added").isEmpty();
-			requireThat(integration.permissions(launcher), "maintained").isEqualTo(expected);
-			integration.removePermissions(home, Map.of(SETTINGS_KEY_EXCLUDED, List.of(retired)), replacer());
+			integration.removePermissions(home, recorded, replacer());
+			Map<String, List<String>> added = integration.installPermissions(home, next, replacer());
 
+			requireThat(added, "added").isEqualTo(posixEntries(next));
 			String settings = Files.readString(home.resolve("settings.json"));
-			requireThat(settings, "settings").doesNotContain("rollback");
-			for (List<String> entries : expected.values())
+			requireThat(settings, "settings").doesNotContain(earlier.toString());
+			for (List<String> entries : added.values())
 			{
 				for (String entry : entries)
 					requireThat(settings, "settings").contains(json(entry));
@@ -519,7 +585,144 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * On Windows, every entry names the stable PowerShell launcher through PowerShell's fixed non-interactive form.
+	 * No entry lets an agent run the installer's install into the other harness without the user's approval. An entry
+	 * is taken to match a command when the command equals it, or starts with it and a space once a trailing wildcard is
+	 * removed; that covers Claude Code's exact, prefix and wildcard matching.
+	 *
+	 * @param platform the platform, whose launcher form differs
+	 * @throws IOException if the launcher path cannot be named in an entry
+	 */
+	@Test(dataProvider = "platforms")
+	public void otherHarnessInstallPrompts(Platform platform) throws IOException
+	{
+		Path home = absoluteTestPath("claude");
+		Path launcher = launcher(home);
+		String command = ShellQuoting.posix(launcher.toString()) + " install --harness codex";
+		if (platform.isWindows())
+		{
+			launcher = launcher.resolveSibling("installer.ps1");
+			command = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher +
+				"\" install --harness codex";
+		}
+
+		Map<String, List<String>> maintained = new Integration(platform).permissions(launcher);
+
+		for (String entry : maintained.get(SETTINGS_KEY_EXCLUDED))
+			requireThat(matches(entry, command), "matches").withContext(entry, "entry").isFalse();
+		for (String entry : maintained.get(SETTINGS_KEY_ALLOW))
+		{
+			String rule = entry.substring("Bash(".length(), entry.length() - ")".length());
+			requireThat(matches(rule, command), "matches").withContext(entry, "entry").isFalse();
+		}
+	}
+
+	/**
+	 * Returns whether a permission or sandbox exclusion entry could match a command under exact, prefix or trailing
+	 * wildcard matching.
+	 *
+	 * @param entry   the entry, whose trailing {@code " *"} is a wildcard and whose other stars are escaped
+	 * @param command the command
+	 * @return true if the entry could match the command
+	 */
+	private static boolean matches(String entry, String command)
+	{
+		String literal = entry;
+		if (literal.endsWith(" *"))
+			literal = literal.substring(0, literal.length() - " *".length()).replace("\\*", "*").replace("\\\\", "\\");
+		return command.equals(literal) || command.startsWith(literal + " ");
+	}
+
+	/**
+	 * The sandbox entries deny sandboxed writes to the other harness's CAT folders, found through its own home
+	 * variable, and allow writes to the capacity locks, in Claude Code's two-space layout; repeating the call adds
+	 * nothing.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void sandboxEntriesProtectOtherHarness() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory());
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Path codexHome = userHome.resolve("configurations/codex");
+			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of("CODEX_HOME", codexHome.toString()),
+				userHome);
+			Path catLocks = userHome.resolve(".cat/locks");
+			Integration integration = integration();
+
+			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, replacer());
+			Map<String, List<String>> repeated = integration.installSandboxEntries(home, codex, catLocks, replacer());
+
+			List<String> denied = List.of(codexHome.resolve("plugins/cat-marketplace").toString(),
+				codexHome.resolve("plugins/cache/cat/cat").toString(), codexHome.resolve("plugins/data/cat-cat").toString());
+			Map<String, List<String>> expected = Map.of(SETTINGS_KEY_DENY_WRITE, denied, SETTINGS_KEY_ALLOW_WRITE,
+				List.of(catLocks.toString()));
+			requireThat(added, "added").isEqualTo(expected);
+			requireThat(integration.sandboxEntries(home, codex, catLocks), "maintained").isEqualTo(expected);
+			requireThat(repeated, "repeated").isEmpty();
+			StringJoiner deniedLines = new StringJoiner(",\n", "", "\n");
+			for (String entry : denied)
+				deniedLines.add("        " + json(entry));
+			requireThat(Files.readString(home.resolve("settings.json")), "settings").isEqualTo("{\n" +
+				"  \"sandbox\": {\n" +
+				"    \"filesystem\": {\n" +
+				"      \"denyWrite\": [\n" + deniedLines +
+				"      ],\n" +
+				"      \"allowWrite\": [\n" +
+				"        " + json(catLocks.toString()) + "\n" +
+				"      ]\n" +
+				"    }\n" +
+				"  }\n" +
+				"}\n");
+		}
+	}
+
+	/**
+	 * Sandbox entries keep the user's own entries, do not report an entry that the user already had, and their removal
+	 * deletes only what was added, so the user's entry for the capacity locks stays.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void sandboxEntriesRemoveOnlyAdded() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory());
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of(), userHome);
+			Path catLocks = userHome.resolve(".cat/locks");
+			String userSettings = "{\"sandbox\":{\"enabled\":true,\"filesystem\":{\"allowWrite\":[" +
+				json(userHome.toString()) + "," + json(catLocks.toString()) + "],\"denyWrite\":[\"/etc\"]}}}";
+			Path settings = Files.writeString(home.resolve("settings.json"), userSettings);
+			Integration integration = integration();
+
+			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, replacer());
+			integration.removePermissions(home, added, replacer());
+
+			requireThat(added.keySet(), "addedKeys").isEqualTo(Set.of(SETTINGS_KEY_DENY_WRITE));
+			requireThat(Files.readString(settings), "settings").isEqualTo("{\n" +
+				"  \"sandbox\": {\n" +
+				"    \"enabled\": true,\n" +
+				"    \"filesystem\": {\n" +
+				"      \"allowWrite\": [\n" +
+				"        " + json(userHome.toString()) + ",\n" +
+				"        " + json(catLocks.toString()) + "\n" +
+				"      ],\n" +
+				"      \"denyWrite\": [\n" +
+				"        \"/etc\"\n" +
+				"      ]\n" +
+				"    }\n" +
+				"  }\n" +
+				"}\n");
+		}
+	}
+
+	/**
+	 * On Windows, every entry names the version folder's PowerShell launcher through PowerShell's fixed
+	 * non-interactive form.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
@@ -529,7 +732,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater.ps1");
+			Path launcher = launcher(home).resolveSibling("installer.ps1");
 			Integration integration = new Integration(Platform.WINDOWS_X64);
 
 			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
@@ -555,10 +758,10 @@ public final class IntegrationTest
 		Path base = Path.of(System.getProperty("cat.installer.test.directory"));
 		List<Object[]> cases = new ArrayList<>();
 		for (String name : List.of("installer data", "installer $payload;echo hi", "installer's data"))
-			cases.add(new Object[] {base.resolve(name + "/bin/cat-updater")});
+			cases.add(new Object[] {base.resolve(name + "/bin/installer")});
 		try
 		{
-			cases.add(new Object[] {base.resolve("installer*data/bin/cat-updater")});
+			cases.add(new Object[] {base.resolve("installer*data/bin/installer")});
 		}
 		catch (InvalidPathException _)
 		{
@@ -599,7 +802,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater");
+			Path launcher = launcher(home);
 			Map<String, List<String>> expected = posixEntries(launcher);
 			String existing = expected.get(SETTINGS_KEY_ALLOW).getFirst();
 			Path settings = Files.writeString(home.resolve("settings.json"), "{\"model\":\"opus\"," +
@@ -638,7 +841,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path launcher = home.resolve("data/bin/cat-updater");
+			Path launcher = launcher(home);
 			Path settings = Files.writeString(home.resolve("settings.json"),
 				"{\"permissions\":{\"allow\":[\"Bash(ls)\"]},\"theme\":\"dark\"}");
 			Integration integration = integration();
@@ -712,7 +915,8 @@ public final class IntegrationTest
 	{
 		return new Object[][] {{"[]"}, {"\"text\""}, {"{"}, {"{} {}"}, {"{\"sandbox\":[]}"}, {"{\"permissions\":1}"},
 			{"{\"sandbox\":{\"excludedCommands\":{}}}"}, {"{\"permissions\":{\"allow\":\"Bash(ls)\"}}"},
-			{"{\"permissions\":{},\"permissions\":{}}"}};
+			{"{\"permissions\":{},\"permissions\":{}}"}, {"{\"sandbox\":{\"filesystem\":[]}}"},
+			{"{\"sandbox\":{\"filesystem\":{\"denyWrite\":{}}}}"}};
 	}
 
 	/**
@@ -731,7 +935,9 @@ public final class IntegrationTest
 			Integration integration = integration();
 
 			requireRefusal(() -> integration.validateConfiguration(home));
-			requireRefusal(() -> integration.installPermissions(home, home.resolve("data/bin/cat-updater"), replacer()));
+			requireRefusal(() -> integration.installPermissions(home, launcher(home), replacer()));
+			requireRefusal(() -> integration.installSandboxEntries(home, new CodexInstallation(home.resolve("codex")),
+				home.resolve("locks"), replacer()));
 			requireThat(Files.readString(settings), "settings").isEqualTo(content);
 		}
 	}
@@ -787,7 +993,7 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Returns the entries that a POSIX stable launcher receives.
+	 * Returns the entries that a POSIX launcher receives.
 	 *
 	 * @param launcher the launcher's absolute path
 	 * @return the entries keyed as {@link HarnessIntegration#installPermissions} returns them
@@ -852,21 +1058,35 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Creates a home whose marketplace holds an activated release with its marketplace metadata.
+	 * Writes a plugin version's folder, as install copies it from the plugin archive, with the marketplace metadata
+	 * that the archive ships: a {@code cat} entry stamped with the plugin version.
 	 *
-	 * @param home the fake home
-	 * @return the marketplace root
+	 * @param home    the configuration directory
+	 * @param version the plugin version
+	 * @return the version folder
 	 * @throws IOException if the files cannot be written
 	 */
-	private static Path activatedMarketplace(Path home) throws IOException
+	private static Path writeVersionFolder(Path home, PluginVersion version) throws IOException
 	{
-		Path root = home.resolve("plugins/cat-marketplace");
-		Path metadata = root.resolve("plugins/cat/install/claude-marketplace.json");
+		Path versionFolder = new ClaudeInstallation(home).versionFolder(version);
+		Path metadata = versionFolder.resolve("install/claude-marketplace.json");
 		Files.createDirectories(metadata.getParent());
 		Files.writeString(metadata, """
-			{"name": "cat", "plugins": [{"name": "cat", "source": "./plugins/cat"}]}
-			""");
-		return root;
+			{"name": "cat", "owner": {"name": "cowwoc"}, "plugins": [{"name": "cat", "source": "./plugins/cat",
+			"version": "%s"}]}
+			""".formatted(version));
+		return versionFolder;
+	}
+
+	/**
+	 * Returns the POSIX installer launcher in a configuration directory's version folder of {@link #VERSION}.
+	 *
+	 * @param home the configuration directory
+	 * @return the launcher's absolute path
+	 */
+	private static Path launcher(Path home)
+	{
+		return new ClaudeInstallation(home).versionFolder(VERSION).resolve("bin/installer");
 	}
 
 	/**
