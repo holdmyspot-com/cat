@@ -88,6 +88,9 @@
 	- `not_restored`: report that the operation failed and that the previous state could not be restored, show each of
 		its `paths`, and give the user the command `<launcher> rollback --harness <h>` to run, which you run only when
 		they ask.
+	- `failed`: an unexpected error stopped the operation after it may have changed the installation. Report its
+		`message`, and that running the same command again continues the operation; run it again only when the user
+		asks.
 	- `not_swapped`: report that the operation did not finish because the Java runtime could not be put in place, that
 		the old runtime is back, and that the next operation on CAT undoes what remains of the failed one.
 	- `locked`: report that another operation on CAT is running, and that the user can ask again once it finishes.

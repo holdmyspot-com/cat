@@ -153,6 +153,11 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		UNINSTALL_INCOMPLETE(9),
 		/**
+		 * An unexpected error stopped an operation that may have changed installed state; the next run of the
+		 * operation recovers it.
+		 */
+		FAILED(10),
+		/**
 		 * Another operation held the lock beyond the wait limit.
 		 */
 		LOCKED(75),

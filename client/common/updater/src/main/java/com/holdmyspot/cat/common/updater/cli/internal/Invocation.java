@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -166,15 +167,40 @@ public final class Invocation
 		}
 		catch (Exception e)
 		{
-			Path journal = image.getParent().resolve("state").resolve(selectedHarness(arguments)).
-				resolve("activation.json");
-			Result result = Result.REFUSED;
-			if (Files.exists(journal))
-				result = Result.NOT_RESTORED;
-			return print(failure(result, selectedHarness(arguments),
-				"The updater could not complete the operation: " + e.getMessage(), List.of(journal)), arguments,
-				null);
+			return print(unexpectedFailure(arguments, e), arguments, null);
 		}
+	}
+
+	/**
+	 * Describes an exception that no operation step anticipated.
+	 * <p>
+	 * An unfinished activation journal means that the installation may be inconsistent. Otherwise, {@code status},
+	 * which never writes, is refused, and every other operation may have changed installed state before it stopped,
+	 * which its next run recovers.
+	 *
+	 * @param arguments the validated operation
+	 * @param cause     the exception
+	 * @return the failure result, listing only the recovery files that exist
+	 */
+	private UpdateResult unexpectedFailure(Arguments arguments, Exception cause)
+	{
+		String harness = selectedHarness(arguments);
+		Path state = image.getParent().resolve("state");
+		Path activationJournal = state.resolve(harness).resolve("activation.json");
+		Path uninstallJournal = state.resolve("uninstall.json");
+		List<Path> journals = Stream.of(activationJournal, uninstallJournal).filter(Files::exists).toList();
+		String operation = arguments.operation().name().toLowerCase(Locale.ROOT);
+		String message = "The updater could not complete " + operation + ": " + cause.getMessage();
+		if (Files.exists(activationJournal))
+			return failure(Result.NOT_RESTORED, harness, message, journals);
+		return switch (arguments.operation())
+		{
+			case STATUS -> failure(Result.REFUSED, harness, message, journals);
+			case SETUP -> failure(Result.FAILED, harness, message + "; " + Locations.rerunEntryCommand(harness) +
+				" to continue.", journals);
+			case INSTALL, UPDATE, ROLLBACK, UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " +
+				operation + " command again to continue.", journals);
+		};
 	}
 
 	/**
@@ -534,7 +560,7 @@ public final class Invocation
 	private static UpdateResult failure(Result result, String harness, String message, List<Path> paths)
 	{
 		return new UpdateResult(result, harness, Optional.empty(), Optional.empty(), message, paths,
-			result != Result.NOT_RESTORED,
+			result != Result.NOT_RESTORED && result != Result.FAILED,
 			List.of());
 	}
 

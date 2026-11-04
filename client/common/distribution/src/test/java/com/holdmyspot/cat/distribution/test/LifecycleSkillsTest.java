@@ -111,6 +111,7 @@ public final class LifecycleSkillsTest
 				contains("asks the user to approve this command").doesNotContain("cat-updater.cmd").
 				contains("`<launcher> status --harness <h>`").
 				contains("`installed`").contains("`up_to_date`").contains("`refused`").
+				contains("`failed`: an unexpected error stopped the operation").
 				contains("rerun the entry command of a newer release").contains("releases/latest/download/cat.sh").
 				contains("releases/download/<tag>/cat.sh").contains("cat.ps1").contains("`-Harness <h>`").
 				contains("with no release argument").

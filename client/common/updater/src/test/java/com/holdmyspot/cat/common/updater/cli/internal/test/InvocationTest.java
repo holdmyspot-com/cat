@@ -313,6 +313,33 @@ public final class InvocationTest
 	}
 
 	/**
+	 * An unexpected failure during an operation that may have changed installed state is reported as failed, never as
+	 * a refusal, names the operation and how to continue, and lists only recovery files that exist.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void unexpectedFailureAfterChangesIsFailed() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-crashed-")));
+			installation.writePolicy(installation.trustPolicy());
+			RecordingIntegration integration = new RecordingIntegration().crash("unregister");
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+
+			requireThat(run.status, "status").isEqualTo(10);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("failed");
+			requireThat(run.result().path("message").stringValue(), "message").contains("uninstall").
+				contains("run the same uninstall command again");
+			for (JsonNode path : run.result().path("paths"))
+				requireThat(Files.exists(Path.of(path.stringValue())), path.stringValue()).isTrue();
+		}
+	}
+
+	/**
 	 * A rollback restores the previous plugin, saves its one-line result for the stable launcher, which restores the
 	 * previous Java runtime and updater after the updater exits, prints nothing itself, and exits with the runtime
 	 * hand-over status.
