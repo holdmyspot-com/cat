@@ -4,7 +4,11 @@
 # contains spaces, without Bubblewrap even where it cannot create a namespace, and Java can name a file that is not ASCII
 # in the caller's C locale. A launcher finds Java only through the plugin's client/runtime-binding: it passes its JVM
 # options, the plugin's module path and its arguments to the bound java, discards the JVM options that the environment
-# supplies, and refuses an unusable binding with one line naming it and exit status 3.
+# supplies, and refuses an unusable binding with one line naming it and exit status 3. A launcher starts Java from the
+# plugin's startup cache client/aot/session-start.aot when that file exists, and a cache that Java cannot use changes
+# nothing that the program's caller sees.
+
+bats_require_minimum_version 1.5.0
 
 load bootstrap-helpers
 
@@ -82,6 +86,8 @@ JDK_JAVA_OPTIONS=unset
 CLASSPATH=unset
 [-Xlog:all=off:stdout]
 [-Xlog:all=warning:stderr]
+[-Xlog:aot*=off:stderr]
+[-Xlog:cds*=off:stderr]
 [-XX:+PerfDisableSharedMem]
 [-Dstdout.encoding=UTF-8]
 [-Dstderr.encoding=UTF-8]
@@ -97,6 +103,75 @@ CLASSPATH=unset
 []
 [quote \" and \$dollar]"
 	[ "${output}" = "${expected}" ]
+}
+
+@test "a launcher passes the plugin's startup cache to the bound java only when the cache exists" {
+	create_echo_runtime_plugin
+	client="$(cd -P "${PLUGIN}/client" && pwd -P)"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" != *"AOTCache"* ]]
+
+	mkdir "${PLUGIN}/client/aot"
+	printf 'cache' > "${PLUGIN}/client/aot/session-start.aot"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *$'\nCLASSPATH=unset\n[-XX:AOTCache='"${client}"$'/aot/session-start.aot]\n[-Xlog:all=off:stdout]\n'* ]]
+}
+
+# Trains a startup cache for a copy of the generated Codex plugin at another path, as an installation at that path
+# would, so that the cache does not match a plugin anywhere else.
+#
+# Arguments:
+#   $1 - the copy to train the cache in
+#
+# Outputs:
+#   $1/client/aot/session-start.aot - the cache
+train_cache_elsewhere()
+{
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "$1"
+	mkdir "$1/client/aot"
+	"$1/client/bin/java" -XX:AOTMode=record -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
+		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
+	"$1/client/bin/java" -XX:AOTMode=create -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
+		-XX:AOTCache="$1/client/aot/session-start.aot" \
+		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
+	[ -s "$1/client/aot/session-start.aot" ]
+}
+
+@test "a launcher's output stays the same and its standard error empty with a foreign, truncated or invalid cache" {
+	plugin="${TEST_ROOT}/plugin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${plugin}"
+
+	run --separate-stderr "${plugin}/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[ -z "${stderr}" ]
+	expected="${output}"
+	[[ "${expected}" == "harness=codex"$'\n'* ]]
+
+	train_cache_elsewhere "${TEST_ROOT}/other plugin"
+	foreign="${TEST_ROOT}/other plugin/client/aot/session-start.aot"
+	mkdir "${plugin}/client/aot"
+	cache="${plugin}/client/aot/session-start.aot"
+	size=$(wc -c < "${foreign}")
+	for kind in foreign truncated invalid; do
+		case "${kind}" in
+			foreign) cp "${foreign}" "${cache}" ;;
+			truncated) head -c "$((size / 2))" "${foreign}" > "${cache}" ;;
+			invalid) printf 'not a cache\n' > "${cache}" ;;
+		esac
+
+		run --separate-stderr "${plugin}/bin/plugin-info"
+
+		[ "${status}" -eq 0 ]
+		[ -z "${stderr}" ]
+		[ "${output}" = "${expected}" ]
+	done
 }
 
 @test "a launcher run through a link and the java wrapper find the plugin's client folder" {

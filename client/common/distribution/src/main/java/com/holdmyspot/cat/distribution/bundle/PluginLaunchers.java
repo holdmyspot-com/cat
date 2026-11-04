@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +26,11 @@ import java.util.Set;
  * {@code client/modules} as the module path, {@code org.slf4j.nop} added so that logging never depends on incidental
  * service binding, and the program's module and main class, followed by the caller's arguments. It discards the JVM
  * options that the environment can supply.
+ * <p>
+ * When the plugin holds its installation-written {@link StartupCache startup cache}, a launcher passes it to Java with
+ * {@code -XX:AOTCache}. Java skips a cache that it cannot use, such as one trained at another path or a truncated one,
+ * and the launcher's logging options keep Java from reporting that, so a cache never changes what the program's caller
+ * sees.
  * <p>
  * Java names files and decodes its arguments in the character set of {@code LC_CTYPE}, which in the C locale cannot
  * name a file whose name is not ASCII. When the caller's {@code LC_CTYPE} is not UTF-8, a POSIX launcher therefore runs
@@ -63,9 +69,13 @@ public final class PluginLaunchers
 	 * the JDK refuses to send a Basic login when it opens an HTTPS tunnel through a proxy unless the property
 	 * {@code jdk.http.auth.tunneling.disabledSchemes} is empty, so without it a release download from such a host
 	 * fails. The empty value stays one word in both launchers, because neither quotes nor splits within an option.
+	 * Java reports a startup cache that it cannot use in its {@code aot} and {@code cds} logs; the options that turn
+	 * those logs off follow the one that shows warnings and errors, because a later option overrides an earlier one
+	 * for the same output. They are quoted, so that the POSIX shell never expands their {@code *} as a file name pattern.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
-		"-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
+		"\"-Xlog:aot*=off:stderr\" \"-Xlog:cds*=off:stderr\" -XX:+PerfDisableSharedMem " +
+		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
 		"-Djdk.http.auth.tunneling.disabledSchemes= --enable-native-access=com.holdmyspot.cat.common.cli";
 	/**
 	 * The modules that every program's launcher adds to the module graph.
@@ -75,6 +85,11 @@ public final class PluginLaunchers
 	 * The path from a launcher in {@code client/bin} to {@code client/}.
 	 */
 	private static final String CLIENT_FROM_CLIENT_BIN = "..";
+	/**
+	 * The path from {@code client/} to the startup cache.
+	 */
+	private static final String CACHE_FROM_CLIENT = StartupCache.DIRECTORY.getParent().relativize(StartupCache.FILE).
+		toString();
 	/**
 	 * The start of the POSIX launcher's line that finds {@code client/}, up to the path relative to the launcher's
 	 * folder.
@@ -130,7 +145,11 @@ public final class PluginLaunchers
 		    export LC_CTYPE=C.UTF-8
 		    ;;
 		esac
-		exec "$java" %6$s --module-path "$client/modules" %7$s"$@"
+		cache=
+		if [ -f "$client/%8$s" ]; then
+		  cache=-XX:AOTCache=$client/%8$s
+		fi
+		exec "$java" ${cache:+"$cache"} %6$s --module-path "$client/modules" %7$s"$@"
 		""";
 	private static final String BATCH_TEMPLATE = """
 		@echo off
@@ -170,7 +189,9 @@ public final class PluginLaunchers
 		set "JAVA=%%RUNTIME%%\\bin\\java.exe"
 		set "REASON=names a runtime without bin\\java.exe"
 		if not exist "%%JAVA%%" goto fail
-		"%%JAVA%%" %4$s --module-path "%%CLIENT%%\\modules" %5$s%%*
+		set "CACHE="
+		if exist "%%CLIENT%%\\%7$s" set CACHE="-XX:AOTCache=%%CLIENT%%\\%7$s"
+		"%%JAVA%%" %%CACHE%% %4$s --module-path "%%CLIENT%%\\modules" %5$s%%*
 		exit /b %%ERRORLEVEL%%
 		:fail
 		setlocal EnableDelayedExpansion
@@ -311,7 +332,7 @@ public final class PluginLaunchers
 		throws IOException
 	{
 		Files.writeString(path, POSIX_TEMPLATE.formatted(program, POSIX_CLIENT_PREFIX, CLIENT_FROM_CLIENT_BIN, javaName,
-			UNUSABLE_BINDING_STATUS, VM_OPTIONS, arguments), UTF_8);
+			UNUSABLE_BINDING_STATUS, VM_OPTIONS, arguments, CACHE_FROM_CLIENT.replace('\\', '/')), UTF_8);
 		PosixFileAttributeView attributes = Files.getFileAttributeView(path, PosixFileAttributeView.class);
 		if (attributes != null)
 			attributes.setPermissions(LAUNCHER_PERMISSIONS);
@@ -327,8 +348,8 @@ public final class PluginLaunchers
 	 */
 	private static void writeBatch(Path path, String program, String arguments) throws IOException
 	{
-		String content = BATCH_TEMPLATE.formatted(program, BATCH_CLIENT_PREFIX,
-			CLIENT_FROM_CLIENT_BIN, VM_OPTIONS, arguments, UNUSABLE_BINDING_STATUS);
+		String content = BATCH_TEMPLATE.formatted(program, BATCH_CLIENT_PREFIX, CLIENT_FROM_CLIENT_BIN, VM_OPTIONS,
+			arguments, UNUSABLE_BINDING_STATUS, CACHE_FROM_CLIENT.replace('/', '\\'));
 		Files.writeString(path, content.replace("\n", "\r\n"), UTF_8);
 	}
 }

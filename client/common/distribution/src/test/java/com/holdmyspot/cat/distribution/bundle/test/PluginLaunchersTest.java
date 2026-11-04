@@ -23,11 +23,13 @@ import org.testng.annotations.Test;
 public final class PluginLaunchersTest
 {
 	/**
-	 * The options of every launcher's JVM: warnings on standard error only, performance data kept in the process, UTF-8
-	 * output on every platform, Basic proxy logins allowed for HTTPS tunnels, and native access for the common module.
+	 * The options of every launcher's JVM: warnings on standard error only, except reports of a startup cache that
+	 * Java cannot use, performance data kept in the process, UTF-8 output on every platform, Basic proxy logins allowed
+	 * for HTTPS tunnels, and native access for the common module.
 	 */
 	private static final String VM_OPTIONS = "-Xlog:all=off:stdout -Xlog:all=warning:stderr " +
-		"-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
+		"\"-Xlog:aot*=off:stderr\" \"-Xlog:cds*=off:stderr\" -XX:+PerfDisableSharedMem " +
+		"-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 " +
 		"-Djdk.http.auth.tunneling.disabledSchemes= --enable-native-access=com.holdmyspot.cat.common.cli";
 	private static final Launcher READ_PART = new Launcher("read-part", "app", "example.Main");
 	private static final Launcher SESSION_START = new Launcher("session-start", "app", "example.Hook");
@@ -53,12 +55,13 @@ public final class PluginLaunchersTest
 				"session-start"));
 			requireThat(Files.readString(client.resolve("bin/read-part")), "launcher").
 				startsWith("#!/bin/sh\n").
-				contains("exec \"$java\" " + VM_OPTIONS + " --module-path \"$client/modules\" " +
+				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS + " --module-path \"$client/modules\" " +
 					"--add-modules org.slf4j.nop -m app/example.Main \"$@\"\n").
 				contains("java=$runtime/bin/java\n").
 				doesNotContain("bwrap");
 			requireThat(Files.readString(client.resolve("bin/java")), "wrapper").
-				contains("exec \"$java\" " + VM_OPTIONS + " --module-path \"$client/modules\" \"$@\"\n");
+				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS +
+					" --module-path \"$client/modules\" \"$@\"\n");
 		}
 	}
 
@@ -81,7 +84,7 @@ public final class PluginLaunchersTest
 				contains("java=$runtime/bin/java.exe\n");
 			String batch = Files.readString(client.resolve("bin/read-part.bat"));
 			requireThat(batch, "batchLauncher").
-				contains("\r\n\"%JAVA%\" " + VM_OPTIONS + " --module-path \"%CLIENT%\\modules\" " +
+				contains("\r\n\"%JAVA%\" %CACHE% " + VM_OPTIONS + " --module-path \"%CLIENT%\\modules\" " +
 					"--add-modules org.slf4j.nop -m app/example.Main %*\r\n").
 				contains("\r\nexit /b 3\r\n");
 			requireThat(batch.replace("\r\n", ""), "lineEndings").doesNotContain("\n");
@@ -178,8 +181,8 @@ public final class PluginLaunchersTest
 			}
 
 			requireThat(output, "output").isEqualTo("JAVA_TOOL_OPTIONS=unset|" +
-				String.join("|", VM_OPTIONS.split(" ")) + "|--module-path|" + client + "/modules|--add-modules|" +
-				"org.slf4j.nop|-m|app/example.Main|first arg|second|");
+				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + client +
+				"/modules|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
 		}
 	}
 
