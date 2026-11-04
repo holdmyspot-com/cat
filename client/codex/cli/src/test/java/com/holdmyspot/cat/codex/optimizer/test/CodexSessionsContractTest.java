@@ -88,7 +88,7 @@ public final class CodexSessionsContractTest
 	{
 		return CodexSessionsSecrets.getCodexSessionsAccess().
 			newCodexSessions(new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
-			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
+			List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge);
 	}
 

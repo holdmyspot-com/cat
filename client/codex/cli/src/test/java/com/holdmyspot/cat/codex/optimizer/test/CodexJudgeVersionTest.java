@@ -89,7 +89,7 @@ public final class CodexJudgeVersionTest
 				for (Path file : List.of(source.resolve("README.md"), effects.resolve("README.md")))
 					PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(),
 					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				CodexSessions sessions = new CodexSessions(settings);
 				Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1,

@@ -130,7 +130,7 @@ public final class CodexRoleRulesTest
 	{
 		Path source = Files.createDirectories(root.resolve("source"));
 		List<String> prompts = new CopyOnWriteArrayList<>();
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of, "",
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
 			false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		RunnerSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
 			(options, input, output) -> ScriptedHarness.serve(

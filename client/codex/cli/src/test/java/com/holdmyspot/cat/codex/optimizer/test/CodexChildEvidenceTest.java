@@ -234,7 +234,7 @@ public final class CodexChildEvidenceTest
 	 */
 	private static CodexSessions sessions(JvmScope jvm, Path root)
 	{
-		return new CodexSessions(new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(), root,
+		return new CodexSessions(new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(), root,
 			HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()));
 	}
 }

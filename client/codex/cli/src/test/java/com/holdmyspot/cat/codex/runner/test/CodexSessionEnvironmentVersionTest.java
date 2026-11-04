@@ -128,7 +128,7 @@ public final class CodexSessionEnvironmentVersionTest
 				// and the run's identifier replaced
 				String configuration = (replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root) +
 					"\ninstructions = " + instructions + "\n").replace(run.id(), "<run>");
-				RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false,
+				RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(jvm, root, root, List::of, false,
 					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				int version = new CodexSessions(sessionSettings).sessionEnvironmentVersion();
 				VersionRegistry.requireRegistered(REGISTRY, "session environment", version,

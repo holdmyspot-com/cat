@@ -220,7 +220,7 @@ public final class CodexJudgeEvidenceAccessTest
 			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
 		}
 
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, false,
 			Map.of(), hostProject, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(),
 			Optional.empty(), hostProject);
 		List<Path> configurations = new CopyOnWriteArrayList<>();

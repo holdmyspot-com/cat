@@ -84,7 +84,7 @@ public final class ClaudeJudgeVersionTest
 				for (Path file : List.of(source.resolve("README.md"), effects.resolve("README.md")))
 					PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(),
 					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				ClaudeSessions sessions = new ClaudeSessions(settings);
 				// Run directories differ per run, so the hash covers the section with their root replaced. The paths that

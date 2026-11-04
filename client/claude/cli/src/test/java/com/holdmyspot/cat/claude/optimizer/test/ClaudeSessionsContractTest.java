@@ -82,7 +82,7 @@ public final class ClaudeSessionsContractTest
 	{
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().
 			newClaudeSessions(new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
-			List::of, "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
+			List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge);
 	}
 

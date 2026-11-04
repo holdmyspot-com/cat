@@ -186,7 +186,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		Path artifact, Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock,
 		FileReplacer replacer)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, heldOut, "", true,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, heldOut, true,
 			environment, configurationDirectory, HarnessCapacity.forHome(jvm.fileLocks(), home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY, jvm.waiting()), clock, replacer,
 			Optional.of(ProjectRuleLoader.rulesDirectory(home)),

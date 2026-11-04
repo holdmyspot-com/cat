@@ -104,7 +104,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 
 			String settings = normalize(scope.json(), destination, root, run) + "\n" +
 				normalize(scope.json(), controlDestination, root, run);
-			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(scope, root, root, List::of, "", false,
+			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(scope, root, root, List::of, false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
 			VersionRegistry.requireRegistered(REGISTRY, "session environment", version,

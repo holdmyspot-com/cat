@@ -118,7 +118,7 @@ public final class CodexTrialRecordTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(),
 					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				CodexSessions sessions = new CodexSessions(settings);
 				Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1, SANDBOX_ERROR)));
@@ -153,7 +153,7 @@ public final class CodexTrialRecordTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = new CodexSessions(settings);
 			Map<String, String> initial = Map.of("error.log", SANDBOX_ERROR);
@@ -190,7 +190,7 @@ public final class CodexTrialRecordTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trial-record-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(),
 				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = new CodexSessions(settings);
 			String facts = "# Acme facts\n\nAcme ships orders from Ghent.\n";

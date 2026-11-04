@@ -92,7 +92,7 @@ public final class RoleBriefTest
 		if (request.followUp().isPresent())
 			++turns;
 		List<Turn> replies = Collections.nCopies(turns, Turn.replies("ok"));
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of, "",
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
 			true,
 			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		TestSessions sessions = new TestSessions(settings, (options, input, output) ->
@@ -223,7 +223,7 @@ public final class RoleBriefTest
 				ContractFixtures.ranking(ContractFixtures.ONE_PROFILE), Map.of()), List.of(),
 				List.of(new DerivedSource(listed.toString(), "Plugin rule")), ContractFixtures.SALT);
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
-				() -> List.of(heldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+				() -> List.of(heldOut), false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer(), Optional.empty(), root);
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->

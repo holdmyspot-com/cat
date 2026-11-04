@@ -136,7 +136,7 @@ public final class ClaudeSessionsTest
 	private static ClaudeSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script, List<String> requests)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, "", false, Map.of(),
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, false, Map.of(),
 			runRoot, capacity, clock, Yielding.fileReplacer());
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (options, input, output) ->
 		{
@@ -182,8 +182,7 @@ public final class ClaudeSessionsTest
 				Path source = Files.createDirectories(root.resolve("source"));
 				Path artifact = plugin(RoleRuleFixtures.write(root.resolve("artifact")), "cat");
 				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
-					"", true,
-					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+					true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
 				ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().
 					newClaudeSessions(settings, (options, input, output) ->
@@ -288,7 +287,6 @@ public final class ClaudeSessionsTest
 				Path runRoot = root.resolve("runs");
 				Path heldOutRunRoot = root.resolve("runs-held_out");
 				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, () -> List.of(heldOut),
-					"",
 					false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
 				List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
@@ -358,7 +356,7 @@ public final class ClaudeSessionsTest
 			Path source = Files.createDirectories(project.resolve("source"));
 			Path artifact = RoleRuleFixtures.write(project.resolve("artifact"));
 			Path runRoot = project.resolve(".cat/sessions/session-1/optimizer-runs/claude");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, "", false,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, false,
 				Map.of(), project, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(), Optional.empty(),
 				project);
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -410,7 +408,7 @@ public final class ClaudeSessionsTest
 			Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
 			Path launcher = root.resolve("image/bin/prompt-optimizer");
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
-				() -> List.of(heldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+				() -> List.of(heldOut), false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			List<List<String>> received = new CopyOnWriteArrayList<>();
@@ -475,7 +473,7 @@ public final class ClaudeSessionsTest
 			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/sessions/" + otherSessionId +
 				"/optimizer/c2/held_out"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, session.runRoot("claude"),
-				() -> List.of(heldOut, otherHeldOut), "", false, Map.of(), root, HarnessCapacity.unlimited(),
+				() -> List.of(heldOut, otherHeldOut), false, Map.of(), root, HarnessCapacity.unlimited(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().
@@ -651,7 +649,7 @@ public final class ClaudeSessionsTest
 	 */
 	private static RunnerSessions.Settings exposureSettings(JvmScope jvm, Path root)
 	{
-		return new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "", false, Map.of(), root,
+		return new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, false, Map.of(), root,
 			HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 	}
 
@@ -783,7 +781,7 @@ public final class ClaudeSessionsTest
 	 */
 	private static ClaudeSessions loginPort(JvmScope jvm, Path root, Map<String, String> environment)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "", false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, false,
 			environment, root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (options, input, output) ->
 		{
@@ -1115,7 +1113,7 @@ public final class ClaudeSessionsTest
 				Files.createDirectories(path.getParent());
 				Files.writeString(path, "Instructions");
 			}
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1167,7 +1165,7 @@ public final class ClaudeSessionsTest
 				Files.writeString(path, file.getValue());
 			}
 			Files.writeString(root.resolve("outside.md"), "Outside");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1198,7 +1196,7 @@ public final class ClaudeSessionsTest
 				""");
 			Files.writeString(project.resolve("AGENTS.md"), "@./gone.txt");
 			Files.writeString(root.resolve("outside.md"), "Outside");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1241,7 +1239,7 @@ public final class ClaudeSessionsTest
 				"web": {"type": "http", "url": "https://example.com/mcp"}}}""");
 			for (String file : List.of("scripts/inject.sh", "tools/prompt.py", "servers/docs.js"))
 				write(project.resolve(file), "script");
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1282,7 +1280,7 @@ public final class ClaudeSessionsTest
 				"web": {"type": "http", "url": "https://example.com/mcp"}}}""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
 				new TrialPlugin.Installed(), List.of(), null), root.resolve("tools")));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1328,7 +1326,7 @@ public final class ClaudeSessionsTest
 				"command": "${CLAUDE_PLUGIN_ROOT}/start.sh"}]}]}}""");
 			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("tools@market", "b".repeat(64),
 				new TrialPlugin.Installed(), List.of(), null), tools));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{
@@ -1408,7 +1406,7 @@ public final class ClaudeSessionsTest
 					tools),
 				new PluginBase(new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"),
 					Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("plugin/hooks"), Path.of("hooks"))), null), cat));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of, "",
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (_, _, _) ->
 			{

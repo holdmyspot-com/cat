@@ -109,7 +109,7 @@ public final class ClaudeTrialRecordTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory("cat-claude-trial-record-"));
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, "", false, Map.of(),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(),
 					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				ClaudeSessions sessions = new ClaudeSessions(settings);
 				Recorded record = new Recorded(sessions.readEvidence(EVENTS), Map.of("sample.txt", "sample\n"));
