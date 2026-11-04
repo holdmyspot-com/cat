@@ -360,6 +360,25 @@ XDG_DATA_HOME" ]
 	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
 }
 
+# Windows reuses process identifiers, so a request that names a running process whose start instant differs from the
+# one on its fifth line was left by a launcher that has exited; the test shell's own process stands for the process
+# that reuses the identifier.
+@test "the Windows stable launcher treats a request whose process started at another instant as left by a stopped launcher" {
+	rm -rf -- "${DATA}/runtime"
+	write_runtime "${DATA}/runtime.previous" installed 0
+	write_runtime "${DATA}/runtime.next" staged 0
+	printf '%s\n' update 1.0 1.1 "$(cat "/proc/$$/winpid")" 2000-01-01T00:00:00Z - > "${DATA}/state/runtime-swap"
+
+	run powershell_file "${DATA}/bin/cat-updater.ps1" status
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" != '{"result":"locked",'* ]]
+	[[ "$(java_arguments "${DATA}")" == *$'\n[status]' ]]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ ! -e "${DATA}/runtime.previous" ]
+	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
+}
+
 @test "the Windows stable launcher reports locked with status 75 while another launcher is replacing the runtime" {
 	rm -rf -- "${DATA}/runtime"
 	write_runtime "${DATA}/runtime.previous" installed 0
