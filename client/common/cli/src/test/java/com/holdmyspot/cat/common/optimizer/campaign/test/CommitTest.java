@@ -110,16 +110,20 @@ public final class CommitTest
 
 	/**
 	 * Verifies that a commit freezes the candidate, the levels, the incumbent bounds, the bets, the cap and the
-	 * allocation policy, and opens the formal stream at its start.
+	 * allocation policy, and opens the formal stream at its start with no development outcomes in formal counts.
 	 */
 	@Test
 	public void commitFreezesProcedure()
 	{
 		// Requirement: R-F1, R-M4
 		Campaign before = ready().build();
+		requireThat(before.development().counts(), "developmentBeforeCommit").isNotEmpty();
 		Campaign campaign = Transitions.apply(before, new CampaignEvent.Commit(calibration(1), 41, Builder.CONTROL));
 		CertificationAttempt attempt = campaign.attempt(1);
 
+		requireThat(attempt.counts(), "formalCounts").isEmpty();
+		requireThat(campaign.development().counts(), "developmentAfterCommit").
+			isEqualTo(before.development().counts());
 		requireThat(attempt.isRunning(), "isRunning").isTrue();
 		requireThat(attempt.lineage(), "lineage").isEqualTo(1);
 		requireThat(attempt.candidate(), "candidate").isEqualTo(before.development().working());

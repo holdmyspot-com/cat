@@ -2464,6 +2464,13 @@ public final class DriverTest
 	 * Certification waits for the incumbent comparisons: each cell starts with its minimum-pass-rate part certified
 	 * and its control and incumbent comparisons one tied pair short of passing, and the attempt certifies only after
 	 * an incumbent trial of every cell, which stages the incumbent, passes each incumbent comparison.
+	 * <p>
+	 * The fixture seeds all earlier evidence instead of replaying the trials that produced it. Both cells must remain:
+	 * the incumbent-cell assertion checks that neither is omitted, and the delivered record must contain passing
+	 * incumbent comparisons for each assertion. The driver therefore processes the last formal, control and incumbent
+	 * trials of each cell and persists their results before delivery. This remaining trial and store work can take one
+	 * second or longer during a parallel build; removing a cell or pre-certifying its incumbent comparisons would lose
+	 * those assertions' coverage.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */

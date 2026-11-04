@@ -1784,6 +1784,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that broken tracked workspace links stop a new start, a resumed start and revise before any model
 	 * request or campaign change. The supplied filesystem probe chooses the CLI refusal or infrastructure error.
+	 * <p>
+	 * The resumed-start and revision cases seed one active campaign directly: checkout validation must refuse the
+	 * command before it reads a proposal or opens the campaign's fork, so deriving a proposal adds no coverage here.
 	 *
 	 * @param command the new-start, resumed-start or revision path
 	 * @param canCreateLinks indicates whether the supplied probe can create symbolic links
@@ -1802,7 +1805,13 @@ public final class OptimizerCoreTest
 			}));
 			String id = "";
 			if (!command.equals("create"))
-				id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			{
+				id = "campaign-1";
+				Header header = new Header(id, repository.root(), repository.root().resolve("CLAUDE.md"),
+					repository.scope().harness(), Lifecycle.ACTIVE);
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
+					replaceSnapshot(new Builder().header(header).build());
+			}
 			int requestsBefore = repository.sessions().requests.size();
 			List<Campaign> before = new ArrayList<>();
 			for (Header header : OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
@@ -3650,6 +3659,11 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code cancel} and {@code status} work on a campaign whose stored proposal no longer validates, so
 	 * the user is never left with a campaign that no command can end.
+	 * <p>
+	 * One public start creates the stored proposal and its draft before the fixture removes the derivation's judge.
+	 * Both commands must accept that invalid derivation in an otherwise readable proposal file. The start includes
+	 * proposal validation, persistence and a scripted guard pilot; this file work can take one second or longer during
+	 * a parallel build. A campaign snapshot alone would not exercise handling of the invalid stored proposal.
 	 *
 	 * @throws Exception if the owned repository or store fails
 	 */
@@ -4445,9 +4459,9 @@ public final class OptimizerCoreTest
 	 * pending request after invalid scripted replies. Run restores the stored proposal and opens its fork, so the
 	 * initial creation supplies artifacts that a campaign record alone cannot provide.
 	 * <p>
-	 * This test can take one second or longer when it runs first in its JVM: it starts, confirms and runs through the
-	 * public commands, and the run starts a contract author session that is corrected once; loading and compiling the
-	 * classes of those commands, which the first test in a JVM to use them does, takes most of that time.
+	 * Starting and confirming the proposal, then running the revision with one correction can take one second or
+	 * longer during a parallel build. The two invalid replies are required by the follow-up-count and retained-request
+	 * assertions; skipping the second reply would not check refusal after the correction is exhausted.
 	 */
 	@Test
 	public void refusesRevisionThatChangesRequirements() throws Exception
@@ -5043,9 +5057,11 @@ public final class OptimizerCoreTest
 	 * Verifies that a command that removes its campaign's files says so in its summary: retaining the incumbent after
 	 * a certified attempt ends the campaign and removes its files.
 	 * <p>
-	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign through the public
-	 * command, then retains the incumbent, which delivers its prompt tests and removes the campaign's files; loading and
-	 * compiling the classes of those commands, which the first test in a JVM to use them does, takes most of that time.
+	 * One start creates the stored proposal, its draft tests and the incumbent overlay needed by public choice and
+	 * delivery handling. The fixture seeds the completed certification evidence rather than replaying its trials,
+	 * then retaining the incumbent delivers those tests and removes the campaign directory. This start and choice can
+	 * take one second or longer during a parallel build. A campaign snapshot alone would omit the draft and overlay
+	 * artifacts needed to reach the asserted removal summary and absent directory.
 	 */
 	@Test
 	public void removalIsReported() throws Exception

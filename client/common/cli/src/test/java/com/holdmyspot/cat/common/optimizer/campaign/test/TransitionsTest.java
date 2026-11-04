@@ -685,6 +685,34 @@ public final class TransitionsTest
 	}
 
 	/**
+	 * Verifies that retry preserves a later formal outcome waiting for an earlier trial, and both outcomes enter
+	 * the counts in assignment order after that earlier trial completes.
+	 */
+	@Test
+	public void retryKeepsCompletedOutcomes()
+	{
+		// Requirement: R-E1, R-E5
+		Campaign campaign = new Builder().confirmed().working(1).readyBaseline().certificationAttempt(1).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+		TrialKey first = TransitionSteps.last(campaign);
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "safety");
+		TrialKey second = TransitionSteps.last(campaign);
+		campaign = TransitionSteps.run(campaign, second, Verdict.PASS);
+		LogicalTrial completed = campaign.trials().getLast();
+		campaign = failToLimit(campaign, first);
+		CertificationAttempt before = campaign.attempt(1);
+		requireThat(before.count("safety"), "waitingCounts").isEqualTo(CellCounts.EMPTY);
+
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
+
+		requireThat(campaign.attempt(1), "attemptAfterRetry").isEqualTo(before);
+		requireThat(campaign.trials().getLast(), "completedAfterRetry").isEqualTo(completed);
+		campaign = TransitionSteps.run(campaign, first, Verdict.FAIL);
+		requireThat(campaign.attempt(1).count("safety"), "adoptedCounts").isEqualTo(counts(1, 1));
+		requireThat(campaign.trials(), "unadoptedTrials").isEmpty();
+	}
+
+	/**
 	 * Runs and fails a logical trial with infrastructure failures until it reaches the limit.
 	 *
 	 * @param campaign the state
