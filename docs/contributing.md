@@ -20,14 +20,18 @@ This developer workflow installs the artifacts built in this checkout; end users
 the [installation guide](installation.md).
 
 The package build writes the updater to `client/common/distribution/target/runtime/updater/`, and each harness's plugin
-to `client/common/distribution/target/runtime/claude/` and `.../codex/`. The updater directory holds the shared Java
-runtime in `runtime/` and the updater application in `<V>/`, where `<V>` is the CAT version declared in
-`client/pom.xml`, currently `1.0`; the directory's name shows it.
+to `client/common/distribution/target/runtime/claude/` and `.../codex/`. The updater directory holds a Java runtime in
+`runtime/` and the updater application in `<V>/`, where `<V>` is the CAT version declared in `client/pom.xml`, currently
+`1.0`; the directory's name shows it.
 
-Install through the updater's `setup`, which takes the local plugin tree in place of a signed release. Your authority as
-the person running the command replaces the release signature; setup still validates the tree, checks the shared
-runtime against the plugin's Java requirement, and binds the plugin to the runtime. Pass the harness home, and the
-absolute path to the plugin tree:
+Install through the updater's `setup`, which takes the local plugin tree in place of a signed release. Each harness gets
+its own installation, so run `setup` once for each harness you test. Setup copies the Java runtime and the updater into
+that harness's installation directory, `${XDG_DATA_HOME:-$HOME/.local/share}/cat-updater/<harness>` (on Windows,
+`%LOCALAPPDATA%\cat-updater\<harness>`), and records the policy in
+`${XDG_CONFIG_HOME:-$HOME/.config}/cat-updater/<harness>/policy.json` (on Windows, `policy.json` in that directory).
+Your authority as the person running the command replaces the release signature; setup still validates the tree, checks
+the installation's Java runtime against the plugin's Java requirement, and binds the plugin to that runtime. Pass the
+harness home, and the absolute path to the plugin tree:
 
 ```bash
 client/common/distribution/target/runtime/updater/<V>/bin/cat-updater setup --harness claude --home ~/.claude \
@@ -47,8 +51,9 @@ runtime: `client/common/distribution/target/runtime/<harness>/client/bin/<launch
 
 ### Test removal or an upgrade
 
-Use the installed updater's `uninstall` operation, as described in the [installation guide](installation.md#uninstall),
-when testing removal. Run `setup` again with the same `--plugin` to test an upgrade.
+Use the harness's installed updater's `uninstall` operation, as described in the
+[installation guide](installation.md#uninstall), when testing removal; it removes only that harness's installation. Run
+`setup` again with the same `--plugin` to test an upgrade.
 
 Run the external launcher and entry-script boundary tests:
 
@@ -56,7 +61,9 @@ Run the external launcher and entry-script boundary tests:
 bats client/common/distribution/src/test/bats/bootstrap-common.bats \
 	client/common/distribution/src/test/bats/bootstrap-claude.bats \
 	client/common/distribution/src/test/bats/bootstrap-codex.bats \
-	client/common/distribution/src/test/bats/jlink-launchers.bats
+	client/common/distribution/src/test/bats/codex-plugin-launchers.bats \
+	client/common/distribution/src/test/bats/jlink-launchers.bats \
+	client/common/distribution/src/test/bats/updater-launcher.bats
 ```
 
 Java tests call production classes directly. Bats is reserved for shell, entry-script, and generated-launcher boundaries

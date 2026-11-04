@@ -50,17 +50,18 @@ a team, see Pricing (docs/PRICING.md) for commercial plans and features.
 ### 1. Install CAT
 
 Run one command yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Choose the command for your
-harness:
+harness, and run the other one too if you use both harnesses:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex
 ```
 
-The command installs everything CAT needs: a Java runtime that CAT keeps for itself, a trusted updater, the CAT
-plugin for your harness, and the permission entries that let your agent install, update and uninstall CAT afterwards.
-There is nothing to copy into your settings. Windows commands, custom harness homes, and the permission boundary are
-in [Install CAT](docs/installation.md).
+The command installs everything CAT needs for that harness: a Java runtime that CAT keeps for itself, a trusted
+updater, the CAT plugin, and the permission entries that let your agent install, update and uninstall CAT afterwards.
+Each harness gets its own separate installation, so using both puts two Java runtimes on disk and lets each harness run
+a different CAT release. There is nothing to copy into your settings. Windows commands, custom harness homes, and the
+permission boundary are in [Install CAT](docs/installation.md).
 
 ### 2. Start or resume a session
 
@@ -69,14 +70,16 @@ Start or resume a session. CAT then injects its default rules and your project's
 ### Install, update, reinstall and uninstall
 
 Afterwards, ask your agent. CAT's `update` skill installs, updates and rolls back CAT through the trusted updater, and
-installs the plugin again if you removed it by other means. It requests GitHub's latest release unless you name one;
-the release must satisfy your updater policy. It verifies signed release metadata and the plugin archive before
-activation. Restart the harness after an update. See
+installs the plugin again if you removed it by other means. An update moves the Java runtime, the updater and the
+plugin to the new release together, and a rollback returns all three to the previous release. It requests GitHub's
+latest release unless you name one; the release must satisfy your updater policy. It verifies signed release metadata
+and the release archives before activation. Restart the harness after an update. See
 [updates and rollback](docs/installation.md#routine-operations).
 
-CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes all of CAT: the plugin, the updater,
-the Java runtime and the permission entries. It keeps the plugin data unless you ask to delete it, and never deletes
-your own files or rules. Installing CAT again after that is a new installation that uses the one command above. See
+CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes that harness's whole CAT
+installation: the plugin, the updater, the Java runtime and the permission entries. It keeps the plugin data unless you
+ask to delete it, and never deletes your own files or rules. The other harness's installation is not touched. Installing
+CAT again after that is a new installation that uses the one command above. See
 [uninstall](docs/installation.md#uninstall).
 
 ## Learn More
