@@ -1,12 +1,17 @@
 package com.holdmyspot.cat.distribution.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -15,15 +20,23 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests that both plugins hold the {@code update} and {@code uninstall} skills, through which an agent installs,
@@ -35,6 +48,15 @@ public final class LifecycleSkillsTest
 	 * The skills that update and remove CAT.
 	 */
 	private static final List<String> SKILLS = List.of("update", "uninstall");
+	/**
+	 * A launcher command that a skill names, with its arguments.
+	 */
+	private static final Pattern LAUNCHER_COMMAND = Pattern.compile("`<launcher> ([^`]+)`");
+	/**
+	 * A Codex execution-policy rule and its command prefix.
+	 */
+	private static final Pattern PREFIX_RULE = Pattern.compile("prefix_rule\\(pattern=(\\[[^]]*]), decision=");
+	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 
 	/** Creates a test instance. */
 	public LifecycleSkillsTest()
@@ -106,8 +128,8 @@ public final class LifecycleSkillsTest
 			requireThat(uninstallBody, "uninstallBody").contains("cat-updater/<h>/bin/cat-updater").
 				contains("cat-updater\\<h>\\bin\\cat-updater.ps1").
 				contains("Before you run anything, ask the user whether").
-				contains("the default is to keep it").contains("`<launcher> uninstall`").
-				contains("`<launcher> uninstall --delete-data` only when the user asked to delete it").
+				contains("the default is to keep it").contains("`<launcher> uninstall --harness <h>`").
+				contains("`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it").
 				contains("`uninstalled`").contains("`not_removed`").contains("needs the one manual entry command again").
 				contains("When the result's `unregistered` field is false").
 				contains("`claude plugin uninstall cat@cat`").contains("`codex plugin remove cat@cat`").
@@ -140,6 +162,132 @@ public final class LifecycleSkillsTest
 				}
 			}
 			requireThat(Files.exists(plugin.resolve("skills/shared-lazy-body.md")), "sourceOnlyBody").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that every updater command that the {@code update} and {@code uninstall} skills tell an agent to run
+	 * matches a permission entry that setup installs for the harness, so that the harness lets the agent run it.
+	 *
+	 * @param harness the harness whose permission entries to install
+	 * @throws IOException if a skill cannot be read or the permission entries cannot be installed
+	 */
+	@Test(dataProvider = "harnesses")
+	public void skillCommandsMatchPermissionEntries(String harness) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-lifecycle-permissions-"));
+			Path launcher = home.resolve("data/bin/cat-updater");
+			HarnessIntegration integration = ServiceLoader.load(HarnessIntegration.class).stream().
+				map(ServiceLoader.Provider::get).filter(provider -> provider.harness().equals(harness)).findFirst().
+				orElseThrow();
+			Map<String, List<String>> entries = integration.installPermissions(home, launcher,
+				new FileReplacer(Platform.current(), () ->
+				{
+				}, Clock.systemUTC()));
+
+			List<String> commands = new ArrayList<>();
+			for (String skill : SKILLS)
+			{
+				Matcher matcher = LAUNCHER_COMMAND.matcher(skillBody(skill));
+				while (matcher.find())
+				{
+					commands.add(launcher + " " + matcher.group(1).replace("<h>", harness).
+						replace("<tag>", "v1.1"));
+				}
+			}
+			requireThat(commands, "commands").isNotEmpty();
+			for (String command : commands)
+			{
+				requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
+					withContext(entries, "entries").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Returns whether a permission entry that a harness integration installed matches a command.
+	 *
+	 * @param command the command, with single spaces between its tokens
+	 * @param entries the installed entries, as {@link HarnessIntegration#installPermissions} returns them
+	 * @return true if Claude Code would run the command outside its sandbox or allow it without a prompt, or a Codex
+	 * 	rule's prefix matches it
+	 * @throws IOException if a Codex rule's pattern is malformed
+	 */
+	private static boolean isPermitted(String command, Map<String, List<String>> entries) throws IOException
+	{
+		for (Map.Entry<String, List<String>> setting : entries.entrySet())
+		{
+			for (String entry : setting.getValue())
+			{
+				boolean permitted = switch (setting.getKey())
+				{
+					case "settings.json#sandbox.excludedCommands" -> entry.equals(command);
+					case "settings.json#permissions.allow" -> allows(entry, command);
+					case "rules/cat-updater.rules#" -> hasPrefixRule(entry, command);
+					default -> throw new AssertionError("Unknown permission setting: " + setting.getKey());
+				};
+				if (permitted)
+					return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Returns whether a Claude Code permission rule allows a command.
+	 *
+	 * @param rule    the rule, {@code Bash(<command>)} or {@code Bash(<prefix> *)}
+	 * @param command the command
+	 * @return true if the rule names the command or a prefix of it followed by more arguments
+	 */
+	private static boolean allows(String rule, String command)
+	{
+		String pattern = rule.substring("Bash(".length(), rule.length() - 1);
+		if (pattern.endsWith(" *"))
+		{
+			String prefix = pattern.substring(0, pattern.length() - 1);
+			return command.startsWith(prefix) && command.length() > prefix.length();
+		}
+		return pattern.equals(command);
+	}
+
+	/**
+	 * Returns whether a Codex execution-policy file holds a rule whose prefix matches a command.
+	 *
+	 * @param rules   the file's content
+	 * @param command the command
+	 * @return true if the tokens of a rule's pattern start the command's tokens
+	 * @throws IOException if a rule's pattern is malformed
+	 */
+	private static boolean hasPrefixRule(String rules, String command) throws IOException
+	{
+		List<String> tokens = Arrays.asList(command.split(" "));
+		Matcher matcher = PREFIX_RULE.matcher(rules);
+		while (matcher.find())
+		{
+			List<String> pattern = new ArrayList<>();
+			for (JsonNode token : MAPPER.readTree(matcher.group(1)))
+				pattern.add(token.stringValue());
+			if (tokens.size() >= pattern.size() && tokens.subList(0, pattern.size()).equals(pattern))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Returns the shared body of a lifecycle skill.
+	 *
+	 * @param skill the skill's name
+	 * @return the body
+	 * @throws IOException if the class path cannot be read
+	 */
+	private static String skillBody(String skill) throws IOException
+	{
+		try (InputStream in = resources("skills/" + skill + "/first-use.md").getFirst().openStream())
+		{
+			return new String(in.readAllBytes(), UTF_8);
 		}
 	}
 

@@ -246,12 +246,12 @@ without restart remains unverified.
 ## Uninstall
 
 Ask your agent to uninstall CAT in the harness you are using. The `uninstall` skill first asks whether to also delete
-CAT's plugin data; the default is to keep it. It then runs that harness's installed updater's `uninstall` operation, or
-`uninstall --delete-data` when you ask to delete the data:
+CAT's plugin data; the default is to keep it. It then runs that harness's installed updater's `uninstall` operation for
+that harness, adding `--delete-data` when you ask to delete the data:
 
 ```bash
-/home/me/.local/share/cat-updater/codex/bin/cat-updater uninstall
-/home/me/.local/share/cat-updater/codex/bin/cat-updater uninstall --delete-data
+/home/me/.local/share/cat-updater/codex/bin/cat-updater uninstall --harness codex
+/home/me/.local/share/cat-updater/codex/bin/cat-updater uninstall --harness codex --delete-data
 ```
 
 On Windows, use the PowerShell form shown under [Routine operations](#routine-operations). Your harness asks you to

@@ -11,6 +11,7 @@ module com.holdmyspot.cat.distribution.test
 	requires org.testng;
 	requires tools.jackson.databind;
 
+	uses com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 	uses com.holdmyspot.cat.common.updater.activation.PluginActivation;
 
 	exports com.holdmyspot.cat.distribution.bundle.test to org.testng;
