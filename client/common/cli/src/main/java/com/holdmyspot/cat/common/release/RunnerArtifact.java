@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.Locale;
 
 /**
- * A harness's CAT artifact that {@link ReleaseBundles} resolved, and the runner launcher in it.
+ * A harness's CAT plugin that a runner launcher selector found, and the runner launcher in it.
  *
  * @param artifact the artifact's directory
  * @param runner   the runner launcher in the artifact
@@ -22,15 +22,7 @@ public record RunnerArtifact(Path artifact, Path runner, Source source)
 		/**
 		 * The harness's installed CAT plugin.
 		 */
-		INSTALLED,
-		/**
-		 * A copy that an earlier download left in CAT's per-user bundle directory.
-		 */
-		BUNDLE,
-		/**
-		 * A copy that this resolution downloaded into CAT's per-user bundle directory.
-		 */
-		DOWNLOAD;
+		INSTALLED;
 
 		/**
 		 * Returns the source's name in a command's output.

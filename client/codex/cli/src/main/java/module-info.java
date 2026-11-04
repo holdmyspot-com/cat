@@ -1,6 +1,7 @@
 module com.holdmyspot.cat.codex.cli
 {
 	requires com.holdmyspot.cat.common.cli;
+	requires com.holdmyspot.cat.claude.layout;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.core;
 	requires tools.jackson.databind;

@@ -22,6 +22,10 @@
 			<artifactId>client-common-cli</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-codex-layout</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>io.github.cowwoc.requirements</groupId>
 			<artifactId>requirements-java</artifactId>
 		</dependency>

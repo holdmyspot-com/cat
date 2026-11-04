@@ -234,6 +234,9 @@ public final class DistributionMain
 			modularizeJavaDiff(javaDiff.path(), staged));
 		Path packagedClaudeCli = copyModule(claudeCli, staged);
 		Path packagedCodexCli = copyModule(codexCli, staged);
+		// Each harness's runner launcher finds the other harness's installed plugin through that harness's layout
+		List<Path> layoutModules = List.of(copyModule(findDependencyJar(moduleDirectory, "client-claude-layout"),
+			staged), copyModule(findDependencyJar(moduleDirectory, "client-codex-layout"), staged));
 		Path commonInstaller = findDependencyJar(moduleDirectory, "client-common-installer");
 		List<Path> installerModules = List.of(copyModule(commonInstaller, staged),
 			copyModule(findDependencyJar(moduleDirectory, "client-claude-installer"), staged),
@@ -243,8 +246,8 @@ public final class DistributionMain
 			copyModule(jacksonYaml.path(), staged), copyModule(snakeyaml.path(), staged),
 			copyModule(jacksonToml.path(), staged));
 
-		List<Path> applicationModules = append(append(append(append(sharedRuntimeModules, packagedClaudeCli),
-			packagedCodexCli), installerModules), jsonRuntimeModules);
+		List<Path> applicationModules = append(append(append(append(append(sharedRuntimeModules, packagedClaudeCli),
+			packagedCodexCli), layoutModules), installerModules), jsonRuntimeModules);
 		// Each plugin also runs the installer from its own modules
 		Set<String> installerRoots = Set.of("com.holdmyspot.cat.common.installer",
 			"com.holdmyspot.cat.claude.installer", "com.holdmyspot.cat.codex.installer", "com.holdmyspot.cat.common.cli",

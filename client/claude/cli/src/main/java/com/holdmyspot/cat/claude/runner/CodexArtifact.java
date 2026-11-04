@@ -2,21 +2,31 @@ package com.holdmyspot.cat.claude.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.release.ReleaseBundles;
+import com.holdmyspot.cat.common.release.OtherHarnessPlugin;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
- * Runs {@code codex-artifact}, which finds the Codex CAT artifact of this CAT version and platform for an agent that
- * runs Codex from the Claude plugin, and prints it with the artifact's {@code codex-runner} launcher. The Claude plugin
- * holds no Codex classes or files, so the artifact is the Codex CAT plugin installed for Codex when its version
- * matches, otherwise a copy in CAT's per-user bundle directory, which this command downloads from the Codex release
- * archive of this CAT version when it is missing.
+ * Runs {@code codex-artifact}, which finds the Codex CAT plugin for an agent that runs Codex from the Claude plugin,
+ * and prints it with the plugin's {@code codex-runner} launcher. The Claude plugin holds no Codex classes or files, so
+ * the artifact is the Codex CAT plugin that Codex has installed, which must be of this plugin's CAT release. When Codex
+ * has none, the command stops and names the command that installs CAT into Codex, for the user to approve.
  */
 public final class CodexArtifact
 {
+	/**
+	 * The Codex plugin manifest, relative to the plugin.
+	 */
+	private static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
+
 	/**
 	 * Prints the artifact as {@code key=value} lines, or the reason that it cannot be found to standard error.
 	 *
@@ -41,57 +51,74 @@ public final class CodexArtifact
 	}
 
 	/**
-	 * Resolves the artifact, binding a downloaded or earlier-downloaded bundle to the Java runtime of the running JVM.
+	 * Finds the Codex CAT plugin for the Claude plugin that holds the running code.
 	 *
-	 * @param environment the process environment, as {@link #execute(Map, Path)} reads it
+	 * @param environment the process environment, as {@link #execute(Map, Path, Platform)} reads it
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
 	 * @throws NullPointerException if {@code environment} is null
-	 * @throws IOException          if the home directory is not set, or the artifact cannot be downloaded, verified or
-	 *                              extracted
+	 * @throws IOException          if the running code is not loaded from a CAT plugin, or the plugin cannot be found
 	 */
 	public static String execute(Map<String, String> environment) throws IOException
 	{
-		return execute(environment, Path.of(System.getProperty("java.home")));
+		Path plugin;
+		try
+		{
+			plugin = PluginDirectory.of(CodexArtifact.class);
+		}
+		catch (IllegalStateException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
+		return execute(environment, plugin, Platform.current());
 	}
 
 	/**
-	 * Finds the Codex CAT artifact, downloading it when neither the installed plugin nor an earlier download is
-	 * usable.
+	 * Finds the Codex CAT plugin that Codex has installed in its plugin cache.
 	 *
 	 * @param environment the process environment: the user's home directory ({@code HOME}, or {@code USERPROFILE} on
-	 *                    Windows); {@code CODEX_HOME}, the Codex home, which defaults to {@code .codex} in the home
-	 *                    directory; {@code CAT_CODEX_MARKETPLACE_ROOT}, CAT's Codex marketplace, which defaults to
-	 *                    {@code plugins/cat-marketplace} in the Codex home
-	 * @param runtime     the installation's Java runtime that a bundle is bound to, which is the runtime of the running
-	 *                    JVM
+	 *                    Windows) and {@code CODEX_HOME}, the Codex home, which defaults to {@code .codex} in the home
+	 *                    directory
+	 * @param plugin      the version folder of the Claude plugin that runs the command
+	 * @param platform    the platform that the plugins were built for and run on
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the home directory is not set, or the artifact cannot be downloaded, verified or
-	 *                              extracted
+	 * @throws IOException          if the home directory is not set, Codex has no CAT plugin of this plugin's release, or
+	 *                              that plugin is incomplete
 	 */
-	public static String execute(Map<String, String> environment, Path runtime) throws IOException
+	public static String execute(Map<String, String> environment, Path plugin, Platform platform) throws IOException
 	{
 		requireThat(environment, "environment").isNotNull();
-		requireThat(runtime, "runtime").isNotNull();
-		Path home = Platform.current().homeDirectory(environment);
-		Path marketplace;
-		String configuredMarketplace = environment.get("CAT_CODEX_MARKETPLACE_ROOT");
-		if (configuredMarketplace != null && !configuredMarketplace.isBlank())
-			marketplace = Path.of(configuredMarketplace);
-		else
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		CodexInstallation codex;
+		try
 		{
-			String configuredHome = environment.get("CODEX_HOME");
-			Path codexHome;
-			if (configuredHome != null && !configuredHome.isBlank())
-				codexHome = Path.of(configuredHome);
-			else
-				codexHome = home.resolve(".codex");
-			marketplace = codexHome.resolve("plugins/cat-marketplace");
+			codex = CodexInstallation.fromEnvironment(environment, platform.homeDirectory(environment));
 		}
-		ReleaseBundles bundles = new ReleaseBundles(ReleaseBundles.directory(home),
-			ReleaseBundles.releaseUri(), Platform.current(), environment, runtime);
-		return bundles.resolve(marketplace.resolve("plugins/cat"), "codex", Path.of(".codex-plugin/plugin.json"),
-			"codex-runner").format();
+		catch (IllegalArgumentException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
+		return OtherHarnessPlugin.select(plugin, codex, "codex", "Codex", installed(codex.versionFolders()), MANIFEST,
+			"codex-runner", platform).format();
+	}
+
+	/**
+	 * Returns the plugin versions that Codex has installed: the names of the version folders in its plugin cache.
+	 *
+	 * @param versionFolders the folder that holds the version folders
+	 * @return the names, sorted, or none when the folder does not exist
+	 * @throws IOException if the folder cannot be listed
+	 */
+	private static List<String> installed(Path versionFolders) throws IOException
+	{
+		if (!Files.isDirectory(versionFolders, LinkOption.NOFOLLOW_LINKS))
+			return List.of();
+		try (Stream<Path> children = Files.list(versionFolders))
+		{
+			return children.filter(child -> Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS)).
+				map(child -> child.getFileName().toString()).sorted().toList();
+		}
 	}
 
 	/**
