@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
@@ -35,7 +36,8 @@ import tools.jackson.databind.JsonNode;
  * second run writes the cache from that record. The program runs against a scratch home, temporary folder and project
  * that are removed afterwards, with an environment that holds nothing of the caller's except its program search path,
  * and its output is discarded. A plugin directory that cannot be trained keeps no cache and no partial file, and its
- * launchers start without one; training never fails the operation.
+ * launchers start without one; training never fails the operation. A process with administrative rights trains
+ * nothing, so that the plugin's program never runs with those rights.
  */
 public final class StartupCacheTrainer
 {
@@ -54,22 +56,27 @@ public final class StartupCacheTrainer
 		"windir");
 	private final Path scratch;
 	private final Duration timeout;
+	private final BooleanSupplier elevated;
 
 	/**
 	 * Creates a trainer.
 	 *
-	 * @param scratch the directory below which each training run gets its scratch folders, which is created when
-	 *                absent
-	 * @param timeout the longest time that each of a training's two Java runs may take before it is stopped
+	 * @param scratch  the directory below which each training run gets its scratch folders, which is created when
+	 *                 absent
+	 * @param timeout  the longest time that each of a training's two Java runs may take before it is stopped
+	 * @param elevated tells whether this process runs with administrative rights, such as
+	 *                 {@link ProcessElevation#isElevated(Path)}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code timeout} is not positive
 	 */
-	public StartupCacheTrainer(Path scratch, Duration timeout)
+	public StartupCacheTrainer(Path scratch, Duration timeout, BooleanSupplier elevated)
 	{
 		requireThat(scratch, "scratch").isNotNull();
 		requireThat(timeout, "timeout").isGreaterThan(Duration.ZERO);
+		requireThat(elevated, "elevated").isNotNull();
 		this.scratch = scratch.toAbsolutePath().normalize();
 		this.timeout = timeout;
+		this.elevated = elevated;
 	}
 
 	/**
@@ -125,8 +132,9 @@ public final class StartupCacheTrainer
 	}
 
 	/**
-	 * Replaces a plugin directory's startup cache with one trained at the directory's location. Without a training
-	 * description, or when either Java run fails or takes too long, the directory is left without a cache.
+	 * Replaces a plugin directory's startup cache with one trained at the directory's location. When this process runs
+	 * with administrative rights, the plugin has no training description, or either Java run fails or takes too long,
+	 * the directory is left without a cache.
 	 *
 	 * @param plugin the plugin directory
 	 * @return {@code true} if the cache was written
@@ -141,6 +149,8 @@ public final class StartupCacheTrainer
 		try
 		{
 			StateFiles.delete(cacheDirectory);
+			if (elevated.getAsBoolean())
+				return false;
 			Path description = plugin.resolve(StartupCache.TRAINING);
 			if (!Files.exists(description, NOFOLLOW_LINKS))
 				return false;

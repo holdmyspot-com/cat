@@ -130,7 +130,9 @@ public final class UpdateEngine
 		this.clock = clock;
 		this.waiting = waiting;
 		this.lockWait = lockWait;
-		this.trainer = new StartupCacheTrainer(state.directory().resolve("startup-cache"), Duration.ofMinutes(1));
+		Path trainingScratch = state.directory().resolve("startup-cache");
+		this.trainer = new StartupCacheTrainer(trainingScratch, Duration.ofMinutes(1),
+			() -> ProcessElevation.isElevated(trainingScratch));
 	}
 
 	/**

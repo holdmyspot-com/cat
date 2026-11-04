@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
@@ -47,6 +48,10 @@ public final class StartupCacheTrainerTest
 	 * The input that the fixture plugin's start-up program receives.
 	 */
 	private static final String INPUT = "{\"event\":\"start\"}";
+	/**
+	 * Stands in for the check of a process without administrative rights.
+	 */
+	private static final BooleanSupplier NOT_ELEVATED = () -> false;
 
 	/**
 	 * Creates the test.
@@ -71,7 +76,7 @@ public final class StartupCacheTrainerTest
 			Path plugin = javaPlugin(root.resolve("plugin"));
 			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1)).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
 
 			requireThat(written, "written").isTrue();
 			requireThat(entries(plugin.resolve(StartupCache.DIRECTORY)), "cacheFolder").
@@ -97,7 +102,7 @@ public final class StartupCacheTrainerTest
 			Path plugin = fakePlugin(root.resolve("plugin"), "report", report);
 			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1)).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
 
 			requireThat(written, "written").isTrue();
 			Properties observed = new Properties();
@@ -133,7 +138,7 @@ public final class StartupCacheTrainerTest
 			Files.writeString(plugin.resolve(StartupCache.FILE), "a cache of an earlier activation");
 			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1)).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
 
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
@@ -156,11 +161,39 @@ public final class StartupCacheTrainerTest
 			Path plugin = fakePlugin(root.resolve("plugin"), "hang", root.resolve("report.properties"));
 			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMillis(300)).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMillis(300), NOT_ELEVATED).train(plugin);
 
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
 			requireThat(entries(scratch), "scratchEntries").isEmpty();
+		}
+	}
+
+	/**
+	 * A process with administrative rights does not run the plugin's start-up program, and leaves the plugin without a
+	 * startup cache, removing the cache of an earlier activation.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void elevatedProcessLeavesNoCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-elevated-")).toRealPath();
+			Path report = root.resolve("report.properties");
+			Path plugin = fakePlugin(root.resolve("plugin"), "report", report);
+			Files.createDirectories(plugin.resolve(StartupCache.DIRECTORY));
+			Files.writeString(plugin.resolve(StartupCache.FILE), "a cache of an earlier activation");
+			// Stands in for the check of a process with administrative rights
+			BooleanSupplier elevated = () -> true;
+
+			boolean written = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1), elevated).
+				train(plugin);
+
+			requireThat(written, "written").isFalse();
+			requireThat(Files.exists(report, NOFOLLOW_LINKS), "programRan").isFalse();
+			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
 		}
 	}
 
@@ -178,7 +211,8 @@ public final class StartupCacheTrainerTest
 			Path plugin = fakePlugin(root.resolve("plugin"), "report", root.resolve("report.properties"));
 			Files.delete(plugin.resolve(StartupCache.TRAINING));
 
-			boolean written = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1)).train(plugin);
+			boolean written = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1), NOT_ELEVATED).
+				train(plugin);
 
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
@@ -199,7 +233,8 @@ public final class StartupCacheTrainerTest
 			Path root = cleanup.add(testDirectory("startup-cache-activation-")).toRealPath();
 			Path home = Files.createDirectories(root.resolve("home"));
 			fakePlugin(home.resolve("live"), "report", root.resolve("report.properties"));
-			StartupCacheTrainer trainer = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1));
+			StartupCacheTrainer trainer = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1),
+				NOT_ELEVATED);
 			UpdateResult installed = new UpdateResult(Result.INSTALLED, "harness-a", Optional.of("1.1"),
 				Optional.empty(), "CAT was installed.", List.of(), true, List.of());
 			UpdateResult upToDate = new UpdateResult(Result.UP_TO_DATE, "harness-a", Optional.of("1.1"),
@@ -231,7 +266,7 @@ public final class StartupCacheTrainerTest
 			UpdateResult installed = new UpdateResult(Result.INSTALLED, "harness-a", Optional.of("1.1"),
 				Optional.empty(), "CAT was installed.", List.of(), true, List.of());
 
-			UpdateResult trained = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1)).
+			UpdateResult trained = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1), NOT_ELEVATED).
 				afterActivation(installed, new LiveProvider(), home);
 
 			requireThat(trained, "trained").isEqualTo(installed.withAotCache(false));
