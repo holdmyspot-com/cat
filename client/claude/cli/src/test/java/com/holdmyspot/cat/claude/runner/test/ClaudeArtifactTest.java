@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,6 +52,7 @@ public final class ClaudeArtifactTest
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-own-"));
 			Path plugin = FakeRelease.artifact(root.resolve("plugin"), ".claude-plugin/plugin.json", "claude-runner",
 				PluginInfo.CAT_VERSION, Platform.current()).toAbsolutePath().normalize();
+			RuntimeBinding.write(plugin, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
 
 			String output = ClaudeArtifact.execute(plugin);
 
@@ -72,6 +74,7 @@ public final class ClaudeArtifactTest
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-version-"));
 			Path plugin = FakeRelease.artifact(root.resolve("plugin"), ".claude-plugin/plugin.json", "claude-runner",
 				"0.0-other", Platform.current()).toAbsolutePath().normalize();
+			RuntimeBinding.write(plugin, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
 
 			IOException refusal = refusal(plugin);
 
@@ -93,6 +96,7 @@ public final class ClaudeArtifactTest
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-runner-"));
 			Path plugin = FakeRelease.artifact(root.resolve("plugin"), ".claude-plugin/plugin.json", "codex-runner",
 				PluginInfo.CAT_VERSION, Platform.current()).toAbsolutePath().normalize();
+			RuntimeBinding.write(plugin, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
 
 			IOException refusal = refusal(plugin);
 

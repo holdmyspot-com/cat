@@ -43,7 +43,8 @@ public final class HarnessArtifact
 	 * required launchers are {@code bin/plugin-info}, which agents run, and the hook launcher
 	 * {@code client/bin/session-start}. On Windows, they are the batch launchers {@code bin/plugin-info.cmd} and
 	 * {@code client/bin/session-start.bat}, which {@code cmd.exe} and PowerShell run, because the Codex image there holds
-	 * no POSIX launchers. Elsewhere, they are the executable POSIX launchers.
+	 * no POSIX launchers. Elsewhere, they are the executable POSIX launchers. The plugin's runtime binding must name a
+	 * Java runtime whose {@code java} program the launchers can run.
 	 *
 	 * @param root the unpacked plugin directory
 	 *
@@ -54,7 +55,8 @@ public final class HarnessArtifact
 	 * @return the normalized unpacked plugin directory
 	 *
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the artifact is incomplete or does not satisfy the required filesystem layout
+	 * @throws IOException if the artifact is incomplete, does not satisfy the required filesystem layout, or has no
+	 *   usable runtime binding
 	 */
 	public static Path validate(Path root, Path manifestPath, Platform platform) throws IOException
 	{
@@ -109,6 +111,7 @@ public final class HarnessArtifact
 		if (!BoundedInput.readUtf8(version, MAXIMUM_VERSION_BYTES, "Artifact version").strip().equals(
 			PluginInfo.CAT_VERSION))
 			throw new IOException("Artifact version does not match CAT " + PluginInfo.CAT_VERSION);
+		RuntimeBinding.readUsable(normalized, platform);
 		return normalized;
 	}
 

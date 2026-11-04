@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.runner.SharedRuntime;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.StringJoiner;
 import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 
@@ -36,8 +38,15 @@ public final class FakeRelease
 	}
 
 	/**
-	 * Creates a minimal CAT artifact: its version file, manifest, {@code plugin-info} and runner launchers, and hook
-	 * launcher, in the form that an artifact built for a platform holds them.
+	 * The Java feature release of the runtimes that {@link #runtime} creates, which the requirement of the artifacts that
+	 * {@link #artifact} creates names.
+	 */
+	public static final int JAVA_FEATURE = 27;
+
+	/**
+	 * Creates a minimal CAT artifact as a release archive holds it: its version file, manifest, {@code plugin-info}
+	 * and runner launchers, hook launcher, and a runtime requirement of Java {@link #JAVA_FEATURE} with
+	 * {@code java.base}, in the form that an artifact built for a platform holds them. It holds no runtime binding.
 	 *
 	 * @param directory the artifact's directory, which this method creates
 	 * @param manifest  the manifest's path relative to the artifact
@@ -62,7 +71,62 @@ public final class FakeRelease
 		write(directory.resolve("bin/plugin-info" + extension), "#!/bin/sh\n", true);
 		write(directory.resolve("bin/" + runner + extension), "#!/bin/sh\n", true);
 		write(directory.resolve("client/bin/session-start" + hookExtension), "#!/bin/sh\n", true);
+		requirement(directory, JAVA_FEATURE, "java.base");
 		return directory;
+	}
+
+	/**
+	 * Replaces the runtime requirement of an artifact.
+	 *
+	 * @param artifact the artifact's directory
+	 * @param feature  the required Java feature release
+	 * @param modules  the required modules
+	 * @throws IOException if the requirement cannot be written
+	 */
+	public static void requirement(Path artifact, int feature, String... modules) throws IOException
+	{
+		write(artifact.resolve("client/runtime-requirement.json"), "{\"format\": 1, \"java_feature\": " + feature +
+			", \"modules\": " + jsonArray(modules) + "}\n", false);
+	}
+
+	/**
+	 * Creates a minimal shared Java runtime of Java {@link #JAVA_FEATURE}, holding the modules {@code java.base} and
+	 * {@code java.net.http}: its {@code java} program, its description and its manifest, which also lists the files
+	 * that the directory already holds. A directory that already holds a runtime is returned unchanged.
+	 *
+	 * @param directory the runtime's directory
+	 * @param platform  the platform that the runtime is built for
+	 * @return the runtime's absolute normalized directory
+	 * @throws IOException if the runtime cannot be written
+	 */
+	public static Path runtime(Path directory, Platform platform) throws IOException
+	{
+		Path result = directory.toAbsolutePath().normalize();
+		if (Files.exists(result.resolve(SharedRuntime.MANIFEST)))
+			return result;
+		String java = "bin/java";
+		if (platform.isWindows())
+			java = "bin/java.exe";
+		write(result.resolve(java), "#!/bin/sh\n", true);
+		write(result.resolve(SharedRuntime.DESCRIPTION), "{\"format\": 1, \"java_version\": \"" + JAVA_FEATURE +
+			".0.1\", \"java_feature\": " + JAVA_FEATURE + ", \"modules\": " + jsonArray("java.base",
+			"java.net.http") + "}\n", false);
+		SharedRuntime.writeManifest(result);
+		return result;
+	}
+
+	/**
+	 * Returns strings as a JSON array.
+	 *
+	 * @param values the strings, which need no escaping
+	 * @return the array
+	 */
+	private static String jsonArray(String... values)
+	{
+		StringJoiner joiner = new StringJoiner(", ", "[", "]");
+		for (String value : values)
+			joiner.add("\"" + value + "\"");
+		return joiner.toString();
 	}
 
 	/**

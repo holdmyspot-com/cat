@@ -23,6 +23,7 @@ public interface ReleaseBundlesAccess
 	 * @param directory     the directory that holds the downloaded artifacts
 	 * @param release       the location of this CAT version's release
 	 * @param platform      the platform whose artifact to resolve
+	 * @param runtime       the shared Java runtime that the resolution binds a bundle to
 	 * @param connectLimit  how long a download waits to connect to the release's server
 	 * @param responseLimit how long a download waits for the server's response headers
 	 * @param downloadLimit how long a download of one file may take
@@ -30,7 +31,7 @@ public interface ReleaseBundlesAccess
 	 * @return the resolution
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	ReleaseBundles create(Path directory, URI release, Platform platform, Duration connectLimit,
+	ReleaseBundles create(Path directory, URI release, Platform platform, Path runtime, Duration connectLimit,
 		Duration responseLimit, Duration downloadLimit, Clock clock);
 
 	/**

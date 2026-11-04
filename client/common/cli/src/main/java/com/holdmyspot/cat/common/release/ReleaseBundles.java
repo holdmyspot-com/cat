@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
+import com.holdmyspot.cat.common.runner.SharedRuntime;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import java.io.IOException;
@@ -69,6 +71,12 @@ import java.util.stream.Collectors;
  * and only then moves it into place, so that a failed download, checksum or extraction leaves no copy for a later
  * resolution to use.
  * <p>
+ * Before a resolution uses a downloaded or earlier-downloaded bundle, it checks that the shared Java runtime it was
+ * given satisfies the bundle's {@code client/runtime-requirement.json} and refuses the bundle otherwise. It then binds
+ * the bundle to that runtime unless the bundle's runtime binding already names it and is usable, so a bundle that
+ * another installation bound to its own runtime, or to a runtime that was since removed, is rebound rather than
+ * refused. An installed plugin keeps the binding of its own installation.
+ * <p>
  * A download over HTTP waits at most 30 seconds to connect, 60 seconds for the server's response headers and 15 minutes
  * for the whole file, and reports the limit that expired. It goes through the HTTP proxy that the process environment
  * names in {@code HTTPS_PROXY}, {@code HTTP_PROXY} or {@code ALL_PROXY}, with the login of the proxy's URL, unless
@@ -87,10 +95,10 @@ public final class ReleaseBundles
 		ReleaseBundlesSecrets.setReleaseBundlesAccess(new ReleaseBundlesAccess()
 		{
 			@Override
-			public ReleaseBundles create(Path directory, URI release, Platform platform, Duration connectLimit,
-				Duration responseLimit, Duration downloadLimit, Clock clock)
+			public ReleaseBundles create(Path directory, URI release, Platform platform, Path runtime,
+				Duration connectLimit, Duration responseLimit, Duration downloadLimit, Clock clock)
 			{
-				return new ReleaseBundles(directory, release, platform, Map.of(), connectLimit, responseLimit,
+				return new ReleaseBundles(directory, release, platform, Map.of(), runtime, connectLimit, responseLimit,
 					downloadLimit, clock);
 			}
 
@@ -135,6 +143,10 @@ public final class ReleaseBundles
 	 * The release's checksum file.
 	 */
 	private static final String CHECKSUMS = "SHA256SUMS.txt";
+	/**
+	 * The file in an artifact that names the oldest Java feature release and the modules that it needs.
+	 */
+	private static final Path REQUIREMENT = Path.of("client/runtime-requirement.json");
 	/**
 	 * The largest checksum file that a resolution reads.
 	 */
@@ -190,6 +202,7 @@ public final class ReleaseBundles
 	private final URI release;
 	private final Platform platform;
 	private final Map<String, String> environment;
+	private final Path runtime;
 	private final Duration connectLimit;
 	private final Duration responseLimit;
 	private final Duration downloadLimit;
@@ -205,11 +218,14 @@ public final class ReleaseBundles
 	 * @param platform    the platform whose artifact to resolve
 	 * @param environment the process environment, whose proxy variables a download over HTTP follows, as
 	 *                    {@link Platform#environment(Map)} returns it
+	 * @param runtime     the shared Java runtime that this resolution binds a bundle to, which is the runtime of the
+	 *                    running JVM in production
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public ReleaseBundles(Path directory, URI release, Platform platform, Map<String, String> environment)
+	public ReleaseBundles(Path directory, URI release, Platform platform, Map<String, String> environment,
+		Path runtime)
 	{
-		this(directory, release, platform, environment, CONNECT_LIMIT, RESPONSE_LIMIT, DOWNLOAD_LIMIT,
+		this(directory, release, platform, environment, runtime, CONNECT_LIMIT, RESPONSE_LIMIT, DOWNLOAD_LIMIT,
 			Clock.systemUTC());
 	}
 
@@ -220,6 +236,7 @@ public final class ReleaseBundles
 	 * @param release       the location of this CAT version's release
 	 * @param platform      the platform whose artifact to resolve
 	 * @param environment   the process environment, whose proxy variables a download over HTTP follows
+	 * @param runtime       the shared Java runtime that this resolution binds a bundle to
 	 * @param connectLimit  how long a download waits to connect to the release's server
 	 * @param responseLimit how long a download waits for the server's response headers
 	 * @param downloadLimit how long a download of one file may take in total
@@ -227,12 +244,13 @@ public final class ReleaseBundles
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	private ReleaseBundles(Path directory, URI release, Platform platform, Map<String, String> environment,
-		Duration connectLimit, Duration responseLimit, Duration downloadLimit, Clock clock)
+		Path runtime, Duration connectLimit, Duration responseLimit, Duration downloadLimit, Clock clock)
 	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(release, "release").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(runtime, "runtime").isNotNull();
 		requireThat(connectLimit, "connectLimit").isNotNull();
 		requireThat(responseLimit, "responseLimit").isNotNull();
 		requireThat(downloadLimit, "downloadLimit").isNotNull();
@@ -241,6 +259,7 @@ public final class ReleaseBundles
 		this.release = release;
 		this.platform = platform;
 		this.environment = environment;
+		this.runtime = runtime.toAbsolutePath().normalize();
 		this.connectLimit = connectLimit;
 		this.responseLimit = responseLimit;
 		this.downloadLimit = downloadLimit;
@@ -287,8 +306,35 @@ public final class ReleaseBundles
 		if (plugin != null)
 			return plugin;
 		if (usesBundle)
+		{
+			bind(bundle);
 			return verify(bundle, manifest, runner, RunnerArtifact.Source.BUNDLE);
+		}
 		return download(name, manifest, runner);
+	}
+
+	/**
+	 * Binds a bundle to the shared Java runtime of this resolution after checking that the runtime satisfies the
+	 * bundle's requirement. The binding is rewritten only when it does not already name that runtime usably.
+	 *
+	 * @param bundle the bundle's directory
+	 * @throws IOException if the runtime is not a CAT runtime, does not satisfy the bundle's requirement, or the
+	 *                     binding cannot be written
+	 */
+	private void bind(Path bundle) throws IOException
+	{
+		SharedRuntime.requireSatisfies(runtime, bundle.resolve(REQUIREMENT));
+		Path bound;
+		try
+		{
+			bound = RuntimeBinding.readUsable(bundle, platform);
+		}
+		catch (IOException _)
+		{
+			bound = null;
+		}
+		if (!runtime.equals(bound))
+			RuntimeBinding.write(bundle, runtime);
 	}
 
 	/**
@@ -371,6 +417,7 @@ public final class ReleaseBundles
 			Path artifact = extracted.resolve(name);
 			if (!Files.isDirectory(artifact, NOFOLLOW_LINKS))
 				throw new IOException(archiveName + " does not hold the directory " + name);
+			bind(artifact);
 			verify(artifact, manifest, runner, RunnerArtifact.Source.DOWNLOAD);
 			RunnerArtifact result = moveIntoPlace(artifact, directory.resolve(name), manifest, runner);
 			markUsed(result.artifact());
@@ -960,6 +1007,7 @@ public final class ReleaseBundles
 		{
 			if (Files.notExists(bundle, NOFOLLOW_LINKS))
 				throw e;
+			bind(bundle);
 			return verify(bundle, manifest, runner, RunnerArtifact.Source.BUNDLE);
 		}
 		return verify(bundle, manifest, runner, RunnerArtifact.Source.DOWNLOAD);

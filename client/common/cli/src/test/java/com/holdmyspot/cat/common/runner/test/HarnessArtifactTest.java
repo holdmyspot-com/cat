@@ -10,7 +10,9 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import org.testng.annotations.Test;
 
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -100,7 +102,83 @@ public final class HarnessArtifactTest
 	}
 
 	/**
-	 * Creates a complete minimal harness artifact.
+	 * Verifies that a plugin directory without a runtime binding is rejected with a message that names the binding,
+	 * because its launchers cannot find Java.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*client[/\\\\]runtime-binding.*")
+	public void rejectsArtifactWithoutBinding() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = createArtifact(cleanup, false);
+			Files.delete(artifact.resolve(RuntimeBinding.PATH));
+
+			HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.LINUX_X64);
+		}
+	}
+
+	/**
+	 * Verifies that a binding that names a relative path is rejected, because a launcher resolves Java only from an
+	 * absolute binding.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*client[/\\\\]runtime-binding.*")
+	public void rejectsRelativeBinding() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = createArtifact(cleanup, false);
+			Files.writeString(artifact.resolve(RuntimeBinding.PATH), "runtime\n");
+
+			HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.LINUX_X64);
+		}
+	}
+
+	/**
+	 * Verifies that a binding with a second line is rejected, because a launcher accepts exactly one line.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*client[/\\\\]runtime-binding.*")
+	public void rejectsMultiLineBinding() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = createArtifact(cleanup, false);
+			Path binding = artifact.resolve(RuntimeBinding.PATH);
+			Files.writeString(binding, Files.readString(binding) + Files.readString(binding));
+
+			HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.LINUX_X64);
+		}
+	}
+
+	/**
+	 * Verifies that a binding to a directory without an executable {@code java} program is rejected, because the
+	 * launchers could not run it.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
+		".*client[/\\\\]runtime-binding.*")
+	public void rejectsBindingWithoutJava() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = createArtifact(cleanup, false);
+			Files.delete(RuntimeBinding.read(artifact).resolve("bin/java"));
+
+			HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.LINUX_X64);
+		}
+	}
+
+	/**
+	 * Creates a complete minimal harness artifact, bound to a runtime of the platform that its launchers are built for.
 	 *
 	 * @param cleanup   the temporary-directory cleanup scope
 	 * @param batch     {@code true} for the batch launchers that an artifact built for Windows holds, {@code false}
@@ -135,6 +213,11 @@ public final class HarnessArtifactTest
 		Files.writeString(sessionStart, "#!/bin/sh\n");
 		PortableFiles.setMode(pluginInfo, permissions);
 		PortableFiles.setMode(sessionStart, permissions);
+		Platform platform = Platform.LINUX_X64;
+		if (batch)
+			platform = Platform.WINDOWS_X64;
+		RuntimeBinding.write(artifact, FakeRelease.runtime(cleanup.add(Files.createTempDirectory("cat-runtime-")),
+			platform));
 		return artifact;
 	}
 }

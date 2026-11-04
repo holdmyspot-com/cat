@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.release.ReleaseBundles;
 import com.holdmyspot.cat.common.release.RunnerArtifact;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease.Entry;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
+import com.holdmyspot.cat.common.runner.SharedRuntime;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import com.sun.net.httpserver.HttpServer;
@@ -115,11 +117,25 @@ public final class ReleaseBundlesTest
 	 *
 	 * @param bundles the bundle directory
 	 * @param release the release directory
-	 * @return the resolution
+	 * @return the resolution, which binds bundles to a runtime beside {@code bundles}
+	 * @throws IOException if the runtime cannot be written
 	 */
-	private static ReleaseBundles bundles(Path bundles, Path release)
+	private static ReleaseBundles bundles(Path bundles, Path release) throws IOException
 	{
-		return new ReleaseBundles(bundles, release.toUri(), Platform.current(), Map.of());
+		return new ReleaseBundles(bundles, release.toUri(), Platform.current(), Map.of(),
+			runtime(bundles.getParent()));
+	}
+
+	/**
+	 * Returns the shared Java runtime of a test, creating it on first use.
+	 *
+	 * @param root the test's directory
+	 * @return the runtime's directory, {@code runtime} in {@code root}
+	 * @throws IOException if the runtime cannot be written
+	 */
+	private static Path runtime(Path root) throws IOException
+	{
+		return FakeRelease.runtime(root.resolve("runtime"), Platform.current());
 	}
 
 	/**
@@ -128,12 +144,14 @@ public final class ReleaseBundlesTest
 	 * @param bundles the bundle directory
 	 * @param release the release directory
 	 * @param now     the time of the resolution
-	 * @return the resolution
+	 * @return the resolution, which binds bundles to a runtime beside {@code bundles}
+	 * @throws IOException if the runtime cannot be written
 	 */
-	private static ReleaseBundles bundles(Path bundles, Path release, Instant now)
+	private static ReleaseBundles bundles(Path bundles, Path release, Instant now) throws IOException
 	{
 		return ReleaseBundlesSecrets.getReleaseBundlesAccess().create(bundles, release.toUri(), Platform.current(),
-			Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofMinutes(15), Clock.fixed(now, ZoneOffset.UTC));
+			runtime(bundles.getParent()), Duration.ofSeconds(30), Duration.ofSeconds(60), Duration.ofMinutes(15),
+			Clock.fixed(now, ZoneOffset.UTC));
 	}
 
 	/**
@@ -200,6 +218,7 @@ public final class ReleaseBundlesTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("release-installed-"));
 			Path installed = artifact(root.resolve("installed"), PluginInfo.CAT_VERSION);
+			RuntimeBinding.write(installed, runtime(root));
 
 			RunnerArtifact result = bundles(root.resolve("bundles"), root.resolve("missing-release")).
 				resolve(installed, HARNESS, MANIFEST, RUNNER);
@@ -253,7 +272,7 @@ public final class ReleaseBundlesTest
 			Path bundlesDirectory = root.resolve("bundles");
 
 			RunnerArtifact result = new ReleaseBundles(bundlesDirectory, release.toUri(), Platform.current(),
-				Map.of("CAT_RELEASE_BASE_URL", root.resolve("missing-release").toUri().toString())).
+				Map.of("CAT_RELEASE_BASE_URL", root.resolve("missing-release").toUri().toString()), runtime(root)).
 				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 
 			Path bundle = bundlesDirectory.resolve(bundleName()).toAbsolutePath().normalize();
@@ -264,10 +283,158 @@ public final class ReleaseBundlesTest
 			requireThat(Files.readString(bundle.resolve("client/VERSION")).strip(), "version").
 				isEqualTo(PluginInfo.CAT_VERSION);
 			requireThat(entries(bundlesDirectory), "bundles").isEqualTo(List.of(bundleName()));
+			requireThat(RuntimeBinding.read(bundle), "binding").isEqualTo(runtime(root));
 
 			RunnerArtifact again = bundles(bundlesDirectory, root.resolve("missing-release")).
 				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 			requireThat(again.source(), "againSource").isEqualTo(RunnerArtifact.Source.BUNDLE);
+		}
+	}
+
+	/**
+	 * Verifies that a downloaded bundle that requires a newer Java feature release than the running runtime provides
+	 * is refused, naming the unmet requirement, and leaves no copy.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void newerJavaRequirementRefused() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-newer-java-"));
+			Path release = root.resolve("release");
+			Path source = artifact(root.resolve("source"), PluginInfo.CAT_VERSION);
+			FakeRelease.requirement(source, FakeRelease.JAVA_FEATURE + 1, "java.base");
+			FakeRelease.publish(release, bundleName(), source);
+
+			IOException failure = expectFailure(bundles(root.resolve("bundles"), release), root);
+
+			requireThat(failure.getMessage(), "message").contains("does not satisfy").
+				contains("Java " + (FakeRelease.JAVA_FEATURE + 1));
+			requireThat(entries(root.resolve("bundles")), "bundles").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a downloaded bundle that requires a module the running runtime lacks is refused, naming the module,
+	 * and leaves no copy.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void missingModuleRefused() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-missing-module-"));
+			Path release = root.resolve("release");
+			Path source = artifact(root.resolve("source"), PluginInfo.CAT_VERSION);
+			FakeRelease.requirement(source, FakeRelease.JAVA_FEATURE, "java.base", "jdk.unavailable");
+			FakeRelease.publish(release, bundleName(), source);
+
+			IOException failure = expectFailure(bundles(root.resolve("bundles"), release), root);
+
+			requireThat(failure.getMessage(), "message").contains("does not satisfy").
+				contains("missing modules: [jdk.unavailable]");
+			requireThat(entries(root.resolve("bundles")), "bundles").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a running JVM whose home is not a CAT runtime, because it has no runtime description, gets no
+	 * bundle bound to it, and the failure names the missing description.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void runtimeWithoutDescriptionRefused() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-no-description-"));
+			Path release = root.resolve("release");
+			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
+			Files.delete(runtime(root).resolve(SharedRuntime.DESCRIPTION));
+
+			IOException failure = expectFailure(bundles(root.resolve("bundles"), release), root);
+
+			requireThat(failure.getMessage(), "message").contains(runtime(root).resolve(SharedRuntime.DESCRIPTION).
+				toString());
+		}
+	}
+
+	/**
+	 * Verifies that a bundle that an earlier resolution bound to another runtime, such as a source checkout's, is bound
+	 * to the running runtime when it is used again.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void reusedBundleBoundToRunningRuntime() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-rebind-"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION).toAbsolutePath().
+				normalize();
+			RuntimeBinding.write(bundle, FakeRelease.runtime(root.resolve("earlier-runtime"), Platform.current()));
+
+			RunnerArtifact result = bundles(bundlesDirectory, root.resolve("missing-release")).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.BUNDLE);
+			requireThat(RuntimeBinding.read(bundle), "binding").isEqualTo(runtime(root));
+		}
+	}
+
+	/**
+	 * Verifies that a reused bundle whose binding names a runtime that was since removed is bound to the running
+	 * runtime instead of failing.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void reusedBundleBoundToRemovedRuntimeRebound() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-removed-runtime-"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION).toAbsolutePath().
+				normalize();
+			RuntimeBinding.write(bundle, root.resolve("removed-runtime").toAbsolutePath().normalize());
+
+			RunnerArtifact result = bundles(bundlesDirectory, root.resolve("missing-release")).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.BUNDLE);
+			requireThat(RuntimeBinding.read(bundle), "binding").isEqualTo(runtime(root));
+		}
+	}
+
+	/**
+	 * Verifies that a reused bundle whose binding is malformed is bound to the running runtime instead of failing.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void reusedBundleWithMalformedBindingRebound() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-malformed-binding-"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION).toAbsolutePath().
+				normalize();
+			Files.writeString(bundle.resolve(RuntimeBinding.PATH), "relative/runtime\nsecond line\n");
+
+			RunnerArtifact result = bundles(bundlesDirectory, root.resolve("missing-release")).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.BUNDLE);
+			requireThat(RuntimeBinding.read(bundle), "binding").isEqualTo(runtime(root));
 		}
 	}
 
@@ -491,7 +658,8 @@ public final class ReleaseBundlesTest
 				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
 				Path bundlesDirectory = root.resolve("bundles");
 
-				RunnerArtifact result = new ReleaseBundles(bundlesDirectory, uri, Platform.current(), Map.of()).
+				RunnerArtifact result = new ReleaseBundles(bundlesDirectory, uri, Platform.current(), Map.of(),
+					runtime(root)).
 					resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 
 				requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
@@ -521,7 +689,7 @@ public final class ReleaseBundlesTest
 			URI uri = URI.create("http://release.invalid/download/v1.0");
 
 			IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
-				Map.of()), root);
+				Map.of(), runtime(root)), root);
 
 			requireThat(failure.getMessage(), "message").contains("could not be resolved");
 		}
@@ -559,7 +727,7 @@ public final class ReleaseBundlesTest
 					proxy.getAddress().getPort());
 
 				RunnerArtifact result = new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
-					environment).resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+					environment, runtime(root)).resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 
 				requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
 				requireThat(List.copyOf(requested), "requested").containsAll(List.of(
@@ -596,7 +764,7 @@ public final class ReleaseBundlesTest
 					proxy.getAddress().getPort());
 
 				IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
-					environment), root);
+					environment, runtime(root)), root);
 
 				requireThat(failure.getMessage(), "message").contains("rejected the login");
 			}
@@ -632,7 +800,7 @@ public final class ReleaseBundlesTest
 					proxy.getAddress().getPort());
 
 				IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
-					environment), root);
+					environment, runtime(root)), root);
 
 				requireThat(failure.getMessage(), "message").contains("server asks for a login");
 				requireThat(List.copyOf(requested), "requested").contains(
@@ -664,7 +832,8 @@ public final class ReleaseBundlesTest
 			URI uri = URI.create("https://release.invalid/download/v1.0");
 			Map<String, String> environment = Map.of("HTTPS_PROXY", "http://127.0.0.1:" + proxy.port());
 
-			expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(), environment), root);
+			expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(), environment,
+				runtime(root)), root);
 
 			requireThat(List.copyOf(proxy.requested()), "requested").
 				isEqualTo(List.of("CONNECT release.invalid:443 HTTP/1.1"));
@@ -687,7 +856,7 @@ public final class ReleaseBundlesTest
 			Map<String, String> environment = Map.of("HTTPS_PROXY", "http://agent:s3cret@proxy host:3128");
 
 			IOException failure = expectFailure(new ReleaseBundles(root.resolve("bundles"), uri, Platform.current(),
-				environment), root);
+				environment, runtime(root)), root);
 
 			requireThat(failure.getMessage(), "message").contains(uri.toString()).contains("HTTPS_PROXY").
 				doesNotContain("s3cret").doesNotContain("agent");
@@ -746,7 +915,8 @@ public final class ReleaseBundlesTest
 	public void proxySelection(String location, Map<String, String> environment, String expected) throws IOException
 	{
 		URI uri = URI.create(location);
-		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(), environment);
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(), environment,
+			Path.of("runtime"));
 
 		try (HttpClient client = ReleaseBundlesSecrets.getReleaseBundlesAccess().newHttpClient(bundles, uri))
 		{
@@ -782,7 +952,7 @@ public final class ReleaseBundlesTest
 	{
 		URI uri = URI.create("http://release.invalid/download/v1.0/file");
 		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
-			Map.of("HTTP_PROXY", "http://agent:p%40ss%20wo+rd@localhost:3128"));
+			Map.of("HTTP_PROXY", "http://agent:p%40ss%20wo+rd@localhost:3128"), Path.of("runtime"));
 
 		try (HttpClient client = ReleaseBundlesSecrets.getReleaseBundlesAccess().newHttpClient(bundles, uri))
 		{
@@ -806,7 +976,7 @@ public final class ReleaseBundlesTest
 	{
 		URI uri = URI.create("http://release.invalid/download/v1.0/file");
 		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
-			Map.of("HTTP_PROXY", "http://localhost:3128"));
+			Map.of("HTTP_PROXY", "http://localhost:3128"), Path.of("runtime"));
 
 		try (HttpClient client = ReleaseBundlesSecrets.getReleaseBundlesAccess().newHttpClient(bundles, uri))
 		{
@@ -840,7 +1010,7 @@ public final class ReleaseBundlesTest
 	{
 		URI uri = URI.create("http://release.invalid/download/v1.0/file");
 		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
-			Map.of("HTTP_PROXY", "http://agent:wrong-s3cret@localhost:3128"));
+			Map.of("HTTP_PROXY", "http://agent:wrong-s3cret@localhost:3128"), Path.of("runtime"));
 		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
 
 		try (HttpClient client = access.newHttpClient(bundles, uri))
@@ -867,7 +1037,7 @@ public final class ReleaseBundlesTest
 	{
 		URI uri = URI.create("http://private.invalid/download/v1.0/file");
 		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(),
-			Map.of("HTTP_PROXY", "http://agent:secret@localhost:3128"));
+			Map.of("HTTP_PROXY", "http://agent:secret@localhost:3128"), Path.of("runtime"));
 		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
 
 		try (HttpClient client = access.newHttpClient(bundles, uri))
@@ -892,7 +1062,8 @@ public final class ReleaseBundlesTest
 	public void requestUsesDefaultLimits() throws IOException
 	{
 		URI uri = URI.create("https://release.invalid/download/v1.0/file");
-		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(), Map.of());
+		ReleaseBundles bundles = new ReleaseBundles(Path.of("bundles"), uri, Platform.current(), Map.of(),
+			Path.of("runtime"));
 		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
 
 		HttpRequest request = access.newHttpRequest(bundles, uri);
@@ -935,7 +1106,8 @@ public final class ReleaseBundlesTest
 	{
 		URI uri = URI.create("https://release.invalid/download/v1.0/file");
 		ReleaseBundlesAccess access = ReleaseBundlesSecrets.getReleaseBundlesAccess();
-		ReleaseBundles bundles = access.create(Path.of("bundles"), uri, Platform.current(), Duration.ofSeconds(1),
+		ReleaseBundles bundles = access.create(Path.of("bundles"), uri, Platform.current(), Path.of("runtime"),
+			Duration.ofSeconds(1),
 			Duration.ofMillis(300), Duration.ofMinutes(15), Clock.systemUTC());
 
 		try (HttpClient client = access.newHttpClient(bundles, uri))
@@ -1055,8 +1227,8 @@ public final class ReleaseBundlesTest
 			{
 				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
 				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(root.resolve("bundles"),
-					uri, Platform.current(), Duration.ofSeconds(30), Duration.ofMillis(100), Duration.ofSeconds(30),
-					Clock.systemUTC());
+					uri, Platform.current(), runtime(root), Duration.ofSeconds(30), Duration.ofMillis(100),
+					Duration.ofSeconds(30), Clock.systemUTC());
 
 				IOException failure = expectFailure(bundles, root);
 
@@ -1091,8 +1263,8 @@ public final class ReleaseBundlesTest
 			{
 				URI uri = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/download/v1.0");
 				ReleaseBundles bundles = ReleaseBundlesSecrets.getReleaseBundlesAccess().create(root.resolve("bundles"),
-					uri, Platform.current(), Duration.ofSeconds(30), Duration.ofSeconds(30), Duration.ofMillis(100),
-					Clock.systemUTC());
+					uri, Platform.current(), runtime(root), Duration.ofSeconds(30), Duration.ofSeconds(30),
+					Duration.ofMillis(100), Clock.systemUTC());
 
 				IOException failure = expectFailure(bundles, root);
 
@@ -1154,6 +1326,7 @@ public final class ReleaseBundlesTest
 			Path root = cleanup.add(Files.createTempDirectory("release-no-prune-"));
 			Path bundlesDirectory = root.resolve("bundles");
 			Path installed = artifact(root.resolve("installed"), PluginInfo.CAT_VERSION);
+			RuntimeBinding.write(installed, runtime(root));
 			artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION);
 			String old = "cat-" + HARNESS + "-v0.9-linux-x64";
 			Files.createDirectories(bundlesDirectory.resolve(old));

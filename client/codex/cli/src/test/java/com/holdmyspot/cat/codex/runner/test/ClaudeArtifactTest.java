@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -54,9 +55,11 @@ public final class ClaudeArtifactTest
 			Path installed = FakeRelease.artifact(configuration.resolve("plugins/cat-marketplace/plugins/cat"),
 				".claude-plugin/plugin.json", "claude-runner", PluginInfo.CAT_VERSION, Platform.current()).
 				toAbsolutePath().normalize();
+			Path runtime = FakeRelease.runtime(root.resolve("runtime"), Platform.current());
+			RuntimeBinding.write(installed, runtime);
 
 			String output = ClaudeArtifact.execute(Map.of(Platform.current().homeVariable(),
-				root.resolve("home").toString(), "CLAUDE_CONFIG_DIR", configuration.toString()));
+				root.resolve("home").toString(), "CLAUDE_CONFIG_DIR", configuration.toString()), runtime);
 
 			requireThat(output, "output").isEqualTo("artifact=" + installed + "\nrunner=" + runner(installed) +
 				"\nsource=installed\n");
@@ -78,9 +81,11 @@ public final class ClaudeArtifactTest
 			Path marketplace = root.resolve("cat-marketplace");
 			Path installed = FakeRelease.artifact(marketplace.resolve("plugins/cat"), ".claude-plugin/plugin.json",
 				"claude-runner", PluginInfo.CAT_VERSION, Platform.current()).toAbsolutePath().normalize();
+			Path runtime = FakeRelease.runtime(root.resolve("runtime"), Platform.current());
+			RuntimeBinding.write(installed, runtime);
 
 			String output = ClaudeArtifact.execute(Map.of(Platform.current().homeVariable(),
-				root.resolve("home").toString(), "CAT_CLAUDE_MARKETPLACE_ROOT", marketplace.toString()));
+				root.resolve("home").toString(), "CAT_CLAUDE_MARKETPLACE_ROOT", marketplace.toString()), runtime);
 
 			requireThat(output, "output").contains("artifact=" + installed + "\n").endsWith("source=installed\n");
 		}
@@ -103,9 +108,10 @@ public final class ClaudeArtifactTest
 			Path bundle = home.resolve(".cat/bundles").resolve(name).toAbsolutePath().normalize();
 			FakeRelease.artifact(bundle, ".claude-plugin/plugin.json", "claude-runner", PluginInfo.CAT_VERSION,
 				Platform.current());
+			Path runtime = FakeRelease.runtime(root.resolve("runtime"), Platform.current());
 
 			String output = ClaudeArtifact.execute(Map.of(Platform.current().homeVariable(), home.toString(),
-				"CAT_RELEASE_BASE_URL", root.resolve("missing-release").toUri().toString()));
+				"CAT_RELEASE_BASE_URL", root.resolve("missing-release").toUri().toString()), runtime);
 
 			requireThat(output, "output").isEqualTo("artifact=" + bundle + "\nrunner=" + runner(bundle) +
 				"\nsource=bundle\n");

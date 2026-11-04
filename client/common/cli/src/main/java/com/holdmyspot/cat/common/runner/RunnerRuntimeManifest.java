@@ -21,9 +21,13 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
  *
  * <p>
  * The manifest deliberately excludes model-facing rules, skills, and agent instructions. A prompt revision must
- * remain comparable with its prior revision, while a changed Java runtime, hook, or harness registration must start a
- * new evaluation environment. The package builder writes this file from the authoritative runtime roots; evaluators
- * verify every listed path before using its hash as the runner identity.
+ * remain comparable with its prior revision, while a changed application module, launcher, hook, or harness
+ * registration must start a new evaluation environment. The package builder writes this file from the authoritative
+ * runtime roots; evaluators verify every listed path before using its hash as the runner identity.
+ * <p>
+ * The plugin's {@link RuntimeBinding runtime binding} is written by each installation, so it is not a packaged entry:
+ * binding the same package to another installation keeps its packaged identity. The Java runtime that the binding
+ * names is part of the execution identity instead, so a changed runtime also starts a new evaluation environment.
  */
 public final class RunnerRuntimeManifest
 {
@@ -31,7 +35,7 @@ public final class RunnerRuntimeManifest
 	 * The artifact-relative location of the packaged manifest.
 	 */
 	public static final Path PATH = Path.of("client/runner-runtime.manifest");
-	private static final String HEADER = "CAT runner runtime manifest v2";
+	private static final String HEADER = "CAT runner runtime manifest v3";
 	private static final Set<Path> DIRECTORY_ROOTS = Set.of(Path.of("bin"), Path.of("client"), Path.of("hooks"));
 	private static final Set<Path> FILE_ROOTS = Set.of(Path.of(".claude-plugin/plugin.json"),
 		Path.of(".codex-plugin/plugin.json"));
@@ -59,49 +63,55 @@ public final class RunnerRuntimeManifest
 	}
 
 	/**
-	 * Verifies that an artifact has the exact runtime manifest the package builder produced.
+	 * Returns the execution identity of an installed plugin: its packaged identity combined with the identity of the
+	 * Java runtime that it is bound to, after verifying both.
 	 *
 	 * @param artifact the assembled plugin directory
 	 *
-	 * @return the identity hash formed from runner configuration and declared build inputs, not generated runtime bytes
+	 * @return the SHA-256 identity of every verified packaged entry and of the bound runtime's manifest
 	 *
-	 * @throws IOException if a runtime input is missing, changed, omitted, or malformed
+	 * @throws IOException if a runtime input is missing, changed, omitted, or malformed, the plugin has no valid
+	 *   runtime binding, or the bound runtime does not match its manifest. The message names the file at fault.
 	 */
 	public static String fingerprint(Path artifact) throws IOException
 	{
-		return identityFingerprint(verifiedEntries(artifact), false);
+		Path root = root(artifact);
+		List<Entry> entries = verifiedEntries(root);
+		String runtime = SharedRuntime.identity(RuntimeBinding.read(root));
+		MessageDigest digest = identityDigest(entries);
+		digest.update(("\nruntime\t" + runtime).getBytes(UTF_8));
+		return HexFormat.of().formatHex(digest.digest());
 	}
 
 	/**
-	 * Returns the identity of one exact packaged runner, including generated runtime bytes.
+	 * Returns the identity of one exact packaged runner, which is the same wherever the package is installed.
 	 *
 	 * <p>
-	 * A lifecycle check establishes behavior of the assembled package itself. Unlike a prompt-comparison identity, it
-	 * must change when the generated runtime changes so a prior check cannot authorize a later package.
+	 * A lifecycle check establishes behavior of the assembled package itself, so its identity depends only on the
+	 * packaged entries and not on the installation's runtime binding.
 	 *
 	 * @param artifact the assembled plugin directory
 	 *
-	 * @return the SHA-256 identity of every verified runtime entry
+	 * @return the SHA-256 identity of every verified packaged entry
 	 *
 	 * @throws IOException if a runtime input is missing, changed, omitted, or malformed
 	 */
 	public static String packagedFingerprint(Path artifact) throws IOException
 	{
-		return identityFingerprint(verifiedEntries(artifact), true);
+		return HexFormat.of().formatHex(identityDigest(verifiedEntries(root(artifact))).digest());
 	}
 
 	/**
 	 * Reads the manifest and verifies every runtime entry before an identity is derived.
 	 *
-	 * @param artifact the assembled plugin directory
+	 * @param root the normalized assembled plugin directory
 	 *
 	 * @return the verified manifest entries
 	 *
 	 * @throws IOException if a runtime input is missing, changed, omitted, or malformed
 	 */
-	private static List<Entry> verifiedEntries(Path artifact) throws IOException
+	private static List<Entry> verifiedEntries(Path root) throws IOException
 	{
-		Path root = root(artifact);
 		Path manifest = root.resolve(PATH);
 		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
 			throw new IOException("Runner artifact is missing its packaged runtime manifest: " + manifest);
@@ -136,8 +146,7 @@ public final class RunnerRuntimeManifest
 	private static Entry parse(String line, Path manifest, int lineNumber) throws IOException
 	{
 		String[] fields = line.split("\\t", -1);
-		if (fields.length != 3 || (!fields[0].equals("file") && !fields[0].equals("generated-file") &&
-			!fields[0].equals("link")) ||
+		if (fields.length != 3 || (!fields[0].equals("file") && !fields[0].equals("link")) ||
 			!fields[1].matches("[0-9a-f]{64}"))
 		{
 			throw new IOException("Malformed runner runtime manifest entry at " + manifest + ":" + lineNumber);
@@ -149,7 +158,8 @@ public final class RunnerRuntimeManifest
 	}
 
 	/**
-	 * Lists the package-declared files that can change harness runner behavior.
+	 * Lists the package-declared files that can change harness runner behavior, except the manifest itself and the
+	 * installation-specific runtime binding.
 	 *
 	 * @param root the assembled artifact directory
 	 *
@@ -167,7 +177,8 @@ public final class RunnerRuntimeManifest
 				continue;
 			try (Stream<Path> paths = Files.walk(source))
 			{
-				for (Path path : paths.filter(path -> !path.equals(root.resolve(PATH))).
+				for (Path path : paths.filter(path -> !path.equals(root.resolve(PATH)) &&
+					!path.equals(root.resolve(RuntimeBinding.PATH))).
 					filter(path -> Files.isRegularFile(path, NOFOLLOW_LINKS) || Files.isSymbolicLink(path)).sorted().
 				toList())
 				{
@@ -207,66 +218,42 @@ public final class RunnerRuntimeManifest
 		else
 		{
 			kind = "file";
-			if (generatedRuntimePath(root.relativize(file)))
-				kind = "generated-file";
 			fingerprint = sha256(file);
 		}
 		return new Entry(kind, fingerprint, PortablePaths.text(root.relativize(file)));
 	}
 
 	/**
-	 * Indicates whether a packaged path is regenerated by jlink rather than a project-controlled runner input.
-	 *
-	 * @param path the artifact-relative path
-	 *
-	 * @return {@code true} if the path verifies the assembled image but does not by itself define a comparison identity
-	 */
-	private static boolean generatedRuntimePath(Path path)
-	{
-		return path.startsWith(Path.of("client", "lib")) || path.startsWith(Path.of("client", "conf")) ||
-			path.equals(Path.of("client", "release"));
-	}
-
-	/**
-	 * Computes the stable comparison identity after all packaged output has been verified.
-	 *
-	 * <p>
-	 * jlink can regenerate its own runtime and startup-optimization bytes from unchanged CAT inputs. Those bytes must
-	 * still match this package's manifest so corruption is detected, but using them as the comparison identity would
-	 * falsely make equivalent evaluations incomparable. The build-plan input fingerprint records the project-controlled
-	 * inputs that determine them.
+	 * Starts the digest of a packaged identity after all packaged output has been verified.
 	 *
 	 * @param entries the verified manifest entries
 	 *
-	 * @param includeGenerated whether generated runtime bytes define this identity
-	 *
-	 * @return the SHA-256 identity of stable runner configuration entries
+	 * @return a SHA-256 digest that holds the manifest header and every entry
 	 *
 	 * @throws IOException if SHA-256 is unavailable
 	 */
-	private static String identityFingerprint(List<Entry> entries, boolean includeGenerated) throws IOException
+	private static MessageDigest identityDigest(List<Entry> entries) throws IOException
 	{
+		MessageDigest digest;
 		try
 		{
-			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			digest.update(HEADER.getBytes(UTF_8));
-			for (Entry entry : entries)
-			{
-				if (!includeGenerated && entry.kind().equals("generated-file"))
-					continue;
-				digest.update((byte) '\n');
-				digest.update(entry.kind().getBytes(UTF_8));
-				digest.update((byte) '\t');
-				digest.update(entry.sha256().getBytes(UTF_8));
-				digest.update((byte) '\t');
-				digest.update(entry.path().getBytes(UTF_8));
-			}
-			return HexFormat.of().formatHex(digest.digest());
+			digest = MessageDigest.getInstance("SHA-256");
 		}
 		catch (NoSuchAlgorithmException e)
 		{
 			throw new IOException("SHA-256 is unavailable", e);
 		}
+		digest.update(HEADER.getBytes(UTF_8));
+		for (Entry entry : entries)
+		{
+			digest.update((byte) '\n');
+			digest.update(entry.kind().getBytes(UTF_8));
+			digest.update((byte) '\t');
+			digest.update(entry.sha256().getBytes(UTF_8));
+			digest.update((byte) '\t');
+			digest.update(entry.path().getBytes(UTF_8));
+		}
+		return digest;
 	}
 
 	/**
