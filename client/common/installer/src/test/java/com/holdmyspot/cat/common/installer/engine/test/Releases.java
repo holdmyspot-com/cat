@@ -55,7 +55,7 @@ public final class Releases implements ReleaseSource
 	 */
 	public Releases(String version, String defect) throws IOException
 	{
-		this(version, defect, null, keyPair());
+		this(version, ReleaseFixtures.BUILD, defect, null, keyPair());
 	}
 
 	/**
@@ -69,7 +69,22 @@ public final class Releases implements ReleaseSource
 	 */
 	Releases(String version, String registry, Releases signer) throws IOException
 	{
-		this(version, "", registry, signer.key);
+		this(version, ReleaseFixtures.BUILD, "", registry, signer.key);
+	}
+
+	/**
+	 * Creates a valid release of a build other than the fixture's usual one, as a republished release is, that another
+	 * release's key signs and whose plugin holds the supplied migration registry.
+	 *
+	 * @param version  the release version
+	 * @param build    the first twelve lower-case hexadecimal digits of the commit that the release is built from
+	 * @param registry the content of the plugin's {@code install/migrations/registry.tsv}
+	 * @param signer   the release whose key signs this one
+	 * @throws IOException if creating the in-memory archive fails
+	 */
+	Releases(String version, String build, String registry, Releases signer) throws IOException
+	{
+		this(version, build, "", registry, signer.key);
 	}
 
 	/**
@@ -84,23 +99,24 @@ public final class Releases implements ReleaseSource
 	 */
 	static Releases defective(String version, String defect, Releases signer) throws IOException
 	{
-		return new Releases(version, defect, null, signer.key);
+		return new Releases(version, ReleaseFixtures.BUILD, defect, null, signer.key);
 	}
 
 	/**
 	 * Creates a release.
 	 *
 	 * @param version  the release version
+	 * @param build    the first twelve lower-case hexadecimal digits of the commit that the release is built from
 	 * @param defect   empty for valid data, or the particular corrupted property
 	 * @param registry the plugin's migration registry, or null for the one that {@code defect} selects
 	 * @param key      the key that signs the release
 	 * @throws IOException if creating the in-memory archive fails
 	 */
-	private Releases(String version, String defect, String registry, KeyPair key) throws IOException
+	private Releases(String version, String build, String defect, String registry, KeyPair key) throws IOException
 	{
 		this.version = version;
 		this.key = key;
-		this.archive = archive(version, defect, registry);
+		this.archive = archive(version, build, defect, registry);
 		String digest = sha256(archive);
 		long size = archive.length;
 		if (defect.equals("digest"))
@@ -110,7 +126,7 @@ public final class Releases implements ReleaseSource
 		String top = "cat-harness-a-linux-x64-v" + version;
 		String assets = ReleaseFixtures.asset(top + ".tar.gz", "plugin", "\"harness\": \"harness-a\", ",
 			"linux-x64", Long.toString(size), digest, top);
-		this.manifest = ReleaseFixtures.manifest(version, "v" + version, assets).getBytes(UTF_8);
+		this.manifest = ReleaseFixtures.manifest(version, "v" + version, build, assets).getBytes(UTF_8);
 		KeyPair signer = key;
 		if (defect.equals("unknownKey"))
 			signer = keyPair();
@@ -157,7 +173,19 @@ public final class Releases implements ReleaseSource
 	 */
 	public static String pluginVersion(String release)
 	{
-		return release + PluginVersion.BUILD_SEPARATOR + ReleaseFixtures.BUILD;
+		return pluginVersion(release, ReleaseFixtures.BUILD);
+	}
+
+	/**
+	 * Returns the full plugin version of a build of a release.
+	 *
+	 * @param release the release version
+	 * @param build   the first twelve lower-case hexadecimal digits of the commit that the release is built from
+	 * @return the release, then the build
+	 */
+	public static String pluginVersion(String release, String build)
+	{
+		return release + PluginVersion.BUILD_SEPARATOR + build;
 	}
 
 	/**
@@ -215,12 +243,13 @@ public final class Releases implements ReleaseSource
 	 * Builds only the entries needed to validate or refuse the named release property.
 	 *
 	 * @param version  the declared release version
+	 * @param build    the first twelve lower-case hexadecimal digits of the commit that the release is built from
 	 * @param defect   the corrupted property, or empty
 	 * @param registry the migration registry, or null for the one that {@code defect} selects
 	 * @return the archive bytes
 	 * @throws IOException if archive writing fails
 	 */
-	private static byte[] archive(String version, String defect, String registry) throws IOException
+	private static byte[] archive(String version, String build, String defect, String registry) throws IOException
 	{
 		String top = "cat-harness-a-linux-x64-v" + version;
 		if (defect.equals("top"))
@@ -228,7 +257,7 @@ public final class Releases implements ReleaseSource
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
 		{
-			String pluginVersion = pluginVersion(version);
+			String pluginVersion = pluginVersion(version, build);
 			String manifestVersion = pluginVersion;
 			if (defect.equals("pluginVersion"))
 				manifestVersion = "1.9";

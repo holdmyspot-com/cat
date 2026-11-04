@@ -55,6 +55,23 @@ final class ReleaseCatalog implements ReleaseSource
 	}
 
 	/**
+	 * Publishes a release again from another commit under the same tag, as a republished release is: the tag then
+	 * serves only the new build, which becomes the latest release.
+	 *
+	 * @param version  the release version
+	 * @param build    the first twelve lower-case hexadecimal digits of the new build's commit
+	 * @param registry the new build's migration registry
+	 * @return this catalog
+	 * @throws IOException if creating the release fails
+	 */
+	ReleaseCatalog republish(String version, String build, String registry) throws IOException
+	{
+		releases.put("v" + version, new Releases(version, build, registry, signer));
+		latest = "v" + version;
+		return this;
+	}
+
+	/**
 	 * Adds a release whose one property a test case corrupts, which becomes the latest one.
 	 *
 	 * @param version the release version

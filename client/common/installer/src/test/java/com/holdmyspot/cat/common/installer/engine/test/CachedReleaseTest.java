@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -35,8 +36,8 @@ public final class CachedReleaseTest
 	}
 
 	/**
-	 * Going back to the release that an update replaced reuses the kept release, verified against its signed
-	 * manifest, without contacting the release source.
+	 * Going back, while the release source is unreachable, to the release that an update replaced installs the kept
+	 * release, verified against its signed manifest, without downloading anything.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -54,10 +55,39 @@ public final class CachedReleaseTest
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UPDATED);
-			requireThat(fixture.catalog.requests().subList(before, fixture.catalog.requests().size()), "requests").
-				isEmpty();
+			List<String> downloads = fixture.catalog.requests().subList(before, fixture.catalog.requests().size()).
+				stream().filter(request -> request.startsWith("download ")).toList();
+			requireThat(downloads, "downloads").isEmpty();
 			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
 				isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
+		}
+	}
+
+	/**
+	 * While the release source is unreachable, a kept release whose manifest or archive no longer verifies is not
+	 * installed: the install fails to obtain the release and the harness keeps its active version.
+	 *
+	 * @param file    the changed file, relative to the installer data directory
+	 * @param request the request that would obtain the release again
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test(dataProvider = "tamperedFiles")
+	public void refusesTamperedReleaseOffline(String file, String request) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = updated(cleanup);
+			Files.writeString(fixture.data().resolve(file), "tampered");
+			fixture.catalog.goOffline();
+
+			UpdateResult result = fixture.install("v1.1");
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.DOWNLOAD_FAILED);
+			requireThat(fixture.catalog.requests(), "requests").contains(request);
+			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
+				isEqualTo(Optional.of(Releases.pluginVersion("1.2")));
 		}
 	}
 

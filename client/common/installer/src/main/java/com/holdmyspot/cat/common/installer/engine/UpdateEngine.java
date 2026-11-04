@@ -150,9 +150,10 @@ public final class UpdateEngine
 
 	/**
 	 * Installs an approved release: where the harness has no CAT version it adds it, and otherwise it updates the
-	 * harness's version to it. When the harness already has that build consistently installed, the plugin is
-	 * registered again instead. The latest release is refused when it is older than the active one, and a named older
-	 * release is refused when the active release changed CAT's data structures after it.
+	 * harness's version to it. The release's signed manifest names its build: when the harness already has that build
+	 * consistently installed there is nothing to do, and any other build of the active release is installed, whichever
+	 * of the two was published first. The latest release is refused when it is older than the active one, and a named
+	 * older release is refused when the active release changed CAT's data structures after it.
 	 *
 	 * @param requestedTag the canonical v-prefixed tag, or null or {@link #LATEST} for the latest release
 	 * @param request      the harness and the running installer's plugin folder
@@ -279,7 +280,7 @@ public final class UpdateEngine
 		ReleaseVersion release = verified.manifest().version();
 		PluginVersion plugin = verified.manifest().pluginVersion();
 		if (active.isUpToDate(plugin))
-			return registerAgain(request, home, active);
+			return upToDate(active);
 		boolean downgrade = active.release().isPresent() && release.compareTo(active.release().get()) < 0;
 		if (downgrade && (requestedTag == null || requestedTag.equals(LATEST)))
 		{
@@ -338,7 +339,7 @@ public final class UpdateEngine
 		PluginVersion plugin = PluginVersion.parse(Files.readString(versionFile, StandardCharsets.UTF_8).strip());
 		StagedRelease.validate(tree, plugin, activation.pluginManifest(), platform);
 		if (active.isUpToDate(plugin))
-			return registerAgain(request, home, active);
+			return upToDate(active);
 		ReleaseVersion release = ReleaseVersion.parse(plugin.release());
 		boolean downgrade = active.release().isPresent() && release.compareTo(active.release().get()) < 0;
 		return inScratch((download, extractRoot) ->
@@ -380,18 +381,13 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Registers the active plugin with the harness again, because the harness already has the installed build.
+	 * Reports that the harness already has the build to install, without asking the harness to do anything.
 	 *
-	 * @param request the harness
-	 * @param home    the protected harness home
-	 * @param active  the harness's CAT version
+	 * @param active the harness's CAT version
 	 * @return the outcome
-	 * @throws IOException if the harness does not register the plugin
 	 */
-	private UpdateResult registerAgain(InstallRequest request, Path home, Active active) throws IOException
+	private UpdateResult upToDate(Active active)
 	{
-		HarnessSession session = request.session();
-		session.integration().register(home, active.plugin(), session.cli(), session.replacer());
 		return result(Result.UP_TO_DATE, active.version(), null, "CAT is up to date.", List.of());
 	}
 
@@ -526,21 +522,34 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Returns a release's signed manifest: the one that the installation keeps when the policy's keys still verify it,
-	 * and otherwise the release source's.
+	 * Returns a release's signed manifest: the release source's, and the one that the installation keeps only when the
+	 * source cannot be reached and the policy's keys still verify the kept one. The source comes first because a
+	 * release that is published again from another commit keeps its tag, and only the source's manifest names the
+	 * build that the tag now serves.
 	 *
 	 * @param tag the release tag
 	 * @return the release
-	 * @throws IOException    if the release source cannot supply it
+	 * @throws IOException    if the release source cannot supply it and the installation keeps no valid copy
 	 * @throws TrustException if no key of the policy verifies the source's manifest, or it breaks its format
 	 */
 	private SignedRelease signed(String tag) throws IOException, TrustException
 	{
-		String version = ReleaseVersion.parse(tag.substring(1)).toString();
-		Optional<SignedRelease> kept = cache.release(version, policy);
-		if (kept.isPresent())
-			return kept.get();
-		return SignedRelease.verify(source.manifest(tag), source.signature(tag), policy);
+		byte[] manifest;
+		byte[] signature;
+		try
+		{
+			manifest = source.manifest(tag);
+			signature = source.signature(tag);
+		}
+		catch (IOException e)
+		{
+			String version = ReleaseVersion.parse(tag.substring(1)).toString();
+			Optional<SignedRelease> kept = cache.release(version, policy);
+			if (kept.isPresent())
+				return kept.get();
+			throw e;
+		}
+		return SignedRelease.verify(manifest, signature, policy);
 	}
 
 	/**
