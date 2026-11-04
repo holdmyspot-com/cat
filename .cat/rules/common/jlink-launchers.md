@@ -1,6 +1,6 @@
 ---
 paths:
-  - "client/common/distribution/src/main/java/**/JlinkImageBuilder.java"
+  - "client/common/distribution/src/main/java/**/PluginLaunchers.java"
   - "client/common/distribution/src/main/java/**/DistributionMain.java"
   - "client/common/distribution/src/main/java/**/PluginArtifactBuilder.java"
   - "client/**/*.bats"
@@ -19,7 +19,7 @@ paths:
 
 Every jlink launcher runs Java in a UTF-8 `LC_CTYPE`, because Java names files and decodes its arguments in the
 character set of `LC_CTYPE`, and the C locale cannot name a file whose name is not ASCII. Generate this in the template
-that `JlinkImageBuilder` writes for every launcher, not in one launcher or program. When the caller's `LC_CTYPE` is
+that `PluginLaunchers` writes for every launcher, not in one launcher or program. When the caller's `LC_CTYPE` is
 already UTF-8, the launcher keeps the caller's locale. Otherwise it saves the caller's `LC_ALL` and `LC_CTYPE` in
 `CAT_CALLER_LC_ALL` and `CAT_CALLER_LC_CTYPE`, unsets `LC_ALL` and sets `LC_CTYPE=C.UTF-8`.
 
@@ -48,26 +48,27 @@ such as its arguments, output and exit status, with Java tests that call it dire
 ## Launchers That Agents Run
 
 A plugin's top-level `bin/` folder holds only the launchers that agents run, such as `plugin-info`, `get-history` and
-`run-part`; hook launchers, `java` and `keytool` stay in the runtime image's `client/bin/`. `PluginArtifactBuilder`
-moves each launcher that `DistributionMain` lists as agent-run out of the image with `JlinkImageBuilder.moveLaunchers`,
-which rewrites its path to `java` relative to `bin/`, so `bin/<name>` starts `client/bin/java` directly. Do not put a
-symbolic link or a forwarding script in `bin/` instead: Codex drops symbolic links when it installs a plugin, and a
-forwarding script adds a second launcher to keep in step. A moved batch launcher takes the extension `.cmd`, the name
-under which CAT's Windows rules tell agents to run it.
+`run-part`; hook launchers and the `java` wrapper stay in the plugin's `client/bin/`. `PluginArtifactBuilder` moves
+each launcher that `DistributionMain` lists as agent-run out of `client/bin/` with `PluginLaunchers.move`, which
+rewrites its path to `client/` relative to `bin/`, so `bin/<name>` starts the Java that `client/runtime-binding` names
+directly. Do not put a symbolic link or a forwarding script in `bin/` instead: Codex drops symbolic links when it
+installs a plugin, and a forwarding script adds a second launcher to keep in step. A moved batch launcher takes the
+extension `.cmd`, the name under which CAT's Windows rules tell agents to run it.
 
 ## Windows Launchers
 
-On Windows, jlink writes the batch launcher `bin/<name>.bat` beside the POSIX launcher `bin/<name>`. `cmd.exe` and
-PowerShell run the batch launcher, and Git Bash, which Claude Code runs hooks in, runs the POSIX launcher, so both must
-work there. `JlinkImageBuilder` rewrites each batch launcher too: it gives it the JVM options of the POSIX launchers,
-and quotes the folder's assignment as `set "DIR=%~dp0"`, because an unquoted `&` in a folder name, such as a user's
-name, ends the command there. Keep both launchers' JVM options in one constant.
+On Windows, `PluginLaunchers` writes the batch launcher `client/bin/<name>.bat` beside the POSIX launcher
+`client/bin/<name>`. `cmd.exe` and PowerShell run the batch launcher, and Git Bash, which Claude Code runs hooks in,
+runs the POSIX launcher, so both must work there. Each batch launcher has the JVM options of the POSIX launchers, and
+quotes every assignment of a folder, as in `set "CLIENT=%%~fI"`, because an unquoted `&` in a folder name, such as a
+user's name, ends the command there. Keep both launchers' JVM options in one constant.
 
-On Windows, the Codex image holds only the batch launchers. Codex runs commands in PowerShell, and CAT's skills name a
+On Windows, the Codex plugin holds only the batch launchers. Codex runs commands in PowerShell, and CAT's skills name a
 launcher by its absolute path without an extension; PowerShell resolves that path to the POSIX launcher whenever it
-exists, cannot run it, and hands it to the program that Windows associates with the file. `DistributionMain.codexImage`
-therefore removes the POSIX launchers, and `CodexImageLaunchersTest` runs each launcher by that path from the shell
-that Codex uses on the platform that runs the test. The Claude image keeps both launchers.
+exists, cannot run it, and hands it to the program that Windows associates with the file.
+`DistributionMain.writeCodexLaunchers` therefore writes no POSIX launchers there, and `CodexImageLaunchersTest` runs
+each launcher by that path from the shell that Codex uses on the platform that runs the test. The Claude plugin keeps
+both launchers.
 
 The JVM options include `-Dstdout.encoding=UTF-8` and `-Dstderr.encoding=UTF-8`, so a program writes UTF-8 whatever
 the console's code page, and `--enable-native-access` for the module that holds `CommandLineArguments`.
