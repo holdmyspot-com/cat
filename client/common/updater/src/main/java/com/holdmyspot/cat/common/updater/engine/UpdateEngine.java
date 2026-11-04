@@ -45,6 +45,10 @@ import java.util.stream.Stream;
 public final class UpdateEngine
 {
 	/**
+	 * The release selector with which install names the latest approved release.
+	 */
+	public static final String LATEST = "latest";
+	/**
 	 * The largest recorded highest version, including its newline.
 	 */
 	private static final int MAXIMUM_VERSION_BYTES = 128;
@@ -137,11 +141,12 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Adds an approved release where the harness has no plugin and registers it, or updates the plugin when the
-	 * harness has one. A partial installation that the harness does not report is deleted first. Refuses a release
-	 * older than the highest version that the harness has had.
+	 * Adds the release that the installation runs where the harness has no plugin and registers it, or installs it
+	 * again over the harness's plugin. A partial installation that the harness does not report is deleted first.
+	 * Refuses any other release, because only update and rollback move the installation to another release.
 	 *
-	 * @param requestedTag the canonical v-prefixed tag, or null for the latest release
+	 * @param requestedTag the canonical v-prefixed tag, {@link #LATEST} for the latest release, or null for the release
+	 *                     that the installation runs
 	 * @param registration registers the activated plugin with the harness
 	 * @return the outcome
 	 * @throws NullPointerException if {@code registration} is null
@@ -396,14 +401,29 @@ public final class UpdateEngine
 			});
 		}
 		String tag = requestedTag;
+		if (mode == Mode.INSTALL)
+		{
+			if (current == null)
+			{
+				return result(Result.REFUSED, active, null, "The installation in " + data + " does not record " +
+					"its updater version; rerun the entry command to repair it.", List.of());
+			}
+			if (tag == null)
+				tag = "v" + current;
+		}
 		VerifiedManifest verified;
 		try
 		{
-			if (tag == null)
+			if (tag == null || tag.equals(LATEST))
 				tag = source.latestTag();
 			if (tag == null || !tag.startsWith("v"))
 				return result(Result.REFUSED, active, null, "A canonical v-prefixed release tag is required.", List.of());
 			ReleaseVersion requested = ReleaseVersion.parse(tag.substring(1));
+			if (mode == Mode.INSTALL && requested.compareTo(ReleaseVersion.parse(current)) != 0)
+			{
+				return result(Result.REFUSED, active, null, "Install adds only release " + current + ", which " +
+					"this installation runs; run update to move to release " + requested + ".", List.of());
+			}
 			verified = ManifestVerifier.verify(new ByteArrayInputStream(source.manifest(tag)),
 				new ByteArrayInputStream(source.signature(tag)), policy);
 			ReleaseVersion compared = null;
@@ -428,7 +448,8 @@ public final class UpdateEngine
 			return result(Result.UP_TO_DATE, active, previousBundle(transaction).orElse(null), "CAT is up to date.",
 				List.of());
 		}
-		if (mode != Mode.SETUP)
+		// Install adds only the release that the user's setup or rollback selected
+		if (mode == Mode.UPDATE)
 		{
 			Optional<ReleaseVersion> highest = highestVersion();
 			if (highest.isPresent() && verified.manifest().version().compareTo(highest.get()) < 0)

@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.updater.cli.internal.Arguments;
 import com.holdmyspot.cat.common.updater.cli.internal.Arguments.Operation;
+import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import java.nio.file.Path;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
@@ -62,7 +63,8 @@ public final class ArgumentsTest
 	}
 
 	/**
-	 * Install accepts the same optional release argument as update.
+	 * Install accepts the same optional release argument as update, and tells the latest release apart from no
+	 * release, which selects the release that the installation runs.
 	 */
 	@Test
 	public void parsesInstall()
@@ -75,7 +77,7 @@ public final class ArgumentsTest
 		requireThat(omitted.operation(), "operation").isEqualTo(Operation.INSTALL);
 		requireThat(omitted.harness(), "harness").isEqualTo("harness-a");
 		requireThat(omitted.tag(), "omittedTag").isNull();
-		requireThat(latest.tag(), "latestTag").isNull();
+		requireThat(latest.tag(), "latestTag").isEqualTo(UpdateEngine.LATEST);
 		requireThat(tagged.tag(), "tag").isEqualTo("v1.2");
 	}
 

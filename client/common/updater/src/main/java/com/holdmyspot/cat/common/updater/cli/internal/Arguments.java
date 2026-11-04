@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.updater.cli.internal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import java.nio.file.InvalidPathException;
@@ -13,7 +14,8 @@ import java.util.Set;
  *
  * @param operation  the requested complete operation
  * @param harness    the selected provider, or empty for status or uninstall of the installation's own harness
- * @param tag        the requested release tag, or null for the latest approved release
+ * @param tag        the requested release tag; for update null selects the latest approved release, and for install
+ *                   {@link UpdateEngine#LATEST} selects it and null selects the release that the installation runs
  * @param home       the harness home for setup, or null for another operation
  * @param plugin     the local plugin tree that setup installs instead of the signed release, or null
  * @param deleteData true if uninstall also deletes the harness's plugin data
@@ -79,7 +81,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 					throw usage();
 				yield new Arguments(operation, harness, null, null, null, args.length == 4);
 			}
-			case INSTALL, UPDATE -> new Arguments(operation, harness, parseTag(args), null, null, false);
+			case INSTALL, UPDATE -> new Arguments(operation, harness, parseTag(args, operation), null, null, false);
 			case STATUS, ROLLBACK -> new Arguments(operation, harness, null, null, null, false);
 		};
 	}
@@ -112,15 +114,23 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	/**
 	 * Parses the optional release argument of install and update.
 	 *
-	 * @param args the caller's arguments, of length 3 or 4
-	 * @return the canonical release tag, or null for the latest approved release
+	 * @param args      the caller's arguments, of length 3 or 4
+	 * @param operation install or update
+	 * @return the canonical release tag; {@link UpdateEngine#LATEST} for install's latest approved release; null for
+	 *         update's latest approved release, or for install without a release argument
 	 * @throws IllegalArgumentException if the argument is neither {@code latest} nor a canonical {@code v}-prefixed
 	 *                                  release version
 	 */
-	private static String parseTag(String[] args)
+	private static String parseTag(String[] args, Operation operation)
 	{
-		if (args.length == 3 || args[3].equals("latest"))
+		if (args.length == 3)
 			return null;
+		if (args[3].equals(UpdateEngine.LATEST))
+		{
+			if (operation == Operation.INSTALL)
+				return UpdateEngine.LATEST;
+			return null;
+		}
 		if (!args[3].startsWith("v"))
 			throw usage();
 		try

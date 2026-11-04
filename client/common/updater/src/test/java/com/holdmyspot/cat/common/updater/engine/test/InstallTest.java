@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
@@ -14,6 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -44,7 +47,7 @@ public final class InstallTest
 			Path root = cleanup.add(testDirectory("install-absent-"));
 			Path home = Files.createDirectories(root.resolve("home"));
 			Path data = root.resolve("data");
-			Path runtime = Releases.runtime(data);
+			Path runtime = Releases.installation(data, "1.1");
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
@@ -77,7 +80,7 @@ public final class InstallTest
 			Path home = Files.createDirectories(root.resolve("home"));
 			Files.createDirectories(home.resolve("live/leftover"));
 			Files.writeString(home.resolve("live/leftover/file"), "partial");
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.1");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
 				new RecordingIntegration().registration());
@@ -106,7 +109,7 @@ public final class InstallTest
 			Path outside = Files.writeString(root.resolve("outside"), "kept");
 			Files.createSymbolicLink(realHome.resolve("live/leftover/escape"), outside);
 			Path home = Files.createSymbolicLink(root.resolve("home"), realHome);
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.1");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
 				new RecordingIntegration().registration());
@@ -132,7 +135,7 @@ public final class InstallTest
 			Path root = cleanup.add(testDirectory("install-register-"));
 			Path home = Files.createDirectories(root.resolve("home"));
 			Path data = root.resolve("data");
-			Releases.runtime(data);
+			Releases.installation(data, "1.1");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
 				new RecordingIntegration().fail("register").registration());
@@ -162,7 +165,7 @@ public final class InstallTest
 			Path root = cleanup.add(testDirectory("install-interrupted-"));
 			Path home = Files.createDirectories(root.resolve("home"));
 			Path data = root.resolve("data");
-			Releases.runtime(data);
+			Releases.installation(data, "1.1");
 			Releases source = new Releases("1.1", "");
 			try
 			{
@@ -186,57 +189,131 @@ public final class InstallTest
 	}
 
 	/**
-	 * Install where the harness has no plugin refuses a release older than the highest version that the harness has
-	 * had, so a downgrade stays the user's decision.
+	 * Install where the harness has no plugin adds the release that the installation runs, also when the harness has
+	 * had a newer release, as after a rollback.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void installRefusesOlderThanHighestVersion() throws IOException, TrustException
+	public void installAfterRollbackAddsSelectedRelease() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("install-highest-"));
 			Path home = Files.createDirectories(root.resolve("home"));
 			Path data = root.resolve("data");
-			Releases.runtime(data);
+			Releases.installation(data, "1.1");
 			Files.createDirectories(data.resolve("state/harness-a"));
 			Files.writeString(data.resolve("state/harness-a/highest-version"), "1.2\n");
-			RecordingIntegration integration = new RecordingIntegration();
 
-			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				integration.registration());
+			UpdateResult result = engine(root, home, new Releases("1.1", "")).install(null,
+				new RecordingIntegration().registration());
 
-			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
-			requireThat(result.message(), "message").contains("1.2").contains("rollback");
-			requireThat(Files.exists(home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
-			requireThat(integration.calls(), "calls").isEmpty();
+			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
 		}
 	}
 
 	/**
-	 * Install where the harness already has a plugin updates it.
+	 * Install without a release adds the release that the installation runs, not the latest release.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void installOverPluginUpdates() throws IOException, TrustException
+	public void installAddsSelectedRelease() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("install-present-"));
-			Path home = Files.createDirectories(root.resolve("home/live")).getParent();
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Releases.installation(root.resolve("data"), "1.0");
+			Path root = cleanup.add(testDirectory("install-selected-"));
+			Path home = Files.createDirectories(root.resolve("home"));
+			Releases.installation(root.resolve("data"), "1.1");
+			Releases release = new Releases("1.1", "");
+			ReleaseSource newer = new ReleaseSource()
+			{
+				@Override
+				public String latestTag()
+				{
+					return "v1.2";
+				}
 
-			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				new RecordingIntegration().registration());
+				@Override
+				public byte[] manifest(String tag)
+				{
+					return release.manifest(tag);
+				}
 
-			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(result.previousVersion().orElseThrow(), "previousVersion").isEqualTo("1.0");
+				@Override
+				public byte[] signature(String tag)
+				{
+					return release.signature(tag);
+				}
+
+				@Override
+				public void download(String tag, String assetName, long expectedSize, Path destination)
+					throws IOException
+				{
+					release.download(tag, assetName, expectedSize, destination);
+				}
+			};
+			UpdateEngine engine = new UpdateEngine(root.resolve("data"), release.policy(home), newer,
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+
+			UpdateResult result = engine.install(null, new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
 		}
+	}
+
+	/**
+	 * Install of a release other than the one that the installation runs, named by its tag or as the latest release,
+	 * is refused before any change, where the harness has no plugin and where it has one.
+	 *
+	 * @param plugin the harness's plugin version, or null when it has none
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test(dataProvider = "plugins")
+	public void installRefusesOtherRelease(String plugin) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("install-other-"));
+			Path home = Files.createDirectories(root.resolve("home"));
+			if (plugin != null)
+			{
+				Files.createDirectories(home.resolve("live"));
+				Files.writeString(home.resolve("live/version"), plugin);
+			}
+			Releases.installation(root.resolve("data"), "1.0");
+			Map<String, String> before = Releases.snapshot(root);
+			RecordingIntegration integration = new RecordingIntegration();
+			UpdateEngine engine = engine(root, home, new Releases("1.1", ""));
+
+			for (String tag : List.of("v1.1", UpdateEngine.LATEST))
+			{
+				UpdateResult result = engine.install(tag, integration.registration());
+
+				requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
+				requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(3);
+				requireThat(result.message(), "message").contains("1.0").contains("update");
+				requireThat(Releases.snapshot(root), "installation").isEqualTo(before);
+				requireThat(integration.calls(), "calls").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns the plugin versions that the harness has before an install.
+	 *
+	 * @return no plugin, and the plugin of the release that the installation runs
+	 */
+	@DataProvider(name = "plugins")
+	public static Object[][] plugins()
+	{
+		return new Object[][]{{null}, {"1.0"}};
 	}
 
 	/**
