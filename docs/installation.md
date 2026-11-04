@@ -204,7 +204,8 @@ at the same release. If the launcher cannot put the runtime in place, it restore
 `not_swapped`; the installation's next operation undoes what remains of the failed one. Each operation that activates
 a plugin, including one that undoes or resumes an unfinished update or rollback, also prepares a start-up cache for the
 runtime that the plugin runs once the operation finishes. Its result's `aot_cache` field says whether that succeeded,
-and `false` only means slower start-up. A result without the field activated no plugin.
+and `false` only means slower start-up. A result without the field activated no plugin, except the three results
+that the stable launcher prints itself: `not_swapped`, `not_removed` and `locked` hold only `result` and `message`.
 
 If a release requires a data migration, routine update refuses it. Run that release's entry command yourself to
 authorize the migration. A validation failure keeps the active installation. An activation failure restores the

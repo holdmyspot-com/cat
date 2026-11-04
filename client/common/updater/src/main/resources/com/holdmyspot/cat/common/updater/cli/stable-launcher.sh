@@ -14,7 +14,9 @@
 # Output: the selected updater's JSON result; after a runtime replacement, the result that the updater saved, printed
 #   only once the new runtime runs and current selects the new version, or a not_swapped result; after a complete
 #   uninstall, the result that the updater saved, printed only once the data directory no longer exists, or a
-#   not_removed result naming the directory; or a locked result while another launcher replaces the runtime.
+#   not_removed result naming the directory; or a locked result while another launcher replaces the runtime. The
+#   not_swapped, not_removed and locked results, which this launcher prints itself, hold only the members result and
+#   message.
 # Exit status: the selected updater's status; 0 after a runtime replacement or a complete uninstall that succeeded; 8
 #   with a not_swapped result, after restoring the runtime that was in place, when the replacement request is invalid,
 #   the updater saved no readable result, a runtime cannot be renamed, the new runtime's java -version fails or current
