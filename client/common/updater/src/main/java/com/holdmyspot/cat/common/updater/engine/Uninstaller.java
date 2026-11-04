@@ -217,15 +217,15 @@ public final class Uninstaller
 	}
 
 	/**
-	 * Deletes the downloaded runner bundles of the recorded user's home, unless the other harness's CAT installation
-	 * still exists and may use them.
+	 * Deletes the downloaded runner bundles of the recorded user's home, also while the other harness's CAT
+	 * installation exists, which downloads them again when it needs them.
 	 *
 	 * @throws IOException if the bundles cannot be deleted
 	 */
 	private void deleteBundles() throws IOException
 	{
 		Optional<Path> user = userHome();
-		if (user.isEmpty() || otherInstallationExists())
+		if (user.isEmpty())
 			return;
 		Path root = LinkSafeDeletion.resolveRoot(user.get());
 		LinkSafeDeletion.delete(root.resolve(".cat/bundles"), root);
@@ -248,28 +248,6 @@ public final class Uninstaller
 				return Optional.of(Path.of(value).normalize());
 		}
 		return Optional.empty();
-	}
-
-	/**
-	 * Returns whether the updater data root holds another harness's CAT installation.
-	 *
-	 * @return true if another installation directory has a current updater version
-	 * @throws IOException if the data root cannot be listed
-	 */
-	private boolean otherInstallationExists() throws IOException
-	{
-		Path base = data.getParent();
-		if (base == null || !Files.isDirectory(base, NOFOLLOW_LINKS))
-			return false;
-		try (DirectoryStream<Path> installations = Files.newDirectoryStream(base))
-		{
-			for (Path installation : installations)
-			{
-				if (!installation.equals(data) && Files.isRegularFile(installation.resolve("current"), NOFOLLOW_LINKS))
-					return true;
-			}
-		}
-		return false;
 	}
 
 	/**

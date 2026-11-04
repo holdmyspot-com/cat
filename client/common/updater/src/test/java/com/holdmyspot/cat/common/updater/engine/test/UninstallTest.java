@@ -167,13 +167,14 @@ public final class UninstallTest
 	}
 
 	/**
-	 * The downloaded bundles stay while the other harness's CAT installation exists.
+	 * Uninstall deletes the downloaded bundles also while the other harness's CAT installation exists, which downloads
+	 * them again when it needs them, and leaves that installation alone.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void keepsBundlesForOtherInstallation() throws IOException, TrustException
+	public void deletesBundlesBesideOtherInstallation() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -184,7 +185,8 @@ public final class UninstallTest
 			UpdateResult result = fixture.uninstaller(new RecordingIntegration()).uninstall(false).outcome();
 
 			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
-			requireThat(Files.exists(fixture.user.resolve(".cat/bundles/bundle"), NOFOLLOW_LINKS), "bundles").isTrue();
+			requireThat(Files.exists(fixture.user.resolve(".cat/bundles"), NOFOLLOW_LINKS), "bundles").isFalse();
+			requireThat(Files.readString(other.resolve("current")), "otherInstallation").isEqualTo("1.0\n");
 		}
 	}
 
