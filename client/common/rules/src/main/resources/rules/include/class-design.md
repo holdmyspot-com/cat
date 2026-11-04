@@ -12,6 +12,8 @@ depends-on:
 	naming a likely change to each and checking what else that change would force a reader to read or edit; give
 	responsibilities that change independently focused components and keep together those that one invariant couples,
 	without splitting a component for its number of collaborators or a method for its number of steps.
+- Place a helper by the responsibility its full contract serves, reusing a suitable existing operation before
+	introducing a helper or a new owner.
 - Make components replaceable and testable only where a supported variation or external integration needs a boundary,
 	without exposing unsafe convenience paths, test-only production responsibilities, or trivial indirection.
 - Keep public contracts faithful to their domain constraints so callers cannot supply values the domain excludes.
@@ -40,6 +42,17 @@ guarantee with the smallest boundary or contract that makes it verifiable. Do no
 variation, external integration, or testable boundary needs one. Before reporting the change complete, compare the
 component's actual members and callers with the responsibility boundaries you identified, and move any member that
 crosses one.
+
+When adding or moving a helper, identify its own inputs, results, guarantees, and failures before choosing its owner.
+Check existing project and platform operations against that full contract first; reuse a matching operation instead
+of adding a helper. If a helper remains necessary, place it with the responsibility it performs, not with a caller
+merely because that caller uses it. A domain-specific caller does not make a generic operation domain-specific. Prefer
+an existing cohesive owner; introduce a new one only for a required responsibility that has no suitable owner, without
+inventing speculative utility classes. Keep domain policy and interpretation with their domain owner, and retain a
+cohesive operation when its steps jointly enforce one invariant. This boundary concerns an independently meaningful
+helper contract; do not extract ordinary private implementation details or generic statements from a cohesive domain
+operation merely because they use general-purpose APIs. Do not broaden an owner's name into a catch-all to accommodate
+unrelated behavior.
 
 When supported variants differ in behavior, put that behavior behind a narrow contract and add an implementation rather
 than repeatedly extending a central conditional. Every implementation must preserve its contract's caller-visible
