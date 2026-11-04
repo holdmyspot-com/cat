@@ -142,7 +142,9 @@ public final class Integration implements HarnessIntegration
 	 * <p>
 	 * The recorded search path keeps only absolute entries outside the working directory, the temporary directories,
 	 * the configuration directory and {@code <user home>/.cat}, so that a project or a download cannot place a
-	 * program that registration later runs. The recorded environment holds the user's home directory variable, that
+	 * program that registration later runs. The program is recorded at the path where it was found, without resolving
+	 * the link that Claude Code re-points when it updates itself, and is refused when that link leads into one of
+	 * those directories. The recorded environment holds the user's home directory variable, that
 	 * search path and, when the configuration directory is not {@code <user home>/.claude}, {@code CLAUDE_CONFIG_DIR},
 	 * which also moves Claude Code's {@code .claude.json}. On Windows it also holds {@code SystemRoot}, without which
 	 * Windows programs cannot load system libraries, {@code PATHEXT}, without which the batch file that npm installs
@@ -151,11 +153,12 @@ public final class Integration implements HarnessIntegration
 	 *
 	 * @param home        the absolute, normalized Claude Code configuration directory that setup records
 	 * @param environment the setup process's environment variables
-	 * @return the program's real path, with its command prefix, and its environment
+	 * @return the path at which the program was found, with its command prefix, and its environment
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative
 	 * @throws IOException              if the user's home directory is unknown, Claude Code is not on the search
-	 *                                  path, or {@code claude --version} does not identify Claude Code
+	 *                                  path or leads into a directory that discovery never records, or
+	 *                                  {@code claude --version} does not identify Claude Code
 	 */
 	@Override
 	public HarnessCommand discover(Path home, Map<String, String> environment) throws IOException
@@ -178,6 +181,8 @@ public final class Integration implements HarnessIntegration
 			if (directory != null)
 				excluded.add(directory);
 		}
+		for (Path directory : List.copyOf(excluded))
+			excluded.add(realPath(directory));
 		String searchPath = recordedSearchPath(variables.getOrDefault("PATH", ""), excluded);
 		Map<String, String> recorded = new HashMap<>();
 		recorded.put(homeVariable, userHome);
@@ -185,7 +190,7 @@ public final class Integration implements HarnessIntegration
 		if (!home.equals(userHomePath.resolve(".claude")))
 			recorded.put("CLAUDE_CONFIG_DIR", home.toString());
 		List<String> command = new ArrayList<>();
-		Path program = findClaude(variables, searchPath);
+		Path program = findClaude(variables, searchPath, excluded);
 		if (platform.isWindows())
 		{
 			String systemRoot = variables.get("SystemRoot");
@@ -233,7 +238,8 @@ public final class Integration implements HarnessIntegration
 	 * Keeps the search path entries that discovery may record.
 	 *
 	 * @param searchPath the setup process's search path
-	 * @param excluded   directories whose entries, and entries below them, are dropped
+	 * @param excluded   directories, as written and with links resolved, whose entries and entries below them are
+	 *                   dropped
 	 * @return the remaining absolute, normalized entries, without repeats, in their original order
 	 */
 	private String recordedSearchPath(String searchPath, List<Path> excluded)
@@ -243,35 +249,37 @@ public final class Integration implements HarnessIntegration
 			separator = ";";
 		else
 			separator = ":";
-		List<Path> realExcluded = new ArrayList<>();
-		for (Path directory : excluded)
-		{
-			realExcluded.add(directory);
-			realExcluded.add(realPath(directory));
-		}
 		Set<Path> entries = new LinkedHashSet<>();
 		for (String text : searchPath.split(separator, -1))
 		{
 			Path entry = absolutePath(text);
 			if (entry == null)
 				continue;
-			Path real = realPath(entry);
-			boolean allowed = true;
-			for (Path directory : realExcluded)
-			{
-				if (entry.startsWith(directory) || real.startsWith(directory))
-				{
-					allowed = false;
-					break;
-				}
-			}
-			if (allowed)
+			if (!isExcluded(entry, excluded))
 				entries.add(entry);
 		}
 		StringJoiner joiner = new StringJoiner(separator);
 		for (Path entry : entries)
 			joiner.add(entry.toString());
 		return joiner.toString();
+	}
+
+	/**
+	 * Checks whether a path or its real path lies in an excluded directory.
+	 *
+	 * @param path     an absolute, normalized path
+	 * @param excluded the excluded directories, as written and with links resolved
+	 * @return true if the path, or the path with its links resolved, is or lies below an excluded directory
+	 */
+	private static boolean isExcluded(Path path, List<Path> excluded)
+	{
+		Path real = realPath(path);
+		for (Path directory : excluded)
+		{
+			if (path.startsWith(directory) || real.startsWith(directory))
+				return true;
+		}
+		return false;
 	}
 
 	/**
@@ -297,11 +305,14 @@ public final class Integration implements HarnessIntegration
 	 *
 	 * @param variables  the setup process's environment
 	 * @param searchPath the search path that discovery records
-	 * @return the real path of the first {@code claude} program on the search path, which on Windows is
+	 * @param excluded   the directories that discovery never records, as written and with links resolved
+	 * @return the absolute path at which the first {@code claude} program on the search path was found, with its
+	 * 	links unresolved so that Claude Code can re-point them when it updates itself; on Windows the program is
 	 * 	{@code claude.exe} or {@code claude.cmd}
-	 * @throws IOException if no program is found
+	 * @throws IOException if no program is found, or the program's links lead into an excluded directory
 	 */
-	private Path findClaude(Map<String, String> variables, String searchPath) throws IOException
+	private Path findClaude(Map<String, String> variables, String searchPath, List<Path> excluded)
+		throws IOException
 	{
 		Map<String, String> search = new HashMap<>();
 		search.put("PATH", searchPath);
@@ -325,7 +336,14 @@ public final class Integration implements HarnessIntegration
 			throw new IOException("Claude Code's claude program is not on PATH (" + searchPath + "). Install " +
 				"Claude Code, or add its directory to PATH, and rerun setup.");
 		}
-		return Path.of(found).toRealPath();
+		Path program = Path.of(found).toAbsolutePath().normalize();
+		if (isExcluded(program, excluded))
+		{
+			throw new IOException("Claude Code's claude program resolves into a directory that setup never records, " +
+				"because a project or download could replace it there: " + program + " -> " + realPath(program) +
+				". Install Claude Code elsewhere and rerun setup.");
+		}
+		return program;
 	}
 
 	/**

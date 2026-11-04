@@ -63,7 +63,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Discovery records the real path of the first {@code claude} program on the search path, a search path without
+	 * Discovery records the path at which it found the first {@code claude} program on the search path, without
+	 * resolving the link that Claude Code re-points when it updates itself, a search path without
 	 * relative entries or entries that a project or another user-writable location controls, and only the variables
 	 * that Claude Code needs for the default configuration directory.
 	 *
@@ -81,7 +82,7 @@ public final class IntegrationTest
 			Path temporaryDirectory = Files.createDirectories(root.resolve("temporary"));
 			Path installed = Files.createDirectories(root.resolve("installed/bin"));
 			Path real = fakeClaude(Files.createDirectories(root.resolve("versions/2.1.318")), "2.1.318 (Claude Code)", 0);
-			Files.createSymbolicLink(installed.resolve(real.getFileName()), real);
+			Path link = Files.createSymbolicLink(installed.resolve(real.getFileName()), real);
 			List<String> decoys = new ArrayList<>();
 			for (Path directory : List.of(workingDirectory.resolve("bin"), temporaryDirectory.resolve("bin"),
 				home.resolve("bin"), userHome.resolve(".cat/bin")))
@@ -102,7 +103,7 @@ public final class IntegrationTest
 			Map<String, String> expectedEnvironment = new HashMap<>();
 			expectedEnvironment.put(platform.homeVariable(), userHome.toString());
 			expectedEnvironment.put("PATH", installed + File.pathSeparator + other);
-			List<String> expectedCommand = List.of(real.toRealPath().toString());
+			List<String> expectedCommand = List.of(link.toString());
 			if (platform.isWindows())
 			{
 				// Windows starts cmd.exe only with SystemRoot, so the fake batch program needs the real value.
@@ -113,7 +114,7 @@ public final class IntegrationTest
 				expectedEnvironment.put("PATHEXT", ".COM;.EXE;.BAT;.CMD");
 				expectedEnvironment.put("NoDefaultCurrentDirectoryInExePath", "1");
 				expectedCommand = List.of(Path.of(systemRoot, "System32/cmd.exe").toString(), "/d", "/s", "/c",
-					real.toRealPath().toString());
+					link.toString());
 			}
 
 			HarnessCommand command = new Integration(platform, workingDirectory, temporaryDirectory).
@@ -163,6 +164,40 @@ public final class IntegrationTest
 
 			integration(root).discover(userHome.resolve(".claude"), programEnvironment(userHome, empty));
 		}
+	}
+
+	/**
+	 * Discovery refuses a program on an allowed search directory whose link leads into a directory that discovery
+	 * never records, because a project or download could replace the program there.
+	 *
+	 * @param excluded the excluded directory, relative to the test directory
+	 * @throws IOException if the fixture cannot be created or the refusal is returned
+	 */
+	@Test(dataProvider = "excludedDirectories", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*claude.*resolves into.*")
+	public void discoverRefusesLinkIntoExcludedDirectory(String excluded) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory());
+			Path userHome = Files.createDirectories(root.resolve("user"));
+			Path installed = Files.createDirectories(root.resolve("installed"));
+			Path target = fakeClaude(Files.createDirectories(root.resolve(excluded)), "2.1.318 (Claude Code)", 0);
+			Files.createSymbolicLink(installed.resolve(target.getFileName()), target);
+
+			integration(root).discover(userHome.resolve(".claude"), programEnvironment(userHome, installed));
+		}
+	}
+
+	/**
+	 * Supplies the directories that discovery never records, relative to the test directory.
+	 *
+	 * @return the working directory, the temporary directory, the configuration directory and CAT's user directory
+	 */
+	@DataProvider
+	public Object[][] excludedDirectories()
+	{
+		return new Object[][] {{"project/bin"}, {"temporary/bin"}, {"user/.claude/bin"}, {"user/.cat/bin"}};
 	}
 
 	/**
