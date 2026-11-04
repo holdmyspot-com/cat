@@ -3,7 +3,7 @@ package com.holdmyspot.cat.distribution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
+import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.IOException;
@@ -63,11 +63,11 @@ public final class RunnerLaunchersTest
 		// Requirement: R-I9, R-I11
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.claudeLaunchers(), "claudeLaunchers").
-			contains(new JlinkImageBuilder.Launcher("codex-artifact", CLAUDE_MODULE,
+			contains(new Launcher("codex-artifact", CLAUDE_MODULE,
 				"com.holdmyspot.cat.claude.runner.CodexArtifact")).
-			contains(new JlinkImageBuilder.Launcher("claude-runner", CLAUDE_MODULE,
+			contains(new Launcher("claude-runner", CLAUDE_MODULE,
 				"com.holdmyspot.cat.claude.runner.ClaudeRunnerCli")).
-			contains(new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+			contains(new Launcher("request-session", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.runner.SessionRequestCli"));
 		requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains("codex-artifact").
 			contains("claude-runner").contains("request-session");
@@ -83,11 +83,11 @@ public final class RunnerLaunchersTest
 		// Requirement: R-I9, R-I11
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.codexLaunchers(), "codexLaunchers").
-			contains(new JlinkImageBuilder.Launcher("claude-artifact", CODEX_MODULE,
+			contains(new Launcher("claude-artifact", CODEX_MODULE,
 				"com.holdmyspot.cat.codex.runner.ClaudeArtifact")).
-			contains(new JlinkImageBuilder.Launcher("codex-runner", CODEX_MODULE,
+			contains(new Launcher("codex-runner", CODEX_MODULE,
 				"com.holdmyspot.cat.codex.runner.CodexRunnerCli")).
-			contains(new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+			contains(new Launcher("request-session", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.runner.SessionRequestCli"));
 		requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains("claude-artifact").
 			contains("codex-runner").contains("request-session");
@@ -103,10 +103,10 @@ public final class RunnerLaunchersTest
 		// Requirement: R-I9, R-I11
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.claudeLaunchers(), "claudeLaunchers").
-			contains(new JlinkImageBuilder.Launcher("codex-runner", CLAUDE_MODULE,
+			contains(new Launcher("codex-runner", CLAUDE_MODULE,
 				"com.holdmyspot.cat.claude.runner.CodexRunnerRelay"));
 		requireThat(access.codexLaunchers(), "codexLaunchers").
-			contains(new JlinkImageBuilder.Launcher("claude-runner", CODEX_MODULE,
+			contains(new Launcher("claude-runner", CODEX_MODULE,
 				"com.holdmyspot.cat.codex.runner.ClaudeRunnerRelay"));
 		requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains("claude-runner").
 			contains("codex-runner");
@@ -116,9 +116,9 @@ public final class RunnerLaunchersTest
 
 	/**
 	 * Supplies each plugin's harness with the launchers that the plugin holds in {@code bin/} and the launchers of
-	 * its image.
+	 * its client folder.
 	 *
-	 * @return the harness's name, its plugin's launchers' names in {@code bin/}, and its image's launchers
+	 * @return the harness's name, its plugin's launchers' names in {@code bin/}, and its client's launchers
 	 */
 	@DataProvider
 	public Object[][] plugins()
@@ -134,16 +134,16 @@ public final class RunnerLaunchersTest
 	 *
 	 * @param harness        the harness whose plugin to check
 	 * @param agentLaunchers the launchers in the plugin's {@code bin/}
-	 * @param imageLaunchers the launchers of the plugin's image
+	 * @param imageLaunchers the launchers of the plugin's client
 	 * @throws IOException        if a skill cannot be read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
 	 */
 	@Test(dataProvider = "plugins")
 	public void pluginHoldsEveryLauncherItsSkillsName(String harness, Set<String> agentLaunchers,
-		List<JlinkImageBuilder.Launcher> imageLaunchers) throws IOException, URISyntaxException
+		List<Launcher> imageLaunchers) throws IOException, URISyntaxException
 	{
 		Set<String> imageNames = new TreeSet<>();
-		for (JlinkImageBuilder.Launcher launcher : imageLaunchers)
+		for (Launcher launcher : imageLaunchers)
 			imageNames.add(launcher.name());
 		List<String> missing = new ArrayList<>();
 		List<String> skills = new ArrayList<>();
@@ -242,15 +242,15 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
-	 * Verifies that each image launches only its own harness's module or the common module.
+	 * Verifies that each plugin launches only its own harness's module or the common module.
 	 */
 	@Test
 	public void imagesLaunchOnlyTheirOwnHarness()
 	{
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
-		for (JlinkImageBuilder.Launcher launcher : access.claudeLaunchers())
+		for (Launcher launcher : access.claudeLaunchers())
 			requireThat(List.of(CLAUDE_MODULE, COMMON_MODULE), "modules").contains(launcher.module(), launcher.name());
-		for (JlinkImageBuilder.Launcher launcher : access.codexLaunchers())
+		for (Launcher launcher : access.codexLaunchers())
 			requireThat(List.of(CODEX_MODULE, COMMON_MODULE), "modules").contains(launcher.module(), launcher.name());
 	}
 

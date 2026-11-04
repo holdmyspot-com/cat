@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.distribution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Platform;
@@ -9,10 +10,13 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
+import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
+import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import com.holdmyspot.cat.distribution.bundle.ReleaseAsset;
 import com.holdmyspot.cat.distribution.bundle.ReleaseAssetsFragment;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
@@ -30,7 +34,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Stream;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
@@ -38,12 +44,17 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
  */
 public final class DistributionMain
 {
+	/**
+	 * The file of a plugin's {@code client} folder that names the Java runtime that the plugin needs.
+	 */
+	private static final String RUNTIME_REQUIREMENT = "runtime-requirement.json";
+
 	static
 	{
 		DistributionMainSecrets.setDistributionMainAccess(new DistributionMainAccess()
 		{
 			@Override
-			public List<JlinkImageBuilder.Launcher> claudeLaunchers()
+			public List<Launcher> claudeLaunchers()
 			{
 				return DistributionMain.claudeLaunchers();
 			}
@@ -55,7 +66,7 @@ public final class DistributionMain
 			}
 
 			@Override
-			public List<JlinkImageBuilder.Launcher> codexLaunchers()
+			public List<Launcher> codexLaunchers()
 			{
 				return DistributionMain.codexLaunchers();
 			}
@@ -73,10 +84,21 @@ public final class DistributionMain
 			}
 
 			@Override
-			public Path codexImage(JlinkImageBuilder builder, List<Path> modules, Path output, Platform platform)
-				throws IOException
+			public void writeCodexLaunchers(Path client, Platform platform) throws IOException
 			{
-				return DistributionMain.codexImage(builder, modules, output, platform);
+				DistributionMain.writeCodexLaunchers(client, platform);
+			}
+
+			@Override
+			public Path stageClient(ApplicationModules application, Path client, JsonMapper json) throws IOException
+			{
+				return DistributionMain.stageClient(application, client, json);
+			}
+
+			@Override
+			public void writeRuntimeBinding(Path plugin, Path runtime) throws IOException
+			{
+				DistributionMain.writeRuntimeBinding(plugin, runtime);
 			}
 
 			@Override
@@ -142,12 +164,15 @@ public final class DistributionMain
 
 		Path target = releaseDirectory.getParent();
 		Path runtimeDirectory = target.resolve("runtime");
-		Path jlinkDirectory = target.resolve("jlink");
-		Path jlinkModules = target.resolve("jlink-modules");
+		// The inputs that the artifacts are assembled from: the modules that the applications resolve from, the plugins'
+		// client folders, and the legal materials
+		Path staging = target.resolve("distribution-staging");
 		deleteAndRecreateDirectory(releaseDirectory);
 		deleteAndRecreateDirectory(runtimeDirectory);
-		deleteAndRecreateDirectory(jlinkDirectory);
-		deleteAndRecreateDirectory(jlinkModules);
+		deleteAndRecreateDirectory(staging);
+		Path staged = Files.createDirectory(staging.resolve("modules"));
+		Path clientDirectory = Files.createDirectory(staging.resolve("clients"));
+		Path legalDirectory = staging.resolve("legal");
 
 		Path commonCli = findDependencyJar(moduleDirectory, "client-common-cli");
 		Path claudeCli = findDependencyJar(moduleDirectory, "client-claude-cli");
@@ -184,35 +209,43 @@ public final class DistributionMain
 		DependencyJar jacksonToml = findThirdParty(moduleDirectory, "tools.jackson.dataformat",
 			"jackson-dataformat-toml");
 
-		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, jlinkModules),
-			copyModule(requirements.path(), jlinkModules), copyModule(requirementsAnnotation.path(), jlinkModules),
-			copyModule(pouch.path(), jlinkModules), copyModule(slf4j.path(), jlinkModules),
-			copyModule(slf4jNop.path(), jlinkModules), copyModule(compress.path(), jlinkModules),
-			copyModule(commonsIo.path(), jlinkModules), copyModule(commonsCodec.path(), jlinkModules),
-			copyModule(commonsLang.path(), jlinkModules),
-			modularizeJavaDiff(javaDiff.path(), jlinkModules));
-		Path packagedClaudeCli = copyModule(claudeCli, jlinkModules);
-		Path packagedCodexCli = copyModule(codexCli, jlinkModules);
+		List<Path> sharedRuntimeModules = List.of(copyModule(commonCli, staged),
+			copyModule(requirements.path(), staged), copyModule(requirementsAnnotation.path(), staged),
+			copyModule(pouch.path(), staged), copyModule(slf4j.path(), staged),
+			copyModule(slf4jNop.path(), staged), copyModule(compress.path(), staged),
+			copyModule(commonsIo.path(), staged), copyModule(commonsCodec.path(), staged),
+			copyModule(commonsLang.path(), staged),
+			modularizeJavaDiff(javaDiff.path(), staged));
+		Path packagedClaudeCli = copyModule(claudeCli, staged);
+		Path packagedCodexCli = copyModule(codexCli, staged);
 		Path commonUpdater = findDependencyJar(moduleDirectory, "client-common-updater");
-		List<Path> updaterModules = List.of(copyModule(commonUpdater, jlinkModules),
-			copyModule(findDependencyJar(moduleDirectory, "client-claude-updater"), jlinkModules),
-			copyModule(findDependencyJar(moduleDirectory, "client-codex-updater"), jlinkModules));
-		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), jlinkModules),
-			copyModule(jacksonAnnotations.path(), jlinkModules), copyModule(jacksonDatabind.path(), jlinkModules),
-			copyModule(jacksonYaml.path(), jlinkModules), copyModule(snakeyaml.path(), jlinkModules),
-			copyModule(jacksonToml.path(), jlinkModules));
+		List<Path> updaterModules = List.of(copyModule(commonUpdater, staged),
+			copyModule(findDependencyJar(moduleDirectory, "client-claude-updater"), staged),
+			copyModule(findDependencyJar(moduleDirectory, "client-codex-updater"), staged));
+		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), staged),
+			copyModule(jacksonAnnotations.path(), staged), copyModule(jacksonDatabind.path(), staged),
+			copyModule(jacksonYaml.path(), staged), copyModule(snakeyaml.path(), staged),
+			copyModule(jacksonToml.path(), staged));
 
-		JlinkImageBuilder imageBuilder = new JlinkImageBuilder();
-		Path claudeImage = imageBuilder.build(append(append(sharedRuntimeModules, packagedClaudeCli), jsonRuntimeModules),
-			Set.of("com.holdmyspot.cat.claude.cli", "org.slf4j.nop"),
-			claudeLaunchers(), jlinkDirectory.resolve("claude"));
-		List<Path> codexModules = append(append(sharedRuntimeModules, packagedCodexCli), jsonRuntimeModules);
-		Path codexImage = codexImage(imageBuilder, codexModules, jlinkDirectory.resolve("codex"), platform);
-
-		Path updaterImage = imageBuilder.build(append(append(sharedRuntimeModules, updaterModules), jsonRuntimeModules),
+		List<Path> applicationModules = append(append(append(append(sharedRuntimeModules, packagedClaudeCli),
+			packagedCodexCli), updaterModules), jsonRuntimeModules);
+		ApplicationModules claudeApplication = ApplicationModules.resolve(applicationModules,
+			roots(Set.of("com.holdmyspot.cat.claude.cli", "org.slf4j.nop"), claudeLaunchers()));
+		ApplicationModules codexApplication = ApplicationModules.resolve(applicationModules,
+			roots(Set.of("com.holdmyspot.cat.codex.cli", "org.slf4j.nop"), codexLaunchers()));
+		ApplicationModules updaterApplication = ApplicationModules.resolve(applicationModules,
 			Set.of("com.holdmyspot.cat.common.updater", "com.holdmyspot.cat.claude.updater",
-				"com.holdmyspot.cat.codex.updater", "com.holdmyspot.cat.common.cli", "java.net.http", "org.slf4j.nop"),
-			List.of(), jlinkDirectory.resolve("updater"));
+				"com.holdmyspot.cat.codex.updater", "com.holdmyspot.cat.common.cli", "java.net.http", "org.slf4j.nop"));
+		Set<String> runtimeModules = new TreeSet<>(updaterApplication.systemModules());
+		runtimeModules.addAll(claudeApplication.systemModules());
+		runtimeModules.addAll(codexApplication.systemModules());
+		Path updaterDirectory = runtimeDirectory.resolve("updater");
+		Path sharedRuntime = new JlinkImageBuilder().build(runtimeModules, updaterDirectory.resolve("runtime"),
+			scope.json());
+		Path claudeClient = stageClient(claudeApplication, clientDirectory.resolve("claude"), scope.json());
+		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeClient);
+		Path codexClient = stageClient(codexApplication, clientDirectory.resolve("codex"), scope.json());
+		writeCodexLaunchers(codexClient, platform);
 
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
 		LegalMaterialsBuilder legalMaterialsBuilder = new LegalMaterialsBuilder(PluginInfo.CAT_VERSION);
@@ -266,7 +299,7 @@ public final class DistributionMain
 			new ThirdPartyComponent("Jackson Dataformat TOML", jacksonToml.coordinates(), "Apache-2.0.txt",
 				jacksonToml.path(), List.of("META-INF/NOTICE")));
 		Path legalMaterials = legalMaterialsBuilder.build(catLicense, legalComponents, canonicalLicenses,
-			runtimeDirectory.resolve("legal"));
+			legalDirectory);
 		Path claudeRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
 			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
 				"hooks/subagent-start.sh")),
@@ -274,7 +307,7 @@ public final class DistributionMain
 			new ArtifactLayer("common-rules", commonRules),
 			new ArtifactLayer("claude-plugin", claudePlugin, Set.of(), Set.of("hooks/session-end.sh")),
 			new ArtifactLayer("claude-rules", claudeRules)),
-			claudeImage, claudeAgentLaunchers(), legalMaterials, List.of(commonInstallers, claudeInstallers),
+			claudeClient, claudeAgentLaunchers(), legalMaterials, List.of(commonInstallers, claudeInstallers),
 			runtimeDirectory.resolve("claude"));
 		Path codexRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
 			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
@@ -285,7 +318,7 @@ public final class DistributionMain
 				"skills/git-amend/SKILL.md", "skills/git-commit/SKILL.md", "skills/git-merge-linear/SKILL.md",
 				"skills/git-rebase/SKILL.md", "skills/git-rewrite-history/SKILL.md", "skills/git-squash/SKILL.md",
 				"skills/help/SKILL.md")),
-			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexImage,
+			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexClient,
 			codexAgentLaunchers(), legalMaterials, List.of(commonInstallers, codexInstallers),
 			runtimeDirectory.resolve("codex"));
 		validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
@@ -294,12 +327,15 @@ public final class DistributionMain
 		RuleReferences.requireResolvable(claudeRoot);
 		RuleReferences.requireResolvable(codexRoot);
 
-		updaterArtifacts.build(updaterImage, commonUpdater, legalMaterials);
+		updaterArtifacts.build(updaterDirectory.resolve(PluginInfo.CAT_VERSION), commonUpdater, updaterApplication,
+			legalMaterials);
+		writeRuntimeBinding(claudeRoot, sharedRuntime);
+		writeRuntimeBinding(codexRoot, sharedRuntime);
 
 		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
 		Path codexArchive = packager.packageArtifact("codex", platform, codexRoot, releaseDirectory);
-		Path updaterArchive = packager.packageArtifact("updater", platform, updaterImage, releaseDirectory);
+		Path updaterArchive = packager.packageArtifact("updater", platform, updaterDirectory, releaseDirectory);
 		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive, updaterArchive),
 			releaseDirectory.resolve("SHA256SUMS.txt"));
 		new ReleaseAssetsFragment(scope).write(platform, List.of(ReleaseAsset.plugin("claude", platform, claudeArchive),
@@ -371,7 +407,7 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Copies a module into the empty jlink module directory.
+	 * Copies a module into the empty directory of the modules that the applications resolve from.
 	 *
 	 * @param module the module to copy
 	 * @param directory the destination directory
@@ -458,67 +494,104 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Builds the Codex image. On Windows, the image holds only the batch launchers: Codex runs commands there in
-	 * PowerShell, and CAT's skills name each launcher by its path without an extension, which PowerShell resolves to
-	 * the POSIX launcher whenever it exists. The Claude image keeps both, because Claude Code runs commands in Git Bash.
-	 * <p>
-	 * The Codex image holds no symbolic links, because Codex's plugin installer drops them: each link becomes a copy of
-	 * the file that it points to.
+	 * Writes the launchers of the Codex plugin's client. On Windows, the plugin holds only the batch launchers: Codex
+	 * runs commands there in PowerShell, and CAT's skills name each launcher by its path without an extension, which
+	 * PowerShell resolves to the POSIX launcher whenever it exists. The Claude plugin keeps both, because Claude Code
+	 * runs commands in Git Bash.
 	 *
-	 * @param builder  the image builder
-	 * @param modules  the module-path entries of the image
-	 * @param output   the image's directory
-	 * @param platform the platform that the image runs on
-	 * @return the image's directory
-	 * @throws IOException if the image cannot be built
+	 * @param client   the plugin's {@code client} folder
+	 * @param platform the platform that the plugin runs on
+	 * @throws IOException if the launchers cannot be written
 	 */
-	static Path codexImage(JlinkImageBuilder builder, List<Path> modules, Path output, Platform platform)
-		throws IOException
+	static void writeCodexLaunchers(Path client, Platform platform) throws IOException
 	{
-		Path image = builder.build(modules, Set.of("com.holdmyspot.cat.codex.cli", "org.slf4j.nop"), codexLaunchers(),
-			output);
-		if (platform.isWindows())
-			JlinkImageBuilder.removePosixLaunchers(codexLaunchers(), image);
-		JlinkImageBuilder.replaceLinksWithCopies(image);
-		return image;
+		PluginLaunchers.write(codexLaunchers(), platform, !platform.isWindows(), client);
 	}
 
 	/**
-	 * Returns the launchers of the Claude image.
+	 * Stages a plugin's {@code client} folder: its modules and its runtime requirement.
+	 *
+	 * @param application the plugin's modules
+	 * @param client      the folder, which must not exist
+	 * @param json        the JSON writer
+	 * @return {@code client}
+	 * @throws IOException if the folder cannot be written
+	 */
+	static Path stageClient(ApplicationModules application, Path client, JsonMapper json) throws IOException
+	{
+		Path modules = Files.createDirectories(client.resolve("modules"));
+		for (Path jar : application.jars())
+			Files.copy(jar, modules.resolve(jar.getFileName()));
+		application.writeRequirement(client.resolve(RUNTIME_REQUIREMENT), json);
+		return client;
+	}
+
+	/**
+	 * Binds a plugin assembled in the source checkout to the shared runtime that the build wrote, so that the plugin
+	 * runs from the checkout without the trusted updater. The binding is written after the plugin's runtime manifest,
+	 * because it names a path on the building machine, and release archives leave it out.
+	 *
+	 * @param plugin  the assembled plugin
+	 * @param runtime the shared runtime
+	 * @throws IOException if the binding cannot be written
+	 */
+	static void writeRuntimeBinding(Path plugin, Path runtime) throws IOException
+	{
+		Files.writeString(plugin.resolve(ReleasePackager.RUNTIME_BINDING),
+			runtime.toAbsolutePath().normalize() + "\n", UTF_8);
+	}
+
+	/**
+	 * Returns the modules that an application starts from: its own roots and the modules of its launchers.
+	 *
+	 * @param roots     the application's roots
+	 * @param launchers the application's launchers
+	 * @return the modules
+	 */
+	private static Set<String> roots(Set<String> roots, List<Launcher> launchers)
+	{
+		Set<String> modules = new TreeSet<>(roots);
+		for (Launcher launcher : launchers)
+			modules.add(launcher.module());
+		return modules;
+	}
+
+	/**
+	 * Returns the launchers of the Claude plugin.
 	 *
 	 * @return the launchers
 	 */
-	static List<JlinkImageBuilder.Launcher> claudeLaunchers()
+	static List<Launcher> claudeLaunchers()
 	{
 		return append(sharedLaunchers(), List.of(
-			new JlinkImageBuilder.Launcher("plugin-info", "com.holdmyspot.cat.claude.cli",
+			new Launcher("plugin-info", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudePluginInfo"),
-			new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+			new Launcher("request-session", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.runner.SessionRequestCli"),
-			new JlinkImageBuilder.Launcher("claude-runner", "com.holdmyspot.cat.claude.cli",
+			new Launcher("claude-runner", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.runner.ClaudeRunnerCli"),
-			new JlinkImageBuilder.Launcher("claude-artifact", "com.holdmyspot.cat.claude.cli",
+			new Launcher("claude-artifact", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.runner.ClaudeArtifact"),
-			new JlinkImageBuilder.Launcher("codex-artifact", "com.holdmyspot.cat.claude.cli",
+			new Launcher("codex-artifact", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.runner.CodexArtifact"),
-			new JlinkImageBuilder.Launcher("codex-runner", "com.holdmyspot.cat.claude.cli",
+			new Launcher("codex-runner", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.runner.CodexRunnerRelay"),
-			new JlinkImageBuilder.Launcher("get-history", "com.holdmyspot.cat.claude.cli",
+			new Launcher("get-history", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudeGetHistory"),
-			new JlinkImageBuilder.Launcher("session-start", "com.holdmyspot.cat.claude.cli",
+			new Launcher("session-start", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudeSessionStartHook"),
-			new JlinkImageBuilder.Launcher("session-end", "com.holdmyspot.cat.claude.cli",
+			new Launcher("session-end", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudeSessionEndHook"),
-			new JlinkImageBuilder.Launcher("subagent-start", "com.holdmyspot.cat.claude.cli",
+			new Launcher("subagent-start", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudeSubagentStartHook"),
-			new JlinkImageBuilder.Launcher("prompt-optimizer", "com.holdmyspot.cat.claude.cli",
+			new Launcher("prompt-optimizer", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.optimizer.ClaudePromptOptimizer"),
-			new JlinkImageBuilder.Launcher("wait-until", "com.holdmyspot.cat.claude.cli",
+			new Launcher("wait-until", "com.holdmyspot.cat.claude.cli",
 				"com.holdmyspot.cat.claude.ClaudeWaitUntil")));
 	}
 
 	/**
-	 * Returns the launchers of the Claude image that agents run, which the plugin holds in {@code bin/}. They include
+	 * Returns the launchers of the Claude plugin that agents run, which the plugin holds in {@code bin/}. They include
 	 * {@code claude-artifact}, which reports this plugin as the Claude CAT artifact, {@code codex-artifact}, which
 	 * finds the Codex CAT artifact, {@code claude-runner}, which the Codex plugin's {@code claude-runner} launcher runs
 	 * from the Claude artifact, and {@code codex-runner}, which runs the runner of the Codex artifact, so that agents
@@ -533,45 +606,45 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the launchers of the Codex image.
+	 * Returns the launchers of the Codex plugin.
 	 *
 	 * @return the launchers
 	 */
-	static List<JlinkImageBuilder.Launcher> codexLaunchers()
+	static List<Launcher> codexLaunchers()
 	{
 		return append(sharedLaunchers(), List.of(
-			new JlinkImageBuilder.Launcher("plugin-info", "com.holdmyspot.cat.codex.cli",
+			new Launcher("plugin-info", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexPluginInfo"),
-			new JlinkImageBuilder.Launcher("request-session", "com.holdmyspot.cat.common.cli",
+			new Launcher("request-session", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.runner.SessionRequestCli"),
-			new JlinkImageBuilder.Launcher("codex-runner", "com.holdmyspot.cat.codex.cli",
+			new Launcher("codex-runner", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.runner.CodexRunnerCli"),
-			new JlinkImageBuilder.Launcher("codex-artifact", "com.holdmyspot.cat.codex.cli",
+			new Launcher("codex-artifact", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.runner.CodexArtifact"),
-			new JlinkImageBuilder.Launcher("claude-artifact", "com.holdmyspot.cat.codex.cli",
+			new Launcher("claude-artifact", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.runner.ClaudeArtifact"),
-			new JlinkImageBuilder.Launcher("claude-runner", "com.holdmyspot.cat.codex.cli",
+			new Launcher("claude-runner", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.runner.ClaudeRunnerRelay"),
-			new JlinkImageBuilder.Launcher("get-history", "com.holdmyspot.cat.codex.cli",
+			new Launcher("get-history", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexGetHistory"),
-			new JlinkImageBuilder.Launcher("session-start", "com.holdmyspot.cat.codex.cli",
+			new Launcher("session-start", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexSessionStartHook"),
-			new JlinkImageBuilder.Launcher("subagent-start", "com.holdmyspot.cat.codex.cli",
+			new Launcher("subagent-start", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexSubagentStartHook"),
-			new JlinkImageBuilder.Launcher("post-tool-use", "com.holdmyspot.cat.codex.cli",
+			new Launcher("post-tool-use", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexPostToolUseHook"),
-			new JlinkImageBuilder.Launcher("run-part", "com.holdmyspot.cat.codex.cli",
+			new Launcher("run-part", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexRunPart"),
-			new JlinkImageBuilder.Launcher("read-part", "com.holdmyspot.cat.codex.cli",
+			new Launcher("read-part", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexReadPart"),
-			new JlinkImageBuilder.Launcher("prompt-optimizer", "com.holdmyspot.cat.codex.cli",
+			new Launcher("prompt-optimizer", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.optimizer.CodexPromptOptimizer"),
-			new JlinkImageBuilder.Launcher("wait-until", "com.holdmyspot.cat.codex.cli",
+			new Launcher("wait-until", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexWaitUntil")));
 	}
 
 	/**
-	 * Returns the launchers of the Codex image that agents run, which the plugin holds in {@code bin/}. They include
+	 * Returns the launchers of the Codex plugin that agents run, which the plugin holds in {@code bin/}. They include
 	 * {@code codex-artifact}, which reports this plugin as the Codex CAT artifact, {@code claude-artifact}, which finds
 	 * the Claude CAT artifact, {@code codex-runner}, which the Claude plugin's {@code codex-runner} launcher runs from
 	 * the Codex artifact, and {@code claude-runner}, which runs the runner of the Claude artifact, so that agents in
@@ -586,14 +659,14 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the launchers that both images contain.
+	 * Returns the launchers that both plugins contain.
 	 *
 	 * @return the launchers
 	 */
-	private static List<JlinkImageBuilder.Launcher> sharedLaunchers()
+	private static List<Launcher> sharedLaunchers()
 	{
 		return List.of(
-			new JlinkImageBuilder.Launcher("session-analyzer", "com.holdmyspot.cat.common.cli",
+			new Launcher("session-analyzer", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.history.SessionHistory"));
 	}
 }

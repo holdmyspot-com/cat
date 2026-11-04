@@ -16,13 +16,17 @@ import java.util.List;
 import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
+import java.util.stream.Stream;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
+import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
+import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import org.testng.annotations.Test;
 
@@ -37,7 +41,9 @@ public final class PluginArtifactBuilderTest
 	}
 
 	/**
-	 * Verifies resources, runtime files, generated legal materials, and installer scripts are assembled.
+	 * Verifies that resources, the client folder, generated legal materials, migrations and marketplace metadata are
+	 * assembled, that agent launchers move to {@code bin/} and find {@code client/} from there, and that the plugin
+	 * ships no installer scripts, which the trusted updater replaces.
 	 */
 	@Test
 	public void assemblesCompleteArtifact() throws IOException
@@ -47,11 +53,15 @@ public final class PluginArtifactBuilderTest
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-artifact-"));
 			Path common = jar(temporary.resolve("common.jar"), "common.txt", "common");
 			Path harness = jar(temporary.resolve("harness.jar"), "skills/help/SKILL.md", "harness");
-			Path runtime = Files.createDirectories(temporary.resolve("runtime/bin")).getParent();
-			Files.writeString(runtime.resolve("bin/plugin-info"), "exec \"$DIR/java\" -m app/example.Main \"$@\"\n");
-			Files.writeString(runtime.resolve("bin/session-start"), "hook launcher");
+			Path runtime = Files.createDirectories(temporary.resolve("client"));
+			PluginLaunchers.write(List.of(new Launcher("plugin-info", "app", "example.Main"),
+				new Launcher("session-start", "app", "example.Hook")), Platform.LINUX_X64, true, runtime);
+			String hookLauncher = Files.readString(runtime.resolve("bin/session-start"));
 			Path legal = legalMaterials(temporary);
 			Path installers = Files.createDirectories(temporary.resolve("installers"));
+			Files.createDirectories(installers.resolve("migrations"));
+			Files.writeString(installers.resolve("migrations/1.0.sh"), "migration");
+			Files.writeString(installers.resolve("claude-marketplace.json"), "marketplace");
 			Files.writeString(installers.resolve("install-claude.sh"), "claude installer");
 			Files.writeString(installers.resolve("install-codex.sh"), "codex installer");
 			Files.writeString(installers.resolve("common.sh"), "shared installer functions");
@@ -67,27 +77,26 @@ public final class PluginArtifactBuilderTest
 			requireThat(Files.readString(output.resolve("skills/help/SKILL.md")), "harnessSkill").isEqualTo("harness");
 			requireThat(Files.readString(output.resolve("client/VERSION")), "versionFile").isEqualTo(
 				PluginInfo.CAT_VERSION + "\n");
-			requireThat(Files.readString(output.resolve("bin/plugin-info")), "pluginInfoLauncher").isEqualTo(
-				"exec \"$DIR/../client/bin/java\" -m app/example.Main \"$@\"\n");
+			requireThat(Files.readString(output.resolve("bin/plugin-info")), "pluginInfoLauncher").
+				contains("/../client\"").contains("-m app/example.Main \"$@\"");
 			requireThat(Files.exists(output.resolve("client/bin/plugin-info")), "runtimePluginInfoLauncher").isFalse();
 			requireThat(Files.readString(output.resolve("client/bin/session-start")), "hookLauncher").isEqualTo(
-				"hook launcher");
+				hookLauncher);
 			requireThat(Files.readString(output.resolve("LICENSE.txt")), "license").isEqualTo("license");
 			requireThat(Files.readString(output.resolve("NOTICE.txt")), "notice").isEqualTo("notice");
 			requireThat(Files.exists(output.resolve("LICENSE.md")), "repositoryLicense").isFalse();
 			requireThat(Files.readString(output.resolve("licenses/Apache-2.0.txt")), "apacheLicense").isEqualTo("apache");
 			requireThat(Files.readString(output.resolve("licenses/MIT.txt")), "mitLicense").isEqualTo("mit");
 			requireThat(Files.exists(output.resolve("docs")), "pricingDocumentation").isFalse();
-			requireThat(Files.readString(output.resolve("install/install-claude.sh")), "claudeInstaller").
-				isEqualTo("claude installer");
-			requireThat(Files.readString(output.resolve("install/install-codex.sh")), "codexInstaller").
-				isEqualTo("codex installer");
-			requireThat(Files.readString(output.resolve("install/common.sh")), "commonInstallerFunctions").
-				isEqualTo("shared installer functions");
-			requireThat(Files.readString(output.resolve("install/uninstall-claude.sh")), "claudeUninstaller").
-				isEqualTo("claude uninstaller");
-			requireThat(Files.readString(output.resolve("install/uninstall-codex.sh")), "codexUninstaller").
-				isEqualTo("codex uninstaller");
+			requireThat(Files.readString(output.resolve("install/migrations/1.0.sh")), "migration").
+				isEqualTo("migration");
+			requireThat(Files.readString(output.resolve("install/claude-marketplace.json")), "marketplace").
+				isEqualTo("marketplace");
+			try (Stream<Path> installed = Files.list(output.resolve("install")))
+			{
+				requireThat(installed.map(path -> path.getFileName().toString()).sorted().toList(), "installFiles").
+					isEqualTo(List.of("claude-marketplace.json", "migrations"));
+			}
 		}
 	}
 

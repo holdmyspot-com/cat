@@ -9,7 +9,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
-import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
+import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.IOException;
@@ -26,9 +26,9 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests that the Codex plugin installs its scripts and hook launcher as executables, and that the Codex image launches
+ * Tests that the Codex plugin installs its scripts and hook launcher as executables, and that the Codex plugin launches
  * {@code run-part} and {@code read-part}. {@code jlink-launchers.bats} tests the launcher template against the built
- * Codex image, and {@code codex-plugin-launchers.bats} tests the {@code run-part} and {@code read-part} launchers in
+ * Codex plugin, and {@code codex-plugin-launchers.bats} tests the {@code run-part} and {@code read-part} launchers in
  * the plugin's {@code bin} folder.
  */
 public final class CodexPluginExecutablesTest
@@ -54,17 +54,17 @@ public final class CodexPluginExecutablesTest
 	}
 
 	/**
-	 * Verifies that the Codex image launches {@code run-part} and {@code read-part}.
+	 * Verifies that the Codex plugin launches {@code run-part} and {@code read-part}.
 	 */
 	@Test
 	public void codexImageLaunchesParts()
 	{
-		List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.getDistributionMainAccess().codexLaunchers();
+		List<Launcher> launchers = DistributionMainSecrets.getDistributionMainAccess().codexLaunchers();
 
 		requireThat(launchers, "launchers").
-			contains(new JlinkImageBuilder.Launcher("run-part", "com.holdmyspot.cat.codex.cli",
+			contains(new Launcher("run-part", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexRunPart")).
-			contains(new JlinkImageBuilder.Launcher("read-part", "com.holdmyspot.cat.codex.cli",
+			contains(new Launcher("read-part", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexReadPart"));
 	}
 

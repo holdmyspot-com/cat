@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.distribution.bundle;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
@@ -28,13 +29,13 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Completes the trusted updater's runtime image with its launchers, default policy and legal materials.
- * The caller supplies an image that no other thread or process modifies during assembly.
+ * Writes the trusted updater's application directory: its version, modules, launchers, default policy, runtime
+ * requirement and legal materials. No other thread or process modifies the directory during assembly.
  */
 public final class UpdaterArtifactBuilder
 {
 	/**
-	 * The directory in the runtime image containing the default policy that setup reads.
+	 * The directory of the application directory containing the default policy that setup reads.
 	 */
 	private static final Path CONFIGURATION_DIRECTORY = Path.of("conf/cat-updater");
 	/**
@@ -46,18 +47,22 @@ public final class UpdaterArtifactBuilder
 	 */
 	private static final String LAUNCHER_RESOURCES = "com/holdmyspot/cat/common/updater/cli/";
 	/**
-	 * Release launchers are executable by their owner and by users allowed to read the distributed image.
+	 * Release launchers are executable by their owner and by users allowed to read the distributed application.
 	 */
 	private static final Set<PosixFilePermission> LAUNCHER_PERMISSIONS =
 		Set.copyOf(PosixFilePermissions.fromString("rwxr-xr-x"));
 	/**
-	 * The image-root file from which setup obtains its updater version.
+	 * The file of the application directory from which setup obtains its updater version.
 	 */
 	private static final String VERSION_FILE = "VERSION";
 	/**
 	 * The updater executable's base name on every platform.
 	 */
 	private static final String LAUNCHER_NAME = "cat-updater";
+	/**
+	 * The file of the application directory that names the Java runtime that the updater needs.
+	 */
+	private static final String RUNTIME_REQUIREMENT = "runtime-requirement.json";
 	private final JvmScope scope;
 	private final String version;
 	private final TrustPolicy policy;
@@ -65,7 +70,7 @@ public final class UpdaterArtifactBuilder
 	/**
 	 * Creates an assembler for one release's updater.
 	 *
-	 * @param scope     the build's waiting policy for atomic file replacement
+	 * @param scope     the build's waiting policy for atomic file replacement and its JSON writer
 	 * @param version   the release version, consisting of two or three decimal numbers
 	 * @param publicKey the base64 X.509 Ed25519 release key, or empty for a development build that trusts no key
 	 * @throws NullPointerException if any argument is null
@@ -93,31 +98,44 @@ public final class UpdaterArtifactBuilder
 	}
 
 	/**
-	 * Adds the updater's distributable files to a newly built runtime image.
+	 * Writes the updater's application directory, which holds no Java runtime: the launchers run the shared runtime in
+	 * the sibling directory {@code runtime}, both in the extracted release archive and once installed.
 	 *
-	 * @param image          the existing runtime image, modified in place
-	 * @param updaterJar     the updater module JAR containing its versioned launcher templates
-	 * @param legalMaterials the directory containing the generated release license, notices and licenses directory
-	 * @return the completed runtime image
+	 * @param versionDirectory the new directory that receives the application, named after its version
+	 * @param updaterJar       the updater module JAR containing its versioned launcher templates
+	 * @param application      the updater's modules, whose JARs it runs from {@code app/} and whose system modules
+	 *                         form its runtime requirement
+	 * @param legalMaterials   the directory containing the generated release license, notices and licenses directory
+	 * @return {@code versionDirectory}
 	 * @throws NullPointerException if any argument is null
-	 * @throws IOException          if a launcher template is absent or the artifact cannot be written
+	 * @throws IOException          if {@code versionDirectory} exists, a launcher template is absent or the application
+	 *                              cannot be written
 	 */
-	public Path build(Path image, Path updaterJar, Path legalMaterials) throws IOException
+	public Path build(Path versionDirectory, Path updaterJar, ApplicationModules application, Path legalMaterials)
+		throws IOException
 	{
-		requireThat(image, "image").isDirectory();
+		requireThat(versionDirectory, "versionDirectory").isNotNull();
 		requireThat(updaterJar, "updaterJar").isRegularFile();
+		requireThat(application, "application").isNotNull();
 		requireThat(legalMaterials, "legalMaterials").isDirectory();
-		Path configuration = Files.createDirectories(image.resolve(CONFIGURATION_DIRECTORY));
+		if (Files.exists(versionDirectory, NOFOLLOW_LINKS))
+			throw new IOException("The updater's application directory already exists: " + versionDirectory);
+		Files.createDirectories(versionDirectory);
+		Files.writeString(versionDirectory.resolve(VERSION_FILE), version + "\n");
+		Path app = Files.createDirectories(versionDirectory.resolve("app"));
+		for (Path jar : application.jars())
+			Files.copy(jar, app.resolve(jar.getFileName()));
+		Path configuration = Files.createDirectories(versionDirectory.resolve(CONFIGURATION_DIRECTORY));
 		policy.write(configuration.resolve(DEFAULT_POLICY), FileReplacer.retrying(scope.waiting()));
-		Files.writeString(image.resolve(VERSION_FILE), version + "\n");
-		Path bin = Files.createDirectories(image.resolve("bin"));
+		application.writeRequirement(versionDirectory.resolve(RUNTIME_REQUIREMENT), scope.json());
+		Path bin = Files.createDirectories(versionDirectory.resolve("bin"));
 		try (JarFile jar = new JarFile(updaterJar.toFile()))
 		{
 			copyLauncher(jar, "versioned-launcher.sh", bin.resolve(LAUNCHER_NAME));
-			copyLauncher(jar, "versioned-launcher.cmd", bin.resolve(LAUNCHER_NAME + ".cmd"));
+			copyLauncher(jar, "versioned-launcher.ps1", bin.resolve(LAUNCHER_NAME + ".ps1"));
 		}
-		copyTree(legalMaterials, image);
-		return image;
+		copyTree(legalMaterials, Files.createDirectories(versionDirectory.resolve("legal")));
+		return versionDirectory;
 	}
 
 	/**
@@ -143,10 +161,10 @@ public final class UpdaterArtifactBuilder
 	}
 
 	/**
-	 * Copies release legal materials into the runtime image without following symbolic links.
+	 * Copies release legal materials without following symbolic links.
 	 *
 	 * @param source      the legal materials directory
-	 * @param destination the runtime image
+	 * @param destination the directory that receives them
 	 * @throws IOException if the files cannot be copied
 	 */
 	private static void copyTree(Path source, Path destination) throws IOException

@@ -53,31 +53,35 @@ public final class PluginArtifactBuilder
 	}
 
 	/**
-	 * Builds a plugin artifact from its resources, Java runtime, generated legal materials, and installer scripts.
+	 * Builds a plugin artifact from its resources, its {@code client} folder, generated legal materials, and installer
+	 * resources.
 	 *
 	 * @param resourceLayers resource JARs extracted into the artifact in list order; a later JAR can replace an earlier
 	 *        resource only when its {@link ArtifactLayer#overrides()} declares the path
-	 * @param runtimeDirectory the jlink-generated Java runtime directory copied to {@code client/}
-	 * @param agentLaunchers the names of the runtime's launchers that agents run, which move from {@code client/bin/}
-	 *        to {@code bin/}; the other launchers, such as the harness's hooks, stay in {@code client/bin/} with
+	 * @param clientDirectory the folder copied to {@code client/}: the plugin's modules, runtime requirement and the
+	 *        launchers that {@link PluginLaunchers#write} wrote in its {@code bin} folder
+	 * @param agentLaunchers the names of the launchers that agents run, which move from {@code client/bin/} to
+	 *        {@code bin/}; the other launchers, such as the harness's hooks, stay in {@code client/bin/} with
 	 *        {@code java}
 	 * @param legalMaterialsDirectory the directory containing generated {@code LICENSE.txt}, {@code NOTICE.txt}, and
 	 *        {@code licenses/} copied to the top level of the assembled plugin directory
-	 * @param installerDirectories ordered directories of common and harness-specific installer resources copied to
-	 *        {@code install/}
+	 * @param installerDirectories ordered directories of common and harness-specific installer resources, of which the
+	 *        data migrations in {@code migrations/} and the marketplace metadata {@code <harness>-marketplace.json} are
+	 *        copied to {@code install/}; the trusted updater, not the plugin, installs and removes CAT, so the
+	 *        directories' other files are left out
 	 * @param artifactDirectory the new directory that receives the assembled artifact; unlike
 	 *        {@code installerDirectories}, it is an output rather than an input
 	 * @return {@code artifactDirectory}
-	 * @throws NullPointerException if {@code resourceLayers}, {@code runtimeDirectory}, {@code agentLaunchers},
+	 * @throws NullPointerException if {@code resourceLayers}, {@code clientDirectory}, {@code agentLaunchers},
 	 *         {@code legalMaterialsDirectory}, {@code installerDirectories}, or {@code artifactDirectory} are null
-	 * @throws IOException if the artifact cannot be assembled, or the runtime lacks one of {@code agentLaunchers}
+	 * @throws IOException if the artifact cannot be assembled, or the client lacks one of {@code agentLaunchers}
 	 */
-	public Path build(List<ArtifactLayer> resourceLayers, Path runtimeDirectory, Set<String> agentLaunchers,
+	public Path build(List<ArtifactLayer> resourceLayers, Path clientDirectory, Set<String> agentLaunchers,
 		Path legalMaterialsDirectory, List<Path> installerDirectories, Path artifactDirectory)
 		throws IOException
 	{
 		requireThat(resourceLayers, "resourceLayers").isNotNull();
-		requireThat(runtimeDirectory, "runtimeDirectory").isNotNull();
+		requireThat(clientDirectory, "clientDirectory").isNotNull();
 		requireThat(agentLaunchers, "agentLaunchers").isNotNull();
 		requireThat(legalMaterialsDirectory, "legalMaterialsDirectory").isNotNull();
 		requireThat(installerDirectories, "installerDirectories").isNotNull();
@@ -91,15 +95,43 @@ public final class PluginArtifactBuilder
 			extractLayer(layer, artifactDirectory, owners);
 		resolvePromptIncludes(artifactDirectory);
 		Path client = artifactDirectory.resolve("client");
-		copyTree(runtimeDirectory, client);
-		JlinkImageBuilder.moveLaunchers(agentLaunchers, client, artifactDirectory.resolve("bin"));
+		copyTree(clientDirectory, client);
+		PluginLaunchers.move(agentLaunchers, client, artifactDirectory.resolve("bin"));
 		Files.writeString(client.resolve("VERSION"), version + "\n");
 		copyTree(legalMaterialsDirectory, artifactDirectory);
 		Path installDirectory = artifactDirectory.resolve("install");
 		for (Path installerDirectory : installerDirectories)
-			copyTree(installerDirectory, installDirectory);
+			copyInstallerResources(installerDirectory, installDirectory);
 		RunnerRuntimeManifest.write(artifactDirectory);
 		return artifactDirectory;
+	}
+
+	/**
+	 * Copies the installer resources that a plugin ships: the data migrations in {@code migrations/} and the
+	 * marketplace metadata files whose names end in {@code -marketplace.json}.
+	 *
+	 * @param source      a directory of installer resources
+	 * @param destination the plugin's {@code install} folder
+	 * @throws IOException if {@code source} is not a directory, or the resources cannot be copied
+	 */
+	private static void copyInstallerResources(Path source, Path destination) throws IOException
+	{
+		if (!Files.isDirectory(source, NOFOLLOW_LINKS))
+			throw new IOException("Copy source is not a directory: " + source);
+		Files.createDirectories(destination);
+		Path migrations = source.resolve("migrations");
+		if (Files.isDirectory(migrations, NOFOLLOW_LINKS))
+			copyTree(migrations, destination.resolve("migrations"));
+		try (Stream<Path> entries = Files.list(source))
+		{
+			for (Path metadata : entries.filter(path -> path.getFileName().toString().endsWith("-marketplace.json")).
+				filter(path -> Files.isRegularFile(path, NOFOLLOW_LINKS)).sorted().toList())
+			{
+				Path target = destination.resolve(metadata.getFileName().toString());
+				Files.copy(metadata, target, COPY_ATTRIBUTES);
+				copyPosixPermissions(metadata, target);
+			}
+		}
 	}
 
 	/**

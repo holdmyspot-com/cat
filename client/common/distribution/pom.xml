@@ -144,13 +144,6 @@
 							<executable>shellcheck</executable>
 							<arguments>
 								<argument>-x</argument>
-								<argument>-P</argument>
-								<argument>${project.basedir}/../lifecycle/src/main/resources/install</argument>
-								<argument>${project.basedir}/../../claude/lifecycle/src/main/resources/install/install-claude.sh</argument>
-								<argument>${project.basedir}/../../codex/lifecycle/src/main/resources/install/install-codex.sh</argument>
-								<argument>${project.basedir}/../lifecycle/src/main/resources/install/common.sh</argument>
-								<argument>${project.basedir}/../../claude/lifecycle/src/main/resources/install/uninstall-claude.sh</argument>
-								<argument>${project.basedir}/../../codex/lifecycle/src/main/resources/install/uninstall-codex.sh</argument>
 								<argument>${project.basedir}/../lifecycle/src/main/release/cat.sh</argument>
 								<argument>${project.basedir}/../lifecycle/src/main/release/generate-cat-sh.sh</argument>
 							</arguments>

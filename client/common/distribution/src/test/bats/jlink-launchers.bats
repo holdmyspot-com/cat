@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 
-# Tests the template that every generated jlink launcher shares: a launcher runs its program from a runtime path that
+# Tests the template that every generated plugin launcher shares: a launcher runs its program from a plugin path that
 # contains spaces, without Bubblewrap even where it cannot create a namespace, and Java can name a file that is not ASCII
-# in the caller's C locale.
-# The launchers that it runs are in the plugin's bin folder, so they also start the Java runtime in its client folder.
+# in the caller's C locale. A launcher finds Java only through the plugin's client/runtime-binding: it passes its JVM
+# options, the plugin's module path and its arguments to the bound java, discards the JVM options that the environment
+# supplies, and refuses an unusable binding with one line naming it and exit status 3.
 
 load bootstrap-helpers
 
@@ -27,4 +28,158 @@ load bootstrap-helpers
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "$(printf 'first\n[End of %s. The file was deleted]' "${file}")" ]
+}
+
+# Copies the generated Codex plugin to a path with spaces and binds it, through a link whose path also holds spaces,
+# to a runtime whose java prints the environment's JVM options and its arguments, one per line.
+#
+# Outputs:
+#   PLUGIN - the copied plugin
+#   BINDING - the plugin's runtime binding
+create_echo_runtime_plugin()
+{
+	PLUGIN="${TEST_ROOT}/copied plugin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${PLUGIN}"
+	BINDING="${PLUGIN}/client/runtime-binding"
+	local runtime="${TEST_ROOT}/echo runtime"
+	mkdir -p "${runtime}/bin"
+	cat > "${runtime}/bin/java" <<'SCRIPT'
+#!/bin/sh
+printf 'JAVA_TOOL_OPTIONS=%s\n' "${JAVA_TOOL_OPTIONS-unset}"
+printf 'JDK_JAVA_OPTIONS=%s\n' "${JDK_JAVA_OPTIONS-unset}"
+printf 'CLASSPATH=%s\n' "${CLASSPATH-unset}"
+for argument in "$@"; do
+	printf '[%s]\n' "${argument}"
+done
+SCRIPT
+	chmod +x "${runtime}/bin/java"
+	ln -s "${runtime}" "${TEST_ROOT}/linked runtime"
+	printf '%s\n' "${TEST_ROOT}/linked runtime" > "${BINDING}"
+}
+
+# Asserts that the last run printed only one line, naming the binding, and exited with the status of an unusable
+# binding.
+#
+# Arguments:
+#   $1 - the text that the line holds after the binding's path
+assert_unusable_binding()
+{
+	[ "${status}" -eq 3 ]
+	[ "${#lines[@]}" -eq 1 ]
+	[[ "${output}" == "CAT cannot start: ${BINDING} $1; run the CAT entry command again to repair the installation." ]]
+}
+
+@test "a launcher passes its JVM options, the plugin's module path and its arguments to the bound java" {
+	create_echo_runtime_plugin
+
+	run env JAVA_TOOL_OPTIONS=-Dinjected=1 JDK_JAVA_OPTIONS=-Dinjected=2 CLASSPATH=/injected LC_ALL=C.UTF-8 \
+		"${PLUGIN}/bin/plugin-info" "first argument" '' 'quote " and $dollar'
+
+	[ "${status}" -eq 0 ]
+	modules="$(cd -P "${PLUGIN}/client/modules" && pwd -P)"
+	expected="JAVA_TOOL_OPTIONS=unset
+JDK_JAVA_OPTIONS=unset
+CLASSPATH=unset
+[-Xlog:all=off:stdout]
+[-Xlog:all=warning:stderr]
+[-XX:+PerfDisableSharedMem]
+[-Dstdout.encoding=UTF-8]
+[-Dstderr.encoding=UTF-8]
+[-Djdk.http.auth.tunneling.disabledSchemes=]
+[--enable-native-access=com.holdmyspot.cat.common.cli]
+[--module-path]
+[${modules}]
+[--add-modules]
+[org.slf4j.nop]
+[-m]
+[com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo]
+[first argument]
+[]
+[quote \" and \$dollar]"
+	[ "${output}" = "${expected}" ]
+}
+
+@test "a launcher run through a link and the java wrapper find the plugin's client folder" {
+	create_echo_runtime_plugin
+	ln -s "${PLUGIN}/client/bin/session-start" "${TEST_ROOT}/linked launcher"
+
+	run "${TEST_ROOT}/linked launcher"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *$'\n[com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexSessionStartHook]'* ]]
+
+	run "${PLUGIN}/client/bin/java" -version
+
+	[ "${status}" -eq 0 ]
+	modules="$(cd -P "${PLUGIN}/client/modules" && pwd -P)"
+	[[ "${output}" == *$'\n[--module-path]\n['"${modules}"$']\n[-version]' ]]
+}
+
+@test "a launcher refuses a missing binding" {
+	create_echo_runtime_plugin
+	rm "${BINDING}"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	assert_unusable_binding 'is missing'
+}
+
+@test "a launcher refuses a binding that names a relative path" {
+	create_echo_runtime_plugin
+	printf 'linked runtime\n' > "${BINDING}"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	assert_unusable_binding 'names a relative path'
+}
+
+@test "a launcher refuses a binding that holds more than one line or lacks its line ending" {
+	create_echo_runtime_plugin
+	runtime="$(cat "${BINDING}")"
+	printf '%s\n%s\n' "${runtime}" "${runtime}" > "${BINDING}"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	assert_unusable_binding 'must hold exactly one line, the absolute path of a Java runtime'
+
+	printf '%s' "${runtime}" > "${BINDING}"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	assert_unusable_binding 'must hold exactly one line, the absolute path of a Java runtime'
+
+	: > "${BINDING}"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	assert_unusable_binding 'must hold exactly one line, the absolute path of a Java runtime'
+}
+
+@test "a launcher refuses a binding that names a path that is not normalized" {
+	create_echo_runtime_plugin
+	for runtime in "${TEST_ROOT}/linked runtime/" "${TEST_ROOT}//linked runtime" "${TEST_ROOT}/./linked runtime" \
+		"${TEST_ROOT}/../${TEST_ROOT##*/}/linked runtime" "${TEST_ROOT}/linked runtime/."; do
+		printf '%s\n' "${runtime}" > "${BINDING}"
+
+		run "${PLUGIN}/bin/plugin-info"
+
+		assert_unusable_binding 'names a path that is not normalized'
+	done
+}
+
+@test "a launcher refuses a binding that names a runtime without an executable java" {
+	create_echo_runtime_plugin
+	mkdir "${TEST_ROOT}/empty runtime"
+	printf '%s\n' "${TEST_ROOT}/empty runtime" > "${BINDING}"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	assert_unusable_binding 'names a runtime without an executable bin/java'
+
+	mkdir "${TEST_ROOT}/empty runtime/bin"
+	printf '#!/bin/sh\n' > "${TEST_ROOT}/empty runtime/bin/java"
+
+	run "${PLUGIN}/bin/plugin-info"
+
+	assert_unusable_binding 'names a runtime without an executable bin/java'
 }

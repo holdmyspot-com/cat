@@ -2,13 +2,15 @@ package com.holdmyspot.cat.distribution.secrets;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.distribution.DistributionMain;
+import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
-import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
+import com.holdmyspot.cat.distribution.bundle.Launcher;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Exposes the inputs that {@link DistributionMain} assembles a release from.
@@ -16,28 +18,28 @@ import java.util.Set;
 public interface DistributionMainAccess
 {
 	/**
-	 * Returns the launchers of the Claude image.
+	 * Returns the launchers of the Claude plugin.
 	 *
 	 * @return the launchers
 	 */
-	List<JlinkImageBuilder.Launcher> claudeLaunchers();
+	List<Launcher> claudeLaunchers();
 
 	/**
-	 * Returns the launchers of the Claude image that agents run, which the plugin holds in {@code bin/}.
+	 * Returns the launchers of the Claude plugin that agents run, which the plugin holds in {@code bin/}.
 	 *
 	 * @return the launchers' names
 	 */
 	Set<String> claudeAgentLaunchers();
 
 	/**
-	 * Returns the launchers of the Codex image.
+	 * Returns the launchers of the Codex plugin.
 	 *
 	 * @return the launchers
 	 */
-	List<JlinkImageBuilder.Launcher> codexLaunchers();
+	List<Launcher> codexLaunchers();
 
 	/**
-	 * Returns the launchers of the Codex image that agents run, which the plugin holds in {@code bin/}.
+	 * Returns the launchers of the Codex plugin that agents run, which the plugin holds in {@code bin/}.
 	 *
 	 * @return the launchers' names
 	 */
@@ -52,16 +54,33 @@ public interface DistributionMainAccess
 	ArtifactLayer codexPluginLayer(Path jar);
 
 	/**
-	 * Builds the Codex image.
+	 * Writes the launchers of the Codex plugin's client.
 	 *
-	 * @param builder  the image builder
-	 * @param modules  the module-path entries of the image
-	 * @param output   the image's directory
-	 * @param platform the platform that the image runs on
-	 * @return the image's directory
-	 * @throws IOException if the image cannot be built
+	 * @param client   the plugin's {@code client} folder
+	 * @param platform the platform that the plugin runs on
+	 * @throws IOException if the launchers cannot be written
 	 */
-	Path codexImage(JlinkImageBuilder builder, List<Path> modules, Path output, Platform platform) throws IOException;
+	void writeCodexLaunchers(Path client, Platform platform) throws IOException;
+
+	/**
+	 * Stages a plugin's {@code client} folder: its modules and its runtime requirement.
+	 *
+	 * @param application the plugin's modules
+	 * @param client      the folder, which must not exist
+	 * @param json        the JSON writer
+	 * @return {@code client}
+	 * @throws IOException if the folder cannot be written
+	 */
+	Path stageClient(ApplicationModules application, Path client, JsonMapper json) throws IOException;
+
+	/**
+	 * Binds a plugin assembled in the source checkout to the shared runtime that the build wrote.
+	 *
+	 * @param plugin  the assembled plugin
+	 * @param runtime the shared runtime
+	 * @throws IOException if the binding cannot be written
+	 */
+	void writeRuntimeBinding(Path plugin, Path runtime) throws IOException;
 
 	/**
 	 * Returns the Maven coordinates of a third-party dependency JAR that a distribution ships.

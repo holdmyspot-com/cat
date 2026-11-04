@@ -32,6 +32,12 @@ import org.apache.commons.compress.compressors.gzip.GzipParameters;
  */
 public final class ReleasePackager
 {
+	/**
+	 * The file of an assembled plugin that names the Java runtime that the plugin runs on. Only a plugin assembled in a
+	 * source checkout holds it, naming the runtime that the build wrote; the trusted updater writes it for an installed
+	 * plugin.
+	 */
+	public static final Path RUNTIME_BINDING = Path.of("client", "runtime-binding");
 	private static final Set<PosixFilePermission> DIRECTORY_PERMISSIONS = permissions("rwx", "r-x", "r-x");
 	private static final Set<PosixFilePermission> SYMBOLIC_LINK_PERMISSIONS = permissions("rwx", "rwx", "rwx");
 	private static final Set<PosixFilePermission> EXECUTABLE_FILE_PERMISSIONS = permissions("rwx", "r-x", "r-x");
@@ -54,11 +60,11 @@ public final class ReleasePackager
 
 	/**
 	 * Packages a plugin or updater artifact as a deterministic archive, replacing an existing archive at its generated
-	 * path.
+	 * path. The archive leaves out {@link #RUNTIME_BINDING}, which names a runtime on the building machine.
 	 *
 	 * @param component        the plugin harness identifier or {@code updater}, used in the generated archive filename
 	 * @param platform         distribution platform whose identifier is included in the generated archive filename
-	 * @param artifactRoot     assembled distribution directory whose complete contents are archived
+	 * @param artifactRoot     assembled distribution directory whose contents are archived
 	 * @param releaseDirectory directory that receives the generated archive, creating it when needed
 	 * @return the created archive file
 	 * @throws NullPointerException if {@code component}, {@code platform}, {@code artifactRoot}, or
@@ -100,6 +106,8 @@ public final class ReleasePackager
 					artifactRoot.relativize(candidate).toString())).toList())
 				{
 					Path relative = artifactRoot.relativize(path);
+					if (relative.equals(RUNTIME_BINDING))
+						continue;
 					String relativeName = "/";
 					if (!relative.toString().isEmpty())
 						relativeName = "/" + relative.toString().replace(path.getFileSystem().getSeparator(), "/");

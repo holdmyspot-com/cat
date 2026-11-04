@@ -6,24 +6,23 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
-import com.holdmyspot.cat.distribution.bundle.secrets.JlinkImageBuilderSecrets;
+import com.holdmyspot.cat.distribution.bundle.Launcher;
+import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
+import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
-import java.util.spi.ToolProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests that the launchers of the Codex image run from the shell that Codex runs commands in, by the absolute path
+ * Tests that the launchers of the Codex plugin run from the shell that Codex runs commands in, by the absolute path
  * without an extension that CAT's skills name, such as {@code <plugin>/bin/plugin-info}, including the launchers that
- * the plugin moves from the image's {@code bin} folder to its own.
+ * the plugin moves from {@code client/bin} to its own {@code bin} folder.
  */
 public final class CodexImageLaunchersTest
 {
@@ -33,11 +32,13 @@ public final class CodexImageLaunchersTest
 	}
 
 	/**
-	 * Verifies that each launcher of the Codex image starts its program when Codex's shell, PowerShell on Windows and a
-	 * POSIX shell elsewhere, runs the launcher's absolute path without an extension, and passes Java the option that
-	 * allows Basic proxy logins for HTTPS tunnels with its empty value intact.
+	 * Verifies that each launcher of the Codex plugin starts its program on the bound runtime when Codex's shell,
+	 * PowerShell on Windows and a POSIX shell elsewhere, runs the launcher's absolute path without an extension. On
+	 * POSIX, the bound runtime's {@code java} prints its arguments, which hold the option that allows Basic proxy
+	 * logins for HTTPS tunnels with its empty value intact; on Windows, the binding names the test's own JDK, which
+	 * reports that the plugin's empty module path lacks the program's module.
 	 *
-	 * @throws IOException          if the image cannot be built or its launchers cannot be run
+	 * @throws IOException          if the plugin cannot be assembled or its launchers cannot be run
 	 * @throws InterruptedException if the thread is interrupted while the launchers run
 	 */
 	@Test
@@ -48,39 +49,53 @@ public final class CodexImageLaunchersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("codex-image-")).toAbsolutePath();
-			JlinkImageBuilder builder = JlinkImageBuilderSecrets.getJlinkImageBuilderAccess().create(new FakeJlink(platform));
-			Path image = DistributionMainSecrets.getDistributionMainAccess().
-				codexImage(builder, List.of(Path.of("codex.jar")),
-				directory.resolve("client"), platform);
-			Set<String> agentLaunchers = DistributionMainSecrets.getDistributionMainAccess().codexAgentLaunchers();
+			Path client = Files.createDirectories(directory.resolve("client/modules")).getParent();
+			DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
+			access.writeCodexLaunchers(client, platform);
+			Set<String> agentLaunchers = access.codexAgentLaunchers();
 			requireThat(agentLaunchers, "agentLaunchers").contains("request-session");
 			Path agentBin = directory.resolve("bin");
-			JlinkImageBuilder.moveLaunchers(agentLaunchers, image, agentBin);
+			PluginLaunchers.move(agentLaunchers, client, agentBin);
+			Path runtime;
+			if (platform.isWindows())
+				runtime = Path.of(System.getProperty("java.home")).toAbsolutePath().normalize();
+			else
+			{
+				runtime = Files.createDirectories(directory.resolve("runtime/bin")).getParent();
+				writeExecutable(runtime.resolve("bin/java"), "#!/bin/sh\necho started \"$@\"\n");
+			}
+			Files.writeString(client.resolve("runtime-binding"), runtime + "\n");
 
-			List<JlinkImageBuilder.Launcher> launchers = DistributionMainSecrets.getDistributionMainAccess().codexLaunchers();
+			List<Launcher> launchers = access.codexLaunchers();
 			List<String> paths = new ArrayList<>();
-			for (JlinkImageBuilder.Launcher launcher : launchers)
+			for (Launcher launcher : launchers)
 			{
 				Path bin;
 				if (agentLaunchers.contains(launcher.name()))
 					bin = agentBin;
 				else
-					bin = image.resolve("bin");
+					bin = client.resolve("bin");
 				paths.add(bin.resolve(launcher.name()).toString());
 			}
-			String output;
 			if (platform.isWindows())
-				output = runInPowerShell(paths);
-			else
-				output = runInPosixShell(paths, directory);
-
+			{
+				String output = runInPowerShell(paths);
+				for (Launcher launcher : launchers)
+				{
+					requireThat(output, "output").contains("Module " + launcher.module() + " not found").
+						doesNotContain("resolved ");
+				}
+				return;
+			}
+			String output = runInPosixShell(paths, directory);
 			List<String> lines = output.strip().lines().toList();
 			requireThat(lines, "lines").withContext(output, "output").size().isEqualTo(launchers.size());
 			for (int i = 0; i < launchers.size(); ++i)
 			{
-				JlinkImageBuilder.Launcher launcher = launchers.get(i);
+				Launcher launcher = launchers.get(i);
 				requireThat(lines.get(i), launcher.name()).startsWith("started ").
 					contains(" -Djdk.http.auth.tunneling.disabledSchemes= ").
+					contains("--module-path " + client.resolve("modules").toRealPath()).
 					contains("-m " + launcher.module() + "/" + launcher.mainClass());
 			}
 		}
@@ -92,8 +107,8 @@ public final class CodexImageLaunchersTest
 	 * it cannot run to the program that Windows associates with the file, which can open a window.
 	 *
 	 * @param launchers the launchers' paths
-	 * @return PowerShell's output
-	 * @throws IOException          if PowerShell cannot be run or fails
+	 * @return PowerShell's output, whatever its exit status, because each program fails without its module
+	 * @throws IOException          if PowerShell cannot be run
 	 * @throws InterruptedException if the thread is interrupted while PowerShell runs
 	 */
 	private static String runInPowerShell(List<String> launchers) throws IOException, InterruptedException
@@ -107,7 +122,15 @@ public final class CodexImageLaunchersTest
 				append(").Source }\n");
 		}
 		String encoded = Base64.getEncoder().encodeToString(script.toString().getBytes(UTF_16LE));
-		return run(new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded));
+		ProcessBuilder builder = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+			encoded).redirectErrorStream(true);
+		try (Process process = builder.start())
+		{
+			process.getOutputStream().close();
+			String output = new String(process.getInputStream().readAllBytes(), UTF_8);
+			process.waitFor();
+			return output;
+		}
 	}
 
 	/**
@@ -169,68 +192,5 @@ public final class CodexImageLaunchersTest
 	{
 		Files.writeString(path, content);
 		requireThat(path.toFile().setExecutable(true, false), "executable").isTrue();
-	}
-
-	/**
-	 * Writes the launchers that jlink writes on a platform, in jlink's form, beside a {@code java} that prints the
-	 * arguments that a launcher passes it. The launchers' text is that of the launchers that JDK 27's jlink writes.
-	 */
-	private static final class FakeJlink implements ToolProvider
-	{
-		private final Platform platform;
-
-		/**
-		 * Creates a fake jlink.
-		 *
-		 * @param platform the platform whose launchers to write
-		 */
-		private FakeJlink(Platform platform)
-		{
-			this.platform = platform;
-		}
-
-		@Override
-		public String name()
-		{
-			return "jlink";
-		}
-
-		@Override
-		public int run(PrintWriter out, PrintWriter err, String... args)
-		{
-			List<String> arguments = List.of(args);
-			Path bin = Path.of(arguments.get(arguments.indexOf("--output") + 1)).resolve("bin");
-			try
-			{
-				Files.createDirectories(bin);
-				if (platform.isWindows())
-					Files.writeString(bin.resolve("java.cmd"), "@echo started %*\r\n");
-				else
-					writeExecutable(bin.resolve("java"), "#!/bin/sh\necho started \"$@\"\n");
-				for (int i = 0; i < arguments.size(); ++i)
-				{
-					if (!arguments.get(i).equals("--launcher"))
-						continue;
-					++i;
-					String specification = arguments.get(i);
-					String name = specification.substring(0, specification.indexOf('='));
-					String target = specification.substring(specification.indexOf('=') + 1);
-					writeExecutable(bin.resolve(name),
-						"#!/bin/sh\nJLINK_VM_OPTIONS=\nDIR=`dirname $0`\n$DIR/java $JLINK_VM_OPTIONS -m " + target +
-						" \"$@\"\n");
-					if (platform.isWindows())
-					{
-						Files.writeString(bin.resolve(name + ".bat"), "@echo off\r\nset JLINK_VM_OPTIONS=\r\n" +
-							"set DIR=%~dp0\r\n\"%DIR%\\java\" %JLINK_VM_OPTIONS% -m " + target + " %*\r\n");
-					}
-				}
-			}
-			catch (IOException e)
-			{
-				e.printStackTrace(err);
-				return 1;
-			}
-			return 0;
-		}
 	}
 }
