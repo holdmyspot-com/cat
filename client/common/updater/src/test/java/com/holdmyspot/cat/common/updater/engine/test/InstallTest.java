@@ -148,7 +148,8 @@ public final class InstallTest
 	}
 
 	/**
-	 * When the harness refuses registration, the added plugin is deleted again and the harness has no plugin.
+	 * When the harness refuses registration, CAT is unregistered from the harness, the added plugin is deleted again
+	 * and the harness has no plugin.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -162,12 +163,14 @@ public final class InstallTest
 			Path home = Files.createDirectories(root.resolve("home"));
 			Path data = root.resolve("data");
 			Releases.installation(data, "1.1");
+			RecordingIntegration integration = new RecordingIntegration().fail("register");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				new RecordingIntegration().fail("register").registration());
+				integration.registration());
 
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(result.message(), "message").contains("register");
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("register", "unregister"));
 			requireThat(Files.exists(home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
 			requireThat(Files.exists(data.resolve("state/harness-a/activation.json"), NOFOLLOW_LINKS), "journal").
 				isFalse();

@@ -266,7 +266,8 @@ public final class BundleUpdateTest
 	}
 
 	/**
-	 * A failed registration restores the plugin and discards the staged runtime and updater, changing nothing.
+	 * A failed registration restores the plugin and discards the staged runtime and updater, changing nothing; the
+	 * plugin stays registered, because the restored files are where the harness registered them.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -282,11 +283,14 @@ public final class BundleUpdateTest
 			Releases.installation(data, "1.0");
 			Map<String, String> before = Releases.snapshot(root);
 
+			RecordingIntegration integration = new RecordingIntegration().fail("register");
+
 			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
-				new RecordingIntegration().fail("register").registration());
+				integration.registration());
 
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(Releases.snapshot(root), "after").isEqualTo(before);
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
 		}
 	}
 

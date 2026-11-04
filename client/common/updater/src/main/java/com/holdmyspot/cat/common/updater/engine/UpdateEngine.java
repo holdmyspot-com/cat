@@ -632,7 +632,8 @@ public final class UpdateEngine
 	 * Validates a staged release tree, checks that the installation's runtime can run it, binds it to that runtime,
 	 * and activates it: as an install where the harness has no plugin, as a repair that keeps the previous bundle where
 	 * the harness has this version, otherwise as an update. The plugin is registered with the harness before the
-	 * activation is kept.
+	 * activation is kept; when an install's registration fails, CAT is also unregistered before the added plugin is
+	 * deleted again.
 	 *
 	 * @param mode         the operation
 	 * @param tree         the staged release tree, which this method may change
@@ -657,7 +658,8 @@ public final class UpdateEngine
 		{
 			for (Path path : activation.removalPaths(home))
 				LinkSafeDeletion.delete(path, home);
-			transaction.install(tree, activation.installPlan(home, version), migrationFile, version, register);
+			transaction.install(tree, activation.installPlan(home, version), migrationFile, version,
+				() -> registerOrUnregister(registration, home));
 			recordHighestVersion(version);
 			return result(Result.INSTALLED, version, null, withWarning("CAT was installed.", transaction),
 				List.of()).withAotCache(train(home, version, runtime));
@@ -669,6 +671,34 @@ public final class UpdateEngine
 		recordHighestVersion(version);
 		return result(Result.UPDATED, version, active, withWarning("CAT was updated.", transaction), List.of()).
 			withAotCache(train(home, version, runtime));
+	}
+
+	/**
+	 * Registers a plugin that an install added, and unregisters CAT from the harness when registration fails, so that
+	 * an install which fails leaves the harness without a registration of the plugin files that it deletes again.
+	 *
+	 * @param registration registers the activated plugin
+	 * @param home         the protected harness home
+	 * @throws IOException if registration fails; a failure to unregister is suppressed in it
+	 */
+	private static void registerOrUnregister(Registration registration, Path home) throws IOException
+	{
+		try
+		{
+			registration.integration().register(home, registration.cli(), registration.replacer());
+		}
+		catch (IOException e)
+		{
+			try
+			{
+				registration.integration().unregister(home, registration.cli());
+			}
+			catch (IOException unregisterFailure)
+			{
+				e.addSuppressed(unregisterFailure);
+			}
+			throw e;
+		}
 	}
 
 	/**

@@ -40,7 +40,11 @@ public interface HarnessIntegration
 	void validateConfiguration(Path home) throws IOException;
 
 	/**
-	 * Registers the plugin files already activated under {@code home} with the harness.
+	 * Registers the plugin files already activated under {@code home} with the harness. A failure does not undo what
+	 * this call registered before it failed: the updater calls {@link #unregister} after a failed registration only
+	 * when that registration was part of an install where the harness had no plugin, and never after a failed update,
+	 * repair or registration of a plugin that is already up to date, whose plugin files stay registered where they
+	 * are.
 	 *
 	 * @param home     the absolute, normalized harness home from the trust policy
 	 * @param cli      runs the recorded harness program

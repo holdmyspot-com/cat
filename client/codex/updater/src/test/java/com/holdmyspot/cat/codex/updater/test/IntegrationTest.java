@@ -238,7 +238,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Registration fails, and unregisters CAT again, when Codex's cache copy differs from the validated release.
+	 * Registration fails when Codex's cache copy differs from the validated release, and leaves unregistering CAT to
+	 * the updater, which does so only when the failed registration was part of an install.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -265,8 +266,9 @@ public final class IntegrationTest
 			{
 				requireThat(e.getMessage(), "message").contains("differs from the validated release");
 			}
-			requireThat(cli.calls.subList(2, cli.calls.size()), "unregisterCalls").isEqualTo(List.of(
-				List.of("plugin", "remove", "cat@cat"), List.of("plugin", "marketplace", "remove", "cat")));
+			requireThat(cli.calls, "calls").isEqualTo(List.of(
+				List.of("plugin", "marketplace", "add", home.resolve("plugins/cat-marketplace").toString()),
+				List.of("plugin", "add", "cat@cat")));
 		}
 	}
 

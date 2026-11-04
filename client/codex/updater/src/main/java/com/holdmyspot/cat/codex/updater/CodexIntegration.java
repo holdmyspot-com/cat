@@ -220,7 +220,7 @@ public final class CodexIntegration implements HarnessIntegration
 	/**
 	 * Writes the marketplace metadata from the activated release, then runs {@code codex plugin marketplace add}
 	 * and {@code codex plugin add cat@cat}, and requires the cache copy that Codex loads to equal the marketplace
-	 * source. A failure after the marketplace was added unregisters CAT before the exception propagates.
+	 * source.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if the activated release lacks its marketplace metadata, Codex fails, or the
@@ -240,23 +240,8 @@ public final class CodexIntegration implements HarnessIntegration
 		writeMetadata(plugin.resolve(RELEASE_METADATA), home.resolve(MARKETPLACE_METADATA), replacer);
 
 		run(cli, List.of("plugin", "marketplace", "add", home.resolve(MARKETPLACE_ROOT).toString()));
-		try
-		{
-			run(cli, List.of("plugin", "add", PLUGIN_ID));
-			requireCacheMatches(home, plugin);
-		}
-		catch (IOException e)
-		{
-			try
-			{
-				unregister(home, cli);
-			}
-			catch (IOException suppressed)
-			{
-				e.addSuppressed(suppressed);
-			}
-			throw e;
-		}
+		run(cli, List.of("plugin", "add", PLUGIN_ID));
+		requireCacheMatches(home, plugin);
 	}
 
 	/**
