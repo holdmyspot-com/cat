@@ -103,11 +103,15 @@ public final class LifecycleSkillsTest
 				"uninstallDescription").startsWith("Use when the user asks").contains("uninstall").contains("remove");
 			String uninstallBody = Files.readString(plugin.resolve("skills/uninstall/first-use.md")).
 				replaceAll("\\s+", " ");
-			requireThat(uninstallBody, "uninstallBody").contains("cat-updater/bin/cat-updater").
-				contains("cat-updater\\bin\\cat-updater.ps1").contains("Before you run anything, ask the user whether").
+			requireThat(uninstallBody, "uninstallBody").contains("cat-updater/<h>/bin/cat-updater").
+				contains("cat-updater\\<h>\\bin\\cat-updater.ps1").
+				contains("Before you run anything, ask the user whether").
 				contains("the default is to keep it").contains("`<launcher> uninstall`").
 				contains("`<launcher> uninstall --delete-data` only when the user asked to delete it").
 				contains("`uninstalled`").contains("`not_removed`").contains("needs the one manual entry command again").
+				contains("When the result's `unregistered` field is false").
+				contains("`claude plugin uninstall cat@cat`").contains("`codex plugin remove cat@cat`").
+				contains("not the other harness's CAT installation").
 				contains("may ask the user to approve this command").doesNotContain("cat-updater.cmd").
 				doesNotContain("install/").doesNotContain("uninstall-").doesNotContain("-Uninstall").
 				doesNotContain("-DeleteData").doesNotContain("cat.sh").doesNotContain("XDG_CONFIG_HOME");

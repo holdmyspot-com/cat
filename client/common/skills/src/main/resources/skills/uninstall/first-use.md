@@ -2,8 +2,9 @@
 
 ## Design Goals
 
-- Remove all of CAT with the trusted updater that is installed with it, so that removal downloads nothing and leaves
-	nothing behind that the user did not choose to keep.
+- Remove this harness's whole CAT installation with the trusted updater that is installed with it, so that removal
+	downloads nothing, leaves the other harness's installation untouched, and leaves nothing behind that the user did
+	not choose to keep.
 - Keep CAT's plugin data unless the user asks to delete it, so that a later installation can migrate it, and ask the
 	user before removing anything.
 - Leave every file that CAT does not own, including the user's rules in `.cat/rules`, untouched.
@@ -12,11 +13,12 @@
 
 ## Guidance
 
-1. Find the trusted updater's launcher, and write its absolute path in place of `<launcher>` below:
-	- On Linux and macOS, it is `cat-updater/bin/cat-updater` in the directory that the environment variable
+1. Find the trusted updater's launcher, and write its absolute path in place of `<launcher>` below. This harness has
+	its own installation, so the path contains the harness identifier `<h>`:
+	- On Linux and macOS, it is `cat-updater/<h>/bin/cat-updater` in the directory that the environment variable
 		`XDG_DATA_HOME` names when that variable holds an absolute path, and otherwise in `.local/share` in the user's
 		home directory. `<launcher>` stands for that path.
-	- On Windows, in PowerShell or Git Bash, it is `cat-updater\bin\cat-updater.ps1` in the directory that the
+	- On Windows, in PowerShell or Git Bash, it is `cat-updater\<h>\bin\cat-updater.ps1` in the directory that the
 		environment variable `LOCALAPPDATA` names. `<launcher>` stands for the command `powershell.exe -NoProfile
 		-NonInteractive -ExecutionPolicy Bypass -File` followed by that path in double quotes.
 
@@ -24,23 +26,29 @@
 	because the user's permission entries match that exact text. Write the command as the launcher followed by its
 	arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of commands.
 
-	When the launcher does not exist, there is no trusted updater to remove CAT with. End your turn with a reply that
-	says so, and that the user can install CAT's updater again with the entry command from the `update` skill and then
-	ask you to uninstall. Run nothing else.
+	When the launcher does not exist, there is no trusted updater to remove CAT with for this harness; the other
+	harness's installation does not count. End your turn with a reply that says so, and that the user can install CAT's
+	updater again with the entry command from the `update` skill and then ask you to uninstall. Run nothing else.
 2. Before you run anything, ask the user whether to also delete CAT's plugin data, and state that the default is to
-	keep it. Say that uninstalling removes all of CAT: its plugin and registration in every harness that the updater
-	serves, the updater, the Java runtime that CAT installed, and the permission entries that let you run the updater,
-	but not the user's own files or rules. End your turn with the question, and continue only when the user answers.
-	Skip the question when the user's request already says whether to delete the data.
+	keep it. Say that uninstalling removes this harness's whole CAT installation: its plugin and registration, the
+	updater, the Java runtime and previous release that CAT kept for it, and the permission entries that let you run
+	the updater, but not the other harness's CAT installation, and not the user's own files or rules. End your turn
+	with the question, and continue only when the user answers. Skip the question when the user's request already says
+	whether to delete the data.
 3. Run one command: `<launcher> uninstall` to keep CAT's plugin data, or `<launcher> uninstall --delete-data` only when
 	the user asked to delete it. The harness may ask the user to approve this command before it runs; that approval is
 	separate from the user's answer in step 2. When the user declines it, stop and report that nothing was
 	removed.
 4. The launcher prints one line of JSON. Act on its `result` field:
-	- `uninstalled`: tell the user that CAT is removed and that sessions they start from now on run without it. Say
-		whether CAT's plugin data was kept or deleted. Also tell them that installing CAT again is a new installation,
-		which needs the one manual entry command again, and that you cannot run it for them. Run nothing further with
-		the launcher: it no longer exists.
+	- `uninstalled`: tell the user that CAT is removed from this harness and that sessions they start from now on run
+		without it. Say whether CAT's plugin data was kept or deleted. Also tell them that installing CAT again is a new
+		installation, which needs the one manual entry command again, and that you cannot run it for them. Run nothing
+		further with the launcher: it no longer exists. When the result's `unregistered` field is false, the harness
+		program that CAT recorded when it was installed no longer existed, so CAT could not remove its registration
+		and the harness may still list the plugin and its marketplace. Tell the user to remove those entries with the
+		harness's own commands once the harness program works again: for `claude`, `claude plugin uninstall cat@cat`
+		and then `claude plugin marketplace remove cat`; for `codex`, `codex plugin remove cat@cat` and then
+		`codex plugin marketplace remove cat`. Run them yourself only when the user asks.
 	- `not_removed`: tell the user that CAT's files remain, name the directory that the launcher printed to standard
 		error, and ask them to delete that directory themselves, outside the sandbox, after they close every session
 		that uses CAT.
