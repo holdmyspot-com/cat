@@ -19,7 +19,8 @@ the CAT plugin, and the permission entries that let your agent install, update a
 are no settings to copy. Run the command once for each harness you use. Each harness gets its own separate installation,
 with its own Java runtime and updater, so using both puts two Java runtimes on disk and lets the harnesses run different
 CAT releases. Claude Code on Windows can also use the POSIX command in Git Bash. If the command cannot write a required
-path, run it outside the agent sandbox. Restart the harness.
+path, run it outside the agent sandbox. Restart the harness. If you installed an earlier build of v1.0, run the one
+command again once for each harness you use, because that build's updater cannot move to later releases.
 
 ## Install, update and uninstall with your agent
 

@@ -446,7 +446,7 @@ public final class UpdateEngine
 			{
 				Path tree = StateFiles.createTemporaryDirectory(extractRoot, "local-").resolve("plugin");
 				ActivationTransaction.copyTree(localTree, tree);
-				return activateTree(tree, version, active, registration, home, transaction);
+				return activateTree(mode, tree, version, active, registration, home, transaction);
 			});
 		}
 		String tag = requestedTag;
@@ -553,8 +553,8 @@ public final class UpdateEngine
 			{
 				return result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of());
 			}
-			return activateTree(extract(download, extractRoot, asset), version, active, registration, home,
-				transaction);
+			return activateTree(mode, extract(download, extractRoot, asset), version, active, registration,
+				home, transaction);
 		});
 	}
 
@@ -634,6 +634,7 @@ public final class UpdateEngine
 	 * the harness has this version, otherwise as an update. The plugin is registered with the harness before the
 	 * activation is kept.
 	 *
+	 * @param mode         the operation
 	 * @param tree         the staged release tree, which this method may change
 	 * @param version      the release version
 	 * @param active       the active version, or null when the harness has no plugin
@@ -644,10 +645,10 @@ public final class UpdateEngine
 	 * @throws IOException    if validation, the runtime check, activation or registration fails
 	 * @throws TrustException if a version is malformed or a pending migration requires explicit installation
 	 */
-	private UpdateResult activateTree(Path tree, String version, String active, Registration registration,
-		Path home, ActivationTransaction transaction) throws IOException, TrustException
+	private UpdateResult activateTree(Mode mode, Path tree, String version, String active,
+		Registration registration, Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
-		Path migrationFile = validatePlugin(tree, version, active, home);
+		Path migrationFile = validatePlugin(mode, tree, version, active, home);
 		requireRuntime(tree, version);
 		Files.writeString(tree.resolve(BINDING_FILE), runtime + "\n", StandardCharsets.UTF_8);
 		Completion register = () -> registration.integration().register(home, registration.cli(),
@@ -672,8 +673,10 @@ public final class UpdateEngine
 
 	/**
 	 * Validates a staged plugin tree and refuses it while the harness has a data migration that only an explicit
-	 * installation may run.
+	 * installation may run. Setup performs the per-harness layout migration itself, so it accepts a release that
+	 * registers only that migration.
 	 *
+	 * @param mode    the operation
 	 * @param tree    the staged plugin tree
 	 * @param version the release version
 	 * @param active  the active version, or null when the harness has no plugin
@@ -682,16 +685,22 @@ public final class UpdateEngine
 	 * @throws IOException    if the tree is invalid or a migration is pending
 	 * @throws TrustException if a version is malformed
 	 */
-	private Path validatePlugin(Path tree, String version, String active, Path home) throws IOException,
-		TrustException
+	private Path validatePlugin(Mode mode, Path tree, String version, String active, Path home)
+		throws IOException, TrustException
 	{
 		StagedRelease.validate(tree, version, activation.pluginManifest(), platform);
 		Path migrationFile = activation.migrationVersionFile(home);
 		StateFiles.requireNoLinks(migrationFile);
-		if (active != null)
-			StagedRelease.requireNoPendingMigration(tree, migrationFile, active, version);
-		else if (Files.exists(migrationFile, NOFOLLOW_LINKS))
-			StagedRelease.requireNoPendingMigration(tree, migrationFile, version, version);
+		String recorded = active;
+		if (recorded == null && Files.exists(migrationFile, NOFOLLOW_LINKS))
+			recorded = version;
+		if (recorded != null)
+		{
+			if (mode == Mode.SETUP)
+				StagedRelease.requireNoPendingSetupMigration(tree, migrationFile, recorded, version);
+			else
+				StagedRelease.requireNoPendingMigration(tree, migrationFile, recorded, version);
+		}
 		return migrationFile;
 	}
 
@@ -717,7 +726,7 @@ public final class UpdateEngine
 	{
 		String version = staged.version();
 		bundle.validate(staged.updater(), version);
-		Path migrationFile = validatePlugin(staged.plugin(), version, active, home);
+		Path migrationFile = validatePlugin(Mode.UPDATE, staged.plugin(), version, active, home);
 		RuntimeDescription next = RuntimeDescription.read(staged.updater().resolve(Bundle.RUNTIME));
 		requireOwnRuntime(next, RuntimeRequirement.read(staged.plugin().resolve(RuntimeRequirement.PLUGIN_FILE)),
 			"plugin", version);

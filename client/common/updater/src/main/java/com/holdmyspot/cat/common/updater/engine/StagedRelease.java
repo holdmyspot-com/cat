@@ -27,6 +27,14 @@ import tools.jackson.databind.json.JsonMapper;
 public final class StagedRelease
 {
 	/**
+	 * The migration that the release registry names for the move from one installation that every harness shares to
+	 * one installation per harness. The release's setup performs it, so this updater, which runs only from the
+	 * per-harness installation, records it as applied in each harness it activates a plugin in. The version sorts
+	 * directly after {@code 1.0}, so that an updater of the shared installation, which recorded {@code 1.0}, refuses
+	 * every later release as a routine update and directs the user to the release's setup.
+	 */
+	public static final String LAYOUT_MIGRATION = "1.0.0";
+	/**
 	 * Caps a plugin manifest at one MiB, permitting whole-document JSON validation with bounded memory.
 	 */
 	private static final int MANIFEST_LIMIT = 1024 * 1024;
@@ -118,18 +126,92 @@ public final class StagedRelease
 	public static void requireNoPendingMigration(Path tree, Path migrationVersionFile, String activeVersion,
 		String newVersion) throws IOException, TrustException
 	{
+		ReleaseVersion recorded = recorded(tree, migrationVersionFile, activeVersion, newVersion);
+		requireNoPendingMigration(tree, recorded, ReleaseVersion.parse(newVersion));
+	}
+
+	/**
+	 * Refuses, for the release's setup, registered migrations that {@link #requireNoPendingMigration} refuses, except
+	 * {@link #LAYOUT_MIGRATION} and any earlier one, which setup performs itself.
+	 *
+	 * @param tree                 validated staged top directory
+	 * @param migrationVersionFile installation's recorded migration version file
+	 * @param activeVersion        active release version, used when the recorded version file is absent
+	 * @param newVersion           authenticated release version
+	 * @throws NullPointerException if any argument is null
+	 * @throws TrustException       if the registry is absent or malformed, any release version is malformed, or a
+	 *                              pending migration requires explicit installation
+	 * @throws IOException          if a migration file cannot be read
+	 */
+	public static void requireNoPendingSetupMigration(Path tree, Path migrationVersionFile, String activeVersion,
+		String newVersion) throws IOException, TrustException
+	{
+		ReleaseVersion recorded = recorded(tree, migrationVersionFile, activeVersion, newVersion);
+		ReleaseVersion layout = ReleaseVersion.parse(LAYOUT_MIGRATION);
+		if (recorded.compareTo(layout) < 0)
+			recorded = layout;
+		requireNoPendingMigration(tree, recorded, ReleaseVersion.parse(newVersion));
+	}
+
+	/**
+	 * Returns the migration version to record for a harness that this updater activates a release in: the release's
+	 * version, or {@link #LAYOUT_MIGRATION} where that is later.
+	 *
+	 * @param newVersion the activated release version
+	 * @return the migration version
+	 * @throws NullPointerException if {@code newVersion} is null
+	 * @throws TrustException       if {@code newVersion} is malformed
+	 */
+	public static String migrationVersion(String newVersion) throws TrustException
+	{
+		ReleaseVersion version = ReleaseVersion.parse(newVersion);
+		if (version.compareTo(ReleaseVersion.parse(LAYOUT_MIGRATION)) < 0)
+			return LAYOUT_MIGRATION;
+		return newVersion;
+	}
+
+	/**
+	 * Returns the recorded migration version.
+	 *
+	 * @param tree                 validated staged top directory
+	 * @param migrationVersionFile installation's recorded migration version file
+	 * @param activeVersion        active release version, used when the recorded version file is absent
+	 * @param newVersion           authenticated release version
+	 * @return the recorded migration version
+	 * @throws NullPointerException if any argument is null
+	 * @throws TrustException       if a version is malformed
+	 * @throws IOException          if the migration version file cannot be read
+	 */
+	private static ReleaseVersion recorded(Path tree, Path migrationVersionFile, String activeVersion,
+		String newVersion) throws IOException, TrustException
+	{
 		requireThat(tree, "tree").isNotNull();
 		requireThat(migrationVersionFile, "migrationVersionFile").isNotNull();
 		requireThat(activeVersion, "activeVersion").isNotNull();
 		requireThat(newVersion, "newVersion").isNotNull();
 		ReleaseVersion active = ReleaseVersion.parse(activeVersion);
-		ReleaseVersion version = ReleaseVersion.parse(newVersion);
+		ReleaseVersion.parse(newVersion);
+		if (Files.exists(migrationVersionFile))
+			return ReleaseVersion.parse(readVersion(migrationVersionFile));
+		return active;
+	}
+
+	/**
+	 * Refuses registered migrations newer than {@code recorded} and no newer than {@code version}.
+	 *
+	 * @param tree     validated staged top directory
+	 * @param recorded the recorded migration version
+	 * @param version  authenticated release version
+	 * @throws TrustException if the registry is absent or malformed, or a pending migration requires explicit
+	 *                        installation
+	 * @throws IOException    if the registry cannot be read
+	 */
+	private static void requireNoPendingMigration(Path tree, ReleaseVersion recorded, ReleaseVersion version)
+		throws IOException, TrustException
+	{
 		Path registry = tree.resolve("install/migrations/registry.tsv");
 		if (!Files.isRegularFile(registry))
 			throw refusal("The staged release lacks install/migrations/registry.tsv; use explicit installation");
-		ReleaseVersion recorded = active;
-		if (Files.exists(migrationVersionFile))
-			recorded = ReleaseVersion.parse(readVersion(migrationVersionFile));
 		try (BufferedReader reader = Files.newBufferedReader(registry, UTF_8))
 		{
 			for (String line = readRegistryLine(reader); line != null; line = readRegistryLine(reader))

@@ -212,7 +212,7 @@ final class ActivationTransaction
 			save();
 			for (int index = 0; index < entries.size(); ++index)
 				execute(index);
-			StateFiles.write(migrationFile, (newVersion + "\n").getBytes(UTF_8));
+			StateFiles.write(migrationFile, (StagedRelease.migrationVersion(newVersion) + "\n").getBytes(UTF_8));
 			completion.run();
 			// A repair keeps the last activation's record, so that rollback still restores what it replaced
 			if (operation == Operation.REPAIR)

@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.updater.activation.AddDirectory;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
+import com.holdmyspot.cat.common.updater.engine.StagedRelease;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
@@ -154,6 +155,102 @@ public final class EngineTest
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
 			requireThat(Files.readString(home.resolve("configuration")), "configuration").isEqualTo("protected");
 			requireThat(Files.exists(home.resolve("migration-version")), "migrationMarkerCreated").isFalse();
+		}
+	}
+
+	/**
+	 * Setup over a harness whose plugin the shared installation of release 1.0 activated accepts a later release that
+	 * registers the per-harness layout migration, and records that release as the harness's migration version.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 * @throws TrustException if policy construction fails
+	 */
+	@Test
+	public void setupAppliesLayoutMigration() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("engine-layout-setup-"));
+			Path home = root.resolve("home");
+			Files.createDirectories(home.resolve("live"));
+			Files.writeString(home.resolve("live/version"), "1.0");
+			Files.writeString(home.resolve("migration-version"), "1.0\n");
+			Releases source = new Releases("1.1", "layout");
+			Releases.installation(root.resolve("data"), "1.1");
+			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+
+			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.1\n");
+		}
+	}
+
+	/**
+	 * Setup still refuses a release that registers a data migration besides the per-harness layout migration, and
+	 * leaves the harness's migration version unchanged.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 * @throws TrustException if policy construction fails
+	 */
+	@Test
+	public void setupRefusesDataMigration() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("engine-layout-migration-"));
+			Path home = root.resolve("home");
+			Files.createDirectories(home.resolve("live"));
+			Files.writeString(home.resolve("live/version"), "1.0");
+			Files.writeString(home.resolve("migration-version"), "1.0\n");
+			Releases source = new Releases("1.1", "layoutAndMigration");
+			Releases.installation(root.resolve("data"), "1.1");
+			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+
+			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
+			requireThat(result.message(), "message").contains("data migration 1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
+			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.0\n");
+		}
+	}
+
+	/**
+	 * Release 1.0, activated by this updater, records the per-harness layout migration as applied, so that a routine
+	 * update to a later release that registers that migration is accepted.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 * @throws TrustException if policy construction fails
+	 */
+	@Test
+	public void updateAfterLayoutIsAccepted() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("engine-layout-update-"));
+			Path home = root.resolve("home");
+			Files.createDirectories(home.resolve("live"));
+			Files.writeString(home.resolve("live/version"), "1.0");
+			Releases first = new Releases("1.0", "");
+			Releases.installation(root.resolve("data"), "1.0");
+			UpdateEngine setup = new UpdateEngine(root.resolve("data"), first.policy(home), first,
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+			requireThat(setup.setUp("1.0", new RecordingIntegration().registration()).result(), "setup").
+				isEqualTo(Result.UPDATED);
+			requireThat(Files.readString(home.resolve("migration-version")), "marker").
+				isEqualTo(StagedRelease.LAYOUT_MIGRATION + "\n");
+			Releases later = new Releases("1.1", "layout");
+			UpdateEngine engine = new UpdateEngine(root.resolve("data"), later.policy(home), later,
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
+			requireThat(Files.readString(home.resolve("migration-version")), "updatedMarker").isEqualTo("1.1\n");
 		}
 	}
 

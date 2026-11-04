@@ -16,4 +16,11 @@ No part of CAT runs migration scripts yet, so a release that registers one must 
 
 When a release does not change persisted data, leave the registry unchanged.
 
-The updater's handling of the registry is tested by `StagedReleaseTest` in `client/common/updater`.
+The line for `1.0.0` registers `per-harness-layout.sh`, which changes no plugin data. It marks the move from one
+installation that every harness shares to one installation per harness. The updater of the shared installation recorded
+`1.0`, so it refuses every later release as a routine update and directs the user to the release's setup, which makes
+the move. The per-harness updater records at least `1.0.0` in every harness that it activates a plugin in, and its
+setup accepts a release whose only pending migration is this one. Give every later migration a version after `1.0.0`.
+
+The updater's handling of the registry is tested by `StagedReleaseTest` in `client/common/updater`, and this registry by
+`MigrationRegistryTest` in `client/common/lifecycle`.

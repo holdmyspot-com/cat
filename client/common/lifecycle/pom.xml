@@ -25,6 +25,11 @@
 			<scope>test</scope>
 		</dependency>
 		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-common-updater</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-compress</artifactId>
 			<scope>test</scope>

@@ -7,6 +7,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
+import com.holdmyspot.cat.common.updater.engine.StagedRelease;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import com.holdmyspot.cat.common.updater.trust.TrustPolicy;
@@ -61,7 +62,9 @@ public final class Releases implements ReleaseSource
 	 * defects, {@code noUpdater} omits the updater archive, {@code updaterDigest} misstates its digest,
 	 * {@code updaterRequirement} makes the updater need a newer runtime than its archive contains,
 	 * {@code noStableLauncher} omits the stable launchers from the updater archive, and {@code newerRuntime} ships a
-	 * runtime and plugin of a feature release newer than the installed runtime's.
+	 * runtime and plugin of a feature release newer than the installed runtime's. Two valid variants change the
+	 * migration registry: {@code layout} registers only the per-harness layout migration, and
+	 * {@code layoutAndMigration} also registers a data migration for the release.
 	 *
 	 * @param version the release version
 	 * @param defect  empty for valid data, or the particular corrupted property
@@ -325,8 +328,13 @@ public final class Releases implements ReleaseSource
 			if (!defect.equals("missingRegistry"))
 			{
 				String registry = "# No migration\n";
+				String layout = StagedRelease.LAYOUT_MIGRATION + "\tper-harness-layout.sh\n";
 				if (defect.equals("migration"))
 					registry = version + "\tmigrate.sh\n";
+				else if (defect.equals("layout"))
+					registry = layout;
+				else if (defect.equals("layoutAndMigration"))
+					registry = layout + version + "\tmigrate.sh\n";
 				entry(tar, top + "/install/migrations/registry.tsv", registry, 0644);
 			}
 			entry(tar, top + "/version", version, 0644);
