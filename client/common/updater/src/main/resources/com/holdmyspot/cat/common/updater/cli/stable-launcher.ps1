@@ -128,10 +128,12 @@ $swapResult = Join-Path $data 'state\runtime-swap-result.json'
 
 # Reads the pending runtime replacement request that the updater wrote before it exited with status 78. The request
 # holds one value per line: the operation, the version that current selects, the version to select, and the process
-# identifier of the launcher that finishes the replacement; later lines are the updater's own.
+# identifier of the launcher that finishes the replacement; later lines are the updater's own, and the fifth is that
+# launcher's start instant, or - when the updater could not tell it.
 # Output: the request's Operation, From, To and Launcher, with Staged and Kept, the runtime that the replacement puts
-#   in place and the location to which it moves the replaced runtime; or $null when the request is missing or invalid
-#   or does not replace the version that current selects.
+#   in place and the location to which it moves the replaced runtime, and Started, the launcher's start instant in
+#   milliseconds since 1970 or $null when the request does not hold a readable one; or $null when the request is
+#   missing or invalid or does not replace the version that current selects.
 function Read-Swap
 {
 	if (-not (Test-Path -LiteralPath $swapRequest -PathType Leaf) -or (Test-ReparsePoint $swapRequest))
@@ -157,7 +159,14 @@ function Read-Swap
 	{
 		$launcher = [long] -1
 	}
-	$swap = @{ Operation = $Matches[1]; From = $Matches[2]; To = $Matches[3]; Launcher = $launcher }
+	$swap = @{ Operation = $Matches[1]; From = $Matches[2]; To = $Matches[3]; Launcher = $launcher; Started = $null }
+	$lines = $text -split "\n"
+	$started = [DateTimeOffset]::MinValue
+	if ($lines.Count -gt 4 -and [DateTimeOffset]::TryParse($lines[4], [Globalization.CultureInfo]::InvariantCulture,
+		[Globalization.DateTimeStyles]::AssumeUniversal, [ref] $started))
+	{
+		$swap.Started = $started.ToUnixTimeMilliseconds()
+	}
 	if ($swap.From -ne $version -or $swap.To -eq $swap.From)
 	{
 		return $null
@@ -175,9 +184,11 @@ function Read-Swap
 	return $swap
 }
 
-# Indicates whether a process runs.
-# Arguments: the process identifier.
-function Test-ProcessRunning([long] $identifier)
+# Indicates whether a process runs. A process that reuses the identifier is told apart by its start instant, which
+# Java records with millisecond precision on Windows; when the start instant is unknown or the process's start time
+# cannot be read, as for another user's process, the identifier alone decides.
+# Arguments: the process identifier, and its start instant in milliseconds since 1970 or $null.
+function Test-ProcessRunning([long] $identifier, $started)
 {
 	if ($identifier -le 0 -or $identifier -gt [int]::MaxValue)
 	{
@@ -186,12 +197,30 @@ function Test-ProcessRunning([long] $identifier)
 	try
 	{
 		$running = [Diagnostics.Process]::GetProcessById([int] $identifier)
-		$running.Dispose()
-		return $true
 	}
 	catch
 	{
 		return $false
+	}
+	try
+	{
+		if ($null -eq $started)
+		{
+			return $true
+		}
+		try
+		{
+			$actual = ([DateTimeOffset] $running.StartTime.ToUniversalTime()).ToUnixTimeMilliseconds()
+		}
+		catch
+		{
+			return $true
+		}
+		return $actual -eq $started
+	}
+	finally
+	{
+		$running.Dispose()
 	}
 }
 
@@ -203,7 +232,7 @@ if (-not (Test-Path -LiteralPath $runtime))
 	$pending = Read-Swap
 	if ($null -ne $pending)
 	{
-		if (Test-ProcessRunning $pending.Launcher)
+		if (Test-ProcessRunning $pending.Launcher $pending.Started)
 		{
 			$escaped = $data.Replace('\', '\\').Replace('"', '\"')
 			Write-Utf8 ([Console]::OpenStandardOutput()) "{`"result`":`"locked`",`"message`":`"Another CAT launcher is replacing the Java runtime in $escaped; retry once it has finished.`"}`n"

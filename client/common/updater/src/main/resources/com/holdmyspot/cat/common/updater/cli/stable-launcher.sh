@@ -24,6 +24,8 @@
 #   nothing more, when the data directory could not be deleted, when it or its parent is a symbolic link, or when the
 #   updater saved no readable result, in which case the directory's path is written to standard error; 75 with a
 #   locked result when the runtime is missing while another launcher replaces it; or 3 when current is malformed.
+# Limitation: the launcher that a replacement request names counts as running while any process has its process
+#   identifier, because this launcher does not compare the start instant on the request's fifth line.
 set -eu
 # A fixed search path and working directory keep the caller's PATH and current directory from choosing a program that
 # this launcher or the updater runs. External programs are named by absolute path or found on that fixed path.
@@ -129,7 +131,9 @@ read_swap()
 
 # A launcher that stopped between its two renames left no runtime in place. While that launcher still runs, it is
 # finishing the replacement; otherwise the runtime that it moved aside is put back, and the updater then undoes or
-# completes the rest of the replacement.
+# completes the rest of the replacement. POSIX offers no portable way to read a process's start instant, so the
+# process identifier alone tells whether that launcher runs, unlike on Windows, and an unrelated process that reuses
+# the identifier keeps this launcher reporting locked until that process exits.
 if [ ! -e "$data/runtime" ] && [ ! -L "$data/runtime" ] && read_swap; then
 	if [ "$swap_launcher" -gt 0 ] && kill -0 "$swap_launcher" 2>/dev/null; then
 		printf '{"result":"locked","message":"Another CAT launcher is replacing the Java runtime in %s; retry once it has finished."}\n' \
