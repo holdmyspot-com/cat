@@ -7,6 +7,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.SharedRuntime;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.cli.internal.DirectoryMover;
 import com.holdmyspot.cat.common.updater.cli.internal.Locations;
@@ -328,6 +329,83 @@ public final class SetupTest
 			Files.createDirectories(fixture.home.resolve("live"));
 			Files.writeString(fixture.home.resolve("live/version"), "1.1");
 			Releases.installation(data, "1.1");
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.UPDATED);
+			UpdateEngine engine = engine(data, outcome.policy(), fixture.source);
+			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.of("1.1"));
+			requireRollbackTo11(engine, fixture);
+		}
+	}
+
+	/**
+	 * Setup from a newer release that stopped after it moved the installed runtime aside, before it moved the new one
+	 * into place, puts the set-aside runtime back when it runs again, so that the replaced bundle stays the previous
+	 * bundle.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void stoppedAsideKeepsPrevious() throws IOException, TrustException
+	{
+		requireRerunKeepsReplacedBundle("setup-stopped-aside-", false);
+	}
+
+	/**
+	 * Setup from a newer release that stopped after it moved the new runtime into place, before it selected the new
+	 * release, keeps the replaced runtime as the previous one when it runs again, instead of setting the new runtime
+	 * aside over it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void stoppedPlacedKeepsPrevious() throws IOException, TrustException
+	{
+		requireRerunKeepsReplacedBundle("setup-stopped-placed-", true);
+	}
+
+	/**
+	 * Stops setup from a newer release while it replaces the installed runtime, runs it again, and requires that
+	 * rollback restores the replaced bundle.
+	 *
+	 * @param prefix the test directory's name prefix
+	 * @param placed true to stop once the new runtime is in place, false to stop once the installed runtime is aside
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	private static void requireRerunKeepsReplacedBundle(String prefix, boolean placed)
+		throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory(prefix)));
+			SharedRuntime.writeManifest(fixture.archive.resolve("runtime"));
+			Path data = fixture.data();
+			Files.createDirectories(fixture.home.resolve("live"));
+			Files.writeString(fixture.home.resolve("live/version"), "1.1");
+			Releases.installation(data, "1.1");
+			fixture.mover = (source, target) ->
+			{
+				boolean newRuntime = target.getFileName().toString().equals("runtime");
+				if (newRuntime && !placed)
+					throw new IllegalStateException("The process ended before the new runtime was in place");
+				DirectoryMover.ATOMIC.move(source, target);
+				if (newRuntime)
+					throw new IllegalStateException("The process ended after the new runtime was in place");
+			};
+			try
+			{
+				fixture.setUp(null);
+				throw new AssertionError("Setup completed although the process ended");
+			}
+			catch (IllegalStateException _)
+			{
+				// The process ended while setup replaced the runtime
+			}
+			fixture.mover = DirectoryMover.ATOMIC;
 
 			Setup.Outcome outcome = fixture.setUp(null);
 

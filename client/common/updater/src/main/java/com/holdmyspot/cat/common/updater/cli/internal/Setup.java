@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.SharedRuntime;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
@@ -202,6 +203,7 @@ public final class Setup
 		requireWritable(locations.data().resolve(CURRENT_FILE));
 		UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation, platform.id(), clock,
 			waiting);
+		restoreRuntimeAside();
 		String selected = selectedVersion();
 		boolean replacing = !installed && selected != null &&
 			ReleaseVersion.parse(version).compareTo(ReleaseVersion.parse(selected)) > 0 &&
@@ -218,7 +220,10 @@ public final class Setup
 		if (!installed)
 		{
 			Path installedRuntime = locations.data().resolve(RUNTIME);
-			if (replacing)
+			// A setup that stopped after it moved this runtime into place already set the replaced one aside
+			if (sameRuntime(runtime, installedRuntime))
+				LinkSafeDeletion.delete(staged(installedRuntime), locations.data());
+			else if (replacing)
 				moveIntoPlace(runtime, installedRuntime, locations.data().resolve(Bundle.RUNTIME_PREVIOUS));
 			else
 				replaceDirectory(runtime, installedRuntime);
@@ -429,6 +434,47 @@ public final class Setup
 	}
 
 	/**
+	 * Puts back the installed runtime that a setup which stopped while it replaced the runtime had moved aside. A
+	 * runtime that the stable launcher replaces is left to the launcher, which records its replacement in a request.
+	 *
+	 * @throws IOException if the runtime cannot be moved back
+	 */
+	private void restoreRuntimeAside() throws IOException
+	{
+		Path data = locations.data();
+		Path installedRuntime = data.resolve(RUNTIME);
+		Path aside = data.resolve(Bundle.RUNTIME_PREVIOUS);
+		if (!Files.exists(installedRuntime, NOFOLLOW_LINKS) && Files.isDirectory(aside, NOFOLLOW_LINKS) &&
+			!Files.exists(data.resolve(Bundle.SWAP_REQUEST), NOFOLLOW_LINKS))
+		{
+			mover.move(aside, installedRuntime);
+		}
+	}
+
+	/**
+	 * Returns whether the installed runtime is a verified copy of the archive's runtime.
+	 *
+	 * @param archived  the archive's runtime
+	 * @param installed the installed runtime
+	 * @return true if both runtimes match their manifests and the manifests are identical; false if either runtime is
+	 * 	missing, has no manifest or does not match it
+	 */
+	private static boolean sameRuntime(Path archived, Path installed)
+	{
+		if (!Files.isDirectory(installed, NOFOLLOW_LINKS))
+			return false;
+		try
+		{
+			return SharedRuntime.identity(installed).equals(SharedRuntime.identity(archived));
+		}
+		catch (IOException _)
+		{
+			// A runtime that cannot be verified is replaced
+			return false;
+		}
+	}
+
+	/**
 	 * Replaces an installed directory with a copy of the archive's directory, and deletes the replaced directory.
 	 *
 	 * @param source the archive's directory
@@ -455,7 +501,7 @@ public final class Setup
 	private void moveIntoPlace(Path source, Path target, Path aside) throws IOException
 	{
 		Path parent = target.getParent();
-		Path staged = parent.resolve("." + target.getFileName() + "-new");
+		Path staged = staged(target);
 		LinkSafeDeletion.delete(staged, parent);
 		LinkSafeDeletion.delete(aside, parent);
 		TreeCopy.copy(source, staged);
@@ -492,6 +538,17 @@ public final class Setup
 			LinkSafeDeletion.delete(staged, parent);
 			throw notReplaced(target, e);
 		}
+	}
+
+	/**
+	 * Returns where a replacement of an installed directory stages its copy.
+	 *
+	 * @param target the installed directory
+	 * @return the staged copy's location, beside the target
+	 */
+	private static Path staged(Path target)
+	{
+		return target.resolveSibling("." + target.getFileName() + "-new");
 	}
 
 	/**
