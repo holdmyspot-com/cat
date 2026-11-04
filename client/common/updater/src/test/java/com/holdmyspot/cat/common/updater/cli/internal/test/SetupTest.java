@@ -612,13 +612,13 @@ public final class SetupTest
 	 * @throws TrustException if setup refuses
 	 */
 	@Test
-	public void retiresSharedLayout() throws IOException, TrustException
+	public void retiresLegacySharedLayout() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-shared-")));
 			Path base = fixture.data().getParent();
-			fixture.writeSharedLayout(Map.of("harness-a", fixture.home));
+			fixture.writeLegacySharedLayout(Map.of("harness-a", fixture.home));
 			Path outside = Files.createDirectories(fixture.root.resolve("outside"));
 			Files.writeString(outside.resolve("file"), "kept");
 			Files.createSymbolicLink(base.resolve("state/link"), outside);
@@ -630,7 +630,7 @@ public final class SetupTest
 			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.INSTALLED);
 			for (String name : List.of("current", "bin", "1.0", "state"))
 				requireThat(Files.exists(base.resolve(name), NOFOLLOW_LINKS), name).isFalse();
-			requireThat(Files.exists(fixture.sharedPolicy(), NOFOLLOW_LINKS), "sharedPolicy").isFalse();
+			requireThat(Files.exists(fixture.legacySharedPolicy(), NOFOLLOW_LINKS), "legacySharedPolicy").isFalse();
 			requireThat(Files.readString(outside.resolve("file")), "linkTarget").isEqualTo("kept");
 			requireThat(Files.readString(base.resolve("harness-b/current")), "otherInstallation").isEqualTo("1.1\n");
 			requireThat(Files.readString(fixture.data().resolve("current")), "current").isEqualTo("1.2\n");
@@ -653,7 +653,7 @@ public final class SetupTest
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-shared-permissions-")));
 			Path base = fixture.data().getParent();
-			fixture.writeSharedLayout(Map.of("harness-a", fixture.home));
+			fixture.writeLegacySharedLayout(Map.of("harness-a", fixture.home));
 			fixture.integration.retiring(true);
 
 			Setup.Outcome outcome = fixture.setUp(null);
@@ -672,14 +672,14 @@ public final class SetupTest
 	 * @throws TrustException if setup refuses
 	 */
 	@Test
-	public void keepsSharedLayoutForOthers() throws IOException, TrustException
+	public void keepsLegacySharedLayoutForOthers() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-shared-other-")));
 			Path base = fixture.data().getParent();
 			Path otherHome = Files.createDirectories(fixture.root.resolve("other-home"));
-			fixture.writeSharedLayout(Map.of("harness-a", fixture.home, "harness-b", otherHome));
+			fixture.writeLegacySharedLayout(Map.of("harness-a", fixture.home, "harness-b", otherHome));
 			Files.createDirectories(base.resolve("state/harness-b"));
 			Files.writeString(base.resolve("state/harness-b/lock"), "");
 
@@ -690,7 +690,7 @@ public final class SetupTest
 			requireThat(Files.exists(base.resolve("state/harness-b/lock"), NOFOLLOW_LINKS), "otherState").isTrue();
 			requireThat(Files.readString(base.resolve("current")), "sharedCurrent").isEqualTo("1.0\n");
 			requireThat(base.resolve("1.0/bin/java"), "sharedImage").isRegularFile();
-			requireThat(TrustPolicy.read(fixture.sharedPolicy()).harnesses(), "sharedPolicy").
+			requireThat(TrustPolicy.read(fixture.legacySharedPolicy()).harnesses(), "legacySharedPolicy").
 				isEqualTo(Map.of("harness-b", otherHome));
 		}
 	}
@@ -963,7 +963,7 @@ public final class SetupTest
 		 *
 		 * @return the file
 		 */
-		private Path sharedPolicy()
+		private Path legacySharedPolicy()
 		{
 			return root.resolve("xdg-config/cat-updater/policy.json");
 		}
@@ -977,7 +977,7 @@ public final class SetupTest
 		 * @throws IOException    if the installation cannot be written
 		 * @throws TrustException if the policy is invalid
 		 */
-		private void writeSharedLayout(Map<String, Path> harnesses) throws IOException, TrustException
+		private void writeLegacySharedLayout(Map<String, Path> harnesses) throws IOException, TrustException
 		{
 			Path base = data().getParent();
 			Files.createDirectories(base.resolve("bin"));
@@ -988,9 +988,9 @@ public final class SetupTest
 			Files.createDirectories(base.resolve("state/harness-a"));
 			Files.writeString(base.resolve("state/harness-a/lock"), "");
 			TrustPolicy release = source.policy(home);
-			Files.createDirectories(sharedPolicy().getParent());
+			Files.createDirectories(legacySharedPolicy().getParent());
 			TrustPolicy.of(release.keys(), release.releaseBaseUrl(), release.minimum(), release.maximumMajor(),
-				harnesses).write(sharedPolicy(), replacer());
+				harnesses).write(legacySharedPolicy(), replacer());
 		}
 
 		/**

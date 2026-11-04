@@ -200,7 +200,7 @@ public record Locations(Path image, Path data, Path policy)
 	 *
 	 * @return the absolute policy file, the sibling of the directory that holds this installation's policy
 	 */
-	public Path sharedPolicy()
+	public Path legacySharedPolicy()
 	{
 		return policy.getParent().resolveSibling("policy.json");
 	}

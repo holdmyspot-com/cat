@@ -23,7 +23,7 @@ import java.util.Map;
  * per harness: its current selection, stable launcher, updater version directories, the state of each harness and
  * its policy, which recorded every harness that it served.
  */
-final class SharedLayout
+final class LegacySharedLayout
 {
 	/**
 	 * The entries of the shared installation that have fixed names, besides its version directories.
@@ -41,7 +41,7 @@ final class SharedLayout
 	 * @param replacer atomically replaces the policy file
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	SharedLayout(Path base, Path policy, FileReplacer replacer)
+	LegacySharedLayout(Path base, Path policy, FileReplacer replacer)
 	{
 		requireThat(base, "base").isAbsolute();
 		requireThat(policy, "policy").isAbsolute();
