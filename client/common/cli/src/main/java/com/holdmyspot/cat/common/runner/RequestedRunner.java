@@ -10,27 +10,25 @@ import java.util.Map;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Starts a resolved runner artifact and redirects its diagnostics into the broker's private response directory.
+ * Starts the runner launcher of a resolved artifact, which runs the artifact that holds it, and redirects its
+ * diagnostics into the broker's private response directory.
  *
- * @param scope the borrowed process scope, which the caller closes
- * @param artifact the complete artifact
- * @param launcher the runner launcher
- * @param prefix command arguments preceding runner options
+ * @param scope    the borrowed process scope, which the caller closes
+ * @param launcher the runner launcher in the artifact's {@code bin} directory
+ * @param prefix   command arguments preceding runner options
  */
-public record RequestedRunner(JvmScope scope, Path artifact, Path launcher, List<String> prefix)
+public record RequestedRunner(JvmScope scope, Path launcher, List<String> prefix)
 {
 	/**
 	 * Creates a runner target.
 	 *
-	 * @param scope the borrowed process scope, which the caller closes
-	 * @param artifact the complete artifact
-	 * @param launcher the runner launcher
-	 * @param prefix command arguments preceding runner options
+	 * @param scope    the borrowed process scope, which the caller closes
+	 * @param launcher the runner launcher in the artifact's {@code bin} directory
+	 * @param prefix   command arguments preceding runner options
 	 */
 	public RequestedRunner
 	{
 		requireThat(scope, "scope").isNotNull();
-		requireThat(artifact, "artifact").isNotNull();
 		requireThat(launcher, "launcher").isNotNull();
 		prefix = List.copyOf(prefix);
 	}
@@ -46,8 +44,7 @@ public record RequestedRunner(JvmScope scope, Path artifact, Path launcher, List
 	 */
 	public static RequestedRunner resolved(JvmScope scope, String result, List<String> prefix) throws IOException
 	{
-		List<Path> locations = locations(result);
-		return new RequestedRunner(scope, locations.get(0), locations.get(1), prefix);
+		return new RequestedRunner(scope, locations(result).get(1), prefix);
 	}
 
 	/**
@@ -92,7 +89,6 @@ public record RequestedRunner(JvmScope scope, Path artifact, Path launcher, List
 		List<String> command = new ArrayList<>();
 		command.add(launcher.toString());
 		command.addAll(prefix);
-		command.addAll(List.of("--artifact", artifact.toString()));
 		command.addAll(arguments);
 		ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).
 			redirectOutput(directory.resolve("runner.stdout").toFile()).

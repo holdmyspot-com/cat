@@ -17,9 +17,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Runs the other harness's runner from a plugin, so that both plugins hold a {@code claude-runner} and a
  * {@code codex-runner} launcher with the same options.
  * <p>
- * Outside a run, the launcher runs the runner of the other harness's CAT artifact that the plugin selects, with that
- * artifact. Inside a run whose runner lets its session request sessions, it requests a session of its harness from the
- * run's runner instead, as the harness's own runner launcher does.
+ * Outside a run, the launcher runs the runner of the other harness's CAT artifact that the plugin selects, which runs
+ * that artifact. Inside a run whose runner lets its session request sessions, it requests a session of its harness
+ * from the run's runner instead, as the harness's own runner launcher does.
  */
 public final class RunnerRelay
 {
@@ -71,9 +71,11 @@ public final class RunnerRelay
 	 * @param input       the launch's records inside a run when {@code --input} is absent
 	 * @param pause       paces checks for the requested session's progress inside a run
 	 * @param output      receives the session's transcript inside a run when {@code --output} is absent
-	 * @param errors      receives the reason when a requested session does not complete
-	 * @return the runner's exit status
-	 * @throws IllegalArgumentException if the options name {@code --artifact}, or are invalid inside a run
+	 * @param errors      receives the reason when the launcher refuses the launch or a requested session does not
+	 *                    complete
+	 * @return the runner's exit status, or {@link HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch outside a
+	 *   run names {@code --artifact} or {@code --executable}, which the launcher refuses before it selects an artifact
+	 * @throws IllegalArgumentException if the options are invalid inside a run
 	 * @throws IOException              if no artifact can be selected, the runner cannot be run, or the launch cannot
 	 *                                  be forwarded
 	 */
@@ -91,14 +93,11 @@ public final class RunnerRelay
 		{
 			return SessionRequestForwarder.forward(harness, args, input, Path.of(requests), pause, output, errors);
 		}
-		if (Arrays.asList(args).contains("--artifact"))
-		{
-			throw new IllegalArgumentException("This launcher runs the " + harness + " CAT artifact that it selects; " +
-				"remove --artifact");
-		}
+		if (HarnessRunnerOptions.refusesOverride(harness, args, errors))
+			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+		// The selected artifact's runner runs the artifact that holds it
 		List<Path> locations = RequestedRunner.locations(selector.select());
-		List<String> command = new ArrayList<>(List.of(locations.get(1).toString(), "--artifact",
-			locations.get(0).toString()));
+		List<String> command = new ArrayList<>(List.of(locations.get(1).toString()));
 		command.addAll(Arrays.asList(args));
 		return starter.run(command, environment);
 	}

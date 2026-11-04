@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -46,8 +47,8 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that outside a run the launcher runs the selected artifact's runner with that artifact and the caller's
-	 * options, and exits with the runner's status.
+	 * Verifies that outside a run the launcher runs the selected artifact's runner, which runs its own artifact, with
+	 * only the caller's options, and exits with the runner's status.
 	 *
 	 * @throws IOException if the relay fails
 	 */
@@ -69,26 +70,47 @@ public final class RunnerRelayTest
 			}, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
 
 		requireThat(status, "status").isEqualTo(7);
-		requireThat(commands, "commands").isEqualTo(List.of(List.of(runner.toString(), "--artifact",
-			artifact.toString(), "--project", "project", "--input", "turns.jsonl")));
+		requireThat(commands, "commands").isEqualTo(List.of(List.of(runner.toString(), "--project", "project",
+			"--input", "turns.jsonl")));
 	}
 
 	/**
-	 * Verifies that the launcher refuses an artifact the caller names, since it runs only the artifact that it selects.
+	 * Returns the options that let a caller choose what the launcher runs.
 	 *
+	 * @return each option
+	 */
+	@DataProvider
+	public Object[][] overrides()
+	{
+		return new Object[][]{{"--artifact"}, {"--executable"}};
+	}
+
+	/**
+	 * Verifies that outside a run the launcher refuses an option that would choose the artifact or the harness program
+	 * it runs, exiting with status 2 and the reason before it selects an artifact, starts a runner or writes output.
+	 *
+	 * @param option the refused option
 	 * @throws IOException if the relay fails
 	 */
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*--artifact.*")
-	public void refusesNamedArtifact() throws IOException
+	@Test(dataProvider = "overrides")
+	public void refusesOverride(String option) throws IOException
 	{
-		// Requirement: R-I9, R-I11
-		RunnerRelay.relay("harness-b", new String[]{"--artifact", "elsewhere"}, Map.of(), () ->
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		StringWriter errors = new StringWriter();
+
+		int status = RunnerRelay.relay("harness-b", new String[]{"--project", "project", option, "elsewhere"},
+			Map.of(), () ->
 			{
 				throw new AssertionError("No artifact is selected");
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
+			}, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+
+		requireThat(status, "status").isEqualTo(2);
+		requireThat(errors.toString(), "errors").contains("harness-b-runner").contains(option).
+			contains("its own CAT artifact").contains("PATH");
+		requireThat(output.size(), "outputBytes").isEqualTo(0);
 	}
 
 	/**

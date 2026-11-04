@@ -16,7 +16,9 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -517,6 +519,114 @@ public final class CodexRunnerCliTest
 		{
 			// The only slot is taken, so a run that tried to take one would wait and fail the test
 			CodexRunnerCli.run(jvm, root, arguments, Map.of(), capacity);
+		}
+	}
+
+	/**
+	 * Returns each command form of the launcher with each option that lets a caller choose what the launcher runs.
+	 *
+	 * @return the command's leading arguments and the option
+	 */
+	@DataProvider
+	public Object[][] overrides()
+	{
+		return new Object[][]{{List.of(), "--artifact"}, {List.of(), "--executable"},
+			{List.of("serve"), "--artifact"}, {List.of("serve"), "--executable"},
+			{List.of("run"), "--artifact"}, {List.of("run"), "--executable"}};
+	}
+
+	/**
+	 * Verifies that outside a run the launcher refuses an option that would choose the artifact or the harness program
+	 * it runs, in the bridge and the one-shot forms, with the reason, before it does anything else.
+	 *
+	 * @param command the command's leading arguments
+	 * @param option  the refused option
+	 */
+	@Test(dataProvider = "overrides")
+	public void refusesOverride(List<String> command, String option)
+	{
+		StringWriter errors = new StringWriter();
+		List<String> args = new ArrayList<>(command);
+		args.addAll(List.of("--project", "project", option, "elsewhere", "--model", "gpt-6-luna", "--effort", "low"));
+
+		boolean refused = CodexRunnerCli.refusesOverride(args.toArray(String[]::new), Map.of(),
+			new PrintWriter(errors, true));
+
+		requireThat(refused, "refused").isTrue();
+		requireThat(errors.toString(), "errors").contains("codex-runner").contains(option).
+			contains("its own CAT artifact").contains("PATH");
+	}
+
+	/**
+	 * Returns the options that let a caller choose what the launcher runs.
+	 *
+	 * @return each option
+	 */
+	@DataProvider
+	public Object[][] bridgeOverrides()
+	{
+		return new Object[][]{{"--artifact"}, {"--executable"}};
+	}
+
+	/**
+	 * Verifies that inside a run whose runner lets its session request sessions, a bridge launch is not refused for
+	 * either option, since it is forwarded as a session request whose runner ignores both.
+	 *
+	 * @param option the option that the forwarded launch names
+	 */
+	@Test(dataProvider = "bridgeOverrides")
+	public void forwardsBridgeOverrideInsideRun(String option)
+	{
+		StringWriter errors = new StringWriter();
+
+		boolean refused = CodexRunnerCli.refusesOverride(new String[]{"serve", option, "elsewhere", "--model",
+			"gpt-6-luna", "--effort", "low"}, Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests"),
+			new PrintWriter(errors, true));
+
+		requireThat(refused, "refused").isFalse();
+		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Verifies that inside a run a one-shot {@code run}, which the launcher runs itself rather than forwarding, is
+	 * refused for either option.
+	 *
+	 * @param option the refused option
+	 */
+	@Test(dataProvider = "bridgeOverrides")
+	public void refusesOneShotOverrideInsideRun(String option)
+	{
+		StringWriter errors = new StringWriter();
+
+		boolean refused = CodexRunnerCli.refusesOverride(new String[]{"run", option, "elsewhere", "--model",
+			"gpt-6-luna", "--effort", "low"}, Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests"),
+			new PrintWriter(errors, true));
+
+		requireThat(refused, "refused").isTrue();
+		requireThat(errors.toString(), "errors").contains(option);
+	}
+
+	/**
+	 * Verifies that the bridge that the optimizer and tests run in-process still honours a named artifact and harness
+	 * program.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void inProcessBridgeHonoursOverrides() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path artifact = root.resolve("artifact");
+			Path executable = root.resolve("bin/fake-codex");
+			HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
+				artifact.toString(), "--executable", executable.toString(), "--run-root", root.resolve("runs").toString(),
+				"--model", "gpt-6-luna", "--effort", "low"}, HarnessTemporaryRoot.withoutSession("no session"));
+
+			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
+			requireThat(options.executable(), "executable").isEqualTo(executable.toString());
 		}
 	}
 

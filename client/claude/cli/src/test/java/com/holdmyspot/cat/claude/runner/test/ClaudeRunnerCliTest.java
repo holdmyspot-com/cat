@@ -13,7 +13,9 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
@@ -305,6 +307,102 @@ public final class ClaudeRunnerCliTest
 				requireThat(options.model(), "model").isEqualTo("opus");
 				requireThat(options.effort(), "effort").isEqualTo("none");
 			}
+		}
+	}
+
+	/**
+	 * Returns the options that let a caller choose what the launcher runs.
+	 *
+	 * @return each option
+	 */
+	@DataProvider
+	public Object[][] overrides()
+	{
+		return new Object[][]{{"--artifact"}, {"--executable"}};
+	}
+
+	/**
+	 * Verifies that outside a run the launcher refuses an option that would choose the artifact or the harness program
+	 * it runs, with the reason, before it does anything else.
+	 *
+	 * @param option the refused option
+	 */
+	@Test(dataProvider = "overrides")
+	public void refusesOverride(String option)
+	{
+		StringWriter errors = new StringWriter();
+
+		boolean refused = ClaudeRunnerCli.refusesOverride(new String[]{"--project", "project", option, "elsewhere",
+			"--model", "sonnet", "--effort", "low"}, Map.of(), new PrintWriter(errors, true));
+
+		requireThat(refused, "refused").isTrue();
+		requireThat(errors.toString(), "errors").contains("claude-runner").contains(option).
+			contains("its own CAT artifact").contains("PATH");
+	}
+
+	/**
+	 * Verifies that inside a run whose runner lets its session request sessions, the launcher does not refuse either
+	 * option, since it forwards the launch as a session request whose runner ignores both.
+	 *
+	 * @param option the option that the forwarded launch names
+	 */
+	@Test(dataProvider = "overrides")
+	public void forwardsOverrideInsideRun(String option)
+	{
+		StringWriter errors = new StringWriter();
+
+		boolean refused = ClaudeRunnerCli.refusesOverride(new String[]{option, "elsewhere", "--model", "sonnet",
+			"--effort", "low"}, Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests"),
+			new PrintWriter(errors, true));
+
+		requireThat(refused, "refused").isFalse();
+		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Verifies that the bridge that the optimizer and tests run in-process still honours a named artifact and harness
+	 * program.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void inProcessBridgeHonoursOverrides() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path artifact = root.resolve("artifact");
+			Path executable = root.resolve("bin/fake-claude");
+			HarnessRunnerOptions options = ClaudeRunnerCli.options(new String[]{"--artifact", artifact.toString(),
+				"--executable", executable.toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				"--effort", "low"}, HarnessTemporaryRoot.withoutSession("no session"));
+
+			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
+			requireThat(options.executable(), "executable").isEqualTo(executable.toString());
+		}
+	}
+
+	/**
+	 * Verifies that {@code --resolve-profile --agent <name>} prints the model and effort of the CAT agent definition
+	 * of that name in the launcher's own artifact.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void resolvesAgentProfileFromOwnArtifact() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path artifact = artifactWithAgent(root, "model: opus\neffort: high\n");
+
+			String profile = ClaudeRunnerCli.resolveProfile(new String[]{"--resolve-profile", "--agent", AGENT},
+				artifact);
+
+			requireThat(profile, "profile").isEqualTo("harness=claude\nowner=agent:" + AGENT +
+				"\nmodel=opus\neffort=high\n");
 		}
 	}
 

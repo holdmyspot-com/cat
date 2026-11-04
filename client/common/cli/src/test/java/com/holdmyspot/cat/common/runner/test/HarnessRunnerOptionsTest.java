@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import java.io.IOException;
@@ -57,13 +58,16 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies every runner can expose one complete help text without parsing a bridge invocation.
+	 * Verifies every runner can expose one complete help text without parsing a bridge invocation, and that the text
+	 * offers no option that chooses the artifact or the harness program that the launcher runs.
 	 */
 	@Test
 	public void exposesUsage()
 	{
 		requireThat(HarnessRunnerOptions.usage("harness-runner"), "usage").startsWith("Usage: harness-runner ").
-			contains("--artifact <path>").
+			doesNotContain("--artifact").
+			doesNotContain("--executable").
+			contains("--project <path>").
 			contains(" (--model <name> --effort <level> | --agent <name>) ").
 			contains("--max-concurrency <1..16>").
 			contains("--deny-read <path>").
@@ -234,6 +238,21 @@ public final class HarnessRunnerOptionsTest
 		requireThat(unnamed.project(), "project").isEqualTo(path("project"));
 		requireThat(named.artifact(), "named").isEqualTo(path("artifact"));
 		requireThat(served.artifact(), "served").isEqualTo(own);
+	}
+
+	/**
+	 * Verifies that a one-shot {@code run} without {@code --artifact} runs the artifact that holds the launcher.
+	 */
+	@Test
+	public void oneShotDefaultsToLauncherArtifact()
+	{
+		Path own = path("own-artifact");
+
+		HarnessOneShotOptions run = HarnessOneShotOptions.parse(HarnessRunnerOptions.withArtifact(
+			new String[] {"run", "--prompt-file", absolute("prompt.txt"), "--output", absolute("output"), "--model",
+				"model-a", "--effort", "effort-a"}, own), "harness", SESSION);
+
+		requireThat(run.artifact(), "artifact").isEqualTo(own);
 	}
 
 	/**

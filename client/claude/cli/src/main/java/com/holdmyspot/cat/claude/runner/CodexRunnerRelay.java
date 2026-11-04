@@ -25,7 +25,7 @@ public final class CodexRunnerRelay
 	/**
 	 * Prints the usage, or runs one launch and exits with its status.
 	 *
-	 * @param args the runner options, without {@code --artifact}
+	 * @param args the runner options, which name neither {@code --artifact} nor {@code --executable}
 	 * @throws IOException if no artifact can be selected, or the runner cannot be run or the launch forwarded
 	 */
 	public static void main(String[] args) throws IOException

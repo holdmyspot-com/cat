@@ -66,8 +66,10 @@ public final class CodexRunnerCli
 
 	/**
 	 * Prints the usage, verifies an artifact, runs a lifecycle-only command or one prompt, or serves JSONL turns
-	 * through one persistent isolated Codex process, as the arguments select. A bridge command that names no
-	 * {@code --artifact} runs the artifact that holds this launcher.
+	 * through one persistent isolated Codex process, as the arguments select. The launcher always runs the artifact
+	 * that holds it and the {@code codex} command that the {@code PATH} finds: before anything else, it refuses
+	 * {@code --artifact} and {@code --executable} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS}
+	 * unless it forwards the launch as a session request.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, a bridge launch becomes a session request instead:
 	 * the run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -79,6 +81,9 @@ public final class CodexRunnerCli
 	public static void main(String[] args) throws IOException
 	{
 		args = CommandLineArguments.recover(args);
+		Map<String, String> environment = Platform.current().environment(System.getenv());
+		if (refusesOverride(args, environment, new PrintWriter(System.err, true, UTF_8)))
+			System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 		if (args.length == 1 && args[0].equals("--help"))
 		{
 			System.out.println(HarnessRunnerOptions.usage("codex-runner"));
@@ -89,7 +94,6 @@ public final class CodexRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
 			return;
 		}
-		Map<String, String> environment = Platform.current().environment(System.getenv());
 		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
 		{
 			executeMaintenance(args, Path.of(""), environment, Pause::sleeping, System.out);
@@ -105,9 +109,7 @@ public final class CodexRunnerCli
 				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
 				System.out, new PrintWriter(System.err, true, UTF_8)));
 		}
-		Path artifact = PluginDirectory.of(CodexRunnerCli.class);
-		if (!isOneShotCommand(args))
-			args = HarnessRunnerOptions.withArtifact(args, artifact);
+		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(CodexRunnerCli.class));
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, Pause::sleeping))
 		{
@@ -129,6 +131,27 @@ public final class CodexRunnerCli
 				System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
 			}
 		}
+	}
+
+	/**
+	 * Refuses a launch that names {@code --artifact} or {@code --executable}, other than a bridge launch inside a run
+	 * whose runner lets its session request sessions. That launch becomes a session request, whose runner ignores
+	 * both; a one-shot {@code run} is never forwarded, so it is refused inside a run as well.
+	 *
+	 * @param args        the command and its options
+	 * @param environment the launcher's environment
+	 * @param errors      receives the reason for a refusal
+	 * @return {@code true} if the launch is refused
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean refusesOverride(String[] args, Map<String, String> environment, PrintWriter errors)
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
+		boolean forwarded = requests != null && !requests.isBlank() && !isOneShotCommand(args);
+		return !forwarded && HarnessRunnerOptions.refusesOverride(HARNESS_ID, args, errors);
 	}
 
 	/**
@@ -273,12 +296,11 @@ public final class CodexRunnerCli
 				RequestedRunner runner;
 				if (harness.equals("codex"))
 				{
-					Path artifact = options.artifact().toAbsolutePath();
 					String launcher = "codex-runner";
 					if (Platform.current().isWindows())
 						launcher += ".cmd";
-					runner = new RequestedRunner(scope, artifact, artifact.resolve("bin").resolve(launcher),
-						List.of("serve"));
+					runner = new RequestedRunner(scope,
+						options.artifact().toAbsolutePath().resolve("bin").resolve(launcher), List.of("serve"));
 				}
 				else if (harness.equals("claude"))
 					runner = RequestedRunner.resolved(scope, ClaudeArtifact.execute(environment), List.of());

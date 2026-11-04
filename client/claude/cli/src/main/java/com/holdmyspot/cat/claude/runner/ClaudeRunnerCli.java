@@ -51,8 +51,10 @@ public final class ClaudeRunnerCli
 {
 	/**
 	 * Prints the usage, resolves a profile, verifies an artifact, runs a lifecycle-only command, or serves JSONL turns
-	 * through one persistent isolated Claude process, as the arguments select. A command that names no
-	 * {@code --artifact} runs the artifact that holds this launcher.
+	 * through one persistent isolated Claude process, as the arguments select. The launcher always runs the artifact
+	 * that holds it and the {@code claude} command that the {@code PATH} finds: before anything else, it refuses
+	 * {@code --artifact} and {@code --executable} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS}
+	 * unless it forwards the launch as a session request.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -64,6 +66,9 @@ public final class ClaudeRunnerCli
 	public static void main(String[] args) throws IOException
 	{
 		args = CommandLineArguments.recover(args);
+		Map<String, String> environment = Platform.current().environment(System.getenv());
+		if (refusesOverride(args, environment, new PrintWriter(System.err, true, UTF_8)))
+			System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 		if (args.length == 1 && args[0].equals("--help"))
 		{
 			System.out.println(HarnessRunnerOptions.usage("claude-runner"));
@@ -71,7 +76,7 @@ public final class ClaudeRunnerCli
 		}
 		if (args.length > 0 && args[0].equals("--resolve-profile"))
 		{
-			System.out.print(resolveProfile(args));
+			System.out.print(resolveProfile(args, PluginDirectory.of(ClaudeRunnerCli.class)));
 			return;
 		}
 		if (args.length == 2 && args[0].equals("--verify-artifact"))
@@ -79,7 +84,6 @@ public final class ClaudeRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".claude-plugin/plugin.json")));
 			return;
 		}
-		Map<String, String> environment = Platform.current().environment(System.getenv());
 		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
 		{
 			executeMaintenance(args, Path.of(""), environment, Pause::sleeping, System.out);
@@ -106,6 +110,28 @@ public final class ClaudeRunnerCli
 			System.err.println(e.getMessage());
 			System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
 		}
+	}
+
+	/**
+	 * Refuses a launch that names {@code --artifact} or {@code --executable}, other than inside a run whose runner lets
+	 * its session request sessions. There every launch that accepts either option becomes a session request, whose
+	 * runner ignores both.
+	 *
+	 * @param args        the launch's options
+	 * @param environment the launcher's environment
+	 * @param errors      receives the reason for a refusal
+	 * @return {@code true} if the launch is refused
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean refusesOverride(String[] args, Map<String, String> environment, PrintWriter errors)
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
+		if (requests != null && !requests.isBlank())
+			return false;
+		return HarnessRunnerOptions.refusesOverride(HARNESS_ID, args, errors);
 	}
 
 	/**
@@ -241,9 +267,8 @@ public final class ClaudeRunnerCli
 				RequestedRunner runner;
 				if (harness.equals("claude"))
 				{
-					Path artifact = options.artifact().toAbsolutePath();
-					runner = new RequestedRunner(scope, artifact, artifact.resolve("bin/claude-runner"),
-						List.of());
+					runner = new RequestedRunner(scope,
+						options.artifact().toAbsolutePath().resolve("bin/claude-runner"), List.of());
 				}
 				else if (harness.equals("codex"))
 					runner = RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
@@ -279,24 +304,28 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Resolves a selected CAT agent's profile without starting a harness process. No default profile exists: a run
-	 * requires {@code --model} and {@code --effort}.
+	 * Resolves the profile of a CAT agent definition in the launcher's artifact without starting a harness process, for
+	 * {@code --resolve-profile --agent <name>}. No default profile exists: a run requires {@code --model} and
+	 * {@code --effort}.
 	 *
-	 * @param args the profile-resolution options
+	 * @param args     the profile-resolution options
+	 * @param artifact the artifact that holds this launcher
 	 * @return a stable scalar profile result
-	 * @throws IllegalArgumentException if the options do not name an artifact and an agent
-	 * @throws IOException if the selected agent cannot be read
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if the options do not name exactly an agent
+	 * @throws IOException              if the selected agent cannot be read
 	 */
-	static String resolveProfile(String[] args) throws IOException
+	public static String resolveProfile(String[] args, Path artifact) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		if (args.length != 5 || !args[1].equals("--artifact") || !args[3].equals("--agent"))
+		requireThat(artifact, "artifact").isNotNull();
+		if (args.length != 3 || !args[1].equals("--agent"))
 		{
-			throw new IllegalArgumentException("Usage: claude-runner --resolve-profile --artifact <path> --agent <name>. " +
+			throw new IllegalArgumentException("Usage: claude-runner --resolve-profile --agent <name>. " +
 				"No default profile exists; a run requires --model and --effort.");
 		}
-		ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(Path.of(args[2]), args[4]);
-		return profile("agent:" + args[4], agent.model(), agent.effort());
+		ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(artifact, args[2]);
+		return profile("agent:" + args[2], agent.model(), agent.effort());
 	}
 
 	/**

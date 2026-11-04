@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -49,6 +50,15 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * harness's explicit setting for no reasoning, so that the harness never applies its default effort.
 	 */
 	public static final String NO_REASONING = "none";
+	/**
+	 * The exit status of a runner launcher that refuses its launch before it does anything else.
+	 */
+	public static final int REFUSED_LAUNCH_STATUS = 2;
+	/**
+	 * The options that choose the CAT artifact and the harness program that a bridge runs. A runner launcher refuses
+	 * both, since it runs outside the sandbox of the agent that starts it.
+	 */
+	private static final List<String> OVERRIDE_OPTIONS = List.of("--artifact", "--executable");
 
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -195,7 +205,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			index += 2;
 		}
 		if (options.artifact == null)
-			throw new IllegalArgumentException(usage(defaultExecutable + "-runner"));
+			throw new IllegalArgumentException("Missing --artifact");
 		if (options.receipt != null && (!options.keepRun || options.output == null))
 			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
 		if (options.sessionTranscripts && !options.keepRun)
@@ -213,11 +223,41 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
+	 * Refuses a runner launcher's launch that names {@code --artifact} or {@code --executable}. A runner launcher runs
+	 * outside the sandbox of the agent that starts it, so it always runs its own CAT artifact and the harness program
+	 * that the {@code PATH} finds: either option would let the agent run code of its choice outside its sandbox.
+	 *
+	 * @param harness the harness whose runner the launcher runs, such as {@code claude} or {@code codex}
+	 * @param args    the launch's arguments
+	 * @param errors  receives the reason for a refusal
+	 * @return {@code true} if the launch names either option, after the reason is written to {@code errors}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code harness} is blank
+	 */
+	public static boolean refusesOverride(String harness, String[] args, PrintWriter errors)
+	{
+		requireThat(harness, "harness").isNotBlank();
+		requireThat(args, "args").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		for (String arg : args)
+		{
+			if (OVERRIDE_OPTIONS.contains(arg))
+			{
+				errors.println(harness + "-runner refuses " + arg + ": it always runs its own CAT artifact and the " +
+					harness + " command that the PATH finds. Remove " + arg + ".");
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * Returns a runner command that names an artifact.
 	 *
-	 * @param args     the runner command, optionally starting with {@code serve}
+	 * @param args     the runner command, optionally starting with {@code serve} or {@code run}
 	 * @param artifact the artifact to name when the command names none
 	 * @return {@code args} if it names {@code --artifact}; otherwise {@code args} with {@code --artifact <artifact>}
+	 *   after its command
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static String[] withArtifact(String[] args, Path artifact)
@@ -228,7 +268,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			return args;
 		List<String> result = new ArrayList<>(Arrays.asList(args));
 		int position = 0;
-		if (!result.isEmpty() && result.getFirst().equals("serve"))
+		if (!result.isEmpty() && (result.getFirst().equals("serve") || result.getFirst().equals("run")))
 			position = 1;
 		result.addAll(position, List.of("--artifact", artifact.toString()));
 		return result.toArray(String[]::new);
@@ -338,9 +378,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	public static String usage(String launcherName)
 	{
 		requireThat(launcherName, "launcherName").isNotBlank();
-		return "Usage: " + launcherName + " [--artifact <path>] [--project <path>] [--run-root <path>] " +
-			"[--executable <path>] (--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] " +
-			"[--receipt <path>] " +
+		return "Usage: " + launcherName + " [--project <path>] [--run-root <path>] " +
+			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";
