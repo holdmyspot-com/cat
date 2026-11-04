@@ -11,8 +11,9 @@
 load bootstrap-helpers
 
 @test "entry script downloads only the harness's plugin archive from the release's download URL" {
-	create_fake_release
+	simulate_posix_platform
 	export PATH="${FAKE_BIN}:${PATH}"
+	create_fake_release
 
 	for harness in claude codex; do
 		: > "${URL_LOG}"
@@ -180,8 +181,9 @@ ${RELEASE_DOWNLOAD_URL}/$(plugin_name claude).tar.gz" ]
 }
 
 @test "entry script uses the harness that --harness names, whatever the shell" {
-	create_fake_release
+	simulate_posix_platform
 	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1 CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
+	create_fake_release
 
 	run single_command --harness codex
 

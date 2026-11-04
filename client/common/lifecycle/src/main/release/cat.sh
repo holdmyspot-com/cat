@@ -11,6 +11,9 @@
 # directory, runs the plugin's installer from there, prints the installer's result, exits with its exit status and
 # deletes the temporary directory. The installer asks the harness to install the plugin.
 #
+# On Windows, the script installs only Claude Code: the Codex plugin for Windows has only PowerShell launchers, so the
+# script refuses Codex there and names the PowerShell entry script cat.ps1 that installs it.
+#
 # Inside an agent session the script detects the harness when --harness is absent. To uninstall CAT, ask the agent to
 # uninstall it: the agent runs the installed plugin's installer uninstall.
 set -eu
@@ -255,6 +258,13 @@ else
 	CAT_HARNESS_HOME="${CODEX_HOME:-${HOME:?HOME must be set}/.codex}"
 fi
 CAT_PLATFORM="$(cat_detect_platform)"
+# The Windows Codex plugin has only PowerShell launchers, so its installer cannot run from this shell
+if [ "${CAT_HARNESS}" = codex ] && [ "${CAT_PLATFORM}" = windows-x64 ]; then
+	echo "On Windows, CAT installs Codex from PowerShell, so it changed nothing. In PowerShell, run:" >&2
+	echo >&2
+	echo "  & ([scriptblock]::Create((irm ${CAT_DOWNLOAD_URL}/cat.ps1))) -Harness codex" >&2
+	exit 1
+fi
 trap cat_cleanup EXIT
 trap 'exit 1' HUP INT TERM
 CAT_TEMP_ROOT="${TMPDIR:-/tmp}"

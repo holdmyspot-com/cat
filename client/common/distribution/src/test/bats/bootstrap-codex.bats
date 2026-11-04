@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
 # Tests how the release's entry script cat.sh runs the installer's install for Codex, from detecting a Codex shell to
-# choosing Codex's home as the harness home, and what the generated Codex hooks report when Codex runs them on this
-# platform.
+# choosing Codex's home as the harness home, how it refuses Windows, where PowerShell installs Codex, and what the
+# generated Codex hooks report when Codex runs them on this platform.
 
 load bootstrap-helpers
 load windows-helpers
@@ -40,8 +40,9 @@ codex_hook()
 }
 
 @test "entry script installs CAT for Codex in a Codex shell" {
-	create_fake_release
+	simulate_posix_platform
 	export PATH="${FAKE_BIN}:${PATH}" CODEX_THREAD_ID=019a0000-0000-7000-8000-000000000000
+	create_fake_release
 
 	run single_command
 
@@ -50,14 +51,30 @@ codex_hook()
 }
 
 @test "entry script gives install the default Codex home when CODEX_HOME is unset" {
-	create_fake_release
+	simulate_posix_platform
 	export PATH="${FAKE_BIN}:${PATH}"
+	create_fake_release
 	unset CODEX_HOME
 
 	run single_command --harness codex
 
 	[ "${status}" -eq 0 ]
 	expect_install_ran_for codex "${HOME}/.codex"
+}
+
+# The Windows Codex plugin has only PowerShell launchers, so under Git Bash cat.sh could not run its installer
+@test "entry script refuses Codex on Windows before downloading and gives the PowerShell command that installs it" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}"
+	create_fake_uname MINGW64_NT-10.0-26100 x86_64
+
+	run single_command --harness codex
+
+	[ "${status}" -eq 1 ]
+	[[ "${output}" == *"& ([scriptblock]::Create((irm ${RELEASE_DOWNLOAD_URL}/cat.ps1))) -Harness codex"* ]]
+	[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}" ]
+	[ ! -e "${INSTALL_ARGUMENTS}" ]
+	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
 @test "generated Codex SessionStart launcher injects the packaged routing and the project's rules" {

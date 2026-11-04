@@ -195,20 +195,32 @@ SCRIPT
 	chmod +x "${FAKE_BIN}/curl"
 }
 
-# Writes a path in the form that native programs on the current platform read.
+# Writes a path in the form that native programs on the platform that uname reports read.
 #
 # Arguments:
 #   $1 - The path.
 #
 # Output:
-#   Writes the Windows form of the path under Git Bash, and the path unchanged elsewhere.
+#   Writes the Windows form of the path when uname reports Windows, and the path unchanged elsewhere.
 native_path()
 {
-	if command -v cygpath >/dev/null 2>&1; then
-		cygpath -w "$1"
-	else
-		printf '%s\n' "$1"
-	fi
+	case "$(current_platform)" in
+		windows-*) cygpath -w "$1" ;;
+		*) printf '%s\n' "$1" ;;
+	esac
+}
+
+# Makes a test that installs Codex through cat.sh see Linux when the tests run under Git Bash, because cat.sh refuses
+# Codex on Windows, where PowerShell installs it. Elsewhere it changes nothing. The test must put FAKE_BIN first in
+# PATH before it creates the fake release, so that the release and cat.sh name the same platform.
+#
+# Side effects:
+#   Under Git Bash, creates a uname replacement in FAKE_BIN that reports Linux on x86_64.
+simulate_posix_platform()
+{
+	case "$(current_platform)" in
+		windows-*) create_fake_uname Linux x86_64 ;;
+	esac
 }
 
 # Checks that the last single command ran the install of the installer in the release's extracted plugin archive for a
