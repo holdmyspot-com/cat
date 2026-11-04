@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -142,7 +143,7 @@ public final class IntegrationTest
 				return new CommandResult(0, "");
 			});
 
-			provider().register(home, cli, replacer());
+			provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
 			requireThat(cli.calls, "calls").isEqualTo(List.of(
 				List.of("plugin", "marketplace", "add", home.resolve("plugins/cat-marketplace").toString()),
 				List.of("plugin", "add", "cat@cat")));
@@ -174,7 +175,7 @@ public final class IntegrationTest
 				return new CommandResult(0, "");
 			});
 
-			provider().register(home, cli, refusal.replacer());
+			provider().register(home, PluginVersion.parse(VERSION), cli, refusal.replacer());
 
 			requireThat(Files.readString(manifest), "marketplace").isEqualTo(METADATA);
 			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
@@ -203,7 +204,7 @@ public final class IntegrationTest
 
 			try
 			{
-				provider().register(home, cli, replacer());
+				provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
 				throw new AssertionError("Registration accepted a divergent cache");
 			}
 			catch (IOException e)
@@ -232,7 +233,7 @@ public final class IntegrationTest
 
 			try
 			{
-				provider().register(home, cli, replacer());
+				provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
 				throw new AssertionError("Registration ignored a failed marketplace add");
 			}
 			catch (IOException e)
@@ -311,7 +312,7 @@ public final class IntegrationTest
 				return new CommandResult(0, "");
 			});
 
-			provider().register(home, cli, replacer());
+			provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
 			try (Stream<Path> folders = Files.list(versions))
 			{
 				requireThat(folders.toList(), "versionFolders").isEqualTo(List.of(versions.resolve(VERSION)));
@@ -338,7 +339,90 @@ public final class IntegrationTest
 			write(versions.resolve(EARLIER_VERSION).resolve(".codex-plugin/plugin.json"),
 				"{\"name\":\"cat\",\"version\":\"" + EARLIER_VERSION + "\"}\n");
 
-			provider().register(home, new FakeCli(_ -> new CommandResult(0, "")), replacer());
+			provider().register(home, PluginVersion.parse(VERSION), new FakeCli(_ -> new CommandResult(0, "")),
+				replacer());
+		}
+	}
+
+	/**
+	 * Registration refuses, before it runs Codex, when CAT's marketplace source holds another version than the one
+	 * that it is asked to register, because Codex copies the source into the folder of the version that it states.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void refusesSourceOfOtherVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			activate(home);
+			FakeCli cli = new FakeCli(_ -> new CommandResult(0, ""));
+
+			try
+			{
+				provider().register(home, PluginVersion.parse(EARLIER_VERSION), cli, replacer());
+				throw new AssertionError("Registration accepted a source of another version");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains(EARLIER_VERSION).contains(VERSION);
+			}
+			requireThat(cli.calls, "calls").isEmpty();
+		}
+	}
+
+	/**
+	 * Supplies two builds of one release in both orders, with whether Codex loads the registered build when it keeps
+	 * the other build's folder: it does only when the registered build's name sorts last as text.
+	 *
+	 * @return the registered build, the kept build and whether registration succeeds
+	 */
+	@DataProvider
+	public Object[][] keptBuilds()
+	{
+		return new Object[][] {{EARLIER_VERSION, VERSION, true}, {VERSION, EARLIER_VERSION, false}};
+	}
+
+	/**
+	 * When {@code codex plugin add} keeps another build's folder beside the registered build's, registration accepts
+	 * the result only when Codex loads the registered build, and never reports the other build as registered.
+	 *
+	 * @param registered the build to register
+	 * @param kept       the other build, whose folder Codex keeps
+	 * @param loaded     whether Codex loads the registered build
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "keptBuilds")
+	public void registersOnlyLoadedBuild(String registered, String kept, boolean loaded) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path plugin = home.resolve("plugins/cat-marketplace/plugins/cat");
+			write(plugin.resolve(".codex-plugin/plugin.json"), "{\"name\":\"cat\",\"version\":\"" + registered +
+				"\"}\n");
+			write(plugin.resolve("install/codex-marketplace.json"), METADATA);
+			Path versions = home.resolve("plugins/cache/cat/cat");
+			write(versions.resolve(kept).resolve(".codex-plugin/plugin.json"),
+				"{\"name\":\"cat\",\"version\":\"" + kept + "\"}\n");
+			FakeCli cli = new FakeCli(arguments ->
+			{
+				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
+					copy(plugin, versions.resolve(registered));
+				return new CommandResult(0, "");
+			});
+
+			try
+			{
+				provider().register(home, PluginVersion.parse(registered), cli, replacer());
+				requireThat(loaded, "loaded").isTrue();
+			}
+			catch (IOException e)
+			{
+				requireThat(loaded, "loaded").isFalse();
+				requireThat(e.getMessage(), "message").contains("does not load CAT " + registered);
+			}
 		}
 	}
 

@@ -2,12 +2,16 @@ package com.holdmyspot.cat.claude.installer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.runner.PluginManifest;
+import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.ActivationStep;
 import com.holdmyspot.cat.common.installer.activation.AddDirectory;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.activation.ReplaceDirectory;
+import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
+import com.holdmyspot.cat.common.installer.trust.TrustException;
+import com.holdmyspot.cat.common.runner.PluginManifest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -17,9 +21,10 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Plans installation and updates of the CAT directory marketplace that Claude Code loads in place.
+ * Plans installation and updates of CAT's version folders in the directory marketplace that Claude Code loads in
+ * place. Each version lives in its own folder, named after the version, inside the marketplace plugin.
  * <p>
- * Existing symbolic links from the policy's home through the plugin directory are refused. This guards against
+ * Existing symbolic links from the policy's home through a version folder are refused. This guards against
  * redirection by a project that can write those directories. Planning never changes Claude Code's configuration.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -46,60 +51,76 @@ public final class Activation implements PluginActivation
 	}
 
 	/**
-	 * Reads only the live marketplace manifest; install records may report another version.
+	 * Reads the version that Claude Code records for CAT, and checks that its version folder states it.
 	 *
 	 * @param home the absolute Claude Code configuration directory recorded in policy
-	 * @return empty and consistent when CAT's marketplace is absent; empty and inconsistent when the marketplace
-	 * 	exists without a plugin manifest, which a stopped installation or removal leaves; otherwise the manifest's
-	 * 	version
+	 * @return empty and consistent when Claude Code records no CAT installation and CAT's marketplace is absent; empty
+	 * 	and inconsistent when the marketplace exists without a record, which a stopped installation or removal leaves;
+	 * 	otherwise the recorded version, consistent only if its version folder's plugin manifest states that version
 	 * @throws NullPointerException     if {@code home} is null
 	 * @throws IllegalArgumentException if {@code home} is relative
-	 * @throws IOException              if the manifest cannot be read or parsed, or a path component is a symlink
+	 * @throws IOException              if the record or the manifest cannot be read or parsed, or a path component is a
+	 *                                  symlink
 	 */
 	@Override
 	public InstalledState installed(Path home) throws IOException
 	{
-		Path live = liveDirectory(home);
-		Path manifestPath = Path.of(pluginManifest());
-		Locations.checkLinks(home, live.resolve(manifestPath));
-		if (Files.notExists(live.resolve(manifestPath), LinkOption.NOFOLLOW_LINKS))
+		ClaudeInstallation installation = new ClaudeInstallation(home);
+		Optional<String> recorded = Integration.installedVersion(home);
+		if (recorded.isEmpty())
 		{
-			boolean absent = Files.notExists(Locations.marketplaceRoot(home), LinkOption.NOFOLLOW_LINKS);
+			Locations.checkLinks(home, installation.marketplaceRoot());
+			boolean absent = Files.notExists(installation.marketplaceRoot(), LinkOption.NOFOLLOW_LINKS);
 			return new InstalledState(Optional.empty(), absent);
 		}
-		return new InstalledState(PluginManifest.version(live, manifestPath), true);
+		String version = recorded.get();
+		if (!isVersion(version))
+			return new InstalledState(recorded, false);
+		Path folder = installation.versionFolders().resolve(version);
+		Path manifestPath = Path.of(pluginManifest());
+		Locations.checkLinks(home, folder.resolve(manifestPath));
+		if (Files.notExists(folder.resolve(manifestPath), LinkOption.NOFOLLOW_LINKS))
+			return new InstalledState(recorded, false);
+		return new InstalledState(recorded, PluginManifest.version(folder, manifestPath).equals(recorded));
 	}
 
 	/**
-	 * Plans replacement of the live plugin without creating or registering a marketplace.
+	 * Plans activation of a version's folder without creating or registering a marketplace. Activating the installed
+	 * version again replaces its folder; any other version adds its own folder and leaves the installed one in place.
 	 *
 	 * @param home       the absolute Claude Code configuration directory recorded in policy
-	 * @param newVersion the non-blank release version
-	 * @return one replacement of the live marketplace plugin, staged beside it
+	 * @param newVersion the plugin version or release version to activate
+	 * @return one replacement or addition of the version's folder, staged outside the folder that holds the version
+	 * 	folders
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or {@code newVersion} is blank
+	 * @throws IllegalArgumentException if {@code home} is relative or {@code newVersion} is neither a plugin version
+	 *                                  nor a release version
 	 * @throws IOException              if a path component is a symlink or CAT is not installed; run initial setup
 	 *                                  when CAT is absent
 	 */
 	@Override
 	public List<ActivationStep> plan(Path home, String newVersion) throws IOException
 	{
-		requireThat(newVersion, "newVersion").isNotBlank();
-		Path live = liveDirectory(home);
-		if (!Files.isDirectory(live, LinkOption.NOFOLLOW_LINKS))
-			throw new IOException("CAT is not installed at " + live + ". Run the initial setup before updating.");
-		return List.of(new ReplaceDirectory(live, live.getParent()));
+		Path folder = versionFolder(home, newVersion);
+		Optional<String> active = installed(home).version();
+		if (active.isEmpty())
+		{
+			throw new IOException("CAT is not installed at " + new ClaudeInstallation(home).versionFolders() +
+				". Run the initial setup before updating.");
+		}
+		return steps(folder, active.get().equals(newVersion));
 	}
 
 	/**
-	 * Reconstructs the original destination even when a stopped activation moved the live directory away.
+	 * Reconstructs the original plan even when a stopped activation moved a version folder away.
 	 *
 	 * @param home            the absolute normalized configuration directory recorded in protected policy
 	 * @param previousVersion the non-blank version active before the recorded activation
-	 * @param newVersion      the non-blank version installed by the recorded activation
-	 * @return one replacement of the canonical marketplace plugin, staged beside it
+	 * @param newVersion      the version installed by the recorded activation
+	 * @return the plan that {@link #plan(Path, String)} returned while {@code previousVersion} was active
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or not normalized, or either version is blank
+	 * @throws IllegalArgumentException if {@code home} is relative or not normalized, {@code previousVersion} is blank,
+	 *                                  or {@code newVersion} is neither a plugin version nor a release version
 	 * @throws IOException              if a path component is a symlink
 	 */
 	@Override
@@ -107,9 +128,8 @@ public final class Activation implements PluginActivation
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(previousVersion, "previousVersion").isNotBlank();
-		requireThat(newVersion, "newVersion").isNotBlank();
-		Path live = liveDirectory(home);
-		return List.of(new ReplaceDirectory(live, live.getParent()));
+		Path folder = versionFolder(home, newVersion);
+		return steps(folder, previousVersion.equals(newVersion));
 	}
 
 	/**
@@ -127,23 +147,22 @@ public final class Activation implements PluginActivation
 	}
 
 	/**
-	 * Plans adding the plugin directory inside CAT's marketplace, staged beside it, where Claude Code loads only the
-	 * plugin that the marketplace manifest names. Registration later writes the marketplace manifest from the
-	 * activated release.
+	 * Plans adding the version's folder inside CAT's marketplace plugin, staged outside the folder that holds the
+	 * version folders. Claude Code loads only the folder that the marketplace manifest names; registration later
+	 * writes that manifest.
 	 *
 	 * @param home       the absolute Claude Code configuration directory recorded in policy
-	 * @param newVersion the non-blank release version
-	 * @return one addition of the marketplace plugin
+	 * @param newVersion the plugin version or release version to install
+	 * @return one addition of the version's folder
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or {@code newVersion} is blank
+	 * @throws IllegalArgumentException if {@code home} is relative or {@code newVersion} is neither a plugin version
+	 *                                  nor a release version
 	 * @throws IOException              if a path component is a symlink
 	 */
 	@Override
 	public List<ActivationStep> installPlan(Path home, String newVersion) throws IOException
 	{
-		requireThat(newVersion, "newVersion").isNotBlank();
-		Path live = liveDirectory(home);
-		return List.of(new AddDirectory(live, live.getParent()));
+		return steps(versionFolder(home, newVersion), false);
 	}
 
 	/**
@@ -160,8 +179,9 @@ public final class Activation implements PluginActivation
 	@Override
 	public List<Path> removalPaths(Path home) throws IOException
 	{
+		ClaudeInstallation installation = new ClaudeInstallation(home);
 		List<Path> paths = new ArrayList<>();
-		for (Path path : List.of(Locations.marketplaceRoot(home), home.normalize().resolve("plugins/cache/cat")))
+		for (Path path : List.of(installation.marketplaceRoot(), installation.marketplaceCache()))
 		{
 			Locations.checkLinks(home, path);
 			if (Files.exists(path, LinkOption.NOFOLLOW_LINKS))
@@ -181,23 +201,75 @@ public final class Activation implements PluginActivation
 	@Override
 	public Path dataDirectory(Path home)
 	{
-		requireThat(home, "home").isAbsolute();
-		return home.normalize().resolve("plugins/data/cat-cat");
+		return new ClaudeInstallation(home).dataDirectory();
 	}
 
 	/**
-	 * Locates the live plugin and refuses links that could redirect its replacement.
+	 * Locates a version's folder and refuses links that could redirect its activation.
 	 *
-	 * @param home the absolute Claude Code configuration directory recorded in policy
-	 * @return the normalized live plugin directory
-	 * @throws NullPointerException     if {@code home} is null
-	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @param home    the absolute Claude Code configuration directory recorded in policy
+	 * @param version the plugin version or release version
+	 * @return the normalized version folder
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative or {@code version} is neither a plugin version nor a
+	 *                                  release version
 	 * @throws IOException              if a path component is a symlink
 	 */
-	private static Path liveDirectory(Path home) throws IOException
+	private static Path versionFolder(Path home, String version) throws IOException
 	{
-		Path live = Locations.pluginDirectory(home);
-		Locations.checkLinks(home, live);
-		return live;
+		requireThat(version, "version").isNotNull();
+		ClaudeInstallation installation = new ClaudeInstallation(home);
+		if (!isVersion(version))
+		{
+			throw new IllegalArgumentException("version must be a plugin version, such as 1.0" +
+				PluginVersion.BUILD_SEPARATOR + "0123456789ab, or a release version, such as 1.0: \"" + version + "\"");
+		}
+		Path folder = installation.versionFolders().resolve(version);
+		Locations.checkLinks(home, folder);
+		return folder;
+	}
+
+	/**
+	 * Returns whether a text names a version folder: a plugin version, or a release version that an installation
+	 * from before plugin versions recorded.
+	 *
+	 * @param text the text
+	 * @return true if {@code text} is a plugin version or a release version
+	 */
+	private static boolean isVersion(String text)
+	{
+		try
+		{
+			PluginVersion.parse(text);
+			return true;
+		}
+		catch (IllegalArgumentException _)
+		{
+			try
+			{
+				ReleaseVersion.parse(text);
+				return true;
+			}
+			catch (TrustException _)
+			{
+				return false;
+			}
+		}
+	}
+
+	/**
+	 * Returns the single step that activates a version folder, staged outside the folder that holds the version
+	 * folders.
+	 *
+	 * @param folder  the version folder
+	 * @param replace true to replace the folder, false to add it
+	 * @return the step
+	 */
+	private static List<ActivationStep> steps(Path folder, boolean replace)
+	{
+		Path staging = folder.getParent().getParent();
+		if (replace)
+			return List.of(new ReplaceDirectory(folder, staging));
+		return List.of(new AddDirectory(folder, staging));
 	}
 }

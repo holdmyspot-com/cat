@@ -47,10 +47,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CodexIntegration implements HarnessIntegration
 {
 	/**
-	 * The marketplace metadata that Codex reads, relative to the marketplace root.
-	 */
-	private static final Path MARKETPLACE_METADATA = Path.of(".agents/plugins/marketplace.json");
-	/**
 	 * The release's copy of the marketplace metadata, relative to the plugin directory.
 	 */
 	private static final String RELEASE_METADATA = "install/codex-marketplace.json";
@@ -59,21 +55,18 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static final String PLUGIN_MANIFEST = ".codex-plugin/plugin.json";
 	/**
-	 * The CAT-owned execution-policy file.
+	 * The CAT-owned execution-policy file, in Codex's rules directory.
 	 */
-	private static final Path RULES_FILE = Path.of("rules/cat-installer.rules");
+	private static final String RULES_FILE = "cat-installer.rules";
 	/**
 	 * The permission key of the CAT-owned execution-policy file: its path relative to the home and an empty setting.
 	 */
 	private static final String RULES_KEY = "rules/cat-installer.rules#";
 	/**
-	 * The execution-policy file that CAT wrote before its installer was called the installer.
+	 * The execution-policy file, in Codex's rules directory, that CAT wrote before its installer was called the
+	 * installer.
 	 */
-	private static final Path UPDATER_RULES_FILE = Path.of("rules/cat-updater.rules");
-	/**
-	 * Codex's configuration file.
-	 */
-	private static final Path CONFIGURATION = Path.of("config.toml");
+	private static final String UPDATER_RULES_FILE = "cat-updater.rules";
 	/**
 	 * The sandbox key of the writable root that CAT adds to Codex's configuration.
 	 */
@@ -206,7 +199,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static void validateRules(Path home) throws IOException
 	{
-		Path file = home.resolve(RULES_FILE);
+		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
 		Path directory = file.getParent();
 		if (Files.isSymbolicLink(home) || Files.isSymbolicLink(directory))
 			throw new IOException("The Codex rules directory must not be a symbolic link: " + directory);
@@ -237,7 +230,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static void validateWritableRoots(Path home) throws IOException
 	{
-		Path file = home.resolve(CONFIGURATION);
+		Path file = new CodexInstallation(home).configuration();
 		if (Files.isSymbolicLink(file))
 			throw new IOException("Codex's configuration must not be a symbolic link: " + file);
 		if (Files.notExists(file, LinkOption.NOFOLLOW_LINKS))
@@ -248,32 +241,40 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Writes the marketplace metadata from the activated release, then runs {@code codex plugin marketplace add}
-	 * and {@code codex plugin add cat@cat}, and requires the cache copy that Codex loads to equal the marketplace
-	 * source.
+	 * Requires the marketplace source to hold {@code version}, writes the marketplace metadata from it, then runs
+	 * {@code codex plugin marketplace add} and {@code codex plugin add cat@cat}, and requires Codex to load
+	 * {@code version} from the cache folder that it names, with the same content as the marketplace source.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
-	 * @throws IOException              if the activated release lacks its marketplace metadata, Codex fails, or the
-	 *                                  cache copy differs from the marketplace source
+	 * @throws IOException              if the marketplace source holds another version or lacks its marketplace
+	 *                                  metadata, Codex fails, Codex loads another cache folder, or the cache copy
+	 *                                  differs from the marketplace source
 	 */
 	@Override
-	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
+	public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(cli, "cli").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		CodexInstallation installation = new CodexInstallation(home);
 		Path plugin = installation.marketplacePlugin();
-		Path metadata = installation.marketplaceRoot().resolve(MARKETPLACE_METADATA);
+		Path metadata = installation.marketplaceManifest();
 		requireNoLinks(home, home.relativize(metadata));
 		requireNoLinks(home, home.relativize(plugin.resolve(RELEASE_METADATA)));
 		if (!Files.isDirectory(plugin, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("CAT's marketplace source is not activated: " + plugin);
+		requireNoLinks(home, home.relativize(plugin.resolve(PLUGIN_MANIFEST)));
+		String sourceVersion = readVersion(plugin.resolve(PLUGIN_MANIFEST));
+		if (!sourceVersion.equals(version.toString()))
+		{
+			throw new IOException("Registration of CAT " + version + " found CAT " + sourceVersion +
+				" in the marketplace source: " + plugin);
+		}
 		writeMetadata(plugin.resolve(RELEASE_METADATA), metadata, replacer);
 
 		run(cli, List.of("plugin", "marketplace", "add", installation.marketplaceRoot().toString()));
 		run(cli, List.of("plugin", "add", PLUGIN_ID));
-		requireCacheMatches(installation);
+		requireCacheMatches(installation, version);
 	}
 
 	/**
@@ -314,7 +315,7 @@ public final class CodexIntegration implements HarnessIntegration
 		validateConfiguration(home);
 		deleteUpdaterLeftover(home);
 		String content = InstallerRules.render(installer, isWindows());
-		Path file = home.resolve(RULES_FILE);
+		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
 		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && read(file).equals(content))
 			return Map.of();
 
@@ -332,7 +333,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static void deleteUpdaterLeftover(Path home) throws IOException
 	{
-		Path file = home.resolve(UPDATER_RULES_FILE);
+		Path file = new CodexInstallation(home).rules().resolve(UPDATER_RULES_FILE);
 		if (Files.isSymbolicLink(file.getParent()) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 			return;
 		if (InstallerRules.isUpdaterLeftover(read(file), isWindows()))
@@ -375,7 +376,7 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(replacer, "replacer").isNotNull();
 		validateWritableRoots(home);
 
-		Path file = home.resolve(CONFIGURATION);
+		Path file = new CodexInstallation(home).configuration();
 		boolean exists = Files.exists(file, LinkOption.NOFOLLOW_LINKS);
 		String content = "";
 		if (exists)
@@ -435,7 +436,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static void removeRules(Path home, List<String> contents) throws IOException
 	{
-		Path file = home.resolve(RULES_FILE);
+		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
 		if (contents.isEmpty() || Files.isSymbolicLink(home) || Files.isSymbolicLink(file.getParent()) ||
 			!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 		{
@@ -456,7 +457,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static void removeWritableRoots(Path home, List<String> roots, FileReplacer replacer) throws IOException
 	{
-		Path file = home.resolve(CONFIGURATION);
+		Path file = new CodexInstallation(home).configuration();
 		if (roots.isEmpty() || Files.isSymbolicLink(home) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 			return;
 		String content = read(file);
@@ -617,22 +618,23 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Requires Codex to load exactly the validated marketplace source from the version folder that its version names.
+	 * Requires Codex to load exactly the validated marketplace source from the version folder that {@code version}
+	 * names.
 	 *
 	 * @param installation where Codex keeps CAT's installation
-	 * @throws IOException if Codex selects another version or its cache copy differs from the source
+	 * @param version      the registered plugin version
+	 * @throws IOException if Codex loads another version folder or its cache copy differs from the source
 	 */
-	private static void requireCacheMatches(CodexInstallation installation) throws IOException
+	private static void requireCacheMatches(CodexInstallation installation, PluginVersion version) throws IOException
 	{
 		Path plugin = installation.marketplacePlugin();
-		String version = readVersion(plugin.resolve(PLUGIN_MANIFEST));
 		InstalledState state = new CodexActivation().installed(installation.home());
-		if (!state.equals(new InstalledState(Optional.of(version), true)))
+		if (!state.equals(new InstalledState(Optional.of(version.toString()), true)))
 		{
 			throw new IOException("After \"codex plugin add\", Codex does not load CAT " + version + " consistently: " +
 				installation.versionFolders());
 		}
-		Path cache = installation.versionFolders().resolve(version);
+		Path cache = installation.versionFolder(version);
 		Optional<String> difference = difference(plugin, cache);
 		if (difference.isPresent())
 		{

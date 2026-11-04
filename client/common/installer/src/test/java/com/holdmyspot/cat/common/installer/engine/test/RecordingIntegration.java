@@ -29,7 +29,7 @@ import java.util.Set;
  * A harness integration for a generic harness, {@code harness-a} unless a test names another, that records each call
  * and fails the calls that a test names. It never runs a program. Its harness keeps CAT's installation as
  * {@link Layout} describes, and installs a plugin as a harness does: {@code register} copies the plugin in the
- * marketplace folder into the version folder that the plugin's {@code bin/VERSION} names.
+ * marketplace folder into the folder of the version that it is asked to register.
  */
 public final class RecordingIntegration implements HarnessIntegration
 {
@@ -67,6 +67,10 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * reports as maintained.
 	 */
 	private Map<String, List<String>> sandbox = Map.of();
+	/**
+	 * The version that each {@code register} call received, in call order.
+	 */
+	private final List<PluginVersion> registered = new ArrayList<>();
 
 	/**
 	 * Creates an integration of {@code harness-a} whose calls all succeed.
@@ -191,6 +195,16 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns the versions that registration was asked to register.
+	 *
+	 * @return each {@code register} call's version, in call order
+	 */
+	public List<PluginVersion> registered()
+	{
+		return List.copyOf(registered);
+	}
+
+	/**
 	 * Returns the entries that each permission removal received.
 	 *
 	 * @return the removed entries, in call order
@@ -308,19 +322,19 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Records the call and, when the marketplace folder holds a plugin, copies it into the version folder that its
-	 * {@code bin/VERSION} names, replacing an earlier copy.
+	 * Records the call and, when the marketplace folder holds a plugin, copies it into the folder of
+	 * {@code version}, replacing an earlier copy.
 	 */
 	@Override
-	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
+	public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
 		record("register", home);
+		registered.add(version);
 		Layout layout = new Layout(home);
 		Path source = layout.marketplacePlugin();
-		Path version = source.resolve(PluginDirectory.VERSION);
-		if (!Files.isRegularFile(version))
+		if (!Files.isRegularFile(source.resolve(PluginDirectory.VERSION)))
 			return;
-		Path target = layout.versionFolder(PluginVersion.parse(Files.readString(version).strip()));
+		Path target = layout.versionFolder(version);
 		Files.createDirectories(target.getParent());
 		LinkSafeDeletion.delete(target, target.getParent());
 		TreeCopy.copy(source, target);

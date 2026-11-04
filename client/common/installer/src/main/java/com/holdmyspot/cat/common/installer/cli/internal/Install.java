@@ -148,7 +148,7 @@ public final class Install
 		Path marketplace = integration.marketplaceFolder(home, version);
 		Path versionFolder = installation.versionFolder(version);
 		writeMarketplace(plugin, marketplace, versionFolder, home);
-		integration.register(home, cliFactory.create(command, home), replacer);
+		integration.register(home, version, cliFactory.create(command, home), replacer);
 		if (!Files.isDirectory(versionFolder, NOFOLLOW_LINKS))
 		{
 			throw new IOException(harness + " did not install CAT " + version + " into its version folder " +

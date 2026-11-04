@@ -38,6 +38,7 @@ import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.Signature;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -112,9 +113,12 @@ public final class InstallerActivationTest
 			install(home, provider);
 			Map<Path, String> contents = new HashMap<>();
 			Map<Path, FileTime> times = new HashMap<>();
-			for (String name : List.of("config.toml", "auth.json", "settings.json", ".mcp.json",
-				"plugins/installed_plugins.json", "plugins/cat-marketplace/.agents/plugins/marketplace.json",
-				"agents/user.toml"))
+			List<String> userFiles = new ArrayList<>(List.of("config.toml", "auth.json", "settings.json", ".mcp.json",
+				"plugins/cat-marketplace/.agents/plugins/marketplace.json", "agents/user.toml"));
+			// Claude Code's record of its installed plugins is Claude Code's, which its registration rewrites
+			if (harness.equals("codex"))
+				userFiles.add("plugins/installed_plugins.json");
+			for (String name : userFiles)
 			{
 				Path file = home.resolve(name);
 				write(file, "user-owned " + name);
@@ -130,7 +134,8 @@ public final class InstallerActivationTest
 			writeInstallation(data);
 			UpdateEngine engine = new UpdateEngine(data, policy, release, provider,
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
-			HarnessSession session = new HarnessSession(new UnusedIntegration(harness),
+			FixtureIntegration integration = new FixtureIntegration(harness, new ArrayList<>());
+			HarnessSession session = new HarnessSession(integration,
 				arguments -> new CommandResult(0, ""), new FileReplacer(Platform.current(), () ->
 			{
 			}, Clock.systemUTC()));
@@ -139,6 +144,7 @@ public final class InstallerActivationTest
 
 			requireThat(updated.result(), "updateResult").isEqualTo(Result.UPDATED);
 			requireThat(updated.consistent(), "updatedConsistent").isTrue();
+			requireThat(integration.registered(), "registered").isEqualTo(List.of(PluginVersion.parse(PLUGIN_VERSION)));
 			requireThat(provider.installed(home), "updatedInstallation").
 				isEqualTo(new InstalledState(Optional.of(PLUGIN_VERSION), true));
 			requireThat(engine.pendingSwap(), "updateSwap").
@@ -156,6 +162,8 @@ public final class InstallerActivationTest
 				requireThat(Files.readString(home.resolve("agents/cat-b.toml")), "newAgent").isEqualTo("new agent");
 				requireThat(home.resolve("plugins/cache/cat/cat/1.0"), "retainedCache").isDirectory();
 			}
+			else
+				requireThat(home.resolve("plugins/cat-marketplace/plugins/cat/1.0"), "retainedFolder").isDirectory();
 			unchanged(contents, times);
 			requireThat(Files.exists(root.resolve("executed"), NOFOLLOW_LINKS), "downloadedCodeExecuted").isFalse();
 		}
@@ -171,14 +179,33 @@ public final class InstallerActivationTest
 	private static void install(Path home, PluginActivation provider) throws IOException
 	{
 		String manifest = "{\"name\":\"cat\",\"version\":\"1.0\"}";
-		write(home.resolve("plugins/cat-marketplace/plugins/cat").resolve(provider.pluginManifest()), manifest);
 		write(provider.migrationVersionFile(home), "1.0\n");
-		if (provider.harness().equals("codex"))
+		if (provider.harness().equals("claude"))
 		{
+			write(home.resolve("plugins/cat-marketplace/plugins/cat/1.0").resolve(provider.pluginManifest()), manifest);
+			recordClaudeInstallation(home, "1.0");
+		}
+		else
+		{
+			write(home.resolve("plugins/cat-marketplace/plugins/cat").resolve(provider.pluginManifest()), manifest);
 			write(home.resolve("plugins/cache/cat/cat/1.0").resolve(provider.pluginManifest()), manifest);
 			write(home.resolve("agents/cat-a.toml"), "old agent");
 			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-a.toml\n");
 		}
+	}
+
+	/**
+	 * Records CAT's installation in Claude Code's record of its installed plugins, as Claude Code does when it
+	 * installs or updates CAT.
+	 *
+	 * @param home    the isolated harness home
+	 * @param version the installed plugin version
+	 * @throws IOException if writing fails
+	 */
+	private static void recordClaudeInstallation(Path home, String version) throws IOException
+	{
+		write(home.resolve("plugins/installed_plugins.json"), "{\"version\": 2, \"plugins\": {\"cat@cat\": " +
+			"[{\"scope\": \"user\", \"version\": \"" + version + "\"}]}}\n");
 	}
 
 	/**
@@ -361,11 +388,14 @@ public final class InstallerActivationTest
 	}
 
 	/**
-	 * Stands in for the harness's registration, which this test does not observe; the providers' own tests cover it.
+	 * Stands in for the harness's registration, whose commands the providers' own tests cover. It records each version
+	 * that it registers, and records it where the harness reports its installed version: Claude Code in its record of
+	 * installed plugins, while Codex names its cache folder after the version, which activation already wrote.
 	 *
-	 * @param harness the harness identifier
+	 * @param harness    the harness identifier
+	 * @param registered the version of each registration, in call order
 	 */
-	private record UnusedIntegration(String harness) implements HarnessIntegration
+	private record FixtureIntegration(String harness, List<PluginVersion> registered) implements HarnessIntegration
 	{
 		@Override
 		public String programName()
@@ -391,8 +421,12 @@ public final class InstallerActivationTest
 		}
 
 		@Override
-		public void register(Path home, HarnessCli cli, FileReplacer replacer)
+		public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer)
+			throws IOException
 		{
+			registered.add(version);
+			if (harness.equals("claude"))
+				recordClaudeInstallation(home, version.toString());
 		}
 
 		@Override

@@ -510,7 +510,7 @@ public final class UpdateEngine
 		// The active plugin is up to date only when it is the signed release's build
 		if (bundled && plugin.toString().equals(active) && installed.consistent() && version.equals(current))
 		{
-			session.integration().register(home, session.cli(), session.replacer());
+			session.integration().register(home, plugin, session.cli(), session.replacer());
 			return result(Result.UP_TO_DATE, active, previousBundle(transaction).orElse(null), "CAT is up to date.",
 				List.of());
 		}
@@ -798,24 +798,27 @@ public final class UpdateEngine
 	 * @param home         the protected harness home
 	 * @param transaction  the harness's activation transaction
 	 * @return the outcome
-	 * @throws IOException    if validation, the runtime check, activation or registration fails
-	 * @throws TrustException if a version is malformed or a pending migration requires explicit installation
+	 * @throws IOException              if validation, the runtime check, activation or registration fails
+	 * @throws TrustException           if a version is malformed or a pending migration requires explicit installation
+	 * @throws IllegalArgumentException if a local plugin tree states a bare release instead of a full plugin version
 	 */
 	private UpdateResult activateTree(Mode mode, Path tree, String version, PluginVersion signed, String active,
 		HarnessSession session, Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
 		String plugin = validatePlugin(mode, tree, version, signed, active, home);
+		// The harness registers a version folder by its full version, which a local tree must state
+		PluginVersion registered = PluginVersion.parse(plugin);
 		Path migrationFile = activation.migrationVersionFile(home);
 		requireRuntime(tree, version);
 		Files.writeString(tree.resolve(RuntimeBinding.PATH), runtime + "\n", StandardCharsets.UTF_8);
-		Completion register = () -> session.integration().register(home, session.cli(),
+		Completion register = () -> session.integration().register(home, registered, session.cli(),
 			session.replacer());
 		if (active == null)
 		{
 			for (Path path : activation.removalPaths(home))
 				LinkSafeDeletion.delete(path, home);
 			transaction.install(tree, activation.installPlan(home, plugin), migrationFile, plugin,
-				() -> registerOrUnregister(session, home));
+				() -> registerOrUnregister(session, home, registered));
 			return result(Result.INSTALLED, plugin, null, withWarning("CAT was installed.", transaction),
 				List.of()).withAotCache(train(home, plugin, runtime));
 		}
@@ -832,14 +835,16 @@ public final class UpdateEngine
 	 * an install which fails leaves the harness without a registration of the plugin files that it deletes again.
 	 *
 	 * @param session registers the activated plugin
-	 * @param home         the protected harness home
+	 * @param home    the protected harness home
+	 * @param version the plugin version that the install added
 	 * @throws IOException if registration fails; a failure to unregister is suppressed in it
 	 */
-	private static void registerOrUnregister(HarnessSession session, Path home) throws IOException
+	private static void registerOrUnregister(HarnessSession session, Path home, PluginVersion version)
+		throws IOException
 	{
 		try
 		{
-			session.integration().register(home, session.cli(), session.replacer());
+			session.integration().register(home, version, session.cli(), session.replacer());
 		}
 		catch (IOException e)
 		{
@@ -943,7 +948,8 @@ public final class UpdateEngine
 			"plugin", version);
 		requireOwnRuntime(next, RuntimeRequirement.read(image.resolve(Bundle.REQUIREMENT_FILE)), "installer", version);
 		Files.writeString(staged.plugin().resolve(RuntimeBinding.PATH), runtime + "\n", StandardCharsets.UTF_8);
-		Completion register = () -> session.integration().register(home, session.cli(),
+		PluginVersion registered = staged.pluginVersion();
+		Completion register = () -> session.integration().register(home, registered, session.cli(),
 			session.replacer());
 		try
 		{

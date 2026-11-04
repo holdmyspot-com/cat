@@ -13,7 +13,6 @@ import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -78,10 +77,6 @@ public final class Integration implements HarnessIntegration
 	 */
 	private static final List<String> MAINTAINED_SETTINGS = List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS, DENY_WRITE,
 		ALLOW_WRITE);
-	/**
-	 * Claude Code's record of its installed plugins, relative to the configuration directory.
-	 */
-	private static final Path INSTALLED_PLUGINS = Path.of("plugins/installed_plugins.json");
 	/**
 	 * The marketplace metadata that a plugin version folder ships, relative to that folder.
 	 */
@@ -287,63 +282,6 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Registers the only plugin version folder that CAT's marketplace holds, as
-	 * {@link #register(Path, PluginVersion, HarnessCli, FileReplacer)} does. Install writes the new version's folder
-	 * before it calls this method, so a first install finds exactly that folder.
-	 *
-	 * @param home     the absolute Claude Code configuration directory recorded in policy
-	 * @param cli      runs the recorded {@code claude} program
-	 * @param replacer replaces the marketplace manifest
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative
-	 * @throws IOException              if the marketplace holds no version folder or more than one, or registration of
-	 *                                  that version fails
-	 */
-	@Override
-	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
-	{
-		ClaudeInstallation installation = new ClaudeInstallation(home);
-		Path folders = installation.versionFolders();
-		Locations.checkLinks(home, folders);
-		List<PluginVersion> versions = new ArrayList<>();
-		if (Files.isDirectory(folders, LinkOption.NOFOLLOW_LINKS))
-		{
-			try (DirectoryStream<Path> children = Files.newDirectoryStream(folders))
-			{
-				for (Path child : children)
-				{
-					if (Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS))
-						parseVersion(child.getFileName().toString()).ifPresent(versions::add);
-				}
-			}
-		}
-		if (versions.size() != 1)
-		{
-			throw new IOException("CAT's marketplace " + folders + " holds " + versions.size() + " version folders, " +
-				"so registration cannot tell which version to register; name the version.");
-		}
-		register(home, versions.getFirst(), cli, replacer);
-	}
-
-	/**
-	 * Parses a version folder's name.
-	 *
-	 * @param name the folder's name
-	 * @return the plugin version, or empty if the name is not a plugin version
-	 */
-	private static Optional<PluginVersion> parseVersion(String name)
-	{
-		try
-		{
-			return Optional.of(PluginVersion.parse(name));
-		}
-		catch (IllegalArgumentException _)
-		{
-			return Optional.empty();
-		}
-	}
-
-	/**
 	 * Points CAT's marketplace at a plugin version folder and asks Claude Code to load CAT from it. Claude Code loads a
 	 * directory marketplace's plugin in place, from the folder that the marketplace manifest's source names.
 	 * <ol>
@@ -365,6 +303,7 @@ public final class Integration implements HarnessIntegration
 	 *                                  symbolic link, Claude Code refuses a command, or Claude Code records another
 	 *                                  version afterwards
 	 */
+	@Override
 	public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
 		requireThat(version, "version").isNotNull();
@@ -374,7 +313,7 @@ public final class Integration implements HarnessIntegration
 		Path root = installation.marketplaceRoot();
 		Path versionFolder = installation.versionFolder(version);
 		Path metadata = versionFolder.resolve(MARKETPLACE_METADATA);
-		Path manifest = root.resolve(".claude-plugin/marketplace.json");
+		Path manifest = installation.marketplaceManifest();
 		Locations.checkLinks(home, metadata);
 		Locations.checkLinks(home, manifest);
 		if (!Files.isRegularFile(metadata, LinkOption.NOFOLLOW_LINKS))
@@ -397,7 +336,7 @@ public final class Integration implements HarnessIntegration
 		if (!installed.equals(Optional.of(version.toString())))
 		{
 			throw new IOException("claude plugin " + operation + " cat@cat did not switch CAT to " + version + ": " +
-				home.resolve(INSTALLED_PLUGINS) + " records " + installed.orElse("no CAT installation") + ".");
+				installation.installedPlugins() + " records " + installed.orElse("no CAT installation") + ".");
 		}
 	}
 
@@ -436,9 +375,9 @@ public final class Integration implements HarnessIntegration
 	 * @return the version, or empty if Claude Code records no such installation
 	 * @throws IOException if the record is a symbolic link, cannot be read or is not a JSON object
 	 */
-	private static Optional<String> installedVersion(Path home) throws IOException
+	static Optional<String> installedVersion(Path home) throws IOException
 	{
-		Path record = home.resolve(INSTALLED_PLUGINS);
+		Path record = new ClaudeInstallation(home).installedPlugins();
 		Locations.checkLinks(home, record);
 		if (Files.notExists(record, LinkOption.NOFOLLOW_LINKS))
 			return Optional.empty();

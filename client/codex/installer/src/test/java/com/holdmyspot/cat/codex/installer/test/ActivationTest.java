@@ -82,51 +82,109 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Numeric ordering selects 1.10 before 1.9, skipping invalid names and hidden directories.
+	 * Folders named by semantic versions are ordered as Codex orders them, the release after its pre-releases, and
+	 * Codex skips a name with a character that it does not allow and an entry that is not a directory.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void choosesHighestNumericVersion() throws IOException
+	public void ordersSemanticVersionsAsCodex() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.10", "1.10", "1.10");
-			cache(home, "1.9", "1.9");
-			cache(home, ".9.0", "9.0");
-			cache(home, "invalid", "9.0");
-			Files.writeString(home.resolve("plugins/cache/cat/cat/8.0"), "not a directory");
+			install(home, "1.10.0", "1.10.0", "1.10.0");
+			cache(home, "1.9.0", "1.9.0");
+			cache(home, "1.10.0-rc.1", "1.10.0-rc.1");
+			cache(home, "9.0 copy", "9.0");
+			Files.writeString(home.resolve("plugins/cache/cat/cat/9.0"), "not a directory");
 
 			requireThat(provider().installed(home), "installed").
-				isEqualTo(new InstalledState(Optional.of("1.10"), true));
+				isEqualTo(new InstalledState(Optional.of("1.10.0"), true));
 		}
 	}
 
 	/**
-	 * A plugin version that names its build is read as installed, and the highest release wins over a lower release
-	 * built later.
+	 * Codex orders folder names that are not semantic versions, such as CAT's plugin versions, as text, so the
+	 * installed version is the folder that Codex loads even where release order differs.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void readsPluginVersion() throws IOException
+	public void ordersPluginVersionsAsCodex() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.10+b0123456789ab", "1.10+b0123456789ab", "1.10+b0123456789ab");
-			cache(home, "1.9+bffffffffffff", "1.9+bffffffffffff");
-			cache(home, "1.11+bnot-a-commit", "1.11+bnot-a-commit");
+			install(home, "1.9+bffffffffffff", "1.9+bffffffffffff", "1.9+bffffffffffff");
+			cache(home, "1.10+b0123456789ab", "1.10+b0123456789ab");
 
 			requireThat(provider().installed(home), "installed").
-				isEqualTo(new InstalledState(Optional.of("1.10+b0123456789ab"), true));
+				isEqualTo(new InstalledState(Optional.of("1.9+bffffffffffff"), true));
 		}
 	}
 
 	/**
-	 * Of two plugin copies of one release, the copy that names its build is the installed version, whichever copy sorts
-	 * first.
+	 * Supplies two builds of one release in both orders.
+	 *
+	 * @return the builds in each order
+	 */
+	@DataProvider
+	public Object[][] buildPairs()
+	{
+		return new Object[][] {{"1.0+bfedcba987654", "1.0+b0123456789ab"}, {"1.0+b0123456789ab", "1.0+bfedcba987654"}};
+	}
+
+	/**
+	 * With the folders of two builds of one release present, the installed version is the build that Codex loads,
+	 * the one whose name sorts last as text, whichever folder was written first.
+	 *
+	 * @param first  the build whose folder is written first
+	 * @param second the build whose folder is written second
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "buildPairs")
+	public void reportsBuildCodexLoads(String first, String second) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			String loaded = "1.0+bfedcba987654";
+			cache(home, first, first);
+			cache(home, second, second);
+			manifest(home.resolve("plugins/cat-marketplace/plugins/cat"), loaded);
+
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.of(loaded), true));
+		}
+	}
+
+	/**
+	 * Activating another build plans the folder of the build that the plan names, in routine planning and in
+	 * recovery, whichever of the two builds is installed.
+	 *
+	 * @param installed the installed build
+	 * @param named     the build to activate
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "buildPairs")
+	public void plansNamedBuildFolder(String installed, String named) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, installed, installed, installed);
+
+			AddDirectory expected = new AddDirectory(home.resolve("plugins/cache/cat/cat").resolve(named),
+				home.resolve("plugins/cache/cat"));
+			requireThat(provider().plan(home, named).getLast(), "cacheStep").isEqualTo(expected);
+			requireThat(provider().recoveryPlan(home, installed, named).getLast(), "recoveryStep").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Of a bare release's folder and a build's folder of that release, Codex loads the build's folder, whose name
+	 * extends the release's, whichever folder sorts first in the directory.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -317,7 +375,8 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Supplies paths that a stopped installation or removal can leave behind.
+	 * Supplies paths that a stopped installation or removal can leave behind, none of which Codex loads: a cache
+	 * folder whose name Codex refuses as a version and a cache entry that is not a folder.
 	 *
 	 * @return leftover paths relative to the home
 	 */
@@ -325,7 +384,7 @@ public final class ActivationTest
 	public Object[][] partialLeftovers()
 	{
 		return new Object[][]{{"plugins/cat-marketplace/.agents/plugins/marketplace.json"},
-			{"plugins/cache/cat/cat/invalid/file"}};
+			{"plugins/cache/cat/cat/not a version/file"}, {"plugins/cache/cat/cat/1.0"}};
 	}
 
 	/**

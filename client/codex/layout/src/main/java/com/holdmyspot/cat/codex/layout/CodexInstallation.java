@@ -73,4 +73,44 @@ public record CodexInstallation(Path home) implements HarnessInstallation
 	{
 		return home.resolve("plugins/data/cat-cat");
 	}
+
+	/**
+	 * Returns the manifest of CAT's marketplace, which Codex reads to find CAT's plugin.
+	 *
+	 * @return {@code .agents/plugins/marketplace.json} in the marketplace folder
+	 */
+	public Path marketplaceManifest()
+	{
+		return marketplaceRoot().resolve(".agents/plugins/marketplace.json");
+	}
+
+	/**
+	 * Returns Codex's custom agent folder, which holds CAT's agents beside the user's.
+	 *
+	 * @return {@code agents} in Codex's home
+	 */
+	public Path agents()
+	{
+		return home.resolve("agents");
+	}
+
+	/**
+	 * Returns Codex's execution-policy rules folder, which holds the rules that CAT adds beside the user's.
+	 *
+	 * @return {@code rules} in Codex's home
+	 */
+	public Path rules()
+	{
+		return home.resolve("rules");
+	}
+
+	/**
+	 * Returns Codex's configuration file.
+	 *
+	 * @return {@code config.toml} in Codex's home
+	 */
+	public Path configuration()
+	{
+		return home.resolve("config.toml");
+	}
 }

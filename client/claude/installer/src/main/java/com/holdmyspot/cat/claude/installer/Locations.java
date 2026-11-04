@@ -7,8 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Locates the files that CAT installs in a Claude Code configuration directory, refusing symbolic links that could
- * redirect them.
+ * Refuses symbolic links that could redirect the files that CAT installs in a Claude Code configuration directory.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -19,33 +18,6 @@ public final class Locations
 	 */
 	private Locations()
 	{
-	}
-
-	/**
-	 * Locates the directory marketplace that holds CAT, without checking links.
-	 *
-	 * @param home the absolute Claude Code configuration directory recorded in policy
-	 * @return the normalized marketplace root
-	 * @throws NullPointerException     if {@code home} is null
-	 * @throws IllegalArgumentException if {@code home} is relative
-	 */
-	public static Path marketplaceRoot(Path home)
-	{
-		requireThat(home, "home").isAbsolute();
-		return home.normalize().resolve("plugins/cat-marketplace");
-	}
-
-	/**
-	 * Locates the plugin directory inside the marketplace, which Claude Code loads in place.
-	 *
-	 * @param home the absolute Claude Code configuration directory recorded in policy
-	 * @return the normalized plugin directory
-	 * @throws NullPointerException     if {@code home} is null
-	 * @throws IllegalArgumentException if {@code home} is relative
-	 */
-	public static Path pluginDirectory(Path home)
-	{
-		return marketplaceRoot(home).resolve("plugins/cat");
 	}
 
 	/**

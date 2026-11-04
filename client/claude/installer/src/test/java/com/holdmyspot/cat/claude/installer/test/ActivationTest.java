@@ -12,8 +12,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
-import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.ServiceLoader;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -23,6 +25,19 @@ import org.testng.annotations.Test;
  */
 public final class ActivationTest
 {
+	/**
+	 * The plugin version that the fixtures install first.
+	 */
+	private static final String VERSION = "1.0+b0123456789ab";
+	/**
+	 * A later build of the same release.
+	 */
+	private static final String NEW_VERSION = "1.0+bfedcba987654";
+	/**
+	 * The folder whose children are CAT's version folders, relative to the configuration directory.
+	 */
+	private static final String VERSION_FOLDERS = "plugins/cat-marketplace/plugins/cat";
+
 	/**
 	 * Creates a test instance.
 	 */
@@ -40,7 +55,8 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Planning changes no protected configuration and targets only the live marketplace plugin.
+	 * Planning a new version changes no protected configuration and adds only the new version's folder, staged
+	 * outside the folder that holds the version folders.
 	 *
 	 * @throws IOException if the fake configuration cannot be created or read
 	 */
@@ -50,25 +66,28 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path live = home.resolve("plugins/cat-marketplace/plugins/cat");
-			Files.createDirectories(live);
+			install(home, VERSION);
 			List<Path> configuration = List.of(home.resolve(".claude.json"), home.resolve("settings.json"),
 				home.resolve("plugins/installed_plugins.json"), home.resolve("plugins/known_marketplaces.json"));
-			List<FileTime> modificationTimes = new ArrayList<>();
+			Map<Path, String> contents = new HashMap<>();
+			Map<Path, FileTime> modificationTimes = new HashMap<>();
 			for (Path file : configuration)
 			{
-				Files.writeString(file, "original " + file.getFileName());
-				modificationTimes.add(Files.getLastModifiedTime(file));
+				if (Files.notExists(file))
+					Files.writeString(file, "original " + file.getFileName());
+				contents.put(file, Files.readString(file));
+				modificationTimes.put(file, Files.getLastModifiedTime(file));
 			}
 
-			List<ActivationStep> steps = provider().plan(home, "2.0");
+			List<ActivationStep> steps = provider().plan(home, NEW_VERSION);
 
-			requireThat(steps, "steps").isEqualTo(List.of(new ReplaceDirectory(live, live.getParent())));
-			for (int index = 0; index < configuration.size(); ++index)
+			Path folders = home.resolve(VERSION_FOLDERS);
+			requireThat(steps, "steps").isEqualTo(List.of(new AddDirectory(folders.resolve(NEW_VERSION),
+				folders.getParent())));
+			for (Path file : configuration)
 			{
-				Path file = configuration.get(index);
-				requireThat(Files.readString(file), "configurationBytes").isEqualTo("original " + file.getFileName());
-				requireThat(Files.getLastModifiedTime(file), "modificationTime").isEqualTo(modificationTimes.get(index));
+				requireThat(Files.readString(file), "configurationBytes").isEqualTo(contents.get(file));
+				requireThat(Files.getLastModifiedTime(file), "modificationTime").isEqualTo(modificationTimes.get(file));
 			}
 			requireThat(provider().migrationVersionFile(home), "migrationMarker").
 				isEqualTo(home.resolve("plugins/data/cat-cat/migration-version"));
@@ -76,30 +95,71 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Installed state follows the live manifest even when the install records state another version.
+	 * Returns two builds of one release, in both orders: the build that Claude Code records as installed and the
+	 * other build.
 	 *
+	 * @return the recorded and the other version
+	 */
+	@DataProvider
+	public Object[][] buildPairs()
+	{
+		return new Object[][] {{VERSION, NEW_VERSION}, {NEW_VERSION, VERSION}};
+	}
+
+	/**
+	 * With the folders of two builds of one release present, the installed version is the one that Claude Code
+	 * records, whichever build sorts or was written first.
+	 *
+	 * @param recorded the version that Claude Code records
+	 * @param other    the other build, whose folder is written first
 	 * @throws IOException if the fake configuration cannot be created or read
 	 */
-	@Test
-	public void readsLiveManifest() throws IOException
+	@Test(dataProvider = "buildPairs")
+	public void readsRecordedVersion(String recorded, String other) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path manifest = home.resolve("plugins/cat-marketplace/plugins/cat/.claude-plugin/plugin.json");
-			Files.createDirectories(manifest.getParent());
-			Files.writeString(manifest, """
-				{"name":"cat","version":"2.0"}
-				""");
-			Files.writeString(home.resolve("plugins/installed_plugins.json"), """
-				{"version":2,"plugins":{"cat@cat":[{"version":"1.0"}]}}
-				""");
+			writeVersionFolder(home, other, other);
+			install(home, recorded);
 
-			InstalledState state = provider().installed(home);
-
-			requireThat(state.version().orElseThrow(), "activeVersion").isEqualTo("2.0");
-			requireThat(state.consistent(), "consistent").isTrue();
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.of(recorded), true));
 		}
+	}
+
+	/**
+	 * A recorded version whose folder is absent or states another version is an inconsistent installation that a
+	 * repair replaces.
+	 *
+	 * @param folderVersion the version that the recorded version's folder states, or null for no folder
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test(dataProvider = "brokenFolders")
+	public void recordedFolderMismatchInconsistent(String folderVersion) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			FakeClaude.recordInstalled(home, VERSION);
+			writeVersionFolder(home, NEW_VERSION, NEW_VERSION);
+			if (folderVersion != null)
+				writeVersionFolder(home, VERSION, folderVersion);
+
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.of(VERSION), false));
+		}
+	}
+
+	/**
+	 * Supplies version folders that do not hold the recorded version.
+	 *
+	 * @return the version that the recorded version's folder states, or null for no folder
+	 */
+	@DataProvider
+	public Object[][] brokenFolders()
+	{
+		return new Object[][] {{null}, {NEW_VERSION}};
 	}
 
 	/**
@@ -155,8 +215,8 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Installing from absence adds the plugin directory inside the marketplace, staged beside it where Claude Code
-	 * does not load plugins, and changes nothing while planning.
+	 * Installing from absence adds the version's folder inside the marketplace plugin, staged outside the folder that
+	 * holds the version folders, and changes nothing while planning.
 	 *
 	 * @throws IOException if the fake configuration cannot be created or read
 	 */
@@ -166,11 +226,12 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path live = home.resolve("plugins/cat-marketplace/plugins/cat");
+			Path folders = home.resolve(VERSION_FOLDERS);
 
-			List<ActivationStep> steps = provider().installPlan(home, "2.0");
+			List<ActivationStep> steps = provider().installPlan(home, VERSION);
 
-			requireThat(steps, "steps").isEqualTo(List.of(new AddDirectory(live, live.getParent())));
+			requireThat(steps, "steps").isEqualTo(List.of(new AddDirectory(folders.resolve(VERSION),
+				folders.getParent())));
 			requireThat(Files.exists(home.resolve("plugins")), "pluginsCreated").isFalse();
 		}
 	}
@@ -193,12 +254,12 @@ public final class ActivationTest
 			Files.createDirectories(link.getParent());
 			Files.createSymbolicLink(link, root.resolve("outside"));
 
-			provider().installPlan(home, "2.0");
+			provider().installPlan(home, VERSION);
 		}
 	}
 
 	/**
-	 * Activating the installed version again replaces the plugin directory, in routine planning and in recovery.
+	 * Activating the installed version again replaces its version folder, in routine planning and in recovery.
 	 *
 	 * @throws IOException if the fake configuration cannot be created or read
 	 */
@@ -208,17 +269,40 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path live = home.resolve("plugins/cat-marketplace/plugins/cat");
-			Path manifest = live.resolve(".claude-plugin/plugin.json");
-			Files.createDirectories(manifest.getParent());
-			Files.writeString(manifest, """
-				{"name":"cat","version":"2.0"}
-				""");
+			install(home, VERSION);
+			writeVersionFolder(home, NEW_VERSION, NEW_VERSION);
 
-			List<ActivationStep> steps = provider().plan(home, "2.0");
-			List<ActivationStep> recovery = provider().recoveryPlan(home, "2.0", "2.0");
+			List<ActivationStep> steps = provider().plan(home, VERSION);
+			List<ActivationStep> recovery = provider().recoveryPlan(home, VERSION, VERSION);
 
-			List<ActivationStep> expected = List.of(new ReplaceDirectory(live, live.getParent()));
+			Path folders = home.resolve(VERSION_FOLDERS);
+			List<ActivationStep> expected = List.of(new ReplaceDirectory(folders.resolve(VERSION), folders.getParent()));
+			requireThat(steps, "steps").isEqualTo(expected);
+			requireThat(recovery, "recovery").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Activating another build adds the folder of the build that the plan names, in routine planning and in recovery,
+	 * whichever of the two builds is installed.
+	 *
+	 * @param installed the installed version
+	 * @param named     the version to activate
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test(dataProvider = "buildPairs")
+	public void otherBuildPlanAddsNamedFolder(String installed, String named) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			install(home, installed);
+
+			List<ActivationStep> steps = provider().plan(home, named);
+			List<ActivationStep> recovery = provider().recoveryPlan(home, installed, named);
+
+			Path folders = home.resolve(VERSION_FOLDERS);
+			List<ActivationStep> expected = List.of(new AddDirectory(folders.resolve(named), folders.getParent()));
 			requireThat(steps, "steps").isEqualTo(expected);
 			requireThat(recovery, "recovery").isEqualTo(expected);
 		}
@@ -236,14 +320,14 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path marketplace = Files.createDirectories(home.resolve("plugins/cat-marketplace/plugins/cat"));
+			Path marketplace = Files.createDirectories(home.resolve(VERSION_FOLDERS).resolve(VERSION));
 			Path cache = Files.createDirectories(home.resolve("plugins/cache/cat/cat/2.0"));
 			Files.createDirectories(home.resolve("plugins/cache/other/other/1.0"));
 			Files.createDirectories(home.resolve("plugins/data/cat-cat"));
 
 			List<Path> paths = provider().removalPaths(home);
 
-			requireThat(paths, "paths").isEqualTo(List.of(marketplace.getParent().getParent(),
+			requireThat(paths, "paths").isEqualTo(List.of(home.resolve("plugins/cat-marketplace"),
 				cache.getParent().getParent()));
 			requireThat(Files.isDirectory(marketplace), "marketplaceKept").isTrue();
 		}
@@ -292,12 +376,13 @@ public final class ActivationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			provider().plan(cleanup.add(testDirectory()), "2.0");
+			provider().plan(cleanup.add(testDirectory()), VERSION);
 		}
 	}
 
 	/**
-	 * Recovery reconstructs the canonical replacement when a crash has moved the live directory to its previous slot.
+	 * Recovery reconstructs the replacement of a version folder when a crash has moved that folder to its previous
+	 * slot.
 	 *
 	 * @throws IOException if the fake configuration cannot be created or read
 	 */
@@ -307,14 +392,15 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path live = home.resolve("plugins/cat-marketplace/plugins/cat");
-			Path previous = Files.createDirectories(live.getParent().resolve(".cat-previous-cat"));
+			Path folders = home.resolve(VERSION_FOLDERS);
+			Path live = folders.resolve(VERSION);
+			Path previous = Files.createDirectories(folders.getParent().resolve(".cat-previous-" + VERSION));
 			Path marker = Files.writeString(previous.resolve("previous-marker"), "previous release");
 			FileTime modificationTime = Files.getLastModifiedTime(marker);
 
-			List<ActivationStep> steps = provider().recoveryPlan(home, "1.0", "2.0");
+			List<ActivationStep> steps = provider().recoveryPlan(home, VERSION, VERSION);
 
-			requireThat(steps, "steps").isEqualTo(List.of(new ReplaceDirectory(live, live.getParent())));
+			requireThat(steps, "steps").isEqualTo(List.of(new ReplaceDirectory(live, folders.getParent())));
 			requireThat(Files.notExists(live), "liveStillAbsent").isTrue();
 			requireThat(Files.readString(marker), "previousContent").isEqualTo("previous release");
 			requireThat(Files.getLastModifiedTime(marker), "modificationTime").isEqualTo(modificationTime);
@@ -339,7 +425,7 @@ public final class ActivationTest
 			Files.createDirectories(link.getParent());
 			Files.createSymbolicLink(link, root.resolve("outside"));
 
-			provider().recoveryPlan(home, "1.0", "2.0");
+			provider().recoveryPlan(home, VERSION, NEW_VERSION);
 		}
 	}
 
@@ -351,7 +437,7 @@ public final class ActivationTest
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void relativeHomeRefused() throws IOException
 	{
-		provider().plan(Path.of("project-home"), "2.0");
+		provider().plan(Path.of("project-home"), VERSION);
 	}
 
 	/**
@@ -384,12 +470,27 @@ public final class ActivationTest
 			Files.createDirectories(link.getParent());
 			Files.createSymbolicLink(link, root.resolve("outside"));
 
-			provider().plan(home, "2.0");
+			provider().plan(home, VERSION);
 		}
 	}
 
 	/**
-	 * An invalid live manifest produces a read failure rather than a usable installed version.
+	 * Planning refuses a version that names neither a plugin version nor a release, before it resolves a folder.
+	 *
+	 * @throws IOException if planning reads an activation path
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void refusesVersionPathTraversal() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			provider().installPlan(cleanup.add(testDirectory()), "../escape");
+		}
+	}
+
+	/**
+	 * An invalid manifest in the recorded version's folder produces a read failure rather than a usable installed
+	 * version.
 	 *
 	 * @throws IOException if the fake configuration cannot be created or the read failure is returned
 	 */
@@ -399,12 +500,41 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path manifest = home.resolve("plugins/cat-marketplace/plugins/cat/.claude-plugin/plugin.json");
+			FakeClaude.recordInstalled(home, VERSION);
+			Path manifest = home.resolve(VERSION_FOLDERS).resolve(VERSION).resolve(".claude-plugin/plugin.json");
 			Files.createDirectories(manifest.getParent());
 			Files.writeString(manifest, "invalid JSON");
 
 			provider().installed(home);
 		}
+	}
+
+	/**
+	 * Writes a version's folder and records the version as Claude Code's installed version.
+	 *
+	 * @param home    the fake configuration directory
+	 * @param version the installed version
+	 * @throws IOException if a file cannot be written
+	 */
+	private static void install(Path home, String version) throws IOException
+	{
+		writeVersionFolder(home, version, version);
+		FakeClaude.recordInstalled(home, version);
+	}
+
+	/**
+	 * Writes a version folder whose plugin manifest states a version.
+	 *
+	 * @param home          the fake configuration directory
+	 * @param name          the folder's name
+	 * @param folderVersion the version that the folder's plugin manifest states
+	 * @throws IOException if the folder cannot be written
+	 */
+	private static void writeVersionFolder(Path home, String name, String folderVersion) throws IOException
+	{
+		Path manifest = home.resolve(VERSION_FOLDERS).resolve(name).resolve(".claude-plugin/plugin.json");
+		Files.createDirectories(manifest.getParent());
+		Files.writeString(manifest, "{\"name\":\"cat\",\"version\":\"" + folderVersion + "\"}\n");
 	}
 
 	/**

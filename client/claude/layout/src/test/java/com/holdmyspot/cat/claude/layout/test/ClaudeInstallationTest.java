@@ -46,6 +46,11 @@ public final class ClaudeInstallationTest
 				isEqualTo(home.resolve("plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab"));
 			requireThat(installation.dataDirectory(), "dataDirectory").isEqualTo(home.resolve("plugins/data/cat-cat"));
 			requireThat(installation.policy(), "policy").isEqualTo(home.resolve("plugins/data/cat-cat/policy.json"));
+			requireThat(installation.marketplaceManifest(), "marketplaceManifest").
+				isEqualTo(home.resolve("plugins/cat-marketplace/.claude-plugin/marketplace.json"));
+			requireThat(installation.marketplaceCache(), "marketplaceCache").isEqualTo(home.resolve("plugins/cache/cat"));
+			requireThat(installation.installedPlugins(), "installedPlugins").
+				isEqualTo(home.resolve("plugins/installed_plugins.json"));
 		}
 	}
 
@@ -68,6 +73,10 @@ public final class ClaudeInstallationTest
 
 			requireThat(moved.versionFolder(VERSION), "moved").
 				isEqualTo(home.resolve("plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab"));
+			requireThat(moved.marketplaceManifest(), "movedManifest").
+				isEqualTo(home.resolve("plugins/cat-marketplace/.claude-plugin/marketplace.json"));
+			requireThat(moved.marketplaceCache(), "movedCache").isEqualTo(home.resolve("plugins/cache/cat"));
+			requireThat(moved.installedPlugins(), "movedRecord").isEqualTo(home.resolve("plugins/installed_plugins.json"));
 			requireThat(unmoved.home(), "unmoved").isEqualTo(user.resolve(".claude"));
 		}
 	}

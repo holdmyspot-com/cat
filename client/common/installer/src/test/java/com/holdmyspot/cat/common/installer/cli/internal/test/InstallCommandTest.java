@@ -9,6 +9,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.cli.internal.Install;
@@ -44,9 +45,9 @@ public final class InstallCommandTest
 	}
 
 	/**
-	 * Install writes the plugin into the harness's marketplace folder and asks the harness to install it, which places
-	 * it in its version folder, bound to the Java runtime in that folder; the policy goes into the harness's plugin data
-	 * folder.
+	 * Install writes the plugin into the harness's marketplace folder and asks the harness to install the archive's
+	 * version, which places it in its version folder, bound to the Java runtime in that folder; the policy goes into
+	 * the harness's plugin data folder.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if install refuses
@@ -71,6 +72,8 @@ public final class InstallCommandTest
 				isEqualTo(versionFolder.resolve("bin/runtime") + "\n");
 			requireThat(fixture.integration.calls(), "calls").isEqualTo(List.of("requireIdentity",
 				"validateConfiguration", "register", "installPermissions"));
+			requireThat(fixture.integration.registered(), "registered").
+				isEqualTo(List.of(PluginVersion.parse(PluginArchive.VERSION)));
 			Path policyFile = fixture.home.resolve("plugins/data/cat-cat/policy.json");
 			TrustPolicy policy = TrustPolicy.read(policyFile);
 			requireThat(policy.harnesses(), "harnesses").isEqualTo(Map.of("harness-a", fixture.home));

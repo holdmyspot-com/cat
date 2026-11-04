@@ -100,21 +100,22 @@ public interface HarnessIntegration
 	void validateConfiguration(Path home) throws IOException;
 
 	/**
-	 * Asks the harness to install the plugin that the installer wrote into the {@link #marketplaceFolder marketplace
-	 * folder}, which places it in its version folder, or registers the plugin files already activated under
-	 * {@code home}. A failure does not undo what
-	 * this call registered before it failed: the installer calls {@link #unregister} after a failed registration only
-	 * when that registration was part of an install where the harness had no plugin, and never after a failed update,
-	 * repair or registration of a plugin that is already up to date, whose plugin files stay registered where they
-	 * are.
+	 * Asks the harness to install one plugin version that the installer wrote into the
+	 * {@link #marketplaceFolder marketplace folder}, which places it in that version's folder, or registers that
+	 * version's plugin files already activated under {@code home}. Registration chooses the version folder by
+	 * {@code version} alone, whatever other version folders are present. A failure does not undo what this call
+	 * registered before it failed: the installer calls {@link #unregister} after a failed registration only when that
+	 * registration was part of an install where the harness had no plugin, and never after a failed update, repair or
+	 * registration of a plugin that is already up to date, whose plugin files stay registered where they are.
 	 *
 	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param version  the plugin version to register
 	 * @param cli      runs the recorded harness program
 	 * @param replacer replaces each file that registration writes, retrying while Windows refuses the replacement
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if registration fails
+	 * @throws IOException          if registration fails, or the harness does not run {@code version} afterward
 	 */
-	void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException;
+	void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer) throws IOException;
 
 	/**
 	 * Unregisters CAT from the harness. An answer that CAT is not registered is success.

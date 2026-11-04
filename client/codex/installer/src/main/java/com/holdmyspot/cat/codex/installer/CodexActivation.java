@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.installer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.ActivationStep;
 import com.holdmyspot.cat.common.installer.activation.AddDirectory;
@@ -29,9 +30,10 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Describes the CAT-owned files that Codex loads, without changing its configuration.
  * <p>
- * Codex loads the highest numeric cache directory, with a developer's {@code local} directory taking precedence.
- * Its session-start refresh compares that directory name with the marketplace source's manifest version. Updating
- * the source before the cache makes a refresh after an interrupted activation converge on the new release.
+ * Codex loads the cache folder that {@link CodexVersions} chooses: a developer's {@code local} folder, otherwise the
+ * greatest version folder name. Its session-start refresh compares that directory name with the marketplace source's
+ * manifest version. Updating the source before the cache makes a refresh after an interrupted activation converge on
+ * the new release.
  * <p>
  * The returned steps must be executed by the installer core, which journals and reverses them on failure. This provider
  * only reads files; its observations do not prevent another process from changing those paths afterward.
@@ -49,29 +51,10 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static final String PLUGIN_MANIFEST = ".codex-plugin/plugin.json";
 	/**
-	 * The installed marketplace source that Codex copies during a version refresh.
+	 * The installer-written ownership manifest in CAT's data directory, which authorizes replacing CAT's custom
+	 * agents.
 	 */
-	private static final Path MARKETPLACE_PLUGIN = Path.of("plugins/cat-marketplace/plugins/cat");
-	/**
-	 * The marketplace root that CAT registers with Codex.
-	 */
-	private static final Path MARKETPLACE_ROOT = Path.of("plugins/cat-marketplace");
-	/**
-	 * Codex's cache directory for CAT's marketplace, which also holds CAT's staging and previous-installation slots.
-	 */
-	private static final Path MARKETPLACE_CACHE = Path.of("plugins/cache/cat");
-	/**
-	 * The directory whose real children Codex scans for active versions.
-	 */
-	private static final Path CACHE_VERSIONS = Path.of("plugins/cache/cat/cat");
-	/**
-	 * The agents directory, shared with user-owned agents.
-	 */
-	private static final Path AGENTS = Path.of("agents");
-	/**
-	 * The installer-written ownership manifest that authorizes replacing CAT's custom agents.
-	 */
-	private static final Path AGENT_OWNERSHIP = Path.of("plugins/data/cat-cat/codex-agent-files");
+	private static final String AGENT_OWNERSHIP = "codex-agent-files";
 	/**
 	 * The text that starts the name of every custom agent that CAT writes.
 	 */
@@ -81,13 +64,9 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static final String AGENT_SOURCES = "agents/codex";
 	/**
-	 * CAT's data in this harness, which uninstall keeps unless asked to delete it.
+	 * The file in CAT's data directory that holds the last data migration applied to this installation.
 	 */
-	private static final Path DATA_DIRECTORY = Path.of("plugins/data/cat-cat");
-	/**
-	 * The last data migration applied to this installation.
-	 */
-	private static final Path MIGRATION_VERSION = Path.of("plugins/data/cat-cat/migration-version");
+	private static final String MIGRATION_VERSION = "migration-version";
 	/**
 	 * Bounds one installed plugin manifest to 1 MiB before building its JSON tree.
 	 */
@@ -117,8 +96,9 @@ public final class CodexActivation implements PluginActivation
 	}
 
 	/**
-	 * Reads the selected cache version. A real {@code local} directory takes precedence and is always inconsistent;
-	 * otherwise both plugin manifests must equal the highest release directory name for the state to be consistent.
+	 * Reads the cache version that Codex loads. A real {@code local} directory takes precedence and is always
+	 * inconsistent; otherwise both plugin manifests must equal the loaded directory's name for the state to be
+	 * consistent.
 	 * Without a cache version, the state is consistent only when neither the marketplace root nor any entry of the
 	 * plugin's cache directory remains. Leftover custom agents and their ownership manifest do not make it
 	 * inconsistent, because installation replaces the agents that the manifest lists.
@@ -128,16 +108,17 @@ public final class CodexActivation implements PluginActivation
 	@Override
 	public InstalledState installed(Path home) throws IOException
 	{
-		Path cache = target(home, CACHE_VERSIONS);
-		Path source = target(home, MARKETPLACE_PLUGIN);
-		String active = selectVersion(cache);
+		CodexInstallation layout = installation(home);
+		Path cache = target(home, layout.versionFolders());
+		Path source = target(home, layout.marketplacePlugin());
+		String active = CodexVersions.active(cache).orElse(null);
 		if (active == null)
 			return new InstalledState(Optional.empty(), !hasLeftovers(home));
-		if (active.equals("local"))
+		if (active.equals(CodexVersions.LOCAL))
 			return new InstalledState(Optional.of(active), false);
 
-		String sourceVersion = readVersion(target(home, MARKETPLACE_PLUGIN.resolve(PLUGIN_MANIFEST)));
-		String cacheVersion = readVersion(target(home, CACHE_VERSIONS.resolve(active).resolve(PLUGIN_MANIFEST)));
+		String sourceVersion = readVersion(target(home, source.resolve(PLUGIN_MANIFEST)));
+		String cacheVersion = readVersion(target(home, cache.resolve(active).resolve(PLUGIN_MANIFEST)));
 		boolean copiesAgree = active.equals(sourceVersion) && active.equals(cacheVersion) &&
 			Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS);
 		return new InstalledState(Optional.of(active), copiesAgree);
@@ -155,14 +136,16 @@ public final class CodexActivation implements PluginActivation
 	@Override
 	public List<ActivationStep> plan(Path home, String newVersion) throws IOException
 	{
+		CodexInstallation layout = installation(home);
 		validateVersion(newVersion, "newVersion");
 		List<ActivationStep> addition = activationSteps(home, newVersion, false);
 		InstalledState state = installed(home);
 		String active = state.version().orElse(null);
-		if (Objects.equals(active, "local"))
+		if (Objects.equals(active, CodexVersions.LOCAL))
 			throw new IOException("A local developer installation is active; use explicit setup to replace it: " +
-				target(home, CACHE_VERSIONS));
-		if (active == null || !Files.isDirectory(target(home, MARKETPLACE_PLUGIN), LinkOption.NOFOLLOW_LINKS))
+				target(home, layout.versionFolders()));
+		Path source = target(home, layout.marketplacePlugin());
+		if (active == null || !Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("CAT is not installed in both the cache and marketplace; run explicit setup: " + home);
 
 		if (newVersion.equals(active))
@@ -180,10 +163,11 @@ public final class CodexActivation implements PluginActivation
 	public List<ActivationStep> recoveryPlan(Path home, String previousVersion, String newVersion)
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		CodexInstallation layout = installation(home);
 		validateVersion(previousVersion, "previousVersion");
 		validateVersion(newVersion, "newVersion");
-		target(home, MARKETPLACE_PLUGIN.resolve(PLUGIN_MANIFEST));
-		target(home, CACHE_VERSIONS.resolve(previousVersion).resolve(PLUGIN_MANIFEST));
+		target(home, layout.marketplacePlugin().resolve(PLUGIN_MANIFEST));
+		target(home, layout.versionFolders().resolve(previousVersion).resolve(PLUGIN_MANIFEST));
 		return activationSteps(home, newVersion, previousVersion.equals(newVersion));
 	}
 
@@ -197,10 +181,11 @@ public final class CodexActivation implements PluginActivation
 	@Override
 	public List<ActivationStep> installPlan(Path home, String newVersion)
 	{
+		CodexInstallation layout = installation(home);
 		validateVersion(newVersion, "newVersion");
-		Path source = target(home, MARKETPLACE_PLUGIN);
-		Path newCache = target(home, CACHE_VERSIONS.resolve(newVersion));
-		target(home, MIGRATION_VERSION);
+		Path source = target(home, layout.marketplacePlugin());
+		Path newCache = target(home, layout.versionFolders().resolve(newVersion));
+		target(home, layout.dataDirectory().resolve(MIGRATION_VERSION));
 		return List.of(ownedAgents(home), new AddDirectory(source, source.getParent()),
 			new AddDirectory(newCache, newCache.getParent().getParent()));
 	}
@@ -217,9 +202,10 @@ public final class CodexActivation implements PluginActivation
 	@Override
 	public List<Path> removalPaths(Path home) throws IOException
 	{
-		Path marketplace = target(home, MARKETPLACE_ROOT);
-		Path cache = target(home, MARKETPLACE_CACHE);
-		Path ownership = target(home, AGENT_OWNERSHIP);
+		CodexInstallation layout = installation(home);
+		Path marketplace = target(home, layout.marketplaceRoot());
+		Path cache = target(home, layout.versionFolders().getParent());
+		Path ownership = target(home, layout.dataDirectory().resolve(AGENT_OWNERSHIP));
 		List<Path> paths = new ArrayList<>();
 		if (Files.exists(marketplace, LinkOption.NOFOLLOW_LINKS))
 			paths.add(marketplace);
@@ -231,7 +217,7 @@ public final class CodexActivation implements PluginActivation
 		List<Path> releases = releaseCopies(home);
 		for (String name : readOwnedNames(ownership))
 		{
-			Path agent = target(home, AGENTS.resolve(name));
+			Path agent = target(home, layout.agents().resolve(name));
 			if (Files.isRegularFile(agent, LinkOption.NOFOLLOW_LINKS) && matchesRelease(agent, name, releases))
 				paths.add(agent);
 		}
@@ -247,7 +233,7 @@ public final class CodexActivation implements PluginActivation
 	@Override
 	public Path dataDirectory(Path home)
 	{
-		return target(home, DATA_DIRECTORY);
+		return target(home, installation(home).dataDirectory());
 	}
 
 	/**
@@ -259,9 +245,10 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static boolean hasLeftovers(Path home) throws IOException
 	{
-		if (Files.exists(target(home, MARKETPLACE_ROOT), LinkOption.NOFOLLOW_LINKS))
+		CodexInstallation layout = installation(home);
+		if (Files.exists(target(home, layout.marketplaceRoot()), LinkOption.NOFOLLOW_LINKS))
 			return true;
-		Path cache = target(home, CACHE_VERSIONS);
+		Path cache = target(home, layout.versionFolders());
 		if (!Files.isDirectory(cache, LinkOption.NOFOLLOW_LINKS))
 			return Files.exists(cache, LinkOption.NOFOLLOW_LINKS);
 		try (Stream<Path> entries = Files.list(cache))
@@ -280,11 +267,12 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static List<Path> releaseCopies(Path home) throws IOException
 	{
+		CodexInstallation layout = installation(home);
 		List<Path> copies = new ArrayList<>();
-		Path source = target(home, MARKETPLACE_PLUGIN);
+		Path source = target(home, layout.marketplacePlugin());
 		if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 			copies.add(source);
-		Path cache = target(home, CACHE_VERSIONS);
+		Path cache = target(home, layout.versionFolders());
 		if (!Files.isDirectory(cache, LinkOption.NOFOLLOW_LINKS))
 			return copies;
 		try (Stream<Path> entries = Files.list(cache))
@@ -400,10 +388,11 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static List<ActivationStep> activationSteps(Path home, String newVersion, boolean replaceCache)
 	{
-		Path source = target(home, MARKETPLACE_PLUGIN);
-		Path cache = target(home, CACHE_VERSIONS);
-		Path newCache = target(home, CACHE_VERSIONS.resolve(newVersion));
-		target(home, MIGRATION_VERSION);
+		CodexInstallation layout = installation(home);
+		Path source = target(home, layout.marketplacePlugin());
+		Path cache = target(home, layout.versionFolders());
+		Path newCache = target(home, layout.versionFolders().resolve(newVersion));
+		target(home, layout.dataDirectory().resolve(MIGRATION_VERSION));
 		ActivationStep cacheStep;
 		if (replaceCache)
 			cacheStep = new ReplaceDirectory(newCache, cache.getParent());
@@ -421,7 +410,9 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static ReplaceOwnedFiles ownedAgents(Path home)
 	{
-		return new ReplaceOwnedFiles(target(home, AGENTS), target(home, AGENT_OWNERSHIP), AGENT_PREFIX,
+		CodexInstallation layout = installation(home);
+		return new ReplaceOwnedFiles(target(home, layout.agents()),
+			target(home, layout.dataDirectory().resolve(AGENT_OWNERSHIP)), AGENT_PREFIX,
 			AGENT_SOURCES, "*.toml");
 	}
 
@@ -433,72 +424,49 @@ public final class CodexActivation implements PluginActivation
 	@Override
 	public Path migrationVersionFile(Path home)
 	{
-		return target(home, MIGRATION_VERSION);
+		CodexInstallation layout = installation(home);
+		return target(home, layout.dataDirectory().resolve(MIGRATION_VERSION));
 	}
 
 	/**
-	 * Resolves one installation target, refusing links from the recorded home through its final component.
+	 * Returns the Codex installation in a home.
 	 *
-	 * @param home     the absolute harness home
-	 * @param relative the target within that home
-	 * @return the absolute normalized target
+	 * @param home the absolute harness home
+	 * @return the installation
 	 * @throws NullPointerException     if {@code home} is null
-	 * @throws IllegalArgumentException if {@code home} is relative or an existing target component is a symbolic link
+	 * @throws IllegalArgumentException if {@code home} is relative
 	 */
-	private static Path target(Path home, Path relative)
+	private static CodexInstallation installation(Path home)
+	{
+		return new CodexInstallation(home);
+	}
+
+	/**
+	 * Refuses links from the recorded home through one installation target's final component.
+	 *
+	 * @param home   the absolute harness home
+	 * @param target the absolute target within that home
+	 * @return the normalized target
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative, {@code target} is not within it, or an existing
+	 *                                  target component is a symbolic link
+	 */
+	private static Path target(Path home, Path target)
 	{
 		requireThat(home, "home").isAbsolute();
 		home = home.normalize();
+		Path normalized = target.normalize();
+		requireThat(normalized.startsWith(home), "target.startsWith(home)").isTrue();
 		Path current = home;
 		if (Files.isSymbolicLink(current))
 			throw new IllegalArgumentException("An activation path is a symbolic link: " + current);
-		for (Path name : relative)
+		for (Path name : home.relativize(normalized))
 		{
 			current = current.resolve(name);
 			if (Files.isSymbolicLink(current))
 				throw new IllegalArgumentException("An activation path is a symbolic link: " + current);
 		}
 		return current;
-	}
-
-	/**
-	 * Selects a real local directory first, otherwise the directory of the highest CAT release, whether its name is a
-	 * plugin version or a bare release version.
-	 *
-	 * @param cache the directory Codex scans for versions
-	 * @return the selected name, or null when the cache has no real version directories
-	 * @throws IOException if an existing cache cannot be listed
-	 */
-	private static String selectVersion(Path cache) throws IOException
-	{
-		if (Files.notExists(cache, LinkOption.NOFOLLOW_LINKS))
-			return null;
-		ReleaseVersion highest = null;
-		String selected = null;
-		try (Stream<Path> entries = Files.list(cache))
-		{
-			for (Path entry : (Iterable<Path>) entries.sorted()::iterator)
-			{
-				if (!Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
-					continue;
-				String name = entry.getFileName().toString();
-				if (name.equals("local"))
-					return name;
-				ReleaseVersion version = release(name);
-				if (version == null)
-					continue;
-				int order = 1;
-				if (highest != null)
-					order = version.compareTo(highest);
-				// Of two folders of one release, the one that names its build is the one that Codex created
-				if (order > 0 || (order == 0 && name.contains(PluginVersion.BUILD_SEPARATOR)))
-				{
-					highest = version;
-					selected = name;
-				}
-			}
-		}
-		return selected;
 	}
 
 	/**

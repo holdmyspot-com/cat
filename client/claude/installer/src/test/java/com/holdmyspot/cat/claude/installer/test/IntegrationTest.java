@@ -256,33 +256,45 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Registration without a named version registers the only version folder, and refuses to guess between several.
+	 * Returns two builds of one release, in both orders: the build that Claude Code records as installed and the build
+	 * that registration names.
 	 *
+	 * @return the installed and the registered version
+	 */
+	@DataProvider
+	public Object[][] buildPairs()
+	{
+		return new Object[][]
+		{
+			{VERSION, NEW_VERSION},
+			{NEW_VERSION, VERSION}
+		};
+	}
+
+	/**
+	 * With two version folders of one release present, registration through the harness integration switches Claude
+	 * Code to the folder of the version that it names, whichever of the two is installed or was written first.
+	 *
+	 * @param installed  the version that Claude Code records as installed, whose folder is written first
+	 * @param registered the version to register
 	 * @throws IOException if the fixture cannot be created or registration fails
 	 */
-	@Test
-	public void registerFindsOnlyVersionFolder() throws IOException
+	@Test(dataProvider = "buildPairs")
+	public void registerChoosesNamedVersionFolder(PluginVersion installed, PluginVersion registered)
+		throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path versionFolder = writeVersionFolder(home, VERSION);
+			writeVersionFolder(home, installed);
+			FakeClaude.recordInstalled(home, installed.toString());
+			Path registeredFolder = writeVersionFolder(home, registered);
 			FakeClaude claude = new FakeClaude(home);
-			Integration integration = integration();
+			HarnessIntegration integration = integration();
 
-			integration.register(home, claude, replacer());
-			writeVersionFolder(home, NEW_VERSION);
+			integration.register(home, registered, claude, replacer());
 
-			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(versionFolder));
-			try
-			{
-				integration.register(home, new FakeClaude(home), replacer());
-				throw new AssertionError("Registration chose between two version folders");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains("2 version folders");
-			}
+			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(registeredFolder));
 		}
 	}
 

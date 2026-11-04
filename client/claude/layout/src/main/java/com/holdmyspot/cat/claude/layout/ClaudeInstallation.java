@@ -73,4 +73,34 @@ public record ClaudeInstallation(Path home) implements HarnessInstallation
 	{
 		return home.resolve("plugins/data/cat-cat");
 	}
+
+	/**
+	 * Returns the manifest of CAT's marketplace, which names the version folder that Claude Code loads CAT from.
+	 *
+	 * @return {@code .claude-plugin/marketplace.json} in the marketplace folder
+	 */
+	public Path marketplaceManifest()
+	{
+		return marketplaceRoot().resolve(".claude-plugin/marketplace.json");
+	}
+
+	/**
+	 * Returns the folder of Claude Code's plugin cache that holds its copies of the plugins of CAT's marketplace.
+	 *
+	 * @return {@code cat} in the plugin cache
+	 */
+	public Path marketplaceCache()
+	{
+		return cacheRoot().resolve("cat");
+	}
+
+	/**
+	 * Returns Claude Code's record of its installed plugins, which states the version of CAT that it loads.
+	 *
+	 * @return {@code plugins/installed_plugins.json} in the configuration directory
+	 */
+	public Path installedPlugins()
+	{
+		return home.resolve("plugins/installed_plugins.json");
+	}
 }

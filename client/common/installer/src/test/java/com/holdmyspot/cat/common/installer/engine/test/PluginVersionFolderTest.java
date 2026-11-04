@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.tes
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
@@ -15,6 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -136,6 +138,56 @@ public final class PluginVersionFolderTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(Files.getLastModifiedTime(live), "liveModified").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * An update registers the version that it installed, not the active version whose folder is still present.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void updateRegistersInstalledVersion() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("full-version-register-"));
+			Path home = plugin(root, "1.1+b000000000000");
+			Path data = root.resolve("data");
+			Releases.installation(data, "1.1");
+			RecordingIntegration integration = new RecordingIntegration();
+
+			UpdateResult result = engine(data, home).update("v1.1", integration.session());
+
+			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
+			requireThat(integration.registered(), "registered").isEqualTo(List.of(PluginVersion.parse(PLUGIN_VERSION)));
+		}
+	}
+
+	/**
+	 * An update that finds the signed build active registers that build again.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void upToDateRegistersActiveVersion() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("full-version-reregister-"));
+			Path home = plugin(root, PLUGIN_VERSION);
+			Files.writeString(Files.createDirectories(home.resolve("versions/1.1+b000000000000")).resolve("version"),
+				"1.1+b000000000000");
+			Path data = root.resolve("data");
+			Releases.installation(data, "1.1");
+			RecordingIntegration integration = new RecordingIntegration();
+
+			UpdateResult result = engine(data, home).update("v1.1", integration.session());
+
+			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
+			requireThat(integration.registered(), "registered").isEqualTo(List.of(PluginVersion.parse(PLUGIN_VERSION)));
 		}
 	}
 

@@ -46,6 +46,11 @@ public final class CodexInstallationTest
 				isEqualTo(home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab"));
 			requireThat(installation.dataDirectory(), "dataDirectory").isEqualTo(home.resolve("plugins/data/cat-cat"));
 			requireThat(installation.policy(), "policy").isEqualTo(home.resolve("plugins/data/cat-cat/policy.json"));
+			requireThat(installation.marketplaceManifest(), "marketplaceManifest").
+				isEqualTo(home.resolve("plugins/cat-marketplace/.agents/plugins/marketplace.json"));
+			requireThat(installation.agents(), "agents").isEqualTo(home.resolve("agents"));
+			requireThat(installation.rules(), "rules").isEqualTo(home.resolve("rules"));
+			requireThat(installation.configuration(), "configuration").isEqualTo(home.resolve("config.toml"));
 		}
 	}
 
@@ -68,6 +73,11 @@ public final class CodexInstallationTest
 
 			requireThat(moved.versionFolder(VERSION), "moved").
 				isEqualTo(home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab"));
+			requireThat(moved.marketplaceManifest(), "movedManifest").
+				isEqualTo(home.resolve("plugins/cat-marketplace/.agents/plugins/marketplace.json"));
+			requireThat(moved.agents(), "movedAgents").isEqualTo(home.resolve("agents"));
+			requireThat(moved.rules(), "movedRules").isEqualTo(home.resolve("rules"));
+			requireThat(moved.configuration(), "movedConfiguration").isEqualTo(home.resolve("config.toml"));
 			requireThat(unmoved.home(), "unmoved").isEqualTo(user.resolve(".codex"));
 		}
 	}
