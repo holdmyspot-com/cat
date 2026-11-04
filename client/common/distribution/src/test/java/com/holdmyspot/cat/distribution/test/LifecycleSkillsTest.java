@@ -81,8 +81,8 @@ public final class LifecycleSkillsTest
 			requireThat(description(Files.readString(plugin.resolve("skills/update/SKILL.md"))), "updateDescription").
 				startsWith("Use when the user asks").contains("install").contains("update").contains("upgrade");
 			String updateBody = Files.readString(plugin.resolve("skills/update/first-use.md")).replaceAll("\\s+", " ");
-			requireThat(updateBody, "updateBody").contains("cat-updater/bin/cat-updater").
-				contains("cat-updater\\bin\\cat-updater.ps1").contains("`<launcher> install --harness <h>`").
+			requireThat(updateBody, "updateBody").contains("cat-updater/<h>/bin/cat-updater").
+				contains("cat-updater\\<h>\\bin\\cat-updater.ps1").contains("`<launcher> install --harness <h>`").
 				contains("`<launcher> update --harness <h>`").contains("`<launcher> update --harness <h> <tag>`").
 				contains("`<launcher> rollback --harness <h>`").
 				contains("`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`").
@@ -91,6 +91,11 @@ public final class LifecycleSkillsTest
 				contains("`installed`").contains("`up_to_date`").contains("`refused`").
 				contains("rerun the entry command of a newer release").contains("releases/latest/download/cat.sh").
 				contains("releases/download/<tag>/cat.sh").contains("cat.ps1").contains("`-Harness <h>`").
+				contains("with no release argument").
+				contains("run `<launcher> update --harness <h> <tag>` after `install` reports `installed`").
+				contains("When its `previous_bundle` field is false").contains("do not run `rollback`").
+				contains("`pending_swap`").contains("`not_swapped`").contains("`aot_cache`").
+				contains("Do not mention `aot_cache` to the user unless they ask about it").
 				contains("Never run the launcher's `setup` operation yourself").
 				contains("restart or resume the session").doesNotContain("--updater-only").
 				doesNotContain("upgrade-self").doesNotContain("install/cat.sh").doesNotContain("bootstrap");
