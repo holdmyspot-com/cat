@@ -412,14 +412,16 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Every sandbox exclusion is one exact command without a wildcard, because Claude Code runs a whole command line
-	 * outside the sandbox when an exclusion matches any part of it. A named release reaches the updater only through
-	 * the prompt-free permission, so it runs inside the sandbox.
+	 * The only sandbox exclusion with a wildcard is the one for {@code update --harness claude} followed by a release
+	 * argument, so that a named-release update runs outside the sandbox without a prompt. Claude Code 2.1.277 and later
+	 * keep a call in the sandbox unless every command in it matches an exclusion; earlier versions ran the whole call
+	 * outside it when one command matched a wildcard exclusion, so CAT requires 2.1.277 or later. Every other exclusion
+	 * is one exact command, because no other operation takes a release.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
 	@Test
-	public void sandboxExclusionsAreExactCommands() throws IOException
+	public void onlyUpdateExclusionHasWildcard() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -429,15 +431,50 @@ public final class IntegrationTest
 			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
 			String quoted = ShellQuoting.posix(launcher.toString());
+			String updateWildcard = pattern(quoted + " update --harness claude");
 			List<String> excluded = added.get(SETTINGS_KEY_EXCLUDED);
-			for (String entry : excluded)
-				requireThat(entry, "entry").doesNotContain("*");
+			List<String> wildcards = excluded.stream().filter(entry -> entry.contains("*")).toList();
+			requireThat(wildcards, "wildcards").isEqualTo(List.of(updateWildcard));
 			requireThat(excluded, "excluded").containsExactly(List.of(quoted + " install --harness claude",
-				quoted + " update --harness claude", quoted + " update --harness claude latest", quoted + " status",
-				quoted + " status --harness claude", quoted + " rollback --harness claude",
+				quoted + " update --harness claude", quoted + " update --harness claude latest", updateWildcard,
+				quoted + " status", quoted + " status --harness claude", quoted + " rollback --harness claude",
 				quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data"));
-			requireThat(added.get(SETTINGS_KEY_ALLOW), "allowed").contains(
-				"Bash(" + pattern(quoted + " update --harness claude") + ")");
+			requireThat(added.get(SETTINGS_KEY_ALLOW), "allowed").contains("Bash(" + updateWildcard + ")");
+		}
+	}
+
+	/**
+	 * Permission installation on an installation whose settings hold the earlier exact-only exclusions adds the
+	 * named-release update exclusion and returns only that entry, so that the permission record gains it.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void permissionsUpgradeEarlierEntries() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = home.resolve("data/bin/cat-updater");
+			Map<String, List<String>> expected = posixEntries(launcher);
+			String quoted = ShellQuoting.posix(launcher.toString());
+			String updateWildcard = pattern(quoted + " update --harness claude");
+			StringJoiner earlierExcluded = new StringJoiner(",");
+			for (String entry : expected.get(SETTINGS_KEY_EXCLUDED))
+			{
+				if (!entry.equals(updateWildcard))
+					earlierExcluded.add(json(entry));
+			}
+			StringJoiner allowed = new StringJoiner(",");
+			for (String entry : expected.get(SETTINGS_KEY_ALLOW))
+				allowed.add(json(entry));
+			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" + earlierExcluded +
+				"]},\"permissions\":{\"allow\":[" + allowed + "]}}");
+
+			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
+
+			requireThat(added, "added").isEqualTo(Map.of(SETTINGS_KEY_EXCLUDED, List.of(updateWildcard)));
+			requireThat(Files.readString(home.resolve("settings.json")), "settings").contains(json(updateWildcard));
 		}
 	}
 
@@ -461,8 +498,8 @@ public final class IntegrationTest
 				"\"";
 			requireThat(added.get(SETTINGS_KEY_EXCLUDED), "excluded").isEqualTo(List.of(
 				prefix + " install --harness claude", prefix + " update --harness claude",
-				prefix + " update --harness claude latest", prefix + " status", prefix + " status --harness claude",
-				prefix + " rollback --harness claude",
+				prefix + " update --harness claude latest", pattern(prefix + " update --harness claude"),
+				prefix + " status", prefix + " status --harness claude", prefix + " rollback --harness claude",
 				prefix + " uninstall --harness claude", prefix + " uninstall --harness claude --delete-data"));
 		}
 	}
@@ -748,7 +785,7 @@ public final class IntegrationTest
 		String quoted = ShellQuoting.posix(launcher.toString()).replace("*", "'\\*'");
 		String install = quoted + " install --harness claude";
 		String update = quoted + " update --harness claude";
-		List<String> excluded = List.of(install, update, update + " latest", quoted + " status",
+		List<String> excluded = List.of(install, update, update + " latest", pattern(update), quoted + " status",
 			quoted + " status --harness claude", quoted + " rollback --harness claude",
 			quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data");
 		List<String> allowed = List.of("Bash(" + install + ")", "Bash(" + update + ")",

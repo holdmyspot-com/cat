@@ -3,6 +3,7 @@
 CAT v1.0 provides distributions for Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, macOS ARM64, and
 Windows x64. Windows ARM64 is not supported. You install CAT for a harness with one command that you run yourself.
 Afterwards your agent installs, updates and uninstalls CAT for that harness through its installed trusted updater.
+CAT's Claude Code support needs Claude Code 2.1.277 or later.
 
 CAT is one bundle per harness: a Java runtime, the trusted updater and the harness's CAT plugin. The bundle is
 installed, updated, rolled back and removed as a whole. Claude Code and Codex each have their own bundle, with their own
@@ -92,12 +93,15 @@ its own harness: its updater refuses a `--harness` that names the other one.
 Setup adds the permission entries for exactly those operations on the installed launcher's absolute path, and records
 the entries it added so that uninstall removes only those. Each harness's entries name that harness's own launcher. In
 Claude Code, it adds them to `sandbox.excludedCommands` and `permissions.allow` in `settings.json` in your Claude home,
-keeping every other setting. Each sandbox exclusion is one exact command without a wildcard, because Claude Code runs a
-whole command line outside its sandbox when an exclusion matches part of it. An update to a release that the agent
-names, such as `update --harness claude v1.1`, is therefore allowed without a prompt but runs inside the sandbox; when
-the sandbox blocks it, the agent gives you the exact command to run yourself. In Codex, it writes the CAT-owned file
-`rules/cat-updater.rules` in your Codex home. Setup refuses, before changing anything, a harness configuration that it
-cannot change safely, such as a malformed `settings.json` or a symbolic link in its place.
+keeping every other setting. Each sandbox exclusion is one exact command, except the one for `update --harness claude`
+followed by a release. An exact entry cannot match a command line that carries anything else. Claude Code 2.1.277 and
+later run a command line outside the sandbox only when every command in it matches an entry, and a redirect, a `cd` or a
+`$(...)` keeps it sandboxed, so a command chained after the launcher stays sandboxed. Earlier versions ran the whole
+command line outside the sandbox when one command matched a wildcard entry, so CAT's Claude Code support needs Claude
+Code 2.1.277 or later. An update to a release that the agent names, such as `update --harness claude v1.1`, matches that
+wildcard entry and the allowed entry, so it runs outside the sandbox and without a prompt. In Codex, it writes the
+CAT-owned file `rules/cat-updater.rules` in your Codex home. Setup refuses, before changing anything, a harness
+configuration that it cannot change safely, such as a malformed `settings.json` or a symbolic link in its place.
 
 In the table, `<h>` is `claude` or `codex`, and `<data>` is the harness's installation directory.
 

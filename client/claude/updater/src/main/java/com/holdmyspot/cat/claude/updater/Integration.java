@@ -364,10 +364,13 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the entries for each setting. Every sandbox exclusion is one exact command, because Claude Code runs a
-	 * whole command line outside the sandbox when an exclusion matches any command in it, so a wildcard would let a
-	 * command chained after the launcher escape the sandbox. An update to a named release is allowed by a permission
-	 * pattern only, which Claude Code matches against each command separately, so that update runs inside the sandbox.
+	 * Returns the entries for each setting. Every sandbox exclusion is one exact command except the pattern for
+	 * {@code update --harness claude} followed by a release, so an update to a named release runs outside the sandbox
+	 * without a prompt. Claude Code 2.1.277 and later run a call outside the sandbox only when every command in it
+	 * matches an exclusion, and a redirect, a {@code cd} or a command substitution keeps the call sandboxed, so a
+	 * command chained after the launcher stays inside the sandbox. Earlier versions ran the whole call outside the
+	 * sandbox when one command matched a wildcard exclusion, so CAT's Claude Code support requires 2.1.277 or later.
+	 * Every other exclusion stays exact, because no other operation takes a release.
 	 *
 	 * @param stableLauncher the absolute path of the installed stable updater launcher
 	 * @return the sandbox exclusions and the prompt-free permissions, in a stable order
@@ -382,7 +385,8 @@ public final class Integration implements HarnessIntegration
 		List<String> uninstall = List.of(launcher + " uninstall --harness claude",
 			launcher + " uninstall --harness claude --delete-data");
 
-		List<String> excluded = new ArrayList<>(List.of(install, update, update + " latest"));
+		List<String> excluded = new ArrayList<>(List.of(install, update, update + " latest",
+			versionPattern(update)));
 		excluded.addAll(status);
 		excluded.add(launcher + " rollback --harness claude");
 		excluded.addAll(uninstall);

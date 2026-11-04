@@ -206,8 +206,15 @@ public final class LifecycleSkillsTest
 				}
 			}
 			requireThat(commands, "commands").isNotEmpty();
+			List<String> exclusions = entries.getOrDefault("settings.json#sandbox.excludedCommands", List.of());
 			for (String command : commands)
 			{
+				if (harness.equals("claude"))
+				{
+					// A command the skill runs must be excluded from the sandbox, or the sandbox may block it
+					requireThat(exclusions.stream().anyMatch(exclusion -> matches(exclusion, command)),
+						"isExcluded").withContext(command, "command").withContext(exclusions, "exclusions").isTrue();
+				}
 				requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
 					withContext(entries, "entries").isTrue();
 			}
@@ -231,7 +238,7 @@ public final class LifecycleSkillsTest
 			{
 				boolean permitted = switch (setting.getKey())
 				{
-					case "settings.json#sandbox.excludedCommands" -> entry.equals(command);
+					case "settings.json#sandbox.excludedCommands" -> matches(entry, command);
 					case "settings.json#permissions.allow" -> allows(entry, command);
 					case "rules/cat-updater.rules#" -> hasPrefixRule(entry, command);
 					default -> throw new AssertionError("Unknown permission setting: " + setting.getKey());
@@ -252,7 +259,18 @@ public final class LifecycleSkillsTest
 	 */
 	private static boolean allows(String rule, String command)
 	{
-		String pattern = rule.substring("Bash(".length(), rule.length() - 1);
+		return matches(rule.substring("Bash(".length(), rule.length() - 1), command);
+	}
+
+	/**
+	 * Returns whether a Claude Code command pattern matches a command.
+	 *
+	 * @param pattern the pattern, a command or {@code <prefix> *}
+	 * @param command the command
+	 * @return true if the pattern names the command or a prefix of it followed by more arguments
+	 */
+	private static boolean matches(String pattern, String command)
+	{
 		if (pattern.endsWith(" *"))
 		{
 			String prefix = pattern.substring(0, pattern.length() - 1);
