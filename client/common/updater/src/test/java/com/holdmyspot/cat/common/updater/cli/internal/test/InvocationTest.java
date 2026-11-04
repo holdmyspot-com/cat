@@ -449,8 +449,8 @@ public final class InvocationTest
 	}
 
 	/**
-	 * Setup from an extracted archive with a local plugin tree reports the updater version, the plugin version, the
-	 * stable launcher and the permission entries that it installed.
+	 * Setup from an extracted archive with a local plugin tree reports the updater version, the plugin version, whether
+	 * the plugin got its startup cache, the stable launcher and the permission entries that it installed.
 	 *
 	 * @throws IOException if the fixture cannot be created or the output cannot be read
 	 */
@@ -479,6 +479,9 @@ public final class InvocationTest
 			requireThat(result.path("result").stringValue(), "result").isEqualTo("set_up");
 			requireThat(result.path("version").stringValue(), "version").isEqualTo("1.2");
 			requireThat(result.path("plugin_version").stringValue(), "pluginVersion").isEqualTo("1.2");
+			// The fixture plugin tree does not describe how to train its startup cache
+			requireThat(result.path("aot_cache").isBoolean(), "aotCacheReported").isTrue();
+			requireThat(result.path("aot_cache").booleanValue(), "aotCache").isFalse();
 			requireThat(result.path("launcher").stringValue(), "launcher").
 				isEqualTo(root.resolve("data/cat-updater/harness-a/bin/cat-updater").toString());
 			requireThat(result.path("permissions").path("settings.json").get(0).stringValue(), "permission").

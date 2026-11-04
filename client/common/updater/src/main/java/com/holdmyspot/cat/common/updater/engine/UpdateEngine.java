@@ -43,7 +43,8 @@ import java.util.stream.Stream;
 
 /**
  * Coordinates authenticated plugin installs and updates without executing staged code. Harness configuration changes
- * only through the harness integration's registration.
+ * only through the harness integration's registration. Once an install, update or rollback has activated a plugin
+ * directory, its session-start program runs to write the directory's startup cache.
  */
 public final class UpdateEngine
 {
@@ -71,6 +72,7 @@ public final class UpdateEngine
 	private final Clock clock;
 	private final Waiting waiting;
 	private final Duration lockWait;
+	private final StartupCacheTrainer trainer;
 
 	/**
 	 * Creates an engine with a ten-minute lock wait.
@@ -128,6 +130,7 @@ public final class UpdateEngine
 		this.clock = clock;
 		this.waiting = waiting;
 		this.lockWait = lockWait;
+		this.trainer = new StartupCacheTrainer(state.directory().resolve("startup-cache"), Duration.ofMinutes(1));
 	}
 
 	/**
@@ -286,7 +289,8 @@ public final class UpdateEngine
 			{
 				if (!lock.isValid())
 					return result(Result.LOCKED, null, null, "The harness lock is no longer valid.", List.of());
-				return log(operateLocked(mode, requestedTag, localTree, registration, home, transaction));
+				return trainer.afterActivation(log(operateLocked(mode, requestedTag, localTree, registration, home,
+					transaction)), activation, home);
 			}
 		}
 		catch (ActivationTransaction.ActivationFailure e)

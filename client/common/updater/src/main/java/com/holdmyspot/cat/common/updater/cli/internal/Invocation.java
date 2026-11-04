@@ -324,6 +324,7 @@ public final class Invocation
 			Optional.empty(), "CAT is set up for " + harness + ".", List.of(locations.data(), locations.policy()),
 			true, outcome.policy().keys().stream().map(TrustedKey::id).toList()));
 		object.put("plugin_version", plugin.version().orElse(""));
+		plugin.aotCache().ifPresent(written -> object.put("aot_cache", written));
 		object.put("launcher", outcome.launcher().toString());
 		ObjectNode permissions = object.putObject("permissions");
 		for (Map.Entry<String, List<String>> entry : outcome.permissions().entrySet())
@@ -465,6 +466,7 @@ public final class Invocation
 		object.set("key_ids", mapper.valueToTree(result.keyIds()));
 		if (result.result() == Result.STATUS)
 			object.put("installed", result.version().isPresent());
+		result.aotCache().ifPresent(written -> object.put("aot_cache", written));
 		return object;
 	}
 

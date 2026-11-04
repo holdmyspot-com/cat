@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
@@ -37,6 +38,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
@@ -48,6 +51,12 @@ public final class DistributionMain
 	 * The file of a plugin's {@code client} folder that names the Java runtime that the plugin needs.
 	 */
 	private static final String RUNTIME_REQUIREMENT = "runtime-requirement.json";
+	/**
+	 * The input that a harness gives its session-start hook when a new session starts, which an installation gives the
+	 * plugin's session-start program to train the plugin's startup cache.
+	 */
+	private static final String SESSION_START_INPUT = "{\"session_id\":\"00000000-0000-4000-8000-000000000000\"," +
+		"\"hook_event_name\":\"SessionStart\",\"source\":\"startup\"}";
 
 	static
 	{
@@ -99,6 +108,12 @@ public final class DistributionMain
 			public void writeRuntimeBinding(Path plugin, Path runtime) throws IOException
 			{
 				DistributionMain.writeRuntimeBinding(plugin, runtime);
+			}
+
+			@Override
+			public void writeStartupCacheTraining(Path client, String harness, JsonMapper json) throws IOException
+			{
+				DistributionMain.writeStartupCacheTraining(client, harness, json);
 			}
 
 			@Override
@@ -244,8 +259,10 @@ public final class DistributionMain
 			scope.json());
 		Path claudeClient = stageClient(claudeApplication, clientDirectory.resolve("claude"), scope.json());
 		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeClient);
+		writeStartupCacheTraining(claudeClient, "claude", scope.json());
 		Path codexClient = stageClient(codexApplication, clientDirectory.resolve("codex"), scope.json());
 		writeCodexLaunchers(codexClient, platform);
+		writeStartupCacheTraining(codexClient, "codex", scope.json());
 
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
 		LegalMaterialsBuilder legalMaterialsBuilder = new LegalMaterialsBuilder(PluginInfo.CAT_VERSION);
@@ -524,6 +541,46 @@ public final class DistributionMain
 			Files.copy(jar, modules.resolve(jar.getFileName()));
 		application.writeRequirement(client.resolve(RUNTIME_REQUIREMENT), json);
 		return client;
+	}
+
+	/**
+	 * Writes the description of how an installation trains a plugin's startup cache into the plugin's {@code client}
+	 * folder.
+	 *
+	 * @param client  the plugin's {@code client} folder
+	 * @param harness the plugin's harness, {@code claude} or {@code codex}
+	 * @param json    the JSON writer
+	 * @throws IOException if the description cannot be written
+	 */
+	static void writeStartupCacheTraining(Path client, String harness, JsonMapper json) throws IOException
+	{
+		List<Launcher> launchers;
+		String rootVariable;
+		switch (harness)
+		{
+			// The variable that names the plugin directory to the harness's hooks
+			case "claude" ->
+			{
+				launchers = claudeLaunchers();
+				rootVariable = "CLAUDE_PLUGIN_ROOT";
+			}
+			case "codex" ->
+			{
+				launchers = codexLaunchers();
+				rootVariable = "PLUGIN_ROOT";
+			}
+			default -> throw new IllegalArgumentException("Unsupported harness: " + harness);
+		}
+		Launcher sessionStart = launchers.stream().filter(launcher -> launcher.name().equals("session-start")).
+			findFirst().orElseThrow();
+		ObjectNode training = json.createObjectNode();
+		training.put("format", 1);
+		ArrayNode arguments = training.putArray("arguments");
+		PluginLaunchers.programArguments(sessionStart).forEach(arguments::add);
+		training.put("plugin_root_variable", rootVariable);
+		training.put("input", SESSION_START_INPUT);
+		Files.writeString(client.resolve(Path.of("client").relativize(StartupCache.TRAINING)),
+			json.writeValueAsString(training) + "\n", UTF_8);
 	}
 
 	/**

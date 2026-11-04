@@ -97,4 +97,15 @@ public interface DistributionMainAccess
 	 *   </ul>
 	 */
 	String dependencyCoordinates(String groupId, String artifactId, Path path);
+
+	/**
+	 * Writes the description of how an installation trains a plugin's startup cache into the plugin's {@code client}
+	 * folder.
+	 *
+	 * @param client  the plugin's {@code client} folder
+	 * @param harness the plugin's harness, {@code claude} or {@code codex}
+	 * @param json    the JSON writer
+	 * @throws IOException if the description cannot be written
+	 */
+	void writeStartupCacheTraining(Path client, String harness, JsonMapper json) throws IOException;
 }

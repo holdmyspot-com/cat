@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -62,6 +63,31 @@ public final class InstallTest
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
 			requireThat(Files.readString(data.resolve("state/harness-a/highest-version")), "highest").
 				isEqualTo("1.1\n");
+		}
+	}
+
+	/**
+	 * An install whose plugin cannot get a startup cache still installs the plugin, and reports that no startup cache
+	 * was written.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void installsWithoutStartupCache() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("install-uncached-"));
+			Path home = Files.createDirectories(root.resolve("home"));
+			Releases.installation(root.resolve("data"), "1.1");
+
+			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
+				new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
+			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(false));
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
 		}
 	}
 

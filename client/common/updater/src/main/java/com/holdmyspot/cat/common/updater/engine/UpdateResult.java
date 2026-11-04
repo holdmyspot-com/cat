@@ -18,12 +18,14 @@ import java.util.Optional;
  * @param paths           affected paths, including every recovery path on an activation failure
  * @param consistent      indicates whether the provider's installation copies agree
  * @param keyIds          the policy's trusted key identifiers
+ * @param aotCache        indicates whether the operation wrote the startup cache of every plugin directory that it
+ *                        activated, or empty when the operation activated no plugin directory
  */
 public record UpdateResult(Result result, String harness, Optional<String> version, Optional<String> previousVersion,
-	String message, List<Path> paths, boolean consistent, List<String> keyIds)
+	String message, List<Path> paths, boolean consistent, List<String> keyIds, Optional<Boolean> aotCache)
 {
 	/**
-	 * Creates an outcome, copying the path and key lists.
+	 * Creates an outcome of an operation that activated no plugin directory, copying the path and key lists.
 	 *
 	 * @param result          the outcome
 	 * @param harness         the provider identifier
@@ -36,6 +38,27 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 	 * @throws NullPointerException if any argument or list element is null
 	 * @throws IllegalArgumentException if {@code harness} or {@code message} are blank
 	 */
+	public UpdateResult(Result result, String harness, Optional<String> version, Optional<String> previousVersion,
+		String message, List<Path> paths, boolean consistent, List<String> keyIds)
+	{
+		this(result, harness, version, previousVersion, message, paths, consistent, keyIds, Optional.empty());
+	}
+
+	/**
+	 * Creates an outcome, copying the path and key lists.
+	 *
+	 * @param result          the outcome
+	 * @param harness         the provider identifier
+	 * @param version         active version, or empty
+	 * @param previousVersion previous version, or empty
+	 * @param message         user-facing explanation
+	 * @param paths           affected paths
+	 * @param consistent      indicates whether installation copies agree
+	 * @param keyIds          trusted key identifiers
+	 * @param aotCache        indicates whether every activated plugin directory got its startup cache, or empty
+	 * @throws NullPointerException if any argument or list element is null
+	 * @throws IllegalArgumentException if {@code harness} or {@code message} are blank
+	 */
 	public UpdateResult
 	{
 		requireThat(result, "result").isNotNull();
@@ -45,6 +68,19 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		requireThat(message, "message").isNotBlank();
 		paths = List.copyOf(paths);
 		keyIds = List.copyOf(keyIds);
+		requireThat(aotCache, "aotCache").isNotNull();
+	}
+
+	/**
+	 * Returns this outcome with the result of writing the startup caches of the plugin directories that it activated.
+	 *
+	 * @param written {@code true} if every activated plugin directory got its startup cache
+	 * @return the outcome
+	 */
+	public UpdateResult withAotCache(boolean written)
+	{
+		return new UpdateResult(result, harness, version, previousVersion, message, paths, consistent, keyIds,
+			Optional.of(written));
 	}
 
 	/**

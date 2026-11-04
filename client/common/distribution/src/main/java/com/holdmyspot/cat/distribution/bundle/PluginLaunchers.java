@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -80,7 +81,7 @@ public final class PluginLaunchers
 	/**
 	 * The modules that every program's launcher adds to the module graph.
 	 */
-	private static final String ADDED_MODULES = "--add-modules org.slf4j.nop ";
+	private static final List<String> ADDED_MODULES = List.of("--add-modules", "org.slf4j.nop");
 	/**
 	 * The path from a launcher in {@code client/bin} to {@code client/}.
 	 */
@@ -212,6 +213,23 @@ public final class PluginLaunchers
 	}
 
 	/**
+	 * Returns the arguments that a launcher passes to the {@value #JAVA_WRAPPER} wrapper's options to start its
+	 * program, before the launcher's own arguments.
+	 *
+	 * @param launcher the launcher
+	 * @return the arguments
+	 * @throws NullPointerException if {@code launcher} is null
+	 */
+	public static List<String> programArguments(Launcher launcher)
+	{
+		requireThat(launcher, "launcher").isNotNull();
+		List<String> arguments = new ArrayList<>(ADDED_MODULES);
+		arguments.add("-m");
+		arguments.add(launcher.module() + "/" + launcher.mainClass());
+		return List.copyOf(arguments);
+	}
+
+	/**
 	 * Writes the launchers of a plugin's {@code client/bin} folder and the {@value #JAVA_WRAPPER} wrapper, which runs
 	 * the bound {@code java} with the launchers' JVM options and the plugin's module path before its own arguments.
 	 * On Windows, each launcher also has a batch form: {@code <name>.bat}, and {@code java.cmd} for the wrapper.
@@ -248,7 +266,7 @@ public final class PluginLaunchers
 		for (Launcher launcher : launchers)
 		{
 			String program = launcher.module() + "/" + launcher.mainClass();
-			String arguments = ADDED_MODULES + "-m " + program + " ";
+			String arguments = String.join(" ", programArguments(launcher)) + " ";
 			if (posix)
 				writePosix(bin.resolve(launcher.name()), program, javaName, arguments);
 			if (platform.isWindows())

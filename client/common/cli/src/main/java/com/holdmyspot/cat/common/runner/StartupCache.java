@@ -11,6 +11,11 @@ import java.nio.file.Path;
  * location, so it is valid only where it was written. The installation that places a plugin directory writes it there;
  * release archives, copies of a plugin directory and the plugin's packaged identity leave out its folder. A plugin's
  * launchers use the cache only when the file exists.
+ * <p>
+ * The plugin describes how to train its cache in {@link #TRAINING}, a JSON object of format 1 whose members are
+ * {@code arguments}, the arguments that the plugin's {@code client/bin/java} wrapper runs its session-start program
+ * with; {@code plugin_root_variable}, the environment variable that names the plugin directory to that program; and
+ * {@code input}, the text that the program reads from its standard input.
  */
 public final class StartupCache
 {
@@ -22,6 +27,10 @@ public final class StartupCache
 	 * The cache file, relative to the plugin directory.
 	 */
 	public static final Path FILE = DIRECTORY.resolve("session-start.aot");
+	/**
+	 * The description of how to train the cache, relative to the plugin directory.
+	 */
+	public static final Path TRAINING = Path.of("client/startup-cache-training.json");
 
 	/**
 	 * Prevents construction of utility class instances.
