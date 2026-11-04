@@ -58,6 +58,27 @@ public final class LinkSafeDeletion
 	}
 
 	/**
+	 * Resolves a directory below which CAT deletes or writes link-safely, such as a harness home or the directory that
+	 * holds the updater's installations. That directory may itself be reached through symbolic links, so an operation
+	 * resolves it once when it starts and then descends from the result without following links.
+	 *
+	 * @param root an absolute directory, which may not exist yet
+	 * @return the real path of {@code root}, or the real path of its nearest existing ancestor followed by the rest of
+	 * 	{@code root}
+	 * @throws NullPointerException     if {@code root} is null
+	 * @throws IllegalArgumentException if {@code root} is not absolute
+	 * @throws IOException              if an existing ancestor cannot be resolved
+	 */
+	public static Path resolveRoot(Path root) throws IOException
+	{
+		requireThat(root, "root").isAbsolute();
+		Path existing = root.normalize();
+		while (!Files.exists(existing, NOFOLLOW_LINKS))
+			existing = existing.getParent();
+		return existing.toRealPath().resolve(existing.relativize(root.normalize())).normalize();
+	}
+
+	/**
 	 * Returns whether a path is a symbolic link, a junction or another reparse point.
 	 *
 	 * @param path an existing path

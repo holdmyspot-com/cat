@@ -106,6 +106,47 @@ public final class UninstallTest
 	}
 
 	/**
+	 * Uninstall removes an installation whose harness home, user's home and configuration directory are reached through
+	 * symbolic links, and deletes a link inside the plugin as an entry, leaving what it points to.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void removesInstallationThroughLinks() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-linked-")));
+			Path root = fixture.home.getParent();
+			Path outside = Files.writeString(root.resolve("outside"), "kept");
+			Files.createSymbolicLink(fixture.home.resolve("live/escape"), outside);
+			Path home = Files.createSymbolicLink(root.resolve("home-link"), fixture.home);
+			Path user = Files.createSymbolicLink(root.resolve("user-link"), fixture.user);
+			Path config = Files.createSymbolicLink(root.resolve("config-link"), fixture.policy.getParent().getParent());
+			HarnessCommand command = new HarnessCommand(List.of(fixture.program.toString()),
+				Map.of("HOME", user.toString()));
+			TrustPolicy trust = TrustPolicy.of(fixture.trust.keys(), fixture.trust.releaseBaseUrl(),
+				fixture.trust.minimum(), fixture.trust.maximumMajor(), Map.of("harness-a", home),
+				Map.of("harness-a", command));
+			RecordingIntegration integration = new RecordingIntegration();
+
+			UninstallResult result = new Uninstaller(fixture.data,
+				config.resolve("harness-a/policy.json"), trust, new LiveProvider(), integration.registration(),
+				Clock.systemUTC(), interval -> () -> {}).uninstall(true);
+
+			requireThat(result.outcome().message(), "message").isEqualTo("CAT was removed from this harness.");
+			requireThat(result.outcome().result(), "result").isEqualTo(Result.UNINSTALLED);
+			requireThat(Files.exists(fixture.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
+			requireThat(Files.exists(fixture.home.resolve("plugin-data"), NOFOLLOW_LINKS), "data").isFalse();
+			requireThat(Files.exists(fixture.user.resolve(".cat/bundles"), NOFOLLOW_LINKS), "bundles").isFalse();
+			requireThat(Files.exists(fixture.policy, NOFOLLOW_LINKS), "policy").isFalse();
+			requireThat(Files.readString(outside), "outside").isEqualTo("kept");
+			requireThat(Files.isSymbolicLink(home), "homeLink").isTrue();
+		}
+	}
+
+	/**
 	 * Uninstall with data deletion also deletes the plugin's data directory.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected

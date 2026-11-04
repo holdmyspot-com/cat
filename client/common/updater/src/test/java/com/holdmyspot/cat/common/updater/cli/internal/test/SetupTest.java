@@ -234,6 +234,40 @@ public final class SetupTest
 	}
 
 	/**
+	 * Setup installs, and installs again over its own installation, when the data and configuration directories are
+	 * reached through symbolic links, and deletes a link inside an older updater version as an entry, leaving what it
+	 * points to.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void installsThroughLinkedDirectories() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-linked-")));
+			Path realData = Files.createDirectories(fixture.root.resolve("real-data"));
+			Path realConfig = Files.createDirectories(fixture.root.resolve("real-config"));
+			Files.createSymbolicLink(fixture.root.resolve("xdg-data"), realData);
+			Files.createSymbolicLink(fixture.root.resolve("xdg-config"), realConfig);
+			fixture.setUp(null);
+			Path older = Files.createDirectories(realData.resolve("cat-updater/harness-a/1.1"));
+			Path outside = Files.writeString(fixture.root.resolve("outside"), "kept");
+			Files.createSymbolicLink(older.resolve("escape"), outside);
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.version(), "version").isEqualTo("1.2");
+			requireThat(Files.isDirectory(realData.resolve("cat-updater/harness-a/1.2")), "1.2").isTrue();
+			requireThat(Files.exists(older, NOFOLLOW_LINKS), "1.1").isFalse();
+			requireThat(Files.isRegularFile(realConfig.resolve("cat-updater/harness-a/policy.json")), "policy").
+				isTrue();
+			requireThat(Files.readString(outside), "outside").isEqualTo("kept");
+		}
+	}
+
+	/**
 	 * Setup removes its harness from the single updater installation that earlier builds kept directly in the
 	 * directory that holds every installation and, when no harness is left in that installation's policy, deletes the
 	 * installation and its policy without following a link inside it and without touching another harness's own

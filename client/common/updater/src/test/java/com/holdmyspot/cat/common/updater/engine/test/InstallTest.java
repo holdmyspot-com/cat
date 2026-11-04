@@ -89,6 +89,36 @@ public final class InstallTest
 	}
 
 	/**
+	 * A harness home that is reached through a symbolic link is installed into, and a link inside the partial
+	 * installation is deleted as an entry, leaving what it points to.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void installsIntoLinkedHome() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("install-linked-")).toRealPath();
+			Path realHome = Files.createDirectories(root.resolve("real-home"));
+			Files.createDirectories(realHome.resolve("live/leftover"));
+			Path outside = Files.writeString(root.resolve("outside"), "kept");
+			Files.createSymbolicLink(realHome.resolve("live/leftover/escape"), outside);
+			Path home = Files.createSymbolicLink(root.resolve("home"), realHome);
+			Releases.runtime(root.resolve("data"));
+
+			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
+				new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
+			requireThat(Files.exists(realHome.resolve("live/leftover"), NOFOLLOW_LINKS), "leftover").isFalse();
+			requireThat(Files.readString(realHome.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(outside), "outside").isEqualTo("kept");
+		}
+	}
+
+	/**
 	 * When the harness refuses registration, the added plugin is deleted again and the harness has no plugin.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected

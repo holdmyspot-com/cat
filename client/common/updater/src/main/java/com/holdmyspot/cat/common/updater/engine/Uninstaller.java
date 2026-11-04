@@ -106,13 +106,14 @@ public final class Uninstaller
 	 */
 	public UninstallResult uninstall(boolean deleteData)
 	{
-		Path home = policy.harnesses().get(activation.harness());
-		if (home == null)
+		Path recorded = policy.harnesses().get(activation.harness());
+		if (recorded == null)
 			return failure(Result.REFUSED, "Run the explicit CAT setup command for this harness.", List.of());
 		String step = STEPS.getFirst();
 		boolean unregistered;
 		try
 		{
+			Path home = LinkSafeDeletion.resolveRoot(recorded);
 			Optional<ExclusiveFileLock> acquired = OperationLock.acquire(state, clock, Duration.ofMinutes(10),
 				waiting);
 			if (acquired.isEmpty())
@@ -226,7 +227,8 @@ public final class Uninstaller
 		Optional<Path> user = userHome();
 		if (user.isEmpty() || otherInstallationExists())
 			return;
-		LinkSafeDeletion.delete(user.get().resolve(".cat/bundles"), user.get());
+		Path root = LinkSafeDeletion.resolveRoot(user.get());
+		LinkSafeDeletion.delete(root.resolve(".cat/bundles"), root);
 	}
 
 	/**
@@ -277,8 +279,10 @@ public final class Uninstaller
 	 */
 	private void deletePolicy() throws IOException
 	{
-		Path directory = policyFile.getParent();
-		LinkSafeDeletion.delete(policyFile, directory);
+		// The policy's directory belongs to CAT, but the directories above it may be reached through links
+		Path directory = LinkSafeDeletion.resolveRoot(policyFile.getParent().getParent()).
+			resolve(policyFile.getParent().getFileName());
+		LinkSafeDeletion.delete(directory.resolve(policyFile.getFileName()), directory);
 		if (directory.startsWith(data) || !Files.isDirectory(directory, NOFOLLOW_LINKS))
 			return;
 		try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory))

@@ -216,9 +216,18 @@ public final class UpdateEngine
 	 */
 	private UpdateResult operate(Mode mode, String requestedTag, Path localTree, Registration registration)
 	{
-		Path home = policy.harnesses().get(activation.harness());
-		if (home == null)
+		Path recorded = policy.harnesses().get(activation.harness());
+		if (recorded == null)
 			return result(Result.REFUSED, null, null, "Run the explicit CAT setup command for this harness.", List.of());
+		Path home;
+		try
+		{
+			home = LinkSafeDeletion.resolveRoot(recorded);
+		}
+		catch (IOException e)
+		{
+			return result(Result.REFUSED, null, null, e.getMessage(), List.of());
+		}
 		ActivationTransaction transaction = new ActivationTransaction(state, activation, home);
 		try
 		{

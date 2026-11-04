@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.updater.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import java.io.IOException;
@@ -74,7 +75,10 @@ public record Locations(Path image, Path data, Path policy)
 				throw new IOException("Updater data and policy must be outside the user's .cat directory.");
 			}
 		}
-		return new Locations(image.toRealPath(), data.normalize(), policy.normalize());
+		// The directories that hold the data directory and the policy may be reached through links; the data directory
+		// and the policy's own directory belong to CAT and are never followed
+		return new Locations(image.toRealPath(), resolveParent(data), resolveParent(policy.getParent()).
+			resolve(policy.getFileName()));
 	}
 
 	/**
@@ -142,6 +146,19 @@ public record Locations(Path image, Path data, Path policy)
 	}
 
 	/**
+	 * Resolves the directory that holds a path, keeping the path's own name.
+	 *
+	 * @param path an absolute path whose parent may not exist yet
+	 * @return the path below the real location of its parent
+	 * @throws IOException if an existing ancestor cannot be resolved
+	 */
+	private static Path resolveParent(Path path) throws IOException
+	{
+		Path normalized = path.normalize();
+		return LinkSafeDeletion.resolveRoot(normalized.getParent()).resolve(normalized.getFileName());
+	}
+
+	/**
 	 * Resolves existing ancestors so a symlink cannot disguise a protected path inside an excluded directory.
 	 *
 	 * @param path the absolute path, which may not exist yet
@@ -150,10 +167,7 @@ public record Locations(Path image, Path data, Path policy)
 	 */
 	public static Path resolveExistingAncestor(Path path) throws IOException
 	{
-		Path existing = path;
-		while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS))
-			existing = existing.getParent();
-		return existing.toRealPath().resolve(existing.relativize(path)).normalize();
+		return LinkSafeDeletion.resolveRoot(path);
 	}
 
 	/**
