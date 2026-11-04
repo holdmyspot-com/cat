@@ -8,6 +8,8 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -363,19 +365,19 @@ public final class InstallerActivationTest
 		@Override
 		public String programName()
 		{
-			throw new UnsupportedOperationException("Only setup discovers the harness program");
+			throw new UnsupportedOperationException("Only install discovers the harness program");
 		}
 
 		@Override
 		public Map<String, String> programEnvironment(Path home, Map<String, String> environment)
 		{
-			throw new UnsupportedOperationException("Only setup discovers the harness program");
+			throw new UnsupportedOperationException("Only install discovers the harness program");
 		}
 
 		@Override
 		public void requireIdentity(CommandResult version)
 		{
-			throw new UnsupportedOperationException("Only setup discovers the harness program");
+			throw new UnsupportedOperationException("Only install discovers the harness program");
 		}
 
 		@Override
@@ -389,24 +391,49 @@ public final class InstallerActivationTest
 		}
 
 		@Override
-		public void unregister(Path home, HarnessCli cli)
+		public void unregister(Path home, HarnessCli cli, boolean keepData)
 		{
 		}
 
 		@Override
-		public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+		public HarnessInstallation installation(Path home)
+		{
+			throw new UnsupportedOperationException("Only install locates the harness's installation");
+		}
+
+		@Override
+		public HarnessInstallation installation(Map<String, String> environment, Path userHome)
+		{
+			throw new UnsupportedOperationException("Only install locates the harness's installation");
+		}
+
+		@Override
+		public Path marketplaceFolder(Path home, PluginVersion version)
+		{
+			throw new UnsupportedOperationException("Only install writes the marketplace folder");
+		}
+
+		@Override
+		public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
+			FileReplacer replacer)
 		{
 			return Map.of();
 		}
 
 		@Override
-		public Map<String, List<String>> permissions(Path stableLauncher)
+		public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
 		{
 			return Map.of();
 		}
 
 		@Override
-		public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+		public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
+		{
+			return Map.of();
+		}
+
+		@Override
+		public Map<String, List<String>> permissions(Path installer)
 		{
 			return Map.of();
 		}

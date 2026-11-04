@@ -824,7 +824,7 @@ public final class UpdateEngine
 		{
 			try
 			{
-				session.integration().unregister(home, session.cli());
+				session.integration().unregister(home, session.cli(), true);
 			}
 			catch (IOException unregisterFailure)
 			{

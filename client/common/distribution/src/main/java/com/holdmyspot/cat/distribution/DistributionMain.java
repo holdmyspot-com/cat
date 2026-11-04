@@ -240,7 +240,9 @@ public final class DistributionMain
 		Path commonInstaller = findDependencyJar(moduleDirectory, "client-common-installer");
 		List<Path> installerModules = List.of(copyModule(commonInstaller, staged),
 			copyModule(findDependencyJar(moduleDirectory, "client-claude-installer"), staged),
-			copyModule(findDependencyJar(moduleDirectory, "client-codex-installer"), staged));
+			copyModule(findDependencyJar(moduleDirectory, "client-codex-installer"), staged),
+			copyModule(findDependencyJar(moduleDirectory, "client-claude-layout"), staged),
+			copyModule(findDependencyJar(moduleDirectory, "client-codex-layout"), staged));
 		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), staged),
 			copyModule(jacksonAnnotations.path(), staged), copyModule(jacksonDatabind.path(), staged),
 			copyModule(jacksonYaml.path(), staged), copyModule(snakeyaml.path(), staged),

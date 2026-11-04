@@ -247,7 +247,7 @@ public final class IntegrationTest
 			return new CommandResult(1, "Error: plugin `cat@cat` is not installed");
 		});
 
-		provider().unregister(home, cli);
+		provider().unregister(home, cli, false);
 		requireThat(cli.calls, "calls").isEqualTo(List.of(List.of("plugin", "remove", "cat@cat"),
 			List.of("plugin", "marketplace", "remove", "cat")));
 	}
@@ -261,7 +261,7 @@ public final class IntegrationTest
 	public void reportsFailedUnregistration() throws IOException
 	{
 		provider().unregister(testRoot().resolve("fake-home"),
-			new FakeCli(_ -> new CommandResult(1, "permission denied")));
+			new FakeCli(_ -> new CommandResult(1, "permission denied")), false);
 	}
 
 	/**

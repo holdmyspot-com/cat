@@ -2,7 +2,6 @@ package com.holdmyspot.cat.common.installer.cli.internal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.nio.file.InvalidPathException;
@@ -14,20 +13,19 @@ import java.util.Set;
  *
  * @param operation  the requested complete operation
  * @param harness    the selected provider, or empty for status or uninstall of the installation's own harness
- * @param tag        the requested release tag; for update null selects the latest approved release, and for install
- *                   {@link UpdateEngine#LATEST} selects it and null selects the release that the installation runs
- * @param home       the harness home for setup, or null for another operation
- * @param plugin     the local plugin tree that setup installs instead of the signed release, or null
+ * @param tag        the release tag that update selects, or null for the latest approved release or another operation
+ * @param home       the harness home that install names, or null to use the home that the user's environment
+ *                   selects, or for another operation
  * @param deleteData true if uninstall also deletes the harness's plugin data
  */
-public record Arguments(Operation operation, String harness, String tag, Path home, Path plugin, boolean deleteData)
+public record Arguments(Operation operation, String harness, String tag, Path home, boolean deleteData)
 {
 	/**
 	 * The complete operations exposed by the installer.
 	 */
 	public enum Operation
 	{
-		SETUP, INSTALL, UPDATE, STATUS, UNINSTALL
+		INSTALL, UPDATE, STATUS, UNINSTALL
 	}
 
 	/**
@@ -47,7 +45,6 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			throw usage();
 		Operation operation = switch (args[0])
 		{
-			case "setup" -> Operation.SETUP;
 			case "install" -> Operation.INSTALL;
 			case "update" -> Operation.UPDATE;
 			case "status" -> Operation.STATUS;
@@ -55,54 +52,53 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			default -> throw usage();
 		};
 		if (operation == Operation.STATUS && args.length == 1)
-			return new Arguments(operation, "", null, null, null, false);
+			return new Arguments(operation, "", null, null, false);
 		if (operation == Operation.UNINSTALL && args.length <= 2)
 		{
 			if (args.length == 2 && !args[1].equals("--delete-data"))
 				throw usage();
-			return new Arguments(operation, "", null, null, null, args.length == 2);
+			return new Arguments(operation, "", null, null, args.length == 2);
 		}
 		boolean validLength = switch (operation)
 		{
-			case INSTALL, UPDATE, UNINSTALL -> args.length == 3 || args.length == 4;
+			case UPDATE, UNINSTALL -> args.length == 3 || args.length == 4;
 			case STATUS -> args.length == 3;
-			case SETUP -> args.length == 5 || args.length == 7;
+			case INSTALL -> args.length == 3 || args.length == 5;
 		};
 		if (!validLength || !args[1].equals("--harness") || !harnesses.contains(args[2]))
 			throw usage();
 		String harness = args[2];
 		return switch (operation)
 		{
-			case SETUP -> parseSetup(args, harness);
+			case INSTALL -> parseInstall(args, harness);
 			case UNINSTALL ->
 			{
 				if (args.length == 4 && !args[3].equals("--delete-data"))
 					throw usage();
-				yield new Arguments(operation, harness, null, null, null, args.length == 4);
+				yield new Arguments(operation, harness, null, null, args.length == 4);
 			}
-			case INSTALL, UPDATE -> new Arguments(operation, harness, parseTag(args, operation), null, null, false);
-			case STATUS -> new Arguments(operation, harness, null, null, null, false);
+			case UPDATE -> new Arguments(operation, harness, parseTag(args), null, false);
+			case STATUS -> new Arguments(operation, harness, null, null, false);
 		};
 	}
 
 	/**
-	 * Parses setup's harness home and optional local plugin tree.
+	 * Parses install's optional harness home.
 	 *
-	 * @param args    the caller's arguments, of length 5 or 7
+	 * @param args    the caller's arguments, of length 3 or 5
 	 * @param harness the validated harness identifier
-	 * @return the setup operation
-	 * @throws IllegalArgumentException if the options are not {@code --home <dir> [--plugin <dir>]}, in that order
+	 * @return the install operation
+	 * @throws IllegalArgumentException if the option is not {@code --home <dir>}
 	 */
-	private static Arguments parseSetup(String[] args, String harness)
+	private static Arguments parseInstall(String[] args, String harness)
 	{
-		if (!args[3].equals("--home") || (args.length == 7 && !args[5].equals("--plugin")))
+		if (args.length == 3)
+			return new Arguments(Operation.INSTALL, harness, null, null, false);
+		if (!args[3].equals("--home"))
 			throw usage();
 		try
 		{
-			Path plugin = null;
-			if (args.length == 7)
-				plugin = Path.of(args[6]);
-			return new Arguments(Operation.SETUP, harness, null, Path.of(args[4]), plugin, false);
+			return new Arguments(Operation.INSTALL, harness, null, Path.of(args[4]), false);
 		}
 		catch (InvalidPathException _)
 		{
@@ -111,25 +107,17 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	}
 
 	/**
-	 * Parses the optional release argument of install and update.
+	 * Parses the optional release argument of update.
 	 *
-	 * @param args      the caller's arguments, of length 3 or 4
-	 * @param operation install or update
-	 * @return the canonical release tag; {@link UpdateEngine#LATEST} for install's latest approved release; null for
-	 *         update's latest approved release, or for install without a release argument
+	 * @param args the caller's arguments, of length 3 or 4
+	 * @return the canonical release tag, or null for the latest approved release
 	 * @throws IllegalArgumentException if the argument is neither {@code latest} nor a canonical {@code v}-prefixed
 	 *                                  release version
 	 */
-	private static String parseTag(String[] args, Operation operation)
+	private static String parseTag(String[] args)
 	{
-		if (args.length == 3)
+		if (args.length == 3 || args[3].equals("latest"))
 			return null;
-		if (args[3].equals(UpdateEngine.LATEST))
-		{
-			if (operation == Operation.INSTALL)
-				return UpdateEngine.LATEST;
-			return null;
-		}
 		if (!args[3].startsWith("v"))
 			throw usage();
 		try
@@ -147,9 +135,8 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 *
 	 * @param operation  the requested complete operation
 	 * @param harness    the selected provider, or empty for status or uninstall of the installation's own harness
-	 * @param tag        the requested release tag, or null for the latest release
-	 * @param home       the harness home for setup, or null for another operation
-	 * @param plugin     the local plugin tree that setup installs instead of the signed release, or null
+	 * @param tag        the release tag that update selects, or null
+	 * @param home       the harness home that install names, or null
 	 * @param deleteData true if uninstall also deletes the harness's plugin data
 	 * @throws NullPointerException if {@code operation} or {@code harness} are null
 	 */
@@ -166,8 +153,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 */
 	private static IllegalArgumentException usage()
 	{
-		return new IllegalArgumentException("Usage: cat-updater setup --harness <id> --home <absolute dir> " +
-			"[--plugin <absolute dir>]; install --harness <id> [vX.Y[.Z]|latest]; " +
+		return new IllegalArgumentException("Usage: installer install --harness <id> [--home <absolute dir>]; " +
 			"update --harness <id> [vX.Y[.Z]|latest]; status [--harness <id>]; " +
 			"uninstall [--harness <id>] [--delete-data]");
 	}

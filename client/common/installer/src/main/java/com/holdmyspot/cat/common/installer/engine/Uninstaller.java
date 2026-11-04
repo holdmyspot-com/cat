@@ -256,7 +256,7 @@ public final class Uninstaller
 	{
 		switch (step)
 		{
-			case UNREGISTER -> session.integration().unregister(home, session.cli());
+			case UNREGISTER -> session.integration().unregister(home, session.cli(), !deleteData);
 			case "plugin" ->
 			{
 				for (Path path : activation.removalPaths(home))

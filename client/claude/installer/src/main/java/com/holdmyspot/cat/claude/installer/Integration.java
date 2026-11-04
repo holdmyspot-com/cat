@@ -3,9 +3,12 @@ package com.holdmyspot.cat.claude.installer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -111,6 +114,27 @@ public final class Integration implements HarnessIntegration
 	public String harness()
 	{
 		return "claude";
+	}
+
+	@Override
+	public HarnessInstallation installation(Path home)
+	{
+		return new ClaudeInstallation(home);
+	}
+
+	@Override
+	public HarnessInstallation installation(Map<String, String> environment, Path userHome)
+	{
+		return ClaudeInstallation.fromEnvironment(environment, userHome);
+	}
+
+	/**
+	 * Returns the plugin version's version folder: Claude Code runs a plugin from CAT's marketplace in place.
+	 */
+	@Override
+	public Path marketplaceFolder(Path home, PluginVersion version)
+	{
+		return new ClaudeInstallation(home).versionFolder(version);
 	}
 
 	@Override
@@ -297,13 +321,14 @@ public final class Integration implements HarnessIntegration
 	 * Uninstalls CAT and then removes its marketplace. Claude Code's answers that either is absent are success.
 	 *
 	 * @param home the absolute Claude Code configuration directory recorded in policy
-	 * @param cli  runs the recorded {@code claude} program
+	 * @param cli      runs the recorded {@code claude} program
+	 * @param keepData whether the plugin's data folder stays
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative
 	 * @throws IOException              if Claude Code refuses a command for another reason
 	 */
 	@Override
-	public void unregister(Path home, HarnessCli cli) throws IOException
+	public void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException
 	{
 		requireThat(home, "home").isAbsolute();
 		requireThat(cli, "cli").isNotNull();
@@ -315,10 +340,10 @@ public final class Integration implements HarnessIntegration
 	 * Merges the installer's entries into {@code sandbox.excludedCommands} and {@code permissions.allow} of
 	 * {@code settings.json}, creating the file and members when absent. Every operation runs outside the shell
 	 * sandbox; install, update and status are also allowed without asking the user, while uninstall keeps Claude
-	 * Code's approval prompt. Setup is never named.
+	 * Code's approval prompt.
 	 *
 	 * @param home           the absolute Claude Code configuration directory recorded in policy
-	 * @param stableLauncher the absolute path of the installed stable installer launcher
+	 * @param installer the absolute path of the installer launcher in the plugin's version folder
 	 * @param replacer       replaces {@code settings.json}
 	 * @return the added entries, keyed {@code settings.json#sandbox.excludedCommands} and
 	 * 	{@code settings.json#permissions.allow}; a key is absent when nothing was added to it
@@ -328,12 +353,12 @@ public final class Integration implements HarnessIntegration
 	 *                                  holds a character that the shell would expand inside double quotes
 	 */
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
 		throws IOException
 	{
-		requireThat(stableLauncher, "stableLauncher").isAbsolute();
+		requireThat(installer, "installer").isAbsolute();
 		requireThat(replacer, "replacer").isNotNull();
-		Map<String, List<String>> entries = entries(stableLauncher);
+		Map<String, List<String>> entries = entries(installer);
 		ObjectNode root = readSettings(home);
 
 		Map<String, List<String>> added = new LinkedHashMap<>();
@@ -367,20 +392,20 @@ public final class Integration implements HarnessIntegration
 	 * Returns the sandbox exclusions and prompt-free permissions that {@link #installPermissions} merges into
 	 * {@code settings.json}.
 	 *
-	 * @param stableLauncher the absolute path of the installed stable installer launcher
+	 * @param installer the absolute path of the installer launcher in the plugin's version folder
 	 * @return the entries, keyed {@code settings.json#sandbox.excludedCommands} and
 	 * 	{@code settings.json#permissions.allow}
-	 * @throws NullPointerException     if {@code stableLauncher} is null
-	 * @throws IllegalArgumentException if {@code stableLauncher} is relative
+	 * @throws NullPointerException     if {@code installer} is null
+	 * @throws IllegalArgumentException if {@code installer} is relative
 	 * @throws IOException              if, on Windows, the launcher path holds a character that the shell would expand
 	 *                                  inside double quotes
 	 */
 	@Override
-	public Map<String, List<String>> permissions(Path stableLauncher) throws IOException
+	public Map<String, List<String>> permissions(Path installer) throws IOException
 	{
-		requireThat(stableLauncher, "stableLauncher").isAbsolute();
+		requireThat(installer, "installer").isAbsolute();
 		Map<String, List<String>> keyed = new LinkedHashMap<>();
-		for (Map.Entry<String, List<String>> setting : entries(stableLauncher).entrySet())
+		for (Map.Entry<String, List<String>> setting : entries(installer).entrySet())
 			keyed.put(SETTINGS + "#" + setting.getKey(), setting.getValue());
 		return keyed;
 	}
@@ -394,13 +419,13 @@ public final class Integration implements HarnessIntegration
 	 * sandbox when one command matched a wildcard exclusion, so CAT's Claude Code support requires 2.1.277 or later.
 	 * Every other exclusion stays exact, because no other operation takes a release.
 	 *
-	 * @param stableLauncher the absolute path of the installed stable installer launcher
+	 * @param installer the absolute path of the installer launcher in the plugin's version folder
 	 * @return the sandbox exclusions and the prompt-free permissions, in a stable order
 	 * @throws IOException if the launcher path cannot be named safely
 	 */
-	private Map<String, List<String>> entries(Path stableLauncher) throws IOException
+	private Map<String, List<String>> entries(Path installer) throws IOException
 	{
-		String launcher = launcherCommand(stableLauncher);
+		String launcher = launcherCommand(installer);
 		String install = launcher + " install --harness claude";
 		String update = launcher + " update --harness claude";
 		List<String> status = List.of(launcher + " status", launcher + " status --harness claude");
@@ -426,16 +451,16 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the shell text that runs the stable launcher.
+	 * Returns the shell text that runs the installer launcher.
 	 *
-	 * @param stableLauncher the launcher's absolute path
+	 * @param installer the launcher's absolute path
 	 * @return on Windows, PowerShell's fixed non-interactive form for the launcher script; elsewhere, the quoted path
 	 * @throws IOException if, on Windows, the path holds {@code "}, {@code $} or {@code `}, which the shell that
 	 *                     Claude Code runs would interpret inside double quotes
 	 */
-	private String launcherCommand(Path stableLauncher) throws IOException
+	private String launcherCommand(Path installer) throws IOException
 	{
-		String path = stableLauncher.toString();
+		String path = installer.toString();
 		if (platform.isWindows())
 		{
 			for (String character : List.of("\"", "$", "`"))
@@ -521,24 +546,40 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the exact and the version-pattern {@code update} entries that earlier builds asked the user to add to both
-	 * settings, which named the launcher in POSIX quoting on every platform.
+	 * Adds no sandbox entries: Claude Code's sandbox does not keep CAT's commands from the other harness's
+	 * installation.
 	 *
-	 * @param legacyLauncher the absolute path of the shared installation's stable launcher
-	 * @return the sandbox exclusions and the prompt-free permissions
-	 * @throws NullPointerException if {@code legacyLauncher} is null
+	 * @param home     the absolute Claude Code configuration directory
+	 * @param other    the other harness's CAT installation
+	 * @param catLocks the capacity lock directory
+	 * @param replacer replaces {@code settings.json}
+	 * @return no entries
+	 * @throws NullPointerException if any of the arguments are null
 	 */
 	@Override
-	public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
+		FileReplacer replacer)
 	{
-		requireThat(legacyLauncher, "legacyLauncher").isNotNull();
-		String update = ShellQuoting.posix(legacyLauncher.toString()).replace("*", "'\\*'") +
-			" update --harness claude";
-		List<String> commands = List.of(update, versionPattern(update));
-		Map<String, List<String>> entries = new LinkedHashMap<>();
-		entries.put(SETTINGS + "#" + EXCLUDED_COMMANDS, commands);
-		entries.put(SETTINGS + "#" + ALLOWED_TOOLS, commands.stream().map(command -> "Bash(" + command + ")").toList());
-		return entries;
+		requireThat(replacer, "replacer").isNotNull();
+		return sandboxEntries(home, other, catLocks);
+	}
+
+	/**
+	 * Returns no sandbox entries.
+	 *
+	 * @param home     the absolute Claude Code configuration directory
+	 * @param other    the other harness's CAT installation
+	 * @param catLocks the capacity lock directory
+	 * @return no entries
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	@Override
+	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
+	{
+		requireThat(home, "home").isNotNull();
+		requireThat(other, "other").isNotNull();
+		requireThat(catLocks, "catLocks").isNotNull();
+		return Map.of();
 	}
 
 	/**

@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.installer.cli.internal.Arguments;
 import com.holdmyspot.cat.common.installer.cli.internal.Arguments.Operation;
-import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import java.nio.file.Path;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
@@ -50,54 +49,31 @@ public final class ArgumentsTest
 	}
 
 	/**
-	 * Status without a harness selects the installed providers, while setup retains the explicit absolute home.
+	 * Status without a harness selects the installation's own harness.
 	 */
 	@Test
-	public void parsesStatusAndSetup()
+	public void parsesStatus()
 	{
 		requireThat(Arguments.parse(new String[]{"status"}, Set.of("harness-a")).harness(), "harness").isEmpty();
-		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
-		Arguments args = Arguments.parse(new String[]{"setup", "--harness", "harness-a", "--home",
-			home.toString()}, Set.of("harness-a"));
-		requireThat(args.home(), "home").isEqualTo(home);
 	}
 
 	/**
-	 * Install accepts the same optional release argument as update, and tells the latest release apart from no
-	 * release, which selects the release that the installation runs.
+	 * Install names the harness and optionally its home; without a home it installs at the home that the user's
+	 * environment selects.
 	 */
 	@Test
 	public void parsesInstall()
 	{
-		Arguments omitted = Arguments.parse(new String[]{"install", "--harness", "harness-a"}, Set.of("harness-a"));
-		Arguments latest = Arguments.parse(new String[]{"install", "--harness", "harness-a", "latest"},
-			Set.of("harness-a"));
-		Arguments tagged = Arguments.parse(new String[]{"install", "--harness", "harness-a", "v1.2"},
-			Set.of("harness-a"));
-		requireThat(omitted.operation(), "operation").isEqualTo(Operation.INSTALL);
-		requireThat(omitted.harness(), "harness").isEqualTo("harness-a");
-		requireThat(omitted.tag(), "omittedTag").isNull();
-		requireThat(latest.tag(), "latestTag").isEqualTo(UpdateEngine.LATEST);
-		requireThat(tagged.tag(), "tag").isEqualTo("v1.2");
-	}
-
-	/**
-	 * Setup accepts a local plugin tree after the harness home.
-	 */
-	@Test
-	public void parsesSetupWithPlugin()
-	{
-		Path directory = Path.of(System.getProperty("cat.installer.test.directory"));
-		Path home = directory.resolve("harness-home");
-		Path plugin = directory.resolve("plugin-tree");
-		Arguments args = Arguments.parse(new String[]{"setup", "--harness", "harness-a", "--home", home.toString(),
-			"--plugin", plugin.toString()}, Set.of("harness-a"));
-		requireThat(args.operation(), "operation").isEqualTo(Operation.SETUP);
-		requireThat(args.home(), "home").isEqualTo(home);
-		requireThat(args.plugin(), "plugin").isEqualTo(plugin);
-		Arguments signed = Arguments.parse(new String[]{"setup", "--harness", "harness-a", "--home",
+		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
+		Arguments homed = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home",
 			home.toString()}, Set.of("harness-a"));
-		requireThat(signed.plugin(), "signedPlugin").isNull();
+		Arguments unhomed = Arguments.parse(new String[]{"install", "--harness", "harness-a"}, Set.of("harness-a"));
+		requireThat(homed.operation(), "operation").isEqualTo(Operation.INSTALL);
+		requireThat(homed.harness(), "harness").isEqualTo("harness-a");
+		requireThat(homed.home(), "home").isEqualTo(home);
+		requireThat(homed.tag(), "tag").isNull();
+		requireThat(unhomed.operation(), "unhomedOperation").isEqualTo(Operation.INSTALL);
+		requireThat(unhomed.home(), "unhomedHome").isNull();
 	}
 
 	/**
@@ -148,15 +124,16 @@ public final class ArgumentsTest
 			{new String[]{"rollback", "--harness", "harness-a"}},
 			{new String[]{"rollback", "--harness", "harness-a", "v1.0"}},
 			{new String[]{"status", "extra"}},
-			{new String[]{"setup", "--harness", "harness-a"}},
-			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a", "--plugin"}},
-			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a", "--plugin", "/plugin", "extra"}},
-			{new String[]{"setup", "--harness", "harness-a", "--plugin", "/plugin", "--home", "/home/a"}},
-			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a", "--delete-data"}},
+			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a"}},
 			{new String[]{"install"}},
 			{new String[]{"install", "--harness", "other"}},
-			{new String[]{"install", "--harness", "harness-a", "v1.0", "v1.1"}},
+			{new String[]{"install", "--harness", "harness-a", "v1.0"}},
+			{new String[]{"install", "--harness", "harness-a", "latest"}},
+			{new String[]{"install", "--harness", "harness-a", "--home"}},
+			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "extra"}},
+			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "--plugin", "/plugin"}},
 			{new String[]{"install", "--harness", "harness-a", "--plugin", "/plugin"}},
+			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "--delete-data"}},
 			{new String[]{"uninstall", "--harness", "other"}},
 			{new String[]{"uninstall", "--delete-data", "--harness", "harness-a"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "--delete-data", "--delete-data"}},
@@ -190,7 +167,8 @@ public final class ArgumentsTest
 		}
 		catch (IllegalArgumentException e)
 		{
-			requireThat(e.getMessage(), "message").startsWith("Usage:").doesNotContain("rollback");
+			requireThat(e.getMessage(), "message").startsWith("Usage: installer install").doesNotContain("rollback").
+				doesNotContain("setup");
 			return;
 		}
 		throw new AssertionError("rollback was accepted");

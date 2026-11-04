@@ -2,7 +2,10 @@ package com.holdmyspot.cat.codex.installer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -104,6 +107,28 @@ public final class CodexIntegration implements HarnessIntegration
 	public String harness()
 	{
 		return CodexActivation.HARNESS;
+	}
+
+	@Override
+	public HarnessInstallation installation(Path home)
+	{
+		return new CodexInstallation(home);
+	}
+
+	@Override
+	public HarnessInstallation installation(Map<String, String> environment, Path userHome)
+	{
+		return CodexInstallation.fromEnvironment(environment, userHome);
+	}
+
+	/**
+	 * Returns the plugin folder of CAT's marketplace, which {@code codex plugin add} copies into the version folder.
+	 */
+	@Override
+	public Path marketplaceFolder(Path home, PluginVersion version)
+	{
+		requireThat(version, "version").isNotNull();
+		return new CodexInstallation(home).marketplacePlugin();
 	}
 
 	@Override
@@ -221,7 +246,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 */
 	@Override
-	public void unregister(Path home, HarnessCli cli) throws IOException
+	public void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(cli, "cli").isNotNull();
@@ -230,7 +255,7 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Writes {@code rules/cat-updater.rules} unless it already holds exactly the rules for {@code stableLauncher}.
+	 * Writes {@code rules/cat-updater.rules} unless it already holds exactly the rules for {@code installer}.
 	 *
 	 * @return {@code {"rules/cat-updater.rules#": [<file content>]}} when this call wrote the file, otherwise an empty
 	 * 	map
@@ -239,14 +264,14 @@ public final class CodexIntegration implements HarnessIntegration
 	 *                                  cannot be written
 	 */
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
 		throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
-		requireThat(stableLauncher, "stableLauncher").isAbsolute().isEqualTo(stableLauncher.normalize());
+		requireThat(installer, "installer").isAbsolute().isEqualTo(installer.normalize());
 		requireThat(replacer, "replacer").isNotNull();
 		validateConfiguration(home);
-		String content = InstallerRules.render(stableLauncher, isWindows());
+		String content = InstallerRules.render(installer, isWindows());
 		Path file = home.resolve(RULES_FILE);
 		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && read(file).equals(content))
 			return Map.of();
@@ -269,26 +294,47 @@ public final class CodexIntegration implements HarnessIntegration
 	 * Returns the content of {@code rules/cat-updater.rules} that {@link #installPermissions} writes.
 	 *
 	 * @return {@code {"rules/cat-updater.rules#": [<file content>]}}
-	 * @throws IllegalArgumentException if {@code stableLauncher} is relative or not normalized
+	 * @throws IllegalArgumentException if {@code installer} is relative or not normalized
 	 */
 	@Override
-	public Map<String, List<String>> permissions(Path stableLauncher)
+	public Map<String, List<String>> permissions(Path installer)
 	{
-		return Map.of(RULES_KEY, List.of(InstallerRules.render(stableLauncher, isWindows())));
+		return Map.of(RULES_KEY, List.of(InstallerRules.render(installer, isWindows())));
 	}
 
 	/**
-	 * Returns no entries: earlier builds asked the user to put their rule in {@code rules/cat-updater.rules}, which
-	 * {@link #installPermissions} replaces as a whole.
+	 * Adds no sandbox entries.
 	 *
-	 * @param legacyLauncher the absolute path of the shared installation's stable launcher
-	 * @return an empty map
-	 * @throws NullPointerException if {@code legacyLauncher} is null
+	 * @param home     the absolute Codex home
+	 * @param other    the other harness's CAT installation
+	 * @param catLocks the capacity lock directory
+	 * @param replacer replaces Codex's configuration
+	 * @return no entries
+	 * @throws NullPointerException if any of the arguments are null
 	 */
 	@Override
-	public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
+		FileReplacer replacer)
 	{
-		requireThat(legacyLauncher, "legacyLauncher").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
+		return sandboxEntries(home, other, catLocks);
+	}
+
+	/**
+	 * Returns no sandbox entries.
+	 *
+	 * @param home     the absolute Codex home
+	 * @param other    the other harness's CAT installation
+	 * @param catLocks the capacity lock directory
+	 * @return no entries
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	@Override
+	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
+	{
+		requireThat(home, "home").isNotNull();
+		requireThat(other, "other").isNotNull();
+		requireThat(catLocks, "catLocks").isNotNull();
 		return Map.of();
 	}
 

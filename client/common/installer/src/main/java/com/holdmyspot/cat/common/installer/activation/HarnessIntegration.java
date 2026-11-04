@@ -1,13 +1,16 @@
 package com.holdmyspot.cat.common.installer.activation;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Integrates the installer with one harness's command-line program and agent permissions.
+ * Integrates the installer with one harness's installation layout, command-line program, agent permissions and
+ * sandbox settings.
  */
 public interface HarnessIntegration
 {
@@ -19,7 +22,43 @@ public interface HarnessIntegration
 	String harness();
 
 	/**
-	 * Returns the name of the harness's command-line program, which setup looks up on the user's search path, adding
+	 * Returns where the harness keeps CAT's installation below a harness home.
+	 *
+	 * @param home the absolute, normalized harness home
+	 * @return the installation
+	 * @throws NullPointerException     if {@code home} is null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 */
+	HarnessInstallation installation(Path home);
+
+	/**
+	 * Returns where the harness keeps CAT's installation for a user, at the harness home that the user's environment
+	 * selects.
+	 *
+	 * @param environment the user's environment variables
+	 * @param userHome    the user's absolute home directory
+	 * @return the installation
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code userHome} is relative, or the environment names a relative harness
+	 *                                  home
+	 */
+	HarnessInstallation installation(Map<String, String> environment, Path userHome);
+
+	/**
+	 * Returns the folder into which the installer writes a plugin version before {@link #register} asks the harness to
+	 * install it: a folder of the harness's marketplace, which is the version folder itself when the harness runs the
+	 * plugin from its marketplace.
+	 *
+	 * @param home    the absolute, normalized harness home
+	 * @param version the plugin version
+	 * @return the folder
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 */
+	Path marketplaceFolder(Path home, PluginVersion version);
+
+	/**
+	 * Returns the name of the harness's command-line program, which install looks up on the user's search path, adding
 	 * a Windows program extension.
 	 *
 	 * @return the program's name, such as {@code harness-a}
@@ -28,11 +67,11 @@ public interface HarnessIntegration
 
 	/**
 	 * Returns the harness's own variables that the recorded program environment holds for one home, such as the
-	 * variable that moves the harness's configuration directory. Setup adds the search path and the variables that
-	 * the platform needs. Only setup calls this.
+	 * variable that moves the harness's configuration directory. Install adds the search path and the variables that
+	 * the platform needs. Only install calls this.
 	 *
-	 * @param home        the absolute, normalized harness home that setup records
-	 * @param environment the setup process's environment variables, looked up case-insensitively on Windows
+	 * @param home        the absolute, normalized harness home that install records
+	 * @param environment the install process's environment variables, looked up case-insensitively on Windows
 	 * @return the variables
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the environment lacks a variable that the harness needs
@@ -40,8 +79,8 @@ public interface HarnessIntegration
 	Map<String, String> programEnvironment(Path home, Map<String, String> environment) throws IOException;
 
 	/**
-	 * Fails unless the program that setup found answered {@code --version} as this harness's program does. Only
-	 * setup calls this.
+	 * Fails unless the program that install found answered {@code --version} as this harness's program does. Only
+	 * install calls this.
 	 *
 	 * @param version the exit status and output of {@code <program> --version}
 	 * @throws NullPointerException if {@code version} is null
@@ -51,8 +90,8 @@ public interface HarnessIntegration
 	void requireIdentity(CommandResult version) throws IOException;
 
 	/**
-	 * Fails, changing nothing, when a configuration file that {@link #installPermissions} would change is malformed,
-	 * is a symbolic link or cannot be changed safely.
+	 * Fails, changing nothing, when a configuration file that {@link #installPermissions} or
+	 * {@link #installSandboxEntries} would change is malformed, is a symbolic link or cannot be changed safely.
 	 *
 	 * @param home the absolute, normalized harness home from the trust policy
 	 * @throws NullPointerException if {@code home} is null
@@ -61,7 +100,9 @@ public interface HarnessIntegration
 	void validateConfiguration(Path home) throws IOException;
 
 	/**
-	 * Registers the plugin files already activated under {@code home} with the harness. A failure does not undo what
+	 * Asks the harness to install the plugin that the installer wrote into the {@link #marketplaceFolder marketplace
+	 * folder}, which places it in its version folder, or registers the plugin files already activated under
+	 * {@code home}. A failure does not undo what
 	 * this call registered before it failed: the installer calls {@link #unregister} after a failed registration only
 	 * when that registration was part of an install where the harness had no plugin, and never after a failed update,
 	 * repair or registration of a plugin that is already up to date, whose plugin files stay registered where they
@@ -78,59 +119,80 @@ public interface HarnessIntegration
 	/**
 	 * Unregisters CAT from the harness. An answer that CAT is not registered is success.
 	 *
-	 * @param home the absolute, normalized harness home from the trust policy
-	 * @param cli  runs the recorded harness program
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param cli      runs the recorded harness program
+	 * @param keepData true to ask the harness to keep CAT's plugin data directory, false to let it delete the directory
+	 *                 as it does when it uninstalls a plugin
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if unregistration fails
 	 */
-	void unregister(Path home, HarnessCli cli) throws IOException;
+	void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException;
 
 	/**
-	 * Adds the entries that let an agent run the stable launcher's install, update, status and uninstall operations
-	 * without a permission prompt or sandbox. Never covers setup. Idempotent.
+	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox.
+	 * Idempotent.
 	 *
-	 * @param home           the absolute, normalized harness home from the trust policy
-	 * @param stableLauncher the absolute path of the installed stable installer launcher
-	 * @param replacer       replaces each configuration file that this call writes, retrying while Windows refuses
-	 *                       the replacement
+	 * @param home      the absolute, normalized harness home from the trust policy
+	 * @param installer the absolute path of the installer launcher in the active version folder
+	 * @param replacer  replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                  replacement
 	 * @return the entries that this call added, keyed by {@code <path relative to home>#<setting>}, with an empty
 	 * 	setting for a whole CAT-owned file; entries that already existed are not returned
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the configuration cannot be changed
 	 */
-	Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+	Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
 		throws IOException;
 
 	/**
-	 * Returns every entry that {@link #installPermissions} maintains for a stable launcher, whether or not the
-	 * configuration already holds it. An entry that the installer recorded and this set lacks is obsolete, and setup
-	 * removes it.
+	 * Returns every entry that {@link #installPermissions} maintains for an installer launcher, whether or not the
+	 * configuration already holds it. An entry that the installer recorded and that neither this set nor
+	 * {@link #sandboxEntries} holds is obsolete, and install removes it.
 	 *
-	 * @param stableLauncher the absolute path of the installed stable installer launcher
+	 * @param installer the absolute path of the installer launcher in the active version folder
 	 * @return the entries keyed as {@link #installPermissions} returns them
-	 * @throws NullPointerException     if {@code stableLauncher} is null
-	 * @throws IllegalArgumentException if {@code stableLauncher} is relative
+	 * @throws NullPointerException     if {@code installer} is null
+	 * @throws IllegalArgumentException if {@code installer} is relative
 	 * @throws IOException              if the launcher path cannot be named in an entry
 	 */
-	Map<String, List<String>> permissions(Path stableLauncher) throws IOException;
+	Map<String, List<String>> permissions(Path installer) throws IOException;
 
 	/**
-	 * Returns the entries that the installer which earlier builds shared between harnesses asked the user to add for its
-	 * stable launcher, in the form that {@link #removePermissions} accepts, so that they are removed once that launcher
-	 * is retired.
+	 * Adds the sandbox settings that keep sandboxed commands from writing the other harness's CAT installation and
+	 * that let them take the capacity locks. Idempotent.
 	 *
-	 * @param legacyLauncher the absolute path of the shared installation's stable launcher
-	 * @return the entries keyed as {@link #installPermissions} returns them; empty when this harness's current
-	 * 	permissions replace them
-	 * @throws NullPointerException if {@code legacyLauncher} is null
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param other    where the other harness keeps CAT's installation
+	 * @param catLocks the absolute directory of CAT's capacity locks
+	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                 replacement
+	 * @return the entries that this call added, keyed as {@link #installPermissions} keys them; entries that already
+	 * 	existed are not returned
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 * @throws IOException              if the configuration cannot be changed
 	 */
-	Map<String, List<String>> legacyPermissions(Path legacyLauncher);
+	Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
+		FileReplacer replacer) throws IOException;
+
+	/**
+	 * Returns every entry that {@link #installSandboxEntries} maintains, whether or not the configuration already holds
+	 * it.
+	 *
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param other    where the other harness keeps CAT's installation
+	 * @param catLocks the absolute directory of CAT's capacity locks
+	 * @return the entries keyed as {@link #installPermissions} keys them
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 */
+	Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks);
 
 	/**
 	 * Removes previously added entries that are still present, leaving everything else.
 	 *
 	 * @param home     the absolute, normalized harness home from the trust policy
-	 * @param added    the entries that {@link #installPermissions} returned
+	 * @param added    the entries that {@link #installPermissions} or {@link #installSandboxEntries} returned
 	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
 	 *                 replacement
 	 * @throws NullPointerException if any of the arguments are null

@@ -2,87 +2,46 @@ package com.holdmyspot.cat.common.installer.cli.internal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
+import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
-import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
+import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * The protected locations of one harness's installation, selected at explicit setup: its installer data directory,
- * which is named after the harness, and its policy.
+ * The installation that the running installer belongs to: the version folder that the installer runs from, the
+ * harness, and where that harness keeps CAT's installation, which holds the plugin data folder and its policy.
  *
- * @param image  the real directory of the running installer image
- * @param data   the protected data directory of the installation
- * @param policy the protected policy file
+ * @param image        the real version folder of the running installer
+ * @param harness      the harness whose version folders contain the image
+ * @param installation where the harness keeps CAT's installation
  */
-public record Locations(Path image, Path data, Path policy)
+public record Locations(Path image, String harness, HarnessInstallation installation)
 {
 	/**
-	 * The image-relative file in which setup records the protected policy path.
-	 */
-	public static final Path POLICY_ANCHOR = Path.of("conf/cat-updater/policy-path");
-	/**
-	 * The largest supported encoded policy path, including its final newline.
-	 */
-	private static final int MAXIMUM_ANCHOR_BYTES = 65_536;
-	/**
-	 * The largest supported encoded installer version selector.
-	 */
-	private static final int MAXIMUM_CURRENT_BYTES = 128;
-
-	/**
-	 * Resolves the locations of one harness's installation from the user's setup environment and the running image.
+	 * Creates the locations.
 	 *
-	 * @param image       the running image directory
-	 * @param platform    the current platform
-	 * @param environment the explicit setup environment
-	 * @param harness     the installation's harness
-	 * @return the installation locations
-	 * @throws IOException if the required absolute home or local application-data directory is absent, or the
-	 *                     locations lie inside the user's {@code .cat} directory
+	 * @param image        the real version folder of the running installer
+	 * @param harness      the harness whose version folders contain the image
+	 * @param installation where the harness keeps CAT's installation
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static Locations forSetup(Path image, Platform platform, Map<String, String> environment, String harness)
-		throws IOException
+	public Locations
 	{
-		requireThat(image, "image").isDirectory();
-		requireThat(platform, "platform").isNotNull();
-		requireThat(environment, "environment").isNotNull();
+		requireThat(image, "image").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
-		Path data;
-		Path policy;
-		if (platform.isWindows())
-		{
-			data = absoluteVariable(environment, "LOCALAPPDATA").resolve("cat-updater").resolve(harness);
-			policy = data.resolve("policy.json");
-		}
-		else
-		{
-			Path home = absoluteVariable(environment, "HOME");
-			data = xdg(environment, "XDG_DATA_HOME", home.resolve(".local/share")).resolve("cat-updater").
-				resolve(harness);
-			policy = xdg(environment, "XDG_CONFIG_HOME", home.resolve(".config")).resolve("cat-updater").
-				resolve(harness).resolve("policy.json");
-			Path catHome = resolveExistingAncestor(home.resolve(".cat"));
-			if (resolveExistingAncestor(data).startsWith(catHome) ||
-				resolveExistingAncestor(policy).startsWith(catHome))
-			{
-				throw new IOException("Installer data and policy must be outside the user's .cat directory.");
-			}
-		}
-		// The directories that hold the data directory and the policy may be reached through links; the data directory
-		// and the policy's own directory belong to CAT and are never followed
-		return new Locations(image.toRealPath(), resolveParent(data), resolveParent(policy.getParent()).
-			resolve(policy.getFileName()));
+		requireThat(installation, "installation").isNotNull();
 	}
 
 	/**
-	 * Returns the instruction to set a harness's installation up again with the CAT entry command.
+	 * Returns the instruction to install a harness's plugin again with the CAT entry command.
 	 *
 	 * @param harness the harness
 	 * @return the instruction, a sentence fragment that starts with a verb
@@ -95,67 +54,61 @@ public record Locations(Path image, Path data, Path policy)
 	}
 
 	/**
-	 * Resolves routine-operation authority solely from the running image and its protected setup record.
+	 * Finds the installation that the running installer belongs to from the folder that it runs from alone. The folder
+	 * must be a version folder of exactly one harness: a folder named by a plugin version in the folder where that
+	 * harness keeps CAT's plugin versions.
 	 *
-	 * @param image the running image directory
-	 * @return the installation locations
-	 * @throws IOException if setup has not recorded one absolute policy path, or the anchor is a symbolic link
+	 * @param image        the folder that the running installer runs from
+	 * @param integrations the installed harness integrations
+	 * @return the installation
+	 * @throws IOException    if the folder cannot be resolved
+	 * @throws TrustException if the folder is not a version folder of exactly one harness
 	 */
-	public static Locations installed(Path image) throws IOException
+	public static Locations installed(Path image, List<HarnessIntegration> integrations)
+		throws IOException, TrustException
 	{
-		image = image.toRealPath();
-		Path anchor = image.resolve(POLICY_ANCHOR);
-		String harness = image.getParent().getFileName().toString();
-		if (!Files.isRegularFile(anchor, LinkOption.NOFOLLOW_LINKS))
-			throw new IOException("Installer setup is missing; " + rerunEntryCommand(harness) + ".");
-		String text = BoundedInput.readUtf8(anchor, MAXIMUM_ANCHOR_BYTES, "The installer policy path");
-		if (!text.endsWith("\n") || text.indexOf('\n') != text.length() - 1 || text.indexOf('\r') >= 0)
+		requireThat(integrations, "integrations").isNotNull();
+		Path real = image.toRealPath();
+		Path parent = real.getParent();
+		List<Locations> matches = new ArrayList<>();
+		if (parent != null && isPluginVersion(real.getFileName().toString()))
 		{
-			throw new IOException("The protected installer policy path must contain one absolute path line; " +
-				rerunEntryCommand(harness) + ".");
+			for (HarnessIntegration integration : integrations)
+			{
+				for (Path home = parent.getParent(); home != null; home = home.getParent())
+				{
+					HarnessInstallation installation = integration.installation(home);
+					if (installation.versionFolders().equals(parent))
+						matches.add(new Locations(real, integration.harness(), installation));
+				}
+			}
 		}
-		Path policy = Path.of(text.substring(0, text.length() - 1));
-		if (!policy.isAbsolute() || !policy.normalize().equals(policy))
+		if (matches.size() != 1)
 		{
-			throw new IOException("The protected installer policy path must be absolute and normalized; " +
-				rerunEntryCommand(harness) + ".");
+			throw new TrustException(Reason.MALFORMED_POLICY, "The installer at " + real + " does not run from the " +
+				"version folder of CAT's plugin in a harness, so it manages no installation; run the installer in " +
+				"bin/ of the plugin version that the harness loads, or install CAT with the CAT entry command.");
 		}
-		return new Locations(image, image.getParent(), policy);
+		return matches.getFirst();
 	}
 
 	/**
-	 * Checks the whole stable-launcher selection before any routine operation reads policy or state.
+	 * Returns whether a folder name is a plugin version.
 	 *
-	 * @param image the actual running image directory
-	 * @throws IOException if current is not a regular file containing exactly the image version and a
-	 *                     newline
-	 * @throws TrustException if the image directory does not name a supported numeric release
+	 * @param name the name
+	 * @return {@code true} if the name is a plugin version
 	 */
-	public static void validateCurrent(Path image) throws IOException, TrustException
+	private static boolean isPluginVersion(String name)
 	{
-		image = image.toRealPath();
-		String version = image.getFileName().toString();
-		ReleaseVersion.parse(version);
-		Path current = image.getParent().resolve("current");
-		if (!Files.isRegularFile(current, LinkOption.NOFOLLOW_LINKS) ||
-			!BoundedInput.readUtf8(current, MAXIMUM_CURRENT_BYTES, "The current installer version").equals(version + "\n"))
+		try
 		{
-			throw new IOException("The current installer version must contain exactly the running image version " +
-				"and one newline; " + rerunEntryCommand(image.getParent().getFileName().toString()) + ".");
+			PluginVersion.parse(name);
+			return true;
 		}
-	}
-
-	/**
-	 * Resolves the directory that holds a path, keeping the path's own name.
-	 *
-	 * @param path an absolute path whose parent may not exist yet
-	 * @return the path below the real location of its parent
-	 * @throws IOException if an existing ancestor cannot be resolved
-	 */
-	private static Path resolveParent(Path path) throws IOException
-	{
-		Path normalized = path.normalize();
-		return LinkSafeDeletion.resolveRoot(normalized.getParent()).resolve(normalized.getFileName());
+		catch (IllegalArgumentException _)
+		{
+			return false;
+		}
 	}
 
 	/**
@@ -171,85 +124,36 @@ public record Locations(Path image, Path data, Path policy)
 	}
 
 	/**
-	 * Creates the protected locations value.
+	 * Returns the plugin data folder, which holds the policy and the installer's state.
 	 *
-	 * @param image  the real directory of the running installer image
-	 * @param data   the protected data directory containing the image
-	 * @param policy the protected policy file
+	 * @return the folder
 	 */
-	public Locations
+	public Path data()
 	{
-		requireThat(image, "image").isNotNull();
-		requireThat(data, "data").isNotNull();
-		requireThat(policy, "policy").isNotNull();
+		return installation.dataDirectory();
 	}
 
 	/**
-	 * Returns the harness of the installation, which names its data directory.
+	 * Returns the policy.
 	 *
-	 * @return the harness
+	 * @return the policy file
 	 */
-	public String harness()
+	public Path policy()
 	{
-		return data.getFileName().toString();
+		return installation.policy();
 	}
 
 	/**
-	 * Returns the policy file of the single installer installation that earlier builds shared between harnesses, kept
-	 * directly in the directory that now holds one installation per harness.
-	 *
-	 * @return the absolute policy file, the sibling of the directory that holds this installation's policy
-	 */
-	public Path legacySharedPolicy()
-	{
-		return policy.getParent().resolveSibling("policy.json");
-	}
-
-	/**
-	 * Returns the stable launcher path for the platform.
+	 * Returns the installer launcher in the version folder for the platform.
 	 *
 	 * @param platform the current platform
 	 * @return the absolute launcher path
 	 */
 	public Path launcher(Platform platform)
 	{
+		Path launcher = image.resolve(PluginDirectory.INSTALLER);
 		if (platform.isWindows())
-			return data.resolve("bin/cat-updater.ps1");
-		return data.resolve("bin/cat-updater");
-	}
-
-	/**
-	 * Uses an absolute XDG value, ignoring a relative or absent value.
-	 *
-	 * @param environment the setup environment
-	 * @param name        the XDG variable
-	 * @param fallback    the standard home-relative location
-	 * @return the selected absolute directory
-	 */
-	private static Path xdg(Map<String, String> environment, String name, Path fallback)
-	{
-		String value = environment.get(name);
-		if (value == null || value.isBlank())
-			return fallback;
-		Path candidate = Path.of(value);
-		if (candidate.isAbsolute())
-			return candidate;
-		return fallback;
-	}
-
-	/**
-	 * Returns a required absolute directory named by the setup environment.
-	 *
-	 * @param environment the setup environment
-	 * @param name        the variable naming the directory
-	 * @return the absolute directory
-	 * @throws IOException if the variable is absent, blank or relative
-	 */
-	private static Path absoluteVariable(Map<String, String> environment, String name) throws IOException
-	{
-		String value = environment.get(name);
-		if (value == null || value.isBlank() || !Path.of(value).isAbsolute())
-			throw new IOException(name + " must name an absolute directory for installer setup.");
-		return Path.of(value);
+			return launcher.resolveSibling(launcher.getFileName() + ".ps1");
+		return launcher;
 	}
 }

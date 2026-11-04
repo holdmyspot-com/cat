@@ -301,7 +301,7 @@ public final class IntegrationTest
 			RecordingCli cli = new RecordingCli(List.of(new CommandResult(1, PLUGIN_NOT_FOUND),
 				new CommandResult(1, MARKETPLACE_NOT_FOUND)));
 
-			integration().unregister(home, cli);
+			integration().unregister(home, cli, false);
 
 			requireThat(cli.calls(), "calls").isEqualTo(List.of(List.of("plugin", "uninstall", "cat@cat"),
 				List.of("plugin", "marketplace", "remove", "cat")));
@@ -322,7 +322,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 
-			integration().unregister(home, new RecordingCli(answers));
+			integration().unregister(home, new RecordingCli(answers), false);
 		}
 	}
 
@@ -784,33 +784,6 @@ public final class IntegrationTest
 		 * @throws IOException if the operation fails
 		 */
 		void run() throws IOException;
-	}
-
-	/**
-	 * The entries that the installer which earlier builds shared between harnesses told the user to add for its stable
-	 * launcher are removed with the provider's permission removal, leaving the user's other entries.
-	 *
-	 * @throws IOException if the fixture cannot be created or the settings cannot be changed
-	 */
-	@Test
-	public void legacyPermissionsAreRemoved() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			Path launcher = Path.of("/home/user/.local/share/cat-updater/bin/cat-updater");
-			String update = launcher + " update --harness claude";
-			Path settings = Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" +
-				json(update) + "," + json(update + " *") + ",\"git status\"]},\"permissions\":{\"allow\":[" +
-				json("Bash(" + update + ")") + "," + json("Bash(" + update + " *)") + ",\"Bash(ls)\"]}}");
-			Integration integration = integration();
-
-			integration.removePermissions(home, integration.legacyPermissions(launcher), replacer());
-
-			String content = Files.readString(settings);
-			requireThat(content, "settings").doesNotContain(launcher.toString()).contains("git status").
-				contains("Bash(ls)");
-		}
 	}
 
 	/**

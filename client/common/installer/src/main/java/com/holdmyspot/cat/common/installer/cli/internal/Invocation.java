@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
+import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
@@ -68,6 +69,7 @@ public final class Invocation
 	private static final Duration REQUEST_LIMIT = Duration.ofMinutes(5);
 	private final Path image;
 	private final Path cwd;
+	private final Path userHome;
 	private final Platform platform;
 	private final Map<String, String> environment;
 	private final List<PluginActivation> activations;
@@ -79,12 +81,23 @@ public final class Invocation
 	private final PrintStream stdout;
 	private final PrintStream stderr;
 	private final JsonMapper mapper = JsonMapper.builder().build();
+	/**
+	 * The plugin data folder of the installation that the running installer belongs to, once it is known.
+	 */
+	private Path resolvedData;
+	/**
+	 * The harness of the installation that the running installer belongs to, once it is known.
+	 */
+	private String resolvedHarness;
 
 	/**
 	 * Creates one process invocation with explicit boundaries for isolated tests.
 	 *
-	 * @param image        the running installer version directory
+	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
+	 *                     install, otherwise the version folder of the installed plugin
 	 * @param cwd          the caller's working directory
+	 * @param userHome     the user's home directory, which holds the capacity locks and in which the harness homes lie
+	 *                     unless the environment names them
 	 * @param platform     the running platform
 	 * @param environment  the boundary-captured environment; routine path authority never comes from this map
 	 * @param activations  the installed activation services
@@ -92,17 +105,18 @@ public final class Invocation
 	 * @param cliFactory   runs the recorded harness program
 	 * @param clock        supplies UTC diagnostic times
 	 * @param waiting      creates pauses between installer lock attempts
-	 * @param replacer     atomically replaces setup files, with platform-appropriate retry waiting
+	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
 	 * @param stdout       receives exactly one JSON result
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Invocation(Path image, Path cwd, Platform platform, Map<String, String> environment,
+	public Invocation(Path image, Path cwd, Path userHome, Platform platform, Map<String, String> environment,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, PrintStream stdout, PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(cwd, "cwd").isNotNull();
+		requireThat(userHome, "userHome").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(cliFactory, "cliFactory").isNotNull();
 		requireThat(clock, "clock").isNotNull();
@@ -112,6 +126,7 @@ public final class Invocation
 		requireThat(stderr, "stderr").isNotNull();
 		this.image = image;
 		this.cwd = cwd;
+		this.userHome = userHome;
 		this.platform = platform;
 		this.environment = Map.copyOf(environment);
 		this.activations = List.copyOf(activations);
@@ -185,39 +200,47 @@ public final class Invocation
 	private UpdateResult unexpectedFailure(Arguments arguments, Exception cause)
 	{
 		String harness = selectedHarness(arguments);
-		Path state = image.getParent().resolve("state");
-		Path activationJournal = state.resolve(harness).resolve("activation.json");
-		Path uninstallJournal = state.resolve("uninstall.json");
-		List<Path> journals = Stream.of(activationJournal, uninstallJournal).filter(Files::exists).toList();
 		String operation = arguments.operation().name().toLowerCase(Locale.ROOT);
 		String message = "The installer could not complete " + operation + ": " + cause.getMessage();
-		if (Files.exists(activationJournal))
+		List<Path> journals = List.of();
+		boolean activating = false;
+		if (resolvedData != null)
+		{
+			Path state = resolvedData.resolve("state");
+			Path activationJournal = state.resolve(harness).resolve("activation.json");
+			Path uninstallJournal = state.resolve("uninstall.json");
+			journals = Stream.of(activationJournal, uninstallJournal).filter(Files::exists).toList();
+			activating = Files.exists(activationJournal);
+		}
+		if (activating)
 			return failure(Result.NOT_RESTORED, harness, message, journals);
 		return switch (arguments.operation())
 		{
 			case STATUS -> failure(Result.REFUSED, harness, message, journals);
-			case SETUP -> failure(Result.FAILED, harness, message + "; " + Locations.rerunEntryCommand(harness) +
+			case INSTALL -> failure(Result.FAILED, harness, message + "; " + Locations.rerunEntryCommand(harness) +
 				" to continue.", journals);
-			case INSTALL, UPDATE, UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " +
-				operation + " command again to continue.", journals);
+			case UPDATE, UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " + operation +
+				" command again to continue.", journals);
 		};
 	}
 
 	/**
-	 * Selects explicit setup or an operation whose authority is anchored to the running image.
+	 * Selects install from the extracted plugin archive, or an operation on the installation whose version folder the
+	 * running installer runs from.
 	 *
 	 * @param arguments the validated operation
 	 * @return its printed result's status
 	 * @throws IOException    if installation files cannot be read or replaced
-	 * @throws TrustException if setup or policy validation refuses the operation
+	 * @throws TrustException if install, the running installer's location or policy validation refuses the operation
 	 */
 	private int execute(Arguments arguments) throws IOException, TrustException
 	{
-		if (arguments.operation() == Operation.SETUP)
-			return setUp(arguments);
+		if (arguments.operation() == Operation.INSTALL)
+			return install(arguments);
 
-		Locations locations = Locations.installed(image);
-		Locations.validateCurrent(image);
+		Locations locations = Locations.installed(image, integrations);
+		resolvedData = locations.data();
+		resolvedHarness = locations.harness();
 		String own = locations.harness();
 		if (!arguments.harness().isEmpty() && !arguments.harness().equals(own))
 		{
@@ -281,7 +304,7 @@ public final class Invocation
 		if (arguments.operation() != Operation.UNINSTALL && (!Files.isRegularFile(program) ||
 			!Files.isExecutable(program)))
 		{
-			return print(failure(Result.REFUSED, own, "The " + own + " program " + program + " that setup recorded " +
+			return print(failure(Result.REFUSED, own, "The " + own + " program " + program + " that install recorded " +
 				"no longer exists or is not executable; " + Locations.rerunEntryCommand(own) + ".", List.of(program)),
 				arguments, locations);
 		}
@@ -301,28 +324,21 @@ public final class Invocation
 		{
 			UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation.get(), platform.id(),
 				clock, waiting);
-			UpdateResult result = switch (arguments.operation())
-			{
-				case INSTALL -> engine.install(arguments.tag(), session);
-				case UPDATE -> engine.update(arguments.tag(), session);
-				case SETUP, STATUS, UNINSTALL -> throw new AssertionError(arguments.operation());
-			};
-			return finish(engine, result, arguments, locations);
+			return finish(engine, engine.update(arguments.tag(), session), arguments, locations);
 		}
 	}
 
 	/**
-	 * Sets a harness's installation up from the extracted installer archive that the running installer belongs to.
+	 * Installs a harness's plugin from the extracted plugin archive that the running installer belongs to.
 	 *
-	 * @param arguments the validated setup operation
+	 * @param arguments the validated install operation
 	 * @return its printed result's status
 	 * @throws IOException    if installation files cannot be read or replaced
-	 * @throws TrustException if setup refuses
+	 * @throws TrustException if install refuses
 	 */
-	private int setUp(Arguments arguments) throws IOException, TrustException
+	private int install(Arguments arguments) throws IOException, TrustException
 	{
 		String harness = arguments.harness();
-		Locations locations = Locations.forSetup(image, platform, environment, harness);
 		PluginActivation activation = activations.stream().filter(provider -> provider.harness().equals(harness)).
 			findFirst().orElseThrow();
 		Optional<HarnessIntegration> integration = integrations.stream().
@@ -332,28 +348,18 @@ public final class Invocation
 			return print(failure(Result.REFUSED, harness, "This installer has no harness integration for " + harness +
 				".", List.of()), arguments, null);
 		}
-		Setup setup = new Setup(locations, platform, replacer, DirectoryMover.ATOMIC, cliFactory, clock, waiting);
-		Setup.Outcome outcome;
-		try (HttpsReleaseSource source = new HttpsReleaseSource(setup.defaults().releaseBaseUrl(), environment,
-			CONNECT_LIMIT, REQUEST_LIMIT))
-		{
-			outcome = setup.setUp(harness, arguments.home(), arguments.plugin(), cwd, environment, activation,
-				integration.get(), source);
-		}
-		UpdateResult plugin = outcome.plugin();
-		if (plugin.result().exitStatus() != 0)
-		{
-			return print(new UpdateResult(plugin.result(), harness, plugin.version(), plugin.previousVersion(),
-				"The installer " + outcome.version() + " is installed, but the plugin step failed: " + plugin.message() +
-				" Run the entry command again to repair the installation.", plugin.paths(), plugin.consistent(),
-				plugin.keyIds()), arguments, locations);
-		}
-		ObjectNode object = encode(new UpdateResult(Result.SET_UP, harness, Optional.of(outcome.version()),
-			Optional.empty(), "CAT is set up for " + harness + ".", List.of(locations.data(), locations.policy()),
-			true, outcome.policy().keys().stream().map(TrustedKey::id).toList()));
-		object.put("plugin_version", plugin.version().orElse(""));
-		plugin.aotCache().ifPresent(written -> object.put("aot_cache", written));
-		object.put("launcher", outcome.launcher().toString());
+		List<HarnessIntegration> others = integrations.stream().
+			filter(provider -> !provider.harness().equals(harness)).toList();
+		Install.Outcome outcome = new Install(image, platform, replacer, cliFactory, ProcessElevation::isElevated).
+			install(harness, arguments.home(), cwd, environment, userHome, activation, integration.get(), others);
+		Path policyFile = integration.get().installation(outcome.policy().harnesses().get(harness)).policy();
+		ObjectNode object = encode(new UpdateResult(Result.INSTALLED, harness,
+			Optional.of(outcome.version().release()), Optional.empty(), "CAT is installed for " + harness + ".",
+			List.of(outcome.versionFolder(), policyFile), true,
+			outcome.policy().keys().stream().map(TrustedKey::id).toList()));
+		object.put("plugin_version", outcome.version().toString());
+		object.put("aot_cache", outcome.startupCache());
+		object.put("launcher", outcome.installer().toString());
 		ObjectNode permissions = object.putObject("permissions");
 		for (Map.Entry<String, List<String>> entry : outcome.permissions().entrySet())
 		{
@@ -515,9 +521,11 @@ public final class Invocation
 	{
 		if (arguments == null || arguments.operation() == Operation.STATUS)
 			return;
-		Path data = image.getParent();
+		Path data = resolvedData;
 		if (locations != null)
 			data = locations.data();
+		if (data == null)
+			return;
 		Path log = InstallerState.of(data, selectedHarness(arguments)).log();
 		if (!Files.isDirectory(log.getParent()))
 			return;
@@ -553,15 +561,15 @@ public final class Invocation
 	 * Returns the harness that an operation acts on, for diagnostics.
 	 *
 	 * @param arguments the validated operation
-	 * @return the named harness, or else the harness of the installation that contains the running installer
+	 * @return the named harness, or else the harness of the installation that the running installer belongs to, or
+	 *         {@code unknown} before it is known
 	 */
 	private String selectedHarness(Arguments arguments)
 	{
 		if (!arguments.harness().isEmpty())
 			return arguments.harness();
-		Path data = image.getParent();
-		if (data == null || data.getFileName() == null)
-			return "unknown";
-		return data.getFileName().toString();
+		if (resolvedHarness != null)
+			return resolvedHarness;
+		return "unknown";
 	}
 }

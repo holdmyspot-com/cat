@@ -4,6 +4,7 @@
  */
 module com.holdmyspot.cat.codex.installer
 {
+	requires com.holdmyspot.cat.codex.layout;
 	requires com.holdmyspot.cat.common.installer;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;

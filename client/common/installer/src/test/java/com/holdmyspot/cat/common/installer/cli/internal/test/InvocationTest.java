@@ -17,7 +17,6 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
-import com.holdmyspot.cat.common.installer.cli.internal.Locations;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
@@ -55,7 +54,8 @@ public final class InvocationTest
 	}
 
 	/**
-	 * Forged HOME and XDG roots cannot replace the protected policy selected by the running image.
+	 * Forged HOME, XDG and harness home variables cannot replace the policy of the version folder that the installer
+	 * runs from.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if a test policy is invalid
@@ -68,7 +68,7 @@ public final class InvocationTest
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-policy-")));
 			installation.writePolicy(installation.trustPolicy());
 			Path fakeHome = Files.createDirectory(installation.root.resolve("forged-home"));
-			Path forgedPolicyFile = fakeHome.resolve("config/cat-updater/harness-a/policy.json");
+			Path forgedPolicyFile = fakeHome.resolve("plugins/data/cat-cat/policy.json");
 			Files.createDirectories(forgedPolicyFile.getParent());
 			TrustPolicy defaults = policy(List.of(trusted("forged-key", keyPair())));
 			TrustPolicy.of(defaults.keys(), defaults.releaseBaseUrl(), defaults.minimum(), defaults.maximumMajor(),
@@ -76,7 +76,7 @@ public final class InvocationTest
 				write(forgedPolicyFile, replacer());
 			Map<String, String> environment = Map.of("HOME", fakeHome.toString(), "XDG_DATA_HOME",
 				fakeHome.resolve("data").toString(), "XDG_CONFIG_HOME", fakeHome.resolve("config").toString(),
-				"LOCALAPPDATA", fakeHome.toString());
+				"LOCALAPPDATA", fakeHome.toString(), "HARNESS_A_HOME", fakeHome.toString());
 
 			Run run = installation.run(environment, List.of(new RecordedHomeProvider(installation.home)),
 				new RecordingIntegration(), "status", "--harness", "harness-a");
@@ -141,36 +141,78 @@ public final class InvocationTest
 	}
 
 	/**
-	 * An installation without its setup record or its policy refuses status with one JSON result that names the one
-	 * entry command which sets the harness up again.
+	 * A version folder whose plugin data folder holds no policy refuses status with one JSON result that names the one
+	 * entry command which installs the harness again.
 	 *
 	 * @throws IOException if the fixture cannot be created or the output cannot be read
 	 */
 	@Test
-	public void missingSetupIsReported() throws IOException
+	public void missingPolicyIsReported() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("invocation-no-setup-"));
-			Path withoutAnchor = Files.createDirectories(root.resolve("first/harness-a/1.0"));
-			Files.writeString(withoutAnchor.resolveSibling("current"), "1.0\n");
-			Path withoutPolicy = Files.createDirectories(root.resolve("second/harness-a/1.0"));
-			Files.writeString(withoutPolicy.resolveSibling("current"), "1.0\n");
-			Path anchor = withoutPolicy.resolve(Locations.POLICY_ANCHOR);
-			Files.createDirectories(anchor.getParent());
-			Files.writeString(anchor, root.resolve("missing-policy.json") + "\n");
-			for (Path image : List.of(withoutAnchor, withoutPolicy))
-			{
-				Run run = run(image, root, Map.of(), List.of(new RecordedHomeProvider(root)), new RecordingIntegration(),
-					"status", "--harness", "harness-a");
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-no-policy-")));
 
-				requireThat(run.status, "status").isEqualTo(3);
+			Run run = installation.run(Map.of(), List.of(new RecordedHomeProvider(installation.home)),
+				new RecordingIntegration(), "status", "--harness", "harness-a");
+
+			requireThat(run.status, "status").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").
+				contains("cat.sh --harness harness-a").contains("cat.ps1 -Harness harness-a");
+			requireThat(run.output.lines().count(), "outputLines").isEqualTo(1L);
+		}
+	}
+
+	/**
+	 * Returns installer locations that are not a version folder of the harness.
+	 *
+	 * @return each location's name
+	 */
+	@DataProvider
+	public static Object[][] outsideVersionFolders()
+	{
+		return new Object[][]{{"download"}, {"marketplace"}, {"unversioned"}};
+	}
+
+	/**
+	 * An installer that does not run from a version folder of the harness, such as an extracted download, the
+	 * harness's marketplace folder or a folder in the version folders whose name is not a plugin version, refuses
+	 * every routine operation, reading no policy and writing nothing.
+	 *
+	 * @param location where the installer runs
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test(dataProvider = "outsideVersionFolders")
+	public void refusesImageOutsideVersionFolders(String location) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-outside-")));
+			installation.writePolicy(installation.trustPolicy());
+			Path image = switch (location)
+			{
+				case "download" -> Files.createDirectories(installation.root.resolve("download/cat-harness-a"));
+				case "marketplace" -> Files.createDirectories(installation.home.resolve(
+					"plugins/cat-marketplace/plugins/cat"));
+				case "unversioned" -> Files.createDirectories(installation.home.resolve("plugins/cache/cat/cat/1.2"));
+				default -> throw new AssertionError(location);
+			};
+			Map<String, String> before = Releases.snapshot(installation.root);
+
+			for (String[] arguments : List.of(new String[]{"status", "--harness", "harness-a"},
+				new String[]{"uninstall"}, new String[]{"update", "--harness", "harness-a"}))
+			{
+				Run run = run(image, installation.root, Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+					arguments);
+
+				requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 				requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
-				requireThat(run.result().path("message").stringValue(), "message").
-					contains("cat.sh --harness harness-a").contains("cat.ps1 -Harness harness-a").
-					doesNotContain("--updater-only");
+				requireThat(run.result().path("message").stringValue(), "message").contains(image.toString());
 				requireThat(run.output.lines().count(), "outputLines").isEqualTo(1L);
 			}
+			requireThat(Releases.snapshot(installation.root), "after").isEqualTo(before);
 		}
 	}
 
@@ -248,8 +290,8 @@ public final class InvocationTest
 	}
 
 	/**
-	 * When the recorded harness program no longer exists, an install or update, which must register the plugin, is
-	 * refused with the entry command that records it again, before anything changes.
+	 * When the recorded harness program no longer exists, an update, which must register the plugin, is refused with
+	 * the entry command that records it again, before anything changes.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -263,16 +305,14 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			Files.delete(installation.program);
 			RecordingIntegration integration = new RecordingIntegration();
-			for (String operation : List.of("install", "update"))
-			{
-				Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, operation, "--harness",
-					"harness-a");
 
-				requireThat(run.status, "status").isEqualTo(3);
-				requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
-				requireThat(run.result().path("message").stringValue(), "message").
-					contains("cat.sh --harness harness-a").contains(installation.program.toString());
-			}
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "update", "--harness",
+				"harness-a");
+
+			requireThat(run.status, "status").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").
+				contains("cat.sh --harness harness-a").contains(installation.program.toString());
 			requireThat(integration.calls(), "calls").isEmpty();
 			requireThat(Files.exists(installation.data.resolve("state"), NOFOLLOW_LINKS), "state").isFalse();
 			requireThat(Files.isRegularFile(installation.policyFile), "policy").isTrue();
@@ -549,91 +589,67 @@ public final class InvocationTest
 	}
 
 	/**
-	 * Setup from an extracted archive with a local plugin tree reports the installer version, the plugin version, whether
-	 * the plugin got its startup cache, the stable launcher and the permission entries that it installed.
+	 * Install from an extracted plugin archive reports the plugin version, whether the plugin got its startup cache, the
+	 * installer launcher in the version folder and the permission entries that it installed.
 	 *
-	 * @throws IOException if the fixture cannot be created or the output cannot be read
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
 	 */
 	@Test
-	public void setupReportsInstallation() throws IOException
+	public void installReportsInstallation() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("invocation-setup-")).toRealPath();
-			Path archive = SetupArchive.create(root.resolve("archive"), List.of());
-			Path tree = SetupArchive.pluginTree(root.resolve("plugin-tree"));
+			Path root = cleanup.add(testDirectory("invocation-install-")).toRealPath();
+			Path archive = PluginArchive.create(root.resolve("download"), List.of(trusted("release-key", keyPair())));
 			Path home = Files.createDirectory(root.resolve("home"));
 			Path user = Files.createDirectory(root.resolve("user"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			RecordingIntegration integration = new RecordingIntegration().
 				adding(Map.of("settings.json", List.of("entry")));
 			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
-			Map<String, String> environment = Map.of("HOME", user.toString(), "PATH", tools.toString(),
-				"XDG_DATA_HOME", root.resolve("data").toString(), "XDG_CONFIG_HOME", root.resolve("config").toString());
+			Map<String, String> environment = Map.of("HOME", user.toString(), "PATH", tools.toString());
 
-			Run run = run(archive.resolve(SetupArchive.VERSION), project, environment, List.of(new LiveProvider()),
-				integration, "setup", "--harness", "harness-a", "--home", home.toString(), "--plugin", tree.toString());
+			Run run = run(archive, project, environment, List.of(new LiveProvider()), integration, "install",
+				"--harness", "harness-a", "--home", home.toString());
 
-			requireThat(run.status, "status").isEqualTo(0);
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			JsonNode result = run.result();
-			requireThat(result.path("result").stringValue(), "result").isEqualTo("set_up");
+			Path versionFolder = home.resolve("plugins/cache/cat/cat").resolve(PluginArchive.VERSION);
+			requireThat(result.path("result").stringValue(), "result").isEqualTo("installed");
+			requireThat(result.path("harness").stringValue(), "harness").isEqualTo("harness-a");
 			requireThat(result.path("version").stringValue(), "version").isEqualTo("1.2");
-			requireThat(result.path("plugin_version").stringValue(), "pluginVersion").isEqualTo("1.2");
-			// The fixture plugin tree does not describe how to train its startup cache
+			requireThat(result.path("plugin_version").stringValue(), "pluginVersion").isEqualTo(PluginArchive.VERSION);
+			// The fixture plugin does not describe how to train its startup cache
 			requireThat(result.path("aot_cache").isBoolean(), "aotCacheReported").isTrue();
 			requireThat(result.path("aot_cache").booleanValue(), "aotCache").isFalse();
 			requireThat(result.path("launcher").stringValue(), "launcher").
-				isEqualTo(root.resolve("data/cat-updater/harness-a/bin/cat-updater").toString());
+				isEqualTo(versionFolder.resolve("bin/installer").toString());
 			requireThat(result.path("permissions").path("settings.json").get(0).stringValue(), "permission").
 				isEqualTo("entry");
 		}
 	}
 
 	/**
-	 * A second blank selector line is refused before a routine command attempts to read its policy.
-	 *
-	 * @throws IOException if the fixture cannot be created or the output cannot be read
-	 */
-	@Test
-	public void malformedCurrentPreventsDispatch() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("invocation-current-"));
-			Path image = Files.createDirectories(root.resolve("harness-a/1.0"));
-			Path anchor = image.resolve(Locations.POLICY_ANCHOR);
-			Files.createDirectories(anchor.getParent());
-			Files.writeString(anchor, root.resolve("missing-policy.json") + "\n");
-			Files.writeString(image.resolveSibling("current"), "1.0\n\n");
-
-			Run run = run(image, root, Map.of(), List.of(new RecordedHomeProvider(root)), new RecordingIntegration(),
-				"status", "--harness", "harness-a");
-
-			requireThat(run.status, "status").isEqualTo(3);
-			requireThat(run.result().path("message").stringValue(), "message").contains("current installer version");
-			requireThat(run.output.lines().count(), "outputLines").isEqualTo(1L);
-		}
-	}
-
-	/**
 	 * Failure while an activation journal exists must report unknown restoration as inconsistent.
 	 *
-	 * @throws IOException if the fixture cannot be created or the output cannot be read
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void existingJournalPreventsConsistentFailure() throws IOException
+	public void existingJournalPreventsConsistentFailure() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("invocation-journal-"));
-			Path data = Files.createDirectories(root.resolve("harness-a"));
-			Path image = Files.createDirectory(data.resolve("image"));
-			Path journal = data.resolve("state/harness-a/activation.json");
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-journal-")));
+			installation.writePolicy(installation.trustPolicy());
+			Path journal = installation.data.resolve("state/harness-a/activation.json");
 			Files.createDirectories(journal.getParent());
 			Files.writeString(journal, "{}\n");
 
-			Run run = run(image, root, Map.of(), List.of(new RecordedHomeProvider(root)), new RecordingIntegration(),
-				"status", "--harness", "harness-a");
+			// The provider fails on the recorded home, which it does not expect
+			Run run = installation.run(Map.of(), List.of(new RecordedHomeProvider(installation.root)),
+				new RecordingIntegration(), "status", "--harness", "harness-a");
 
 			requireThat(run.status, "status").isEqualTo(6);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("not_restored");
@@ -645,7 +661,7 @@ public final class InvocationTest
 	/**
 	 * Runs one installer invocation whose harness program never starts.
 	 *
-	 * @param image        the running installer version directory
+	 * @param image        the plugin folder of the running installer
 	 * @param cwd          the caller's working directory
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
@@ -662,7 +678,9 @@ public final class InvocationTest
 		try (PrintStream stdout = new PrintStream(output, false, UTF_8);
 			PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 		{
-			Invocation invocation = new Invocation(image, cwd, Platform.LINUX_X64, environment, activations,
+			// The user's home is the one that the environment names, as the installer's process has it
+			Path userHome = Path.of(environment.getOrDefault("HOME", cwd.toString()));
+			Invocation invocation = new Invocation(image, cwd, userHome, Platform.LINUX_X64, environment, activations,
 				List.of(integration), (command, home) -> RecordingIntegration.cli(), Clock.systemUTC(),
 				interval -> () -> {}, replacer(), stdout, stderr);
 			status = invocation.run(arguments);
@@ -691,7 +709,8 @@ public final class InvocationTest
 	}
 
 	/**
-	 * A set-up installation of {@code harness-a}: its data directory, policy, harness home and harness program.
+	 * An installation of {@code harness-a}: its harness home, the version folder of its plugin, its plugin data folder
+	 * with the policy, and the harness program.
 	 */
 	private static final class Installation
 	{
@@ -712,14 +731,10 @@ public final class InvocationTest
 		private Installation(Path directory) throws IOException
 		{
 			this.root = directory.toRealPath();
-			this.data = Files.createDirectories(root.resolve("base/harness-a"));
-			this.image = Files.createDirectories(data.resolve("1.0"));
-			Files.writeString(data.resolve("current"), "1.0\n");
-			this.policyFile = root.resolve("config/harness-a/policy.json");
-			Path anchor = image.resolve(Locations.POLICY_ANCHOR);
-			Files.createDirectories(anchor.getParent());
-			Files.writeString(anchor, policyFile + "\n");
 			this.home = Files.createDirectory(root.resolve("home"));
+			this.image = Files.createDirectories(home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab"));
+			this.data = home.resolve("plugins/data/cat-cat");
+			this.policyFile = data.resolve("policy.json");
 			Path user = Files.createDirectory(root.resolve("user"));
 			this.program = Files.createDirectories(root.resolve("tools")).resolve("harness-a");
 			Files.writeString(program, "#!/bin/sh\n");
@@ -728,7 +743,7 @@ public final class InvocationTest
 		}
 
 		/**
-		 * Returns the policy that setup would have written.
+		 * Returns the policy that install would have written.
 		 *
 		 * @return the policy
 		 * @throws TrustException if the policy is invalid
@@ -771,8 +786,6 @@ public final class InvocationTest
 				update("v1.0", new RecordingIntegration().session());
 			requireThat(result.result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
-			Path anchor = image.resolve(Locations.POLICY_ANCHOR);
-			Files.writeString(anchor, policyFile + "\n");
 		}
 
 		/**
@@ -789,7 +802,7 @@ public final class InvocationTest
 		}
 
 		/**
-		 * Runs one installer invocation from the installation's version directory.
+		 * Runs one installer invocation from the installation's version folder.
 		 *
 		 * @param environment the caller's environment
 		 * @param activations the installed activation providers

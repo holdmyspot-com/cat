@@ -5,7 +5,12 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.HarnessSession;
+import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
+import com.holdmyspot.cat.common.installer.engine.TreeCopy;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,15 +21,22 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * A harness integration for the generic harness {@code harness-a} that records each call and fails the calls that a
- * test names. It never runs a program.
+ * A harness integration for a generic harness, {@code harness-a} unless a test names another, that records each call
+ * and fails the calls that a test names. It never runs a program. Its harness keeps CAT's installation as
+ * {@link Layout} describes, and installs a plugin as a harness does: {@code register} copies the plugin in the
+ * marketplace folder into the version folder that the plugin's {@code bin/VERSION} names.
  */
 public final class RecordingIntegration implements HarnessIntegration
 {
+	/**
+	 * The harness.
+	 */
+	private final String harness;
 	/**
 	 * Each call's name followed by its home, in call order.
 	 */
@@ -51,15 +63,27 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private final List<Map<String, List<String>>> removed = new ArrayList<>();
 	/**
-	 * Whether {@code legacyPermissions} reports an entry for the shared stable launcher of earlier builds.
+	 * The entries that the next {@code installSandboxEntries} call reports as added, which {@code sandboxEntries} also
+	 * reports as maintained.
 	 */
-	private boolean retiring;
+	private Map<String, List<String>> sandbox = Map.of();
 
 	/**
-	 * Creates an integration whose calls all succeed.
+	 * Creates an integration of {@code harness-a} whose calls all succeed.
 	 */
 	public RecordingIntegration()
 	{
+		this("harness-a");
+	}
+
+	/**
+	 * Creates an integration whose calls all succeed.
+	 *
+	 * @param harness the harness
+	 */
+	public RecordingIntegration(String harness)
+	{
+		this.harness = harness;
 	}
 
 	/**
@@ -134,16 +158,26 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Sets whether the integration reports permission entries that earlier builds asked the user to add for their
-	 * shared stable launcher: one entry naming that launcher.
+	 * Sets the sandbox entries that the next sandbox installation reports as added and that the integration reports as
+	 * maintained.
 	 *
-	 * @param retiring true to report the entry, false to report none
+	 * @param entries each configuration's sandbox entries
 	 * @return this integration
 	 */
-	public RecordingIntegration retiring(boolean retiring)
+	public RecordingIntegration sandboxing(Map<String, List<String>> entries)
 	{
-		this.retiring = retiring;
+		this.sandbox = Map.copyOf(entries);
 		return this;
+	}
+
+	/**
+	 * Returns the calls made so far with what each received.
+	 *
+	 * @return each call's name followed by a space and its subject, such as the harness home, in call order
+	 */
+	public List<String> callsWithSubjects()
+	{
+		return List.copyOf(calls);
 	}
 
 	/**
@@ -180,7 +214,7 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Creates the {@code harness-a} program file that setup finds on the search path. Setup never starts it.
+	 * Creates the {@code harness-a} program file that install finds on the search path. Install never starts it.
 	 *
 	 * @param directory the directory to create the program in
 	 * @return the program
@@ -207,7 +241,30 @@ public final class RecordingIntegration implements HarnessIntegration
 	@Override
 	public String harness()
 	{
-		return "harness-a";
+		return harness;
+	}
+
+	@Override
+	public HarnessInstallation installation(Path home)
+	{
+		return new Layout(home);
+	}
+
+	/**
+	 * Returns the installation at the home that {@code <HARNESS>_HOME} names, or else at
+	 * {@code <user home>/<harness>-home}.
+	 */
+	@Override
+	public HarnessInstallation installation(Map<String, String> environment, Path userHome)
+	{
+		return new Layout(HarnessInstallation.resolveHome(environment, homeVariable(), userHome,
+			Path.of(harness + "-home")));
+	}
+
+	@Override
+	public Path marketplaceFolder(Path home, PluginVersion version)
+	{
+		return new Layout(home).marketplacePlugin();
 	}
 
 	@Override
@@ -222,7 +279,17 @@ public final class RecordingIntegration implements HarnessIntegration
 	@Override
 	public Map<String, String> programEnvironment(Path home, Map<String, String> environment)
 	{
-		return Map.of("HARNESS_A_HOME", home.toString());
+		return Map.of(homeVariable(), home.toString());
+	}
+
+	/**
+	 * Returns the variable that names the harness home, such as {@code HARNESS_A_HOME}.
+	 *
+	 * @return the variable's name
+	 */
+	private String homeVariable()
+	{
+		return harness.toUpperCase(Locale.ROOT).replace('-', '_') + "_HOME";
 	}
 
 	/**
@@ -240,40 +307,63 @@ public final class RecordingIntegration implements HarnessIntegration
 		record("validateConfiguration", home);
 	}
 
+	/**
+	 * Records the call and, when the marketplace folder holds a plugin, copies it into the version folder that its
+	 * {@code bin/VERSION} names, replacing an earlier copy.
+	 */
 	@Override
 	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
 		record("register", home);
+		Layout layout = new Layout(home);
+		Path source = layout.marketplacePlugin();
+		Path version = source.resolve(PluginDirectory.VERSION);
+		if (!Files.isRegularFile(version))
+			return;
+		Path target = layout.versionFolder(PluginVersion.parse(Files.readString(version).strip()));
+		Files.createDirectories(target.getParent());
+		LinkSafeDeletion.delete(target, target.getParent());
+		TreeCopy.copy(source, target);
 	}
 
 	@Override
-	public void unregister(Path home, HarnessCli cli) throws IOException
+	public void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException
 	{
 		record("unregister", home);
 	}
 
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
 		throws IOException
 	{
-		record("installPermissions", home);
+		record("installPermissions", installer);
 		Map<String, List<String>> entries = added;
 		added = Map.of();
 		return entries;
 	}
 
 	@Override
-	public Map<String, List<String>> permissions(Path stableLauncher)
+	public Map<String, List<String>> permissions(Path installer)
 	{
 		return Map.copyOf(maintained);
 	}
 
+	/**
+	 * Records the call with the other harness's home and the lock directory, and returns the entries that the test
+	 * set.
+	 */
 	@Override
-	public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
+		FileReplacer replacer) throws IOException
 	{
-		if (!retiring)
-			return Map.of();
-		return Map.of("settings.json", List.of(legacyLauncher.toString()));
+		record("installSandboxEntries", other.home() + " " + catLocks);
+		return sandbox;
+	}
+
+	@Override
+	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
+	{
+		return sandbox;
 	}
 
 	@Override
@@ -295,8 +385,60 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		calls.add(call + " " + subject);
 		if (crashing.contains(call))
-			throw new IllegalStateException("harness-a stopped during " + call);
+			throw new IllegalStateException(harness + " stopped during " + call);
 		if (failing.contains(call))
-			throw new IOException("harness-a refused " + call);
+			throw new IOException(harness + " refused " + call);
+	}
+
+	/**
+	 * Where the generic harness keeps CAT's installation: its marketplace in {@code plugins/cat-marketplace}, with the
+	 * plugin in {@code plugins/cat}, the version folders in {@code plugins/cache/cat/cat} and the plugin data in
+	 * {@code plugins/data/cat-cat}.
+	 *
+	 * @param home the absolute harness home
+	 */
+	public record Layout(Path home) implements HarnessInstallation
+	{
+		/**
+		 * Creates the layout.
+		 *
+		 * @param home the absolute harness home
+		 */
+		public Layout
+		{
+			if (!home.isAbsolute())
+				throw new IllegalArgumentException("home must be absolute: " + home);
+			home = home.normalize();
+		}
+
+		@Override
+		public Path marketplaceRoot()
+		{
+			return home.resolve("plugins/cat-marketplace");
+		}
+
+		@Override
+		public Path marketplacePlugin()
+		{
+			return marketplaceRoot().resolve("plugins/cat");
+		}
+
+		@Override
+		public Path cacheRoot()
+		{
+			return home.resolve("plugins/cache");
+		}
+
+		@Override
+		public Path versionFolders()
+		{
+			return cacheRoot().resolve("cat/cat");
+		}
+
+		@Override
+		public Path dataDirectory()
+		{
+			return home.resolve("plugins/data/cat-cat");
+		}
 	}
 }

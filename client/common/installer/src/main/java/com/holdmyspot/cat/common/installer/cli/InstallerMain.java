@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessHarnessCli;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
@@ -32,11 +33,8 @@ public final class InstallerMain
 		try
 		{
 			Platform platform = Platform.current();
-			// The installer's JAR lies in <version>/app, so its version directory is the JAR's grandparent
-			Path jar = Path.of(InstallerMain.class.getProtectionDomain().getCodeSource().getLocation().toURI()).
-				toRealPath();
-			Invocation invocation = new Invocation(jar.getParent().getParent(), Path.of("").toAbsolutePath(),
-				platform, System.getenv(),
+			Invocation invocation = new Invocation(PluginDirectory.of(InstallerMain.class),
+				Path.of("").toAbsolutePath(), Path.of(System.getProperty("user.home")), platform, System.getenv(),
 				ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).toList(),
 				ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).toList(),
 				ProcessHarnessCli::new, Clock.systemUTC(), Pause::sleeping, FileReplacer.retrying(Pause::sleeping),
