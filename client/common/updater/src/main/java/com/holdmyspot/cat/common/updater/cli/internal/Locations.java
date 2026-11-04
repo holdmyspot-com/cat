@@ -13,10 +13,11 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * The protected updater data directory and policy selected at explicit setup.
+ * The protected locations of one harness's installation, selected at explicit setup: its updater data directory,
+ * which is named after the harness, and its policy.
  *
  * @param image  the real directory of the running updater image
- * @param data   the protected data directory containing the image
+ * @param data   the protected data directory of the installation
  * @param policy the protected policy file
  */
 public record Locations(Path image, Path data, Path policy)
@@ -35,40 +36,58 @@ public record Locations(Path image, Path data, Path policy)
 	private static final int MAXIMUM_CURRENT_BYTES = 128;
 
 	/**
-	 * Resolves setup locations from the user's explicit environment and the running image.
+	 * Resolves the locations of one harness's installation from the user's setup environment and the running image.
 	 *
 	 * @param image       the running image directory
 	 * @param platform    the current platform
 	 * @param environment the explicit setup environment
+	 * @param harness     the installation's harness
 	 * @return the installation locations
-	 * @throws IOException if the required absolute home or local application-data directory is absent
+	 * @throws IOException if the required absolute home or local application-data directory is absent, or the
+	 *                     locations lie inside the user's {@code .cat} directory
 	 */
-	public static Locations forSetup(Path image, Platform platform, Map<String, String> environment)
+	public static Locations forSetup(Path image, Platform platform, Map<String, String> environment, String harness)
 		throws IOException
 	{
 		requireThat(image, "image").isDirectory();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(harness, "harness").isNotBlank();
 		Path data;
-		Path config;
+		Path policy;
 		if (platform.isWindows())
 		{
-			data = absoluteVariable(environment, "LOCALAPPDATA").resolve("cat-updater");
-			config = data;
+			data = absoluteVariable(environment, "LOCALAPPDATA").resolve("cat-updater").resolve(harness);
+			policy = data.resolve("policy.json");
 		}
 		else
 		{
 			Path home = absoluteVariable(environment, "HOME");
-			data = xdg(environment, "XDG_DATA_HOME", home.resolve(".local/share")).resolve("cat-updater");
-			config = xdg(environment, "XDG_CONFIG_HOME", home.resolve(".config")).resolve("cat-updater");
+			data = xdg(environment, "XDG_DATA_HOME", home.resolve(".local/share")).resolve("cat-updater").
+				resolve(harness);
+			policy = xdg(environment, "XDG_CONFIG_HOME", home.resolve(".config")).resolve("cat-updater").
+				resolve(harness).resolve("policy.json");
 			Path catHome = resolveExistingAncestor(home.resolve(".cat"));
 			if (resolveExistingAncestor(data).startsWith(catHome) ||
-				resolveExistingAncestor(config).startsWith(catHome))
+				resolveExistingAncestor(policy).startsWith(catHome))
 			{
 				throw new IOException("Updater data and policy must be outside the user's .cat directory.");
 			}
 		}
-		return new Locations(image.toRealPath(), data.normalize(), config.resolve("policy.json").normalize());
+		return new Locations(image.toRealPath(), data.normalize(), policy.normalize());
+	}
+
+	/**
+	 * Returns the instruction to set a harness's installation up again with the CAT entry command.
+	 *
+	 * @param harness the harness
+	 * @return the instruction, a sentence fragment that starts with a verb
+	 */
+	public static String rerunEntryCommand(String harness)
+	{
+		requireThat(harness, "harness").isNotBlank();
+		return "run the CAT entry command again: cat.sh --harness " + harness + " (in PowerShell: cat.ps1 -Harness " +
+			harness + ")";
 	}
 
 	/**
@@ -82,15 +101,21 @@ public record Locations(Path image, Path data, Path policy)
 	{
 		image = image.toRealPath();
 		Path anchor = image.resolve(POLICY_ANCHOR);
+		String harness = image.getParent().getFileName().toString();
 		if (!Files.isRegularFile(anchor, LinkOption.NOFOLLOW_LINKS))
-			throw new IOException("Updater setup is missing; run the pinned entry script with --updater-only.");
+			throw new IOException("Updater setup is missing; " + rerunEntryCommand(harness) + ".");
 		String text = BoundedInput.readUtf8(anchor, MAXIMUM_ANCHOR_BYTES, "The updater policy path");
 		if (!text.endsWith("\n") || text.indexOf('\n') != text.length() - 1 || text.indexOf('\r') >= 0)
+		{
 			throw new IOException("The protected updater policy path must contain one absolute path line; " +
-				"run setup.");
+				rerunEntryCommand(harness) + ".");
+		}
 		Path policy = Path.of(text.substring(0, text.length() - 1));
 		if (!policy.isAbsolute() || !policy.normalize().equals(policy))
-			throw new IOException("The protected updater policy path must be absolute and normalized; run setup.");
+		{
+			throw new IOException("The protected updater policy path must be absolute and normalized; " +
+				rerunEntryCommand(harness) + ".");
+		}
 		return new Locations(image, image.getParent(), policy);
 	}
 
@@ -112,7 +137,7 @@ public record Locations(Path image, Path data, Path policy)
 			!BoundedInput.readUtf8(current, MAXIMUM_CURRENT_BYTES, "The current updater version").equals(version + "\n"))
 		{
 			throw new IOException("The current updater version must contain exactly the running image version " +
-				"and one newline; run setup.");
+				"and one newline; " + rerunEntryCommand(image.getParent().getFileName().toString()) + ".");
 		}
 	}
 
@@ -146,6 +171,16 @@ public record Locations(Path image, Path data, Path policy)
 	}
 
 	/**
+	 * Returns the harness of the installation, which names its data directory.
+	 *
+	 * @return the harness
+	 */
+	public String harness()
+	{
+		return data.getFileName().toString();
+	}
+
+	/**
 	 * Returns the stable launcher path for the platform.
 	 *
 	 * @param platform the current platform
@@ -154,7 +189,7 @@ public record Locations(Path image, Path data, Path policy)
 	public Path launcher(Platform platform)
 	{
 		if (platform.isWindows())
-			return data.resolve("bin/cat-updater.cmd");
+			return data.resolve("bin/cat-updater.ps1");
 		return data.resolve("bin/cat-updater");
 	}
 

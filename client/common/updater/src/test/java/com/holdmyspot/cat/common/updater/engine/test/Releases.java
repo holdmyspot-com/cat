@@ -84,6 +84,22 @@ public final class Releases implements ReleaseSource
 			Map.of("harness-a", home));
 	}
 
+	/**
+	 * Writes the description of an installation's Java runtime, whose feature release and modules satisfy every
+	 * release of this fixture except one with the {@code requirement} defect.
+	 *
+	 * @param data the installation's updater data directory
+	 * @return the runtime directory
+	 * @throws IOException if the description cannot be written
+	 */
+	public static Path runtime(Path data) throws IOException
+	{
+		Path runtime = Files.createDirectories(data.resolve("runtime"));
+		Files.writeString(runtime.resolve("cat-runtime.json"), "{\"format\": 1, \"java_version\": \"25.0.1\", " +
+			"\"java_feature\": 25, \"modules\": [\"java.base\", \"java.net.http\"]}");
+		return runtime;
+	}
+
 	@Override
 	public String latestTag()
 	{
@@ -142,6 +158,11 @@ public final class Releases implements ReleaseSource
 				entry(tar, top + "/install/migrations/registry.tsv", registry, 0644);
 			}
 			entry(tar, top + "/version", version, 0644);
+			int feature = 25;
+			if (defect.equals("requirement"))
+				feature = 99;
+			entry(tar, top + "/client/runtime-requirement.json", "{\"format\": 1, \"java_feature\": " + feature +
+				", \"modules\": [\"java.base\"]}", 0644);
 			entry(tar, top + "/agents/reviewer.toml", "name = 'new'", 0644);
 			switch (defect)
 			{

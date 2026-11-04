@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.updater.engine.ActivationJournal.Document;
 import com.holdmyspot.cat.common.updater.engine.ActivationJournal.Entry;
 import com.holdmyspot.cat.common.updater.engine.ActivationJournal.FileChange;
 import com.holdmyspot.cat.common.updater.engine.ActivationJournal.Kind;
+import com.holdmyspot.cat.common.updater.engine.ActivationJournal.Operation;
 import com.holdmyspot.cat.common.updater.engine.ActivationJournal.StepState;
 import com.holdmyspot.cat.common.updater.engine.ActivationJournal.Undo;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
@@ -108,35 +109,86 @@ final class ActivationTransaction
 	 * @param migrationFile   the provider's migration marker
 	 * @param previousVersion the active version before activation
 	 * @param newVersion      the authenticated release version
-	 * @throws IOException    if staging or activation fails; ActivationFailure reports the recovery outcome
+	 * @param completion      the work that must succeed for the activation to be kept, such as registering the
+	 *                        plugin with the harness; its failure restores the previous installation
+	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
+	 *                        recovery outcome
 	 * @throws TrustException if either version is malformed
 	 */
 	void activate(Path tree, List<ActivationStep> plan, Path migrationFile, String previousVersion,
-		String newVersion) throws IOException, TrustException
+		String newVersion, Completion completion) throws IOException, TrustException
+	{
+		requireThat(completion, "completion").isNotNull();
+		ReleaseVersion.parse(previousVersion);
+		if (!provider.plan(home, newVersion).equals(plan))
+			throw new Refused("The activation destinations differ from the provider's plan");
+		run(tree, plan, migrationFile, Operation.UPDATE, previousVersion, newVersion, completion);
+	}
+
+	/**
+	 * Adds a validated tree where the harness has no plugin, then runs {@code completion} before the activation is
+	 * committed. When a step or {@code completion} fails, every added location is deleted again, so the harness
+	 * returns to having no plugin. An interrupted install is undone the same way by the next {@link #recover()}.
+	 *
+	 * @param tree          the validated release tree
+	 * @param plan          the provider's install-from-absence plan, in execution order
+	 * @param migrationFile the provider's migration marker
+	 * @param newVersion    the authenticated release version
+	 * @param completion    the work that must succeed for the install to be kept, such as registering the plugin
+	 *                      with the harness
+	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
+	 *                        recovery outcome
+	 * @throws TrustException if the version is malformed
+	 */
+	void install(Path tree, List<ActivationStep> plan, Path migrationFile, String newVersion, Completion completion)
+		throws IOException, TrustException
+	{
+		requireThat(completion, "completion").isNotNull();
+		if (!provider.installPlan(home, newVersion).equals(plan))
+			throw new Refused("The activation destinations differ from the provider's install plan");
+		run(tree, plan, migrationFile, Operation.INSTALL, "", newVersion, completion);
+	}
+
+	/**
+	 * Runs one journaled activation.
+	 *
+	 * @param tree            the validated release tree
+	 * @param plan            provider-approved changes in execution order
+	 * @param migrationFile   the provider's migration marker
+	 * @param operation       whether the activation replaces an installation or adds one
+	 * @param previousVersion the active version before activation, or empty for an install
+	 * @param newVersion      the authenticated release version
+	 * @param completion      the work that must succeed before the activation is committed
+	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
+	 *                        recovery outcome
+	 * @throws TrustException if the new version is malformed
+	 */
+	private void run(Path tree, List<ActivationStep> plan, Path migrationFile, Operation operation,
+		String previousVersion, String newVersion, Completion completion) throws IOException, TrustException
 	{
 		requireThat(tree, "tree").isDirectory();
-		ReleaseVersion.parse(previousVersion);
 		ReleaseVersion.parse(newVersion);
-		if (!provider.plan(home, newVersion).equals(plan) || !provider.migrationVersionFile(home).equals(migrationFile))
+		if (!provider.migrationVersionFile(home).equals(migrationFile))
 			throw new Refused("The activation destinations differ from the provider's plan");
 		if (Files.exists(state.activation(), NOFOLLOW_LINKS))
 			throw new Refused("An interrupted activation must be recovered before activating another release");
 		preflight(tree, plan, migrationFile);
 		Path backupRoot = state.previousFiles().resolve(UUID.randomUUID().toString());
 		List<Entry> entries = prepareEntries(tree, plan, backupRoot);
-		current = new Document(previousVersion, newVersion, migrationFile, backupRoot,
+		current = new Document(operation, previousVersion, newVersion, migrationFile, backupRoot,
 			Files.exists(migrationFile, NOFOLLOW_LINKS), false, false, entries);
 		validate(current);
 		save();
 		try
 		{
 			stage(tree, plan);
-			current = new Document(previousVersion, newVersion, migrationFile, backupRoot,
+			current = new Document(operation, previousVersion, newVersion, migrationFile, backupRoot,
 				current.migrationExisted(), true, false, current.entries());
 			save();
 			for (int index = 0; index < entries.size(); ++index)
 				execute(index);
 			StateFiles.write(migrationFile, (newVersion + "\n").getBytes(UTF_8));
+			completion.run();
 			Files.move(state.activation(), state.lastActivation(), ATOMIC_MOVE, REPLACE_EXISTING);
 			PortableFiles.forceDirectory(state.directory());
 		}
@@ -147,7 +199,8 @@ final class ActivationTransaction
 				if (!Files.exists(state.activation(), NOFOLLOW_LINKS))
 				{
 					// A failure after committing must leave a recoverable reversal before it changes live paths again.
-					current = new Document(current.previousVersion(), current.newVersion(), current.migrationFile(),
+					current = new Document(current.operation(), current.previousVersion(), current.newVersion(),
+						current.migrationFile(),
 						current.backupRoot(), current.migrationExisted(), current.prepared(), true, current.entries());
 					save();
 				}
@@ -509,7 +562,7 @@ final class ActivationTransaction
 	 * @param target the fresh staging directory
 	 * @throws IOException if copying fails or a link escapes the source tree
 	 */
-	private static void copyTree(Path source, Path target) throws IOException
+	static void copyTree(Path source, Path target) throws IOException
 	{
 		StateFiles.createDirectories(target);
 		long[] counts = new long[2];
@@ -684,7 +737,8 @@ final class ActivationTransaction
 		Entry entry = entries.get(index);
 		entries.set(index, new Entry(entry.kind(), entry.live(), entry.staging(), entry.previous(), entry.older(),
 			entry.discard(), state, undo, entry.hadPrevious(), entry.files()));
-		current = new Document(current.previousVersion(), current.newVersion(), current.migrationFile(),
+		current = new Document(current.operation(), current.previousVersion(), current.newVersion(),
+			current.migrationFile(),
 			current.backupRoot(), current.migrationExisted(), current.prepared(), current.rollback(), entries);
 		save();
 	}
@@ -738,8 +792,11 @@ final class ActivationTransaction
 		StateFiles.requireNoLinks(state.lastActivation());
 		Document last = ActivationJournal.read(state.lastActivation());
 		validate(last);
-		current = new Document(last.previousVersion(), last.newVersion(), last.migrationFile(), last.backupRoot(),
-			last.migrationExisted(), true, true, last.entries());
+		if (last.operation() == Operation.INSTALL)
+			throw new Refused("The last activation installed CAT where no plugin existed; there is no previous " +
+				"installation to restore");
+		current = new Document(last.operation(), last.previousVersion(), last.newVersion(), last.migrationFile(),
+			last.backupRoot(), last.migrationExisted(), true, true, last.entries());
 		save();
 		try
 		{
@@ -866,7 +923,8 @@ final class ActivationTransaction
 	{
 		try
 		{
-			ReleaseVersion.parse(document.previousVersion());
+			if (document.operation() == Operation.UPDATE)
+				ReleaseVersion.parse(document.previousVersion());
 			ReleaseVersion.parse(document.newVersion());
 		}
 		catch (TrustException failure)
@@ -880,7 +938,11 @@ final class ActivationTransaction
 			throw new IOException("The journal's backup root is outside updater state: " + backupRoot);
 		StateFiles.requireNoLinks(backupRoot);
 		StateFiles.requireNoLinks(document.migrationFile());
-		List<ActivationStep> plan = provider.recoveryPlan(home, document.previousVersion(), document.newVersion());
+		List<ActivationStep> plan;
+		if (document.operation() == Operation.INSTALL)
+			plan = provider.installPlan(home, document.newVersion());
+		else
+			plan = provider.recoveryPlan(home, document.previousVersion(), document.newVersion());
 		if (plan.size() != document.entries().size())
 			throw new IOException("The journal's step count differs from the provider's plan");
 		for (int index = 0; index < plan.size(); ++index)
@@ -1006,7 +1068,38 @@ final class ActivationTransaction
 		StateFiles.requireNoLinks(state.lastActivation());
 		Document last = ActivationJournal.read(state.lastActivation());
 		validate(last);
+		if (last.operation() == Operation.INSTALL)
+			return Optional.empty();
 		return Optional.of(last.previousVersion());
+	}
+
+	/**
+	 * Returns the rollback and scratch locations that the last successful activation left beside the harness's
+	 * plugin locations, which removing CAT from the harness must also delete. Locations inside the updater's state are
+	 * excluded because they are deleted with it.
+	 *
+	 * @return the existing locations, after the last activation's journal is validated against the provider
+	 * @throws IOException if the journal cannot be read or does not match the provider's plan
+	 */
+	List<Path> retainedPaths() throws IOException
+	{
+		if (!Files.exists(state.lastActivation(), NOFOLLOW_LINKS))
+			return List.of();
+		StateFiles.requireNoLinks(state.lastActivation());
+		Document last = ActivationJournal.read(state.lastActivation());
+		validate(last);
+		List<Path> paths = new ArrayList<>();
+		for (Entry entry : last.entries())
+		{
+			if (entry.kind() == Kind.REPLACE_OWNED_FILES)
+				continue;
+			for (Path path : List.of(entry.previous(), entry.older(), entry.staging(), entry.discard()))
+			{
+				if (Files.exists(path, NOFOLLOW_LINKS))
+					paths.add(path);
+			}
+		}
+		return paths;
 	}
 
 	/**
@@ -1047,6 +1140,20 @@ final class ActivationTransaction
 					StateFiles.delete(backup);
 			}
 		}
+	}
+
+	/**
+	 * Work that an install runs after its files are in place and before it is committed.
+	 */
+	@FunctionalInterface
+	interface Completion
+	{
+		/**
+		 * Runs the work.
+		 *
+		 * @throws IOException if the work fails, which undoes the install
+		 */
+		void run() throws IOException;
 	}
 
 	/**

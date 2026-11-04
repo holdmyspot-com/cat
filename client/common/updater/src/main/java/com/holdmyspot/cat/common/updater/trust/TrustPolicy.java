@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.trust.TrustException.Reason;
 import java.io.IOException;
 import java.net.URI;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -59,9 +61,17 @@ public final class TrustPolicy
 	 */
 	private static final Set<String> ALLOWED_VERSION_FIELDS = Set.of("minimum", "maximum_major");
 	/**
-	 * The fields of a harness entry.
+	 * The fields of a harness entry in a policy of format 1, which records no harness program.
 	 */
 	private static final Set<String> HARNESS_FIELDS = Set.of("home");
+	/**
+	 * The fields of a harness entry in a policy of format 2.
+	 */
+	private static final Set<String> COMMAND_HARNESS_FIELDS = Set.of("home", "command", "environment");
+	/**
+	 * The newest policy format, which records each harness's program.
+	 */
+	private static final int LATEST_FORMAT = 2;
 	private final List<TrustedKey> keys;
 	/**
 	 * The URL below which each release's assets lie, in a directory named after its tag.
@@ -79,6 +89,15 @@ public final class TrustPolicy
 	 * Each harness's identifier, mapped to the home directory that CAT is installed in, in identifier order.
 	 */
 	private final SortedMap<String, Path> harnesses;
+	/**
+	 * Each harness's identifier, mapped to the harness program that setup found, in identifier order; empty in a
+	 * policy of format 1.
+	 */
+	private final SortedMap<String, HarnessCommand> commands;
+	/**
+	 * The policy's file format: 1 without harness programs, 2 with one program per harness.
+	 */
+	private final int format;
 
 	/**
 	 * Creates a policy.
@@ -137,7 +156,41 @@ public final class TrustPolicy
 					"without . or .. names: \"" + TrustText.excerpt(home.toString()) + "\"");
 			}
 		}
-		return new TrustPolicy(keys, releaseBaseUrl, minimum, maximumMajor, harnesses);
+		return new TrustPolicy(keys, releaseBaseUrl, minimum, maximumMajor, harnesses, Map.of(), 1);
+	}
+
+	/**
+	 * Creates a policy that also records, for each harness, the program that routine operations run to register CAT
+	 * with the harness. Routine operations run exactly that program with exactly that environment.
+	 *
+	 * @param keys           the keys whose signatures make a release authentic, with unique ids; when empty, no
+	 *                       release verifies
+	 * @param releaseBaseUrl the URL below which each release's assets lie: an absolute {@code https} URL with no user
+	 *                       information, query or fragment and no trailing slash
+	 * @param minimum        the lowest version that the updater may install
+	 * @param maximumMajor   the highest major version that the updater may install
+	 * @param harnesses      each harness's identifier, mapped to the absolute, normalized home directory that CAT is
+	 *                       installed in
+	 * @param commands       each harness's identifier, mapped to the harness program that setup found for it
+	 * @return the policy
+	 * @throws NullPointerException if any of the arguments are null, or contain null
+	 * @throws TrustException       if {@code commands} does not name exactly the harnesses of {@code harnesses}, or
+	 *                              for any reason that
+	 *                              {@link #of(List, URI, ReleaseVersion, int, Map) the policy without programs} is
+	 *                              refused
+	 */
+	public static TrustPolicy of(List<TrustedKey> keys, URI releaseBaseUrl, ReleaseVersion minimum, int maximumMajor,
+		Map<String, Path> harnesses, Map<String, HarnessCommand> commands) throws TrustException
+	{
+		requireThat(commands, "commands").isNotNull();
+		TrustPolicy policy = of(keys, releaseBaseUrl, minimum, maximumMajor, harnesses);
+		if (!commands.keySet().equals(harnesses.keySet()))
+		{
+			throw policyJson().refusal("The trust policy must record a harness program for exactly its harnesses " +
+				harnesses.keySet() + ", not for " + commands.keySet());
+		}
+		return new TrustPolicy(policy.keys, policy.releaseBaseUrl, policy.minimum, policy.maximumMajor,
+			policy.harnesses, commands, LATEST_FORMAT);
 	}
 
 	/**
@@ -205,7 +258,7 @@ public final class TrustPolicy
 		TrustJson json = policyJson();
 		JsonNode root = json.parseObject(bytes);
 		json.requireOnly(root, "", FIELDS);
-		json.requireFormat(root);
+		int format = json.requireFormat(root, LATEST_FORMAT);
 
 		List<TrustedKey> keys = parseKeys(json, json.requiredArray(root, "", "keys"));
 		String urlText = json.requiredString(root, "", "release_base_url");
@@ -236,8 +289,58 @@ public final class TrustPolicy
 		int maximumMajor = (int) json.requiredInteger(allowed, "allowed_versions", "maximum_major", 0,
 			Integer.MAX_VALUE);
 
-		Map<String, Path> harnesses = parseHarnesses(json, json.requiredObject(root, "", "harnesses"));
-		return of(keys, releaseBaseUrl, minimum, maximumMajor, harnesses);
+		JsonNode harnessObject = json.requiredObject(root, "", "harnesses");
+		Map<String, Path> harnesses = parseHarnesses(json, harnessObject, format);
+		if (format == 1)
+			return of(keys, releaseBaseUrl, minimum, maximumMajor, harnesses);
+		return of(keys, releaseBaseUrl, minimum, maximumMajor, harnesses, parseCommands(json, harnessObject));
+	}
+
+	/**
+	 * Parses the harness program of each harness entry of a policy of format 2.
+	 *
+	 * @param json   the policy's parser
+	 * @param object the {@code harnesses} object, whose entries were already checked
+	 * @return each harness's identifier, mapped to its program
+	 * @throws TrustException if a program is not a non-empty array of strings whose first element is an absolute
+	 *                        path, or an environment is not an object of string values
+	 */
+	private static Map<String, HarnessCommand> parseCommands(TrustJson json, JsonNode object) throws TrustException
+	{
+		Map<String, HarnessCommand> commands = new TreeMap<>();
+		for (Entry<String, JsonNode> entry : object.properties())
+		{
+			String path = "harnesses." + TrustText.excerpt(entry.getKey());
+			JsonNode array = json.requiredArray(entry.getValue(), path, "command");
+			List<String> command = new ArrayList<>();
+			for (int index = 0; index < array.size(); ++index)
+			{
+				if (!array.get(index).isString())
+					throw json.refusal("The trust policy's field \"" + path + ".command\" must contain only strings");
+				command.add(array.get(index).stringValue());
+			}
+			JsonNode environmentObject = json.requiredObject(entry.getValue(), path, "environment");
+			Map<String, String> environment = new TreeMap<>();
+			for (Entry<String, JsonNode> variable : environmentObject.properties())
+			{
+				if (!variable.getValue().isString())
+				{
+					throw json.refusal("The trust policy's field \"" + path + ".environment\" must contain only " +
+						"strings");
+				}
+				environment.put(variable.getKey(), variable.getValue().stringValue());
+			}
+			try
+			{
+				commands.put(entry.getKey(), new HarnessCommand(command, environment));
+			}
+			catch (IllegalArgumentException _)
+			{
+				throw json.refusal("The trust policy's field \"" + path + ".command\" must start with the harness " +
+					"program's absolute path");
+			}
+		}
+		return commands;
 	}
 
 	/**
@@ -269,10 +372,12 @@ public final class TrustPolicy
 	 *
 	 * @param json   the policy's field reader
 	 * @param object the value of the {@code harnesses} field
+	 * @param format the policy's format, which decides the fields that a harness entry may have
 	 * @return each harness's identifier, mapped to its home directory
 	 * @throws TrustException if an entry is not a harness entry, or its home is not a path
 	 */
-	private static Map<String, Path> parseHarnesses(TrustJson json, JsonNode object) throws TrustException
+	private static Map<String, Path> parseHarnesses(TrustJson json, JsonNode object, int format)
+		throws TrustException
 	{
 		Map<String, Path> harnesses = new TreeMap<>();
 		for (Entry<String, JsonNode> entry : object.properties())
@@ -281,7 +386,10 @@ public final class TrustPolicy
 			JsonNode harness = entry.getValue();
 			if (!harness.isObject())
 				throw json.refusal("The trust policy's field \"" + path + "\" must be a JSON object");
-			json.requireOnly(harness, path, HARNESS_FIELDS);
+			if (format == 1)
+				json.requireOnly(harness, path, HARNESS_FIELDS);
+			else
+				json.requireOnly(harness, path, COMMAND_HARNESS_FIELDS);
 			String home = json.requiredString(harness, path, "home");
 			try
 			{
@@ -304,10 +412,14 @@ public final class TrustPolicy
 	 * @param minimum        the lowest version that the updater may install
 	 * @param maximumMajor   the highest major version that the updater may install
 	 * @param harnesses      each harness's identifier, mapped to its home directory
+	 * @param commands       each harness's identifier, mapped to the harness program that setup recorded for it
+	 * @param format         the policy's format
 	 */
 	private TrustPolicy(List<TrustedKey> keys, URI releaseBaseUrl, ReleaseVersion minimum, int maximumMajor,
-		Map<String, Path> harnesses)
+		Map<String, Path> harnesses, Map<String, HarnessCommand> commands, int format)
 	{
+		this.commands = new TreeMap<>(commands);
+		this.format = format;
 		this.keys = List.copyOf(keys);
 		this.releaseBaseUrl = releaseBaseUrl;
 		this.minimum = minimum;
@@ -367,6 +479,30 @@ public final class TrustPolicy
 	}
 
 	/**
+	 * Returns the policy's file format.
+	 *
+	 * @return {@code 1} for a policy that records no harness programs, {@code 2} for one that records a program for
+	 * 	each harness
+	 */
+	public int format()
+	{
+		return format;
+	}
+
+	/**
+	 * Returns the harness program that setup found for a harness.
+	 *
+	 * @param harness the harness's identifier
+	 * @return the program, or empty if the policy records none for {@code harness}
+	 * @throws NullPointerException if {@code harness} is null
+	 */
+	public Optional<HarnessCommand> command(String harness)
+	{
+		requireThat(harness, "harness").isNotNull();
+		return Optional.ofNullable(commands.get(harness));
+	}
+
+	/**
 	 * Writes the policy to a file, replacing it atomically.
 	 * <p>
 	 * The policy is written to a new temporary file in the same directory, forced to the storage device, and then
@@ -421,7 +557,7 @@ public final class TrustPolicy
 	private ObjectNode toJson()
 	{
 		ObjectNode root = TrustJson.MAPPER.createObjectNode();
-		root.put("format", 1);
+		root.put("format", format);
 		ArrayNode keyArray = root.putArray("keys");
 		for (TrustedKey key : keys)
 		{
@@ -435,7 +571,19 @@ public final class TrustPolicy
 			put("maximum_major", maximumMajor);
 		ObjectNode harnessObject = root.putObject("harnesses");
 		for (Entry<String, Path> entry : harnesses.entrySet())
-			harnessObject.putObject(entry.getKey()).put("home", entry.getValue().toString());
+		{
+			ObjectNode harness = harnessObject.putObject(entry.getKey());
+			harness.put("home", entry.getValue().toString());
+			HarnessCommand command = commands.get(entry.getKey());
+			if (command == null)
+				continue;
+			ArrayNode commandArray = harness.putArray("command");
+			for (String element : command.command())
+				commandArray.add(element);
+			ObjectNode environment = harness.putObject("environment");
+			for (Entry<String, String> variable : new TreeMap<>(command.environment()).entrySet())
+				environment.put(variable.getKey(), variable.getValue());
+		}
 		return root;
 	}
 
@@ -450,13 +598,14 @@ public final class TrustPolicy
 	{
 		return object instanceof TrustPolicy other && other.keys.equals(keys) &&
 			other.releaseBaseUrl.equals(releaseBaseUrl) && other.minimum.equals(minimum) &&
-			other.maximumMajor == maximumMajor && other.harnesses.equals(harnesses);
+			other.maximumMajor == maximumMajor && other.harnesses.equals(harnesses) && other.commands.equals(commands) &&
+			other.format == format;
 	}
 
 	@Override
 	public int hashCode()
 	{
-		return Objects.hash(keys, releaseBaseUrl, minimum, maximumMajor, harnesses);
+		return Objects.hash(keys, releaseBaseUrl, minimum, maximumMajor, harnesses, commands, format);
 	}
 
 	@Override

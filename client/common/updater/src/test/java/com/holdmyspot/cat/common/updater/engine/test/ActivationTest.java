@@ -59,10 +59,11 @@ public final class ActivationTest
 			Releases source = new Releases("1.1", "");
 			List<ActivationStep> plan = List.of(new ReplaceDirectory(home.resolve("live"), home),
 				new AddDirectory(home.resolve("cache/1.1"), home), ownedStep(home));
+			Releases.runtime(home.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(plan), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult update = engine.update("v1.1");
+			UpdateResult update = engine.update("v1.1", new RecordingIntegration().registration());
 
 			requireThat(update.result(), "update").isEqualTo(Result.UPDATED);
 			requireThat(Files.readString(home.resolve("cache/1.1/version")), "addedVersion").isEqualTo("1.1");
@@ -102,11 +103,12 @@ public final class ActivationTest
 			Files.createDirectory(home.resolve("agents"));
 			Files.writeString(home.resolve("agents/cat-reviewer.toml"), "unowned");
 			Releases source = new Releases("1.1", "");
+			Releases.runtime(home.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(List.of(new ReplaceDirectory(home.resolve("live"), home), ownedStep(home))),
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1");
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
@@ -145,11 +147,12 @@ public final class ActivationTest
 			Files.createDirectory(home.resolve("agents"));
 			Files.writeString(home.resolve("agents/ownership"), name + "\n");
 			Releases source = new Releases("1.1", "");
+			Releases.runtime(home.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(List.of(new ReplaceDirectory(home.resolve("live"), home), ownedStep(home))),
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1");
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
@@ -177,10 +180,11 @@ public final class ActivationTest
 			Releases source = new Releases("1.1", "");
 			List<ActivationStep> plan = List.of(new ReplaceDirectory(home.resolve("live"), home),
 				new AddDirectory(home.resolve("blocked/new"), home));
+			Releases.runtime(home.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(plan), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1");
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
 
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(5);
@@ -248,6 +252,24 @@ public final class ActivationTest
 		public Path migrationVersionFile(Path home)
 		{
 			return home.resolve("marker");
+		}
+
+		@Override
+		public List<ActivationStep> installPlan(Path home, String newVersion)
+		{
+			return steps;
+		}
+
+		@Override
+		public List<Path> removalPaths(Path home)
+		{
+			return List.of(home.resolve("live"));
+		}
+
+		@Override
+		public Path dataDirectory(Path home)
+		{
+			return home.resolve("plugin-data");
 		}
 	}
 }

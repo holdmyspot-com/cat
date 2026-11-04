@@ -187,12 +187,30 @@ final class TrustJson
 	 */
 	void requireFormat(JsonNode root) throws TrustException
 	{
+		requireFormat(root, 1);
+	}
+
+	/**
+	 * Returns a document's {@code format} field, refusing a format that this updater cannot read.
+	 *
+	 * @param root   the document's top-level object
+	 * @param latest the newest format that this updater reads; every format from {@code 1} to it is read
+	 * @return the document's format
+	 * @throws TrustException if the field is absent or is not an integer from {@code 1} to {@code latest}
+	 */
+	int requireFormat(JsonNode root, int latest) throws TrustException
+	{
 		JsonNode format = required(root, "", "format");
-		if (!format.isIntegralNumber() || !format.canConvertToLong() || format.longValue() != 1)
+		if (!format.isIntegralNumber() || !format.canConvertToLong() || format.longValue() < 1 ||
+			format.longValue() > latest)
 		{
+			String readable = "only format 1";
+			if (latest > 1)
+				readable = "formats 1 to " + latest;
 			throw refusal("The " + document + " has format " + TrustText.excerpt(format.toString()) +
-				", but this updater reads only format 1");
+				", but this updater reads " + readable);
 		}
+		return format.intValue();
 	}
 
 	/**

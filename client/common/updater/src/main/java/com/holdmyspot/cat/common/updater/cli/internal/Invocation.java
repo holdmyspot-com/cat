@@ -6,10 +6,13 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
+import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
-import com.holdmyspot.cat.common.updater.cli.SandboxExemption;
 import com.holdmyspot.cat.common.updater.cli.internal.Arguments.Operation;
 import com.holdmyspot.cat.common.updater.engine.HttpsReleaseSource;
+import com.holdmyspot.cat.common.updater.engine.Registration;
+import com.holdmyspot.cat.common.updater.engine.Uninstaller;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
@@ -36,10 +39,16 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Owns one updater process's explicit inputs, output streams and command dispatch.
+ * Owns one updater process's explicit inputs, output streams and command dispatch. A routine operation acts only on
+ * the harness whose installation directory contains the running updater.
  */
 public final class Invocation
 {
+	/**
+	 * The exit status with which a completed uninstall hands its saved result to the stable launcher, which deletes
+	 * the installation's data directory after the updater exits and then prints the result.
+	 */
+	public static final int UNINSTALL_HANDOVER_STATUS = 79;
 	/**
 	 * The connection deadline for the fixed policy release source.
 	 */
@@ -53,7 +62,8 @@ public final class Invocation
 	private final Platform platform;
 	private final Map<String, String> environment;
 	private final List<PluginActivation> activations;
-	private final List<SandboxExemption> exemptions;
+	private final List<HarnessIntegration> integrations;
+	private final HarnessCliFactory cliFactory;
 	private final Clock clock;
 	private final Waiting waiting;
 	private final FileReplacer replacer;
@@ -64,26 +74,28 @@ public final class Invocation
 	/**
 	 * Creates one process invocation with explicit boundaries for isolated tests.
 	 *
-	 * @param image       the actual running jlink image directory
-	 * @param cwd         the caller's working directory
-	 * @param platform    the running platform
-	 * @param environment the boundary-captured environment; routine path authority never comes from this map
-	 * @param activations the installed activation services
-	 * @param exemptions  the installed permission-syntax services
-	 * @param clock       supplies UTC diagnostic times
-	 * @param waiting     creates pauses between updater lock attempts
-	 * @param replacer    atomically replaces setup files, with platform-appropriate retry waiting
-	 * @param stdout      receives exactly one JSON result
-	 * @param stderr      receives human diagnostics and setup permission entries
+	 * @param image        the running updater version directory
+	 * @param cwd          the caller's working directory
+	 * @param platform     the running platform
+	 * @param environment  the boundary-captured environment; routine path authority never comes from this map
+	 * @param activations  the installed activation services
+	 * @param integrations the installed harness integration services
+	 * @param cliFactory   runs the recorded harness program
+	 * @param clock        supplies UTC diagnostic times
+	 * @param waiting      creates pauses between updater lock attempts
+	 * @param replacer     atomically replaces setup files, with platform-appropriate retry waiting
+	 * @param stdout       receives exactly one JSON result
+	 * @param stderr       receives human diagnostics
+	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Invocation(Path image, Path cwd, Platform platform, Map<String, String> environment,
-		List<PluginActivation> activations, List<SandboxExemption> exemptions, Clock clock, Waiting waiting,
-		FileReplacer replacer,
-		PrintStream stdout, PrintStream stderr)
+		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
+		Clock clock, Waiting waiting, FileReplacer replacer, PrintStream stdout, PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(cwd, "cwd").isNotNull();
 		requireThat(platform, "platform").isNotNull();
+		requireThat(cliFactory, "cliFactory").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
@@ -94,7 +106,8 @@ public final class Invocation
 		this.platform = platform;
 		this.environment = Map.copyOf(environment);
 		this.activations = List.copyOf(activations);
-		this.exemptions = List.copyOf(exemptions);
+		this.integrations = List.copyOf(integrations);
+		this.cliFactory = cliFactory;
 		this.clock = clock;
 		this.waiting = waiting;
 		this.replacer = replacer;
@@ -136,8 +149,7 @@ public final class Invocation
 					null);
 			}
 			return print(failure(Result.NOT_WRITABLE, selectedHarness(arguments),
-				"The updater cannot write " + denied + "; add the displayed routine-update exemption.",
-				List.of(denied)), arguments, null);
+				"The updater cannot write " + denied + "; check its permissions.", List.of(denied)), arguments, null);
 		}
 		catch (TrustException e)
 		{
@@ -168,77 +180,190 @@ public final class Invocation
 	private int execute(Arguments arguments) throws IOException, TrustException
 	{
 		if (arguments.operation() == Operation.SETUP)
-		{
-			Locations locations = Locations.forSetup(image, platform, environment);
-			Setup setup = new Setup(locations, platform, replacer);
-			TrustPolicy policy = setup.setUp(arguments.harness(), arguments.home(), cwd);
-			UpdateResult result = new UpdateResult(Result.SET_UP, arguments.harness(),
-				Optional.of(setup.version()), Optional.empty(), "The trusted updater is set up.",
-				List.of(locations.data(), locations.policy()), true,
-				policy.keys().stream().map(TrustedKey::id).toList());
-			return print(result, arguments, locations);
-		}
+			return setUp(arguments);
 
 		Locations locations = Locations.installed(image);
 		Locations.validateCurrent(image);
+		String own = locations.harness();
+		if (!arguments.harness().isEmpty() && !arguments.harness().equals(own))
+		{
+			return print(failure(Result.REFUSED, own, "This installation manages " + own + " only; use the updater " +
+				"of the " + arguments.harness() + " installation for " + arguments.harness() + ".", List.of()),
+				arguments, locations);
+		}
 		if (!Files.isRegularFile(locations.policy()))
 		{
-			return print(failure(Result.REFUSED, selectedHarness(arguments),
-				"Updater policy is missing; run the pinned entry script with --updater-only.",
-				List.of(locations.policy())), arguments, locations);
+			return print(failure(Result.REFUSED, own, "Updater policy is missing; " +
+				Locations.rerunEntryCommand(own) + ".", List.of(locations.policy())), arguments, locations);
 		}
 		TrustPolicy policy = TrustPolicy.read(locations.policy());
-		if (arguments.harness().isEmpty())
-			return statusAll(locations, policy);
-		PluginActivation activation = activations.stream().
-			filter(provider -> provider.harness().equals(arguments.harness())).findFirst().orElseThrow();
-		UpdateResult result;
+		if (!policy.harnesses().keySet().equals(Set.of(own)))
+		{
+			return print(failure(Result.REFUSED, own, "The policy " + locations.policy() + " records the harnesses " +
+				policy.harnesses().keySet() + ", but this installation manages " + own + " only; " +
+				Locations.rerunEntryCommand(own) + ".", List.of(locations.policy())), arguments, locations);
+		}
+		Optional<HarnessCommand> command = policy.command(own);
+		if (command.isEmpty())
+		{
+			return print(failure(Result.REFUSED, own, "The policy was written by an earlier release and does not " +
+				"record the harness program; " + Locations.rerunEntryCommand(own) + ".", List.of(locations.policy())),
+				arguments, locations);
+		}
+		Optional<PluginActivation> activation = activations.stream().
+			filter(provider -> provider.harness().equals(own)).findFirst();
+		if (activation.isEmpty())
+		{
+			return print(failure(Result.REFUSED, own, "This updater has no plugin provider for " + own + ".",
+				List.of()), arguments, locations);
+		}
+		if (arguments.operation() == Operation.STATUS || arguments.operation() == Operation.ROLLBACK)
+		{
+			try (HttpsReleaseSource source = new HttpsReleaseSource(policy.releaseBaseUrl(), environment,
+				CONNECT_LIMIT, REQUEST_LIMIT))
+			{
+				UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation.get(),
+					platform.id(), clock, waiting);
+				if (arguments.operation() == Operation.ROLLBACK)
+					return print(engine.rollback(), arguments, locations);
+				UpdateResult status = engine.status();
+				if (arguments.harness().isEmpty())
+					return statusAll(status, policy);
+				return print(status, arguments, locations);
+			}
+		}
+		Optional<HarnessIntegration> integration = integrations.stream().
+			filter(provider -> provider.harness().equals(own)).findFirst();
+		if (integration.isEmpty())
+		{
+			return print(failure(Result.REFUSED, own, "This updater has no harness integration for " + own + ".",
+				List.of()), arguments, locations);
+		}
+		Path program = Path.of(command.get().command().getFirst());
+		if (!Files.isRegularFile(program) || !Files.isExecutable(program))
+		{
+			return print(failure(Result.REFUSED, own, "The " + own + " program " + program + " that setup recorded " +
+				"no longer exists or is not executable; " + Locations.rerunEntryCommand(own) + ".", List.of(program)),
+				arguments, locations);
+		}
+		Path home = policy.harnesses().get(own);
+		Registration registration = new Registration(integration.get(), cliFactory.create(command.get(), home));
+		if (arguments.operation() == Operation.UNINSTALL)
+		{
+			UpdateResult result = new Uninstaller(locations.data(), locations.policy(), policy, activation.get(),
+				registration, clock, waiting).uninstall(arguments.deleteData());
+			if (result.result() != Result.UNINSTALLED)
+				return print(result, arguments, locations);
+			return handOver(result, locations);
+		}
 		try (HttpsReleaseSource source = new HttpsReleaseSource(policy.releaseBaseUrl(), environment,
 			CONNECT_LIMIT, REQUEST_LIMIT))
 		{
-			UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation, platform.id(),
+			UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation.get(), platform.id(),
 				clock, waiting);
-			result = switch (arguments.operation())
+			UpdateResult result = switch (arguments.operation())
 			{
-				case UPDATE -> engine.update(arguments.tag());
-				case STATUS -> engine.status();
-				case ROLLBACK -> engine.rollback();
-				case SETUP -> throw new AssertionError("Setup was already handled");
+				case INSTALL -> engine.install(arguments.tag(), registration);
+				case UPDATE -> engine.update(arguments.tag(), registration);
+				case SETUP, STATUS, ROLLBACK, UNINSTALL -> throw new AssertionError(arguments.operation());
 			};
+			return print(result, arguments, locations);
 		}
-		return print(result, arguments, locations);
 	}
 
 	/**
-	 * Reports every configured installation in one read-only JSON result.
+	 * Sets a harness's installation up from the extracted updater archive that the running updater belongs to.
 	 *
-	 * @param locations the installation-bound locations
-	 * @param policy    the protected policy
-	 * @return zero after printing the status object
-	 * @throws IOException    if an installation's state cannot be read
-	 * @throws TrustException if the release transport's fixed policy URL is invalid
+	 * @param arguments the validated setup operation
+	 * @return its printed result's status
+	 * @throws IOException    if installation files cannot be read or replaced
+	 * @throws TrustException if setup refuses
 	 */
-	private int statusAll(Locations locations, TrustPolicy policy)
-		throws IOException, TrustException
+	private int setUp(Arguments arguments) throws IOException, TrustException
+	{
+		String harness = arguments.harness();
+		Locations locations = Locations.forSetup(image, platform, environment, harness);
+		PluginActivation activation = activations.stream().filter(provider -> provider.harness().equals(harness)).
+			findFirst().orElseThrow();
+		Optional<HarnessIntegration> integration = integrations.stream().
+			filter(provider -> provider.harness().equals(harness)).findFirst();
+		if (integration.isEmpty())
+		{
+			return print(failure(Result.REFUSED, harness, "This updater has no harness integration for " + harness +
+				".", List.of()), arguments, null);
+		}
+		Setup setup = new Setup(locations, platform, replacer, DirectoryMover.ATOMIC, cliFactory, clock, waiting);
+		Setup.Outcome outcome;
+		try (HttpsReleaseSource source = new HttpsReleaseSource(setup.defaults().releaseBaseUrl(), environment,
+			CONNECT_LIMIT, REQUEST_LIMIT))
+		{
+			outcome = setup.setUp(harness, arguments.home(), arguments.plugin(), cwd, environment, activation,
+				integration.get(), source);
+		}
+		UpdateResult plugin = outcome.plugin();
+		if (plugin.result().exitStatus() != 0)
+		{
+			return print(new UpdateResult(plugin.result(), harness, plugin.version(), plugin.previousVersion(),
+				"The updater " + outcome.version() + " is installed, but the plugin step failed: " + plugin.message() +
+				" Run the entry command again to repair the installation.", plugin.paths(), plugin.consistent(),
+				plugin.keyIds()), arguments, locations);
+		}
+		ObjectNode object = encode(new UpdateResult(Result.SET_UP, harness, Optional.of(outcome.version()),
+			Optional.empty(), "CAT is set up for " + harness + ".", List.of(locations.data(), locations.policy()),
+			true, outcome.policy().keys().stream().map(TrustedKey::id).toList()));
+		object.put("plugin_version", plugin.version().orElse(""));
+		object.put("launcher", outcome.launcher().toString());
+		ObjectNode permissions = object.putObject("permissions");
+		for (Map.Entry<String, List<String>> entry : outcome.permissions().entrySet())
+		{
+			ArrayNode entries = permissions.putArray(entry.getKey());
+			entry.getValue().forEach(entries::add);
+		}
+		stdout.println(mapper.writeValueAsString(object));
+		return 0;
+	}
+
+	/**
+	 * Reports the installation's harness in the result shape that lists every installation.
+	 *
+	 * @param status the harness's status
+	 * @param policy the protected policy
+	 * @return zero after printing the status object
+	 */
+	private int statusAll(UpdateResult status, TrustPolicy policy)
 	{
 		ObjectNode result = encode(failure(Result.STATUS, "all", "Reported the configured installations.",
 			List.of()));
 		result.set("key_ids", mapper.valueToTree(policy.keys().stream().map(TrustedKey::id).toList()));
-		ArrayNode installations = result.putArray("installations");
-		for (PluginActivation activation : activations)
-		{
-			if (!policy.harnesses().containsKey(activation.harness()))
-				continue;
-			try (HttpsReleaseSource source = new HttpsReleaseSource(policy.releaseBaseUrl(), environment,
-				CONNECT_LIMIT, REQUEST_LIMIT))
-			{
-				UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation, platform.id(),
-					clock, waiting);
-				installations.add(encode(engine.status()));
-			}
-		}
+		result.putArray("installations").add(encode(status));
 		stdout.println(mapper.writeValueAsString(result));
 		return 0;
+	}
+
+	/**
+	 * Saves a completed uninstall's result for the stable launcher and exits without printing it, because the launcher
+	 * deletes the data directory first and prints the result only when that succeeded.
+	 *
+	 * @param result    the completed uninstall
+	 * @param locations the installation's locations
+	 * @return the hand-over status
+	 * @throws IOException if the result cannot be saved
+	 */
+	private int handOver(UpdateResult result, Locations locations) throws IOException
+	{
+		Path file = locations.data().resolve("state/uninstall-result.json");
+		Files.createDirectories(file.getParent());
+		Path temporary = Files.createTempFile(file.getParent(), ".uninstall-result-", ".tmp");
+		try
+		{
+			Files.writeString(temporary, mapper.writeValueAsString(encode(result)) + "\n", UTF_8);
+			replacer.replace(temporary, file);
+		}
+		finally
+		{
+			Files.deleteIfExists(temporary);
+		}
+		return UNINSTALL_HANDOVER_STATUS;
 	}
 
 	/**
@@ -252,43 +377,6 @@ public final class Invocation
 	private int print(UpdateResult result, Arguments arguments, Locations locations)
 	{
 		ObjectNode object = encode(result);
-		if (result.result() == Result.SET_UP || result.result() == Result.NOT_WRITABLE)
-		{
-			try
-			{
-				if (locations == null)
-				{
-					if (arguments != null && arguments.operation() == Operation.SETUP)
-						locations = Locations.forSetup(image, platform, environment);
-					else
-						locations = Locations.installed(image);
-				}
-				Path home;
-				if (arguments != null && arguments.operation() == Operation.SETUP)
-					home = arguments.home();
-				else
-					home = TrustPolicy.read(locations.policy()).harnesses().get(result.harness());
-				if (home != null)
-				{
-					for (SandboxExemption exemption : exemptions)
-					{
-						if (!exemption.harness().equals(result.harness()))
-							continue;
-						Map<String, List<String>> entries = exemption.entries(locations.launcher(platform), home);
-						object.set("exemption", mapper.valueToTree(entries));
-						for (Map.Entry<String, List<String>> entry : entries.entrySet())
-						{
-							for (String value : entry.getValue())
-								stderr.println(entry.getKey() + ": " + value);
-						}
-					}
-				}
-			}
-			catch (IOException | TrustException e)
-			{
-				stderr.println("Could not read setup permission entries: " + e.getMessage());
-			}
-		}
 		if (result.result().exitStatus() != 0)
 		{
 			stderr.println(result.message());
@@ -317,6 +405,8 @@ public final class Invocation
 			paths.add(path.toString());
 		object.put("consistent", result.consistent());
 		object.set("key_ids", mapper.valueToTree(result.keyIds()));
+		if (result.result() == Result.STATUS)
+			object.put("installed", result.version().isPresent());
 		return object;
 	}
 
@@ -367,15 +457,18 @@ public final class Invocation
 	}
 
 	/**
-	 * Returns the selected provider or the all-installations scope for diagnostics.
+	 * Returns the harness that an operation acts on, for diagnostics.
 	 *
 	 * @param arguments the validated operation
-	 * @return the provider or all-installations scope
+	 * @return the named harness, or else the harness of the installation that contains the running updater
 	 */
-	private static String selectedHarness(Arguments arguments)
+	private String selectedHarness(Arguments arguments)
 	{
-		if (arguments.harness().isEmpty())
-			return "all";
-		return arguments.harness();
+		if (!arguments.harness().isEmpty())
+			return arguments.harness();
+		Path data = image.getParent();
+		if (data == null || data.getFileName() == null)
+			return "unknown";
+		return data.getFileName().toString();
 	}
 }

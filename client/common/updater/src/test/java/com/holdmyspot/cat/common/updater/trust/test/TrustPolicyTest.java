@@ -8,6 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import com.holdmyspot.cat.common.updater.trust.TrustException.Reason;
@@ -21,6 +22,7 @@ import java.time.Clock;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -165,6 +167,88 @@ public final class TrustPolicyTest
 				requireThat(entries.toList(), "entries").isEqualTo(List.of(file));
 			}
 		}
+	}
+
+	/**
+	 * A setup-written policy records the harness program and environment that routine operations run, and reads back
+	 * equal.
+	 *
+	 * @throws TrustException if the policy is refused
+	 * @throws IOException    if the policy file cannot be written or read
+	 */
+	@Test
+	public void recordedHarnessProgramRoundTrips() throws TrustException, IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(testDirectory("policy-command-")).resolve("policy.json");
+			FileReplacer replacer = new FileReplacer(Platform.current(), () ->
+			{
+			}, Clock.systemUTC());
+			HarnessCommand command = new HarnessCommand(List.of(absoluteHome().resolve("bin/harness-a").toString(),
+				"--fixed"), Map.of("HOME", absoluteHome().toString()));
+			TrustPolicy policy = TrustPolicy.of(List.of(trusted("key-1", keyPair())),
+				URI.create("https://releases.example/cat"), ReleaseVersion.parse("1.0"), 1,
+				Map.of("harness-a", absoluteHome()), Map.of("harness-a", command));
+
+			policy.write(file, replacer);
+
+			TrustPolicy read = TrustPolicy.read(file);
+			requireThat(read, "read").isEqualTo(policy);
+			requireThat(read.format(), "format").isEqualTo(2);
+			requireThat(read.command("harness-a"), "command").isEqualTo(Optional.of(command));
+			requireThat(Files.readString(file), "text").contains("\"format\" : 2");
+		}
+	}
+
+	/**
+	 * A policy that an earlier release wrote still reads, without a recorded harness program, so setup can replace it
+	 * and routine operations can ask for setup to be rerun.
+	 *
+	 * @throws TrustException if the policy is refused
+	 * @throws IOException    if the policy file cannot be written or read
+	 */
+	@Test
+	public void earlierPolicyHasNoHarnessProgram() throws TrustException, IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(testDirectory("policy-format-1-")).resolve("policy.json");
+			Files.writeString(file, policyText(keyEntry("key"), "https://releases.example/cat", validHarness()));
+
+			TrustPolicy policy = TrustPolicy.read(file);
+
+			requireThat(policy.format(), "format").isEqualTo(1);
+			requireThat(policy.command("harness-a"), "command").isEmpty();
+		}
+	}
+
+	/**
+	 * A policy of an unknown format, a setup-written harness entry without a valid harness program, and a harness
+	 * program in a policy of the earlier format are refused.
+	 *
+	 * @throws IOException if the policy file cannot be written or read
+	 */
+	@Test
+	public void refusesInvalidHarnessProgram() throws IOException
+	{
+		String earlier = policyText(keyEntry("key"), "https://releases.example/cat", validHarness());
+		String home = jsonString(absoluteHome().toString());
+		String program = jsonString(absoluteHome().resolve("bin/harness-a").toString());
+		String current = earlier.replace("\"format\": 1", "\"format\": 2");
+		List<String> policies = List.of(
+			earlier.replace("\"format\": 1", "\"format\": 3"),
+			current,
+			current.replace("{\"home\": " + home + "}", "{\"home\": " + home + ", \"command\": [], " +
+				"\"environment\": {}}"),
+			current.replace("{\"home\": " + home + "}", "{\"home\": " + home + ", \"command\": [\"relative\"], " +
+				"\"environment\": {}}"),
+			current.replace("{\"home\": " + home + "}", "{\"home\": " + home + ", \"command\": [" + program +
+				"], \"environment\": {\"HOME\": 1}}"),
+			earlier.replace("{\"home\": " + home + "}", "{\"home\": " + home + ", \"command\": [" + program +
+				"], \"environment\": {}}"));
+		for (String policy : policies)
+			refusal(policy);
 	}
 
 	/**

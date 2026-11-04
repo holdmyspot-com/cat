@@ -62,6 +62,65 @@ public final class ArgumentsTest
 	}
 
 	/**
+	 * Install accepts the same optional release argument as update.
+	 */
+	@Test
+	public void parsesInstall()
+	{
+		Arguments omitted = Arguments.parse(new String[]{"install", "--harness", "harness-a"}, Set.of("harness-a"));
+		Arguments latest = Arguments.parse(new String[]{"install", "--harness", "harness-a", "latest"},
+			Set.of("harness-a"));
+		Arguments tagged = Arguments.parse(new String[]{"install", "--harness", "harness-a", "v1.2"},
+			Set.of("harness-a"));
+		requireThat(omitted.operation(), "operation").isEqualTo(Operation.INSTALL);
+		requireThat(omitted.harness(), "harness").isEqualTo("harness-a");
+		requireThat(omitted.tag(), "omittedTag").isNull();
+		requireThat(latest.tag(), "latestTag").isNull();
+		requireThat(tagged.tag(), "tag").isEqualTo("v1.2");
+	}
+
+	/**
+	 * Setup accepts a local plugin tree after the harness home.
+	 */
+	@Test
+	public void parsesSetupWithPlugin()
+	{
+		Path directory = Path.of(System.getProperty("cat.updater.test.directory"));
+		Path home = directory.resolve("harness-home");
+		Path plugin = directory.resolve("plugin-tree");
+		Arguments args = Arguments.parse(new String[]{"setup", "--harness", "harness-a", "--home", home.toString(),
+			"--plugin", plugin.toString()}, Set.of("harness-a"));
+		requireThat(args.operation(), "operation").isEqualTo(Operation.SETUP);
+		requireThat(args.home(), "home").isEqualTo(home);
+		requireThat(args.plugin(), "plugin").isEqualTo(plugin);
+		Arguments signed = Arguments.parse(new String[]{"setup", "--harness", "harness-a", "--home",
+			home.toString()}, Set.of("harness-a"));
+		requireThat(signed.plugin(), "signedPlugin").isNull();
+	}
+
+	/**
+	 * Uninstall removes the installation and keeps its plugin data unless asked to delete it; the harness option only
+	 * names the installation's own harness.
+	 */
+	@Test
+	public void parsesUninstall()
+	{
+		Arguments bare = Arguments.parse(new String[]{"uninstall"}, Set.of("harness-a"));
+		Arguments kept = Arguments.parse(new String[]{"uninstall", "--harness", "harness-a"}, Set.of("harness-a"));
+		Arguments deleted = Arguments.parse(new String[]{"uninstall", "--harness", "harness-a", "--delete-data"},
+			Set.of("harness-a"));
+		Arguments bareDeleted = Arguments.parse(new String[]{"uninstall", "--delete-data"}, Set.of("harness-a"));
+		requireThat(bare.operation(), "operation").isEqualTo(Operation.UNINSTALL);
+		requireThat(bare.harness(), "bareHarness").isEmpty();
+		requireThat(bare.deleteData(), "bareDeleteData").isFalse();
+		requireThat(kept.harness(), "harness").isEqualTo("harness-a");
+		requireThat(kept.deleteData(), "keptDeleteData").isFalse();
+		requireThat(deleted.deleteData(), "deleteData").isTrue();
+		requireThat(bareDeleted.harness(), "bareDeletedHarness").isEmpty();
+		requireThat(bareDeleted.deleteData(), "bareDeletedDeleteData").isTrue();
+	}
+
+	/**
 	 * Supplies complete vectors that would expand project authority or bypass the documented grammar.
 	 *
 	 * @return rejected argument vectors
@@ -86,7 +145,21 @@ public final class ArgumentsTest
 			{new String[]{"update", "--harness", "harness-a", "v1.0?source=other"}},
 			{new String[]{"rollback", "--harness", "harness-a", "v1.0"}},
 			{new String[]{"status", "extra"}},
-			{new String[]{"setup", "--harness", "harness-a"}}
+			{new String[]{"setup", "--harness", "harness-a"}},
+			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a", "--plugin"}},
+			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a", "--plugin", "/plugin", "extra"}},
+			{new String[]{"setup", "--harness", "harness-a", "--plugin", "/plugin", "--home", "/home/a"}},
+			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a", "--delete-data"}},
+			{new String[]{"install"}},
+			{new String[]{"install", "--harness", "other"}},
+			{new String[]{"install", "--harness", "harness-a", "v1.0", "v1.1"}},
+			{new String[]{"install", "--harness", "harness-a", "--plugin", "/plugin"}},
+			{new String[]{"uninstall", "--harness", "other"}},
+			{new String[]{"uninstall", "--delete-data", "--harness", "harness-a"}},
+			{new String[]{"uninstall", "--harness", "harness-a", "--delete-data", "--delete-data"}},
+			{new String[]{"uninstall", "--harness", "harness-a", "extra"}},
+			{new String[]{"update", "--harness", "harness-a", "--delete-data"}},
+			{new String[]{"status", "--delete-data"}}
 		};
 	}
 

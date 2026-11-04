@@ -1,44 +1,57 @@
 package com.holdmyspot.cat.common.updater.engine;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.release.TarGzExtractor;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
 import com.holdmyspot.cat.common.updater.activation.AddDirectory;
-import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
-import com.holdmyspot.cat.common.updater.activation.ReplaceOwnedFiles;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
+import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
+import com.holdmyspot.cat.common.updater.activation.ReplaceOwnedFiles;
+import com.holdmyspot.cat.common.updater.engine.ActivationTransaction.Completion;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.updater.trust.ManifestVerifier;
 import com.holdmyspot.cat.common.updater.trust.ReleaseApproval;
 import com.holdmyspot.cat.common.updater.trust.ReleaseAsset;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
-import com.holdmyspot.cat.common.updater.trust.VerifiedManifest;
 import com.holdmyspot.cat.common.updater.trust.TrustPolicy;
 import com.holdmyspot.cat.common.updater.trust.TrustedKey;
+import com.holdmyspot.cat.common.updater.trust.VerifiedManifest;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
-import java.nio.charset.StandardCharsets;
-import java.util.stream.Stream;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
- * Coordinates authenticated routine updates without executing staged code or editing harness configuration.
+ * Coordinates authenticated plugin installs and updates without executing staged code. Harness configuration changes
+ * only through the harness integration's registration.
  */
 public final class UpdateEngine
 {
+	/**
+	 * The largest recorded highest version, including its newline.
+	 */
+	private static final int MAXIMUM_VERSION_BYTES = 128;
+	/**
+	 * The plugin-relative file that names the Java runtime the plugin runs on.
+	 */
+	private static final Path BINDING_FILE = Path.of("client/runtime-binding");
 	private final UpdaterState state;
+	private final Path runtime;
 	private final TrustPolicy policy;
 	private final ReleaseSource source;
 	private final PluginActivation activation;
@@ -50,7 +63,7 @@ public final class UpdateEngine
 	/**
 	 * Creates an engine with a ten-minute lock wait.
 	 *
-	 * @param dataDirectory protected updater data directory
+	 * @param dataDirectory protected updater data directory, which contains the installation's Java runtime
 	 * @param policy        protected policy
 	 * @param source        release transport
 	 * @param activation    the selected harness's activation provider
@@ -67,7 +80,7 @@ public final class UpdateEngine
 	/**
 	 * Creates an engine with an explicit lock wait.
 	 *
-	 * @param dataDirectory protected updater data directory
+	 * @param dataDirectory protected updater data directory, which contains the installation's Java runtime
 	 * @param policy        protected policy
 	 * @param source        release transport
 	 * @param activation    the selected harness's activation provider
@@ -81,6 +94,7 @@ public final class UpdateEngine
 	public UpdateEngine(Path dataDirectory, TrustPolicy policy, ReleaseSource source, PluginActivation activation,
 		String platform, Clock clock, Waiting waiting, Duration lockWait)
 	{
+		requireThat(dataDirectory, "dataDirectory").isNotNull();
 		requireThat(policy, "policy").isNotNull();
 		requireThat(source, "source").isNotNull();
 		requireThat(activation, "activation").isNotNull();
@@ -89,6 +103,7 @@ public final class UpdateEngine
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(lockWait, "lockWait").isGreaterThanOrEqualTo(Duration.ZERO);
 		this.state = UpdaterState.of(dataDirectory, activation.harness());
+		this.runtime = dataDirectory.toAbsolutePath().normalize().resolve("runtime");
 		this.policy = policy;
 		this.source = source;
 		this.activation = activation;
@@ -99,31 +114,85 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Updates to a requested canonical tag, or the latest approved release when the tag is null.
+	 * Updates the harness's plugin to an approved release, or registers the current plugin again when it is already
+	 * that release. Refuses when the harness has no plugin.
 	 *
-	 * @param requestedTag a canonical tag, or null for latest
-	 * @return the operation outcome
+	 * @param requestedTag the canonical v-prefixed tag, or null for the latest release
+	 * @param registration registers the activated plugin with the harness
+	 * @return the outcome
+	 * @throws NullPointerException if {@code registration} is null
 	 */
-	public UpdateResult update(String requestedTag)
+	public UpdateResult update(String requestedTag, Registration registration)
 	{
-		return operate(requestedTag, false);
+		requireThat(registration, "registration").isNotNull();
+		return operate(Mode.UPDATE, requestedTag, null, registration);
 	}
 
 	/**
-	 * Restores the previous successful activation.
+	 * Adds an approved release where the harness has no plugin and registers it, or updates the plugin when the
+	 * harness has one. A partial installation that the harness does not report is deleted first. Refuses a release
+	 * older than the highest version that the harness has had.
 	 *
-	 * @return the outcome, refused when no activation is recorded
+	 * @param requestedTag the canonical v-prefixed tag, or null for the latest release
+	 * @param registration registers the activated plugin with the harness
+	 * @return the outcome
+	 * @throws NullPointerException if {@code registration} is null
+	 */
+	public UpdateResult install(String requestedTag, Registration registration)
+	{
+		requireThat(registration, "registration").isNotNull();
+		return operate(Mode.INSTALL, requestedTag, null, registration);
+	}
+
+	/**
+	 * Activates the signed release of one version for the user's setup, also when the harness already has that
+	 * version, and registers it. Setup may install a version older than the active one.
+	 *
+	 * @param version      the canonical version that setup comes from
+	 * @param registration registers the activated plugin with the harness
+	 * @return the outcome
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public UpdateResult setUp(String version, Registration registration)
+	{
+		requireThat(version, "version").isNotBlank();
+		requireThat(registration, "registration").isNotNull();
+		return operate(Mode.SETUP, "v" + version, null, registration);
+	}
+
+	/**
+	 * Activates a local plugin tree that the user named for setup, in place of a signed release. The tree is validated,
+	 * checked against the runtime and bound to it like a signed release, and is never changed.
+	 *
+	 * @param tree         the plugin tree
+	 * @param version      the canonical version that setup comes from, which the tree must declare
+	 * @param registration registers the activated plugin with the harness
+	 * @return the outcome
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public UpdateResult setUpFrom(Path tree, String version, Registration registration)
+	{
+		requireThat(tree, "tree").isNotNull();
+		requireThat(version, "version").isNotBlank();
+		requireThat(registration, "registration").isNotNull();
+		return operate(Mode.SETUP, "v" + version, tree, registration);
+	}
+
+	/**
+	 * Restores the installation retained by the last successful update.
+	 *
+	 * @return the outcome
 	 */
 	public UpdateResult rollback()
 	{
-		return operate(null, true);
+		return operate(Mode.ROLLBACK, null, null, null);
 	}
 
 	/**
-	 * Reports installation state without acquiring a lock or creating state directories.
+	 * Reports active and previous versions without writes.
 	 *
-	 * @return the active version, consistency and trusted key identifiers
-	 * @throws IOException if the installation cannot be inspected
+	 * @return the status outcome; its version is empty when the harness has no plugin
+	 * @throws IOException if provider state is unreadable
 	 */
 	public UpdateResult status() throws IOException
 	{
@@ -137,19 +206,20 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Holds the harness lock through recovery, validation and activation.
+	 * Runs one operation under the harness lock and converts every failure into an outcome.
 	 *
-	 * @param requestedTag requested tag, or null for latest
-	 * @param rollback whether to restore the previous activation
-	 * @return the operation outcome
+	 * @param mode         the operation
+	 * @param requestedTag the requested tag, or null for the latest release or a rollback
+	 * @param localTree    the user's local plugin tree, or null for a signed release
+	 * @param registration registers the activated plugin, or null for a rollback
+	 * @return the outcome
 	 */
-	private UpdateResult operate(String requestedTag, boolean rollback)
+	private UpdateResult operate(Mode mode, String requestedTag, Path localTree, Registration registration)
 	{
 		Path home = policy.harnesses().get(activation.harness());
 		if (home == null)
 			return result(Result.REFUSED, null, null, "Run the explicit CAT setup command for this harness.", List.of());
 		ActivationTransaction transaction = new ActivationTransaction(state, activation, home);
-		String active = null;
 		try
 		{
 			Optional<ExclusiveFileLock> acquired = OperationLock.acquire(state, clock, lockWait, waiting);
@@ -159,47 +229,45 @@ public final class UpdateEngine
 			{
 				if (!lock.isValid())
 					return result(Result.LOCKED, null, null, "The harness lock is no longer valid.", List.of());
-				return log(operateLocked(requestedTag, rollback, home, transaction));
+				return log(operateLocked(mode, requestedTag, localTree, registration, home, transaction));
 			}
 		}
 		catch (ActivationTransaction.ActivationFailure e)
 		{
-			Result failure = Result.NOT_RESTORED;
-			if (e.restored())
-				failure = Result.RESTORED;
-			return result(failure, active, null,
-				e.getMessage(), transaction.paths());
+			return failure(e, null, transaction);
 		}
 		catch (AccessDeniedException e)
 		{
-			return result(Result.NOT_WRITABLE, active, null,
+			return result(Result.NOT_WRITABLE, null, null,
 				"The installation is not writable; use the explicit administrative setup path: " + e.getMessage(),
 				List.of());
 		}
 		catch (TrustException | IOException | IllegalArgumentException e)
 		{
-			return result(Result.REFUSED, active, null, e.getMessage(), transaction.paths());
+			return result(Result.REFUSED, null, null, e.getMessage(), transaction.paths());
 		}
 		catch (InterruptedException _)
 		{
 			Thread.currentThread().interrupt();
-			return result(Result.LOCKED, active, null, "Interrupted while waiting for the harness lock.", List.of());
+			return result(Result.LOCKED, null, null, "Interrupted while waiting for the harness lock.", List.of());
 		}
 	}
 
 	/**
-	 * Recovers and performs one operation under the held harness lock.
+	 * Recovers an interrupted activation, then runs the operation.
 	 *
-	 * @param requestedTag requested tag, or null
-	 * @param rollback whether to roll back
-	 * @param home protected provider home
-	 * @param transaction activation transaction
-	 * @return the operation outcome
-	 * @throws IOException if local I/O fails
-	 * @throws TrustException if approval fails
+	 * @param mode         the operation
+	 * @param requestedTag the requested tag, or null
+	 * @param localTree    the user's local plugin tree, or null
+	 * @param registration registers the activated plugin, or null for a rollback
+	 * @param home         the protected harness home
+	 * @param transaction  the harness's activation transaction
+	 * @return the outcome
+	 * @throws IOException    if the installation cannot be read
+	 * @throws TrustException if the installed version is malformed
 	 */
-	private UpdateResult operateLocked(String requestedTag, boolean rollback, Path home,
-		ActivationTransaction transaction) throws IOException, TrustException
+	private UpdateResult operateLocked(Mode mode, String requestedTag, Path localTree, Registration registration,
+		Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
 		try
 		{
@@ -215,22 +283,23 @@ public final class UpdateEngine
 		String active = installed.version().orElse(null);
 		try
 		{
-			if (rollback)
+			if (mode == Mode.ROLLBACK)
 			{
 				String restored = transaction.rollback();
 				return result(Result.ROLLED_BACK, restored, null, "The previous activation was restored.", List.of());
 			}
-			if (active == null)
-				return result(Result.REFUSED, null, null, "Run the explicit CAT setup command for this harness.", List.of());
-			cleanStaleStaging(activation.plan(home, active));
-			return updateLocked(requestedTag, home, installed, transaction);
+			if (active == null && mode == Mode.UPDATE)
+			{
+				return result(Result.REFUSED, null, null, "CAT is not installed in this harness; run install to add it.",
+					List.of());
+			}
+			if (active != null)
+				cleanStaleStaging(activation.plan(home, active));
+			return deliver(mode, requestedTag, localTree, registration, home, installed, transaction);
 		}
 		catch (ActivationTransaction.ActivationFailure e)
 		{
-			Result failure = Result.NOT_RESTORED;
-			if (e.restored())
-				failure = Result.RESTORED;
-			return result(failure, active, null, e.getMessage(), transaction.paths());
+			return failure(e, active, transaction);
 		}
 		catch (AccessDeniedException e)
 		{
@@ -244,25 +313,37 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Authenticates the release before downloading or staging its plugin asset.
+	 * Obtains the release tree and activates it.
 	 *
-	 * @param requestedTag requested tag, or null for latest
-	 * @param home protected provider home
-	 * @param installed observed installation
-	 * @param transaction recoverable activation coordinator
-	 * @return the operation outcome
-	 * @throws IOException if local validation or activation fails
-	 * @throws TrustException if a release fails approval
+	 * @param mode         the operation
+	 * @param requestedTag the requested tag, or null for the latest release
+	 * @param localTree    the user's local plugin tree, or null for a signed release
+	 * @param registration registers the activated plugin
+	 * @param home         the protected harness home
+	 * @param installed    the harness's installation state
+	 * @param transaction  the harness's activation transaction
+	 * @return the outcome
+	 * @throws IOException    if staging or activation fails
+	 * @throws TrustException if the release is not approved
 	 */
-	private UpdateResult updateLocked(String requestedTag, Path home, InstalledState installed,
-		ActivationTransaction transaction) throws IOException, TrustException
+	private UpdateResult deliver(Mode mode, String requestedTag, Path localTree, Registration registration,
+		Path home, InstalledState installed, ActivationTransaction transaction) throws IOException, TrustException
 	{
-		String active = installed.version().orElseThrow();
-		String tag;
+		String active = installed.version().orElse(null);
+		if (localTree != null)
+		{
+			String version = requestedTag.substring(1);
+			return inScratch((download, extractRoot) ->
+			{
+				Path tree = StateFiles.createTemporaryDirectory(extractRoot, "local-").resolve("plugin");
+				ActivationTransaction.copyTree(localTree, tree);
+				return activateTree(tree, version, active, registration, home, transaction);
+			});
+		}
+		String tag = requestedTag;
 		VerifiedManifest verified;
 		try
 		{
-			tag = requestedTag;
 			if (tag == null)
 				tag = source.latestTag();
 			if (tag == null || !tag.startsWith("v"))
@@ -270,29 +351,78 @@ public final class UpdateEngine
 			ReleaseVersion requested = ReleaseVersion.parse(tag.substring(1));
 			verified = ManifestVerifier.verify(new ByteArrayInputStream(source.manifest(tag)),
 				new ByteArrayInputStream(source.signature(tag)), policy);
-			ReleaseApproval.approveUpdate(verified, policy, requested, ReleaseVersion.parse(active));
+			ReleaseVersion compared = null;
+			if (mode != Mode.SETUP && active != null)
+				compared = ReleaseVersion.parse(active);
+			ReleaseApproval.approveUpdate(verified, policy, requested, compared);
 		}
 		catch (IOException e)
 		{
 			return result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of());
 		}
 		String version = verified.manifest().version().toString();
-		if (version.equals(active) && installed.consistent())
+		if (mode != Mode.SETUP && version.equals(active) && installed.consistent())
+		{
+			registration.integration().register(home, registration.cli());
 			return result(Result.UP_TO_DATE, active, transaction.previousVersion().orElse(null),
 				"CAT is up to date.", List.of());
+		}
+		if (mode == Mode.INSTALL && active == null)
+		{
+			Optional<ReleaseVersion> highest = highestVersion();
+			if (highest.isPresent() && verified.manifest().version().compareTo(highest.get()) < 0)
+			{
+				return result(Result.REFUSED, null, null, "Release " + version + " is older than " + highest.get() +
+					", the highest version this harness has had; run rollback, or the entry command to choose an " +
+					"older release.", List.of());
+			}
+		}
 		ReleaseAsset asset = verified.manifest().findPlugin(activation.harness(), platform).orElse(null);
 		if (asset == null)
 			return result(Result.REFUSED, active, null,
 				"The approved release has no plugin for this harness and platform.", List.of());
-		Path operation = state.directory().resolve("download");
+		String releaseTag = tag;
+		return inScratch((download, extractRoot) ->
+		{
+			Path archive = download.resolve(asset.name());
+			try
+			{
+				source.download(releaseTag, asset.name(), asset.size(), archive);
+			}
+			catch (IOException e)
+			{
+				return result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of());
+			}
+			ReleaseDownload.validate(archive, asset);
+			Path extract = StateFiles.createTemporaryDirectory(extractRoot, "release-");
+			try (InputStream input = Files.newInputStream(archive))
+			{
+				TarGzExtractor.extract(input, extract, asset.topDirectory());
+			}
+			return activateTree(extract.resolve(asset.topDirectory()), version, active, registration, home,
+				transaction);
+		});
+	}
+
+	/**
+	 * Runs work that stages a release in the harness's scratch directories, deleting them afterwards.
+	 *
+	 * @param work the staging work
+	 * @return the work's outcome, noting a cleanup failure
+	 * @throws IOException    if the work fails
+	 * @throws TrustException if the work refuses the release
+	 */
+	private UpdateResult inScratch(ScratchWork work) throws IOException, TrustException
+	{
+		Path download = state.directory().resolve("download");
 		Path extractRoot = state.directory().resolve("extract");
-		StateFiles.createDirectories(operation);
+		StateFiles.createDirectories(download);
 		UpdateResult completed = null;
 		IOException cleanupFailure = null;
 		Exception operationFailure = null;
 		try
 		{
-			completed = stageRelease(tag, asset, operation, extractRoot, home, active, version, transaction);
+			completed = work.run(download, extractRoot);
 		}
 		catch (IOException | TrustException | IllegalArgumentException failure)
 		{
@@ -303,7 +433,7 @@ public final class UpdateEngine
 		{
 			try
 			{
-				StateFiles.delete(operation);
+				StateFiles.delete(download);
 				StateFiles.delete(extractRoot);
 			}
 			catch (IOException failure)
@@ -318,54 +448,135 @@ public final class UpdateEngine
 		{
 			return new UpdateResult(completed.result(), completed.harness(), completed.version(),
 				completed.previousVersion(), completed.message() + " Temporary cleanup failed: " +
-				cleanupFailure.getMessage(), List.of(operation, extractRoot), completed.consistent(), completed.keyIds());
+				cleanupFailure.getMessage(), List.of(download, extractRoot), completed.consistent(), completed.keyIds());
 		}
 		return completed;
 	}
 
 	/**
-	 * Downloads and validates one release workspace before passing it to the activation journal.
+	 * Validates a staged release tree, checks that the installation's runtime can run it, binds it to that runtime,
+	 * and activates it: as an install where the harness has no plugin, otherwise as an update. The plugin is
+	 * registered with the harness before the activation is kept.
 	 *
-	 * @param tag authenticated release tag
-	 * @param asset authenticated asset
-	 * @param operation download directory
-	 * @param extractRoot extraction parent
-	 * @param home protected provider home
-	 * @param active installed version
-	 * @param version approved new version
-	 * @param transaction activation coordinator
-	 * @return download failure or completed activation
-	 * @throws IOException if local validation or activation fails
-	 * @throws TrustException if staged metadata is refused
+	 * @param tree         the staged release tree, which this method may change
+	 * @param version      the release version
+	 * @param active       the active version, or null when the harness has no plugin
+	 * @param registration registers the activated plugin
+	 * @param home         the protected harness home
+	 * @param transaction  the harness's activation transaction
+	 * @return the outcome
+	 * @throws IOException    if validation, the runtime check, activation or registration fails
+	 * @throws TrustException if a version is malformed or a pending migration requires explicit installation
 	 */
-	private UpdateResult stageRelease(String tag, ReleaseAsset asset, Path operation, Path extractRoot,
-		Path home, String active, String version, ActivationTransaction transaction) throws IOException, TrustException
+	private UpdateResult activateTree(Path tree, String version, String active, Registration registration,
+		Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
-		Path archive = operation.resolve(asset.name());
-		try
-		{
-			source.download(tag, asset.name(), asset.size(), archive);
-		}
-		catch (IOException e)
-		{
-			return result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of());
-		}
-		ReleaseDownload.validate(archive, asset);
-		Path extract = StateFiles.createTemporaryDirectory(extractRoot, "release-");
-		try (InputStream input = Files.newInputStream(archive))
-		{
-			TarGzExtractor.extract(input, extract, asset.topDirectory());
-		}
-		Path tree = extract.resolve(asset.topDirectory());
 		StagedRelease.validate(tree, version, activation.pluginManifest(), platform);
 		Path migrationFile = activation.migrationVersionFile(home);
 		StateFiles.requireNoLinks(migrationFile);
-		StagedRelease.requireNoPendingMigration(tree, migrationFile, active, version);
-		transaction.activate(tree, activation.plan(home, version), migrationFile, active, version);
-		String message = "CAT was updated.";
+		if (active != null)
+			StagedRelease.requireNoPendingMigration(tree, migrationFile, active, version);
+		else if (Files.exists(migrationFile, NOFOLLOW_LINKS))
+			StagedRelease.requireNoPendingMigration(tree, migrationFile, version, version);
+		requireRuntime(tree, version);
+		Files.writeString(tree.resolve(BINDING_FILE), runtime + "\n", StandardCharsets.UTF_8);
+		Completion register = () -> registration.integration().register(home, registration.cli());
+		if (active == null)
+		{
+			for (Path path : activation.removalPaths(home))
+				LinkSafeDeletion.delete(path, home);
+			transaction.install(tree, activation.installPlan(home, version), migrationFile, version, register);
+			recordHighestVersion(version);
+			return result(Result.INSTALLED, version, null, withWarning("CAT was installed.", transaction),
+				List.of());
+		}
+		transaction.activate(tree, activation.plan(home, version), migrationFile, active, version, register);
+		recordHighestVersion(version);
+		return result(Result.UPDATED, version, active, withWarning("CAT was updated.", transaction), List.of());
+	}
+
+	/**
+	 * Refuses a release whose plugin needs a Java runtime that the installation's runtime does not satisfy.
+	 *
+	 * @param tree    the staged release tree
+	 * @param version the release version
+	 * @throws IOException if either description is unreadable, or the runtime does not satisfy the plugin
+	 */
+	private void requireRuntime(Path tree, String version) throws IOException
+	{
+		RuntimeRequirement requirement = RuntimeRequirement.read(tree.resolve(RuntimeRequirement.PLUGIN_FILE));
+		RuntimeDescription description = RuntimeDescription.read(runtime);
+		if (!description.satisfies(requirement))
+		{
+			throw new ActivationTransaction.Refused("Release " + version + " needs Java " +
+				requirement.javaFeature() + " with the modules " + requirement.modules() + ", but this installation's " +
+				"Java runtime is " + description.javaVersion() + "; rerun the entry command of a newer release to " +
+				"update the runtime.");
+		}
+	}
+
+	/**
+	 * Returns the highest version ever activated for the harness.
+	 *
+	 * @return the version, or empty if none was recorded
+	 * @throws IOException    if the record is unreadable
+	 * @throws TrustException if the record is malformed
+	 */
+	private Optional<ReleaseVersion> highestVersion() throws IOException, TrustException
+	{
+		Path file = state.highestVersion();
+		StateFiles.requireNoLinks(file);
+		if (!Files.exists(file, NOFOLLOW_LINKS))
+			return Optional.empty();
+		String text = BoundedInput.readUtf8(file, MAXIMUM_VERSION_BYTES, "The highest activated version");
+		return Optional.of(ReleaseVersion.parse(text.strip()));
+	}
+
+	/**
+	 * Records an activated version when it is higher than every earlier one.
+	 *
+	 * @param version the activated version
+	 * @throws IOException    if the record cannot be read or written
+	 * @throws TrustException if the record or version is malformed
+	 */
+	private void recordHighestVersion(String version) throws IOException, TrustException
+	{
+		ReleaseVersion activated = ReleaseVersion.parse(version);
+		Optional<ReleaseVersion> highest = highestVersion();
+		if (highest.isPresent() && highest.get().compareTo(activated) >= 0)
+			return;
+		StateFiles.write(state.highestVersion(), (activated + "\n").getBytes(StandardCharsets.UTF_8));
+	}
+
+	/**
+	 * Appends the transaction's cleanup warning to a message.
+	 *
+	 * @param message     the outcome message
+	 * @param transaction the completed transaction
+	 * @return the message, with the warning when there is one
+	 */
+	private static String withWarning(String message, ActivationTransaction transaction)
+	{
 		if (transaction.warning().isPresent())
-			message += " " + transaction.warning().get();
-		return result(Result.UPDATED, version, active, message, List.of());
+			return message + " " + transaction.warning().get();
+		return message;
+	}
+
+	/**
+	 * Converts an activation failure into its outcome.
+	 *
+	 * @param failure     the failure
+	 * @param active      the active version before the operation, or null
+	 * @param transaction the harness's activation transaction
+	 * @return the outcome
+	 */
+	private UpdateResult failure(ActivationTransaction.ActivationFailure failure, String active,
+		ActivationTransaction transaction)
+	{
+		Result outcome = Result.NOT_RESTORED;
+		if (failure.restored())
+			outcome = Result.RESTORED;
+		return result(outcome, active, null, failure.getMessage(), transaction.paths());
 	}
 
 	/**
@@ -461,5 +672,46 @@ public final class UpdateEngine
 	private List<String> keyIds()
 	{
 		return policy.keys().stream().map(TrustedKey::id).toList();
+	}
+
+	/**
+	 * The operations that the engine runs.
+	 */
+	private enum Mode
+	{
+		/**
+		 * Update the plugin; refuse when the harness has none.
+		 */
+		UPDATE,
+		/**
+		 * Install the plugin where the harness has none, otherwise update it.
+		 */
+		INSTALL,
+		/**
+		 * Activate the release that setup comes from, whatever the harness has.
+		 */
+		SETUP,
+		/**
+		 * Restore the installation that the last update retained.
+		 */
+		ROLLBACK
+	}
+
+	/**
+	 * Stages a release in the harness's scratch directories.
+	 */
+	@FunctionalInterface
+	private interface ScratchWork
+	{
+		/**
+		 * Stages and activates the release.
+		 *
+		 * @param download    the directory for downloaded archives
+		 * @param extractRoot the directory for extracted trees, which does not exist yet
+		 * @return the outcome
+		 * @throws IOException    if staging or activation fails
+		 * @throws TrustException if the release is refused
+		 */
+		UpdateResult run(Path download, Path extractRoot) throws IOException, TrustException;
 	}
 }

@@ -95,4 +95,40 @@ public interface PluginActivation
 	 * @throws NullPointerException if {@code home} is null
 	 */
 	Path migrationVersionFile(Path home);
+
+	/**
+	 * Plans adding a validated release to a harness that has no CAT plugin. Each step's undo deletes only what the step
+	 * created. The plan covers every location that {@link #plan(Path, String)} replaces, so a later update finds a
+	 * consistent installation.
+	 *
+	 * @param home       the harness's absolute home directory, from the trust policy
+	 * @param newVersion the version of the release to install
+	 * @return the steps to run in order, each with absolute, normalized paths
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code newVersion} is blank
+	 * @throws IOException              if the harness's files cannot be read
+	 */
+	List<ActivationStep> installPlan(Path home, String newVersion) throws IOException;
+
+	/**
+	 * Returns what uninstall deletes for this harness: every CAT plugin location and the CAT-owned files that the
+	 * provider installed alongside them, in deletion order, excluding the {@link #dataDirectory(Path) data directory}
+	 * and every file that CAT does not own. The provider includes an owned file only after checking that CAT still owns
+	 * it. Paths that do not exist may be omitted. The updater core deletes each path without following links.
+	 *
+	 * @param home the harness's absolute home directory, from the trust policy
+	 * @return absolute, normalized paths under {@code home}
+	 * @throws NullPointerException if {@code home} is null
+	 * @throws IOException          if the harness's files cannot be read
+	 */
+	List<Path> removalPaths(Path home) throws IOException;
+
+	/**
+	 * Returns the directory that holds CAT's data in this harness, which uninstall keeps unless asked to delete it.
+	 *
+	 * @param home the harness's absolute home directory, from the trust policy
+	 * @return the directory's absolute path
+	 * @throws NullPointerException if {@code home} is null
+	 */
+	Path dataDirectory(Path home);
 }

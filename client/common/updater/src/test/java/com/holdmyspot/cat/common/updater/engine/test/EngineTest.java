@@ -12,7 +12,6 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
 import com.holdmyspot.cat.common.updater.activation.AddDirectory;
-import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
@@ -71,10 +70,11 @@ public final class EngineTest
 				Map.of("harness-a", home));
 			String manifest = manifest("1.1");
 			ReleaseSource source = new MemorySource(manifest.getBytes(UTF_8), sign(manifest.getBytes(UTF_8), key));
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), policy, source, new Provider(),
+			Releases.runtime(root.resolve("data"));
+			UpdateEngine engine = new UpdateEngine(root.resolve("data"), policy, source, new LiveProvider(),
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.2");
+			UpdateResult result = engine.update("v1.2", new RecordingIntegration().registration());
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("1.2").contains("1.1");
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
@@ -98,10 +98,11 @@ public final class EngineTest
 			Files.writeString(home.resolve("live/version"), "1.0");
 			Files.writeString(home.resolve("configuration"), "protected");
 			Releases source = new Releases("1.1", "");
+			Releases.runtime(root.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new Provider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1");
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(0);
@@ -145,9 +146,10 @@ public final class EngineTest
 			Files.writeString(home.resolve("live/version"), "1.0");
 			Files.writeString(home.resolve("configuration"), "protected");
 			Releases source = new Releases("1.1", defect);
+			Releases.runtime(root.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new Provider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			UpdateResult result = engine.update("v1.1");
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
 			requireThat(result.result(), "resultFor" + defect).isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
 			requireThat(Files.readString(home.resolve("configuration")), "configuration").isEqualTo("protected");
@@ -172,11 +174,14 @@ public final class EngineTest
 			Files.writeString(home.resolve("live/version"), "1.0");
 			Files.writeString(home.resolve("migration-version"), "1.0\n");
 			Releases source = new Releases("1.1", "");
+			Releases.runtime(root.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new Provider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			requireThat(engine.update("v1.1").result(), "update").isEqualTo(Result.UPDATED);
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+			requireThat(engine.update("v1.1", new RecordingIntegration().
+				registration()).result(), "update").isEqualTo(Result.UPDATED);
 			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.of("1.0"));
-			requireThat(engine.update("v1.1").result(), "repeatUpdate").isEqualTo(Result.UP_TO_DATE);
+			requireThat(engine.update("v1.1", new RecordingIntegration().
+				registration()).result(), "repeatUpdate").isEqualTo(Result.UP_TO_DATE);
 			requireThat(engine.rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
 			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.0\n");
@@ -202,7 +207,7 @@ public final class EngineTest
 			Path outside = Files.createDirectory(root.resolve("outside"));
 			Files.createSymbolicLink(home.resolve("marker-parent"), outside);
 			Releases source = new Releases("1.1", "");
-			PluginActivation provider = new Provider()
+			PluginActivation provider = new LiveProvider()
 			{
 				@Override
 				public Path migrationVersionFile(Path providerHome)
@@ -210,9 +215,11 @@ public final class EngineTest
 					return providerHome.resolve("marker-parent/migration-version");
 				}
 			};
+			Releases.runtime(root.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				provider, "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			requireThat(engine.update("v1.1").result(), "result").isEqualTo(Result.REFUSED);
+			requireThat(engine.update("v1.1", new RecordingIntegration().
+				registration()).result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
 			requireThat(Files.exists(outside.resolve("migration-version")), "outsideMarker").isFalse();
 		}
@@ -235,7 +242,7 @@ public final class EngineTest
 			Files.writeString(home.resolve("live/version"), "1.0");
 			Releases source = new Releases("1.1", "");
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new Provider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 			requireThat(engine.status().version(), "version").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.exists(root.resolve("data")), "stateCreated").isFalse();
 		}
@@ -296,24 +303,27 @@ public final class EngineTest
 					release.download(tag, name, size, destination);
 				}
 			};
+			Releases.runtime(root.resolve("data"));
 			UpdateEngine first = new UpdateEngine(root.resolve("data"), release.policy(home), blocking,
-				new Provider(), "linux-x64", Clock.systemUTC(), interval -> () -> {}, Duration.ZERO);
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {}, Duration.ZERO);
 			UpdateEngine second = new UpdateEngine(root.resolve("data"), release.policy(home), release,
-				new Provider(), "linux-x64", Clock.systemUTC(), interval -> () ->
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () ->
 				{
 					throw new AssertionError("A zero wait must not pause");
 				}, Duration.ZERO);
-			Future<UpdateResult> running = workers.submit(() -> first.update("v1.1"));
+			Future<UpdateResult> running = workers.submit(() -> first.update("v1.1", new RecordingIntegration().
+				registration()));
 			try
 			{
 				requireThat(entered.await(2, TimeUnit.SECONDS), "enteredTransport").isTrue();
-				requireThat(second.update("v1.1").result(), "contendingResult").isEqualTo(Result.LOCKED);
+				requireThat(second.update("v1.1", new RecordingIntegration().
+					registration()).result(), "contendingResult").isEqualTo(Result.LOCKED);
 				AtomicReference<Instant> now = new AtomicReference<>(Instant.EPOCH);
 				Clock clock = new LockClock(now, ZoneOffset.UTC);
 				List<Duration> pauses = new ArrayList<>();
 				Duration deadline = Duration.ofMinutes(5);
 				UpdateEngine timed = new UpdateEngine(root.resolve("data"), release.policy(home), release,
-					new Provider(), "linux-x64", clock, interval -> () ->
+					new LiveProvider(), "linux-x64", clock, interval -> () ->
 					{
 						pauses.add(interval);
 						if (pauses.size() == 2)
@@ -321,17 +331,19 @@ public final class EngineTest
 						else
 							now.updateAndGet(time -> time.plus(interval));
 					}, deadline);
-				requireThat(timed.update("v1.1").result(), "deadlineResult").isEqualTo(Result.LOCKED);
+				requireThat(timed.update("v1.1", new RecordingIntegration().
+					registration()).result(), "deadlineResult").isEqualTo(Result.LOCKED);
 				requireThat(pauses, "lockPauses").isEqualTo(List.of(Duration.ofMillis(50), Duration.ofMillis(50),
 					Duration.ofMillis(20)));
 				UpdateEngine interrupted = new UpdateEngine(root.resolve("data"), release.policy(home), release,
-					new Provider(), "linux-x64", clock, interval -> Pause.interruptible(() ->
+					new LiveProvider(), "linux-x64", clock, interval -> Pause.interruptible(() ->
 					{
 						throw new InterruptedException("Interrupted lock wait");
 					}));
 				try
 				{
-					requireThat(interrupted.update("v1.1").result(), "interruptedResult").isEqualTo(Result.LOCKED);
+					requireThat(interrupted.update("v1.1", new RecordingIntegration().
+						registration()).result(), "interruptedResult").isEqualTo(Result.LOCKED);
 					requireThat(Thread.currentThread().isInterrupted(), "interruptPreserved").isTrue();
 				}
 				finally
@@ -368,7 +380,7 @@ public final class EngineTest
 			Files.writeString(home.resolve("blocking"), "a file cannot be a destination parent");
 			Files.writeString(home.resolve("migration-version"), "0.9\n");
 			Releases source = new Releases("1.1", "");
-			PluginActivation provider = new Provider()
+			PluginActivation provider = new LiveProvider()
 			{
 				@Override
 				public List<ActivationStep> plan(Path providerHome, String version)
@@ -377,9 +389,10 @@ public final class EngineTest
 						new AddDirectory(providerHome.resolve("blocking/new"), providerHome));
 				}
 			};
+			Releases.runtime(root.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				provider, "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			UpdateResult result = engine.update("v1.1");
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(5);
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
@@ -457,42 +470,6 @@ public final class EngineTest
 		public void download(String tag, String assetName, long expectedSize, Path destination)
 		{
 			throw new AssertionError("A mismatched manifest must be refused before downloading an archive");
-		}
-	}
-
-	/**
-	 * Describes a generic installation using directories owned by each test.
-	 */
-	private static class Provider implements PluginActivation
-	{
-		@Override
-		public String harness()
-		{
-			return "harness-a";
-		}
-
-		@Override
-		public String pluginManifest()
-		{
-			return ".harness-a/plugin.json";
-		}
-
-		@Override
-		public InstalledState installed(Path home) throws IOException
-		{
-			return new InstalledState(Optional.of(Files.readString(home.resolve("live/version"))), true);
-		}
-
-		@Override
-		public List<ActivationStep> plan(Path home, String newVersion)
-		{
-			return List.of(new ReplaceDirectory(home.resolve("live"), home));
-		}
-
-		@Override
-		public Path migrationVersionFile(Path home)
-		{
-			return home.resolve("migration-version");
 		}
 	}
 }

@@ -4,11 +4,12 @@ import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.cli.internal.Invocation;
+import com.holdmyspot.cat.common.updater.cli.internal.ProcessHarnessCli;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceConfigurationError;
@@ -21,13 +22,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class UpdaterMain
 {
 	/**
-	 * The environment variables updater Java code reads; setup uses the location variables and transport
-	 * may use the proxy variables. Routine location authority comes from the installed policy-path record.
-	 */
-	private static final List<String> ENVIRONMENT_INPUTS = List.of("HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME",
-		"LOCALAPPDATA", "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy");
-
-	/**
 	 * Runs one updater operation and exits with its documented status.
 	 *
 	 * @param args the complete operation arguments
@@ -38,18 +32,15 @@ public final class UpdaterMain
 		try
 		{
 			Platform platform = Platform.current();
-			Map<String, String> environment = new HashMap<>();
-			for (String name : ENVIRONMENT_INPUTS)
-			{
-				String value = System.getenv(name);
-				if (value != null)
-					environment.put(name, value);
-			}
-			Invocation invocation = new Invocation(Path.of(System.getProperty("java.home")).toRealPath(),
-				Path.of("").toAbsolutePath(), platform, environment,
+			// The updater's JAR lies in <version>/app, so its version directory is the JAR's grandparent
+			Path jar = Path.of(UpdaterMain.class.getProtectionDomain().getCodeSource().getLocation().toURI()).
+				toRealPath();
+			Invocation invocation = new Invocation(jar.getParent().getParent(), Path.of("").toAbsolutePath(),
+				platform, System.getenv(),
 				ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).toList(),
-				ServiceLoader.load(SandboxExemption.class).stream().map(ServiceLoader.Provider::get).toList(),
-				Clock.systemUTC(), Pause::sleeping, FileReplacer.retrying(Pause::sleeping), System.out, System.err);
+				ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).toList(),
+				ProcessHarnessCli::new, Clock.systemUTC(), Pause::sleeping, FileReplacer.retrying(Pause::sleeping),
+				System.out, System.err);
 			status = invocation.run(CommandLineArguments.recover(args));
 		}
 		catch (Exception | ServiceConfigurationError failure)

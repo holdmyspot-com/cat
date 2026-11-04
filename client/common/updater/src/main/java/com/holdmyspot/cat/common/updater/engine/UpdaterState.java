@@ -84,6 +84,26 @@ public record UpdaterState(Path directory)
 	}
 
 	/**
+	 * Returns the file that records the highest version ever activated for the harness.
+	 *
+	 * @return the file
+	 */
+	public Path highestVersion()
+	{
+		return directory.resolve("highest-version");
+	}
+
+	/**
+	 * Returns the file that records the permission entries that setup added to the harness's configuration.
+	 *
+	 * @return the file, beside the harness's state directory
+	 */
+	public Path permissions()
+	{
+		return directory.resolveSibling("permissions").resolve(directory.getFileName() + ".json");
+	}
+
+	/**
 	 * Returns backups of files that CAT owned before activation.
 	 *
 	 * @return the backup directory

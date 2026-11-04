@@ -40,6 +40,12 @@ final class ActivationJournal
 	private static final Set<String> ROOT_FIELDS = Set.of("format_version", "previous_version", "new_version",
 		"migration_file", "backup_root", "migration_existed", "prepared", "rollback", "entries");
 	/**
+	 * Format 2 adds the operation, so that an activation into a harness without a plugin is recorded as such
+	 * instead of naming a previous version that never existed. Format 1 journals are always updates.
+	 */
+	private static final Set<String> ROOT_FIELDS_2 = Set.of("format_version", "operation", "previous_version",
+		"new_version", "migration_file", "backup_root", "migration_existed", "prepared", "rollback", "entries");
+	/**
 	 * Members that describe one activation step and its reverse progress.
 	 */
 	private static final Set<String> ENTRY_FIELDS = Set.of("kind", "live", "staging", "previous", "older",
@@ -75,10 +81,27 @@ final class ActivationJournal
 		try
 		{
 			JsonNode root = MAPPER.readTree(bytes);
-			requireObject(root, ROOT_FIELDS);
+			if (root == null || !root.isObject())
+				throw new IOException("The activation journal is not a JSON object");
 			JsonNode format = root.get("format_version");
-			if (format == null || !format.isIntegralNumber() || !format.canConvertToInt() || format.intValue() != 1)
-				throw new IOException("The activation journal must have format_version 1");
+			if (format == null || !format.isIntegralNumber() || !format.canConvertToInt() ||
+				(format.intValue() != 1 && format.intValue() != 2))
+			{
+				throw new IOException("The activation journal must have format_version 1 or 2");
+			}
+			Operation operation = Operation.UPDATE;
+			if (format.intValue() == 1)
+				requireObject(root, ROOT_FIELDS);
+			else
+			{
+				requireObject(root, ROOT_FIELDS_2);
+				operation = parseOperation(text(root, "operation"));
+			}
+			String previousVersion = "";
+			if (operation == Operation.UPDATE)
+				previousVersion = text(root, "previous_version");
+			else if (!root.get("previous_version").isString() || !root.get("previous_version").stringValue().isEmpty())
+				throw new IOException("An install activation journal must have an empty previous_version");
 			List<Entry> entries = new ArrayList<>();
 			for (JsonNode entry : array(root, "entries"))
 			{
@@ -95,7 +118,7 @@ final class ActivationJournal
 					parseState(text(entry, "state")), parseUndo(text(entry, "undo")),
 					flag(entry, "had_previous"), files));
 			}
-			return new Document(text(root, "previous_version"), text(root, "new_version"),
+			return new Document(operation, previousVersion, text(root, "new_version"),
 				path(root, "migration_file"), path(root, "backup_root"), flag(root, "migration_existed"),
 				flag(root, "prepared"), flag(root, "rollback"), entries);
 		}
@@ -115,7 +138,8 @@ final class ActivationJournal
 	static byte[] encode(Document document) throws IOException
 	{
 		ObjectNode root = MAPPER.createObjectNode();
-		root.put("format_version", 1);
+		root.put("format_version", 2);
+		root.put("operation", document.operation().name().toLowerCase(Locale.ROOT));
 		root.put("previous_version", document.previousVersion());
 		root.put("new_version", document.newVersion());
 		root.put("migration_file", document.migrationFile().toString());
@@ -230,6 +254,23 @@ final class ActivationJournal
 	}
 
 	/**
+	 * Parses a journal operation.
+	 *
+	 * @param value the encoded operation
+	 * @return the operation
+	 * @throws IOException if the operation is unknown
+	 */
+	private static Operation parseOperation(String value) throws IOException
+	{
+		return switch (value)
+		{
+			case "update" -> Operation.UPDATE;
+			case "install" -> Operation.INSTALL;
+			default -> throw new IOException("The activation journal has an unknown operation: " + value);
+		};
+	}
+
+	/**
 	 * Reads the supported provider step kind.
 	 *
 	 * @param value the journal value
@@ -287,7 +328,8 @@ final class ActivationJournal
 	/**
 	 * One durable transaction, including its migration marker backup.
 	 *
-	 * @param previousVersion  the version to restore
+	 * @param operation        whether the activation replaced an installation or added one where none existed
+	 * @param previousVersion  the version to restore, or empty for an install
 	 * @param newVersion       the authenticated version being activated
 	 * @param migrationFile    the provider's migration marker
 	 * @param backupRoot       this activation's private backup directory
@@ -296,13 +338,14 @@ final class ActivationJournal
 	 * @param rollback         indicates whether recovery must complete an explicit rollback
 	 * @param entries          provider steps in execution order
 	 */
-	record Document(String previousVersion, String newVersion, Path migrationFile, Path backupRoot,
+	record Document(Operation operation, String previousVersion, String newVersion, Path migrationFile, Path backupRoot,
 		boolean migrationExisted, boolean prepared, boolean rollback, List<Entry> entries)
 	{
 		/**
 		 * Creates a stable record of activation progress.
 		 *
-		 * @param previousVersion  the version to restore
+		 * @param operation        whether the activation replaced an installation or added one where none existed
+		 * @param previousVersion  the version to restore, or empty for an install
 		 * @param newVersion       the version being activated
 		 * @param migrationFile    the migration marker
 		 * @param backupRoot       the private backup directory
@@ -313,7 +356,11 @@ final class ActivationJournal
 		 */
 		Document
 		{
-			requireThat(previousVersion, "previousVersion").isNotBlank();
+			requireThat(operation, "operation").isNotNull();
+			if (operation == Operation.UPDATE)
+				requireThat(previousVersion, "previousVersion").isNotBlank();
+			else
+				requireThat(previousVersion, "previousVersion").isEmpty();
 			requireThat(newVersion, "newVersion").isNotBlank();
 			requireThat(migrationFile, "migrationFile").isNotNull();
 			requireThat(backupRoot, "backupRoot").isNotNull();
@@ -390,6 +437,21 @@ final class ActivationJournal
 			requireThat(backup, "backup").isNotNull();
 			requireThat(staging, "staging").isNotNull();
 		}
+	}
+
+	/**
+	 * What an activation does to the harness.
+	 */
+	enum Operation
+	{
+		/**
+		 * Replaces an installed release; undo restores it.
+		 */
+		UPDATE,
+		/**
+		 * Adds a release where no plugin was installed; undo returns the harness to that absence.
+		 */
+		INSTALL
 	}
 
 	/**

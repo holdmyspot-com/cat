@@ -343,6 +343,24 @@ public final class RecoveryTest
 				{
 					return marker();
 				}
+
+				@Override
+				public List<ActivationStep> installPlan(Path home, String newVersion)
+				{
+					return List.of(new AddDirectory(live(), root));
+				}
+
+				@Override
+				public List<Path> removalPaths(Path home)
+				{
+					return List.of(live());
+				}
+
+				@Override
+				public Path dataDirectory(Path home)
+				{
+					return root.resolve("plugin-data");
+				}
 			};
 			return new UpdateEngine(root.resolve("data"), policy, new NoDownloads(), provider, "linux-x64",
 				Clock.systemUTC(), interval -> () -> {});

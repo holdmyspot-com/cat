@@ -73,6 +73,14 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		SET_UP(0),
 		/**
+		 * The plugin was added where the harness had none.
+		 */
+		INSTALLED(0),
+		/**
+		 * CAT was removed from the harness; the stable launcher deletes the updater's data directory.
+		 */
+		UNINSTALLED(0),
+		/**
 		 * Usage was invalid.
 		 */
 		USAGE(2),
@@ -92,6 +100,11 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 * Reversal failed; the recovery journal remains.
 		 */
 		NOT_RESTORED(6),
+		/**
+		 * Uninstall stopped before CAT was removed completely; its progress is kept so that the next uninstall
+		 * continues with the step that failed.
+		 */
+		NOT_REMOVED(7),
 		/**
 		 * Another operation held the lock beyond the wait limit.
 		 */

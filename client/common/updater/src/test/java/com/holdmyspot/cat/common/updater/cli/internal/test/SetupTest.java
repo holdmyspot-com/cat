@@ -1,30 +1,40 @@
 package com.holdmyspot.cat.common.updater.cli.internal.test;
 
-import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.keyPair;
-import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.policy;
 import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.testDirectory;
-import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.trusted;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
+import com.holdmyspot.cat.common.updater.cli.internal.DirectoryMover;
 import com.holdmyspot.cat.common.updater.cli.internal.Locations;
 import com.holdmyspot.cat.common.updater.cli.internal.Setup;
+import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
+import com.holdmyspot.cat.common.updater.engine.test.LiveProvider;
+import com.holdmyspot.cat.common.updater.engine.test.RecordingIntegration;
+import com.holdmyspot.cat.common.updater.engine.test.Releases;
+import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import com.holdmyspot.cat.common.updater.trust.TrustPolicy;
+import com.holdmyspot.cat.common.updater.trust.TrustedKey;
+import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests explicit setup's release authority, retained harness homes and protected installation binding.
+ * Tests setup from an extracted updater archive: the installed runtime, updater, policy and launcher, the plugin step,
+ * and the permission entries.
  */
 public final class SetupTest
 {
@@ -36,91 +46,264 @@ public final class SetupTest
 	}
 
 	/**
-	 * Setup replaces release authority with the image default while preserving another harness's recorded home.
+	 * Setup installs the runtime, the updater, its policy, the stable launcher and the current selection, then
+	 * installs and registers the plugin and records the permission entries that it added.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
 	 */
 	@Test
-	public void mergesHomesAndBindsAuthority() throws IOException, TrustException
+	public void installsFromArchive() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("setup-"));
-			Path data = Files.createDirectories(root.resolve("data"));
-			Path image = Files.createDirectories(data.resolve("1.0"));
-			Path configuration = Files.createDirectories(root.resolve("config"));
-			Path home = Files.createDirectory(root.resolve("harness-a"));
-			Path otherHome = Files.createDirectory(root.resolve("harness-b"));
-			Path cwd = Files.createDirectory(root.resolve("project"));
-			Path defaultFile = image.resolve("conf/cat-updater/default-policy.json");
-			Files.createDirectories(defaultFile.getParent());
-			FileReplacer replacer = replacer();
-			TrustPolicy defaults = policy(List.of(trusted("new-key", keyPair())));
-			defaults.write(defaultFile, replacer);
-			Files.writeString(image.resolve("VERSION"), "1.0\n");
-			Path policyFile = configuration.resolve("policy.json");
-			TrustPolicy old = TrustPolicy.of(List.of(trusted("old-key", keyPair())), defaults.releaseBaseUrl(),
-				defaults.minimum(), defaults.maximumMajor(), Map.of("harness-b", otherHome));
-			old.write(policyFile, replacer);
-			Locations locations = new Locations(image.toRealPath(), data, policyFile);
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-archive-")));
+			fixture.integration.adding(Map.of("settings.json", List.of("entry")));
 
-			new Setup(locations, Platform.current(), replacer).setUp("harness-a", home, cwd);
+			Setup.Outcome outcome = fixture.setUp(null);
 
-			Locations installed = Locations.installed(image);
-			TrustPolicy actual = TrustPolicy.read(installed.policy());
-			requireThat(installed.data(), "data").isEqualTo(data);
-			requireThat(actual.keys(), "keys").isEqualTo(defaults.keys());
-			requireThat(actual.harnesses(), "harnesses").isEqualTo(Map.of("harness-a", home,
-				"harness-b", otherHome));
+			Path data = fixture.data();
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.INSTALLED);
+			requireThat(outcome.version(), "version").isEqualTo("1.2");
+			requireThat(Files.readString(data.resolve("runtime/cat-runtime.json")), "runtime").
+				isEqualTo(Files.readString(fixture.archive.resolve("runtime/cat-runtime.json")));
+			requireThat(Files.readString(data.resolve("1.2/VERSION")), "app").isEqualTo("1.2\n");
+			requireThat(Files.readString(data.resolve("1.2").resolve(Locations.POLICY_ANCHOR)), "anchor").
+				isEqualTo(fixture.policy() + "\n");
+			TrustPolicy policy = TrustPolicy.read(fixture.policy());
+			requireThat(policy.format(), "format").isEqualTo(2);
+			requireThat(policy.harnesses(), "harnesses").isEqualTo(Map.of("harness-a", fixture.home));
+			requireThat(policy.command("harness-a").orElseThrow(), "command").isEqualTo(fixture.command);
+			requireThat(Files.isExecutable(data.resolve("bin/cat-updater")), "launcher").isTrue();
+			requireThat(outcome.launcher(), "outcomeLauncher").isEqualTo(data.resolve("bin/cat-updater"));
+			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.2\n");
+			requireThat(Files.readString(fixture.home.resolve("live/version")), "plugin").isEqualTo("1.2");
+			requireThat(Files.readString(fixture.home.resolve("live/client/runtime-binding")), "binding").
+				isEqualTo(data.resolve("runtime") + "\n");
+			requireThat(fixture.integration.calls(), "calls").isEqualTo(List.of("discover", "validateConfiguration",
+				"register", "installPermissions"));
+			requireThat(outcome.permissions(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
+			requireThat(Files.readString(data.resolve("state/permissions/harness-a.json")), "record").
+				contains("settings.json").contains("entry");
+			requireThat(Files.readString(data.resolve("state/harness-a/highest-version")), "highest").
+				isEqualTo("1.2\n");
 		}
 	}
 
 	/**
-	 * A development image without a signing key is refused before setup records any authority.
+	 * Returns setup conditions that must be refused before anything changes.
+	 *
+	 * @return each condition's name
 	 */
-	@Test(expectedExceptions = TrustException.class,
-		expectedExceptionsMessageRegExp = "This build has no release key[.]")
-	public void refusesUnsignedDevelopmentBuild() throws IOException, TrustException
+	@DataProvider
+	public static Object[][] refusals()
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("setup-no-key-"));
-			Path image = Files.createDirectories(root.resolve("data/1.0"));
-			Path defaults = image.resolve("conf/cat-updater/default-policy.json");
-			Files.createDirectories(defaults.getParent());
-			policy(List.of()).write(defaults, replacer());
-			Path home = Files.createDirectory(root.resolve("harness-a"));
-			Path cwd = Files.createDirectory(root.resolve("project"));
-			Locations locations = new Locations(image, image.getParent(), root.resolve("config/policy.json"));
-			new Setup(locations, Platform.current(), replacer()).setUp("harness-a", home, cwd);
-		}
+		return new Object[][]{{"configuration"}, {"discovery"}, {"runtime"}, {"keyless"}, {"otherHarness"},
+			{"insideProject"}};
 	}
 
 	/**
-	 * Setup inside the calling project is refused before it writes a policy or anchor.
+	 * Setup refuses, changing nothing, when the harness configuration is invalid, the harness program is not found,
+	 * the archive's runtime cannot run the installed plugin, the release has no key and no local plugin is given, the
+	 * existing policy names another harness, or the data directory lies inside the working directory.
+	 *
+	 * @param condition the refused condition
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the fixture's policies are invalid
 	 */
-	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp = ".*outside.*")
-	public void refusesProjectWritableLocations() throws IOException, TrustException
+	@Test(dataProvider = "refusals")
+	public void refusesWithoutChange(String condition) throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("setup-project-"));
-			Path project = Files.createDirectory(root.resolve("project"));
-			Path image = Files.createDirectories(project.resolve("data/1.0"));
-			Path defaults = image.resolve("conf/cat-updater/default-policy.json");
-			Files.createDirectories(defaults.getParent());
-			policy(List.of(trusted("test-key", keyPair()))).write(defaults, replacer());
-			Files.writeString(image.resolve("VERSION"), "1.0\n");
-			Path home = Files.createDirectory(root.resolve("harness-a"));
-			Path policyFile = root.resolve("config/policy.json");
-			Locations locations = new Locations(image, image.getParent(), policyFile);
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-refused-")));
+			Files.createDirectories(fixture.home.resolve("live/client"));
+			Files.writeString(fixture.home.resolve("live/version"), "1.0");
+			switch (condition)
+			{
+				case "configuration" -> fixture.integration.fail("validateConfiguration");
+				case "discovery" -> fixture.integration.discovering(null);
+				case "runtime" -> Files.writeString(fixture.home.resolve("live/client/runtime-requirement.json"),
+					"{\"format\": 1, \"java_feature\": 99, \"modules\": [\"java.base\"]}");
+				case "keyless" -> fixture.writeDefaultPolicy(false);
+				case "otherHarness" ->
+				{
+					Files.createDirectories(fixture.policy().getParent());
+					TrustPolicy.of(List.of(), URI.create("https://releases.example/cat"), ReleaseVersion.parse("1.0"),
+						1, Map.of("harness-b", fixture.home)).write(fixture.policy(), replacer());
+				}
+				case "insideProject" -> fixture.environment.put("XDG_DATA_HOME", fixture.cwd.resolve("data").toString());
+				default -> throw new AssertionError(condition);
+			}
+			String before = "";
+			if (Files.exists(fixture.policy()))
+				before = Files.readString(fixture.policy());
 			try
 			{
-				new Setup(locations, Platform.current(), replacer()).setUp("harness-a", home, project);
+				fixture.setUp(null);
+				throw new AssertionError("Setup accepted " + condition);
 			}
-			finally
+			catch (TrustException | IOException e)
 			{
-				requireThat(Files.exists(policyFile, NOFOLLOW_LINKS), "policyFileExists").isFalse();
-				requireThat(Files.exists(image.resolve(Locations.POLICY_ANCHOR), NOFOLLOW_LINKS), "anchorExists").isFalse();
+				requireThat(e.getMessage(), "message").isNotBlank();
 			}
+			requireThat(Files.exists(fixture.data(), NOFOLLOW_LINKS), "data").isFalse();
+			requireThat(Files.exists(fixture.cwd.resolve("data"), NOFOLLOW_LINKS), "projectData").isFalse();
+			requireThat(Files.readString(fixture.home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			if (!before.isEmpty())
+				requireThat(Files.readString(fixture.policy()), "policy").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Setup replaces the installed runtime in place; when moving the new runtime into place fails, the previous
+	 * runtime is restored, no staged or set-aside copy remains, and setup fails with the cause.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses unexpectedly
+	 */
+	@Test
+	public void replacesRuntimeAndRestoresOnFailure() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-runtime-")));
+			fixture.setUp(null);
+			Path installed = fixture.data().resolve("runtime/bin/java");
+			Files.writeString(fixture.archive.resolve("runtime/bin/java"), "newer java");
+			boolean[] failed = {false};
+			fixture.mover = (source, target) ->
+			{
+				if (target.getFileName().toString().equals("runtime") && !failed[0])
+				{
+					failed[0] = true;
+					throw new IOException("The runtime is in use");
+				}
+				DirectoryMover.ATOMIC.move(source, target);
+			};
+			try
+			{
+				fixture.setUp(null);
+				throw new AssertionError("Setup replaced a runtime that was in use");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("in use");
+			}
+			requireThat(Files.readString(installed), "restored").isEqualTo("java");
+			try (Stream<Path> entries = Files.list(fixture.data()))
+			{
+				requireThat(entries.map(path -> path.getFileName().toString()).filter(name -> name.contains("runtime")).
+					toList(), "runtimeEntries").isEqualTo(List.of("runtime"));
+			}
+
+			fixture.mover = DirectoryMover.ATOMIC;
+			fixture.setUp(null);
+
+			requireThat(Files.readString(installed), "replaced").isEqualTo("newer java");
+		}
+	}
+
+	/**
+	 * Setup deletes every other updater version directory, and activates and registers the plugin again when the
+	 * harness already has this version.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void replacesOtherVersionsAndReactivates() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-versions-")));
+			Files.createDirectories(fixture.data().resolve("1.0/bin"));
+			Files.createDirectories(fixture.data().resolve("1.1"));
+			Files.createDirectories(fixture.home.resolve("live"));
+			Files.writeString(fixture.home.resolve("live/version"), "1.2");
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.UPDATED);
+			requireThat(Files.exists(fixture.data().resolve("1.0"), NOFOLLOW_LINKS), "1.0").isFalse();
+			requireThat(Files.exists(fixture.data().resolve("1.1"), NOFOLLOW_LINKS), "1.1").isFalse();
+			requireThat(Files.isDirectory(fixture.data().resolve("1.2")), "1.2").isTrue();
+			requireThat(Files.isDirectory(fixture.home.resolve(".cat-previous-live")), "previous").isTrue();
+			requireThat(fixture.integration.calls(), "calls").contains("register");
+		}
+	}
+
+	/**
+	 * Setup with a local plugin tree installs a copy of it, bound to the runtime, also when the release has no key;
+	 * the user's tree is not changed.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void installsLocalPluginTree() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-local-")));
+			fixture.writeDefaultPolicy(false);
+			Path tree = SetupArchive.pluginTree(fixture.root.resolve("plugin-tree"));
+
+			Setup.Outcome outcome = fixture.setUp(tree);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.INSTALLED);
+			requireThat(Files.readString(fixture.home.resolve("live/bin/plugin-info")), "copied").isEqualTo("local");
+			requireThat(Files.exists(fixture.home.resolve("live/client/runtime-binding")), "binding").isTrue();
+			requireThat(Files.exists(tree.resolve("client/runtime-binding"), NOFOLLOW_LINKS), "sourceBinding").
+				isFalse();
+		}
+	}
+
+	/**
+	 * A repeated setup whose permission installation adds no new entry keeps the record of the entries that the earlier
+	 * setup added.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void keepsPermissionRecordWhenNothingIsAdded() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-permissions-")));
+			fixture.integration.adding(Map.of("settings.json", List.of("entry")));
+			fixture.setUp(null);
+			Path record = fixture.data().resolve("state/permissions/harness-a.json");
+			String first = Files.readString(record);
+
+			fixture.setUp(null);
+
+			requireThat(Files.readString(record), "record").isEqualTo(first);
+		}
+	}
+
+	/**
+	 * Setup removes the updater's own directories from the search path before the harness program is looked up, so
+	 * that no updater file can stand in for the harness program.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void filtersUpdaterDirectoriesFromSearchPath() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-path-")));
+			Path base = fixture.data().getParent();
+			String kept = fixture.root.resolve("tools").toString();
+			fixture.environment.put("PATH", String.join(File.pathSeparator, base.resolve("harness-b/bin").toString(),
+				kept, fixture.data().resolve("bin").toString()));
+
+			fixture.setUp(null);
+
+			requireThat(fixture.integration.discoveredEnvironment().get("PATH"), "path").isEqualTo(kept);
 		}
 	}
 
@@ -135,9 +318,9 @@ public final class SetupTest
 			Path root = cleanup.add(testDirectory("setup-xdg-"));
 			Path image = Files.createDirectories(root.resolve("image"));
 			Locations actual = Locations.forSetup(image, Platform.LINUX_X64, Map.of("HOME", root.toString(),
-				"XDG_DATA_HOME", "relative-data", "XDG_CONFIG_HOME", "relative-config"));
-			requireThat(actual.data(), "data").isEqualTo(root.resolve(".local/share/cat-updater"));
-			requireThat(actual.policy(), "policy").isEqualTo(root.resolve(".config/cat-updater/policy.json"));
+				"XDG_DATA_HOME", "relative-data", "XDG_CONFIG_HOME", "relative-config"), "harness-a");
+			requireThat(actual.data(), "data").isEqualTo(root.resolve(".local/share/cat-updater/harness-a"));
+			requireThat(actual.policy(), "policy").isEqualTo(root.resolve(".config/cat-updater/harness-a/policy.json"));
 		}
 	}
 
@@ -215,5 +398,114 @@ public final class SetupTest
 		return new FileReplacer(Platform.current(), () ->
 		{
 		}, Clock.systemUTC());
+	}
+
+	/**
+	 * An extracted updater archive, the user's environment and one harness home.
+	 */
+	private static final class Fixture
+	{
+		private final Path root;
+		private final Path archive;
+		private final Path home;
+		private final Path cwd;
+		private final Map<String, String> environment = new HashMap<>();
+		private final RecordingIntegration integration = new RecordingIntegration();
+		private final HarnessCommand command;
+		private final Releases source = new Releases("1.2", "");
+		private DirectoryMover mover = DirectoryMover.ATOMIC;
+
+		/**
+		 * Creates the archive and the user's directories.
+		 *
+		 * @param directory the test directory
+		 * @throws IOException    if the fixture cannot be created
+		 * @throws TrustException if the release's policy is invalid
+		 */
+		private Fixture(Path directory) throws IOException, TrustException
+		{
+			this.root = directory.toRealPath();
+			this.archive = SetupArchive.create(root.resolve("archive"), source.policy(home(root)).keys());
+			this.home = Files.createDirectories(home(root));
+			this.cwd = Files.createDirectories(root.resolve("project"));
+			Path user = Files.createDirectories(root.resolve("user"));
+			environment.put("HOME", user.toString());
+			environment.put("XDG_DATA_HOME", root.resolve("xdg-data").toString());
+			environment.put("XDG_CONFIG_HOME", root.resolve("xdg-config").toString());
+			this.command = new HarnessCommand(List.of(root.resolve("tools/harness-a").toString()),
+				Map.of("HOME", user.toString()));
+			integration.discovering(command);
+		}
+
+		/**
+		 * Returns the harness home.
+		 *
+		 * @param root the test directory
+		 * @return the home
+		 */
+		private static Path home(Path root)
+		{
+			return root.resolve("harness-home");
+		}
+
+		/**
+		 * Replaces the archive's default policy.
+		 *
+		 * @param keyed true to trust the fixture release's key, false for a development build without a key
+		 * @throws IOException if the policy cannot be written
+		 */
+		private void writeDefaultPolicy(boolean keyed) throws IOException
+		{
+			List<TrustedKey> keys = List.of();
+			if (keyed)
+			{
+				try
+				{
+					keys = source.policy(home).keys();
+				}
+				catch (TrustException e)
+				{
+					throw new AssertionError(e);
+				}
+			}
+			SetupArchive.writeDefaultPolicy(archive, keys);
+		}
+
+		/**
+		 * Returns the installation's data directory.
+		 *
+		 * @return the directory
+		 */
+		private Path data()
+		{
+			return root.resolve("xdg-data/cat-updater/harness-a");
+		}
+
+		/**
+		 * Returns the installation's policy file.
+		 *
+		 * @return the file
+		 */
+		private Path policy()
+		{
+			return root.resolve("xdg-config/cat-updater/harness-a/policy.json");
+		}
+
+		/**
+		 * Runs setup from the archive.
+		 *
+		 * @param plugin the local plugin tree, or null for the signed release
+		 * @return the outcome
+		 * @throws IOException    if setup fails
+		 * @throws TrustException if setup refuses
+		 */
+		private Setup.Outcome setUp(Path plugin) throws IOException, TrustException
+		{
+			Locations locations = Locations.forSetup(archive.resolve("1.2"), Platform.LINUX_X64, environment,
+				"harness-a");
+			Setup setup = new Setup(locations, Platform.LINUX_X64, replacer(), mover,
+				(recorded, recordedHome) -> RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {});
+			return setup.setUp("harness-a", home, plugin, cwd, environment, new LiveProvider(), integration, source);
+		}
 	}
 }
