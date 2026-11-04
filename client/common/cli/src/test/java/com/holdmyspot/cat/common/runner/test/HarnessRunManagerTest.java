@@ -304,61 +304,6 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies a supervisor atomically records the observed exit status when its runner has ended before completing a
-	 * run.
-	 *
-	 * @throws IOException if the filesystem operation fails
-	 */
-	@Test
-	public void recordsExternallyObservedRunFailure() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(
-				jvm.temporaryDirectory(),
-				"cat-run-root-"));
-			// No process is alive, so the runner that owns the run has ended
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), new FakeProcessLiveness());
-			HarnessRun run = manager.create("harness");
-			Path manifestPath = run.directory().resolve("run.json");
-
-			manager.fail("harness", run.id(), "capture timed out after 600 seconds", 143);
-
-			requireThat(Files.readString(manifestPath), "manifest").contains("\"state\": \"failed\"").
-				contains("\"exit_code\": 143").contains("capture timed out after 600 seconds");
-		}
-	}
-
-	/**
-	 * Verifies a late supervisor report preserves the already recorded harness failure rather than replacing it with the
-	 * runner's exit status.
-	 *
-	 * @throws IOException if the filesystem operation fails
-	 */
-	@Test
-	public void preservesRecordedHarnessFailure() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(
-				jvm.temporaryDirectory(),
-				"cat-run-root-"));
-			// No process is alive, so the runner that owns the run has ended
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), new FakeProcessLiveness());
-			HarnessRun run = manager.create("harness");
-			Path manifestPath = run.directory().resolve("run.json");
-			manager.fail(run, "harness exited with exit status 2");
-
-			manager.fail("harness", run.id(), "runner ended with exit status 1", 1);
-
-			requireThat(Files.readString(manifestPath), "manifest").contains("harness exited with exit status 2").
-				doesNotContain("runner ended with exit status 1");
-		}
-	}
-
-	/**
 	 * Verifies explicit cleanup removes only an owned run.
 	 *
 	 * @throws IOException if the filesystem operation fails
@@ -377,7 +322,7 @@ public final class HarnessRunManagerTest
 			HarnessRun run = manager.create("harness");
 			manager.fail(run, "test cleanup");
 
-			manager.deleteRun("harness", run.id());
+			manager.deleteRun(run);
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
 		}
@@ -402,7 +347,7 @@ public final class HarnessRunManagerTest
 			HarnessRun run = manager.create("harness");
 			Files.writeString(run.directory().resolve("run.json"), "{}");
 
-			manager.deleteRun("harness", run.id());
+			manager.deleteRun(run);
 		}
 	}
 
@@ -426,7 +371,7 @@ public final class HarnessRunManagerTest
 			int tooLarge = HarnessRunManagerSecrets.getHarnessRunManagerAccess().maximumManifestBytes() + 1;
 			Files.write(run.directory().resolve("run.json"), new byte[tooLarge]);
 
-			manager.deleteRun("harness", run.id());
+			manager.deleteRun(run);
 		}
 	}
 
@@ -456,30 +401,6 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies explicit cleanup refuses an unlocked run whose recorded owner is still alive.
-	 *
-	 * @throws IOException if the filesystem operation fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "Run is still owned by a live process: .*")
-	public void refusesToDeleteRunWithLiveOwner() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(
-				jvm.temporaryDirectory(),
-				"cat-run-root-"));
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(),
-				new FakeProcessLiveness().alive(OWNER_PID, OWNER_START));
-			HarnessRun run = manager.create("harness");
-			recordOwner(run, OWNER_PID, OWNER_START);
-
-			manager.deleteRun("harness", run.id());
-		}
-	}
-
-	/**
 	 * Verifies, against the operating system's real process table, that a manager created for production finds the
 	 * owner of a run it just created, the test's own process, alive and refuses to delete the run.
 	 *
@@ -499,12 +420,12 @@ public final class HarnessRunManagerTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
-			manager.deleteRun("harness", run.id());
+			manager.deleteRun(run);
 		}
 	}
 
 	/**
-	 * Verifies every deletion entry point refuses an unlocked run whose recorded owner is still alive.
+	 * Verifies explicit cleanup refuses an unlocked run whose recorded owner is still alive.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */

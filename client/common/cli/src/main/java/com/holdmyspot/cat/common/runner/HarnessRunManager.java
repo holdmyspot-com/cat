@@ -636,49 +636,6 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Records an externally observed process failure for an owned run that no live runner owns.
-	 *
-	 * @param harness the harness owning the run
-	 * @param id the generated run identifier
-	 * @param diagnostic the non-secret supervisor diagnostic
-	 * @param exitCode the observed non-negative process exit status
-	 * @throws IOException if the run is unknown, active, terminal, or cannot be persisted
-	 */
-	public void fail(String harness, String id, String diagnostic, int exitCode) throws IOException
-	{
-		requireThat(harness, "harness").isNotBlank();
-		requireThat(id, "id").isNotBlank();
-		requireThat(diagnostic, "diagnostic").isNotBlank();
-		requireThat(exitCode, "exitCode").isNotNegative();
-		HarnessRun run = new HarnessRun(harness, id, root.resolve(harness).resolve(id).normalize());
-		Manifest manifest = readManifest(run);
-		if (isOwnerAlive(manifest))
-			throw new IOException("Run is still owned by a live process: " + id);
-		try (HarnessRunLock lock = acquireLock(run))
-		{
-			if (!lock.isHeld())
-				throw new IOException("Unable to acquire run lock");
-			manifest = readManifest(run);
-			if (manifest.state().equals("failed"))
-				return;
-			if (!manifest.state().equals("running"))
-				throw new IOException("Run is already terminal: " + id);
-			if (isOwnerAlive(manifest))
-				throw new IOException("Run is still owned by a live process: " + id);
-			if (isHarnessProcessAlive(manifest))
-			{
-				terminateHarnessProcess(manifest);
-				if (isHarnessProcessAlive(manifest))
-					throw new IOException("Harness process is still running for run: " + id);
-			}
-			writeManifest(new Manifest(manifest.harness(), manifest.id(), "failed", "failed", manifest.ownerPid(),
-				manifest.ownerStartedAt(), manifest.harnessPid(), manifest.harnessStartedAt(), manifest.createdAt(),
-				manifest.artifactPath(), manifest.projectPath(), manifest.transport(), manifest.harnessCommand(),
-				manifest.startedAt(), manifest.turnNumber(), exitCode, clock.instant(), diagnostic), run.directory());
-		}
-	}
-
-	/**
 	 * Deletes an explicitly selected owned run.
 	 *
 	 * @param run the owned run
@@ -757,25 +714,6 @@ public final class HarnessRunManager
 					pruneRuntime(run);
 			}
 		}
-	}
-
-	/**
-	 * Deletes one explicitly selected owned run.
-	 *
-	 * @param harness the harness owning the run
-	 * @param id the generated run identifier
-	 * @throws IOException if the run is outside this manager's root, missing, active, or cannot be deleted
-	 */
-	public void deleteRun(String harness, String id) throws IOException
-	{
-		requireThat(harness, "harness").isNotBlank();
-		requireThat(id, "id").isNotBlank();
-		Path directory = root.resolve(harness).resolve(id).normalize();
-		HarnessRun run = new HarnessRun(harness, id, directory);
-		Manifest manifest = readManifest(run);
-		if (manifest.state().equals("running") && isOwnerAlive(manifest))
-			throw new IOException("Run is still owned by a live process: " + id);
-		deleteRun(run);
 	}
 
 	/**
