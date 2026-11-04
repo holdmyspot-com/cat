@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.release.TarGzExtractor;
+import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
 import com.holdmyspot.cat.common.updater.activation.AddDirectory;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
@@ -34,11 +35,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -60,6 +65,10 @@ public final class UpdateEngine
 	 * The plugin-relative file that names the Java runtime the plugin runs on.
 	 */
 	private static final Path BINDING_FILE = Path.of("client/runtime-binding");
+	/**
+	 * The permissions of a plugin's runtime binding where the file system records them.
+	 */
+	private static final Set<PosixFilePermission> BINDING_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private final UpdaterState state;
 	private final Path data;
 	private final Path runtime;
@@ -71,6 +80,7 @@ public final class UpdateEngine
 	private final String platform;
 	private final Clock clock;
 	private final Waiting waiting;
+	private final FileReplacer replacer;
 	private final Duration lockWait;
 	private final StartupCacheTrainer trainer;
 
@@ -120,7 +130,8 @@ public final class UpdateEngine
 		this.data = dataDirectory.toAbsolutePath().normalize();
 		boolean windows = Arrays.stream(Platform.values()).
 			anyMatch(candidate -> candidate.id().equals(platform) && candidate.isWindows());
-		this.bundle = new Bundle(data, windows, FileReplacer.retrying(waiting));
+		this.replacer = FileReplacer.retrying(waiting);
+		this.bundle = new Bundle(data, windows, replacer);
 		this.runtime = bundle.runtime();
 		this.swaps = new SwapFiles(data);
 		this.policy = policy;
@@ -291,8 +302,7 @@ public final class UpdateEngine
 			{
 				if (!lock.isValid())
 					return result(Result.LOCKED, null, null, "The harness lock is no longer valid.", List.of());
-				return trainer.afterActivation(log(operateLocked(mode, requestedTag, localTree, registration, home,
-					transaction)), activation, home);
+				return log(operateLocked(mode, requestedTag, localTree, registration, home, transaction));
 			}
 		}
 		catch (ActivationTransaction.ActivationFailure e)
@@ -342,20 +352,45 @@ public final class UpdateEngine
 				"Recovery could not restore the installation: " + e.getMessage(), transaction.paths());
 		}
 		cleanStaleDownloads();
+		Optional<Boolean> undoneCache = Optional.empty();
 		if (mode != Mode.SETUP)
 		{
 			// Setup replaces the bundle itself and handles a pending replacement before it activates the plugin
-			Optional<UpdateResult> resolved = resolveSwap(home, transaction);
-			if (resolved.isPresent())
-				return resolved.get();
+			Resolution resolution = resolveSwap(home, transaction);
+			if (resolution.outcome().isPresent())
+				return resolution.outcome().get();
+			undoneCache = resolution.aotCache();
 			prune(transaction);
 		}
+		UpdateResult outcome = operateResolved(mode, requestedTag, localTree, registration, home, transaction);
+		// An operation that undid an update reports the restored plugin's cache unless it activated another plugin
+		if (undoneCache.isPresent() && outcome.aotCache().isEmpty())
+			return outcome.withAotCache(undoneCache.get());
+		return outcome;
+	}
+
+	/**
+	 * Runs the operation once no runtime replacement is pending.
+	 *
+	 * @param mode         the operation
+	 * @param requestedTag the requested tag, or null
+	 * @param localTree    the user's local plugin tree, or null
+	 * @param registration registers the activated plugin, or null for a rollback
+	 * @param home         the protected harness home
+	 * @param transaction  the harness's activation transaction
+	 * @return the outcome
+	 * @throws IOException    if the installation cannot be read
+	 * @throws TrustException if the installed version is malformed
+	 */
+	private UpdateResult operateResolved(Mode mode, String requestedTag, Path localTree, Registration registration,
+		Path home, ActivationTransaction transaction) throws IOException, TrustException
+	{
 		InstalledState installed = activation.installed(home);
 		String active = installed.version().orElse(null);
 		try
 		{
 			if (mode == Mode.ROLLBACK)
-				return rollBack(transaction);
+				return rollBack(home, transaction);
 			if (active == null && mode == Mode.UPDATE)
 			{
 				return result(Result.REFUSED, null, null, "CAT is not installed in this harness; run install to add it.",
@@ -621,14 +656,15 @@ public final class UpdateEngine
 			transaction.install(tree, activation.installPlan(home, version), migrationFile, version, register);
 			recordHighestVersion(version);
 			return result(Result.INSTALLED, version, null, withWarning("CAT was installed.", transaction),
-				List.of());
+				List.of()).withAotCache(train(home, version, runtime));
 		}
 		if (active.equals(version))
 			transaction.repair(tree, activation.plan(home, version), migrationFile, version, register);
 		else
 			transaction.activate(tree, activation.plan(home, version), migrationFile, active, version, register);
 		recordHighestVersion(version);
-		return result(Result.UPDATED, version, active, withWarning("CAT was updated.", transaction), List.of());
+		return result(Result.UPDATED, version, active, withWarning("CAT was updated.", transaction), List.of()).
+			withAotCache(train(home, version, runtime));
 	}
 
 	/**
@@ -700,8 +736,11 @@ public final class UpdateEngine
 			cancelSwap(version, e);
 			throw e;
 		}
+		boolean trained;
 		try
 		{
+			// The stable launcher puts the staged runtime in place, so the cache must suit that runtime
+			trained = train(home, version, bundle.staged(Operation.UPDATE));
 			bundle.deleteOlder(running, version);
 			// The running launcher reads its script while it runs, so the new one is renamed over it
 			bundle.installLauncher(bundle.stableLauncher(version));
@@ -723,7 +762,7 @@ public final class UpdateEngine
 		}
 		recordHighestVersion(version);
 		return result(Result.UPDATED, version, running, withWarning("CAT was updated; the stable launcher " +
-			"replaces the Java runtime once the updater exits.", transaction), List.of());
+			"replaces the Java runtime once the updater exits.", transaction), List.of()).withAotCache(trained);
 	}
 
 	/**
@@ -770,12 +809,13 @@ public final class UpdateEngine
 	 * and updater through the stable launcher that is running once this JVM has exited. Afterwards no previous bundle
 	 * remains.
 	 *
+	 * @param home        the protected harness home
 	 * @param transaction the harness's activation transaction
 	 * @return the outcome
 	 * @throws IOException    if the plugin cannot be restored
 	 * @throws TrustException if a recorded version is malformed
 	 */
-	private UpdateResult rollBack(ActivationTransaction transaction) throws IOException, TrustException
+	private UpdateResult rollBack(Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
 		Optional<String> previous = previousBundle(transaction);
 		if (previous.isEmpty())
@@ -794,32 +834,34 @@ public final class UpdateEngine
 			throw e;
 		}
 		// A failure from here on leaves an interrupted rollback, which the next operation resumes
+		boolean trained = train(home, restored, bundle.staged(Operation.ROLLBACK));
 		bundle.installLauncher(launcher);
 		return result(Result.ROLLED_BACK, restored, null, "The previous plugin was restored; the stable launcher " +
-			"restores the previous Java runtime and updater once the updater exits.", List.of());
+			"restores the previous Java runtime and updater once the updater exits.", List.of()).
+			withAotCache(trained);
 	}
 
 	/**
 	 * Completes or undoes a runtime replacement that an earlier operation requested and the stable launcher did not
-	 * finish. Undoing it also puts back the stable launcher of the version that {@code current} selects.
+	 * finish. Undoing it also puts back the stable launcher of the version that {@code current} selects, and trains
+	 * the startup cache of a plugin that it restores.
 	 *
 	 * @param home        the protected harness home
 	 * @param transaction the harness's activation transaction
-	 * @return the outcome that ends this operation, or empty when the operation continues
+	 * @return the outcome that ends this operation, or none when the operation continues
 	 * @throws IOException    if the installation cannot be read or repaired
 	 * @throws TrustException if a recorded version is malformed
 	 */
-	private Optional<UpdateResult> resolveSwap(Path home, ActivationTransaction transaction) throws IOException,
-		TrustException
+	private Resolution resolveSwap(Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
 		Optional<Recorded> pending = swaps.read();
 		if (pending.isEmpty())
-			return Optional.empty();
+			return Resolution.CONTINUE;
 		Recorded recorded = pending.get();
 		if (recorded.launcherRunning())
 		{
-			return Optional.of(result(Result.LOCKED, null, null, "The stable launcher is still finishing a runtime " +
-				"replacement.", List.of()));
+			return Resolution.ending(result(Result.LOCKED, null, null, "The stable launcher is still finishing a " +
+				"runtime replacement.", List.of()));
 		}
 		RuntimeSwap swap = recorded.swap();
 		Operation operation = swap.operation();
@@ -828,36 +870,139 @@ public final class UpdateEngine
 		{
 			// The launcher selected the new updater and stopped before it deleted the request
 			swaps.delete();
-			return Optional.empty();
+			return Resolution.CONTINUE;
 		}
 		if (!current.equals(Optional.of(swap.fromVersion())))
 		{
-			return Optional.of(result(Result.NOT_RESTORED, null, null, "The runtime replacement from " +
+			return Resolution.ending(result(Result.NOT_RESTORED, null, null, "The runtime replacement from " +
 				swap.fromVersion() + " to " + swap.toVersion() + " does not match the selected updater version; " +
 				"rerun the entry command to repair the installation.", List.of(swaps.request())));
 		}
 		Path staged = bundle.staged(operation);
 		if (!Files.exists(staged, NOFOLLOW_LINKS))
-			return Optional.of(completeSwap(swap));
+			return Resolution.ending(completeSwap(swap));
 		String plugin = activation.installed(home).version().orElse(null);
 		boolean pluginReplaced = swap.toVersion().equals(plugin);
 		if (operation == Operation.ROLLBACK && pluginReplaced)
 		{
+			boolean trained = train(home, plugin, staged);
 			bundle.installLauncher(bundle.stableLauncher(swap.toVersion()));
 			swaps.write(swap, recorded.pluginVersion());
-			return Optional.of(result(Result.ROLLED_BACK, plugin, null, "An interrupted rollback was resumed; the " +
-				"stable launcher restores the previous Java runtime and updater once the updater exits.", List.of()));
+			return Resolution.ending(result(Result.ROLLED_BACK, plugin, null, "An interrupted rollback was resumed; " +
+				"the stable launcher restores the previous Java runtime and updater once the updater exits.",
+				List.of()).withAotCache(trained));
 		}
+		Optional<Boolean> trained = Optional.empty();
 		if (operation == Operation.UPDATE && pluginReplaced && recorded.pluginVersion().isPresent() &&
 			transaction.previousVersion().equals(recorded.pluginVersion()))
 		{
-			transaction.rollback();
+			String restored = transaction.rollback();
+			// The undone update leaves the running runtime in place
+			trained = Optional.of(train(home, restored, runtime));
 		}
 		bundle.installLauncher(bundle.stableLauncher(swap.fromVersion()));
 		swaps.delete();
 		if (operation == Operation.UPDATE)
 			bundle.discard(swap.toVersion());
-		return Optional.empty();
+		return new Resolution(Optional.empty(), trained);
+	}
+
+	/**
+	 * Writes the startup cache of every plugin directory that the harness's plan for a version replaces or adds, with
+	 * the Java runtime that the installation runs once the stable launcher has finished the operation. Each directory
+	 * is bound to that runtime while it trains, and afterwards to the installation's runtime location, under which the
+	 * stable launcher puts that runtime.
+	 *
+	 * @param home     the protected harness home
+	 * @param version  the activated version
+	 * @param training the Java runtime that the installation runs after the operation: {@code runtime} or a staged
+	 *                 runtime that the stable launcher renames to it
+	 * @return {@code true} if every activated plugin directory got its startup cache
+	 * @throws IOException if a plugin directory cannot be bound to the installation's runtime location again
+	 */
+	private boolean train(Path home, String version, Path training) throws IOException
+	{
+		List<Path> plugins = new ArrayList<>();
+		try
+		{
+			for (ActivationStep step : activation.plan(home, version))
+			{
+				switch (step)
+				{
+					case ReplaceDirectory replace -> plugins.add(replace.live());
+					case AddDirectory add -> plugins.add(add.target());
+					default ->
+					{
+					}
+				}
+			}
+		}
+		catch (IOException | IllegalArgumentException _)
+		{
+			return false;
+		}
+		boolean written = !plugins.isEmpty();
+		for (Path plugin : plugins)
+			written &= trainBound(plugin, training);
+		return written;
+	}
+
+	/**
+	 * Writes a plugin directory's startup cache with a Java runtime that the directory is bound to while it trains.
+	 *
+	 * @param plugin   the plugin directory
+	 * @param training the Java runtime that trains the cache
+	 * @return {@code true} if the cache was written
+	 * @throws IOException if the directory cannot be bound to the installation's runtime location again
+	 */
+	private boolean trainBound(Path plugin, Path training) throws IOException
+	{
+		Path binding = plugin.resolve(BINDING_FILE);
+		// The plugin's launchers pass the module path that Java checks the cache against, so training runs through them
+		if (training.equals(runtime) || !Files.exists(binding, NOFOLLOW_LINKS))
+			return trainer.train(plugin);
+		boolean written;
+		try
+		{
+			bind(binding, training);
+			written = trainer.train(plugin);
+		}
+		catch (IOException _)
+		{
+			written = false;
+		}
+		try
+		{
+			// The binding names the location, not the content read before, so a killed training never leaves it stale
+			bind(binding, runtime);
+		}
+		catch (IOException e)
+		{
+			try
+			{
+				StateFiles.delete(plugin.resolve(StartupCache.DIRECTORY));
+			}
+			catch (IOException deleteFailure)
+			{
+				e.addSuppressed(deleteFailure);
+			}
+			throw e;
+		}
+		if (!written)
+			StateFiles.delete(plugin.resolve(StartupCache.DIRECTORY));
+		return written;
+	}
+
+	/**
+	 * Replaces a plugin's runtime binding.
+	 *
+	 * @param binding the binding file
+	 * @param target  the Java runtime that the binding names
+	 * @throws IOException if the binding cannot be replaced
+	 */
+	private void bind(Path binding, Path target) throws IOException
+	{
+		StateFiles.replace(binding, (target + "\n").getBytes(StandardCharsets.UTF_8), BINDING_MODE, replacer);
 	}
 
 	/**
@@ -1080,6 +1225,32 @@ public final class UpdateEngine
 	private List<String> keyIds()
 	{
 		return policy.keys().stream().map(TrustedKey::id).toList();
+	}
+
+	/**
+	 * How a runtime replacement that an earlier operation left was resolved.
+	 *
+	 * @param outcome  the outcome that ends this operation, or empty when the operation continues
+	 * @param aotCache whether the plugin that undoing an update restored got its startup cache, or empty when no plugin
+	 *                 was restored
+	 */
+	private record Resolution(Optional<UpdateResult> outcome, Optional<Boolean> aotCache)
+	{
+		/**
+		 * The resolution of an operation that continues without having restored a plugin.
+		 */
+		static final Resolution CONTINUE = new Resolution(Optional.empty(), Optional.empty());
+
+		/**
+		 * Returns the resolution that ends the operation.
+		 *
+		 * @param outcome the operation's outcome
+		 * @return the resolution
+		 */
+		static Resolution ending(UpdateResult outcome)
+		{
+			return new Resolution(Optional.of(outcome), Optional.empty());
+		}
 	}
 
 	/**

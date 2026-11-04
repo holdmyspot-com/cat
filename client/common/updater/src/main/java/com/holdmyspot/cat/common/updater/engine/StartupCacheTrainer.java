@@ -7,10 +7,6 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.StartupCache;
-import com.holdmyspot.cat.common.updater.activation.ActivationStep;
-import com.holdmyspot.cat.common.updater.activation.AddDirectory;
-import com.holdmyspot.cat.common.updater.activation.PluginActivation;
-import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,7 +29,9 @@ import tools.jackson.databind.JsonNode;
  * Java accepts a cache only for the module path that it was trained with, so each plugin directory is trained where
  * it was placed: one run of its session-start program through the plugin's {@code client/bin/java} wrapper, which
  * passes the same Java options and module path as the plugin's launchers, records what the program loads, and a
- * second run writes the cache from that record. The program runs against a scratch home, temporary folder and project
+ * second run writes the cache from that record. Java also accepts a cache only for the runtime image that trained
+ * it, and the wrapper runs the runtime that the directory's runtime binding names, so the caller binds the directory to
+ * the runtime that is to run it before training. The program runs against a scratch home, temporary folder and project
  * that are removed afterwards, with an environment that holds nothing of the caller's except its program search path,
  * and its output is discarded. A plugin directory that cannot be trained keeps no cache and no partial file, and its
  * launchers start without one; training never fails the operation. A process with administrative rights trains
@@ -77,58 +75,6 @@ public final class StartupCacheTrainer
 		this.scratch = scratch.toAbsolutePath().normalize();
 		this.timeout = timeout;
 		this.elevated = elevated;
-	}
-
-	/**
-	 * Writes the startup cache of every plugin directory that an install, update or rollback activated: each directory
-	 * that the harness's plan for the active version replaces or adds. Any other outcome is returned unchanged.
-	 *
-	 * @param result     the outcome of the operation
-	 * @param activation the harness's activation provider
-	 * @param home       the harness home that the operation acted on
-	 * @return {@code result}, recording whether every activated plugin directory got its startup cache
-	 * @throws NullPointerException if any of the arguments are null
-	 */
-	public UpdateResult afterActivation(UpdateResult result, PluginActivation activation, Path home)
-	{
-		requireThat(result, "result").isNotNull();
-		requireThat(activation, "activation").isNotNull();
-		requireThat(home, "home").isNotNull();
-		switch (result.result())
-		{
-			case INSTALLED, UPDATED, ROLLED_BACK ->
-			{
-			}
-			default ->
-			{
-				return result;
-			}
-		}
-		if (result.version().isEmpty())
-			return result.withAotCache(false);
-		List<Path> plugins = new ArrayList<>();
-		try
-		{
-			for (ActivationStep step : activation.plan(home, result.version().get()))
-			{
-				switch (step)
-				{
-					case ReplaceDirectory replace -> plugins.add(replace.live());
-					case AddDirectory add -> plugins.add(add.target());
-					default ->
-					{
-					}
-				}
-			}
-		}
-		catch (IOException | IllegalArgumentException _)
-		{
-			return result.withAotCache(false);
-		}
-		boolean written = !plugins.isEmpty();
-		for (Path plugin : plugins)
-			written &= train(plugin);
-		return result.withAotCache(written);
 	}
 
 	/**

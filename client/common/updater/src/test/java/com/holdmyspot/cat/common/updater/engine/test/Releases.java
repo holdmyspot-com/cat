@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.updater.engine.test;
 import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.keyPair;
 import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.sign;
 import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.trusted;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
@@ -68,8 +69,35 @@ public final class Releases implements ReleaseSource
 	 */
 	public Releases(String version, String defect) throws IOException
 	{
+		this(version, defect, false);
+	}
+
+	/**
+	 * Creates a valid release whose plugin describes how to train its startup cache. Its {@code client/bin/java}
+	 * wrapper runs {@link FakeJava} on the runtime that the plugin's binding names, so the cache that a training writes
+	 * names the runtime that trained it.
+	 *
+	 * @param version the release version
+	 * @return the release
+	 * @throws IOException if creating the in-memory archive fails
+	 */
+	public static Releases trainable(String version) throws IOException
+	{
+		return new Releases(version, "", true);
+	}
+
+	/**
+	 * Creates a release.
+	 *
+	 * @param version   the release version
+	 * @param defect    empty for valid data, or the particular corrupted property
+	 * @param trainable true if the plugin describes how to train its startup cache
+	 * @throws IOException if creating the in-memory archive fails
+	 */
+	private Releases(String version, String defect, boolean trainable) throws IOException
+	{
 		this.version = version;
-		this.archive = archive(version, defect);
+		this.archive = archive(version, defect, trainable);
 		this.updater = updaterArchive(version, defect);
 		String digest = sha256(archive);
 		long size = archive.length;
@@ -132,7 +160,8 @@ public final class Releases implements ReleaseSource
 	/**
 	 * Writes the updater installation of one version as setup leaves it on a POSIX platform: the current selection,
 	 * the stable launcher, the updater version directory with its policy anchor, runtime requirement and stable
-	 * launchers, and the Java runtime, whose {@code release} file names the version that installed it.
+	 * launchers, and the Java runtime, whose {@code release} file names the version that installed it and whose
+	 * {@code java} names that runtime to {@link FakeJava}.
 	 *
 	 * @param data    the installation's updater data directory
 	 * @param version the installed updater version
@@ -143,6 +172,11 @@ public final class Releases implements ReleaseSource
 	{
 		Path runtime = runtime(data);
 		Files.writeString(runtime.resolve("release"), "runtime " + version);
+		Path java = Files.writeString(Files.createDirectories(runtime.resolve("bin")).resolve("java"),
+			StartupCacheFixtures.posixRuntimeJava("runtime " + version));
+		requireThat(java.toFile().setExecutable(true), "executable").isTrue();
+		Files.writeString(runtime.resolve("bin/java.cmd"),
+			StartupCacheFixtures.windowsRuntimeJava("runtime " + version));
 		Path image = Files.createDirectories(data.resolve(version));
 		Files.writeString(image.resolve("VERSION"), version + "\n");
 		Files.writeString(image.resolve("runtime-requirement.json"), requirement(INSTALLED_FEATURE));
@@ -261,14 +295,16 @@ public final class Releases implements ReleaseSource
 	}
 
 	/**
-	 * Builds only the entries needed to validate or refuse the named release property.
+	 * Builds only the entries needed to validate or refuse the named release property, and to train the plugin's
+	 * startup cache when it is trainable.
 	 *
-	 * @param version the declared release version
-	 * @param defect the corrupted property, or empty
+	 * @param version   the declared release version
+	 * @param defect    the corrupted property, or empty
+	 * @param trainable true if the plugin describes how to train its startup cache
 	 * @return the archive bytes
 	 * @throws IOException if archive writing fails
 	 */
-	private static byte[] archive(String version, String defect) throws IOException
+	private static byte[] archive(String version, String defect, boolean trainable) throws IOException
 	{
 		String top = "cat-harness-a-v" + version + "-linux-x64";
 		if (defect.equals("top"))
@@ -301,6 +337,15 @@ public final class Releases implements ReleaseSource
 				feature = INSTALLED_FEATURE + 1;
 			entry(tar, top + "/client/runtime-requirement.json", requirement(feature), 0644);
 			entry(tar, top + "/agents/reviewer.toml", "name = 'new'", 0644);
+			if (trainable)
+			{
+				String main = FakeJava.class.getName();
+				entry(tar, top + "/client/bin/java", StartupCacheFixtures.posixWrapper(main), 0755);
+				entry(tar, top + "/client/bin/java.cmd", StartupCacheFixtures.windowsWrapper(main, "java.cmd"), 0644);
+				entry(tar, top + "/" + StartupCacheFixtures.JAR, StartupCacheFixtures.jar(FakeJava.class), 0644);
+				entry(tar, top + "/client/startup-cache-training.json",
+					StartupCacheFixtures.description(List.of("-Dfixture.behavior=train")), 0644);
+			}
 			switch (defect)
 			{
 				case "traversal" -> entry(tar, top + "/../escaped", "hostile", 0644);
@@ -345,7 +390,9 @@ public final class Releases implements ReleaseSource
 		{
 			entry(tar, top + "/runtime/cat-runtime.json", runtimeDescription(runtimeFeature), 0644);
 			entry(tar, top + "/runtime/release", "runtime " + version, 0644);
-			entry(tar, top + "/runtime/bin/java", "Never executed by the updater", 0755);
+			entry(tar, top + "/runtime/bin/java", StartupCacheFixtures.posixRuntimeJava("runtime " + version), 0755);
+			entry(tar, top + "/runtime/bin/java.cmd", StartupCacheFixtures.windowsRuntimeJava("runtime " + version),
+				0644);
 			entry(tar, top + "/" + version + "/VERSION", version + "\n", 0644);
 			entry(tar, top + "/" + version + "/runtime-requirement.json", requirement(updaterFeature), 0644);
 			entry(tar, top + "/" + version + "/app/updater.jar", "Never executed by the updater", 0644);
@@ -405,7 +452,20 @@ public final class Releases implements ReleaseSource
 	 */
 	private static void entry(TarArchiveOutputStream tar, String name, String text, int mode) throws IOException
 	{
-		byte[] content = text.getBytes(UTF_8);
+		entry(tar, name, text.getBytes(UTF_8), mode);
+	}
+
+	/**
+	 * Writes a small regular file entry.
+	 *
+	 * @param tar     the archive writer
+	 * @param name    the archive entry name
+	 * @param content the content
+	 * @param mode    the file mode required for this fixture
+	 * @throws IOException if writing fails
+	 */
+	private static void entry(TarArchiveOutputStream tar, String name, byte[] content, int mode) throws IOException
+	{
 		TarArchiveEntry entry = new TarArchiveEntry(name);
 		entry.setSize(content.length);
 		entry.setMode(mode);

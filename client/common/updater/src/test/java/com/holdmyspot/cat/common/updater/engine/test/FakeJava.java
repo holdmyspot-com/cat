@@ -18,7 +18,9 @@ import java.util.concurrent.CountDownLatch;
  * It reacts to the startup cache options as the JDK's {@code java} launcher documents them for its two-step
  * ahead-of-time cache workflow: with {@code -XX:AOTMode=record} it runs the program and then writes the file that
  * {@code -XX:AOTConfiguration} names; with {@code -XX:AOTMode=create} it writes the file that {@code -XX:AOTCache}
- * names without running the program. Every run prints a line to standard output and to standard error.
+ * names without running the program. The cache that it writes names the runtime that trained it: the value of the
+ * system property {@code fixture.runtime}, which a fixture runtime's {@code java} sets, or {@code the testing runtime}
+ * without one. Every run prints a line to standard output and to standard error.
  * <p>
  * The argument {@code -Dfixture.behavior} selects the program's behavior:
  * <ul>
@@ -28,6 +30,7 @@ import java.util.concurrent.CountDownLatch;
  *   {@code -Dfixture.properties} names as {@code property.<name>}. An unset name is reported as {@code null}.</li>
  *   <li>{@code fail}: the cache-writing run writes part of the cache and then fails.</li>
  *   <li>{@code hang}: the recording run never ends.</li>
+ *   <li>{@code train}: the runs only write their files.</li>
  * </ul>
  */
 public final class FakeJava
@@ -73,12 +76,33 @@ public final class FakeJava
 			}
 			case "create" ->
 			{
-				Files.writeString(Path.of(options.get("-XX:AOTCache")), "part of a cache", UTF_8);
+				Files.writeString(Path.of(options.get("-XX:AOTCache")), cache(), UTF_8);
 				if (behavior.equals("fail"))
 					throw new IOException("The fixture program fails");
 			}
 			default -> throw new IllegalArgumentException("Unexpected arguments: " + String.join(" ", arguments));
 		}
+	}
+
+	/**
+	 * Returns the content of the cache that the fake writes.
+	 *
+	 * @return the content, which names the runtime that trained the cache
+	 */
+	private static String cache()
+	{
+		return cacheOf(System.getProperty("fixture.runtime", "the testing runtime"));
+	}
+
+	/**
+	 * Returns the content of the cache that the fake writes when a fixture runtime trains it.
+	 *
+	 * @param runtime the name that the fixture runtime gives the fake
+	 * @return the content
+	 */
+	public static String cacheOf(String runtime)
+	{
+		return "a cache trained by " + runtime;
 	}
 
 	/**

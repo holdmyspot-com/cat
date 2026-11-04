@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.updater.engine.test;
 
+import static com.holdmyspot.cat.common.updater.engine.test.StartupCacheFixtures.INPUT;
+import static com.holdmyspot.cat.common.updater.engine.test.StartupCacheFixtures.ROOT_VARIABLE;
 import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.testDirectory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -9,45 +11,31 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.updater.engine.StartupCacheTrainer;
-import com.holdmyspot.cat.common.updater.engine.UpdateResult;
-import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests writing a plugin directory's startup cache after the plugin directory is activated.
  * <p>
- * Each fixture plugin has a {@code client/bin/java} wrapper, as a plugin has one that runs the bound runtime's
- * {@code java}. One test runs real Java: its wrapper runs the testing JVM's {@code java} with the plugin's
- * {@link StartupProgram} jar. The other tests concern how training reacts to a run's outcome, so their wrapper runs
+ * Each fixture plugin has a {@code client/bin/java} wrapper that runs the {@code java} of the runtime that the
+ * plugin's binding names, as a plugin's wrapper does. One test runs real Java: its plugin is bound to a staged copy of
+ * the testing JVM's runtime and its wrapper runs that runtime's {@code java} with the plugin's {@link StartupProgram}
+ * jar. The other tests concern how training reacts to a run's outcome, so their wrapper runs
  * {@link FakeJava}, which reacts to the cache options as Java documents them but records and writes nothing real.
  */
 public final class StartupCacheTrainerTest
 {
-	/**
-	 * The variable that the fixture plugin's start-up program reads its plugin directory from.
-	 */
-	private static final String ROOT_VARIABLE = "FIXTURE_PLUGIN_ROOT";
-	/**
-	 * The input that the fixture plugin's start-up program receives.
-	 */
-	private static final String INPUT = "{\"event\":\"start\"}";
 	/**
 	 * Stands in for the check of a process without administrative rights.
 	 */
@@ -61,22 +49,27 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * Training with real Java writes a startup cache that Java accepts for the plugin's own class path, and removes
-	 * the training's scratch folders.
+	 * A startup cache that real Java trains with a staged runtime, as an update trains the plugin that it activates with
+	 * the runtime that it stages, is accepted by Java through the plugin's wrapper once the staged runtime is renamed
+	 * into place and the plugin is bound to it there. The training removes its scratch folders.
 	 *
 	 * @throws IOException          if the fixture cannot be created or inspected
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test
-	public void writesCacheThatJavaAccepts() throws IOException, InterruptedException
+	public void stagedRuntimeCacheIsAccepted() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("startup-cache-trains-")).toRealPath();
-			Path plugin = javaPlugin(root.resolve("plugin"));
+			Path staged = linkedRuntime(root.resolve("data/runtime.next"));
+			Path plugin = javaPlugin(root.resolve("plugin"), staged);
 			Path scratch = root.resolve("scratch");
 
 			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
+			// The stable launcher renames the staged runtime into place after the updater exits
+			Path installed = Files.move(staged, staged.resolveSibling("runtime"));
+			bind(plugin, installed);
 
 			requireThat(written, "written").isTrue();
 			requireThat(entries(plugin.resolve(StartupCache.DIRECTORY)), "cacheFolder").
@@ -220,73 +213,20 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * After an install, the startup cache of every plugin directory that the harness's plan names is written and the
-	 * outcome reports it; an outcome that activated nothing is returned unchanged.
-	 *
-	 * @throws IOException if the fixture cannot be created or inspected
-	 */
-	@Test
-	public void reportsCacheOfActivatedPlugin() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("startup-cache-activation-")).toRealPath();
-			Path home = Files.createDirectories(root.resolve("home"));
-			fakePlugin(home.resolve("live"), "report", root.resolve("report.properties"));
-			StartupCacheTrainer trainer = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1),
-				NOT_ELEVATED);
-			UpdateResult installed = new UpdateResult(Result.INSTALLED, "harness-a", Optional.of("1.1"),
-				Optional.empty(), "CAT was installed.", List.of(), true, List.of());
-			UpdateResult upToDate = new UpdateResult(Result.UP_TO_DATE, "harness-a", Optional.of("1.1"),
-				Optional.empty(), "CAT is up to date.", List.of(), true, List.of());
-
-			UpdateResult trained = trainer.afterActivation(installed, new LiveProvider(), home);
-			UpdateResult unchanged = trainer.afterActivation(upToDate, new LiveProvider(), home);
-
-			requireThat(trained.aotCache(), "trained").isEqualTo(Optional.of(true));
-			requireThat(Files.isRegularFile(home.resolve("live").resolve(StartupCache.FILE)), "cache").isTrue();
-			requireThat(unchanged, "unchanged").isEqualTo(upToDate);
-		}
-	}
-
-	/**
-	 * After an install whose plugin directory cannot be trained, the outcome stays an install and reports that no
-	 * startup cache was written.
-	 *
-	 * @throws IOException if the fixture cannot be created or inspected
-	 */
-	@Test
-	public void reportsMissingCacheWithoutFailing() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("startup-cache-untrained-")).toRealPath();
-			Path home = Files.createDirectories(root.resolve("home"));
-			fakePlugin(home.resolve("live"), "fail", root.resolve("report.properties"));
-			UpdateResult installed = new UpdateResult(Result.INSTALLED, "harness-a", Optional.of("1.1"),
-				Optional.empty(), "CAT was installed.", List.of(), true, List.of());
-
-			UpdateResult trained = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1), NOT_ELEVATED).
-				afterActivation(installed, new LiveProvider(), home);
-
-			requireThat(trained, "trained").isEqualTo(installed.withAotCache(false));
-		}
-	}
-
-	/**
 	 * Creates a fixture plugin whose {@code java} wrapper runs real Java with the plugin's {@link StartupProgram}.
 	 *
-	 * @param plugin the plugin directory, which must not exist
+	 * @param plugin  the plugin directory, which must not exist
+	 * @param runtime the Java runtime that the plugin is bound to
 	 * @return the plugin directory
 	 * @throws IOException if the fixture cannot be created
 	 */
-	private static Path javaPlugin(Path plugin) throws IOException
+	private static Path javaPlugin(Path plugin, Path runtime) throws IOException
 	{
-		return plugin(plugin, StartupProgram.class, Optional.empty(), List.of(StartupProgram.class.getName()));
+		return plugin(plugin, runtime, StartupProgram.class, "", List.of(StartupProgram.class.getName()));
 	}
 
 	/**
-	 * Creates a fixture plugin whose {@code java} wrapper runs {@link FakeJava}.
+	 * Creates a fixture plugin, bound to the testing JVM's runtime, whose {@code java} wrapper runs {@link FakeJava}.
 	 *
 	 * @param plugin   the plugin directory, which must not exist
 	 * @param behavior what the start-up program does
@@ -297,7 +237,7 @@ public final class StartupCacheTrainerTest
 	private static Path fakePlugin(Path plugin, String behavior, Path report) throws IOException
 	{
 		// The fake receives every argument, including the cache options, as a program receives its arguments
-		return plugin(plugin, FakeJava.class, Optional.of(FakeJava.class.getName()),
+		return plugin(plugin, Path.of(System.getProperty("java.home")), FakeJava.class, FakeJava.class.getName(),
 			List.of("-Dfixture.behavior=" + behavior, "-Dfixture.report=" + report,
 				"-Dfixture.variables=HOME,TMPDIR,GIT_CEILING_DIRECTORIES," + ROOT_VARIABLE,
 				"-Dfixture.properties=user.dir"));
@@ -305,51 +245,100 @@ public final class StartupCacheTrainerTest
 
 	/**
 	 * Creates a fixture plugin: a jar of one program in its {@code client/modules} folder, a {@code client/bin/java}
-	 * wrapper that runs the testing JVM's {@code java} with that jar as the class path, and a training description.
+	 * wrapper that runs the bound runtime's {@code java} with that jar as the class path, the binding, and a training
+	 * description.
 	 *
 	 * @param plugin    the plugin directory, which must not exist
+	 * @param runtime   the Java runtime that the plugin is bound to
 	 * @param program   the program, a class without nested classes
-	 * @param main      the main class that the wrapper names before the arguments that it receives, if any
+	 * @param main      the main class that the wrapper names before the arguments that it receives, or an empty string
 	 * @param arguments the arguments that the training description gives the wrapper after the startup cache options
 	 * @return the plugin directory
 	 * @throws IOException if the fixture cannot be created
 	 */
-	private static Path plugin(Path plugin, Class<?> program, Optional<String> main, List<String> arguments)
+	private static Path plugin(Path plugin, Path runtime, Class<?> program, String main, List<String> arguments)
 		throws IOException
 	{
-		String mainArgument = main.map(name -> " " + name).orElse("");
 		Path client = Files.createDirectories(plugin.resolve("client"));
-		Path modules = Files.createDirectories(client.resolve("modules"));
-		String entry = program.getName().replace('.', '/') + ".class";
-		try (InputStream in = program.getResourceAsStream(program.getSimpleName() + ".class");
-			OutputStream out = Files.newOutputStream(modules.resolve("fixture.jar"));
-			JarOutputStream jar = new JarOutputStream(out))
-		{
-			requireThat(in, "programClass").isNotNull();
-			jar.putNextEntry(new JarEntry(entry));
-			in.transferTo(jar);
-			jar.closeEntry();
-		}
+		Files.createDirectories(client.resolve("modules"));
+		Files.write(plugin.resolve(StartupCacheFixtures.JAR), StartupCacheFixtures.jar(program));
 		Path bin = Files.createDirectories(client.resolve("bin"));
-		String java = tool(Path.of(System.getProperty("java.home")), "java");
 		if (Platform.current().isWindows())
-		{
-			Files.writeString(bin.resolve("java.cmd"), "@echo off\r\n" +
-				"for %%I in (\"%~dp0..\") do set \"CLIENT=%%~fI\"\r\n" +
-				"\"" + java + "\" -cp \"%CLIENT%\\modules\\fixture.jar\"" + mainArgument + " %*\r\n");
-		}
+			Files.writeString(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper(main, "java.exe"));
 		else
 		{
-			Path wrapper = Files.writeString(bin.resolve("java"), "#!/bin/sh\n" +
-				"client=$(CDPATH= cd -P -- \"$(dirname -- \"$0\")/..\" && pwd -P)\n" +
-				"exec '" + java + "' -cp \"$client/modules/fixture.jar\"" + mainArgument + " \"$@\"\n");
+			Path wrapper = Files.writeString(bin.resolve("java"), StartupCacheFixtures.posixWrapper(main));
 			requireThat(wrapper.toFile().setExecutable(true), "executable").isTrue();
 		}
-		Map<String, Object> description = Map.of("format", 1, "arguments", arguments, "plugin_root_variable",
-			ROOT_VARIABLE, "input", INPUT);
-		Files.writeString(plugin.resolve(StartupCache.TRAINING), JsonMapper.builder().build().
-			writeValueAsString(description), UTF_8);
+		bind(plugin, runtime);
+		Files.writeString(plugin.resolve(StartupCache.TRAINING), StartupCacheFixtures.description(arguments), UTF_8);
 		return plugin;
+	}
+
+	/**
+	 * Binds a fixture plugin to a Java runtime, as an installation does.
+	 *
+	 * @param plugin  the plugin directory
+	 * @param runtime the runtime directory
+	 * @throws IOException if the binding cannot be written
+	 */
+	private static void bind(Path plugin, Path runtime) throws IOException
+	{
+		Files.writeString(plugin.resolve("client/runtime-binding"), runtime + "\n", UTF_8);
+	}
+
+	/**
+	 * Places a Java runtime at a new location by linking the files of the testing JVM's runtime, so that Java started
+	 * from it reads its runtime image at that location. A file that cannot be linked, such as one on another file
+	 * system, is copied.
+	 *
+	 * @param target the runtime directory, which must not exist
+	 * @return the runtime directory
+	 * @throws IOException if the runtime cannot be placed
+	 */
+	private static Path linkedRuntime(Path target) throws IOException
+	{
+		Path source = Path.of(System.getProperty("java.home")).toRealPath();
+		for (String part : List.of("bin", "conf", "lib", "release"))
+		{
+			try (Stream<Path> paths = Files.walk(source.resolve(part)))
+			{
+				for (Path path : paths.toList())
+				{
+					Path copy = target.resolve(source.relativize(path).toString());
+					if (Files.isDirectory(path, NOFOLLOW_LINKS))
+						Files.createDirectories(copy);
+					else
+						linkOrCopy(path, copy);
+				}
+			}
+		}
+		return target;
+	}
+
+	/**
+	 * Links a file of the testing JVM's runtime at another location, or copies it when it cannot be linked.
+	 *
+	 * @param file the file, which is never changed
+	 * @param copy the new location
+	 * @throws IOException if the file can be neither linked nor copied
+	 */
+	private static void linkOrCopy(Path file, Path copy) throws IOException
+	{
+		Files.createDirectories(copy.getParent());
+		if (Files.isRegularFile(file, NOFOLLOW_LINKS))
+		{
+			try
+			{
+				Files.createLink(copy, file);
+				return;
+			}
+			catch (IOException | UnsupportedOperationException _)
+			{
+				// Copied below
+			}
+		}
+		Files.copy(file, copy, NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
 	}
 
 	/**
@@ -383,20 +372,6 @@ public final class StartupCacheTrainerTest
 				throw new IOException("Java refused the cache: " + standardError);
 			return standardError.strip();
 		}
-	}
-
-	/**
-	 * Returns the path of a JDK tool.
-	 *
-	 * @param jdk  the JDK
-	 * @param name the tool's name without an extension
-	 * @return the tool's path
-	 */
-	private static String tool(Path jdk, String name)
-	{
-		if (Platform.current().isWindows())
-			return jdk.resolve("bin").resolve(name + ".exe").toString();
-		return jdk.resolve("bin").resolve(name).toString();
 	}
 
 	/**
