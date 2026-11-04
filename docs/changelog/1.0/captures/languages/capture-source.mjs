@@ -87,8 +87,8 @@ child.stderr.on("data", (chunk) => { error += chunk; });
 await Promise.race([ready, exited]);
 if (!child.stdin.writable)
 {
-  await writeSupervisorRecord("failed", "The runner ended before accepting a turn.");
-  throw new Error(`Source runner ended before it accepted a turn: ${error}`.trim());
+  await recordFailure(`Source runner ended before it accepted a turn: ${error}`.trim(),
+    "The runner ended before accepting a turn.");
 }
 child.stdin.write(`${JSON.stringify({type: "turn", prompt})}\n`);
 const result = await Promise.race([terminal, exited.then(() => null)]);
@@ -100,14 +100,10 @@ clearTimeout(deadline);
 clearTimeout(forcedTermination);
 clearInterval(keepAlive);
 const exitCode = observedExitCode(exit);
-if ((timedOut || exitCode !== 0) && runId)
-  await recordFailedRun(exitCode, exit.signal);
 if (!result || timedOut || exitCode !== 0)
 {
-  const reason = timedOut ? `The capture exceeded its ${timeoutSeconds}-second deadline.` :
-    "The runner ended before the capture recorded a completed turn.";
-  await writeSupervisorRecord("failed", reason, exitCode, exit.signal);
-  throw new Error(`Source capture did not complete: ${error}`.trim());
+  await recordFailure(`Source capture did not complete: ${error}`.trim(), failureReason(exitCode, exit.signal),
+    exitCode, exit.signal);
 }
 await writeSupervisorRecord("completed", "The runner recorded a completed turn and exited normally.", exitCode, exit.signal);
 
@@ -121,20 +117,29 @@ function observedExitCode(exit)
   return 1;
 }
 
-async function recordFailedRun(exitCode, signal)
+function failureReason(exitCode, signal)
 {
   const termination = signal ? `signal ${signal} (exit status ${exitCode})` : `exit status ${exitCode}`;
-  const diagnostic = timedOut ?
-    `Capture timed out after ${timeoutSeconds} seconds; the runner ended with ${termination}.` :
-    `Runner ended with ${termination} before the capture completed.`;
-  const maintenanceArguments = ["--fail-run", "--run-root", runRoot, "--run-id", runId, "--exit-code",
-    String(exitCode), "--diagnostic", diagnostic];
-  const maintenance = spawn(runner, maintenanceArguments, {stdio: ["ignore", "ignore", "pipe"]});
-  let maintenanceError = "";
-  maintenance.stderr.on("data", (chunk) => { maintenanceError += chunk; });
-  const maintenanceExit = await new Promise((resolve) => maintenance.once("exit", resolve));
-  if (maintenanceExit !== 0)
-    throw new Error(`Unable to record failed source capture: ${maintenanceError}`.trim());
+  if (timedOut)
+    return `Capture timed out after ${timeoutSeconds} seconds; the runner ended with ${termination}.`;
+  if (exitCode !== 0)
+    return `Runner ended with ${termination} before the capture completed.`;
+  return "The runner ended before the capture recorded a completed turn.";
+}
+
+// Records the failed capture in the supervisor record, then throws the capture's error. When the record cannot be
+// written, the thrown error names both failures so that the capture's error is not lost.
+async function recordFailure(captureError, reason, exitCode = null, signal = null)
+{
+  try
+  {
+    await writeSupervisorRecord("failed", reason, exitCode, signal);
+  }
+  catch (failure)
+  {
+    throw new Error(`${captureError}\nUnable to record the failed capture: ${failure.message}`);
+  }
+  throw new Error(captureError);
 }
 
 async function writeSupervisorRecord(state, reason, exitCode = null, signal = null)
