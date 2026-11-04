@@ -379,7 +379,7 @@ public final class Invocation
 	{
 		ObjectNode object = encode(result.outcome());
 		object.put("unregistered", result.unregistered());
-		save(object, locations.data().resolve("state/uninstall-result.json"));
+		save(object, locations.data().resolve(Uninstaller.RESULT));
 		return UNINSTALL_HANDOVER_STATUS;
 	}
 

@@ -393,6 +393,34 @@ public final class SetupTest
 	}
 
 	/**
+	 * Setup after an uninstall that stopped part way discards that uninstall's progress and saved result once it wrote
+	 * the new policy, also when activating the plugin fails afterwards, so that the next uninstall runs every step.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void setupDiscardsStoppedUninstall() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-after-uninstall-")));
+			Path journal = fixture.data().resolve("state/uninstall.json");
+			Path result = fixture.data().resolve("state/uninstall-result.json");
+			Files.createDirectories(journal.getParent());
+			Files.writeString(journal, "{\"format\":1,\"completed\":[\"unregister\",\"plugin\"],\"retained\":[]}\n");
+			Files.writeString(result, "{\"result\":\"uninstalled\"}\n");
+			fixture.integration.fail("register");
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result().exitStatus(), "pluginStatus").isNotEqualTo(0);
+			requireThat(Files.exists(journal, NOFOLLOW_LINKS), "journal").isFalse();
+			requireThat(Files.exists(result, NOFOLLOW_LINKS), "result").isFalse();
+		}
+	}
+
+	/**
 	 * Creates a fixture whose installation an update moved from release 1.1 to release 1.2, so that it keeps the
 	 * bundle of release 1.1 as its previous bundle.
 	 *

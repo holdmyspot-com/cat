@@ -59,6 +59,11 @@ public final class Uninstaller
 	 * The progress record, relative to the updater data directory.
 	 */
 	private static final String JOURNAL = "state/uninstall.json";
+	/**
+	 * The result of a completed uninstall that the stable launcher prints once it deleted the data directory,
+	 * relative to the updater data directory.
+	 */
+	public static final String RESULT = "state/uninstall-result.json";
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	private final Path data;
 	private final Path policyFile;
@@ -188,6 +193,20 @@ public final class Uninstaller
 		if (progress.isEmpty() || !progress.get().completed().contains(STEPS.getLast()))
 			return Optional.empty();
 		return Optional.of(uninstalled(harness, List.of(), progress.get().completed().contains(UNREGISTER)));
+	}
+
+	/**
+	 * Discards the progress and the saved result of an earlier uninstall, because an operation that set up or
+	 * activated CAT again makes them stale: a later uninstall must run every step again.
+	 *
+	 * @param data the installation's updater data directory
+	 * @throws IOException if the files cannot be deleted
+	 */
+	public static void discard(Path data) throws IOException
+	{
+		Path directory = data.toAbsolutePath().normalize();
+		Files.deleteIfExists(directory.resolve(JOURNAL));
+		Files.deleteIfExists(directory.resolve(RESULT));
 	}
 
 	/**

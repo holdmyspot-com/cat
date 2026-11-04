@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.RuntimeDescription;
 import com.holdmyspot.cat.common.updater.engine.RuntimeRequirement;
 import com.holdmyspot.cat.common.updater.engine.TreeCopy;
+import com.holdmyspot.cat.common.updater.engine.Uninstaller;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
 import com.holdmyspot.cat.common.updater.engine.UpdaterState;
@@ -232,6 +233,7 @@ public final class Setup
 		Files.createDirectories(locations.policy().getParent());
 		policy.write(locations.policy(), replacer);
 		setPermissions(locations.policy(), PRIVATE_FILE);
+		Uninstaller.discard(locations.data());
 		writeLauncher(launcher);
 		write(locations.data().resolve(CURRENT_FILE), version + "\n", PRIVATE_FILE);
 		discardReplacement();

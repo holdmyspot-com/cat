@@ -302,7 +302,10 @@ public final class UpdateEngine
 			{
 				if (!lock.isValid())
 					return result(Result.LOCKED, null, null, "The harness lock is no longer valid.", List.of());
-				return log(operateLocked(mode, requestedTag, localTree, registration, home, transaction));
+				UpdateResult result = operateLocked(mode, requestedTag, localTree, registration, home, transaction);
+				if (result.result().exitStatus() == 0)
+					Uninstaller.discard(data);
+				return log(result);
 			}
 		}
 		catch (ActivationTransaction.ActivationFailure e)
