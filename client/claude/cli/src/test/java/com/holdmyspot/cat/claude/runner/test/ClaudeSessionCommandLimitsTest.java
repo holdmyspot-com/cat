@@ -58,10 +58,10 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 	}
 
 	/**
-	 * Returns the platform whose Claude session settings the test describes. Claude sessions run only on Linux and
-	 * macOS, because Claude Code has no command sandbox on native Windows, so on a Windows host the settings are
-	 * written for Linux; the rest of the contract still follows the host's paths, environment variables and launcher
-	 * names.
+	 * Returns the platform whose Claude session settings the test describes. The test describes the settings of a
+	 * session whose commands a sandbox confines, which Claude Code lacks on native Windows, so on a Windows host the
+	 * settings are written for Linux; the rest of the contract still follows the host's paths, environment variables
+	 * and launcher names.
 	 *
 	 * @return the host's platform, or Linux if the host is native Windows
 	 */

@@ -57,9 +57,8 @@ public final class ClaudeConnectionSettings
 	/**
 	 * The permission rules that the isolated settings allow, whatever the parent's settings say. Claude Code asks the
 	 * user before using the {@code Skill} tool, and a nested instance has no user to answer, so without this rule a
-	 * trial could use none of the skills of the prompt system it measures. The runner starts the instance in the
-	 * {@code acceptEdits} permission mode, and the rule for editing tools also grants edits inside the project, and
-	 * nowhere else, without depending on that mode.
+	 * trial could use none of the skills of the prompt system it measures. The rule for editing tools grants edits
+	 * inside the project, and nowhere else, whichever permission mode the runner starts the instance in.
 	 */
 	private static final List<String> PERMISSION_GRANTS = List.of("Skill", "Edit(./**)");
 	/**
@@ -86,20 +85,33 @@ public final class ClaudeConnectionSettings
 		"CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL");
 
 	/**
-	 * Refuses a platform on which Claude Code cannot confine a session's commands.
+	 * Indicates whether Claude Code confines a session's commands in a sandbox on a platform. Where it does not, which
+	 * is native Windows, the isolated session runs under the user's own allow and deny rules in the
+	 * {@code dontAsk} permission mode, so that a command that needs approval is refused. This is the only place that
+	 * chooses which platforms those are.
 	 *
-	 * @param platform the platform that the session would run on
-	 * @throws NullPointerException          if {@code platform} is null
-	 * @throws UnsupportedOperationException if {@code platform} is native Windows
+	 * @param platform the platform that the session runs on
+	 * @return {@code true} if Claude Code has no command sandbox on {@code platform}
+	 * @throws NullPointerException if {@code platform} is null
 	 */
-	public static void requireSupportedPlatform(Platform platform)
+	public static boolean lacksCommandSandbox(Platform platform)
 	{
 		requireThat(platform, "platform").isNotNull();
-		if (platform.isWindows())
-		{
-			throw new UnsupportedOperationException("Claude Code has no command sandbox on native Windows, so CAT " +
-				"cannot confine the session's commands. Run Claude Code and CAT inside WSL2.");
-		}
+		return platform.isWindows();
+	}
+
+	/**
+	 * Returns the permission mode in which an isolated session runs.
+	 *
+	 * @param platform the platform that the session runs on
+	 * @return {@code dontAsk} if {@link #lacksCommandSandbox(Platform)}, otherwise {@code acceptEdits}
+	 * @throws NullPointerException if {@code platform} is null
+	 */
+	public static String permissionMode(Platform platform)
+	{
+		if (lacksCommandSandbox(platform))
+			return "dontAsk";
+		return "acceptEdits";
 	}
 
 	/**
@@ -152,9 +164,14 @@ public final class ClaudeConnectionSettings
 	 * reach the parent's directories. It allows the {@code Skill} tool instead, which the isolated instance has no
 	 * user to approve.
 	 * It requires a sandbox and forbids commands outside it, whatever the parent's settings say, and lets the instance
-	 * run its commands, which that sandbox confines, without approval. Native Windows is refused because Claude Code
-	 * has no command sandbox there; run Claude Code and CAT inside WSL2 instead. Host settings must not control other
-	 * isolated-instance behavior. It also denies the instance reading
+	 * run its commands, which that sandbox confines, without approval.
+	 * <p>
+	 * Where {@link #lacksCommandSandbox(Platform)}, no sandbox confines the commands, so the settings neither require
+	 * a sandbox nor grant commands. They copy the parent's {@code permissions.allow} and {@code permissions.deny}
+	 * rules, and no other permission setting, so the instance runs the commands that the user allows and refuses
+	 * every other command that would need approval, which the {@code dontAsk} permission mode does.
+	 * <p>
+	 * Host settings must not control other isolated-instance behavior. It also denies the instance reading
 	 * each of {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
 	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine. When
 	 * {@code deniedReads} is not empty, the host's {@code sandbox.filesystem.allowRead} is not retained, because it
@@ -175,8 +192,7 @@ public final class ClaudeConnectionSettings
 	 * @param isolationRoot the directory above which the isolated instance loads no instruction file
 	 * @param deniedReads the existing files and directories that the isolated instance must not read
 	 * @param platform the platform that the isolated instance runs on
-	 * @throws UnsupportedOperationException if {@code platform} is native Windows
-	 * @throws IOException                   if settings I/O fails
+	 * @throws IOException if settings I/O fails
 	 */
 	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
@@ -204,9 +220,8 @@ public final class ClaudeConnectionSettings
 	 * @param instructionFilesMode     the choice of which instruction files load, such as {@code claude-md}, or an
 	 *                                 empty string to keep the parent's choice
 	 * @param platform                 the platform that the isolated instance runs on
-	 * @throws NullPointerException          if {@code instructionFilesMode} is null
-	 * @throws UnsupportedOperationException if {@code platform} is native Windows
-	 * @throws IOException                   if settings I/O fails
+	 * @throws NullPointerException if {@code instructionFilesMode} is null
+	 * @throws IOException          if settings I/O fails
 	 */
 	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
@@ -241,9 +256,8 @@ public final class ClaudeConnectionSettings
 	 * @param project                  the instance's Git repository, whose {@code .git} is a directory, or
 	 *                                 {@code null} if the instance may register no linked worktree
 	 * @param platform                 the platform that the isolated instance runs on
-	 * @throws NullPointerException          if {@code instructionFilesMode} is null
-	 * @throws UnsupportedOperationException if {@code platform} is native Windows
-	 * @throws IOException                   if settings I/O fails
+	 * @throws NullPointerException if {@code instructionFilesMode} is null
+	 * @throws IOException          if settings I/O fails
 	 */
 	public static void writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
@@ -251,35 +265,28 @@ public final class ClaudeConnectionSettings
 		Platform platform)
 		throws IOException
 	{
-		requireSupportedPlatform(platform);
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		boolean sandboxed = !lacksCommandSandbox(platform);
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
 		ObjectNode environment = settings.putObject("env");
 		environment.put("DISABLE_AUTOUPDATER", "1");
 		environment.put("CLAUDE_CODE_TMPDIR", claudeTemporaryDirectory.toString());
-		ObjectNode sandbox = settings.putObject("sandbox");
 		JsonNode parentSettings = mapper.missingNode();
 		if (Files.isRegularFile(source))
 		{
 			parentSettings = mapper.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
 				"Claude settings"));
 		}
-		JsonNode parentSandbox = parentSettings.path("sandbox");
-		sandbox.put("enabled", true);
-		sandbox.put("failIfUnavailable", true);
-		sandbox.put("allowUnsandboxedCommands", false);
-		ObjectNode filesystem = sandbox.putObject("filesystem");
-		JsonNode network = parentSandbox.path("network");
-		JsonNode parentFilesystem = parentSandbox.path("filesystem");
-		if (network.isObject())
-			sandbox.set("network", network.deepCopy());
-		if (parentFilesystem.isObject())
+		ObjectNode filesystem = null;
+		if (sandboxed)
 		{
-			filesystem = (ObjectNode) parentFilesystem.deepCopy();
-			sandbox.set("filesystem", filesystem);
+			filesystem = putSandbox(settings, parentSettings.path("sandbox"));
+			copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		}
-		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
+		else
+			copyUserRules(parentSettings.path("permissions"), settings);
 		if (instructionFilesMode.isEmpty())
 			copyInstructionFilesMode(parentSettings, settings);
 		else
@@ -294,22 +301,31 @@ public final class ClaudeConnectionSettings
 				grants.add("Bash(" + runner + ":*)");
 			grants.add("Read(/" + rulePath(requestAccess.responses()) + "/**)");
 		}
-		grants.add(SANDBOXED_COMMAND_GRANT);
-		List<String> writablePaths = new ArrayList<>();
-		writablePaths.add(claudeHome.toString());
-		for (Path cache : dependencyCaches)
-			writablePaths.add(cache.toString());
-		if (requestAccess != null)
-			writablePaths.add(requestAccess.requests().toString());
 		Path worktreeRegistrations = null;
-		if (project != null)
+		if (sandboxed)
 		{
-			// Git registers each linked worktree below this directory; the sandbox grants only a path that exists
-			worktreeRegistrations = project.toAbsolutePath().normalize().resolve(".git").resolve("worktrees");
-			writablePaths.add(worktreeRegistrations.toString());
+			grants.add(SANDBOXED_COMMAND_GRANT);
+			List<String> writablePaths = new ArrayList<>();
+			writablePaths.add(claudeHome.toString());
+			for (Path cache : dependencyCaches)
+				writablePaths.add(cache.toString());
+			if (requestAccess != null)
+				writablePaths.add(requestAccess.requests().toString());
+			if (project != null)
+			{
+				// Git registers each linked worktree below this directory; the sandbox grants only a path that exists
+				worktreeRegistrations = project.toAbsolutePath().normalize().resolve(".git").resolve("worktrees");
+				writablePaths.add(worktreeRegistrations.toString());
+			}
+			filesystem.set("allowWrite", mapper.valueToTree(writablePaths));
+			denyReads(settings, filesystem, deniedReads);
 		}
-		filesystem.set("allowWrite", mapper.valueToTree(writablePaths));
-		denyReads(settings, filesystem, deniedReads);
+		else
+		{
+			// The user's allow rules follow CAT's own grants, so that a rule that the user wrote is not overridden
+			appendUserAllowRules(parentSettings.path("permissions"), grants);
+			denyReadRules(settings, deniedReads);
+		}
 		excludeInstructionsAbove(settings, isolationRoot);
 
 		Files.createDirectories(claudeTemporaryDirectory);
@@ -318,6 +334,35 @@ public final class ClaudeConnectionSettings
 			Files.createDirectories(worktreeRegistrations);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
+	}
+
+	/**
+	 * Adds the sandbox settings of a session whose commands the sandbox confines: it requires the sandbox, forbids
+	 * commands outside it, and retains the parent's network and filesystem policies.
+	 *
+	 * @param settings      the isolated settings
+	 * @param parentSandbox the parent's {@code sandbox} settings, or a missing node if it has none
+	 * @return the isolated sandbox's filesystem settings
+	 */
+	private static ObjectNode putSandbox(ObjectNode settings, JsonNode parentSandbox)
+	{
+		assert settings != null;
+		assert parentSandbox != null;
+		ObjectNode sandbox = settings.putObject("sandbox");
+		sandbox.put("enabled", true);
+		sandbox.put("failIfUnavailable", true);
+		sandbox.put("allowUnsandboxedCommands", false);
+		ObjectNode filesystem = sandbox.putObject("filesystem");
+		JsonNode network = parentSandbox.path("network");
+		JsonNode parentFilesystem = parentSandbox.path("filesystem");
+		if (network.isObject())
+			sandbox.set("network", network.deepCopy());
+		if (parentFilesystem.isObject())
+		{
+			filesystem = (ObjectNode) parentFilesystem.deepCopy();
+			sandbox.set("filesystem", filesystem);
+		}
+		return filesystem;
 	}
 
 	/**
@@ -338,6 +383,39 @@ public final class ClaudeConnectionSettings
 			if (rules.isArray())
 				permissions(settings).set(restriction, rules.deepCopy());
 		}
+	}
+
+	/**
+	 * Copies the parent's {@code permissions.deny} rules, for a session that no sandbox confines. Its {@code allow}
+	 * rules follow CAT's own grants, through {@link #appendUserAllowRules(JsonNode, ArrayNode)}. No other permission
+	 * setting is copied: the session runs in the {@code dontAsk} permission mode, which refuses what no allow rule
+	 * grants, so that the parent's ask rules, added directories and default mode have no use.
+	 *
+	 * @param parentPermissions the parent's {@code permissions} settings, or a missing node if it has none
+	 * @param settings          the isolated settings
+	 */
+	private static void copyUserRules(JsonNode parentPermissions, ObjectNode settings)
+	{
+		assert parentPermissions != null;
+		assert settings != null;
+		JsonNode rules = parentPermissions.path("deny");
+		if (rules.isArray())
+			permissions(settings).set("deny", rules.deepCopy());
+	}
+
+	/**
+	 * Appends the parent's {@code permissions.allow} rules to the isolated session's grants.
+	 *
+	 * @param parentPermissions the parent's {@code permissions} settings, or a missing node if it has none
+	 * @param grants            the isolated settings' {@code permissions.allow} rules
+	 */
+	private static void appendUserAllowRules(JsonNode parentPermissions, ArrayNode grants)
+	{
+		assert parentPermissions != null;
+		assert grants != null;
+		JsonNode rules = parentPermissions.path("allow");
+		if (rules.isArray())
+			grants.addAll((ArrayNode) rules.deepCopy());
 	}
 
 	/**
@@ -441,10 +519,27 @@ public final class ClaudeConnectionSettings
 			return;
 		filesystem.remove("allowRead");
 		ArrayNode sandboxDenials = array(filesystem, "denyRead");
+		for (Path deniedRead : deniedReads)
+			sandboxDenials.add(deniedRead.toString());
+		denyReadRules(settings, deniedReads);
+	}
+
+	/**
+	 * Denies the isolated instance's file tools reading files and directories, in addition to any rule that the
+	 * parent's settings deny. Does nothing if {@code deniedReads} is empty.
+	 *
+	 * @param settings    the isolated settings
+	 * @param deniedReads the existing files and directories to deny
+	 */
+	private static void denyReadRules(ObjectNode settings, List<Path> deniedReads)
+	{
+		assert settings != null;
+		assert deniedReads != null;
+		if (deniedReads.isEmpty())
+			return;
 		ArrayNode permissionDenials = array(permissions(settings), "deny");
 		for (Path deniedRead : deniedReads)
 		{
-			sandboxDenials.add(deniedRead.toString());
 			// A rule path that starts with "//" is absolute; "**" also matches everything below a directory.
 			String descendants;
 			if (Files.isDirectory(deniedRead))

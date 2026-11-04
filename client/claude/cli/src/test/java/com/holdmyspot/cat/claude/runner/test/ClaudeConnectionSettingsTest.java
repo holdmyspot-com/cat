@@ -295,48 +295,143 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Returns native Windows platforms with and without a parent sandbox configuration.
+	 * Returns the native Windows platforms, where Claude Code has no command sandbox.
 	 *
-	 * @return the platform and parent settings of each refused launch
+	 * @return the platforms
 	 */
 	@DataProvider
-	public Object[][] windowsSettings()
+	public Object[][] windowsPlatforms()
 	{
-		return new Object[][]{{Platform.WINDOWS_X64, "{}"}, {Platform.WINDOWS_ARM64, "{}"},
-			{Platform.WINDOWS_X64, "{\"sandbox\":{\"enabled\":true}}"},
-			{Platform.WINDOWS_ARM64, "{\"sandbox\":{\"enabled\":false}}"}};
+		return new Object[][]{{Platform.WINDOWS_X64}, {Platform.WINDOWS_ARM64}};
 	}
 
 	/**
-	 * Verifies that native Windows is refused before isolated settings or directories are written, regardless of the
-	 * parent's sandbox settings, with the reason and the WSL2 alternative.
+	 * Verifies that on native Windows the isolated settings carry the user's own allow and deny rules beside the grants
+	 * that CAT adds on every platform, and nothing else from the user's settings: not its ask rules, default mode,
+	 * added directories or sandbox. They hold no blanket grant of commands, because no sandbox confines them there,
+	 * and no sandbox requirement, which the session could not meet.
 	 *
-	 * @param platform the platform that the session would run on
-	 * @param parent   the parent's settings
+	 * @param platform the platform that the session runs on
 	 * @throws IOException if fixture I/O fails
 	 */
-	@Test(dataProvider = "windowsSettings", expectedExceptions = UnsupportedOperationException.class,
-		expectedExceptionsMessageRegExp = "Claude Code has no command sandbox on native Windows, so CAT cannot " +
-			"confine the session's commands\\. Run Claude Code and CAT inside WSL2\\.")
-	public void refusesNativeWindows(Platform platform, String parent) throws IOException
+	@Test(dataProvider = "windowsPlatforms")
+	public void copiesUserRulesOnWindows(Platform platform) throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-refusal-"));
-			Path source = Files.writeString(root.resolve("settings.json"), parent);
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-rules-"));
+			Path source = Files.writeString(root.resolve("settings.json"), """
+				{
+				  "sandbox": {"enabled": true, "filesystem": {"allowWrite": ["/host-home"]}},
+				  "permissions": {
+				    "additionalDirectories": ["/workspace"],
+				    "allow": ["Bash(git status:*)", "Read(//docs/**)"],
+				    "ask": ["Bash(rm *)"],
+				    "defaultMode": "bypassPermissions",
+				    "deny": ["Bash(git push:*)"]
+				  }
+				}
+				""");
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
-			try
-			{
-				ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-					claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), platform);
-			}
-			finally
-			{
-				requireThat(Files.exists(destination.getParent()), "isolatedDirectoryExists").isFalse();
-				requireThat(Files.exists(claudeTemporaryDirectory), "temporaryDirectoryExists").isFalse();
-			}
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), platform);
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			requireThat(strings(result.path("permissions").path("allow")), "allow").
+				isEqualTo(List.of("Skill", "Edit(./**)", "Bash(git status:*)", "Read(//docs/**)"));
+			requireThat(strings(result.path("permissions").path("deny")), "deny").
+				isEqualTo(List.of("Bash(git push:*)"));
+			requireThat(result.path("permissions").has("ask"), "ask").isFalse();
+			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
+			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
+			requireThat(result.has("sandbox"), "sandbox").isFalse();
+			requireThat(result.path("env").path("CLAUDE_CODE_TMPDIR").asString(), "temporaryDirectory").
+				isEqualTo(claudeTemporaryDirectory.toString());
+		}
+	}
+
+	/**
+	 * Verifies that on native Windows with no settings file, the isolated settings carry no user rules: only CAT's own
+	 * grants, and no deny rule.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void copiesNoRulesWithoutSettingsOnWindows() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-no-rules-"));
+			Path destination = root.resolve("isolated/settings.json");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), Platform.WINDOWS_X64);
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			requireThat(strings(result.path("permissions").path("allow")), "allow").
+				isEqualTo(List.of("Skill", "Edit(./**)"));
+			requireThat(result.path("permissions").has("deny"), "deny").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that on native Windows the files that the session must not read are still denied to its file tools.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deniesReadsOnWindows() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-denied-reads-"));
+			Path source = Files.writeString(root.resolve("settings.json"), """
+				{"permissions": {"deny": ["Bash(git push:*)"]}}
+				""");
+			Path secret = Files.writeString(root.resolve("secret.txt"), "secret");
+			Path destination = root.resolve("isolated/settings.json");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, root.resolve("tmp"),
+				root.resolve("home"), List.of(), root, List.of(secret), Platform.WINDOWS_X64);
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			requireThat(strings(result.path("permissions").path("deny")), "deny").
+				isEqualTo(List.of("Bash(git push:*)", "Read(/" + ClaudeConnectionSettings.rulePath(secret) + ")"));
+			requireThat(result.has("sandbox"), "sandbox").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that on Linux, the user's allow rules are not copied, and the sandbox is required.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void copiesNoUserAllowRulesOnLinux() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-linux-rules-"));
+			Path source = Files.writeString(root.resolve("settings.json"), """
+				{"permissions": {"allow": ["Bash(git status:*)"], "deny": ["Bash(git push:*)"]}}
+				""");
+			Path destination = root.resolve("isolated/settings.json");
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, root.resolve("tmp"),
+				root.resolve("home"), List.of(), root, List.of(), Platform.LINUX_X64);
+
+			JsonNode result = scope.json().readTree(Files.readString(destination));
+			requireThat(strings(result.path("permissions").path("allow")), "allow").
+				isEqualTo(List.of("Skill", "Edit(./**)", "Bash"));
+			requireThat(strings(result.path("permissions").path("deny")), "deny").
+				isEqualTo(List.of("Bash(git push:*)"));
+			requireThat(result.path("sandbox").path("enabled").asBoolean(), "sandboxEnabled").isTrue();
 		}
 	}
 

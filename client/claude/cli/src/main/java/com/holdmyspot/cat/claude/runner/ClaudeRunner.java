@@ -620,7 +620,7 @@ public final class ClaudeRunner
 		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts)
 	{
 		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts,
-			null, 0);
+			null, 0, Platform.current());
 	}
 
 	/**
@@ -650,6 +650,40 @@ public final class ClaudeRunner
 		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, Path requestLauncher,
 		int sessionRequests)
 	{
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts,
+			requestLauncher, sessionRequests, Platform.current());
+	}
+
+	/**
+	 * Builds a Claude command as
+	 * {@link #command(String, String, String, String, List, Path, List, boolean, Path, int)} does, for a session that
+	 * runs on a given platform. The platform decides the session's permission mode, as
+	 * {@link ClaudeConnectionSettings#permissionMode(Platform)} describes.
+	 *
+	 * @param executable         the Claude executable
+	 * @param model              the requested model
+	 * @param effort             the requested reasoning effort; {@code none} starts Claude Code with extended thinking
+	 *   turned off ({@code --thinking disabled}) and no {@code --effort}, because Claude Code ignores an
+	 *   {@code --effort} it does not list and applies its default effort instead
+	 * @param agent              the optional direct CAT agent name
+	 * @param plugins            the directories of the plugins installed in the isolated home
+	 * @param hookResults        the hook context directory
+	 * @param readOnlyEvidence   executor evidence exposed through added directories
+	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
+	 *   copies; otherwise Claude keeps no session
+	 * @param requestLauncher    the absolute request-session launcher path, or {@code null} when requests are disabled
+	 * @param sessionRequests    how many sessions the session may request; {@code 0} adds no instructions
+	 * @param platform           the platform that the session runs on
+	 * @return the complete harness command
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank,
+	 *   {@code sessionRequests} is negative, or requests are enabled and {@code requestLauncher} is relative
+	 */
+	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
+		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, Path requestLauncher,
+		int sessionRequests, Platform platform)
+	{
+		requireThat(platform, "platform").isNotNull();
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(model, "model").isNotBlank();
@@ -658,8 +692,8 @@ public final class ClaudeRunner
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(hookResults, "hookResults").isNotNull();
 		List<String> command = new ArrayList<>(List.of(executable, "--print", "--input-format", "stream-json",
-			"--output-format", "stream-json", "--permission-mode", "acceptEdits", "--verbose",
-			"--include-partial-messages"));
+			"--output-format", "stream-json", "--permission-mode", ClaudeConnectionSettings.permissionMode(platform),
+			"--verbose", "--include-partial-messages"));
 		if (!sessionTranscripts)
 			command.add("--no-session-persistence");
 		for (Path plugin : plugins)
