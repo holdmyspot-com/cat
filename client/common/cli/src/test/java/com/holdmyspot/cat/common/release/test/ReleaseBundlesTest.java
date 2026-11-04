@@ -439,6 +439,87 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
+	 * Verifies that an earlier bundle of this version without a runtime requirement is deleted and downloaded again
+	 * rather than refused.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void bundleWithoutRequirementDownloadedAgain() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-no-requirement-"));
+			Path release = root.resolve("release");
+			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION).toAbsolutePath().
+				normalize();
+			Files.delete(bundle.resolve("client/runtime-requirement.json"));
+
+			RunnerArtifact result = bundles(bundlesDirectory, release).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
+			requireThat(result.artifact(), "artifact").isEqualTo(bundle);
+			requireThat(Files.isRegularFile(bundle.resolve("client/runtime-requirement.json")), "requirement").
+				isTrue();
+			requireThat(RuntimeBinding.read(bundle), "binding").isEqualTo(runtime(root));
+		}
+	}
+
+	/**
+	 * Verifies that an earlier bundle of this version that lacks its runner launcher is deleted and downloaded again
+	 * rather than refused.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void incompleteBundleDownloadedAgain() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-incomplete-bundle-"));
+			Path release = root.resolve("release");
+			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION).toAbsolutePath().
+				normalize();
+			Files.delete(runner(bundle));
+
+			RunnerArtifact result = bundles(bundlesDirectory, release).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
+			requireThat(Files.isExecutable(runner(bundle)), "runnerExecutable").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that an unusable earlier bundle is refused only when downloading it again fails, and that the failure
+	 * reports the download.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void unusableBundleRefusedWhenDownloadFails() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-unusable-no-release-"));
+			Path release = Files.createDirectories(root.resolve("release"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION);
+			Files.delete(bundle.resolve("client/runtime-requirement.json"));
+
+			IOException failure = expectFailure(bundles(bundlesDirectory, release), root);
+
+			requireThat(failure.getMessage(), "message").contains(bundleName() + ".tar.gz");
+			requireThat(entries(bundlesDirectory), "bundles").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that an archive whose checksum differs from the one that {@code SHA256SUMS.txt} publishes is rejected
 	 * and leaves no copy.
 	 *

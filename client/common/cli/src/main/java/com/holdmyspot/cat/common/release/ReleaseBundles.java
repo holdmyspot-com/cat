@@ -65,8 +65,10 @@ import java.util.stream.Collectors;
  * in that harness with CAT installed although the user installed CAT only for its own harness.
  * <p>
  * The artifact is the first of: the harness's installed CAT plugin when its version matches; the copy that an earlier
- * download left in the bundle directory; otherwise a copy that this class downloads from the release of this CAT
- * version. A download fetches the harness's release archive and the release's {@code SHA256SUMS.txt}, verifies the
+ * download left in the bundle directory, when it is usable; otherwise a copy that this class downloads from the
+ * release of this CAT version. The bundle directory is a cache: an earlier copy that is unusable, such as one that
+ * lacks a launcher or its runtime requirement, is deleted and downloaded again, and only a failure of that download
+ * is reported. A download fetches the harness's release archive and the release's {@code SHA256SUMS.txt}, verifies the
  * archive's checksum, extracts it into a temporary directory beside its destination, verifies the extracted artifact
  * and only then moves it into place, so that a failed download, checksum or extraction leaves no copy for a later
  * resolution to use.
@@ -279,8 +281,8 @@ public final class ReleaseBundles
 	 * @return the artifact
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} or {@code runner} are blank
-	 * @throws IOException              if an earlier download is unusable, or the download, checksum verification,
-	 *                                  extraction or the extracted artifact's verification fails
+	 * @throws IOException              if an unusable earlier download cannot be deleted, or the download, checksum
+	 *                                  verification, extraction or the extracted artifact's verification fails
 	 */
 	public RunnerArtifact resolve(Path installed, String harness, Path manifest, String runner) throws IOException
 	{
@@ -307,10 +309,44 @@ public final class ReleaseBundles
 			return plugin;
 		if (usesBundle)
 		{
+			RunnerArtifact reused = reuse(bundle, manifest, runner);
+			if (reused != null)
+				return reused;
+		}
+		return download(name, manifest, runner);
+	}
+
+	/**
+	 * Returns an earlier download after binding it to the runtime, or deletes it when it is unusable so that it can be
+	 * downloaded again.
+	 *
+	 * @param bundle   the bundle's directory
+	 * @param manifest the plugin manifest, relative to the artifact
+	 * @param runner   the runner launcher's name
+	 * @return the artifact, or {@code null} if the bundle was unusable and has been deleted
+	 * @throws IOException if an unusable bundle cannot be deleted
+	 */
+	private RunnerArtifact reuse(Path bundle, Path manifest, String runner) throws IOException
+	{
+		try
+		{
 			bind(bundle);
 			return verify(bundle, manifest, runner, RunnerArtifact.Source.BUNDLE);
 		}
-		return download(name, manifest, runner);
+		catch (IOException unusable)
+		{
+			try
+			{
+				TemporaryDirectories.deleteRecursively(bundle);
+			}
+			catch (IOException e)
+			{
+				e.addSuppressed(unusable);
+				throw new IOException("Cannot delete the unusable bundle " + bundle + " to download it again: " +
+					e.getMessage(), e);
+			}
+			return null;
+		}
 	}
 
 	/**
