@@ -43,12 +43,24 @@ public final class HttpsReleaseSource implements ReleaseSource, AutoCloseable
 	}
 
 	private final URI baseUrl;
-	private final HttpClient client;
+	/**
+	 * Builds the owned HTTP client on its first request, or {@code null} for a borrowed client.
+	 */
+	private final HttpClient.Builder clientBuilder;
 	private final Duration requestLimit;
 	private final boolean ownsClient;
+	/**
+	 * The HTTP client, or {@code null} until the first request of an owned client.
+	 */
+	private HttpClient client;
+	/**
+	 * Guards the creation and release of {@link #client}.
+	 */
+	private final Object clientLock = new Object();
 
 	/**
-	 * Creates a release source with its own HTTP client, which {@link #close()} releases.
+	 * Creates a release source with its own HTTP client, which {@link #close()} releases. The client is created on the
+	 * first request, so an operation that sends none, such as setup from a local plugin tree, does not pay for it.
 	 *
 	 * @param releaseBaseUrl absolute HTTPS URL below which releases have tag-named directories; no login, query or
 	 *                       fragment is allowed
@@ -74,8 +86,8 @@ public final class HttpsReleaseSource implements ReleaseSource, AutoCloseable
 		this.baseUrl = withoutTrailingSlash(releaseBaseUrl);
 		this.requestLimit = requestLimit;
 		this.ownsClient = true;
-		this.client = HttpClient.newBuilder().connectTimeout(connectLimit).followRedirects(HttpClient.Redirect.NEVER).
-			proxy(proxy).authenticator(proxy.authenticator()).build();
+		this.clientBuilder = HttpClient.newBuilder().connectTimeout(connectLimit).
+			followRedirects(HttpClient.Redirect.NEVER).proxy(proxy).authenticator(proxy.authenticator());
 	}
 
 	/**
@@ -97,6 +109,7 @@ public final class HttpsReleaseSource implements ReleaseSource, AutoCloseable
 		if (releaseBaseUrl.getRawQuery() != null)
 			throw new TrustException(Reason.MALFORMED_POLICY, "The release base URL must not contain a query");
 		this.baseUrl = withoutTrailingSlash(releaseBaseUrl);
+		this.clientBuilder = null;
 		this.client = client;
 		this.requestLimit = requestLimit;
 		this.ownsClient = false;
@@ -171,8 +184,26 @@ public final class HttpsReleaseSource implements ReleaseSource, AutoCloseable
 	@Override
 	public void close()
 	{
-		if (ownsClient)
-			client.close();
+		synchronized (clientLock)
+		{
+			if (ownsClient && client != null)
+				client.close();
+		}
+	}
+
+	/**
+	 * Returns the HTTP client, creating an owned client on its first use.
+	 *
+	 * @return the client
+	 */
+	private HttpClient client()
+	{
+		synchronized (clientLock)
+		{
+			if (client == null)
+				client = clientBuilder.build();
+			return client;
+		}
 	}
 
 	/**
@@ -261,7 +292,7 @@ public final class HttpsReleaseSource implements ReleaseSource, AutoCloseable
 		HttpRequest request = HttpRequest.newBuilder(location).timeout(requestLimit).GET().build();
 		try
 		{
-			return client.send(request, handler);
+			return client().send(request, handler);
 		}
 		catch (InterruptedException failure)
 		{
