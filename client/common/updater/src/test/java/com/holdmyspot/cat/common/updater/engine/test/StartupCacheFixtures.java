@@ -35,6 +35,11 @@ public final class StartupCacheFixtures
 	 * The fixture jar's path relative to the plugin directory.
 	 */
 	public static final String JAR = "client/modules/fixture.jar";
+	/**
+	 * The options that a fixture runtime gives the testing JVM: the stand-in program runs for milliseconds, so the
+	 * JVM starts it without the optimizing compiler, the parallel collectors and the performance data file.
+	 */
+	private static final String QUICK_START = "-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -XX:-UsePerfData";
 
 	/**
 	 * Prevents instantiation.
@@ -105,7 +110,8 @@ public final class StartupCacheFixtures
 	 */
 	public static String posixRuntimeJava(String runtime)
 	{
-		return "#!/bin/sh\nexec '" + testingJava("java") + "' '-Dfixture.runtime=" + runtime + "' \"$@\"\n";
+		return "#!/bin/sh\nexec '" + testingJava("java") + "' " + QUICK_START + " '-Dfixture.runtime=" + runtime +
+			"' \"$@\"\n";
 	}
 
 	/**
@@ -116,7 +122,7 @@ public final class StartupCacheFixtures
 	 */
 	public static String windowsRuntimeJava(String runtime)
 	{
-		return "@\"" + testingJava("java.exe") + "\" \"-Dfixture.runtime=" + runtime + "\" %*\r\n";
+		return "@\"" + testingJava("java.exe") + "\" " + QUICK_START + " \"-Dfixture.runtime=" + runtime + "\" %*\r\n";
 	}
 
 	/**
