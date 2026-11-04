@@ -1,4 +1,4 @@
-# Installs CAT on Windows for Claude Code or Codex: the shared runtime, the trusted updater, the release's plugin and
+# Installs CAT on Windows for Claude Code or Codex: its runtime, the trusted updater, the release's plugin and
 # the agent permissions that later updates need, by running the setup of the updater that this release publishes.
 #
 # Run the release's cat.ps1 as a script block in Windows PowerShell 5.1 or later:

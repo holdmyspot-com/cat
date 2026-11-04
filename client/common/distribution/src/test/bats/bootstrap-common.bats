@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Tests what both harnesses share in the release's entry script cat.sh: which assets it downloads and verifies, the
+# Tests what does not depend on the harness in the entry script cat.sh: which assets it downloads and verifies, the
 # platform it names them for, the options it refuses, how it runs the updater's setup from the extracted archive, the
 # exit status and cleanup that follow, and the generator that fills the script and its PowerShell peer with the
 # release's tag and SHA-256 digests, together with the release notes' entry commands.

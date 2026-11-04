@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Installs CAT for Claude Code or Codex: the shared runtime, the trusted updater, the release's plugin and the agent
+# Installs CAT for Claude Code or Codex: its runtime, the trusted updater, the release's plugin and the agent
 # permissions that later updates need, by running the setup of the updater that this release publishes.
 #
 #   curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/<tag>/cat.sh | sh -s -- --harness claude
