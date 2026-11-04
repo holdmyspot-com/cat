@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
  * Finds the CAT plugin that another harness has installed, for a runner launcher in this harness's plugin that runs
@@ -21,6 +22,15 @@ import java.util.Optional;
  */
 public final class OtherHarnessPlugin
 {
+	/**
+	 * A program path that a POSIX shell runs as written, without quotes.
+	 */
+	private static final Pattern POSIX_WORD = Pattern.compile("[A-Za-z0-9_./+:=@%,-]+");
+	/**
+	 * A program path that PowerShell runs as written, without quotes or its call operator.
+	 */
+	private static final Pattern POWERSHELL_WORD = Pattern.compile("[A-Za-z0-9_.\\\\/:-]+");
+
 	/**
 	 * Finds the other harness's CAT plugin and its runner launcher.
 	 *
@@ -103,7 +113,8 @@ public final class OtherHarnessPlugin
 	}
 
 	/**
-	 * Returns the command that installs or updates CAT in a harness from this plugin.
+	 * Returns the command that installs or updates CAT in a harness from this plugin, quoted so that it runs as written:
+	 * in a POSIX shell, or in PowerShell on Windows.
 	 *
 	 * @param ownPlugin the version folder of the plugin that holds the running code
 	 * @param harness   the harness's identifier in the installer's {@code --harness} option
@@ -113,9 +124,20 @@ public final class OtherHarnessPlugin
 	private static String installCommand(Path ownPlugin, String harness, Platform platform)
 	{
 		Path installer = ownPlugin.toAbsolutePath().normalize().resolve(PluginDirectory.INSTALLER);
+		String program;
 		if (platform.isWindows())
-			installer = installer.resolveSibling(installer.getFileName() + ".ps1");
-		return installer + " install --harness " + harness;
+		{
+			program = installer.resolveSibling(installer.getFileName() + ".ps1").toString();
+			if (!POWERSHELL_WORD.matcher(program).matches())
+				program = "& '" + program.replace("'", "''") + "'";
+		}
+		else
+		{
+			program = installer.toString();
+			if (!POSIX_WORD.matcher(program).matches())
+				program = "'" + program.replace("'", "'\\''") + "'";
+		}
+		return program + " install --harness " + harness;
 	}
 
 	/**

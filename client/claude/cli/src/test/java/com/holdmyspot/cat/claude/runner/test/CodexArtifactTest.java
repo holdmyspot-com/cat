@@ -45,17 +45,21 @@ public final class CodexArtifactTest
 	}
 
 	/**
-	 * Returns the command that installs CAT into Codex from a Claude plugin, on the current platform.
+	 * Returns the command, as the selector quotes it, that installs CAT into Codex from a Claude plugin, on the
+	 * current platform.
 	 *
 	 * @param plugin the Claude plugin's version folder
 	 * @return the command
 	 */
 	private static String installCommand(Path plugin)
 	{
-		String installer = "bin/installer";
 		if (Platform.current().isWindows())
-			installer = "bin/installer.ps1";
-		return plugin.resolve(installer) + " install --harness codex";
+		{
+			// The version folder's "+" makes PowerShell need the quoted path and its call operator
+			String installer = plugin.resolve("bin/installer.ps1").toString().replace("'", "''");
+			return "& '" + installer + "' install --harness codex";
+		}
+		return plugin.resolve("bin/installer") + " install --harness codex";
 	}
 
 	/**
