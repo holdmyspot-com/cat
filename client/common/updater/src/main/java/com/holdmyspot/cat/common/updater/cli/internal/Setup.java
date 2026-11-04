@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.runner.RuntimeDescription;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.SharedRuntime;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
+import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
@@ -31,7 +32,6 @@ import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import com.holdmyspot.cat.common.updater.trust.TrustException.Reason;
 import com.holdmyspot.cat.common.updater.trust.TrustPolicy;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.AccessDeniedException;
@@ -41,7 +41,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -191,7 +190,7 @@ public final class Setup
 		{
 			throw refusal("Updater data and policy paths may not contain control characters.");
 		}
-		HarnessCommand command = integration.discover(home, withoutUpdaterSearchPath(environment, data));
+		HarnessCommand command = discoverProgram(integration, home, data, cwd, environment);
 		integration.validateConfiguration(home);
 		Path runtime = image.getParent().resolve(RUNTIME);
 		requireRuntime(runtime, image, activation, home);
@@ -317,37 +316,36 @@ public final class Setup
 	}
 
 	/**
-	 * Returns the environment without the search path entries inside the updater's data directories, so that no
-	 * updater file can stand in for the harness program.
+	 * Finds the harness program on the user's search path and confirms that it is the harness's program by running
+	 * {@code <program> --version} exactly as registration will run it.
 	 *
-	 * @param environment the user's environment
+	 * @param integration the harness's integration
+	 * @param home        the real harness home
 	 * @param data        the installation's resolved data directory
-	 * @return the environment for discovering the harness program
-	 * @throws IOException if a search path entry cannot be resolved
+	 * @param cwd         the working directory from which the user ran setup
+	 * @param environment the user's environment
+	 * @return the command and environment to record
+	 * @throws IOException if the program is not found, cannot be run, or does not identify itself as the harness's
+	 *                     program
 	 */
-	private static Map<String, String> withoutUpdaterSearchPath(Map<String, String> environment, Path data)
-		throws IOException
+	private HarnessCommand discoverProgram(HarnessIntegration integration, Path home, Path data, Path cwd,
+		Map<String, String> environment) throws IOException
 	{
-		Map<String, String> filtered = new HashMap<>(environment);
-		Path base = data.getParent();
-		for (Map.Entry<String, String> variable : environment.entrySet())
+		ExecutableDiscovery discovery = new ExecutableDiscovery(platform, cwd.toRealPath(),
+			Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath());
+		HarnessCommand command = discovery.find(integration.programName(), home, data, environment,
+			integration.programEnvironment(home, platform.environment(environment)));
+		CommandResult version = cliFactory.create(command, home).run(List.of("--version"));
+		try
 		{
-			if (!variable.getKey().equalsIgnoreCase("PATH"))
-				continue;
-			List<String> kept = new ArrayList<>();
-			for (String entry : variable.getValue().split(File.pathSeparator, -1))
-			{
-				if (!entry.isEmpty() && Path.of(entry).isAbsolute())
-				{
-					Path resolved = Locations.resolveExistingAncestor(Path.of(entry).normalize());
-					if (resolved.startsWith(data) || (base != null && resolved.startsWith(base)))
-						continue;
-				}
-				kept.add(entry);
-			}
-			filtered.put(variable.getKey(), String.join(File.pathSeparator, kept));
+			integration.requireIdentity(version);
 		}
-		return filtered;
+		catch (IOException e)
+		{
+			throw new IOException("The program " + command.command().getLast() + " that setup found on PATH is not " +
+				"the " + integration.harness() + " program: " + e.getMessage(), e);
+		}
+		return command;
 	}
 
 	/**

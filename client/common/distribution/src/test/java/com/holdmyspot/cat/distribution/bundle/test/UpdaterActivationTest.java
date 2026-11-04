@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
-import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
@@ -403,7 +402,19 @@ public final class UpdaterActivationTest
 	private record UnusedIntegration(String harness) implements HarnessIntegration
 	{
 		@Override
-		public HarnessCommand discover(Path home, Map<String, String> environment)
+		public String programName()
+		{
+			throw new UnsupportedOperationException("Only setup discovers the harness program");
+		}
+
+		@Override
+		public Map<String, String> programEnvironment(Path home, Map<String, String> environment)
+		{
+			throw new UnsupportedOperationException("Only setup discovers the harness program");
+		}
+
+		@Override
+		public void requireIdentity(CommandResult version)
 		{
 			throw new UnsupportedOperationException("Only setup discovers the harness program");
 		}

@@ -8,9 +8,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
-import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -18,7 +16,6 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -65,167 +62,102 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Discovery records the path at which it found the first {@code claude} program on the search path, without
-	 * resolving the link that Claude Code re-points when it updates itself, a search path without
-	 * relative entries or entries that a project or another user-writable location controls, and only the variables
-	 * that Claude Code needs for the default configuration directory.
-	 *
-	 * @throws IOException if the fake program cannot be created or discovery fails
+	 * Setup finds Claude Code's {@code claude} program.
 	 */
 	@Test
-	public void discoverRecordsProgram() throws IOException
+	public void namesClaudeProgram()
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path home = Files.createDirectories(userHome.resolve(".claude"));
-			Path workingDirectory = Files.createDirectories(root.resolve("project"));
-			Path temporaryDirectory = Files.createDirectories(root.resolve("temporary"));
-			Path installed = Files.createDirectories(root.resolve("installed/bin"));
-			Path real = fakeClaude(Files.createDirectories(root.resolve("versions/2.1.318")), "2.1.318 (Claude Code)", 0);
-			Path link = Files.createSymbolicLink(installed.resolve(real.getFileName()), real);
-			List<String> decoys = new ArrayList<>();
-			for (Path directory : List.of(workingDirectory.resolve("bin"), temporaryDirectory.resolve("bin"),
-				home.resolve("bin"), userHome.resolve(".cat/bin")))
-			{
-				fakeClaude(Files.createDirectories(directory), "decoy", 0);
-				decoys.add(directory.toString());
-			}
-			Path other = Files.createDirectories(root.resolve("other"));
-			StringJoiner path = new StringJoiner(File.pathSeparator);
-			for (String entry : decoys)
-				path.add(entry);
-			path.add("relative-bin").add("").add(installed.toString()).add(other.toString());
-			Platform platform = Platform.current();
-			Map<String, String> environment = new HashMap<>();
-			environment.put(platform.homeVariable(), userHome.toString());
-			environment.put("PATH", path.toString());
-			environment.put("UNRELATED", "value");
-			Map<String, String> expectedEnvironment = new HashMap<>();
-			expectedEnvironment.put(platform.homeVariable(), userHome.toString());
-			expectedEnvironment.put("PATH", installed + File.pathSeparator + other);
-			List<String> expectedCommand = List.of(link.toString());
-			if (platform.isWindows())
-			{
-				// Windows starts cmd.exe only with SystemRoot, so the fake batch program needs the real value.
-				String systemRoot = System.getenv("SystemRoot");
-				environment.put("SystemRoot", systemRoot);
-				environment.put("PATHEXT", ".COM;.EXE;.BAT;.CMD");
-				expectedEnvironment.put("SystemRoot", systemRoot);
-				expectedEnvironment.put("PATHEXT", ".COM;.EXE;.BAT;.CMD");
-				expectedEnvironment.put("NoDefaultCurrentDirectoryInExePath", "1");
-				expectedCommand = List.of(Path.of(systemRoot, "System32/cmd.exe").toString(), "/d", "/s", "/c",
-					link.toString());
-			}
+		requireThat(new Integration(Platform.LINUX_X64).programName(), "programName").isEqualTo("claude");
+	}
 
-			HarnessCommand command = new Integration(platform, workingDirectory, temporaryDirectory).
-				discover(home, environment);
+	/**
+	 * The recorded environment names the user's home directory and leaves {@code CLAUDE_CONFIG_DIR} unset for the
+	 * default configuration directory, so that Claude Code finds its {@code .claude.json} in the user's home.
+	 *
+	 * @param platform the platform, whose home directory variable differs
+	 * @throws IOException if the environment is refused
+	 */
+	@Test(dataProvider = "platforms")
+	public void environmentForDefaultDirectory(Platform platform) throws IOException
+	{
+		Path userHome = absoluteTestPath("user");
 
-			requireThat(command.command(), "command").isEqualTo(expectedCommand);
-			requireThat(command.environment(), "environment").isEqualTo(expectedEnvironment);
-		}
+		Map<String, String> variables = new Integration(platform).programEnvironment(userHome.resolve(".claude"),
+			Map.of(platform.homeVariable(), userHome.toString(), "UNRELATED", "value"));
+
+		requireThat(variables, "variables").isEqualTo(Map.of(platform.homeVariable(), userHome.toString()));
+	}
+
+	/**
+	 * Supplies platforms with different home directory variables.
+	 *
+	 * @return a POSIX and a Windows platform
+	 */
+	@DataProvider
+	public Object[][] platforms()
+	{
+		return new Object[][] {{Platform.LINUX_X64}, {Platform.WINDOWS_X64}};
 	}
 
 	/**
 	 * A configuration directory other than the default one is recorded in {@code CLAUDE_CONFIG_DIR}, which also moves
 	 * Claude Code's {@code .claude.json}.
 	 *
-	 * @throws IOException if the fake program cannot be created or discovery fails
+	 * @throws IOException if the environment is refused
 	 */
 	@Test
-	public void discoverRecordsConfigDirectory() throws IOException
+	public void environmentRecordsConfigDirectory() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path home = Files.createDirectories(root.resolve("custom-claude"));
-			Path installed = Files.createDirectories(root.resolve("installed"));
-			fakeClaude(installed, "2.1.318 (Claude Code)", 0);
+		Path userHome = absoluteTestPath("user");
+		Path home = absoluteTestPath("configurations/claude");
 
-			HarnessCommand command = integration(root).discover(home, programEnvironment(userHome, installed));
+		Map<String, String> variables = new Integration(Platform.LINUX_X64).programEnvironment(home,
+			Map.of("HOME", userHome.toString()));
 
-			requireThat(command.environment().get("CLAUDE_CONFIG_DIR"), "CLAUDE_CONFIG_DIR").isEqualTo(home.toString());
-		}
+		requireThat(variables, "variables").isEqualTo(Map.of("HOME", userHome.toString(), "CLAUDE_CONFIG_DIR",
+			home.toString()));
 	}
 
 	/**
-	 * Discovery names Claude Code when no {@code claude} program is on the search path.
+	 * Setup cannot tell Claude Code's default configuration directory without the user's home directory.
 	 *
-	 * @throws IOException if the fixture cannot be created or the refusal is returned
+	 * @throws IOException if the environment is refused
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*Claude Code.*")
-	public void discoverRefusesMissingProgram() throws IOException
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "HOME is not set.*")
+	public void environmentRequiresUserHome() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path empty = Files.createDirectories(root.resolve("empty"));
-
-			integration(root).discover(userHome.resolve(".claude"), programEnvironment(userHome, empty));
-		}
+		new Integration(Platform.LINUX_X64).programEnvironment(absoluteTestPath("user/.claude"),
+			Map.of());
 	}
 
 	/**
-	 * Discovery refuses a program on an allowed search directory whose link leads into a directory that discovery
-	 * never records, because a project or download could replace the program there.
+	 * A program that answers {@code --version} with Claude Code's version line is Claude Code.
 	 *
-	 * @param excluded the excluded directory, relative to the test directory
-	 * @throws IOException if the fixture cannot be created or the refusal is returned
+	 * @throws IOException if the answer is refused
 	 */
-	@Test(dataProvider = "excludedDirectories", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*claude.*resolves into.*")
-	public void discoverRefusesLinkIntoExcludedDirectory(String excluded) throws IOException
+	@Test
+	public void identityAcceptsClaudeCode() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path installed = Files.createDirectories(root.resolve("installed"));
-			Path target = fakeClaude(Files.createDirectories(root.resolve(excluded)), "2.1.318 (Claude Code)", 0);
-			Files.createSymbolicLink(installed.resolve(target.getFileName()), target);
-
-			integration(root).discover(userHome.resolve(".claude"), programEnvironment(userHome, installed));
-		}
+		new Integration(Platform.LINUX_X64).requireIdentity(new CommandResult(0, "2.1.318 (Claude Code)\n"));
 	}
 
 	/**
-	 * Supplies the directories that discovery never records, relative to the test directory.
+	 * A program named {@code claude} that does not answer as a working Claude Code is refused, naming what the user
+	 * must install.
 	 *
-	 * @return the working directory, the temporary directory, the configuration directory and CAT's user directory
-	 */
-	@DataProvider
-	public Object[][] excludedDirectories()
-	{
-		return new Object[][] {{"project/bin"}, {"temporary/bin"}, {"user/.claude/bin"}, {"user/.cat/bin"}};
-	}
-
-	/**
-	 * Discovery refuses a program that does not run as Claude Code.
-	 *
-	 * @param output     what the fake program prints
-	 * @param exitStatus the fake program's exit status
-	 * @throws IOException if the fixture cannot be created or the refusal is returned
+	 * @param output     what the program printed
+	 * @param exitStatus the program's exit status
+	 * @throws IOException if the answer is refused
 	 */
 	@Test(dataProvider = "brokenPrograms", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*claude --version.*")
-	public void discoverRefusesBrokenProgram(String output, int exitStatus) throws IOException
+		expectedExceptionsMessageRegExp = "(?s)claude --version did not identify Claude Code.*Install Claude Code.*")
+	public void identityRefusesOtherProgram(String output, int exitStatus) throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path installed = Files.createDirectories(root.resolve("installed"));
-			fakeClaude(installed, output, exitStatus);
-
-			integration(root).discover(userHome.resolve(".claude"), programEnvironment(userHome, installed));
-		}
+		new Integration(Platform.LINUX_X64).requireIdentity(new CommandResult(exitStatus, output));
 	}
 
 	/**
-	 * Supplies programs named {@code claude} that are not a working Claude Code.
+	 * Supplies answers of programs named {@code claude} that are not a working Claude Code.
 	 *
 	 * @return each program's output and exit status
 	 */
@@ -254,7 +186,7 @@ public final class IntegrationTest
 				new CommandResult(0, "Installing plugin \"cat@cat\"...✔ Plugin \"cat@cat\" is already installed " +
 					"(scope: user)\n")));
 
-			integration(home).register(home, cli, replacer());
+			integration().register(home, cli, replacer());
 
 			requireThat(cli.calls(), "calls").isEqualTo(List.of(
 				List.of("plugin", "marketplace", "add", root.toString()),
@@ -281,7 +213,7 @@ public final class IntegrationTest
 			Files.writeString(manifest, "{\"name\": \"outdated\"}\n");
 			TransientRefusal refusal = new TransientRefusal(manifest);
 
-			integration(home).register(home, new RecordingCli(List.of(new CommandResult(0, "ok"),
+			integration().register(home, new RecordingCli(List.of(new CommandResult(0, "ok"),
 				new CommandResult(0, "ok"))), refusal.replacer());
 
 			requireThat(Files.readString(manifest), "marketplaceManifest").
@@ -306,7 +238,7 @@ public final class IntegrationTest
 			Path launcher = home.resolve("data/bin/cat-updater");
 			TransientRefusal adding = new TransientRefusal(settings);
 
-			Map<String, List<String>> added = integration(home).installPermissions(home, launcher,
+			Map<String, List<String>> added = integration().installPermissions(home, launcher,
 				adding.replacer());
 
 			requireThat(added, "added").isEqualTo(posixEntries(launcher));
@@ -314,7 +246,7 @@ public final class IntegrationTest
 			requireThat(adding.pauses(), "addingPauses").isEqualTo(1);
 			TransientRefusal removing = new TransientRefusal(settings);
 
-			integration(home).removePermissions(home, added, removing.replacer());
+			integration().removePermissions(home, added, removing.replacer());
 
 			requireThat(Files.readString(settings), "settings").doesNotContain(launcher.toString());
 			requireThat(removing.pauses(), "removingPauses").isEqualTo(1);
@@ -339,7 +271,7 @@ public final class IntegrationTest
 				new CommandResult(0, "ok")));
 			answers.set(failingCall, new CommandResult(1, "✘ network unavailable"));
 
-			integration(home).register(home, new RecordingCli(answers), replacer());
+			integration().register(home, new RecordingCli(answers), replacer());
 		}
 	}
 
@@ -369,7 +301,7 @@ public final class IntegrationTest
 			RecordingCli cli = new RecordingCli(List.of(new CommandResult(1, PLUGIN_NOT_FOUND),
 				new CommandResult(1, MARKETPLACE_NOT_FOUND)));
 
-			integration(home).unregister(home, cli);
+			integration().unregister(home, cli);
 
 			requireThat(cli.calls(), "calls").isEqualTo(List.of(List.of("plugin", "uninstall", "cat@cat"),
 				List.of("plugin", "marketplace", "remove", "cat")));
@@ -390,7 +322,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 
-			integration(home).unregister(home, new RecordingCli(answers));
+			integration().unregister(home, new RecordingCli(answers));
 		}
 	}
 
@@ -422,7 +354,7 @@ public final class IntegrationTest
 			Path launcher = home.resolve("data/bin/cat-updater");
 			Map<String, List<String>> expected = posixEntries(launcher);
 
-			Map<String, List<String>> added = integration(home).installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
 			requireThat(added, "added").isEqualTo(expected);
 			StringJoiner excluded = new StringJoiner(",\n", "", "\n");
@@ -458,7 +390,7 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 			Path launcher = home.resolve("data/bin/cat-updater");
 
-			Map<String, List<String>> added = integration(home).installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
 			String quoted = ShellQuoting.posix(launcher.toString());
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
@@ -494,7 +426,7 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 			Path launcher = home.resolve("data/bin/cat-updater");
 
-			Map<String, List<String>> added = integration(home).installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
 			String quoted = ShellQuoting.posix(launcher.toString());
 			List<String> excluded = added.get(SETTINGS_KEY_EXCLUDED);
@@ -521,8 +453,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 			Path launcher = home.resolve("data/bin/cat-updater.ps1");
-			Integration integration = new Integration(Platform.WINDOWS_X64, home.resolve("project"),
-				home.resolve("temporary"));
+			Integration integration = new Integration(Platform.WINDOWS_X64);
 
 			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
 
@@ -572,8 +503,8 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 
-			Map<String, List<String>> added = new Integration(Platform.LINUX_X64, home.resolve("project"),
-				home.resolve("temporary")).installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = new Integration(Platform.LINUX_X64).installPermissions(home, launcher,
+				replacer());
 
 			requireThat(added, "added").isEqualTo(posixEntries(launcher));
 		}
@@ -597,7 +528,7 @@ public final class IntegrationTest
 			Path settings = Files.writeString(home.resolve("settings.json"), "{\"model\":\"opus\"," +
 				"\"permissions\":{\"allow\":[\"Bash(ls)\"," + json(existing) + "],\"deny\":[\"Read(.env)\"]}," +
 				"\"sandbox\":{\"enabled\":true}}");
-			Integration integration = integration(home);
+			Integration integration = integration();
 
 			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
 			String merged = Files.readString(settings);
@@ -633,7 +564,7 @@ public final class IntegrationTest
 			Path launcher = home.resolve("data/bin/cat-updater");
 			Path settings = Files.writeString(home.resolve("settings.json"),
 				"{\"permissions\":{\"allow\":[\"Bash(ls)\"]},\"theme\":\"dark\"}");
-			Integration integration = integration(home);
+			Integration integration = integration();
 			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
 			String removedByUser = added.get(SETTINGS_KEY_ALLOW).getFirst();
 			Files.writeString(settings, Files.readString(settings).replace(json(removedByUser) + ",", ""));
@@ -668,7 +599,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 
-			integration(home).removePermissions(home, Map.of(SETTINGS_KEY_ALLOW, List.of("Bash(ls)")), replacer());
+			integration().removePermissions(home, Map.of(SETTINGS_KEY_ALLOW, List.of("Bash(ls)")), replacer());
 
 			requireThat(Files.exists(home.resolve("settings.json")), "settingsCreated").isFalse();
 		}
@@ -685,7 +616,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Integration integration = integration(home);
+			Integration integration = integration();
 			integration.validateConfiguration(home);
 			Files.writeString(home.resolve("settings.json"),
 				"{\"sandbox\":{\"excludedCommands\":[]},\"permissions\":{}}");
@@ -720,7 +651,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 			Path settings = Files.writeString(home.resolve("settings.json"), content);
-			Integration integration = integration(home);
+			Integration integration = integration();
 
 			requireRefusal(() -> integration.validateConfiguration(home));
 			requireRefusal(() -> integration.installPermissions(home, home.resolve("data/bin/cat-updater"), replacer()));
@@ -742,7 +673,7 @@ public final class IntegrationTest
 			Path target = Files.writeString(home.resolve("elsewhere.json"), "{}");
 			Files.createSymbolicLink(home.resolve("settings.json"), target);
 
-			integration(home).validateConfiguration(home);
+			integration().validateConfiguration(home);
 		}
 	}
 
@@ -795,7 +726,7 @@ public final class IntegrationTest
 			Path settings = Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" +
 				json(update) + "," + json(update + " *") + ",\"git status\"]},\"permissions\":{\"allow\":[" +
 				json("Bash(" + update + ")") + "," + json("Bash(" + update + " *)") + ",\"Bash(ls)\"]}}");
-			Integration integration = integration(home);
+			Integration integration = integration();
 
 			integration.removePermissions(home, integration.legacyPermissions(launcher), replacer());
 
@@ -861,58 +792,13 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Creates an integration whose working and temporary directories lie inside a test directory.
+	 * Creates an integration for the current platform.
 	 *
-	 * @param root the test directory
-	 * @return the integration for the current platform
+	 * @return the integration
 	 */
-	private static Integration integration(Path root)
+	private static Integration integration()
 	{
-		return new Integration(Platform.current(), root.resolve("project"), root.resolve("temporary"));
-	}
-
-	/**
-	 * Returns a setup environment that names the user's home and one search directory.
-	 *
-	 * @param userHome  the user's home directory
-	 * @param directory the only search directory
-	 * @return the environment
-	 */
-	private static Map<String, String> programEnvironment(Path userHome, Path directory)
-	{
-		Platform platform = Platform.current();
-		Map<String, String> environment = new HashMap<>();
-		environment.put(platform.homeVariable(), userHome.toString());
-		environment.put("PATH", directory.toString());
-		if (platform.isWindows())
-		{
-			// Windows starts cmd.exe only with SystemRoot, so the fake batch program needs the real value.
-			environment.put("SystemRoot", System.getenv("SystemRoot"));
-		}
-		return environment;
-	}
-
-	/**
-	 * Creates a fake {@code claude} program that prints one line and exits.
-	 *
-	 * @param directory  the directory to create it in
-	 * @param output     the line to print
-	 * @param exitStatus the exit status
-	 * @return the program's path
-	 * @throws IOException if the program cannot be written
-	 */
-	private static Path fakeClaude(Path directory, String output, int exitStatus) throws IOException
-	{
-		if (Platform.current().isWindows())
-		{
-			return Files.writeString(directory.resolve("claude.cmd"),
-				"@echo " + output + "\r\n@exit /b " + exitStatus + "\r\n");
-		}
-		Path program = Files.writeString(directory.resolve("claude"),
-			"#!/bin/sh\necho '" + output + "'\nexit " + exitStatus + "\n");
-		if (!program.toFile().setExecutable(true))
-			throw new IOException("Could not make the fake program executable: " + program);
-		return program;
+		return new Integration(Platform.current());
 	}
 
 	/**
@@ -931,6 +817,18 @@ public final class IntegrationTest
 			{"name": "cat", "plugins": [{"name": "cat", "source": "./plugins/cat"}]}
 			""");
 		return root;
+	}
+
+	/**
+	 * Returns an absolute path beneath this module's test directory without creating it.
+	 *
+	 * @param relative the path relative to the test directory
+	 * @return the absolute, normalized path
+	 */
+	private static Path absoluteTestPath(String relative)
+	{
+		return Path.of(System.getProperty("cat.updater.test.directory")).toAbsolutePath().resolve(relative).
+			normalize();
 	}
 
 	/**

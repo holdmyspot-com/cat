@@ -8,29 +8,19 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
-import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.StringJoiner;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.core.util.DefaultIndenter;
@@ -69,10 +59,6 @@ public final class Integration implements HarnessIntegration
 	 */
 	private static final String ALLOWED_TOOLS = "permissions.allow";
 	/**
-	 * How long {@code claude --version} may run during discovery.
-	 */
-	private static final Duration VERSION_TIMEOUT = Duration.ofMinutes(1);
-	/**
 	 * Claude Code 2.1.318's answer, with exit status 1, to {@code plugin uninstall cat@cat} when CAT is not installed.
 	 */
 	private static final String PLUGIN_NOT_FOUND = "Plugin \"cat@cat\" not found";
@@ -100,35 +86,25 @@ public final class Integration implements HarnessIntegration
 		withArrayIndenter(new DefaultIndenter("  ", "\n")));
 
 	private final Platform platform;
-	private final Path workingDirectory;
-	private final Path temporaryDirectory;
 
 	/**
-	 * Creates a provider for service loading, for the running platform, working directory and temporary directory.
+	 * Creates a provider for service loading, for the running platform.
 	 */
 	public Integration()
 	{
-		this(Platform.current(), Path.of("").toAbsolutePath(),
-			Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath());
+		this(Platform.current());
 	}
 
 	/**
 	 * Creates a provider.
 	 *
-	 * @param platform           the platform that Claude Code and the updater run on
-	 * @param workingDirectory   the setup process's working directory, whose programs discovery never records
-	 * @param temporaryDirectory the system temporary directory, whose programs discovery never records
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if either directory is relative
+	 * @param platform the platform that Claude Code and the updater run on
+	 * @throws NullPointerException if {@code platform} is null
 	 */
-	public Integration(Platform platform, Path workingDirectory, Path temporaryDirectory)
+	public Integration(Platform platform)
 	{
 		requireThat(platform, "platform").isNotNull();
-		requireThat(workingDirectory, "workingDirectory").isAbsolute();
-		requireThat(temporaryDirectory, "temporaryDirectory").isAbsolute();
 		this.platform = platform;
-		this.workingDirectory = workingDirectory.normalize();
-		this.temporaryDirectory = temporaryDirectory.normalize();
 	}
 
 	@Override
@@ -137,269 +113,55 @@ public final class Integration implements HarnessIntegration
 		return "claude";
 	}
 
+	@Override
+	public String programName()
+	{
+		return "claude";
+	}
+
 	/**
-	 * Finds the {@code claude} program and runs {@code claude --version} with the environment that it records.
-	 * <p>
-	 * The recorded search path keeps only absolute entries outside the working directory, the temporary directories,
-	 * the configuration directory and {@code <user home>/.cat}, so that a project or a download cannot place a
-	 * program that registration later runs. The program is recorded at the path where it was found, without resolving
-	 * the link that Claude Code re-points when it updates itself, and is refused when that link leads into one of
-	 * those directories. The recorded environment holds the user's home directory variable, that
-	 * search path and, when the configuration directory is not {@code <user home>/.claude}, {@code CLAUDE_CONFIG_DIR},
-	 * which also moves Claude Code's {@code .claude.json}. On Windows it also holds {@code SystemRoot}, without which
-	 * Windows programs cannot load system libraries, {@code PATHEXT}, without which the batch file that npm installs
-	 * cannot find {@code node}, and {@code NoDefaultCurrentDirectoryInExePath=1}, so that {@code cmd.exe} never runs a
-	 * program from the working directory; a batch-file program runs through {@code %SystemRoot%\System32\cmd.exe}.
+	 * Returns the user's home directory variable and, when the configuration directory is not
+	 * {@code <user home>/.claude}, {@code CLAUDE_CONFIG_DIR}, which also moves Claude Code's {@code .claude.json}.
 	 *
 	 * @param home        the absolute, normalized Claude Code configuration directory that setup records
-	 * @param environment the setup process's environment variables
-	 * @return the path at which the program was found, with its command prefix, and its environment
+	 * @param environment the setup process's environment variables, looked up case-insensitively on Windows
+	 * @return the variables
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative
-	 * @throws IOException              if the user's home directory is unknown, Claude Code is not on the search
-	 *                                  path or leads into a directory that discovery never records, or
-	 *                                  {@code claude --version} does not identify Claude Code
+	 * @throws IOException              if the user's home directory is unknown
 	 */
 	@Override
-	public HarnessCommand discover(Path home, Map<String, String> environment) throws IOException
+	public Map<String, String> programEnvironment(Path home, Map<String, String> environment) throws IOException
 	{
 		requireThat(home, "home").isAbsolute();
 		requireThat(environment, "environment").isNotNull();
-		home = home.normalize();
-		Map<String, String> variables = platform.environment(environment);
 		String homeVariable = platform.homeVariable();
-		String userHome = variables.get(homeVariable);
+		String userHome = environment.get(homeVariable);
 		if (userHome == null || userHome.isBlank())
 			throw new IOException(homeVariable + " is not set, so setup cannot find Claude Code's default directory");
-		Path userHomePath = Path.of(userHome).toAbsolutePath().normalize();
-
-		List<Path> excluded = new ArrayList<>(List.of(workingDirectory, temporaryDirectory, home,
-			userHomePath.resolve(".cat")));
-		for (String name : List.of("TMPDIR", "TEMP", "TMP"))
-		{
-			Path directory = absolutePath(variables.get(name));
-			if (directory != null)
-				excluded.add(directory);
-		}
-		for (Path directory : List.copyOf(excluded))
-			excluded.add(realPath(directory));
-		String searchPath = recordedSearchPath(variables.getOrDefault("PATH", ""), excluded);
-		Map<String, String> recorded = new HashMap<>();
-		recorded.put(homeVariable, userHome);
-		recorded.put("PATH", searchPath);
-		if (!home.equals(userHomePath.resolve(".claude")))
-			recorded.put("CLAUDE_CONFIG_DIR", home.toString());
-		List<String> command = new ArrayList<>();
-		Path program = findClaude(variables, searchPath, excluded);
-		if (platform.isWindows())
-		{
-			String systemRoot = variables.get("SystemRoot");
-			if (systemRoot == null || systemRoot.isBlank())
-				throw new IOException("SystemRoot is not set, so setup cannot run Claude Code");
-			recorded.put("SystemRoot", systemRoot);
-			String extensions = variables.get("PATHEXT");
-			if (extensions != null)
-				recorded.put("PATHEXT", extensions);
-			recorded.put("NoDefaultCurrentDirectoryInExePath", "1");
-			String name = program.getFileName().toString().toLowerCase(Locale.ROOT);
-			if (name.endsWith(".cmd"))
-				command.addAll(List.of(Path.of(systemRoot, "System32/cmd.exe").toString(), "/d", "/s", "/c"));
-		}
-		command.add(program.toString());
-
-		verifyVersion(command, recorded, home);
-		return new HarnessCommand(command, recorded);
+		Map<String, String> variables = new HashMap<>();
+		variables.put(homeVariable, userHome);
+		if (!home.normalize().equals(Path.of(userHome).toAbsolutePath().normalize().resolve(".claude")))
+			variables.put("CLAUDE_CONFIG_DIR", home.normalize().toString());
+		return variables;
 	}
 
 	/**
-	 * Converts an environment value to an absolute path.
+	 * Fails unless {@code claude --version} exited successfully and named Claude Code.
 	 *
-	 * @param value the value, or null
-	 * @return the normalized absolute path, or null if {@code value} is null, blank, relative or not a path
+	 * @param version the exit status and output of {@code claude --version}
+	 * @throws NullPointerException if {@code version} is null
+	 * @throws IOException          if the program is not Claude Code
 	 */
-	private static Path absolutePath(String value)
+	@Override
+	public void requireIdentity(CommandResult version) throws IOException
 	{
-		if (value == null || value.isBlank())
-			return null;
-		try
+		requireThat(version, "version").isNotNull();
+		if (version.exitCode() != 0 || !version.output().contains("Claude Code"))
 		{
-			Path path = Path.of(value.strip());
-			if (!path.isAbsolute())
-				return null;
-			return path.normalize();
-		}
-		catch (InvalidPathException _)
-		{
-			return null;
-		}
-	}
-
-	/**
-	 * Keeps the search path entries that discovery may record.
-	 *
-	 * @param searchPath the setup process's search path
-	 * @param excluded   directories, as written and with links resolved, whose entries and entries below them are
-	 *                   dropped
-	 * @return the remaining absolute, normalized entries, without repeats, in their original order
-	 */
-	private String recordedSearchPath(String searchPath, List<Path> excluded)
-	{
-		String separator;
-		if (platform.isWindows())
-			separator = ";";
-		else
-			separator = ":";
-		Set<Path> entries = new LinkedHashSet<>();
-		for (String text : searchPath.split(separator, -1))
-		{
-			Path entry = absolutePath(text);
-			if (entry == null)
-				continue;
-			if (!isExcluded(entry, excluded))
-				entries.add(entry);
-		}
-		StringJoiner joiner = new StringJoiner(separator);
-		for (Path entry : entries)
-			joiner.add(entry.toString());
-		return joiner.toString();
-	}
-
-	/**
-	 * Checks whether a path or its real path lies in an excluded directory.
-	 *
-	 * @param path     an absolute, normalized path
-	 * @param excluded the excluded directories, as written and with links resolved
-	 * @return true if the path, or the path with its links resolved, is or lies below an excluded directory
-	 */
-	private static boolean isExcluded(Path path, List<Path> excluded)
-	{
-		Path real = realPath(path);
-		for (Path directory : excluded)
-		{
-			if (path.startsWith(directory) || real.startsWith(directory))
-				return true;
-		}
-		return false;
-	}
-
-	/**
-	 * Resolves the links of a path that may not exist.
-	 *
-	 * @param path an absolute, normalized path
-	 * @return the real path, or {@code path} if it does not exist or cannot be resolved
-	 */
-	private static Path realPath(Path path)
-	{
-		try
-		{
-			return path.toRealPath();
-		}
-		catch (IOException _)
-		{
-			return path;
-		}
-	}
-
-	/**
-	 * Finds the {@code claude} program in the recorded search path.
-	 *
-	 * @param variables  the setup process's environment
-	 * @param searchPath the search path that discovery records
-	 * @param excluded   the directories that discovery never records, as written and with links resolved
-	 * @return the absolute path at which the first {@code claude} program on the search path was found, with its
-	 * 	links unresolved so that Claude Code can re-point them when it updates itself; on Windows the program is
-	 * 	{@code claude.exe} or {@code claude.cmd}
-	 * @throws IOException if no program is found, or the program's links lead into an excluded directory
-	 */
-	private Path findClaude(Map<String, String> variables, String searchPath, List<Path> excluded)
-		throws IOException
-	{
-		Map<String, String> search = new HashMap<>();
-		search.put("PATH", searchPath);
-		if (platform.isWindows())
-		{
-			// Claude Code installs claude.exe natively or claude.cmd through npm; keep the user's order
-			StringJoiner startable = new StringJoiner(";");
-			for (String extension : variables.getOrDefault("PATHEXT", ".EXE;.CMD").split(";"))
-			{
-				String lowerCase = extension.strip().toLowerCase(Locale.ROOT);
-				if (lowerCase.equals(".exe") || lowerCase.equals(".cmd"))
-					startable.add(lowerCase);
-			}
-			if (startable.length() == 0)
-				startable.add(".exe").add(".cmd");
-			search.put("PATHEXT", startable.toString());
-		}
-		String found = platform.findProgram("claude", search);
-		if (found.equals("claude"))
-		{
-			throw new IOException("Claude Code's claude program is not on PATH (" + searchPath + "). Install " +
-				"Claude Code, or add its directory to PATH, and rerun setup.");
-		}
-		Path program = Path.of(found).toAbsolutePath().normalize();
-		if (isExcluded(program, excluded))
-		{
-			throw new IOException("Claude Code's claude program resolves into a directory that setup never records, " +
-				"because a project or download could replace it there: " + program + " -> " + realPath(program) +
-				". Install Claude Code elsewhere and rerun setup.");
-		}
-		return program;
-	}
-
-	/**
-	 * Runs {@code claude --version} exactly as registration will run the program.
-	 *
-	 * @param command     the command prefix
-	 * @param environment the complete environment
-	 * @param home        the configuration directory, the working directory when it exists
-	 * @throws IOException if the program does not exit successfully within the time limit or does not identify
-	 *                     itself as Claude Code
-	 */
-	private static void verifyVersion(List<String> command, Map<String, String> environment, Path home)
-		throws IOException
-	{
-		List<String> arguments = new ArrayList<>(command);
-		arguments.add("--version");
-		ProcessBuilder builder = new ProcessBuilder(arguments).redirectErrorStream(true);
-		builder.environment().clear();
-		builder.environment().putAll(environment);
-		if (Files.isDirectory(home))
-			builder.directory(home.toFile());
-		String output;
-		int exitCode;
-		try (Process process = builder.start())
-		{
-			process.getOutputStream().close();
-			FutureTask<byte[]> reader = new FutureTask<>(process.getInputStream()::readAllBytes);
-			Thread.ofVirtual().start(reader);
-			if (!process.waitFor(VERSION_TIMEOUT))
-			{
-				process.destroyForcibly();
-				throw new IOException("claude --version did not exit within " + VERSION_TIMEOUT.toSeconds() +
-					" seconds: " + command.getLast());
-			}
-			exitCode = process.exitValue();
-			output = new String(reader.get(VERSION_TIMEOUT.toSeconds(), TimeUnit.SECONDS), UTF_8).strip();
-		}
-		catch (InterruptedException e)
-		{
-			Thread.currentThread().interrupt();
-			InterruptedIOException failure = new InterruptedIOException("Interrupted while running claude --version");
-			failure.initCause(e);
-			throw failure;
-		}
-		catch (ExecutionException e)
-		{
-			throw new IOException("Could not read the output of claude --version", e.getCause());
-		}
-		catch (TimeoutException e)
-		{
-			throw new IOException("claude --version kept its output open after exiting: " + command.getLast(), e);
-		}
-		if (exitCode != 0 || !output.contains("Claude Code"))
-		{
-			throw new IOException("claude --version did not identify Claude Code (exit status " + exitCode + "): " +
-				command.getLast() + ": " + output);
+			throw new IOException("claude --version did not identify Claude Code (exit status " + version.exitCode() +
+				"): " + version.output().strip() + ". Install Claude Code, or put its directory first on PATH, and " +
+				"rerun setup.");
 		}
 	}
 

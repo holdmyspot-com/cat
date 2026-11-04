@@ -577,10 +577,10 @@ public final class InvocationTest
 			Path user = Files.createDirectory(root.resolve("user"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			RecordingIntegration integration = new RecordingIntegration().
-				discovering(new HarnessCommand(List.of(root.resolve("tools/harness-a").toString()), Map.of())).
 				adding(Map.of("settings.json", List.of("entry")));
-			Map<String, String> environment = Map.of("HOME", user.toString(), "XDG_DATA_HOME",
-				root.resolve("data").toString(), "XDG_CONFIG_HOME", root.resolve("config").toString());
+			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
+			Map<String, String> environment = Map.of("HOME", user.toString(), "PATH", tools.toString(),
+				"XDG_DATA_HOME", root.resolve("data").toString(), "XDG_CONFIG_HOME", root.resolve("config").toString());
 
 			Run run = run(archive.resolve(SetupArchive.VERSION), project, environment, List.of(new LiveProvider()),
 				integration, "setup", "--harness", "harness-a", "--home", home.toString(), "--plugin", tree.toString());

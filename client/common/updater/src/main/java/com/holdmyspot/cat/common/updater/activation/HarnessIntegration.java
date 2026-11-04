@@ -19,15 +19,36 @@ public interface HarnessIntegration
 	String harness();
 
 	/**
-	 * Finds the harness's command-line program and the environment it needs for one home. Only setup calls this.
+	 * Returns the name of the harness's command-line program, which setup looks up on the user's search path, adding
+	 * a Windows program extension.
+	 *
+	 * @return the program's name, such as {@code harness-a}
+	 */
+	String programName();
+
+	/**
+	 * Returns the harness's own variables that the recorded program environment holds for one home, such as the
+	 * variable that moves the harness's configuration directory. Setup adds the search path and the variables that
+	 * the platform needs. Only setup calls this.
 	 *
 	 * @param home        the absolute, normalized harness home that setup records
-	 * @param environment the setup process's environment variables
-	 * @return the command, whose first element is an absolute executable path, and its complete environment
+	 * @param environment the setup process's environment variables, looked up case-insensitively on Windows
+	 * @return the variables
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the program cannot be found or run; the message names what the user must install
+	 * @throws IOException          if the environment lacks a variable that the harness needs
 	 */
-	HarnessCommand discover(Path home, Map<String, String> environment) throws IOException;
+	Map<String, String> programEnvironment(Path home, Map<String, String> environment) throws IOException;
+
+	/**
+	 * Fails unless the program that setup found answered {@code --version} as this harness's program does. Only
+	 * setup calls this.
+	 *
+	 * @param version the exit status and output of {@code <program> --version}
+	 * @throws NullPointerException if {@code version} is null
+	 * @throws IOException          if the answer does not identify the harness's program; the message names what the
+	 *                              user must install
+	 */
+	void requireIdentity(CommandResult version) throws IOException;
 
 	/**
 	 * Fails, changing nothing, when a configuration file that {@link #installPermissions} would change is malformed,

@@ -5,7 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
-import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import java.io.File;
@@ -17,10 +16,8 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
@@ -109,79 +106,51 @@ public final class CodexIntegration implements HarnessIntegration
 		return CodexActivation.HARNESS;
 	}
 
+	@Override
+	public String programName()
+	{
+		return "codex";
+	}
+
 	/**
-	 * Finds {@code codex} on the setup PATH and confirms that {@code codex --version} succeeds.
-	 * <p>
-	 * The recorded program is the path of the first match as PATH names it, without resolving symbolic links, so a
-	 * program that updates itself by re-pointing a link keeps working. Discovery refuses the match when it or its
-	 * real path lies in an excluded location. On Windows, a match is {@code codex} followed by an
-	 * extension from {@code PATHEXT}, and a {@code .cmd} or {@code .bat} match runs through
-	 * {@code %SystemRoot%\System32\cmd.exe /d /s /c}. The recorded PATH keeps only absolute entries outside the setup
-	 * working directory, the system temporary directory, the harness home, {@code <HOME>/.cat} and the updater's data
-	 * directory. The recorded environment holds {@code HOME} and {@code USERPROFILE} as given, that PATH,
-	 * {@code CODEX_HOME} only when {@code home} is not {@code <HOME>/.codex}, and on Windows {@code SystemRoot} and
-	 * {@code NoDefaultCurrentDirectoryInExePath=1}.
+	 * Returns {@code HOME} and {@code USERPROFILE} as given, and {@code CODEX_HOME} unless {@code home} is Codex's
+	 * default, {@code <user home>/.codex}.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 */
 	@Override
-	public HarnessCommand discover(Path home, Map<String, String> environment) throws IOException
+	public Map<String, String> programEnvironment(Path home, Map<String, String> environment)
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(environment, "environment").isNotNull();
-		boolean windows = isWindows();
-		Map<String, String> lookup = environment;
-		if (windows)
-		{
-			lookup = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-			lookup.putAll(environment);
-		}
-
-		String userHomeName = "HOME";
-		if (windows)
-			userHomeName = "USERPROFILE";
-		Path userHome = absolute(lookup.get(userHomeName));
-		List<Path> excluded = excludedLocations(lookup, home, userHome, windows);
-		List<Path> searchPath = searchPath(lookup, excluded);
-		Path program = find(searchPath, lookup, windows);
-		if (isUnder(program, excluded))
-		{
-			throw new IOException("The Codex command-line program " + program + " links into the working " +
-				"directory, the temporary directory, the Codex home, ~/.cat or CAT's updater data; put a \"codex\" " +
-				"outside them first on PATH and rerun this command.");
-		}
-
-		List<String> command = new ArrayList<>();
-		String name = program.getFileName().toString().toLowerCase(Locale.ROOT);
-		if (windows && (name.endsWith(".cmd") || name.endsWith(".bat")))
-		{
-			Path systemRoot = absolute(lookup.get("SystemRoot"));
-			if (systemRoot == null)
-				throw new IOException("SystemRoot must name an absolute directory to run " + program);
-			command.addAll(List.of(systemRoot.resolve("System32").resolve("cmd.exe").toString(), "/d", "/s", "/c"));
-		}
-		command.add(program.toString());
-
-		Map<String, String> recorded = new HashMap<>();
+		Map<String, String> variables = new HashMap<>();
 		for (String variable : List.of("HOME", "USERPROFILE"))
 		{
-			String value = lookup.get(variable);
+			String value = environment.get(variable);
 			if (value != null)
-				recorded.put(variable, value);
+				variables.put(variable, value);
 		}
-		List<String> entries = new ArrayList<>();
-		for (Path entry : searchPath)
-			entries.add(entry.toString());
-		recorded.put("PATH", String.join(File.pathSeparator, entries));
+		String userHomeName = "HOME";
+		if (isWindows())
+			userHomeName = "USERPROFILE";
+		Path userHome = absolute(environment.get(userHomeName));
 		if (userHome == null || !home.equals(userHome.resolve(".codex")))
-			recorded.put("CODEX_HOME", home.toString());
-		if (windows)
+			variables.put("CODEX_HOME", home.toString());
+		return variables;
+	}
+
+	/**
+	 * Fails unless {@code codex --version} exited with status 0.
+	 */
+	@Override
+	public void requireIdentity(CommandResult version) throws IOException
+	{
+		requireThat(version, "version").isNotNull();
+		if (version.exitCode() != 0)
 		{
-			recorded.put("SystemRoot", lookup.get("SystemRoot"));
-			recorded.put("NoDefaultCurrentDirectoryInExePath", "1");
+			throw new IOException("The Codex command-line program failed with status " + version.exitCode() +
+				"; reinstall Codex and rerun this command. Output: " + version.output().strip());
 		}
-		CodexProgram.requireVersion(command, recorded, home);
-		return new HarnessCommand(command, recorded);
 	}
 
 	/**
@@ -365,159 +334,6 @@ public final class CodexIntegration implements HarnessIntegration
 		{
 			return null;
 		}
-	}
-
-	/**
-	 * Returns the locations that discovery neither searches nor accepts a program from: the setup working directory,
-	 * the system temporary directory, the harness home, {@code <HOME>/.cat} and the updater's data directory.
-	 *
-	 * @param environment the setup environment
-	 * @param home        the harness home
-	 * @param userHome    the user's home directory, or null
-	 * @param windows     {@code true} on Windows
-	 * @return the absolute, normalized locations
-	 */
-	private static List<Path> excludedLocations(Map<String, String> environment, Path home, Path userHome,
-		boolean windows)
-	{
-		List<Path> excluded = new ArrayList<>();
-		excluded.add(Path.of("").toAbsolutePath().normalize());
-		excluded.add(Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize());
-		excluded.add(home);
-		if (userHome != null)
-			excluded.add(userHome.resolve(".cat"));
-		Path data = updaterData(environment, userHome, windows);
-		if (data != null)
-			excluded.add(data);
-		return excluded;
-	}
-
-	/**
-	 * Returns the PATH entries that discovery may search and record.
-	 *
-	 * @param environment the setup environment
-	 * @param excluded    the locations that discovery excludes
-	 * @return the absolute, normalized entries in PATH order, without excluded locations or repeats
-	 */
-	private static List<Path> searchPath(Map<String, String> environment, List<Path> excluded)
-	{
-		List<Path> entries = new ArrayList<>();
-		String value = environment.getOrDefault("PATH", "");
-		for (String text : value.split(Pattern.quote(File.pathSeparator), -1))
-		{
-			Path entry = absolute(text);
-			if (entry == null || entries.contains(entry) || isUnder(entry, excluded))
-				continue;
-			entries.add(entry);
-		}
-		return entries;
-	}
-
-	/**
-	 * Returns the updater's data directory as setup selects it from the same environment.
-	 *
-	 * @param environment the setup environment
-	 * @param userHome    the user's home directory, or null
-	 * @param windows     {@code true} on Windows
-	 * @return the directory, or null when the environment does not determine one
-	 */
-	private static Path updaterData(Map<String, String> environment, Path userHome, boolean windows)
-	{
-		Path base;
-		if (windows)
-			base = absolute(environment.get("LOCALAPPDATA"));
-		else
-		{
-			base = absolute(environment.get("XDG_DATA_HOME"));
-			if (base == null && userHome != null)
-				base = userHome.resolve(".local/share");
-		}
-		if (base == null)
-			return null;
-		return base.resolve("cat-updater");
-	}
-
-	/**
-	 * Reports whether a PATH entry or program lies in an excluded location, comparing both the written and the real
-	 * paths.
-	 *
-	 * @param entry    the absolute, normalized entry or program
-	 * @param excluded the excluded locations
-	 * @return {@code true} if the entry is excluded
-	 */
-	private static boolean isUnder(Path entry, List<Path> excluded)
-	{
-		List<Path> forms = new ArrayList<>(List.of(entry));
-		realPath(entry).ifPresent(forms::add);
-		for (Path root : excluded)
-		{
-			List<Path> roots = new ArrayList<>(List.of(root));
-			realPath(root).ifPresent(roots::add);
-			for (Path form : forms)
-			{
-				for (Path candidate : roots)
-				{
-					if (form.startsWith(candidate))
-						return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Resolves a path's symbolic links.
-	 *
-	 * @param path the path
-	 * @return the real path, or empty when the path does not exist or cannot be resolved
-	 */
-	private static Optional<Path> realPath(Path path)
-	{
-		try
-		{
-			return Optional.of(path.toRealPath());
-		}
-		catch (IOException _)
-		{
-			return Optional.empty();
-		}
-	}
-
-	/**
-	 * Finds the first Codex program in the search path.
-	 *
-	 * @param searchPath  the PATH entries to search
-	 * @param environment the setup environment
-	 * @param windows     {@code true} on Windows
-	 * @return the program's path within its PATH entry, without resolving symbolic links
-	 * @throws IOException if no entry holds an executable Codex program
-	 */
-	private static Path find(List<Path> searchPath, Map<String, String> environment, boolean windows)
-		throws IOException
-	{
-		List<String> names = new ArrayList<>();
-		if (windows)
-		{
-			String extensions = environment.getOrDefault("PATHEXT", ".COM;.EXE;.BAT;.CMD");
-			for (String extension : extensions.split(";"))
-			{
-				if (!extension.isEmpty())
-					names.add("codex" + extension.toLowerCase(Locale.ROOT));
-			}
-		}
-		else
-			names.add("codex");
-		for (Path entry : searchPath)
-		{
-			for (String name : names)
-			{
-				Path candidate = entry.resolve(name);
-				if (Files.isRegularFile(candidate) && Files.isExecutable(candidate))
-					return candidate;
-			}
-		}
-		throw new IOException("The Codex command-line program \"codex\" is not on PATH; install Codex, make sure " +
-			"\"codex\" runs in this shell, and rerun this command.");
 	}
 
 	/**

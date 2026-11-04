@@ -85,7 +85,7 @@ public final class SetupTest
 			requireThat(Files.readString(fixture.home.resolve("live/version")), "plugin").isEqualTo("1.2");
 			requireThat(Files.readString(fixture.home.resolve("live/client/runtime-binding")), "binding").
 				isEqualTo(data.resolve("runtime") + "\n");
-			requireThat(fixture.integration.calls(), "calls").isEqualTo(List.of("discover", "validateConfiguration",
+			requireThat(fixture.integration.calls(), "calls").isEqualTo(List.of("requireIdentity", "validateConfiguration",
 				"register", "installPermissions"));
 			requireThat(outcome.permissions(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
 			requireThat(Files.readString(data.resolve("state/permissions/harness-a.json")), "record").
@@ -103,14 +103,15 @@ public final class SetupTest
 	@DataProvider
 	public static Object[][] refusals()
 	{
-		return new Object[][]{{"configuration"}, {"discovery"}, {"runtime"}, {"keyless"}, {"otherHarness"},
-			{"insideProject"}};
+		return new Object[][]{{"configuration"}, {"discovery"}, {"identity"}, {"runtime"}, {"keyless"},
+			{"otherHarness"}, {"insideProject"}};
 	}
 
 	/**
-	 * Setup refuses, changing nothing, when the harness configuration is invalid, the harness program is not found,
-	 * the archive's runtime cannot run the installed plugin, the release has no key and no local plugin is given, the
-	 * existing policy names another harness, or the data directory lies inside the working directory.
+	 * Setup refuses, changing nothing, when the harness configuration is invalid, the harness program is not found or
+	 * does not identify itself as the harness's program, the archive's runtime cannot run the installed plugin, the
+	 * release has no key and no local plugin is given, the existing policy names another harness, or the data
+	 * directory lies inside the working directory.
 	 *
 	 * @param condition the refused condition
 	 * @throws IOException    if the fixture cannot be created or inspected
@@ -127,7 +128,8 @@ public final class SetupTest
 			switch (condition)
 			{
 				case "configuration" -> fixture.integration.fail("validateConfiguration");
-				case "discovery" -> fixture.integration.discovering(null);
+				case "discovery" -> Files.delete(Path.of(fixture.command.command().getFirst()));
+				case "identity" -> fixture.integration.fail("requireIdentity");
 				case "runtime" -> Files.writeString(fixture.home.resolve("live/client/runtime-requirement.json"),
 					"{\"format\": 1, \"java_feature\": 99, \"modules\": [\"java.base\"]}");
 				case "keyless" -> fixture.writeDefaultPolicy(false);
@@ -744,8 +746,9 @@ public final class SetupTest
 	}
 
 	/**
-	 * Setup removes the updater's own directories from the search path before the harness program is looked up, so
-	 * that no updater file can stand in for the harness program.
+	 * Setup records the harness program that it finds on the search path, with the harness's own variables and a
+	 * search path without the updater's own directories, so that no updater file can stand in for the harness
+	 * program.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if setup refuses
@@ -757,13 +760,16 @@ public final class SetupTest
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-path-")));
 			Path base = fixture.data().getParent();
+			Path otherInstallation = RecordingIntegration.program(base.resolve("harness-b/bin")).getParent();
 			String kept = fixture.root.resolve("tools").toString();
-			fixture.environment.put("PATH", String.join(File.pathSeparator, base.resolve("harness-b/bin").toString(),
-				kept, fixture.data().resolve("bin").toString()));
+			fixture.environment.put("PATH", String.join(File.pathSeparator, otherInstallation.toString(), kept,
+				fixture.data().resolve("bin").toString()));
 
 			fixture.setUp(null);
 
-			requireThat(fixture.integration.discoveredEnvironment().get("PATH"), "path").isEqualTo(kept);
+			requireThat(TrustPolicy.read(fixture.policy()).command("harness-a").orElseThrow(), "command").
+				isEqualTo(new HarnessCommand(List.of(fixture.root.resolve("tools/harness-a").toString()),
+					Map.of("HARNESS_A_HOME", fixture.home.toString(), "PATH", kept)));
 		}
 	}
 
@@ -892,9 +898,10 @@ public final class SetupTest
 			environment.put("HOME", user.toString());
 			environment.put("XDG_DATA_HOME", root.resolve("xdg-data").toString());
 			environment.put("XDG_CONFIG_HOME", root.resolve("xdg-config").toString());
-			this.command = new HarnessCommand(List.of(root.resolve("tools/harness-a").toString()),
-				Map.of("HOME", user.toString()));
-			integration.discovering(command);
+			Path program = RecordingIntegration.program(root.resolve("tools"));
+			environment.put("PATH", program.getParent().toString());
+			this.command = new HarnessCommand(List.of(program.toString()), Map.of("HARNESS_A_HOME", home.toString(),
+				"PATH", program.getParent().toString()));
 		}
 
 		/**

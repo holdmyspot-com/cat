@@ -7,20 +7,16 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
-import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
 import java.util.stream.Stream;
-import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -41,141 +37,71 @@ public final class IntegrationTest
 	private static final String METADATA = "{\"name\":\"cat\",\"plugins\":[]}\n";
 
 	/**
-	 * Discovery records the path at which it found the first executable {@code codex} on PATH, without resolving
-	 * symbolic links, a PATH without relative,
-	 * empty, repeated or excluded entries, and only the environment that Codex needs, after {@code codex --version}
-	 * succeeds.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
+	 * Setup finds the Codex command-line program {@code codex}.
 	 */
 	@Test
-	public void discoversCodexOnPath() throws IOException
+	public void namesCodexProgram()
 	{
-		requirePosix();
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(testRoot(), "discover-"));
-			Path home = Files.createDirectories(root.resolve("codex-home"));
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path xdgData = root.resolve("xdg");
-			Path underHome = fake(home.resolve("bin"), 0);
-			Path underCat = fake(userHome.resolve(".cat/bin"), 0);
-			Path underData = fake(xdgData.resolve("cat-updater/bin"), 0);
-			Path temporaryEntry = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().resolve("bin");
-			Path notExecutable = Files.createDirectories(root.resolve("not-executable"));
-			Files.writeString(notExecutable.resolve("codex"), "#!/bin/sh\nexit 0\n");
-			Path real = fake(root.resolve("real"), 0);
-			Path linked = Files.createDirectories(root.resolve("linked"));
-			Files.createSymbolicLink(linked.resolve("codex"), real.resolve("codex"));
-			String path = String.join(File.pathSeparator, "relative/bin", "", underHome.toString(),
-				underCat.toString(), underData.toString(), temporaryEntry.toString(),
-				notExecutable.toString(), linked.toString(), real.toString(), linked.toString());
-
-			HarnessCommand command = provider().discover(home, Map.of("HOME", userHome.toString(), "PATH", path,
-				"XDG_DATA_HOME", xdgData.toString(), "CODEX_SECRET", "not recorded"));
-			requireThat(command.command(), "command").isEqualTo(List.of(linked.resolve("codex").toString()));
-			requireThat(command.environment(), "environment").isEqualTo(Map.of("HOME", userHome.toString(),
-				"PATH", String.join(File.pathSeparator, notExecutable.toString(), linked.toString(), real.toString()),
-				"CODEX_HOME", home.toString()));
-			requireThat(Files.readString(linked.resolve("invocations")), "invocations").isEqualTo("--version\n");
-			requireThat(Files.exists(underHome.resolve("invocations")), "underHomeRan").isFalse();
-		}
+		requireThat(provider().programName(), "programName").isEqualTo("codex");
 	}
 
 	/**
-	 * Discovery refuses a {@code codex} found outside the excluded locations whose symbolic link leads into one of
-	 * them, without running it.
+	 * The recorded environment holds the user's home variable as given and names a home other than Codex's default
+	 * in {@code CODEX_HOME}.
 	 *
-	 * @throws IOException if a fixture cannot be written or read
+	 * @throws IOException if the environment is refused
 	 */
 	@Test
-	public void refusesLinkIntoExcludedLocation() throws IOException
+	public void environmentRecordsCodexHome() throws IOException
 	{
-		requirePosix();
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(testRoot(), "discover-"));
-			Path home = Files.createDirectories(root.resolve("codex-home"));
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path underCat = fake(userHome.resolve(".cat/bin"), 0);
-			Path linked = Files.createDirectories(root.resolve("linked"));
-			Files.createSymbolicLink(linked.resolve("codex"), underCat.resolve("codex"));
+		Path userHome = absoluteTestPath("user");
+		Path home = absoluteTestPath("codex-home");
 
-			IOException failure = null;
-			try
-			{
-				provider().discover(home, Map.of("HOME", userHome.toString(), "PATH", linked.toString()));
-			}
-			catch (IOException e)
-			{
-				failure = e;
-			}
-			requireThat(failure, "failure").isNotNull();
-			requireThat(failure.getMessage(), "message").contains(linked.resolve("codex").toString());
-			requireThat(Files.exists(underCat.resolve("invocations")), "underCatRan").isFalse();
-			requireThat(Files.exists(linked.resolve("invocations")), "linkedRan").isFalse();
-		}
+		Map<String, String> variables = provider().programEnvironment(home, Map.of(userHomeVariable(),
+			userHome.toString(), "CODEX_SECRET", "not recorded"));
+
+		requireThat(variables, "variables").isEqualTo(Map.of(userHomeVariable(), userHome.toString(), "CODEX_HOME",
+			home.toString()));
 	}
 
 	/**
-	 * Discovery leaves CODEX_HOME unset when the home is Codex's default, {@code <HOME>/.codex}.
+	 * The recorded environment leaves {@code CODEX_HOME} unset when the home is Codex's default,
+	 * {@code <user home>/.codex}.
 	 *
-	 * @throws IOException if a fixture cannot be written or read
+	 * @throws IOException if the environment is refused
 	 */
 	@Test
-	public void omitsDefaultCodexHome() throws IOException
+	public void environmentOmitsDefaultCodexHome() throws IOException
 	{
-		requirePosix();
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(testRoot(), "discover-"));
-			Path userHome = Files.createDirectories(root.resolve("user"));
-			Path home = Files.createDirectories(userHome.resolve(".codex"));
-			Path real = fake(root.resolve("real"), 0);
+		Path userHome = absoluteTestPath("user");
 
-			HarnessCommand command = provider().discover(home, Map.of("HOME", userHome.toString(), "PATH",
-				real.toString()));
-			requireThat(command.environment(), "environment").
-				isEqualTo(Map.of("HOME", userHome.toString(), "PATH", real.toString()));
-		}
+		Map<String, String> variables = provider().programEnvironment(userHome.resolve(".codex"),
+			Map.of(userHomeVariable(), userHome.toString()));
+
+		requireThat(variables, "variables").isEqualTo(Map.of(userHomeVariable(), userHome.toString()));
 	}
 
 	/**
-	 * Discovery fails, naming what the user must install, when no executable {@code codex} is on PATH.
+	 * A program that answers {@code --version} with status 0 is accepted as Codex.
 	 *
-	 * @throws IOException if a fixture cannot be written or read
+	 * @throws IOException if the answer is refused
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*not on PATH; install Codex.*")
-	public void refusesMissingCodex() throws IOException
+	@Test
+	public void identityAcceptsWorkingCodex() throws IOException
 	{
-		requirePosix();
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(testRoot(), "discover-"));
-			Path home = Files.createDirectories(root.resolve("codex-home"));
-			Path empty = Files.createDirectories(root.resolve("empty"));
-
-			provider().discover(home, Map.of("HOME", root.toString(), "PATH", empty.toString()));
-		}
+		provider().requireIdentity(new CommandResult(0, "codex-cli 0.130.0\n"));
 	}
 
 	/**
-	 * Discovery fails when {@code codex --version} fails.
+	 * A program whose {@code --version} fails is refused, naming what the user must reinstall.
 	 *
-	 * @throws IOException if a fixture cannot be written or read
+	 * @throws IOException if the answer is refused
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "(?s).*failed with status 3.*")
-	public void refusesFailingCodex() throws IOException
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*failed with status 3; reinstall Codex.*")
+	public void identityRefusesFailingCodex() throws IOException
 	{
-		requirePosix();
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(testRoot(), "discover-"));
-			Path home = Files.createDirectories(root.resolve("codex-home"));
-			Path real = fake(root.resolve("real"), 3);
-
-			provider().discover(home, Map.of("HOME", root.toString(), "PATH", real.toString()));
-		}
+		provider().requireIdentity(new CommandResult(3, "broken\n"));
 	}
 
 	/**
@@ -594,35 +520,27 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Creates a fake {@code codex} program that appends its arguments to {@code invocations} beside itself, prints a
-	 * version and exits with a status.
+	 * Returns the variable that names the user's home directory, from which Codex derives its default home.
 	 *
-	 * @param directory the directory to create the program in
-	 * @param status    the exit status
-	 * @return the directory
-	 * @throws IOException if the program cannot be written
+	 * @return {@code USERPROFILE} on Windows, {@code HOME} elsewhere
 	 */
-	private static Path fake(Path directory, int status) throws IOException
+	private static String userHomeVariable()
 	{
-		Files.createDirectories(directory);
-		Path program = directory.resolve("codex");
-		Files.writeString(program, """
-			#!/bin/sh
-			printf '%%s\\n' "$@" >> "${0%%/*}/invocations"
-			echo "codex-cli 0.0.0"
-			exit %d
-			""".formatted(status));
-		Files.setPosixFilePermissions(program, PosixFilePermissions.fromString("rwx------"));
-		return directory;
+		if (System.getProperty("os.name").startsWith("Windows"))
+			return "USERPROFILE";
+		return "HOME";
 	}
 
 	/**
-	 * Skips a discovery test on Windows, whose fake program would need a batch file run through cmd.exe.
+	 * Returns an absolute path beneath this module's test directory without creating it.
+	 *
+	 * @param relative the path relative to the test directory
+	 * @return the absolute, normalized path
+	 * @throws IOException if the test directory cannot be created
 	 */
-	private static void requirePosix()
+	private static Path absoluteTestPath(String relative) throws IOException
 	{
-		if (System.getProperty("os.name").startsWith("Windows"))
-			throw new SkipException("The fake Codex program is a POSIX shell script");
+		return testRoot().resolve(relative).normalize();
 	}
 
 	/**

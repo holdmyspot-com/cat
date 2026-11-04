@@ -4,11 +4,13 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
-import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.engine.Registration;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -43,14 +45,6 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * The entries that each {@code removePermissions} call received.
 	 */
 	private final List<Map<String, List<String>>> removed = new ArrayList<>();
-	/**
-	 * The program that {@code discover} reports.
-	 */
-	private HarnessCommand command;
-	/**
-	 * The environment that the last {@code discover} call received.
-	 */
-	private Map<String, String> discoveredEnvironment = Map.of();
 	/**
 	 * Whether {@code legacyPermissions} reports an entry for the shared stable launcher of earlier builds.
 	 */
@@ -126,18 +120,6 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Sets the program that discovery reports.
-	 *
-	 * @param command the program
-	 * @return this integration
-	 */
-	public RecordingIntegration discovering(HarnessCommand command)
-	{
-		this.command = command;
-		return this;
-	}
-
-	/**
 	 * Returns the calls made so far.
 	 *
 	 * @return each call's name, in call order
@@ -158,16 +140,6 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the environment that the last discovery received.
-	 *
-	 * @return the environment
-	 */
-	public Map<String, String> discoveredEnvironment()
-	{
-		return discoveredEnvironment;
-	}
-
-	/**
 	 * Returns a registration that uses this integration, a harness program that always succeeds and a replacer that
 	 * never waits.
 	 *
@@ -178,6 +150,21 @@ public final class RecordingIntegration implements HarnessIntegration
 		return new Registration(this, cli(), new FileReplacer(Platform.current(), () ->
 		{
 		}, Clock.systemUTC()));
+	}
+
+	/**
+	 * Creates the {@code harness-a} program file that setup finds on the search path. Setup never starts it.
+	 *
+	 * @param directory the directory to create the program in
+	 * @return the program
+	 * @throws IOException if the program cannot be written
+	 */
+	public static Path program(Path directory) throws IOException
+	{
+		Path program = Files.writeString(Files.createDirectories(directory).resolve("harness-a"), "#!/bin/sh\n");
+		if (Files.getFileStore(program).supportsFileAttributeView(PosixFileAttributeView.class))
+			Files.setPosixFilePermissions(program, PosixFilePermissions.fromString("rwx------"));
+		return program;
 	}
 
 	/**
@@ -197,13 +184,27 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public HarnessCommand discover(Path home, Map<String, String> environment) throws IOException
+	public String programName()
 	{
-		record("discover", home);
-		discoveredEnvironment = Map.copyOf(environment);
-		if (command == null)
-			throw new IOException("No harness-a program was found");
-		return command;
+		return "harness-a";
+	}
+
+	/**
+	 * Returns {@code HARNESS_A_HOME}, naming the harness home.
+	 */
+	@Override
+	public Map<String, String> programEnvironment(Path home, Map<String, String> environment)
+	{
+		return Map.of("HARNESS_A_HOME", home.toString());
+	}
+
+	/**
+	 * Records the call as {@code requireIdentity} and fails it when the test asked for that.
+	 */
+	@Override
+	public void requireIdentity(CommandResult version) throws IOException
+	{
+		record("requireIdentity", "exit status " + version.exitCode());
 	}
 
 	@Override
@@ -254,12 +255,12 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * Records a call and fails it when the test asked for that.
 	 *
 	 * @param call the call's name
-	 * @param home the home it received
+	 * @param subject what it received, such as the harness home
 	 * @throws IOException if the test made the call fail
 	 */
-	private void record(String call, Path home) throws IOException
+	private void record(String call, Object subject) throws IOException
 	{
-		calls.add(call + " " + home);
+		calls.add(call + " " + subject);
 		if (crashing.contains(call))
 			throw new IllegalStateException("harness-a stopped during " + call);
 		if (failing.contains(call))
