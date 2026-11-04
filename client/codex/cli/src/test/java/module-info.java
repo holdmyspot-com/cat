@@ -1,6 +1,7 @@
 module com.holdmyspot.cat.codex.cli.test
 {
 	requires com.holdmyspot.cat.codex.cli;
+	requires com.holdmyspot.cat.codex.layout;
 	requires com.holdmyspot.cat.common.cli;
 	requires com.holdmyspot.cat.common.cli.test;
 	requires io.github.cowwoc.requirements13.java;

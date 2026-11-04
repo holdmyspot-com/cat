@@ -32,10 +32,6 @@ public final class ClaudeArtifact
 	 */
 	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
 	/**
-	 * Claude Code's install records, relative to its configuration directory.
-	 */
-	private static final Path RECORDS = Path.of("plugins/installed_plugins.json");
-	/**
 	 * The format version of the install records that this command reads.
 	 */
 	private static final int RECORDS_VERSION = 2;
@@ -122,7 +118,7 @@ public final class ClaudeArtifact
 			throw new IOException(e.getMessage(), e);
 		}
 		return OtherHarnessPlugin.select(plugin, claude, "claude", "Claude Code",
-			installed(claude.home().resolve(RECORDS)), MANIFEST, "claude-runner", platform).format();
+			installed(claude.installedPlugins()), MANIFEST, "claude-runner", platform).format();
 	}
 
 	/**

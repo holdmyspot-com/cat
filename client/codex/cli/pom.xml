@@ -26,6 +26,10 @@
 			<artifactId>client-claude-layout</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-codex-layout</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>tools.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
 		</dependency>

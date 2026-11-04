@@ -2,8 +2,10 @@ package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.runner.LocalMarketplace;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,22 +28,26 @@ final class CodexMarketplace
 	}
 
 	/**
-	 * Copies CAT's artifact into its marketplace and replaces Codex marketplace metadata when it already exists.
+	 * Copies CAT's artifact into its marketplace, where Codex's layout puts it, and replaces Codex marketplace metadata
+	 * when it already exists.
 	 *
 	 * @param plugin the validated Codex plugin
-	 * @param home the isolated Codex home directory
+	 * @param codex the isolated Codex installation
 	 * @return the local marketplace root
-	 * @throws NullPointerException if {@code plugin} or {@code home} are null
+	 * @throws NullPointerException if {@code plugin} or {@code codex} are null
 	 * @throws IOException if the marketplace cannot be created
 	 */
-	static Path create(Path plugin, Path home) throws IOException
+	static Path create(Path plugin, CodexInstallation codex) throws IOException
 	{
-		return create(plugin, CAT, "CAT", home);
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(codex, "codex").isNotNull();
+		return write(plugin, CAT, "CAT", codex.marketplaceRoot(), codex.marketplacePlugin(),
+			codex.marketplaceManifest());
 	}
 
 	/**
-	 * Copies a plugin into the marketplace that bears its name and replaces Codex marketplace metadata when it already
-	 * exists.
+	 * Copies a trial plugin into the marketplace that bears its name and replaces Codex marketplace metadata when it
+	 * already exists.
 	 *
 	 * @param plugin the plugin directory
 	 * @param name the plugin's manifest name, which also names its marketplace
@@ -59,8 +65,28 @@ final class CodexMarketplace
 		requireThat(displayName, "displayName").isNotBlank();
 		requireThat(home, "home").isNotNull();
 		Path root = home.resolve("plugins/" + name + "-marketplace");
-		LocalMarketplace.copy(plugin, root.resolve("plugins/" + name));
-		Path metadata = root.resolve(".agents/plugins/marketplace.json");
+		return write(plugin, name, displayName, root, root.resolve("plugins/" + name),
+			root.resolve(".agents/plugins/marketplace.json"));
+	}
+
+	/**
+	 * Copies a plugin into a marketplace and writes the marketplace's metadata.
+	 *
+	 * @param plugin the plugin directory
+	 * @param name the plugin's manifest name, which also names its marketplace
+	 * @param displayName the marketplace's name in Codex's interface
+	 * @param root the marketplace root
+	 * @param pluginFolder the marketplace's folder for the plugin, below {@code root}, which the metadata names as the
+	 *   plugin's source
+	 * @param metadata the marketplace's metadata file
+	 * @return {@code root}
+	 * @throws IOException if the marketplace cannot be created
+	 */
+	private static Path write(Path plugin, String name, String displayName, Path root, Path pluginFolder, Path metadata)
+		throws IOException
+	{
+		LocalMarketplace.copy(plugin, pluginFolder);
+		String source = root.relativize(pluginFolder).toString().replace(File.separatorChar, '/');
 		Files.createDirectories(metadata.getParent());
 		Files.writeString(metadata, """
 			{
@@ -76,7 +102,7 @@ final class CodexMarketplace
 			\t\t\t"source":
 			\t\t\t{
 			\t\t\t\t"source": "local",
-			\t\t\t\t"path": "./plugins/%1$s"
+			\t\t\t\t"path": "./%3$s"
 			\t\t\t},
 			\t\t\t"policy":
 			\t\t\t{
@@ -87,19 +113,7 @@ final class CodexMarketplace
 			\t\t}
 			\t]
 			}
-			""".formatted(name, displayName));
+			""".formatted(name, displayName, source));
 		return root;
-	}
-
-	/**
-	 * Returns the location where the isolated marketplace installs CAT.
-	 *
-	 * @param home the isolated Codex home directory
-	 * @return the installed CAT plugin root
-	 */
-	static Path pluginRoot(Path home)
-	{
-		requireThat(home, "home").isNotNull();
-		return home.resolve("plugins/cat-marketplace/plugins/cat");
 	}
 }

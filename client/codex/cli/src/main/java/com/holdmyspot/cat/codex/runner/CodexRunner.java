@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
@@ -741,7 +742,7 @@ public final class CodexRunner
 			// this run's artifact so delegated agents receive the same CAT contract as the primary isolated process,
 			// rather than an unrelated version from the host's global Codex home.
 			CodexAgents.install(artifact, isolatedHome);
-			Path marketplace = CodexMarketplace.create(artifact, isolatedHome);
+			Path marketplace = CodexMarketplace.create(artifact, new CodexInstallation(isolatedHome.toAbsolutePath()));
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace);
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-add");

@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
@@ -28,6 +29,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
@@ -158,6 +160,37 @@ public final class CodexRunnerTest
 				Yielding.executableFiles(), (_, step) -> steps.add(step));
 			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-add"));
 			requireThat(withCat.resolve("agents/cat-worker.toml"), "agent").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that CAT's marketplace is written where Codex's layout puts it for the Codex home that {@code CODEX_HOME}
+	 * names: the plugin in the marketplace's plugin folder and the manifest that Codex reads to find it.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void writesMarketplaceUnderCodexHome() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-home-"));
+			Path home = root.resolve("custom-codex-home");
+			CodexInstallation installation = CodexInstallation.fromEnvironment(Map.of("CODEX_HOME", home.toString()),
+				root.resolve("user"));
+
+			CodexRunner.installPlugins("codex", artifact(root), true, List.of(), root.resolve("host"), home, Map.of(),
+				Yielding.executableFiles(), (_, _) ->
+				{
+				});
+
+			requireThat(installation.marketplacePlugin().resolve("README.md"), "plugin").isRegularFile();
+			requireThat(installation.marketplaceManifest(), "manifest").isRegularFile();
+			requireThat(installation.marketplaceRoot().startsWith(home), "underCodexHome").isTrue();
+			String source = JsonMapper.builder().build().readTree(Files.readString(installation.marketplaceManifest())).
+				path("plugins").path(0).path("source").path("path").asString();
+			requireThat(installation.marketplaceRoot().resolve(source).normalize(), "manifestSource").
+				isEqualTo(installation.marketplacePlugin());
 		}
 	}
 
