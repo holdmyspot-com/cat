@@ -332,6 +332,44 @@ public final class BundleUpdateTest
 	}
 
 	/**
+	 * After the stable launcher reported {@code not_swapped} for an update, an {@code install} that the agent runs next
+	 * does not finish the update, even though the staged runtime is still in place: it undoes the update, so the
+	 * installation runs the previous release's plugin, runtime and updater again.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void installUndoesNotSwappedUpdate() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("bundle-not-swapped-"));
+			Path data = root.resolve("data");
+			Path home = plugin(root, "1.0");
+			Releases.installation(data, "1.0");
+			Releases release = new Releases("1.1", "");
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+				result(), "update").isEqualTo(Result.UPDATED);
+			// The launcher that reported not_swapped put the installed runtime back, kept the request and the staged
+			// runtime, and exited
+			LauncherSwap.abandon(data);
+			// Install asks for the release that current selects
+			Releases installed = new Releases("1.0", "");
+
+			UpdateResult result = engine(data, home, installed).install(null,
+				new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
+			requireThat(result.version(), "version").isEqualTo(Optional.of("1.0"));
+			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.0\n");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(Files.exists(data.resolve("runtime.next")), "stagedRuntime").isFalse();
+			requireThat(engine(data, home, installed).pendingSwap(), "pendingSwap").isEqualTo(Optional.empty());
+		}
+	}
+
+	/**
 	 * A launcher that renamed the runtimes but stopped before it rewrote {@code current} leaves the new runtime
 	 * running; the next operation completes the update by selecting the new updater.
 	 *

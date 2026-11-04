@@ -102,7 +102,8 @@ json_escape()
 not_swapped_result()
 {
 	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; %s"}' \
-		"$(json_escape "$(cygpath -w "$1")")" 'the next updater operation restores the previous release.'
+		"$(json_escape "$(cygpath -w "$1")")" \
+		"CAT's hooks may not work until the next successful update. Report this message to the user."
 }
 
 # Prints the not_removed result that the Windows stable launcher writes for a data directory.
@@ -295,6 +296,31 @@ XDG_DATA_HOME" ]
 	[ ! -e "${DATA}/runtime.previous" ]
 	[ -f "${DATA}/state/runtime-swap" ]
 	[ ! -e "${DATA}/state/runtime-swap-result.json" ]
+}
+
+# The updater, not the launcher, decides what an operation after not_swapped does with the unfinished replacement, so
+# the launcher leaves the request, the staged runtime and the installed runtime as they are, even once the staged
+# runtime would run.
+@test "after not_swapped the Windows stable launcher runs install on the installed runtime and leaves the request to the updater" {
+	request_swap "${DATA}" update 1.0 1.1
+	write_runtime "${DATA}/runtime.next" staged 1
+	mkdir -p "${DATA}/1.1/bin"
+	run --separate-stderr powershell_file "${DATA}/bin/cat-updater.ps1" update
+	[ "${status}" -eq 8 ]
+	printf '0\n' > "${DATA}/runtime.next/version-status"
+	printf '%s\n' '{"result":"up_to_date"}' > "${DATA}/java-output"
+	printf '0\n' > "${DATA}/java-status"
+
+	run --separate-stderr powershell_file "${DATA}/bin/cat-updater.ps1" install --harness claude
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = '{"result":"up_to_date"}' ]
+	[[ "$(java_arguments "${DATA}")" == *$'\n[install]\n[--harness]\n[claude]' ]]
+	[ "$(cat "${DATA}/current")" = 1.0 ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
+	[ ! -e "${DATA}/runtime.previous" ]
+	[ -f "${DATA}/state/runtime-swap" ]
 }
 
 @test "the Windows stable launcher changes nothing and reports not_swapped when no staged runtime exists" {

@@ -174,8 +174,9 @@ status=0
 not_swapped()
 {
 	/bin/rm -f -- "$swap_result" 2>/dev/null || true
-	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; the next updater operation restores the previous release."}\n' \
-		"$(json_escape "$named_data")"
+	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; %s"}\n' \
+		"$(json_escape "$named_data")" \
+		"CAT's hooks may not work until the next successful update. Report this message to the user."
 	printf '%s\n' "$1" >&2
 	exit 8
 }

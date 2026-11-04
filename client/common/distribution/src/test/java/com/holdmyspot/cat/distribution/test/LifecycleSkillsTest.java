@@ -117,7 +117,9 @@ public final class LifecycleSkillsTest
 				contains("with no release argument").
 				contains("run `<launcher> update --harness <h> <tag>` after `install` reports `installed`").
 				contains("When its `previous_bundle` field is false").contains("do not run `rollback`").
-				contains("`pending_swap`").contains("`not_swapped`").contains("`aot_cache`").
+				contains("`pending_swap`").contains("`aot_cache`").
+				contains("`not_swapped`: the Java runtime could not be put in place, so the operation did not finish " +
+					"and CAT's hooks may not work until the next successful update. Report its `message` to the user.").
 				contains("Do not mention `aot_cache` to the user unless they ask about it").
 				contains("Never run the launcher's `setup` operation yourself").
 				contains("restart or resume the session").doesNotContain("--updater-only").

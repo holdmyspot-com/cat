@@ -111,7 +111,8 @@ exit 78"
 # Output: the JSON result.
 not_swapped_result()
 {
-	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; the next updater operation restores the previous release."}' "$1"
+	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; %s"}' "$1" \
+		"CAT's hooks may not work until the next successful update. Report this message to the user."
 }
 
 # Removes only the directory created for this test, including after failed setup or assertions.
@@ -512,6 +513,29 @@ mv -f \"\$data/bin/.cat-updater.new\" \"\$data/bin/cat-updater\""
 	[ ! -e "${data}/runtime.previous" ]
 	[ -f "${data}/state/runtime-swap" ]
 	[ ! -e "${data}/state/runtime-swap-result.json" ]
+}
+
+# The updater, not the launcher, decides what an operation after not_swapped does with the unfinished replacement, so
+# the launcher leaves the request, the staged runtime and the installed runtime as they are, even once the staged
+# runtime would run.
+@test "after not_swapped the stable launcher runs install on the installed runtime and leaves the request to the updater" {
+	install_swapping_runtime "${DATA}" update 1.0 1.1
+	write_runtime "${DATA}/runtime.next" staged 1
+	mkdir -p "${DATA}/1.1/bin"
+	run --separate-stderr "${DATA}/bin/cat-updater" update
+	[ "${status}" -eq 8 ]
+	write_runtime "${DATA}/runtime.next" staged 0
+	install_runtime "${DATA}" 'printf "installed-runtime"; printf "<%s>" "$@"'
+
+	run --separate-stderr "${DATA}/bin/cat-updater" install --harness claude
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == 'installed-runtime<'*'<install><--harness><claude>' ]]
+	[ "$(cat "${DATA}/current")" = 1.0 ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
+	[ ! -e "${DATA}/runtime.previous" ]
+	[ -f "${DATA}/state/runtime-swap" ]
 }
 
 @test "the stable launcher changes nothing and reports not_swapped when no staged runtime exists" {

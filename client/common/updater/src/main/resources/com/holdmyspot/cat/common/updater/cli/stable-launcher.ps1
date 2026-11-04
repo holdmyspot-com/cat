@@ -297,7 +297,9 @@ function Exit-NotSwapped([string] $message)
 	{
 	}
 	$escaped = $data.Replace('\', '\\').Replace('"', '\"')
-	Write-Utf8 ([Console]::OpenStandardOutput()) "{`"result`":`"not_swapped`",`"message`":`"CAT could not switch the Java runtime in $escaped; the next updater operation restores the previous release.`"}`n"
+	$text = "CAT could not switch the Java runtime in $escaped; CAT's hooks may not work until the next successful " +
+		'update. Report this message to the user.'
+	Write-Utf8 ([Console]::OpenStandardOutput()) "{`"result`":`"not_swapped`",`"message`":`"$text`"}`n"
 	Write-Utf8 ([Console]::OpenStandardError()) "$message`n"
 	exit 8
 }

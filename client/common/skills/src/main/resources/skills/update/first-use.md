@@ -91,8 +91,8 @@
 	- `failed`: an unexpected error stopped the operation after it may have changed the installation. Report its
 		`message`, and that running the same command again continues the operation; run it again only when the user
 		asks.
-	- `not_swapped`: report that the operation did not finish because the Java runtime could not be put in place, that
-		the old runtime is back, and that the next operation on CAT undoes what remains of the failed one.
+	- `not_swapped`: the Java runtime could not be put in place, so the operation did not finish and CAT's hooks may
+		not work until the next successful update. Report its `message` to the user.
 	- `locked`: report that another operation on CAT is running, and that the user can ask again once it finishes.
 	- `usage`: report its `message` as a defect in CAT.
 
