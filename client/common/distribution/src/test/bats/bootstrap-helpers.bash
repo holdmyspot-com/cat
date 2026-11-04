@@ -61,6 +61,17 @@ SCRIPT
 	chmod +x "${FAKE_BIN}/uname"
 }
 
+# Creates a bubblewrap replacement that fails as bubblewrap does inside a sandbox that cannot create another namespace.
+create_failing_bwrap()
+{
+	cat > "${FAKE_BIN}/bwrap" <<'SCRIPT'
+#!/usr/bin/env sh
+printf '%s\n' 'bwrap: No permissions to create new namespace' >&2
+exit 1
+SCRIPT
+	chmod +x "${FAKE_BIN}/bwrap"
+}
+
 # Writes a path as a JSON string's content in the form that harnesses give hooks: a Windows path under Git Bash, whose
 # own form names a folder that Windows programs cannot find, and the path unchanged elsewhere.
 #
