@@ -1,21 +1,19 @@
 # Installation data migrations
 
-Store each migration script in this directory and register it in `registry.tsv`. The installer reads the registry in
-strictly increasing target-version order. During an upgrade, it runs every target version after the data directory's
-`migration-version` through the artifact version, then writes the artifact version only after all required scripts
-succeed.
+Store each migration script in this directory and register it in `registry.tsv`, one line per script: its target
+version, a TAB, and the script's name relative to this directory. Keep target versions strictly increasing.
 
 A script receives `CAT_MIGRATION_DATA_DIR`, `CAT_MIGRATION_FROM_VERSION`, and `CAT_MIGRATION_TO_VERSION`. It must
 modify only the data directory named by `CAT_MIGRATION_DATA_DIR` and return nonzero when it cannot finish safely.
 
 Register each script by its `.sh` name, and put a PowerShell script with the same name and the extension `.ps1` beside
-it. The Codex installer on Windows, `install-codex.ps1`, runs the `.ps1` script instead, and refuses to install when it
-is missing. It reads the same variables from `$env:`, must stay compatible with Windows PowerShell 5.1, and must throw
-when it cannot finish safely.
+it. The `.ps1` script reads the same variables from `$env:`, must stay compatible with Windows PowerShell 5.1, and must
+throw when it cannot finish safely.
 
-When a release does not change persisted data, leave the registry unchanged; the installer still advances the version
-marker. A first-time install creates that marker without running migration scripts.
+The trusted updater refuses a routine update to a release that registers a migration after the plugin data's recorded
+`migration-version`, up to the release's version, and directs the user to the release's explicit installation command.
+No part of CAT runs migration scripts yet, so a release that registers one must also add the code that runs it.
 
-Installer-boundary tests belong in `client/common/distribution/src/test/bats/`: shared behavior is in
-`bootstrap-common.bats`, and harness-specific behavior is in `bootstrap-claude.bats` and `bootstrap-codex.bats`.
-`CodexWindowsInstallerTest` tests the PowerShell installer.
+When a release does not change persisted data, leave the registry unchanged.
+
+The updater's handling of the registry is tested by `StagedReleaseTest` in `client/common/updater`.
