@@ -73,6 +73,8 @@ After the command, ask your agent in plain words:
 
 - "Update CAT", or "update CAT to v1.0": the `update` skill runs the updater's `update` operation, which moves the
 	Java runtime, the updater and the plugin of this harness's installation to the release together.
+- "Go back to CAT v1.0": the `update` skill runs the updater's `update` operation for that release, which moves the
+	whole installation back when CAT's data structures did not change since that release.
 - "Install CAT again" after you removed the plugin with the harness's own commands or deleted its directory: the
 	`update` skill runs the updater's `install` operation, which needs no new command from you.
 - "Uninstall CAT": the `uninstall` skill asks whether to also delete CAT's plugin data, then removes this harness's
@@ -179,9 +181,13 @@ file; it only registers the plugin with the harness again when the harness no lo
 signed release metadata and both archives against your existing policy; it never changes the policy's keys, release
 source or version limits.
 
-Going back to an older release is your decision. `install` and `update` refuse a version below the highest one that
-this installation has already activated for the harness; run an older release's entry command yourself to install
-it.
+`update` goes back to an older release only when you name it; an update to the latest release refuses a latest
+release that is older than the active one. Going back to an older release is an update like any other, with no extra
+prompt, when CAT's data structures did not change between the two releases: the active release's migration registry,
+read from its signed release, registers no data migration after the older release, up to and including the active
+one. Otherwise `update` refuses with exit status `3` and changes nothing, because the older release cannot read data
+that a newer release migrated, and installing it would lose data. The message names the migrations in between.
+After going back, the installation records the older release's data version.
 
 `install` adds the plugin where the harness has none, for example after `claude plugin uninstall` or after deleting the
 plugin directory, and then registers it with the harness. It installs only the release that this installation's

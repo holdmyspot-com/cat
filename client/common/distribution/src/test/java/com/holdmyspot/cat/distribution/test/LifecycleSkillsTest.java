@@ -107,6 +107,11 @@ public final class LifecycleSkillsTest
 				contains("cat-updater\\<h>\\bin\\cat-updater.ps1").contains("`<launcher> install --harness <h>`").
 				contains("`<launcher> update --harness <h>`").contains("`<launcher> update --harness <h> <tag>`").
 				doesNotContain("rollback").doesNotContain("roll back").doesNotContain("rolled_back").
+				contains("When the user asks to go back to an earlier release, run " +
+					"`<launcher> update --harness <h> <tag>`").
+				contains("An update without a release never goes back to an earlier one.").
+				contains("report the message to the user as it is, and do not retry the update or go back in any " +
+					"other way.").
 				contains("`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`").
 				doesNotContain("cat-updater.cmd").
 				contains("`<launcher> status --harness <h>`").

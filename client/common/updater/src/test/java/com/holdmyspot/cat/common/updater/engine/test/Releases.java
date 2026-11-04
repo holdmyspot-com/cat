@@ -50,7 +50,7 @@ public final class Releases implements ReleaseSource
 	 * The updater-version-relative directory that holds the release's stable launchers.
 	 */
 	private static final String STABLE_LAUNCHERS = "stable-launcher/";
-	private final KeyPair key = keyPair();
+	private final KeyPair key;
 	private final String version;
 	private byte[] archive;
 	private final byte[] updater;
@@ -72,7 +72,21 @@ public final class Releases implements ReleaseSource
 	 */
 	public Releases(String version, String defect) throws IOException
 	{
-		this(version, defect, false);
+		this(version, defect, false, null, keyPair());
+	}
+
+	/**
+	 * Creates a valid release that another release's key signs and whose plugin holds the supplied migration
+	 * registry, so that one source can serve several releases that the same policy approves.
+	 *
+	 * @param version  the release version
+	 * @param registry the content of the plugin's {@code install/migrations/registry.tsv}
+	 * @param signer   the release whose key signs this one
+	 * @throws IOException if creating the in-memory archive fails
+	 */
+	Releases(String version, String registry, Releases signer) throws IOException
+	{
+		this(version, "", false, registry, signer.key);
 	}
 
 	/**
@@ -86,7 +100,7 @@ public final class Releases implements ReleaseSource
 	 */
 	public static Releases trainable(String version) throws IOException
 	{
-		return new Releases(version, "", true);
+		return new Releases(version, "", true, null, keyPair());
 	}
 
 	/**
@@ -95,12 +109,16 @@ public final class Releases implements ReleaseSource
 	 * @param version   the release version
 	 * @param defect    empty for valid data, or the particular corrupted property
 	 * @param trainable true if the plugin describes how to train its startup cache
+	 * @param registry  the plugin's migration registry, or null for the one that {@code defect} selects
+	 * @param key       the key that signs the release
 	 * @throws IOException if creating the in-memory archive fails
 	 */
-	private Releases(String version, String defect, boolean trainable) throws IOException
+	private Releases(String version, String defect, boolean trainable, String registry, KeyPair key)
+		throws IOException
 	{
 		this.version = version;
-		this.archive = archive(version, defect, trainable);
+		this.key = key;
+		this.archive = archive(version, defect, trainable, registry);
 		this.updater = updaterArchive(version, defect);
 		String digest = sha256(archive);
 		long size = archive.length;
@@ -140,8 +158,22 @@ public final class Releases implements ReleaseSource
 	 */
 	public TrustPolicy policy(Path home) throws TrustException
 	{
+		return policy(home, "1.0");
+	}
+
+	/**
+	 * Creates a policy that trusts this fixture's key, approves releases from a minimum version and records only the
+	 * supplied home.
+	 *
+	 * @param home    the test-owned harness home
+	 * @param minimum the lowest release version that the policy approves
+	 * @return the policy
+	 * @throws TrustException if the policy is invalid
+	 */
+	TrustPolicy policy(Path home, String minimum) throws TrustException
+	{
 		return TrustPolicy.of(List.of(trusted("test-key", key)),
-			URI.create("https://releases.example/cat/releases/download"), ReleaseVersion.parse("1.0"), 1,
+			URI.create("https://releases.example/cat/releases/download"), ReleaseVersion.parse(minimum), 1,
 			Map.of("harness-a", home));
 	}
 
@@ -304,10 +336,12 @@ public final class Releases implements ReleaseSource
 	 * @param version   the declared release version
 	 * @param defect    the corrupted property, or empty
 	 * @param trainable true if the plugin describes how to train its startup cache
+	 * @param registry  the migration registry, or null for the one that {@code defect} selects
 	 * @return the archive bytes
 	 * @throws IOException if archive writing fails
 	 */
-	private static byte[] archive(String version, String defect, boolean trainable) throws IOException
+	private static byte[] archive(String version, String defect, boolean trainable, String registry)
+		throws IOException
 	{
 		String top = "cat-harness-a-v" + version + "-linux-x64";
 		if (defect.equals("top"))
@@ -327,15 +361,10 @@ public final class Releases implements ReleaseSource
 				entry(tar, top + "/bin/plugin-info", "Never executed by the updater", 0755);
 			if (!defect.equals("missingRegistry"))
 			{
-				String registry = "# No migration\n";
-				String layout = StagedRelease.LAYOUT_MIGRATION + "\tper-harness-layout.sh\n";
-				if (defect.equals("migration"))
-					registry = version + "\tmigrate.sh\n";
-				else if (defect.equals("layout"))
-					registry = layout;
-				else if (defect.equals("layoutAndMigration"))
-					registry = layout + version + "\tmigrate.sh\n";
-				entry(tar, top + "/install/migrations/registry.tsv", registry, 0644);
+				String content = registry;
+				if (content == null)
+					content = registry(version, defect);
+				entry(tar, top + "/install/migrations/registry.tsv", content, 0644);
 			}
 			entry(tar, top + "/version", version, 0644);
 			int feature = INSTALLED_FEATURE;
@@ -373,6 +402,25 @@ public final class Releases implements ReleaseSource
 			}
 		}
 		return bytes.toByteArray();
+	}
+
+	/**
+	 * Returns the migration registry that a release defect selects.
+	 *
+	 * @param version the release version
+	 * @param defect  the corrupted property, or empty
+	 * @return the registry's content
+	 */
+	private static String registry(String version, String defect)
+	{
+		String layout = StagedRelease.LAYOUT_MIGRATION + "\tper-harness-layout.sh\n";
+		return switch (defect)
+		{
+			case "migration" -> version + "\tmigrate.sh\n";
+			case "layout" -> layout;
+			case "layoutAndMigration" -> layout + version + "\tmigrate.sh\n";
+			default -> "# No migration\n";
+		};
 	}
 
 	/**

@@ -35,7 +35,7 @@ public final class InstallTest
 
 	/**
 	 * Install adds the release where the harness has no plugin, binds it to the installation's runtime, registers it
-	 * with the harness and records the highest version.
+	 * with the harness.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -61,8 +61,6 @@ public final class InstallTest
 			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
-			requireThat(Files.readString(data.resolve("state/harness-a/highest-version")), "highest").
-				isEqualTo("1.1\n");
 		}
 	}
 
@@ -174,8 +172,6 @@ public final class InstallTest
 			requireThat(Files.exists(home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
 			requireThat(Files.exists(data.resolve("state/harness-a/activation.json"), NOFOLLOW_LINKS), "journal").
 				isFalse();
-			requireThat(Files.exists(data.resolve("state/harness-a/highest-version"), NOFOLLOW_LINKS), "highest").
-				isFalse();
 		}
 	}
 
@@ -214,33 +210,6 @@ public final class InstallTest
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.exists(home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
 			requireThat(Files.exists(journal, NOFOLLOW_LINKS), "journalAfterRecovery").isFalse();
-		}
-	}
-
-	/**
-	 * Install where the harness has no plugin adds the release that the installation runs, also when the harness has
-	 * had a newer release.
-	 *
-	 * @throws IOException    if the fixture cannot be created or inspected
-	 * @throws TrustException if the test policy is invalid
-	 */
-	@Test
-	public void installAfterNewerAddsSelectedRelease() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("install-highest-"));
-			Path home = Files.createDirectories(root.resolve("home"));
-			Path data = root.resolve("data");
-			Releases.installation(data, "1.1");
-			Files.createDirectories(data.resolve("state/harness-a"));
-			Files.writeString(data.resolve("state/harness-a/highest-version"), "1.2\n");
-
-			UpdateResult result = engine(root, home, new Releases("1.1", "")).install(null,
-				new RecordingIntegration().session());
-
-			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
 		}
 	}
 
@@ -397,8 +366,6 @@ public final class InstallTest
 			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
-			requireThat(Files.readString(root.resolve("data/state/harness-a/highest-version")), "highest").
-				isEqualTo("1.1\n");
 		}
 	}
 

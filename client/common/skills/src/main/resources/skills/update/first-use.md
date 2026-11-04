@@ -48,6 +48,10 @@
 	- When the user asks to update CAT to a release they name, run `<launcher> update --harness <h> <tag>`, with the
 		release's tag such as `v1.1`. This is also how to move to a release other than the one that the installation
 		runs. An update moves the Java runtime, the updater and the plugin together.
+	- When the user asks to go back to an earlier release, run `<launcher> update --harness <h> <tag>` with the tag of
+		the release they name, such as `v1.1`. When they do not name one, run `<launcher> status --harness <h>` first,
+		and use the release that its `previous_version` field names; when that field is absent, ask the user which
+		release to go back to. An update without a release never goes back to an earlier one.
 	- When the user asks only whether a newer release exists, or which release is active, run
 		`<launcher> status --harness <h>`, report what it prints, and stop. When its `installed` field is false, CAT's
 		plugin is absent: say so, and offer to install it. When its `pending_swap` field is present, the operation that
@@ -69,8 +73,9 @@
 		runtime cannot run the release: give the user that command as step 2 describes, for the tag that the message
 		names or else for the latest release. When the message says that `install` adds only the release that the
 		installation runs, run `<launcher> update --harness <h> <tag>` for the release that the message names only when
-		the user asked for that release. When the message says that the release is older than one that was installed
-		before, installing it is the user's decision: tell the user, and give the entry command only when they ask.
+		the user asked for that release. When the message says that CAT's data structures changed between the releases
+		and are not backward compatible, the earlier release would lose the user's data: report the message to the
+		user as it is, and do not retry the update or go back in any other way.
 	- `download_failed`: report its `message`.
 	- `restored`: report that the operation failed and that the previous state is still active, with its `message`.
 	- `not_restored`: report that the operation failed and that the previous state could not be restored, show each of

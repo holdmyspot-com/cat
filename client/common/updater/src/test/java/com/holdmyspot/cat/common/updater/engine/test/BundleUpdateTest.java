@@ -174,34 +174,6 @@ public final class BundleUpdateTest
 	}
 
 	/**
-	 * An update to a release below the highest version that the harness has had is refused without changes.
-	 *
-	 * @throws IOException    if the fixture cannot be created or inspected
-	 * @throws TrustException if the test policy is invalid
-	 */
-	@Test
-	public void refusesVersionBelowHighest() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("bundle-highest-"));
-			Path data = root.resolve("data");
-			Path home = plugin(root, "1.0");
-			Releases.installation(data, "1.0");
-			Files.createDirectories(data.resolve("state/harness-a"));
-			Files.writeString(data.resolve("state/harness-a/highest-version"), "1.2\n");
-			Map<String, String> before = Releases.snapshot(root);
-
-			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
-				new RecordingIntegration().session());
-
-			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
-			requireThat(result.message(), "message").contains("1.2");
-			requireThat(Releases.snapshot(root), "after").isEqualTo(before);
-		}
-	}
-
-	/**
 	 * Supplies releases whose updater archive is missing, unauthenticated or without stable launchers, or whose runtime
 	 * cannot run the release's updater or plugin.
 	 *

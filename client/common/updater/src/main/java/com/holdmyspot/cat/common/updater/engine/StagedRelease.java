@@ -12,7 +12,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.StreamReadFeature;
@@ -209,9 +211,61 @@ public final class StagedRelease
 	private static void requireNoPendingMigration(Path tree, ReleaseVersion recorded, ReleaseVersion version)
 		throws IOException, TrustException
 	{
+		for (Migration migration : migrations(tree))
+		{
+			ReleaseVersion target = migration.version();
+			if (target.compareTo(recorded) > 0 && target.compareTo(version) <= 0)
+			{
+				throw refusal("Release " + version + " requires data migration " + target +
+					"; run the release's explicit installation command instead of routine update");
+			}
+		}
+	}
+
+	/**
+	 * Returns the data migrations that a release registers after an older release, up to and including a newer one,
+	 * leaving out {@link #LAYOUT_MIGRATION} and every earlier one, which every installation of this updater has
+	 * already performed.
+	 *
+	 * @param tree  a validated plugin tree
+	 * @param older the older release
+	 * @param newer the newer release
+	 * @return the migrations' script names, in registry order
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws TrustException       if the registry is absent or malformed
+	 * @throws IOException          if the registry cannot be read
+	 */
+	public static List<String> migrationsAfter(Path tree, ReleaseVersion older, ReleaseVersion newer)
+		throws IOException, TrustException
+	{
+		requireThat(tree, "tree").isNotNull();
+		requireThat(older, "older").isNotNull();
+		requireThat(newer, "newer").isNotNull();
+		ReleaseVersion layout = ReleaseVersion.parse(LAYOUT_MIGRATION);
+		List<String> scripts = new ArrayList<>();
+		for (Migration migration : migrations(tree))
+		{
+			ReleaseVersion target = migration.version();
+			if (target.compareTo(layout) > 0 && target.compareTo(older) > 0 && target.compareTo(newer) <= 0)
+				scripts.add(migration.script());
+		}
+		return scripts;
+	}
+
+	/**
+	 * Reads a release's migration registry. Comments and blank lines are skipped.
+	 *
+	 * @param tree a validated plugin tree
+	 * @return the registered migrations, in registry order
+	 * @throws TrustException if the registry is absent or malformed
+	 * @throws IOException    if the registry cannot be read
+	 */
+	private static List<Migration> migrations(Path tree) throws IOException, TrustException
+	{
 		Path registry = tree.resolve("install/migrations/registry.tsv");
 		if (!Files.isRegularFile(registry))
 			throw refusal("The staged release lacks install/migrations/registry.tsv; use explicit installation");
+		List<Migration> migrations = new ArrayList<>();
 		try (BufferedReader reader = Files.newBufferedReader(registry, UTF_8))
 		{
 			for (String line = readRegistryLine(reader); line != null; line = readRegistryLine(reader))
@@ -221,15 +275,20 @@ public final class StagedRelease
 				String[] fields = line.split("\t", -1);
 				if (fields.length != 2 || fields[1].isBlank())
 					throw refusal("A migration registry line must contain a version, TAB, and script name");
-				ReleaseVersion target = ReleaseVersion.parse(fields[0]);
-				boolean pending = target.compareTo(recorded) > 0 && target.compareTo(version) <= 0;
-				if (pending)
-				{
-					throw refusal("Release " + version + " requires data migration " + target +
-						"; run the release's explicit installation command instead of routine update");
-				}
+				migrations.add(new Migration(ReleaseVersion.parse(fields[0]), fields[1]));
 			}
 		}
+		return migrations;
+	}
+
+	/**
+	 * A data migration that a release's registry names.
+	 *
+	 * @param version the release whose data structures the migration produces
+	 * @param script  the script's path relative to the registry's directory
+	 */
+	private record Migration(ReleaseVersion version, String script)
+	{
 	}
 
 	/**

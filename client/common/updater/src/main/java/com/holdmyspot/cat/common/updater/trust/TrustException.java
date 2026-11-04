@@ -84,10 +84,6 @@ public final class TrustException extends Exception
 		/**
 		 * The release's major version is newer than the policy allows.
 		 */
-		ABOVE_MAXIMUM_MAJOR,
-		/**
-		 * The release is older than the active installation.
-		 */
-		DOWNGRADE
+		ABOVE_MAXIMUM_MAJOR
 	}
 }

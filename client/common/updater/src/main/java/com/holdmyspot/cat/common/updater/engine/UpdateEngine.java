@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.updater.engine;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
-import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
@@ -60,10 +59,6 @@ public final class UpdateEngine
 	 * The release selector with which install names the latest approved release.
 	 */
 	public static final String LATEST = "latest";
-	/**
-	 * The largest recorded highest version, including its newline.
-	 */
-	private static final int MAXIMUM_VERSION_BYTES = 128;
 	/**
 	 * The plugin-relative file that names the Java runtime the plugin runs on.
 	 */
@@ -491,14 +486,7 @@ public final class UpdateEngine
 			}
 			verified = ManifestVerifier.verify(new ByteArrayInputStream(source.manifest(tag)),
 				new ByteArrayInputStream(source.signature(tag)), policy);
-			ReleaseVersion compared = null;
-			if (mode != Mode.SETUP && active != null)
-			{
-				compared = ReleaseVersion.parse(active);
-				if (current != null && ReleaseVersion.parse(current).compareTo(compared) > 0)
-					compared = ReleaseVersion.parse(current);
-			}
-			ReleaseApproval.approveUpdate(verified, policy, requested, compared);
+			ReleaseApproval.approveUpdate(verified, policy, requested);
 		}
 		catch (IOException e)
 		{
@@ -513,15 +501,11 @@ public final class UpdateEngine
 			return result(Result.UP_TO_DATE, active, previousBundle(transaction).orElse(null), "CAT is up to date.",
 				List.of());
 		}
-		if (mode == Mode.UPDATE)
+		boolean downgrade = bundled && verified.manifest().version().compareTo(ReleaseVersion.parse(active)) < 0;
+		if (downgrade && (requestedTag == null || requestedTag.equals(LATEST)))
 		{
-			Optional<ReleaseVersion> highest = highestVersion();
-			if (highest.isPresent() && verified.manifest().version().compareTo(highest.get()) < 0)
-			{
-				return result(Result.REFUSED, active, null, "Release " + version + " is older than " +
-					highest.get() + ", the highest version this harness has had; run the entry command to choose an " +
-					"older release.", List.of());
-			}
+			return result(Result.REFUSED, active, null, "The latest release " + version + " is older than the " +
+				"active release " + active + "; name a release to install an older one.", List.of());
 		}
 		ReleaseAsset asset = verified.manifest().findPlugin(activation.harness(), platform).orElse(null);
 		if (asset == null)
@@ -542,6 +526,12 @@ public final class UpdateEngine
 			String running = current;
 			return inScratch((download, extractRoot) ->
 			{
+				if (downgrade)
+				{
+					Optional<UpdateResult> refusal = refuseDataChange(version, active, download, extractRoot);
+					if (refusal.isPresent())
+						return refusal.get();
+				}
 				try
 				{
 					source.download(releaseTag, asset.name(), asset.size(), download.resolve(asset.name()));
@@ -592,6 +582,52 @@ public final class UpdateEngine
 			TarGzExtractor.extract(input, extract, asset.topDirectory());
 		}
 		return extract.resolve(asset.topDirectory());
+	}
+
+	/**
+	 * Refuses an update to an older release when the active release registers a data migration after it. The active
+	 * release's migration registry comes from its plugin archive, which its signed manifest authenticates.
+	 *
+	 * @param older       the older release
+	 * @param active      the active release
+	 * @param download    the directory of downloaded archives
+	 * @param extractRoot the directory for extracted trees
+	 * @return the refusal, or empty when the older release uses the active release's data structures
+	 * @throws IOException    if the active release's archive or registry is invalid
+	 * @throws TrustException if the active release is not approved or its registry is malformed
+	 */
+	private Optional<UpdateResult> refuseDataChange(String older, String active, Path download, Path extractRoot)
+		throws IOException, TrustException
+	{
+		String tag = "v" + active;
+		Path activeDownload = StateFiles.createTemporaryDirectory(download, "active-");
+		ReleaseAsset asset;
+		try
+		{
+			VerifiedManifest verified = ManifestVerifier.verify(new ByteArrayInputStream(source.manifest(tag)),
+				new ByteArrayInputStream(source.signature(tag)), policy);
+			ReleaseApproval.approveUpdate(verified, policy, ReleaseVersion.parse(active));
+			asset = verified.manifest().findPlugin(activation.harness(), platform).orElse(null);
+			if (asset == null)
+			{
+				return Optional.of(result(Result.REFUSED, active, null, "The active release " + active + " has no " +
+					"plugin for this harness and platform, so its data structures cannot be compared with release " +
+					older + ".", List.of()));
+			}
+			source.download(tag, asset.name(), asset.size(), activeDownload.resolve(asset.name()));
+		}
+		catch (IOException e)
+		{
+			return Optional.of(result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of()));
+		}
+		Path tree = extract(activeDownload, extractRoot, asset);
+		List<String> changes = StagedRelease.migrationsAfter(tree, ReleaseVersion.parse(older),
+			ReleaseVersion.parse(active));
+		if (changes.isEmpty())
+			return Optional.empty();
+		return Optional.of(result(Result.REFUSED, active, null, "Release " + older + " is older than the active " +
+			"release " + active + ", and CAT's data structures changed between them (" + String.join(", ", changes) +
+			"). They are not backward compatible, so installing " + older + " would lose data.", List.of()));
 	}
 
 	/**
@@ -675,7 +711,6 @@ public final class UpdateEngine
 				LinkSafeDeletion.delete(path, home);
 			transaction.install(tree, activation.installPlan(home, version), migrationFile, version,
 				() -> registerOrUnregister(session, home));
-			recordHighestVersion(version);
 			return result(Result.INSTALLED, version, null, withWarning("CAT was installed.", transaction),
 				List.of()).withAotCache(train(home, version, runtime));
 		}
@@ -683,7 +718,6 @@ public final class UpdateEngine
 			transaction.repair(tree, activation.plan(home, version), migrationFile, version, register);
 		else
 			transaction.activate(tree, activation.plan(home, version), migrationFile, active, version, register);
-		recordHighestVersion(version);
 		return result(Result.UPDATED, version, active, withWarning("CAT was updated.", transaction), List.of()).
 			withAotCache(train(home, version, runtime));
 	}
@@ -817,7 +851,6 @@ public final class UpdateEngine
 			cancelSwap(version, e);
 			throw new ActivationTransaction.ActivationFailure(e, restored);
 		}
-		recordHighestVersion(version);
 		return result(Result.UPDATED, version, running, withWarning("CAT was updated; the stable launcher " +
 			"replaces the Java runtime once the updater exits.", transaction), List.of()).withAotCache(trained);
 	}
@@ -1066,39 +1099,6 @@ public final class UpdateEngine
 				"Java runtime is " + description.javaVersion() + "; rerun the entry command of a newer release to " +
 				"update the runtime.");
 		}
-	}
-
-	/**
-	 * Returns the highest version ever activated for the harness.
-	 *
-	 * @return the version, or empty if none was recorded
-	 * @throws IOException    if the record is unreadable
-	 * @throws TrustException if the record is malformed
-	 */
-	private Optional<ReleaseVersion> highestVersion() throws IOException, TrustException
-	{
-		Path file = state.highestVersion();
-		StateFiles.requireNoLinks(file);
-		if (!Files.exists(file, NOFOLLOW_LINKS))
-			return Optional.empty();
-		String text = BoundedInput.readUtf8(file, MAXIMUM_VERSION_BYTES, "The highest activated version");
-		return Optional.of(ReleaseVersion.parse(text.strip()));
-	}
-
-	/**
-	 * Records an activated version when it is higher than every earlier one.
-	 *
-	 * @param version the activated version
-	 * @throws IOException    if the record cannot be read or written
-	 * @throws TrustException if the record or version is malformed
-	 */
-	private void recordHighestVersion(String version) throws IOException, TrustException
-	{
-		ReleaseVersion activated = ReleaseVersion.parse(version);
-		Optional<ReleaseVersion> highest = highestVersion();
-		if (highest.isPresent() && highest.get().compareTo(activated) >= 0)
-			return;
-		StateFiles.write(state.highestVersion(), (activated + "\n").getBytes(StandardCharsets.UTF_8));
 	}
 
 	/**

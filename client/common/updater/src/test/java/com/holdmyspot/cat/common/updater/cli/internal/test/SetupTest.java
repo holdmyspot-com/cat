@@ -91,8 +91,6 @@ public final class SetupTest
 			requireThat(outcome.permissions(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
 			requireThat(Files.readString(data.resolve("state/permissions/harness-a.json")), "record").
 				contains("settings.json").contains("entry");
-			requireThat(Files.readString(data.resolve("state/harness-a/highest-version")), "highest").
-				isEqualTo("1.2\n");
 		}
 	}
 

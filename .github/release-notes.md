@@ -27,9 +27,9 @@ command again once for each harness you use, because that build's updater cannot
 After that, ask your agent. CAT's `update` skill installs and updates CAT through the installed trusted
 updater, and installs the plugin again when you removed it by other means. An update moves the installation's Java
 runtime, updater and plugin to the new release together, and the previous bundle stays until the next successful update.
-The updater verifies signed metadata and
-archive digests against its existing policy, and refuses a release whose Java requirement the runtime that would run it
-does not meet; in that case, run the newer release's command above again. An update never changes the policy's keys,
+Naming an older release goes back to it, unless CAT's data structures changed since that release. The updater verifies
+signed metadata and archive digests against its existing policy, and refuses a release whose Java requirement the
+runtime that would run it does not meet; in that case, run the newer release's command above again. An update never changes the policy's keys,
 release source or version limits.
 
 This release's manifest, `cat-release-manifest.json`, is signed with the Ed25519 public key whose X.509 encoding has

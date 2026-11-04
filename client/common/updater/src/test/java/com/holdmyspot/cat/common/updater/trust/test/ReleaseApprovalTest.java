@@ -56,18 +56,16 @@ public final class ReleaseApprovalTest
 	 * @param release   the verified release
 	 * @param policy    the policy
 	 * @param requested the requested version, or {@code null} for the latest
-	 * @param active    the active version, or {@code null} when CAT is not installed
 	 * @return the reason for the refusal
 	 * @throws TrustException if a version is malformed
 	 */
-	private static Reason updateRefusal(VerifiedManifest release, TrustPolicy policy, String requested,
-		String active) throws TrustException
+	private static Reason updateRefusal(VerifiedManifest release, TrustPolicy policy, String requested)
+		throws TrustException
 	{
 		ReleaseVersion requestedVersion = parseOrNull(requested);
-		ReleaseVersion activeVersion = parseOrNull(active);
 		try
 		{
-			ReleaseApproval.approveUpdate(release, policy, requestedVersion, activeVersion);
+			ReleaseApproval.approveUpdate(release, policy, requestedVersion);
 		}
 		catch (TrustException e)
 		{
@@ -91,8 +89,8 @@ public final class ReleaseApprovalTest
 	}
 
 	/**
-	 * A release signed by a trusted key, within the policy's versions, and newer than or equal to the active one, is
-	 * approved for an update whether it is the latest or the requested version, and on a first installation.
+	 * A release signed by a trusted key and within the policy's versions is approved for an update whether it is the
+	 * latest or the requested version.
 	 *
 	 * @throws TrustException if the release is refused
 	 * @throws IOException    if the bytes cannot be read
@@ -104,9 +102,8 @@ public final class ReleaseApprovalTest
 		TrustPolicy policy = policy(List.of(trusted("release-key", signer)));
 		VerifiedManifest release = release("1.2", signer, policy);
 
-		ReleaseApproval.approveUpdate(release, policy, null, null);
-		ReleaseApproval.approveUpdate(release, policy, ReleaseVersion.parse("1.2"), ReleaseVersion.parse("1.1.5"));
-		ReleaseApproval.approveUpdate(release, policy, null, ReleaseVersion.parse("1.2"));
+		ReleaseApproval.approveUpdate(release, policy, null);
+		ReleaseApproval.approveUpdate(release, policy, ReleaseVersion.parse("1.2"));
 	}
 
 	/**
@@ -122,26 +119,26 @@ public final class ReleaseApprovalTest
 		TrustPolicy policy = policy(List.of(trusted("release-key", signer)));
 		VerifiedManifest release = release("1.2", signer, policy);
 
-		requireThat(updateRefusal(release, policy, "1.1", null), "older").isEqualTo(Reason.VERSION_MISMATCH);
-		requireThat(updateRefusal(release, policy, "1.2.0", null), "otherSpelling").
+		requireThat(updateRefusal(release, policy, "1.1"), "older").isEqualTo(Reason.VERSION_MISMATCH);
+		requireThat(updateRefusal(release, policy, "1.2.0"), "otherSpelling").
 			isEqualTo(Reason.VERSION_MISMATCH);
 	}
 
 	/**
-	 * A release older than the active one is refused for an update.
+	 * A release older than every other one is approved, because whether it may replace the active release depends on
+	 * the installation's data, which the engine checks.
 	 *
-	 * @throws TrustException if a release is refused before approval
+	 * @throws TrustException if the release is refused
 	 * @throws IOException    if the bytes cannot be read
 	 */
 	@Test
-	public void refusesDowngrade() throws TrustException, IOException
+	public void approvesOlderRelease() throws TrustException, IOException
 	{
 		KeyPair signer = keyPair();
 		TrustPolicy policy = policy(List.of(trusted("release-key", signer)));
 		VerifiedManifest release = release("1.9", signer, policy);
 
-		requireThat(updateRefusal(release, policy, null, "1.10"), "latest").isEqualTo(Reason.DOWNGRADE);
-		requireThat(updateRefusal(release, policy, "1.9", "1.10"), "requested").isEqualTo(Reason.DOWNGRADE);
+		ReleaseApproval.approveUpdate(release, policy, ReleaseVersion.parse("1.9"));
 	}
 
 	/**
@@ -158,8 +155,8 @@ public final class ReleaseApprovalTest
 		VerifiedManifest belowMinimum = release("1.1.9", signer, policy);
 		VerifiedManifest aboveMajor = release("2.0", signer, policy);
 
-		requireThat(updateRefusal(belowMinimum, policy, null, null), "belowMinimum").isEqualTo(Reason.BELOW_MINIMUM);
-		requireThat(updateRefusal(aboveMajor, policy, null, null), "aboveMajor").isEqualTo(Reason.ABOVE_MAXIMUM_MAJOR);
+		requireThat(updateRefusal(belowMinimum, policy, null), "belowMinimum").isEqualTo(Reason.BELOW_MINIMUM);
+		requireThat(updateRefusal(aboveMajor, policy, null), "aboveMajor").isEqualTo(Reason.ABOVE_MAXIMUM_MAJOR);
 	}
 
 	/**
@@ -176,6 +173,6 @@ public final class ReleaseApprovalTest
 		VerifiedManifest release = release("1.2", signer, policy(List.of(key)));
 		TrustPolicy replaced = policy(List.of(trusted("release-key", keyPair())));
 
-		requireThat(updateRefusal(release, replaced, null, null), "reason").isEqualTo(Reason.SIGNATURE_NOT_VERIFIED);
+		requireThat(updateRefusal(release, replaced, null), "reason").isEqualTo(Reason.SIGNATURE_NOT_VERIFIED);
 	}
 }
