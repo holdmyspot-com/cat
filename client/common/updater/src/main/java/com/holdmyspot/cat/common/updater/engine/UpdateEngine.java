@@ -46,6 +46,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -120,6 +121,30 @@ public final class UpdateEngine
 	public UpdateEngine(Path dataDirectory, TrustPolicy policy, ReleaseSource source, PluginActivation activation,
 		String platform, Clock clock, Waiting waiting, Duration lockWait)
 	{
+		this(dataDirectory, policy, source, activation, platform, clock, waiting, lockWait,
+			ProcessElevation::isElevated);
+	}
+
+	/**
+	 * Creates an engine with an explicit lock wait and check of administrative rights, which decides whether startup
+	 * cache training runs.
+	 *
+	 * @param dataDirectory protected updater data directory, which contains the installation's Java runtime
+	 * @param policy        protected policy
+	 * @param source        release transport
+	 * @param activation    the selected harness's activation provider
+	 * @param platform      the release platform identifier
+	 * @param clock         operation time source
+	 * @param waiting       creates pauses between lock attempts
+	 * @param lockWait      nonnegative maximum wait for the harness lock
+	 * @param elevation     returns whether this process runs with administrative rights, given a directory that the
+	 *                      check may write short-lived files to
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code platform} is blank or {@code lockWait} is negative
+	 */
+	public UpdateEngine(Path dataDirectory, TrustPolicy policy, ReleaseSource source, PluginActivation activation,
+		String platform, Clock clock, Waiting waiting, Duration lockWait, Predicate<Path> elevation)
+	{
 		requireThat(dataDirectory, "dataDirectory").isNotNull();
 		requireThat(policy, "policy").isNotNull();
 		requireThat(source, "source").isNotNull();
@@ -128,6 +153,7 @@ public final class UpdateEngine
 		requireThat(clock, "clock").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(lockWait, "lockWait").isGreaterThanOrEqualTo(Duration.ZERO);
+		requireThat(elevation, "elevation").isNotNull();
 		this.state = UpdaterState.of(dataDirectory, activation.harness());
 		this.data = dataDirectory.toAbsolutePath().normalize();
 		boolean windows = Arrays.stream(Platform.values()).
@@ -145,7 +171,7 @@ public final class UpdateEngine
 		this.lockWait = lockWait;
 		Path trainingScratch = state.directory().resolve("startup-cache");
 		this.trainer = new StartupCacheTrainer(trainingScratch, Duration.ofMinutes(1),
-			() -> ProcessElevation.isElevated(trainingScratch));
+			() -> elevation.test(trainingScratch));
 	}
 
 	/**

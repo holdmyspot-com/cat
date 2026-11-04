@@ -412,7 +412,8 @@ public final class BundleUpdateTest
 	}
 
 	/**
-	 * Creates an engine for the fixture's harness that does not wait for the lock.
+	 * Creates an engine for the fixture's harness that does not wait for the lock and runs as a user without
+	 * administrative rights.
 	 *
 	 * @param data   the installation's updater data directory
 	 * @param home   the harness home
@@ -422,7 +423,9 @@ public final class BundleUpdateTest
 	 */
 	static UpdateEngine engine(Path data, Path home, Releases source) throws TrustException
 	{
+		// GitHub's Windows runners run as administrators, which an installation never trains a startup cache for; these
+		// tests concern what the operations train for a user without those rights
 		return new UpdateEngine(data, source.policy(home), source, new LiveProvider(), "linux-x64",
-			Clock.systemUTC(), interval -> () -> {}, Duration.ZERO);
+			Clock.systemUTC(), interval -> () -> {}, Duration.ZERO, _ -> false);
 	}
 }
