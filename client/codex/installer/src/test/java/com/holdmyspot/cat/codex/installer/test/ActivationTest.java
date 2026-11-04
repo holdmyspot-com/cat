@@ -125,6 +125,26 @@ public final class ActivationTest
 	}
 
 	/**
+	 * Of two plugin copies of one release, the copy that names its build is the installed version, whichever copy sorts
+	 * first.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void prefersCopyThatNamesBuild() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, "1.1+b0123456789ab", "1.1+b0123456789ab", "1.1+b0123456789ab");
+			cache(home, "1.1", "1.1");
+
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.of("1.1+b0123456789ab"), true));
+		}
+	}
+
+	/**
 	 * A plugin copy that names another build of the same release does not count as the installed version.
 	 *
 	 * @throws IOException if a fixture cannot be written or read

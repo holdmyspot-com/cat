@@ -487,7 +487,11 @@ public final class CodexActivation implements PluginActivation
 				ReleaseVersion version = release(name);
 				if (version == null)
 					continue;
-				if (highest == null || version.compareTo(highest) > 0)
+				int order = 1;
+				if (highest != null)
+					order = version.compareTo(highest);
+				// Of two folders of one release, the one that names its build is the one that Codex created
+				if (order > 0 || (order == 0 && name.contains(PluginVersion.BUILD_SEPARATOR)))
 				{
 					highest = version;
 					selected = name;
