@@ -8,6 +8,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
+import com.holdmyspot.cat.common.updater.engine.UninstallResult;
 import com.holdmyspot.cat.common.updater.engine.Uninstaller;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
@@ -59,9 +60,10 @@ public final class UninstallTest
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-")));
 			RecordingIntegration integration = new RecordingIntegration();
 
-			UpdateResult result = fixture.uninstaller(integration).uninstall(false);
+			UninstallResult result = fixture.uninstaller(integration).uninstall(false);
 
-			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
+			requireThat(result.outcome().result(), "result").isEqualTo(Result.UNINSTALLED);
+			requireThat(result.unregistered(), "unregistered").isTrue();
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("unregister", "removePermissions"));
 			requireThat(integration.removed(), "removed").isEqualTo(List.of(Map.of("settings.json",
 				List.of("entry"))));
@@ -72,6 +74,34 @@ public final class UninstallTest
 			requireThat(Files.exists(fixture.user.resolve(".cat/rules/rule.md"), NOFOLLOW_LINKS), "rules").isTrue();
 			requireThat(Files.exists(fixture.policy, NOFOLLOW_LINKS), "policy").isFalse();
 			requireThat(Files.exists(fixture.policy.getParent(), NOFOLLOW_LINKS), "policyDirectory").isFalse();
+		}
+	}
+
+	/**
+	 * When the harness program that setup recorded no longer exists, uninstall cannot unregister the plugin, so it
+	 * reports that, and still removes everything else.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void removesInstallationWithoutProgram() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-program-")));
+			Files.delete(fixture.program);
+			RecordingIntegration integration = new RecordingIntegration();
+
+			UninstallResult result = fixture.uninstaller(integration).uninstall(true);
+
+			requireThat(result.outcome().result(), "result").isEqualTo(Result.UNINSTALLED);
+			requireThat(result.unregistered(), "unregistered").isFalse();
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("removePermissions"));
+			requireThat(Files.exists(fixture.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
+			requireThat(Files.exists(fixture.home.resolve("plugin-data"), NOFOLLOW_LINKS), "data").isFalse();
+			requireThat(Files.exists(fixture.user.resolve(".cat/bundles"), NOFOLLOW_LINKS), "bundles").isFalse();
+			requireThat(Files.exists(fixture.policy, NOFOLLOW_LINKS), "policy").isFalse();
 		}
 	}
 
@@ -88,7 +118,7 @@ public final class UninstallTest
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-data-")));
 
-			UpdateResult result = fixture.uninstaller(new RecordingIntegration()).uninstall(true);
+			UpdateResult result = fixture.uninstaller(new RecordingIntegration()).uninstall(true).outcome();
 
 			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
 			requireThat(Files.exists(fixture.home.resolve("plugin-data"), NOFOLLOW_LINKS), "data").isFalse();
@@ -110,7 +140,7 @@ public final class UninstallTest
 			Path other = Files.createDirectories(fixture.data.resolveSibling("harness-b"));
 			Files.writeString(other.resolve("current"), "1.0\n");
 
-			UpdateResult result = fixture.uninstaller(new RecordingIntegration()).uninstall(false);
+			UpdateResult result = fixture.uninstaller(new RecordingIntegration()).uninstall(false).outcome();
 
 			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
 			requireThat(Files.exists(fixture.user.resolve(".cat/bundles/bundle"), NOFOLLOW_LINKS), "bundles").isTrue();
@@ -132,7 +162,7 @@ public final class UninstallTest
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-failure-")));
 			RecordingIntegration integration = new RecordingIntegration().fail("removePermissions");
 
-			UpdateResult failed = fixture.uninstaller(integration).uninstall(false);
+			UpdateResult failed = fixture.uninstaller(integration).uninstall(false).outcome();
 
 			requireThat(failed.result(), "result").isEqualTo(Result.NOT_REMOVED);
 			requireThat(failed.result().exitStatus(), "exitStatus").isNotEqualTo(0);
@@ -140,7 +170,7 @@ public final class UninstallTest
 			requireThat(Files.exists(fixture.data.resolve("state/uninstall.json"), NOFOLLOW_LINKS), "journal").isTrue();
 			requireThat(Files.exists(fixture.policy, NOFOLLOW_LINKS), "policy").isTrue();
 
-			UpdateResult retried = fixture.uninstaller(integration.succeed("removePermissions")).uninstall(false);
+			UpdateResult retried = fixture.uninstaller(integration.succeed("removePermissions")).uninstall(false).outcome();
 
 			requireThat(retried.result(), "retried").isEqualTo(Result.UNINSTALLED);
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("unregister", "removePermissions",
@@ -183,7 +213,7 @@ public final class UninstallTest
 				quoted + ", \"retained\": []}\n");
 			RecordingIntegration integration = new RecordingIntegration();
 
-			UpdateResult result = fixture.uninstaller(integration).uninstall(true);
+			UpdateResult result = fixture.uninstaller(integration).uninstall(true).outcome();
 
 			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
 			List<String> expectedCalls = new ArrayList<>();
@@ -202,7 +232,7 @@ public final class UninstallTest
 	}
 
 	/**
-	 * One harness's installation: its home, the user's home, its data directory and its policy.
+	 * One harness's installation: its home, the user's home, its data directory, its policy and its harness program.
 	 */
 	private static final class Fixture
 	{
@@ -210,6 +240,7 @@ public final class UninstallTest
 		private final Path user;
 		private final Path data;
 		private final Path policy;
+		private final Path program;
 		private final TrustPolicy trust;
 
 		/**
@@ -239,7 +270,10 @@ public final class UninstallTest
 				"{\"settings.json\": [\"entry\"]}\n");
 			this.policy = root.resolve("config/harness-a/policy.json");
 			Files.createDirectories(policy.getParent());
-			HarnessCommand command = new HarnessCommand(List.of(root.resolve("bin/harness-a").toString()),
+			this.program = Files.createDirectories(root.resolve("bin")).resolve("harness-a");
+			Files.writeString(program, "#!/bin/sh\n");
+			requireThat(program.toFile().setExecutable(true), "executable").isTrue();
+			HarnessCommand command = new HarnessCommand(List.of(program.toString()),
 				Map.of("HOME", user.toString()));
 			this.trust = TrustPolicy.of(List.of(trusted("key", keyPair())), URI.create("https://releases.example/cat"),
 				ReleaseVersion.parse("1.0"), 1, Map.of("harness-a", home), Map.of("harness-a", command));

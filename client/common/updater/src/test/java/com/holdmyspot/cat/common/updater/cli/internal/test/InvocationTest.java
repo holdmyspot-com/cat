@@ -217,8 +217,8 @@ public final class InvocationTest
 	}
 
 	/**
-	 * When the recorded harness program no longer exists, an operation that would run it is refused with the entry
-	 * command that records it again, before anything changes.
+	 * When the recorded harness program no longer exists, an install or update, which must register the plugin, is
+	 * refused with the entry command that records it again, before anything changes.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -232,13 +232,10 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			Files.delete(installation.program);
 			RecordingIntegration integration = new RecordingIntegration();
-			for (String operation : List.of("install", "update", "uninstall"))
+			for (String operation : List.of("install", "update"))
 			{
-				String[] arguments = {operation, "--harness", "harness-a"};
-				if (operation.equals("uninstall"))
-					arguments = new String[]{operation};
-
-				Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, arguments);
+				Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, operation, "--harness",
+					"harness-a");
 
 				requireThat(run.status, "status").isEqualTo(3);
 				requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
@@ -281,6 +278,70 @@ public final class InvocationTest
 			requireThat(integration.calls(), "calls").contains("unregister");
 			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
 			requireThat(Files.exists(installation.policyFile, NOFOLLOW_LINKS), "policy").isFalse();
+		}
+	}
+
+	/**
+	 * When the recorded harness program no longer exists, uninstall still removes CAT, skipping only the unregistration
+	 * that needs the program, and its saved result says that the plugin was not unregistered.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void uninstallsWithoutHarnessProgram() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-no-program-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.createDirectories(installation.home.resolve("live"));
+			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			Files.delete(installation.program);
+			RecordingIntegration integration = new RecordingIntegration();
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+
+			requireThat(run.status, "status").isEqualTo(79);
+			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(
+				installation.data.resolve("state/uninstall-result.json"), UTF_8));
+			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(result.path("unregistered").isBoolean(), "isBoolean").isTrue();
+			requireThat(result.path("unregistered").booleanValue(), "unregistered").isFalse();
+			requireThat(integration.calls(), "calls").doesNotContain("unregister");
+			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
+			requireThat(Files.exists(installation.policyFile, NOFOLLOW_LINKS), "policy").isFalse();
+		}
+	}
+
+	/**
+	 * An uninstall that stopped after it unregistered the plugin continues without the harness program, which it no
+	 * longer needs, and its saved result says that the plugin was unregistered.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void resumesUninstallWithoutProgram() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-resume-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.createDirectories(installation.data.resolve("state"));
+			Files.writeString(installation.data.resolve("state/uninstall.json"),
+				"{\"format\": 1, \"completed\": [\"unregister\"], \"retained\": []}\n");
+			Files.delete(installation.program);
+			RecordingIntegration integration = new RecordingIntegration();
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+
+			requireThat(run.status, "status").isEqualTo(79);
+			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(
+				installation.data.resolve("state/uninstall-result.json"), UTF_8));
+			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(result.path("unregistered").booleanValue(), "unregistered").isTrue();
+			requireThat(integration.calls(), "calls").doesNotContain("unregister");
 		}
 	}
 

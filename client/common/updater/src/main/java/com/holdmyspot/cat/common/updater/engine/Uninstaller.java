@@ -38,10 +38,14 @@ import tools.jackson.databind.node.ObjectNode;
 public final class Uninstaller
 {
 	/**
+	 * The step that unregisters the plugin through the harness program.
+	 */
+	private static final String UNREGISTER = "unregister";
+	/**
 	 * The steps in the order in which they run. The permission entries are removed last, so that an agent can still
 	 * run an uninstall that stopped earlier.
 	 */
-	private static final List<String> STEPS = List.of("unregister", "plugin", "bundles", "data", "permissions",
+	private static final List<String> STEPS = List.of(UNREGISTER, "plugin", "bundles", "data", "permissions",
 		"policy");
 	/**
 	 * The largest supported progress record.
@@ -92,62 +96,85 @@ public final class Uninstaller
 	}
 
 	/**
-	 * Runs every step that an earlier uninstall did not complete.
+	 * Runs every step that an earlier uninstall did not complete. When the harness program that setup recorded no
+	 * longer exists, the plugin cannot be unregistered, so that step is skipped without being recorded as completed and
+	 * every other step still runs.
 	 *
 	 * @param deleteData true to delete the plugin's data directory, false to keep it
-	 * @return {@code uninstalled} when every step completed; otherwise the outcome names the failed step and the next
-	 * 	uninstall continues with it
+	 * @return {@code uninstalled} when every step that it could run completed; otherwise the outcome names the failed
+	 * 	step and the next uninstall continues with it
 	 */
-	public UpdateResult uninstall(boolean deleteData)
+	public UninstallResult uninstall(boolean deleteData)
 	{
 		Path home = policy.harnesses().get(activation.harness());
 		if (home == null)
-			return result(Result.REFUSED, "Run the explicit CAT setup command for this harness.", List.of());
+			return failure(Result.REFUSED, "Run the explicit CAT setup command for this harness.", List.of());
 		String step = STEPS.getFirst();
+		boolean unregistered;
 		try
 		{
 			Optional<ExclusiveFileLock> acquired = OperationLock.acquire(state, clock, Duration.ofMinutes(10),
 				waiting);
 			if (acquired.isEmpty())
-				return result(Result.LOCKED, "Another CAT operation holds the harness lock.", List.of());
+				return failure(Result.LOCKED, "Another CAT operation holds the harness lock.", List.of());
 			try (ExclusiveFileLock lock = acquired.get())
 			{
 				if (!lock.isValid())
-					return result(Result.LOCKED, "The harness lock is no longer valid.", List.of());
+					return failure(Result.LOCKED, "The harness lock is no longer valid.", List.of());
 				ActivationTransaction transaction = new ActivationTransaction(state, activation, home);
 				transaction.recover();
 				Progress progress = readProgress(transaction);
+				boolean programExists = programExists();
 				for (String next : STEPS)
 				{
-					if (progress.completed().contains(next))
+					if (progress.completed().contains(next) || (next.equals(UNREGISTER) && !programExists))
 						continue;
 					step = next;
 					run(next, home, deleteData, progress);
 					progress.completed().add(next);
 					writeProgress(progress);
 				}
+				unregistered = progress.completed().contains(UNREGISTER);
 			}
 		}
 		catch (LinkSafeDeletion.Refused e)
 		{
-			return result(Result.REFUSED, "Uninstall stopped at the " + step + " step: " + e.getMessage(), List.of());
+			return failure(Result.REFUSED, "Uninstall stopped at the " + step + " step: " + e.getMessage(), List.of());
 		}
 		catch (AccessDeniedException e)
 		{
-			return result(Result.NOT_WRITABLE, "Uninstall stopped at the " + step + " step because " + e.getFile() +
+			return failure(Result.NOT_WRITABLE, "Uninstall stopped at the " + step + " step because " + e.getFile() +
 				" is not writable; run uninstall again after fixing its permissions.", List.of(Path.of(e.getFile())));
 		}
 		catch (IOException | IllegalArgumentException e)
 		{
-			return result(Result.NOT_REMOVED, "Uninstall stopped at the " + step + " step: " + e.getMessage() +
+			return failure(Result.NOT_REMOVED, "Uninstall stopped at the " + step + " step: " + e.getMessage() +
 				"; run uninstall again to continue.", List.of(journal));
 		}
 		catch (InterruptedException _)
 		{
 			Thread.currentThread().interrupt();
-			return result(Result.LOCKED, "Interrupted while waiting for the harness lock.", List.of());
+			return failure(Result.LOCKED, "Interrupted while waiting for the harness lock.", List.of());
 		}
-		return result(Result.UNINSTALLED, "CAT was removed from this harness.", List.of());
+		if (unregistered)
+			return new UninstallResult(result(Result.UNINSTALLED, "CAT was removed from this harness.", List.of()), true);
+		return new UninstallResult(result(Result.UNINSTALLED, "CAT was removed from this harness, but the " +
+			activation.harness() + " program that setup recorded no longer exists, so the harness may still list the " +
+			"plugin.", List.of()), false);
+	}
+
+	/**
+	 * Returns whether the harness program that setup recorded still exists and is executable.
+	 *
+	 * @return true if the program can run
+	 */
+	private boolean programExists()
+	{
+		Optional<HarnessCommand> command = policy.command(activation.harness());
+		if (command.isEmpty())
+			return false;
+		Path program = Path.of(command.get().command().getFirst());
+		return Files.isRegularFile(program) && Files.isExecutable(program);
 	}
 
 	/**
@@ -163,7 +190,7 @@ public final class Uninstaller
 	{
 		switch (step)
 		{
-			case "unregister" -> registration.integration().unregister(home, registration.cli());
+			case UNREGISTER -> registration.integration().unregister(home, registration.cli());
 			case "plugin" ->
 			{
 				for (Path path : activation.removalPaths(home))
@@ -318,6 +345,19 @@ public final class Uninstaller
 		for (Path path : progress.retained())
 			retained.add(path.toString());
 		StateFiles.write(journal, (MAPPER.writeValueAsString(root) + "\n").getBytes(UTF_8));
+	}
+
+	/**
+	 * Builds the outcome of an uninstall that did not complete.
+	 *
+	 * @param outcome the result category
+	 * @param message the user-facing explanation
+	 * @param paths   affected paths
+	 * @return the outcome
+	 */
+	private UninstallResult failure(Result outcome, String message, List<Path> paths)
+	{
+		return new UninstallResult(result(outcome, message, paths), false);
 	}
 
 	/**

@@ -227,7 +227,9 @@ It keeps CAT's plugin data unless you ask to delete it, and it never deletes unr
 not own, or your own files, including `~/.cat/rules`. The updater deletes its own directory last, after its Java process
 has exited, and reports `uninstalled` only once the directory is gone. If it cannot delete the directory, it reports
 `not_removed` and prints the directory so that you can delete it yourself. An interrupted uninstall continues from its
-journal when you run `uninstall` again.
+journal when you run `uninstall` again. If the harness program that setup recorded no longer exists, uninstall cannot
+unregister the plugin: it removes everything else and reports `uninstalled` with `"unregistered": false`, and the
+harness may still list the plugin until you remove it there.
 
 Nothing is kept to support a later installation. To install CAT again, run the [install command](#install-cat) again.
 

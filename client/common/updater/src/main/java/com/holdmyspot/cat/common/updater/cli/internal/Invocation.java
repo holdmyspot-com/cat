@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.cli.internal.Arguments.Operation;
 import com.holdmyspot.cat.common.updater.engine.HttpsReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.Registration;
+import com.holdmyspot.cat.common.updater.engine.UninstallResult;
 import com.holdmyspot.cat.common.updater.engine.Uninstaller;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
@@ -239,8 +240,10 @@ public final class Invocation
 			return print(failure(Result.REFUSED, own, "This updater has no harness integration for " + own + ".",
 				List.of()), arguments, locations);
 		}
+		// Uninstall needs the program only to unregister the plugin, and skips that step when the program is gone
 		Path program = Path.of(command.get().command().getFirst());
-		if (!Files.isRegularFile(program) || !Files.isExecutable(program))
+		if (arguments.operation() != Operation.UNINSTALL && (!Files.isRegularFile(program) ||
+			!Files.isExecutable(program)))
 		{
 			return print(failure(Result.REFUSED, own, "The " + own + " program " + program + " that setup recorded " +
 				"no longer exists or is not executable; " + Locations.rerunEntryCommand(own) + ".", List.of(program)),
@@ -250,10 +253,10 @@ public final class Invocation
 		Registration registration = new Registration(integration.get(), cliFactory.create(command.get(), home));
 		if (arguments.operation() == Operation.UNINSTALL)
 		{
-			UpdateResult result = new Uninstaller(locations.data(), locations.policy(), policy, activation.get(),
+			UninstallResult result = new Uninstaller(locations.data(), locations.policy(), policy, activation.get(),
 				registration, clock, waiting).uninstall(arguments.deleteData());
-			if (result.result() != Result.UNINSTALLED)
-				return print(result, arguments, locations);
+			if (result.outcome().result() != Result.UNINSTALLED)
+				return print(result.outcome(), arguments, locations);
 			return handOver(result, locations);
 		}
 		try (HttpsReleaseSource source = new HttpsReleaseSource(policy.releaseBaseUrl(), environment,
@@ -349,14 +352,16 @@ public final class Invocation
 	 * @return the hand-over status
 	 * @throws IOException if the result cannot be saved
 	 */
-	private int handOver(UpdateResult result, Locations locations) throws IOException
+	private int handOver(UninstallResult result, Locations locations) throws IOException
 	{
+		ObjectNode object = encode(result.outcome());
+		object.put("unregistered", result.unregistered());
 		Path file = locations.data().resolve("state/uninstall-result.json");
 		Files.createDirectories(file.getParent());
 		Path temporary = Files.createTempFile(file.getParent(), ".uninstall-result-", ".tmp");
 		try
 		{
-			Files.writeString(temporary, mapper.writeValueAsString(encode(result)) + "\n", UTF_8);
+			Files.writeString(temporary, mapper.writeValueAsString(object) + "\n", UTF_8);
 			replacer.replace(temporary, file);
 		}
 		finally
