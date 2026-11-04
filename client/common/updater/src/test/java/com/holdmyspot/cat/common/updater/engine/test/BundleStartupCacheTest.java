@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.updater.engine.test;
 
 import static com.holdmyspot.cat.common.updater.engine.test.BundleUpdateTest.engine;
+import static com.holdmyspot.cat.common.updater.engine.test.BundleUpdateTest.plugin;
 import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.testDirectory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -12,6 +13,7 @@ import com.holdmyspot.cat.common.updater.trust.TrustException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -20,10 +22,37 @@ import org.testng.annotations.Test;
  * the installation runs once the stable launcher has finished the operation's runtime replacement.
  * <p>
  * Each fixture runtime's {@code java} names its runtime to the plugin's training program, which writes that name into
- * the cache, so a test reads which runtime trained the live plugin's cache.
+ * the cache, so a test reads which runtime trained the live plugin's cache. Each test lets only the operation under
+ * test train a cache, because each training starts Java twice.
  */
 public final class BundleStartupCacheTest
 {
+	/**
+	 * An install trains the plugin's cache with the installation's runtime and binds the plugin to that runtime.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void installTrainsForInstalledRuntime() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("bundle-cache-install-"));
+			Path data = root.resolve("data");
+			Path home = Files.createDirectories(root.resolve("home"));
+			Releases.installation(data, "1.0");
+
+			UpdateResult result = engine(data, home, Releases.trainable("1.0")).install(null,
+				new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
+			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
+			requireThat(cache(home), "cache").isEqualTo(FakeJava.cacheOf("runtime 1.0"));
+			requireThat(binding(home), "binding").isEqualTo(boundRuntime(data));
+		}
+	}
+
 	/**
 	 * An update trains the activated plugin's cache with the release's staged runtime, which the stable launcher puts
 	 * in place after the updater exits, and leaves the plugin bound to the installation's runtime location.
@@ -38,7 +67,7 @@ public final class BundleStartupCacheTest
 		{
 			Path root = cleanup.add(testDirectory("bundle-cache-update-"));
 			Path data = root.resolve("data");
-			Path home = installed(root, data);
+			Path home = installed(root, data, true);
 
 			UpdateResult result = engine(data, home, Releases.trainable("1.1")).update("v1.1",
 				new RecordingIntegration().registration());
@@ -66,8 +95,8 @@ public final class BundleStartupCacheTest
 		{
 			Path root = cleanup.add(testDirectory("bundle-cache-rollback-"));
 			Path data = root.resolve("data");
-			Path home = installed(root, data);
-			Releases release = Releases.trainable("1.1");
+			Path home = installed(root, data, true);
+			Releases release = new Releases("1.1", "");
 			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
@@ -94,15 +123,15 @@ public final class BundleStartupCacheTest
 		{
 			Path root = cleanup.add(testDirectory("bundle-cache-resumed-"));
 			Path data = root.resolve("data");
-			Path home = installed(root, data);
-			Releases release = Releases.trainable("1.1");
+			// The plugin gets its training description only after the first rollback, so that only the resumed one trains
+			Path home = installed(root, data, false);
+			Releases release = new Releases("1.1", "");
 			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 			requireThat(engine(data, home, release).rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
 			LauncherSwap.abandon(data);
-			// A rollback that stopped after it restored the plugin may have stopped before it trained the cache
-			TemporaryDirectories.deleteRecursively(home.resolve("live").resolve(StartupCache.DIRECTORY));
+			describe(home.resolve("live"));
 
 			UpdateResult result = engine(data, home, release).update("v1.1",
 				new RecordingIntegration().registration());
@@ -128,8 +157,8 @@ public final class BundleStartupCacheTest
 		{
 			Path root = cleanup.add(testDirectory("bundle-cache-undo-"));
 			Path data = root.resolve("data");
-			Path home = installed(root, data);
-			requireThat(engine(data, home, Releases.trainable("1.1")).update("v1.1",
+			Path home = installed(root, data, true);
+			requireThat(engine(data, home, new Releases("1.1", "")).update("v1.1",
 				new RecordingIntegration().registration()).result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.abandon(data);
 
@@ -145,61 +174,96 @@ public final class BundleStartupCacheTest
 	}
 
 	/**
-	 * Setup trains the plugin that it activates with the runtime that it put in place, both when it repairs the
-	 * installed release and when it moves the installation to another release.
+	 * Setup that repairs the installed release trains the plugin that it activates with the installation's runtime.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void setupTrainsForInstalledRuntime() throws IOException, TrustException
+	public void repairTrainsForInstalledRuntime() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("bundle-cache-setup-"));
+			Path root = cleanup.add(testDirectory("bundle-cache-repair-"));
 			Path data = root.resolve("data");
-			Path home = installed(root, data);
-			TemporaryDirectories.deleteRecursively(home.resolve("live").resolve(StartupCache.DIRECTORY));
+			Path home = plugin(root, "1.0");
+			Releases.installation(data, "1.0");
 
-			UpdateResult repaired = engine(data, home, Releases.trainable("1.0")).setUp("1.0",
+			UpdateResult result = engine(data, home, Releases.trainable("1.0")).setUp("1.0",
 				new RecordingIntegration().registration());
 
-			requireThat(repaired.result(), "repaired").isEqualTo(Result.UPDATED);
-			requireThat(repaired.aotCache(), "repairedAotCache").isEqualTo(Optional.of(true));
-			requireThat(cache(home), "repairedCache").isEqualTo(FakeJava.cacheOf("runtime 1.0"));
-
-			// Setup puts the release's runtime in place before it activates the plugin
-			Releases.installation(data, "1.1");
-			UpdateResult moved = engine(data, home, Releases.trainable("1.1")).setUp("1.1",
-				new RecordingIntegration().registration());
-
-			requireThat(moved.result(), "moved").isEqualTo(Result.UPDATED);
-			requireThat(moved.aotCache(), "movedAotCache").isEqualTo(Optional.of(true));
-			requireThat(cache(home), "movedCache").isEqualTo(FakeJava.cacheOf("runtime 1.1"));
+			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
+			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
+			requireThat(cache(home), "cache").isEqualTo(FakeJava.cacheOf("runtime 1.0"));
 			requireThat(binding(home), "binding").isEqualTo(boundRuntime(data));
 		}
 	}
 
 	/**
-	 * Creates an installation of release 1.0 and installs its trainable plugin into a harness that had none, which
-	 * trains the plugin's cache with the installation's runtime.
+	 * Setup that moves an installation to another release trains the plugin that it activates with the release's
+	 * runtime, which setup puts in place before it activates the plugin.
 	 *
-	 * @param root the test directory
-	 * @param data the installation's updater data directory
-	 * @return the harness home
-	 * @throws IOException    if the fixture cannot be created
+	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
-	private static Path installed(Path root, Path data) throws IOException, TrustException
+	@Test
+	public void setupTrainsForNewRuntime() throws IOException, TrustException
 	{
-		Path home = Files.createDirectories(root.resolve("home"));
-		Releases.installation(data, "1.0");
-		UpdateResult result = engine(data, home, Releases.trainable("1.0")).install(null,
-			new RecordingIntegration().registration());
-		requireThat(result.result(), "install").isEqualTo(Result.INSTALLED);
-		requireThat(result.aotCache(), "installAotCache").isEqualTo(Optional.of(true));
-		requireThat(cache(home), "installCache").isEqualTo(FakeJava.cacheOf("runtime 1.0"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("bundle-cache-setup-"));
+			Path data = root.resolve("data");
+			Path home = plugin(root, "1.0");
+			Releases.installation(data, "1.1");
+
+			UpdateResult result = engine(data, home, Releases.trainable("1.1")).setUp("1.1",
+				new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
+			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
+			requireThat(cache(home), "cache").isEqualTo(FakeJava.cacheOf("runtime 1.1"));
+			requireThat(binding(home), "binding").isEqualTo(boundRuntime(data));
+		}
+	}
+
+	/**
+	 * Creates an installation of release 1.0 whose harness has that release's trainable plugin without a startup
+	 * cache, as an installation looks before any training.
+	 *
+	 * @param root      the test directory
+	 * @param data      the installation's updater data directory
+	 * @param described true if the plugin has its training description
+	 * @return the harness home
+	 * @throws IOException if the fixture cannot be created
+	 */
+	private static Path installed(Path root, Path data, boolean described) throws IOException
+	{
+		Path runtime = Releases.installation(data, "1.0");
+		Path home = plugin(root, "1.0");
+		Path client = Files.createDirectories(home.resolve("live/client"));
+		String main = FakeJava.class.getName();
+		Path bin = Files.createDirectories(client.resolve("bin"));
+		Path wrapper = Files.writeString(bin.resolve("java"), StartupCacheFixtures.posixWrapper(main));
+		requireThat(wrapper.toFile().setExecutable(true), "executable").isTrue();
+		Files.writeString(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper(main, "java.cmd"));
+		Files.createDirectories(client.resolve("modules"));
+		Files.write(home.resolve("live").resolve(StartupCacheFixtures.JAR), StartupCacheFixtures.jar(FakeJava.class));
+		Files.writeString(client.resolve("runtime-binding"), runtime.toAbsolutePath().normalize() + "\n");
+		if (described)
+			describe(home.resolve("live"));
 		return home;
+	}
+
+	/**
+	 * Gives a fixture plugin its training description.
+	 *
+	 * @param plugin the plugin directory
+	 * @throws IOException if the description cannot be written
+	 */
+	private static void describe(Path plugin) throws IOException
+	{
+		Files.writeString(plugin.resolve(StartupCache.TRAINING),
+			StartupCacheFixtures.description(List.of("-Dfixture.behavior=train")));
 	}
 
 	/**
