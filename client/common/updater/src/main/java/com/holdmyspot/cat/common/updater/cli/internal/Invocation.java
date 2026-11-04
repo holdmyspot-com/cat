@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.updater.cli.internal.Arguments.Operation;
 import com.holdmyspot.cat.common.updater.engine.Bundle;
 import com.holdmyspot.cat.common.updater.engine.HttpsReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.Registration;
+import com.holdmyspot.cat.common.updater.engine.RuntimeSwap;
 import com.holdmyspot.cat.common.updater.engine.UninstallResult;
 import com.holdmyspot.cat.common.updater.engine.Uninstaller;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
@@ -234,9 +235,10 @@ public final class Invocation
 				if (arguments.operation() == Operation.ROLLBACK)
 					return finish(engine, engine.rollback(), arguments, locations);
 				UpdateResult status = engine.status();
+				ObjectNode encoded = encodeStatus(status, engine.pendingSwap());
 				if (arguments.harness().isEmpty())
-					return statusAll(status, policy);
-				return print(status, arguments, locations);
+					return statusAll(encoded, policy);
+				return print(status, encoded, arguments, locations);
 			}
 		}
 		Optional<HarnessIntegration> integration = integrations.stream().
@@ -336,16 +338,16 @@ public final class Invocation
 	/**
 	 * Reports the installation's harness in the result shape that lists every installation.
 	 *
-	 * @param status the harness's status
+	 * @param status the encoding of the harness's status
 	 * @param policy the protected policy
 	 * @return zero after printing the status object
 	 */
-	private int statusAll(UpdateResult status, TrustPolicy policy)
+	private int statusAll(ObjectNode status, TrustPolicy policy)
 	{
 		ObjectNode result = encode(failure(Result.STATUS, "all", "Reported the configured installations.",
 			List.of()));
 		result.set("key_ids", mapper.valueToTree(policy.keys().stream().map(TrustedKey::id).toList()));
-		result.putArray("installations").add(encode(status));
+		result.putArray("installations").add(status);
 		stdout.println(mapper.writeValueAsString(result));
 		return 0;
 	}
@@ -419,7 +421,20 @@ public final class Invocation
 	 */
 	private int print(UpdateResult result, Arguments arguments, Locations locations)
 	{
-		ObjectNode object = encode(result);
+		return print(result, encode(result), arguments, locations);
+	}
+
+	/**
+	 * Writes exactly one encoded result object.
+	 *
+	 * @param result    the operation outcome
+	 * @param object    the outcome's encoding
+	 * @param arguments the validated operation, or null for usage
+	 * @param locations the resolved locations, or null before resolution
+	 * @return the result's shell status
+	 */
+	private int print(UpdateResult result, ObjectNode object, Arguments arguments, Locations locations)
+	{
 		if (result.result().exitStatus() != 0)
 		{
 			stderr.println(result.message());
@@ -450,6 +465,28 @@ public final class Invocation
 		object.set("key_ids", mapper.valueToTree(result.keyIds()));
 		if (result.result() == Result.STATUS)
 			object.put("installed", result.version().isPresent());
+		return object;
+	}
+
+	/**
+	 * Encodes a status outcome with whether the installation keeps a previous bundle for rollback and the runtime
+	 * replacement that the stable launcher has not finished.
+	 *
+	 * @param status      the status outcome, whose previous version is the previous bundle's
+	 * @param pendingSwap the unfinished replacement, or empty
+	 * @return the JSON object
+	 */
+	private ObjectNode encodeStatus(UpdateResult status, Optional<RuntimeSwap> pendingSwap)
+	{
+		ObjectNode object = encode(status);
+		object.put("previous_bundle", status.previousVersion().isPresent());
+		pendingSwap.ifPresent(swap ->
+		{
+			ObjectNode pending = object.putObject("pending_swap");
+			pending.put("operation", swap.operation().id());
+			pending.put("from_version", swap.fromVersion());
+			pending.put("to_version", swap.toVersion());
+		});
 		return object;
 	}
 

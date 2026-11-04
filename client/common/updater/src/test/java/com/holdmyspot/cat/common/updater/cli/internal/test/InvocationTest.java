@@ -321,6 +321,40 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Status reports whether a previous bundle is kept for rollback and the runtime replacement that the stable
+	 * launcher has not finished.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void statusReportsBundle() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-bundle-")));
+			installation.update();
+
+			JsonNode updated = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+				"status", "--harness", "harness-a").result();
+			requireThat(installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+				"rollback", "--harness", "harness-a").status, "rollback").isEqualTo(78);
+			JsonNode rolledBack = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+				"status", "--harness", "harness-a").result();
+
+			requireThat(updated.path("version").stringValue(), "version").isEqualTo("1.0");
+			requireThat(updated.path("previous_bundle").booleanValue(), "previousBundle").isTrue();
+			requireThat(updated.path("previous_version").stringValue(), "previousVersion").isEqualTo("0.9");
+			requireThat(updated.has("pending_swap"), "pendingBeforeRollback").isFalse();
+			requireThat(rolledBack.path("previous_bundle").booleanValue(), "previousAfterRollback").isFalse();
+			JsonNode pending = rolledBack.path("pending_swap");
+			requireThat(pending.path("operation").stringValue(), "operation").isEqualTo("rollback");
+			requireThat(pending.path("from_version").stringValue(), "from").isEqualTo("1.0");
+			requireThat(pending.path("to_version").stringValue(), "to").isEqualTo("0.9");
+		}
+	}
+
+	/**
 	 * When the recorded harness program no longer exists, uninstall still removes CAT, skipping only the unregistration
 	 * that needs the program, and its saved result says that the plugin was not unregistered.
 	 *
