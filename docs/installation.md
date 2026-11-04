@@ -222,12 +222,18 @@ authorize the migration. A validation failure keeps the active installation. An 
 previous installation; a restoration failure reports the affected paths for recovery. If the updater stops during
 activation, its next mutating operation recovers the recorded activation before proceeding.
 
-After a successful `update`, the installation keeps the previous complete bundle until the next successful update
-deletes it: the previous Java runtime, the previous updater and the previous plugin. Running the entry command of a
-newer release also keeps the bundle that it replaced; running it where nothing is installed keeps none. Older Codex
-cache directories may remain.
+After a successful `update`, the installation keeps the complete bundle that it replaced as a cached bundle until
+the next successful update deletes it: the previous Java runtime, the previous updater and the previous plugin. Running
+the entry command of a newer release also keeps the bundle that it replaced; running it where nothing is installed keeps
+none. For the cached bundle and the active release, `<data>/releases/` also keeps the release's signed manifest, its
+signature and its plugin archive. Going back to the release of the cached bundle reuses it without downloading
+anything, also without a network connection, when the kept manifest's signature verifies against the policy's keys, the
+plugin archive matches the manifest's digest and the runtime and updater are unchanged since the updater installed
+them. Otherwise the updater discards what it kept of that release and downloads the release again. Installing the
+plugin again after you removed it reuses the active release's kept plugin archive in the same way. Older Codex cache
+directories may remain.
 
-`status` reads the active version, whether a previous bundle exists (`previous_bundle`), a Java runtime replacement that
+`status` reads the active version, whether a cached bundle exists (`cached_bundle`), a Java runtime replacement that
 the launcher has not finished (`pending_swap`) and policy key IDs, without creating state or recovering an unfinished
 activation. Run an update to recover an unfinished activation or finish a pending replacement. Restart the
 harness after updating. Claude Code's plugin list may continue showing the version registered at initial
@@ -271,7 +277,7 @@ Uninstall removes this harness's whole CAT installation, and no other harness's:
 	ownership manifest and still unchanged;
 - the permission entries that setup added for this harness;
 - the installation directory `<data>` and the policy: the updater, its state and logs, the Java runtime, and the
-	previous bundle that the last update kept;
+	cached bundle and release files that the installation kept;
 - the artifacts that CAT's runner launchers downloaded into `~/.cat/bundles`, also while the other harness still has
 	its installation. That installation downloads a copy again the next time it launches the other harness.
 

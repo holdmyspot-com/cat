@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
+import com.holdmyspot.cat.common.updater.engine.StagedRelease;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
@@ -160,18 +161,20 @@ public final class DowngradeTest
 	}
 
 	/**
-	 * Creates an installation whose whole bundle and plugin are at a release, with that release's data version.
+	 * Creates an installation whose whole bundle and plugin are at a release, with the data version that activating
+	 * that release records.
 	 *
 	 * @param root    the test directory
 	 * @param data    the installation's updater data directory
 	 * @param version the active release
 	 * @return the harness home
-	 * @throws IOException if the fixture cannot be written
+	 * @throws IOException    if the fixture cannot be written
+	 * @throws TrustException if the version is malformed
 	 */
-	static Path active(Path root, Path data, String version) throws IOException
+	static Path active(Path root, Path data, String version) throws IOException, TrustException
 	{
 		Path home = BundleUpdateTest.plugin(root, version);
-		Files.writeString(home.resolve("migration-version"), version + "\n");
+		Files.writeString(home.resolve("migration-version"), StagedRelease.migrationVersion(version) + "\n");
 		Releases.installation(data, version);
 		Files.createDirectories(data.resolve("state/harness-a"));
 		return home;

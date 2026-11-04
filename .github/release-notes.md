@@ -24,13 +24,14 @@ command again once for each harness you use, because that build's updater cannot
 
 ## Install, update and uninstall with your agent
 
-After that, ask your agent. CAT's `update` skill installs and updates CAT through the installed trusted
-updater, and installs the plugin again when you removed it by other means. An update moves the installation's Java
-runtime, updater and plugin to the new release together, and the previous bundle stays until the next successful update.
-Naming an older release goes back to it, unless CAT's data structures changed since that release. The updater verifies
-signed metadata and archive digests against its existing policy, and refuses a release whose Java requirement the
-runtime that would run it does not meet; in that case, run the newer release's command above again. An update never changes the policy's keys,
-release source or version limits.
+After that, ask your agent. CAT's `update` skill installs and updates CAT through the installed trusted updater, and
+installs the plugin again when you removed it by other means. An update moves the installation's Java runtime, updater
+and plugin to the new release together, and the replaced bundle stays cached until the next successful update. Naming an
+older release goes back to it, unless CAT's data structures changed since that release; going back to the cached
+bundle's release needs no download once the bundle verifies. The updater verifies signed metadata and archive digests
+against its existing policy, and refuses a release whose Java requirement the runtime that would run it does not meet;
+in that case, run the newer release's command above again. An update never changes the policy's keys, release source or
+version limits.
 
 This release's manifest, `cat-release-manifest.json`, is signed with the Ed25519 public key whose X.509 encoding has
 SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`. Initial setup relies on HTTPS to GitHub and the release's embedded
@@ -43,7 +44,7 @@ See [installation, permissions, and supported platforms](https://github.com/hold
 
 Ask your agent to uninstall CAT in the harness you use. It asks whether to also delete CAT's plugin data, then removes
 that harness's whole CAT installation: the plugin and its registration, the Codex agents that CAT owns, the trusted
-updater, the Java runtime, the previous bundle and the permission entries. It also deletes the runner artifacts in
+updater, the Java runtime, the cached bundle and the permission entries. It also deletes the runner artifacts in
 `~/.cat/bundles`; the other harness's installation is otherwise not touched and downloads them again when it next needs
 them. CAT's plugin data is kept unless you ask to delete it, and your own files, including `~/.cat/rules`, are never
 deleted. Installing CAT again after an uninstall is a new installation: run the one command above again.

@@ -276,8 +276,8 @@ public final class Releases implements ReleaseSource
 	}
 
 	/**
-	 * Returns every regular file under a directory with its content, so that a test can show that an operation changed
-	 * nothing. The operation log and lock file, which every locked operation writes, are left out.
+	 * Returns every regular file under a directory with its content in hexadecimal, so that a test can show that an
+	 * operation changed nothing. The operation log and lock file, which every locked operation writes, are left out.
 	 *
 	 * @param root the directory
 	 * @return each file's relative path mapped to its content
@@ -296,7 +296,7 @@ public final class Releases implements ReleaseSource
 				{
 					continue;
 				}
-				entries.put(root.relativize(path).toString(), Files.readString(path));
+				entries.put(root.relativize(path).toString(), HexFormat.of().formatHex(Files.readAllBytes(path)));
 			}
 		}
 		return entries;

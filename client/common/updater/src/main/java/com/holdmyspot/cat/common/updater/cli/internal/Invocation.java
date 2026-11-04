@@ -482,17 +482,17 @@ public final class Invocation
 	}
 
 	/**
-	 * Encodes a status outcome with whether the installation keeps a previous bundle and the runtime
-	 * replacement that the stable launcher has not finished.
+	 * Encodes a status outcome with whether the installation keeps a cached bundle of an earlier release, which going
+	 * back to that release reuses, and the runtime replacement that the stable launcher has not finished.
 	 *
-	 * @param status      the status outcome, whose previous version is the previous bundle's
+	 * @param status      the status outcome, whose previous version is the cached bundle's
 	 * @param pendingSwap the unfinished replacement, or empty
 	 * @return the JSON object
 	 */
 	private ObjectNode encodeStatus(UpdateResult status, Optional<RuntimeSwap> pendingSwap)
 	{
 		ObjectNode object = encode(status);
-		object.put("previous_bundle", status.previousVersion().isPresent());
+		object.put("cached_bundle", status.previousVersion().isPresent());
 		pendingSwap.ifPresent(swap ->
 		{
 			ObjectNode pending = object.putObject("pending_swap");

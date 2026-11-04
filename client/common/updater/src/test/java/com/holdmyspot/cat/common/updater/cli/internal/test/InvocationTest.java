@@ -423,8 +423,8 @@ public final class InvocationTest
 	}
 
 	/**
-	 * Status reports whether the installation keeps the bundle that the last update replaced, and the runtime
-	 * replacement that the stable launcher has not finished.
+	 * Status reports whether the installation keeps a cached bundle of the release that the last update replaced, which
+	 * going back to it reuses, and the runtime replacement that the stable launcher has not finished.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -444,7 +444,8 @@ public final class InvocationTest
 				"status", "--harness", "harness-a").result();
 
 			requireThat(updated.path("version").stringValue(), "version").isEqualTo("1.0");
-			requireThat(updated.path("previous_bundle").booleanValue(), "previousBundle").isTrue();
+			requireThat(updated.path("cached_bundle").booleanValue(), "cachedBundle").isTrue();
+			requireThat(updated.has("previous_bundle"), "previousBundle").isFalse();
 			requireThat(updated.path("previous_version").stringValue(), "previousVersion").isEqualTo("0.9");
 			requireThat(updated.has("pending_swap"), "pendingBeforeRequest").isFalse();
 			JsonNode pending = requested.path("pending_swap");

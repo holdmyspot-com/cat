@@ -18,10 +18,10 @@ import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
 import com.holdmyspot.cat.common.updater.activation.ReplaceOwnedFiles;
 import com.holdmyspot.cat.common.updater.engine.ActivationTransaction.Completion;
+import com.holdmyspot.cat.common.updater.engine.ReleaseCache.SignedRelease;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
 import com.holdmyspot.cat.common.updater.engine.SwapFiles.Recorded;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
-import com.holdmyspot.cat.common.updater.trust.ManifestVerifier;
 import com.holdmyspot.cat.common.updater.trust.ReleaseApproval;
 import com.holdmyspot.cat.common.updater.trust.ReleaseAsset;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
@@ -29,7 +29,6 @@ import com.holdmyspot.cat.common.updater.trust.TrustException;
 import com.holdmyspot.cat.common.updater.trust.TrustPolicy;
 import com.holdmyspot.cat.common.updater.trust.TrustedKey;
 import com.holdmyspot.cat.common.updater.trust.VerifiedManifest;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -71,6 +70,7 @@ public final class UpdateEngine
 	private final Path data;
 	private final Path runtime;
 	private final Bundle bundle;
+	private final ReleaseCache cache;
 	private final SwapFiles swaps;
 	private final TrustPolicy policy;
 	private final ReleaseSource source;
@@ -155,6 +155,7 @@ public final class UpdateEngine
 			anyMatch(candidate -> candidate.id().equals(platform) && candidate.isWindows());
 		this.replacer = FileReplacer.retrying(waiting);
 		this.bundle = new Bundle(data, windows, replacer);
+		this.cache = new ReleaseCache(data);
 		this.runtime = bundle.runtime();
 		this.swaps = new SwapFiles(data);
 		this.policy = policy;
@@ -471,7 +472,7 @@ public final class UpdateEngine
 			if (tag == null)
 				tag = "v" + current;
 		}
-		VerifiedManifest verified;
+		SignedRelease signed;
 		try
 		{
 			if (tag == null || tag.equals(LATEST))
@@ -484,14 +485,14 @@ public final class UpdateEngine
 				return result(Result.REFUSED, active, null, "Install adds only release " + current + ", which " +
 					"this installation runs; run update to move to release " + requested + ".", List.of());
 			}
-			verified = ManifestVerifier.verify(new ByteArrayInputStream(source.manifest(tag)),
-				new ByteArrayInputStream(source.signature(tag)), policy);
-			ReleaseApproval.approveUpdate(verified, policy, requested);
+			signed = signed(tag);
+			ReleaseApproval.approveUpdate(signed.verified(), policy, requested);
 		}
 		catch (IOException e)
 		{
 			return result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of());
 		}
+		VerifiedManifest verified = signed.verified();
 		String version = verified.manifest().version().toString();
 		// Every operation except setup replaces the whole bundle of an installation that has a plugin
 		boolean bundled = mode != Mode.SETUP && active != null;
@@ -532,19 +533,27 @@ public final class UpdateEngine
 					if (refusal.isPresent())
 						return refusal.get();
 				}
+				// The bundle that an earlier update kept is reused when its files are still the ones it installed
+				boolean kept = bundle.hasPrevious(running, version) && cache.matchesBundle(version,
+					bundle.replaced(), data.resolve(version));
+				Path archive = download.resolve(asset.name());
 				try
 				{
-					source.download(releaseTag, asset.name(), asset.size(), download.resolve(asset.name()));
-					source.download(releaseTag, updater.name(), updater.size(), download.resolve(updater.name()));
+					obtain(releaseTag, version, asset, archive);
+					if (!kept)
+						source.download(releaseTag, updater.name(), updater.size(), download.resolve(updater.name()));
 				}
 				catch (IOException e)
 				{
 					return result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of());
 				}
 				Path pluginTree = extract(download, extractRoot, asset);
-				Path updaterTree = extract(download, extractRoot, updater);
-				return activateBundle(new Staged(pluginTree, updaterTree, version), running, active, session,
-					home, transaction);
+				Path updaterTree = null;
+				if (!kept)
+					updaterTree = extract(download, extractRoot, updater);
+				UpdateResult outcome = activateBundle(new Staged(pluginTree, updaterTree, version), running, active,
+					session, home, transaction);
+				return keep(outcome, signed, archive, bundle.staged());
 			});
 		}
 		return inScratch((download, extractRoot) ->
@@ -552,15 +561,94 @@ public final class UpdateEngine
 			Path archive = download.resolve(asset.name());
 			try
 			{
-				source.download(releaseTag, asset.name(), asset.size(), archive);
+				obtain(releaseTag, version, asset, archive);
 			}
 			catch (IOException e)
 			{
 				return result(Result.DOWNLOAD_FAILED, active, null, e.getMessage(), List.of());
 			}
-			return activateTree(mode, extract(download, extractRoot, asset), version, active, session,
-				home, transaction);
+			Path tree = extract(download, extractRoot, asset);
+			UpdateResult outcome = activateTree(mode, tree, version, active, session, home, transaction);
+			// Setup installed the release's runtime and updater version directory before it activated the plugin
+			Path installedRuntime = null;
+			if (mode == Mode.SETUP)
+				installedRuntime = bundle.runtime();
+			return keep(outcome, signed, archive, installedRuntime);
 		});
+	}
+
+	/**
+	 * Keeps a release that an operation activated, so that a later operation can reuse it without downloading it. A
+	 * failure to keep it discards what was kept of the release and is reported in the outcome's message, because the
+	 * release is active regardless.
+	 *
+	 * @param outcome the operation's outcome
+	 * @param signed  the release's signed manifest
+	 * @param archive the release's validated plugin archive
+	 * @param runtime the Java runtime that the operation installed for the release with its updater version directory,
+	 *                whose identity the installation records, or null when the operation installed neither
+	 * @return the outcome, with a diagnostic when the release could not be kept
+	 */
+	private UpdateResult keep(UpdateResult outcome, SignedRelease signed, Path archive, Path runtime)
+	{
+		String version = signed.verified().manifest().version().toString();
+		try
+		{
+			cache.keep(version, signed, List.of(archive));
+			if (runtime != null)
+				cache.recordBundle(version, runtime, data.resolve(version));
+			return outcome;
+		}
+		catch (IOException e)
+		{
+			try
+			{
+				cache.discard(version);
+			}
+			catch (IOException discardFailure)
+			{
+				e.addSuppressed(discardFailure);
+			}
+			return new UpdateResult(outcome.result(), outcome.harness(), outcome.version(), outcome.previousVersion(),
+				outcome.message() + " The release could not be kept for reuse: " + e.getMessage(), outcome.paths(),
+				outcome.consistent(), outcome.keyIds(), outcome.aotCache());
+		}
+	}
+
+	/**
+	 * Returns a release's signed manifest: the one that the installation keeps when the policy's keys still verify it,
+	 * and otherwise the release source's.
+	 *
+	 * @param tag the release tag
+	 * @return the release
+	 * @throws IOException    if the release source cannot supply it
+	 * @throws TrustException if no key of the policy verifies the source's manifest, or it breaks its format
+	 */
+	private SignedRelease signed(String tag) throws IOException, TrustException
+	{
+		String version = ReleaseVersion.parse(tag.substring(1)).toString();
+		Optional<SignedRelease> kept = cache.release(version, policy);
+		if (kept.isPresent())
+			return kept.get();
+		return SignedRelease.verify(source.manifest(tag), source.signature(tag), policy);
+	}
+
+	/**
+	 * Writes a release's archive: the copy that the installation keeps when it matches the signed manifest, and
+	 * otherwise a download from the release source.
+	 *
+	 * @param tag         the release tag
+	 * @param version     the release version
+	 * @param asset       the archive's signed entry
+	 * @param destination the file to write
+	 * @throws IOException    if the archive cannot be obtained
+	 * @throws TrustException if the release source refuses the download
+	 */
+	private void obtain(String tag, String version, ReleaseAsset asset, Path destination)
+		throws IOException, TrustException
+	{
+		if (!cache.archive(version, asset, destination))
+			source.download(tag, asset.name(), asset.size(), destination);
 	}
 
 	/**
@@ -604,8 +692,7 @@ public final class UpdateEngine
 		ReleaseAsset asset;
 		try
 		{
-			VerifiedManifest verified = ManifestVerifier.verify(new ByteArrayInputStream(source.manifest(tag)),
-				new ByteArrayInputStream(source.signature(tag)), policy);
+			VerifiedManifest verified = signed(tag).verified();
 			ReleaseApproval.approveUpdate(verified, policy, ReleaseVersion.parse(active));
 			asset = verified.manifest().findPlugin(activation.harness(), platform).orElse(null);
 			if (asset == null)
@@ -614,7 +701,7 @@ public final class UpdateEngine
 					"plugin for this harness and platform, so its data structures cannot be compared with release " +
 					older + ".", List.of()));
 			}
-			source.download(tag, asset.name(), asset.size(), activeDownload.resolve(asset.name()));
+			obtain(tag, active, asset, activeDownload.resolve(asset.name()));
 		}
 		catch (IOException e)
 		{
@@ -788,7 +875,8 @@ public final class UpdateEngine
 	 * moves that runtime and the updater version directory into the installation, activates the plugin bound to the
 	 * installation's runtime location, installs the release's stable launcher, and leaves the request with which the
 	 * stable launcher that is running puts the new runtime in place and selects the new updater once this JVM has
-	 * exited. The replaced bundle stays in the installation.
+	 * exited. The replaced bundle stays in the installation. A release whose bundle the installation kept stages a
+	 * copy of the kept runtime and keeps its updater version directory in place.
 	 *
 	 * @param staged       the extracted release
 	 * @param running      the updater version that {@code current} selects
@@ -804,19 +892,34 @@ public final class UpdateEngine
 		Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
 		String version = staged.version();
-		bundle.validate(staged.updater(), version);
+		boolean kept = staged.updater() == null;
+		Path nextRuntime;
+		Path image;
+		if (kept)
+		{
+			nextRuntime = bundle.replaced();
+			image = data.resolve(version);
+		}
+		else
+		{
+			bundle.validate(staged.updater(), version);
+			nextRuntime = staged.updater().resolve(Bundle.RUNTIME);
+			image = staged.updater().resolve(version);
+		}
 		Path migrationFile = validatePlugin(Mode.UPDATE, staged.plugin(), version, active, home);
-		RuntimeDescription next = RuntimeDescription.read(staged.updater().resolve(Bundle.RUNTIME));
+		RuntimeDescription next = RuntimeDescription.read(nextRuntime);
 		requireOwnRuntime(next, RuntimeRequirement.read(staged.plugin().resolve(RuntimeRequirement.PLUGIN_FILE)),
 			"plugin", version);
-		requireOwnRuntime(next, RuntimeRequirement.read(staged.updater().resolve(version).
-			resolve(Bundle.REQUIREMENT_FILE)), "updater", version);
+		requireOwnRuntime(next, RuntimeRequirement.read(image.resolve(Bundle.REQUIREMENT_FILE)), "updater", version);
 		Files.writeString(staged.plugin().resolve(BINDING_FILE), runtime + "\n", StandardCharsets.UTF_8);
 		Completion register = () -> session.integration().register(home, session.cli(),
 			session.replacer());
 		try
 		{
-			bundle.stage(staged.updater(), version, running);
+			if (kept)
+				bundle.restage(version, running);
+			else
+				bundle.stage(staged.updater(), version, running);
 			// The request follows the staged runtime, so a missing staged runtime means that the launcher renamed it
 			swaps.write(new RuntimeSwap(Operation.UPDATE, running, version), Optional.of(active));
 			transaction.activate(staged.plugin(), activation.plan(home, version), migrationFile, active, version,
@@ -824,7 +927,7 @@ public final class UpdateEngine
 		}
 		catch (IOException | TrustException e)
 		{
-			cancelSwap(version, e);
+			cancelSwap(version, kept, e);
 			throw e;
 		}
 		boolean trained;
@@ -833,6 +936,7 @@ public final class UpdateEngine
 			// The stable launcher puts the staged runtime in place, so the cache must suit that runtime
 			trained = train(home, version, bundle.staged());
 			bundle.deleteOlder(running, version);
+			cache.retain(List.of(running, version));
 			// The running launcher reads its script while it runs, so the new one is renamed over it
 			bundle.installLauncher(bundle.stableLauncher(version));
 		}
@@ -848,7 +952,7 @@ public final class UpdateEngine
 				e.addSuppressed(undoFailure);
 				restored = false;
 			}
-			cancelSwap(version, e);
+			cancelSwap(version, kept, e);
 			throw new ActivationTransaction.ActivationFailure(e, restored);
 		}
 		return result(Result.UPDATED, version, running, withWarning("CAT was updated; the stable launcher " +
@@ -859,14 +963,19 @@ public final class UpdateEngine
 	 * Deletes a pending update request and the bundle it staged after the update failed.
 	 *
 	 * @param version the staged version
+	 * @param kept    true if the update staged a copy of the bundle that the installation kept, whose updater version
+	 *                directory stays
 	 * @param failure the update's failure, which records a cleanup failure
 	 */
-	private void cancelSwap(String version, Exception failure)
+	private void cancelSwap(String version, boolean kept, Exception failure)
 	{
 		try
 		{
 			swaps.delete();
-			bundle.discard(version);
+			if (kept)
+				bundle.discardStaged();
+			else
+				bundle.discard(version);
 		}
 		catch (IOException cleanupFailure)
 		{
@@ -1077,8 +1186,13 @@ public final class UpdateEngine
 	private void prune(ActivationTransaction transaction) throws IOException
 	{
 		Optional<String> current = bundle.current();
-		if (current.isPresent())
-			bundle.prune(current.get(), previousBundle(transaction));
+		if (current.isEmpty())
+			return;
+		Optional<String> previous = previousBundle(transaction);
+		bundle.prune(current.get(), previous);
+		List<String> kept = new ArrayList<>(List.of(current.get()));
+		previous.ifPresent(kept::add);
+		cache.retain(kept);
 	}
 
 	/**
@@ -1257,7 +1371,7 @@ public final class UpdateEngine
 	 * A release whose archives are extracted.
 	 *
 	 * @param plugin  the plugin tree
-	 * @param updater the updater archive's top directory
+	 * @param updater the updater archive's top directory, or null when the installation kept the release's bundle
 	 * @param version the release version
 	 */
 	private record Staged(Path plugin, Path updater, String version)

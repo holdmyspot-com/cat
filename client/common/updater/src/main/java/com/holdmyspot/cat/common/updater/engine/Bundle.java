@@ -286,6 +286,34 @@ public final class Bundle
 	}
 
 	/**
+	 * Stages the bundle that an earlier update replaced and kept: a copy of its runtime as {@code runtime.next}, and
+	 * its updater version directory in place, with the running version's policy anchor.
+	 *
+	 * @param version the kept version
+	 * @param running the running updater version, whose policy anchor the kept version gets
+	 * @throws IOException if the copy or the anchor copy fails
+	 */
+	void restage(String version, String running) throws IOException
+	{
+		discardStaged();
+		Path anchor = data.resolve(running).resolve(POLICY_ANCHOR);
+		StateFiles.requireNoLinks(anchor);
+		String policy = BoundedInput.readUtf8(anchor, MAXIMUM_ANCHOR_BYTES, "The updater policy path");
+		ActivationTransaction.copyTree(data.resolve(RUNTIME_PREVIOUS), data.resolve(RUNTIME_NEXT));
+		StateFiles.write(data.resolve(version).resolve(POLICY_ANCHOR), policy.getBytes(UTF_8));
+	}
+
+	/**
+	 * Deletes a staged runtime.
+	 *
+	 * @throws IOException if it cannot be deleted
+	 */
+	void discardStaged() throws IOException
+	{
+		LinkSafeDeletion.delete(data.resolve(RUNTIME_NEXT), data);
+	}
+
+	/**
 	 * Deletes a staged runtime and updater version directory.
 	 *
 	 * @param version the staged updater version
