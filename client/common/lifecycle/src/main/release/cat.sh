@@ -1,26 +1,26 @@
 #!/usr/bin/env sh
-# Installs CAT for Claude Code or Codex: its runtime, the trusted updater, the release's plugin and the agent
-# permissions that later updates need, by running the setup of the updater that this release publishes.
+# Installs CAT for Claude Code or Codex: the release's plugin, with its Java runtime and installer, and the agent
+# permissions that later updates need, by running the install of the installer in the plugin that this release
+# publishes for the harness.
 #
 #   curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/<tag>/cat.sh | sh -s -- --harness claude
 #
-# The release is fixed: the script takes no version and downloads only this release's updater archive, which it checks
-# against the SHA-256 digest that it embeds before it extracts or runs anything from it. No argument or environment
-# variable changes where it downloads from. It extracts the archive into a temporary directory, runs the updater's
-# setup from there, prints setup's result, exits with setup's exit status and deletes the temporary directory. Running
-# it again repairs an installation.
+# The release is fixed: the script takes no version and downloads only this release's plugin archive for the harness
+# and platform, which it checks against the SHA-256 digest that it embeds before it extracts or runs anything from it.
+# No argument or environment variable changes where it downloads from. It extracts the archive into a temporary
+# directory, runs the plugin's installer from there, prints the installer's result, exits with its exit status and
+# deletes the temporary directory. The installer asks the harness to install the plugin.
 #
 # Inside an agent session the script detects the harness when --harness is absent. To uninstall CAT, ask the agent to
-# uninstall it: the agent runs the installed updater's uninstall.
+# uninstall it: the agent runs the installed plugin's installer uninstall.
 set -eu
 
 # The generator replaces these two values when it publishes the script with a release
 CAT_RELEASE_TAG='@CAT_RELEASE_TAG@'
 CAT_SHA256SUMS='@CAT_SHA256SUMS@'
-CAT_VERSION="${CAT_RELEASE_TAG#v}"
 CAT_DOWNLOAD_URL="https://github.com/holdmyspot-com/cat/releases/download/${CAT_RELEASE_TAG}"
 CAT_ENTRY_URL="${CAT_DOWNLOAD_URL}/cat.sh"
-# The temporary directory that holds the downloaded and extracted updater, deleted at exit
+# The temporary directory that holds the downloaded and extracted plugin, deleted at exit
 CAT_WORK_DIRECTORY=""
 
 # Prints this script's usage and exits with the command-line usage status.
@@ -51,9 +51,9 @@ cat_print_usage()
 #   Exits with status 2.
 cat_refuse_retired_option()
 {
-	echo "$1 is no longer supported. Run cat.sh [--harness claude|codex] to install or repair CAT, including its" \
-		"updater. To uninstall CAT, ask your agent to uninstall CAT: it runs the installed updater's" \
-		"cat-updater uninstall, and asks you first whether to delete CAT's data." >&2
+	echo "$1 is no longer supported. Run cat.sh [--harness claude|codex] to install CAT, including its" \
+		"installer. To uninstall CAT, ask your agent to uninstall CAT: it runs the installed plugin's" \
+		"bin/installer uninstall, and asks you first whether to delete CAT's data." >&2
 	exit 2
 }
 
@@ -113,7 +113,7 @@ cat_sha256()
 # Downloads one of this release's assets and verifies it against the digest that this script embeds.
 #
 # Arguments:
-#   $1 - The asset's name, such as cat-updater-v1.0-linux-x64.tar.gz.
+#   $1 - The asset's name, such as cat-claude-linux-x64-v1.0.tar.gz.
 #
 # Environment:
 #   CAT_WORK_DIRECTORY - The directory that receives the asset.
@@ -180,8 +180,8 @@ cat_native_path()
 	fi
 }
 
-# Downloads, verifies and extracts this release's updater, then runs its setup for a harness from the extracted
-# archive. Setup prints its result to standard output.
+# Downloads, verifies and extracts this release's plugin for a harness, then runs the install of the plugin's installer
+# from the extracted archive. The installer prints its result to standard output.
 #
 # Arguments:
 #   $1 - Platform identifier.
@@ -192,22 +192,22 @@ cat_native_path()
 #   CAT_WORK_DIRECTORY - The temporary directory that receives the archive and its extracted content.
 #
 # Exit status:
-#   Returns the exit status of setup; exits nonzero when the download, its verification or the extraction fails, or
-#   the archive has no launcher at the expected place.
-cat_run_setup()
+#   Returns the exit status of the installer; exits nonzero when the download, its verification or the extraction
+#   fails, or the plugin has no installer launcher at the expected place.
+cat_run_install()
 {
-	cat_updater_name="cat-updater-${CAT_RELEASE_TAG}-$1"
-	cat_updater_archive="$(cat_download_verified "${cat_updater_name}.tar.gz")"
+	cat_plugin_name="cat-$2-$1-${CAT_RELEASE_TAG}"
+	cat_plugin_archive="$(cat_download_verified "${cat_plugin_name}.tar.gz")"
 	cat_extracted="${CAT_WORK_DIRECTORY}/extracted"
 	mkdir "${cat_extracted}"
-	cat_extract "${cat_updater_archive}" "${cat_extracted}" "${cat_updater_name}"
-	# The archive mirrors the installed layout, so its versioned launcher runs the archive's own runtime
-	cat_launcher="${cat_extracted}/${cat_updater_name}/${CAT_VERSION}/bin/cat-updater"
+	cat_extract "${cat_plugin_archive}" "${cat_extracted}" "${cat_plugin_name}"
+	# The plugin's launcher runs the Java runtime in the plugin's own bin folder
+	cat_launcher="${cat_extracted}/${cat_plugin_name}/bin/installer"
 	if [ ! -f "${cat_launcher}" ] || [ ! -x "${cat_launcher}" ]; then
-		echo "CAT's updater ${CAT_RELEASE_TAG} has no launcher for $1 at ${cat_launcher}." >&2
+		echo "CAT's $2 plugin ${CAT_RELEASE_TAG} has no installer for $1 at ${cat_launcher}." >&2
 		exit 1
 	fi
-	"${cat_launcher}" setup --harness "$2" --home "$(cat_native_path "$1" "$3")"
+	"${cat_launcher}" install --harness "$2" --home "$(cat_native_path "$1" "$3")"
 }
 
 CAT_HARNESS=""
@@ -260,5 +260,6 @@ trap 'exit 1' HUP INT TERM
 CAT_TEMP_ROOT="${TMPDIR:-/tmp}"
 mkdir -p "${CAT_TEMP_ROOT}"
 CAT_WORK_DIRECTORY="$(mktemp -d "${CAT_TEMP_ROOT}/cat.XXXXXX")"
-# As the last command, setup's exit status becomes the script's, after the exit trap deletes the temporary directory
-cat_run_setup "${CAT_PLATFORM}" "${CAT_HARNESS}" "${CAT_HARNESS_HOME}"
+# As the last command, the installer's exit status becomes the script's, after the exit trap deletes the temporary
+# directory
+cat_run_install "${CAT_PLATFORM}" "${CAT_HARNESS}" "${CAT_HARNESS_HOME}"

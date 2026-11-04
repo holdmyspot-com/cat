@@ -5,10 +5,10 @@ setup()
 	export FAKE_BIN="${TEST_ROOT}/bin"
 	export COMMAND_LOG="${TEST_ROOT}/commands.log"
 	export URL_LOG="${TEST_ROOT}/urls.log"
-	# The fake installer writes the arguments that setup received here, one per line
-	export SETUP_ARGUMENTS="${TEST_ROOT}/setup-arguments"
-	# The fake installer writes the path that it ran from, and what it found beside its version directory, here
-	export SETUP_LOCATION="${TEST_ROOT}/setup-location"
+	# The fake installer writes the arguments that it received here, one per line
+	export INSTALL_ARGUMENTS="${TEST_ROOT}/install-arguments"
+	# The fake installer writes the path that it ran from, and what it found in its plugin's Java runtime, here
+	export INSTALL_LOCATION="${TEST_ROOT}/install-location"
 	export HOME="${TEST_ROOT}/home"
 	export CODEX_HOME="${HOME}/codex home"
 	export CLAUDE_CONFIG_DIR="${HOME}/claude home"
@@ -21,7 +21,7 @@ setup()
 	# The single command as users paste it, which the fake curl serves from FAKE_RELEASE_DIRECTORY
 	export SINGLE_COMMAND_URL="${RELEASE_DOWNLOAD_URL}/cat.sh"
 	# The harness that runs the tests, and the user's own overrides, must not decide what the single command does
-	unset CLAUDECODE CODEX_THREAD_ID CAT_BOOTSTRAP_REPOSITORY CAT_RELEASE_BASE_URL FAKE_SETUP_STATUS
+	unset CLAUDECODE CODEX_THREAD_ID CAT_BOOTSTRAP_REPOSITORY CAT_RELEASE_BASE_URL FAKE_INSTALL_STATUS
 	# Output capture belongs to the parent command, not the generated hook's isolated harness environment.
 	unset CAT_RUN_PART_OUTPUT
 	mkdir -p "${FAKE_BIN}" "${HOME}" "${TMPDIR}"
@@ -127,42 +127,48 @@ pack_archive()
 	tar -czf - -C "$(dirname -- "$1")" "$(basename -- "$1")" > "$2"
 }
 
-# Publishes a fake CAT release v1.0 for the current platform: the installer's archive, a plugin archive that the entry
-# script must not download, their SHA-256 list and the release's cat.sh, which the generator fills with that list. Also
-# creates a fake curl that serves the release's files by name.
+# Writes the name of the fake release's plugin archive for a harness on the current platform, without its extension.
 #
-# The installer archive mirrors the installed layout: a runtime directory beside the version directory 1.0, whose
-# bin/cat-updater stands for the release's installer. That launcher writes each argument it receives on its own line to
-# SETUP_ARGUMENTS, writes the path it ran from and the content of the runtime marker beside its version directory to
-# SETUP_LOCATION, prints a setup result and exits with FAKE_SETUP_STATUS, or zero when that is unset. The fake curl
-# appends each URL that it is asked for to URL_LOG and fails as curl -f does when the release has no such file.
+# Arguments:
+#   $1 - The harness, claude or codex.
+plugin_name()
+{
+	printf '%s\n' "cat-$1-$(current_platform)-v1.0"
+}
+
+# Publishes a fake CAT release v1.0 for the current platform: one plugin archive for each harness, their SHA-256 list
+# and the release's cat.sh, which the generator fills with that list. Also creates a fake curl that serves the
+# release's files by name.
+#
+# Each plugin archive holds the plugin folder, whose bin/installer stands for the plugin's installer and whose
+# bin/runtime holds a marker for the plugin's Java runtime. That launcher writes each argument it receives on its own
+# line to INSTALL_ARGUMENTS, writes the path it ran from and the content of the runtime marker in its bin folder to
+# INSTALL_LOCATION, prints an install result and exits with FAKE_INSTALL_STATUS, or zero when that is unset. The fake
+# curl appends each URL that it is asked for to URL_LOG and fails as curl -f does when the release has no such file.
 #
 # Side effects:
 #   Creates FAKE_RELEASE_DIRECTORY and FAKE_BIN/curl.
 create_fake_release()
 {
-	installer_directory="cat-updater-v1.0-$(current_platform)"
-	plugin_directory="cat-claude-$(current_platform)-v1.0"
 	staging="${TEST_ROOT}/release staging"
-	mkdir -p "${FAKE_RELEASE_DIRECTORY}" "${staging}/${installer_directory}/1.0/bin" \
-		"${staging}/${installer_directory}/runtime" "${staging}/${plugin_directory}"
-	printf 'release runtime\n' > "${staging}/${installer_directory}/runtime/marker"
-	cat > "${staging}/${installer_directory}/1.0/bin/cat-updater" <<'SCRIPT'
+	mkdir -p "${FAKE_RELEASE_DIRECTORY}"
+	: > "${TEST_ROOT}/SHA256SUMS.txt"
+	for harness in claude codex; do
+		plugin_directory="$(plugin_name "${harness}")"
+		mkdir -p "${staging}/${plugin_directory}/bin/runtime"
+		printf 'release runtime\n' > "${staging}/${plugin_directory}/bin/runtime/marker"
+		cat > "${staging}/${plugin_directory}/bin/installer" <<'SCRIPT'
 #!/usr/bin/env sh
-printf '%s\n' "$@" > "${SETUP_ARGUMENTS}"
-version_directory="$(cd "$(dirname -- "$0")/.." && pwd)"
-printf '%s\n%s\n' "$0" "$(cat "${version_directory}/../runtime/marker")" > "${SETUP_LOCATION}"
-printf '%s\n' '{"result":"set_up"}'
-exit "${FAKE_SETUP_STATUS:-0}"
+printf '%s\n' "$@" > "${INSTALL_ARGUMENTS}"
+bin="$(cd "$(dirname -- "$0")" && pwd)"
+printf '%s\n%s\n' "$0" "$(cat "${bin}/runtime/marker")" > "${INSTALL_LOCATION}"
+printf '%s\n' '{"result":"installed"}'
+exit "${FAKE_INSTALL_STATUS:-0}"
 SCRIPT
-	chmod +x "${staging}/${installer_directory}/1.0/bin/cat-updater"
-	printf 'plugin\n' > "${staging}/${plugin_directory}/marker"
-	pack_archive "${staging}/${installer_directory}" "${FAKE_RELEASE_DIRECTORY}/${installer_directory}.tar.gz"
-	pack_archive "${staging}/${plugin_directory}" "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz"
-	{
-		sha256_line "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz"
-		sha256_line "${FAKE_RELEASE_DIRECTORY}/${installer_directory}.tar.gz"
-	} > "${TEST_ROOT}/SHA256SUMS.txt"
+		chmod +x "${staging}/${plugin_directory}/bin/installer"
+		pack_archive "${staging}/${plugin_directory}" "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz"
+		sha256_line "${FAKE_RELEASE_DIRECTORY}/${plugin_directory}.tar.gz" >> "${TEST_ROOT}/SHA256SUMS.txt"
+	done
 	sh "${COMMON_RELEASE_DIRECTORY}/generate-cat-sh.sh" "${COMMON_RELEASE_DIRECTORY}/cat.sh" v1.0 \
 		"${TEST_ROOT}/SHA256SUMS.txt" "${FAKE_RELEASE_DIRECTORY}/cat.sh"
 	cat > "${FAKE_BIN}/curl" <<'SCRIPT'
@@ -205,25 +211,25 @@ native_path()
 	fi
 }
 
-# Checks that the last single command ran the installer setup from the release's extracted installer archive, for a
-# harness and home, with exactly the arguments setup accepts, and that the temporary directory it used is gone.
+# Checks that the last single command ran the install of the installer in the release's extracted plugin archive for a
+# harness, with exactly the arguments that install accepts, and that the temporary directory it used is gone.
 #
 # Arguments:
 #   $1 - The harness, claude or codex.
-#   $2 - The harness home that setup must receive.
+#   $2 - The harness home that install must receive.
 #
 # Environment:
-#   SETUP_ARGUMENTS and SETUP_LOCATION hold what the fake installer recorded; TMPDIR is the entry script's temporary
-#   directory parent.
-expect_setup_ran_for()
+#   INSTALL_ARGUMENTS and INSTALL_LOCATION hold what the fake installer recorded; TMPDIR is the entry script's
+#   temporary directory parent.
+expect_install_ran_for()
 {
-	[ "$(cat "${SETUP_ARGUMENTS}")" = "setup
+	[ "$(cat "${INSTALL_ARGUMENTS}")" = "install
 --harness
 $1
 --home
 $(native_path "$2")" ]
-	launcher="$(sed -n '1p' "${SETUP_LOCATION}")"
-	[[ "${launcher}" == "${TMPDIR}/"*"/cat-updater-v1.0-$(current_platform)/1.0/bin/cat-updater" ]]
-	[ "$(sed -n '2p' "${SETUP_LOCATION}")" = "release runtime" ]
+	launcher="$(sed -n '1p' "${INSTALL_LOCATION}")"
+	[[ "${launcher}" == "${TMPDIR}/"*"/$(plugin_name "$1")/bin/installer" ]]
+	[ "$(sed -n '2p' "${INSTALL_LOCATION}")" = "release runtime" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }

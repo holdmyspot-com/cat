@@ -1,24 +1,28 @@
 #!/usr/bin/env bats
 
 # Tests what does not depend on the harness in the entry script cat.sh: which assets it downloads and verifies, the
-# platform it names them for, the options it refuses, how it runs the installer's setup from the extracted archive, the
-# exit status and cleanup that follow, and the generator that fills the script and its PowerShell peer with the
-# release's tag and SHA-256 digests, together with the release notes' entry commands.
+# platform it names them for, the options it refuses, how it runs the install of the installer in the extracted
+# plugin archive, the exit status and cleanup that follow, and the generator that fills the script and its PowerShell
+# peer with the release's tag and SHA-256 digests, together with the release notes' entry commands.
 #
 # The tests publish a fake release whose installer only records how it was run, so that they decide what cat.sh
 # downloads, verifies and runs.
 
 load bootstrap-helpers
 
-@test "entry script downloads only the installer archive from the release's download URL" {
+@test "entry script downloads only the harness's plugin archive from the release's download URL" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 
-	run single_command --harness claude
+	for harness in claude codex; do
+		: > "${URL_LOG}"
 
-	[ "${status}" -eq 0 ]
-	[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}
-${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
+		run single_command --harness "${harness}"
+
+		[ "${status}" -eq 0 ]
+		[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}
+${RELEASE_DOWNLOAD_URL}/$(plugin_name "${harness}").tar.gz" ]
+	done
 }
 
 @test "entry script ignores the variables that once chose the repository and the download URL" {
@@ -30,29 +34,29 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 
 	[ "${status}" -eq 0 ]
 	[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}
-${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
+${RELEASE_DOWNLOAD_URL}/$(plugin_name claude).tar.gz" ]
 }
 
-@test "entry script runs setup from the extracted installer archive and prints setup's result" {
+@test "entry script runs install from the extracted plugin archive and prints the installer's result" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 
 	run single_command --harness claude
 
 	[ "${status}" -eq 0 ]
-	[ "${output}" = '{"result":"set_up"}' ]
-	expect_setup_ran_for claude "${CLAUDE_CONFIG_DIR}"
+	[ "${output}" = '{"result":"installed"}' ]
+	expect_install_ran_for claude "${CLAUDE_CONFIG_DIR}"
 }
 
-@test "entry script exits with setup's exit status and still deletes its temporary directory" {
+@test "entry script exits with the installer's exit status and still deletes its temporary directory" {
 	create_fake_release
-	export PATH="${FAKE_BIN}:${PATH}" FAKE_SETUP_STATUS=5
+	export PATH="${FAKE_BIN}:${PATH}" FAKE_INSTALL_STATUS=5
 
 	run single_command --harness codex
 
 	[ "${status}" -eq 5 ]
-	[ "${output}" = '{"result":"set_up"}' ]
-	expect_setup_ran_for codex "${CODEX_HOME}"
+	[ "${output}" = '{"result":"installed"}' ]
+	expect_install_ran_for codex "${CODEX_HOME}"
 }
 
 @test "entry script refuses a version argument before downloading or running anything" {
@@ -69,7 +73,7 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 		[[ "${output}" == *"takes no version"* ]]
 		[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}" ]
 	done
-	[ ! -e "${SETUP_ARGUMENTS}" ]
+	[ ! -e "${INSTALL_ARGUMENTS}" ]
 }
 
 @test "entry script refuses the retired updater-only, uninstall and delete-data options and says how to uninstall" {
@@ -84,15 +88,16 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 		[ "${status}" -eq 2 ]
 		[[ "${output}" == *"${option} is no longer supported"* ]]
 		[[ "${output}" == *"ask your agent to uninstall CAT"* ]]
-		[[ "${output}" == *"cat-updater uninstall"* ]]
+		[[ "${output}" == *"bin/installer uninstall"* ]]
+		[[ "${output}" != *"cat-updater"* ]]
 		[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}" ]
 	done
-	[ ! -e "${SETUP_ARGUMENTS}" ]
+	[ ! -e "${INSTALL_ARGUMENTS}" ]
 }
 
-@test "entry script stops before extracting or running an installer that does not match the release's digest" {
+@test "entry script stops before extracting or running a plugin that does not match the release's digest" {
 	create_fake_release
-	printf 'tampered\n' > "${FAKE_RELEASE_DIRECTORY}/cat-updater-v1.0-$(current_platform).tar.gz"
+	printf 'tampered\n' > "${FAKE_RELEASE_DIRECTORY}/$(plugin_name claude).tar.gz"
 	real_tar="$(command -v tar)"
 	printf '#!/usr/bin/env sh\nprintf "tar %%s\\n" "$*" >> "${COMMAND_LOG}"\nexec "%s" "$@"\n' "${real_tar}" \
 		> "${FAKE_BIN}/tar"
@@ -102,31 +107,31 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	run single_command --harness claude
 
 	[ "${status}" -eq 1 ]
-	[[ "${output}" == *"cat-updater-v1.0-$(current_platform).tar.gz does not match the SHA-256 digest"* ]]
+	[[ "${output}" == *"$(plugin_name claude).tar.gz does not match the SHA-256 digest"* ]]
 	[ ! -s "${COMMAND_LOG}" ]
-	[ ! -e "${SETUP_ARGUMENTS}" ]
+	[ ! -e "${INSTALL_ARGUMENTS}" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script stops and deletes its temporary directory when the installer download fails" {
+@test "entry script stops and deletes its temporary directory when the plugin download fails" {
 	create_fake_release
-	rm "${FAKE_RELEASE_DIRECTORY}/cat-updater-v1.0-$(current_platform).tar.gz"
+	rm "${FAKE_RELEASE_DIRECTORY}/$(plugin_name claude).tar.gz"
 	export PATH="${FAKE_BIN}:${PATH}"
 
 	run single_command --harness claude
 
 	[ "${status}" -ne 0 ]
-	[ ! -e "${SETUP_ARGUMENTS}" ]
+	[ ! -e "${INSTALL_ARGUMENTS}" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script refuses an installer archive that holds anything beside its one top directory" {
+@test "entry script refuses a plugin archive that holds anything beside its one top directory" {
 	create_fake_release
 	archive_root="${TEST_ROOT}/extra"
-	mkdir -p "${archive_root}/cat-updater-v1.0-$(current_platform)" "${archive_root}/other"
-	tar -czf - -C "${archive_root}" "cat-updater-v1.0-$(current_platform)" other \
-		> "${FAKE_RELEASE_DIRECTORY}/cat-updater-v1.0-$(current_platform).tar.gz"
-	sha256_line "${FAKE_RELEASE_DIRECTORY}/cat-updater-v1.0-$(current_platform).tar.gz" > "${TEST_ROOT}/SHA256SUMS.txt"
+	mkdir -p "${archive_root}/$(plugin_name claude)" "${archive_root}/other"
+	tar -czf - -C "${archive_root}" "$(plugin_name claude)" other \
+		> "${FAKE_RELEASE_DIRECTORY}/$(plugin_name claude).tar.gz"
+	sha256_line "${FAKE_RELEASE_DIRECTORY}/$(plugin_name claude).tar.gz" > "${TEST_ROOT}/SHA256SUMS.txt"
 	sh "${COMMON_RELEASE_DIRECTORY}/generate-cat-sh.sh" "${COMMON_RELEASE_DIRECTORY}/cat.sh" v1.0 \
 		"${TEST_ROOT}/SHA256SUMS.txt" "${FAKE_RELEASE_DIRECTORY}/cat.sh"
 	export PATH="${FAKE_BIN}:${PATH}"
@@ -134,12 +139,12 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	run single_command --harness claude
 
 	[ "${status}" -eq 1 ]
-	[[ "${output}" == *"does not hold exactly the directory cat-updater-v1.0-$(current_platform)"* ]]
-	[ ! -e "${SETUP_ARGUMENTS}" ]
+	[[ "${output}" == *"does not hold exactly the directory $(plugin_name claude)"* ]]
+	[ ! -e "${INSTALL_ARGUMENTS}" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script names the installer asset of each supported operating system and processor" {
+@test "entry script names the plugin asset of each supported operating system and processor" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 	for case in "Linux x86_64 linux-x64" "Linux amd64 linux-x64" "Linux aarch64 linux-arm64" "Linux arm64 linux-arm64" \
@@ -153,12 +158,12 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 
 		# The fake release publishes only the current platform's assets, so the script stops at the asset it looks up
 		[ "${status}" -eq 1 ]
-		[[ "${output}" == *"publishes no asset named cat-updater-v1.0-${platform}.tar.gz"* ]]
+		[[ "${output}" == *"publishes no asset named cat-claude-${platform}-v1.0.tar.gz"* ]]
 	done
 	[ -z "$(ls -A "${TMPDIR}")" ]
 }
 
-@test "entry script refuses an unsupported operating system or processor before downloading the installer" {
+@test "entry script refuses an unsupported operating system or processor before downloading the plugin" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 	for case in "FreeBSD x86_64" "Linux riscv64" "MINGW32_NT-10.0 i686"; do
@@ -181,10 +186,10 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 	run single_command --harness codex
 
 	[ "${status}" -eq 0 ]
-	expect_setup_ran_for codex "${CODEX_HOME}"
+	expect_install_ran_for codex "${CODEX_HOME}"
 }
 
-@test "entry script refuses before downloading the installer when it cannot tell the harness" {
+@test "entry script refuses before downloading the plugin when it cannot tell the harness" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}"
 
@@ -199,10 +204,10 @@ ${RELEASE_DOWNLOAD_URL}/cat-updater-v1.0-$(current_platform).tar.gz" ]
 		[[ "${output}" == *"curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
 		[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}" ]
 	done
-	[ ! -e "${SETUP_ARGUMENTS}" ]
+	[ ! -e "${INSTALL_ARGUMENTS}" ]
 }
 
-@test "entry script refuses an unknown harness before downloading the installer" {
+@test "entry script refuses an unknown harness before downloading the plugin" {
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}" CLAUDECODE=1
 
@@ -253,7 +258,7 @@ v2.0" ''; do
 }
 
 @test "generator writes the PowerShell entry with the pinned tag and every digest" {
-	printf '%064d  cat-harness-a-v1.0-windows-x64.tar.gz\n%064d  cat-updater-v1.0-windows-x64.tar.gz\n' 1 2 \
+	printf '%064d  cat-claude-windows-x64-v1.0.tar.gz\n%064d  cat-codex-windows-x64-v1.0.tar.gz\n' 1 2 \
 		> "${TEST_ROOT}/SHA256SUMS.txt"
 
 	run sh "${COMMON_RELEASE_DIRECTORY}/generate-cat-sh.sh" "${COMMON_RELEASE_DIRECTORY}/cat.ps1" v1.0 \
@@ -267,7 +272,7 @@ v2.0" ''; do
 	! grep -E 'raw.githubusercontent.com|HEAD|api.github.com|@CAT_' "${TEST_ROOT}/cat.ps1" || false
 }
 
-@test "release notes give each harness's entry command, which runs setup from that release" {
+@test "release notes give each harness's entry command, which runs install from that release" {
 	repository="${BATS_TEST_DIRNAME}/../../../../../.."
 	render="$(grep -F 'release-notes.md >' "${repository}/.github/workflows/release.yml" | sed 's/^ *//')"
 	[ -n "${render}" ]
@@ -289,5 +294,5 @@ v2.0" ''; do
 	run sh -c "$(grep -Fx "curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude" "${notes}")"
 
 	[ "${status}" -eq 0 ]
-	expect_setup_ran_for claude "${CLAUDE_CONFIG_DIR}"
+	expect_install_ran_for claude "${CLAUDE_CONFIG_DIR}"
 }

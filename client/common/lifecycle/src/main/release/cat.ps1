@@ -1,15 +1,17 @@
-# Installs CAT on Windows for Claude Code or Codex: its runtime, the trusted updater, the release's plugin and
-# the agent permissions that later updates need, by running the setup of the updater that this release publishes.
+# Installs CAT on Windows for Claude Code or Codex: the release's plugin, with its Java runtime and installer, and the
+# agent permissions that later updates need, by running the install of the installer in the plugin that this release
+# publishes for the harness.
 #
 # Run the release's cat.ps1 as a script block in Windows PowerShell 5.1 or later:
 #   & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/<tag>/cat.ps1))) `
 #     -Harness codex
 # -Harness accepts claude or codex. Without it, the script detects the harness inside an agent session and otherwise
 # refuses. This entry takes no version: its release tag and every archive digest are fixed when the release is
-# published. It downloads only the updater archive, checks its SHA-256 digest before extracting anything, extracts it
-# into a temporary folder, runs the updater's setup from there and deletes the folder. Setup's output is the script's
-# output, and $LASTEXITCODE holds setup's exit status; a nonzero status also throws. Running it again repairs an
-# installation. To uninstall CAT, ask the agent to uninstall it: the agent runs the installed updater's uninstall.
+# published. It downloads only the harness's plugin archive, checks its SHA-256 digest before extracting anything,
+# extracts it into a temporary folder, runs the plugin's installer from there and deletes the folder. The installer's
+# output is the script's output, and $LASTEXITCODE holds its exit status; a nonzero status also throws. The installer
+# asks the harness to install the plugin. To uninstall CAT, ask the agent to uninstall it: the agent runs the installed
+# plugin's installer uninstall.
 [CmdletBinding()]
 param(
 	[ValidateSet('claude', 'codex')]
@@ -29,7 +31,6 @@ $CatReleaseTag = '@CAT_RELEASE_TAG@'
 $CatSha256Sums = @'
 @CAT_SHA256SUMS@
 '@
-$CatVersion = $CatReleaseTag.Substring(1)
 $CatDownloadUrl = "https://github.com/holdmyspot-com/cat/releases/download/$CatReleaseTag"
 $CatEntryCommand = "& ([scriptblock]::Create((irm $CatDownloadUrl/cat.ps1))) -Harness codex"
 
@@ -74,9 +75,9 @@ foreach ($retired in @(@('-UpdaterOnly', $UpdaterOnly), @('-Uninstall', $Uninsta
 {
 	if ($retired[1])
 	{
-		throw "$($retired[0]) is no longer supported. Run cat.ps1 [-Harness claude|codex] to install or repair CAT, " +
-			"including its updater. To uninstall CAT, ask your agent to uninstall CAT: it runs the installed updater's " +
-			"cat-updater uninstall, and asks you first whether to delete CAT's data."
+		throw "$($retired[0]) is no longer supported. Run cat.ps1 [-Harness claude|codex] to install CAT, including " +
+			"its installer. To uninstall CAT, ask your agent to uninstall CAT: it runs the installed plugin's " +
+			"bin\installer.ps1 uninstall, and asks you first whether to delete CAT's data."
 	}
 }
 if (-not $Harness)
@@ -95,7 +96,7 @@ if (-not $Harness)
 $architecture = $env:PROCESSOR_ARCHITEW6432
 if (-not $architecture) { $architecture = $env:PROCESSOR_ARCHITECTURE }
 if ($architecture -ne 'AMD64') { throw "Unsupported platform: Windows $architecture." }
-if (-not $env:TEMP) { throw 'TEMP must name a directory for the downloaded updater.' }
+if (-not $env:TEMP) { throw 'TEMP must name a directory for the downloaded plugin.' }
 
 # Each harness moves its home with its own variable
 if ($Harness -eq 'claude')
@@ -117,24 +118,24 @@ $work = Join-Path $env:TEMP ('cat-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 try
 {
-	$name = "cat-updater-$CatReleaseTag-windows-x64"
+	$name = "cat-$Harness-windows-x64-$CatReleaseTag"
 	$archive = Get-CatVerifiedAsset "$name.tar.gz" $work
-	$updater = Expand-CatVerifiedAsset $archive (Join-Path $work 'extracted') $name
-	# The archive mirrors the installed layout, so its versioned launcher runs the archive's own runtime
-	$launcher = Join-Path $updater "$CatVersion\bin\cat-updater.ps1"
+	$plugin = Expand-CatVerifiedAsset $archive (Join-Path $work 'extracted') $name
+	# The plugin's launcher runs the Java runtime in the plugin's own bin folder
+	$launcher = Join-Path $plugin 'bin\installer.ps1'
 	if (-not (Test-Path -LiteralPath $launcher -PathType Leaf))
 	{
-		throw "CAT's updater $CatReleaseTag has no launcher for windows-x64 at $launcher."
+		throw "CAT's $Harness plugin $CatReleaseTag has no installer for windows-x64 at $launcher."
 	}
 	$powershell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 	# Windows PowerShell treats native standard error as errors when it is redirected, so let it pass and keep the
 	# exit status
 	$ErrorActionPreference = 'Continue'
-	& $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $launcher setup --harness $Harness `
+	& $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $launcher install --harness $Harness `
 		--home $harnessHome
 	$status = $LASTEXITCODE
 	$ErrorActionPreference = 'Stop'
-	if ($status -ne 0) { throw "CAT's updater setup exited with status $status." }
+	if ($status -ne 0) { throw "CAT's installer install exited with status $status." }
 }
 finally
 {

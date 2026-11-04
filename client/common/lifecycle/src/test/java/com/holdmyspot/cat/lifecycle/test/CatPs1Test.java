@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.StringJoiner;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -25,11 +26,11 @@ import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
- * Tests the release's PowerShell entry script {@code cat.ps1}, which installs CAT on Windows by running the setup of
- * the release's updater. Each test runs the script the way that the installation instructions do, as a script block in
- * Windows PowerShell, against a fake release whose updater archive holds a {@code cat-updater.ps1} that records how it
- * was run instead of setting anything up. A function that copies files from the fake release's folder replaces the
- * cmdlet that downloads them.
+ * Tests the release's PowerShell entry script {@code cat.ps1}, which installs CAT on Windows by running the install of
+ * the installer in the release's plugin for the harness. Each test runs the script the way that the installation
+ * instructions do, as a script block in Windows PowerShell, against a fake release whose plugin archives hold a
+ * {@code bin\installer.ps1} that records how it was run instead of installing anything. A function that copies files
+ * from the fake release's folder replaces the cmdlet that downloads them.
  */
 public final class CatPs1Test
 {
@@ -42,13 +43,13 @@ public final class CatPs1Test
 	 */
 	private static final String RELEASE_URL = "https://github.com/holdmyspot-com/cat/releases/download/v1.0";
 	/**
-	 * The top directory of the fixture's Windows updater archive.
+	 * The top directory of the fixture's Windows plugin archive for Claude Code.
 	 */
-	private static final String UPDATER_NAME = "cat-updater-v1.0-windows-x64";
+	private static final String CLAUDE_PLUGIN = "cat-claude-windows-x64-v1.0";
 	/**
-	 * The fixture's plugin archive, which the entry script must not download.
+	 * The top directory of the fixture's Windows plugin archive for Codex.
 	 */
-	private static final String PLUGIN_NAME = "cat-codex-v1.0-windows-x64";
+	private static final String CODEX_PLUGIN = "cat-codex-windows-x64-v1.0";
 
 	/**
 	 * Returns this module's folder.
@@ -75,14 +76,15 @@ public final class CatPs1Test
 	}
 
 	/**
-	 * Verifies that the entry script downloads only the updater archive, runs setup for the named harness and its home
-	 * from the extracted archive, beside the archive's runtime, prints setup's output and deletes its temporary folder.
+	 * Verifies that the entry script downloads only the named harness's plugin archive, runs the install of the
+	 * plugin's installer for the harness and its home from the extracted archive, beside the plugin's runtime, prints
+	 * the installer's output and deletes its temporary folder.
 	 *
 	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
 	 * @throws InterruptedException if PowerShell is interrupted
 	 */
 	@Test
-	public void runsSetupFromExtractedUpdater() throws IOException, InterruptedException
+	public void runsInstallFromExtractedPlugin() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -92,46 +94,46 @@ public final class CatPs1Test
 			Result result = fixture.run(fixture.entry("-Harness claude"));
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(0);
-			requireThat(result.output(), "output").contains("{\"result\":\"set_up\"}");
-			requireThat(fixture.downloads(), "downloads").isEqualTo(List.of(RELEASE_URL + "/" + UPDATER_NAME + ".tar.gz"));
-			requireThat(fixture.setupArguments(), "setupArguments").
-				isEqualTo(List.of("setup", "--harness", "claude", "--home", fixture.claudeHome.toString()));
-			List<String> location = Files.readAllLines(fixture.setupLocation, UTF_8);
+			requireThat(result.output(), "output").contains("{\"result\":\"installed\"}");
+			requireThat(fixture.downloads(), "downloads").isEqualTo(List.of(RELEASE_URL + "/" + CLAUDE_PLUGIN + ".tar.gz"));
+			requireThat(fixture.installArguments(), "installArguments").
+				isEqualTo(List.of("install", "--harness", "claude", "--home", fixture.claudeHome.toString()));
+			List<String> location = Files.readAllLines(fixture.installLocation, UTF_8);
 			requireThat(location.getFirst(), "launcher").
-				endsWith("\\" + UPDATER_NAME + "\\1.0\\bin\\cat-updater.ps1");
+				endsWith("\\" + CLAUDE_PLUGIN + "\\bin\\installer.ps1");
 			requireThat(location.get(1), "runtime").isEqualTo("release runtime");
 			requireThat(fixture.temporaryEntries(), "temporaryEntries").isEmpty();
 		}
 	}
 
 	/**
-	 * Verifies that setup's nonzero exit status reaches the caller as {@code $LASTEXITCODE} and as an error, and that
-	 * the temporary folder is still deleted.
+	 * Verifies that the installer's nonzero exit status reaches the caller as {@code $LASTEXITCODE} and as an error, and
+	 * that the temporary folder is still deleted.
 	 *
 	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
 	 * @throws InterruptedException if PowerShell is interrupted
 	 */
 	@Test
-	public void passesSetupStatusThrough() throws IOException, InterruptedException
+	public void passesInstallStatusThrough() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup);
 			fixture.release(false);
 
-			Result result = fixture.run("$env:FAKE_SETUP_STATUS = '5'\n" + fixture.entry("-Harness codex"));
+			Result result = fixture.run("$env:FAKE_INSTALL_STATUS = '5'\n" + fixture.entry("-Harness codex"));
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(5);
-			requireThat(result.output(), "output").contains("setup exited with status 5");
-			requireThat(fixture.setupArguments(), "setupArguments").
-				isEqualTo(List.of("setup", "--harness", "codex", "--home", fixture.codexHome.toString()));
+			requireThat(result.output(), "output").contains("installer install exited with status 5");
+			requireThat(fixture.installArguments(), "installArguments").
+				isEqualTo(List.of("install", "--harness", "codex", "--home", fixture.codexHome.toString()));
 			requireThat(fixture.temporaryEntries(), "temporaryEntries").isEmpty();
 		}
 	}
 
 	/**
-	 * Verifies that inside a Claude Code shell the entry script sets up Claude Code without {@code -Harness}, and that
-	 * it refuses when the shell belongs to both harnesses or to neither.
+	 * Verifies that inside a Claude Code shell the entry script installs CAT for Claude Code without
+	 * {@code -Harness}, and that it refuses when the shell belongs to both harnesses or to neither.
 	 *
 	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
 	 * @throws InterruptedException if PowerShell is interrupted
@@ -147,9 +149,9 @@ public final class CatPs1Test
 			Result claude = fixture.run("$env:CLAUDECODE = '1'\n" + fixture.entry(""));
 
 			requireThat(claude.status(), "status").withContext(claude.output(), "output").isEqualTo(0);
-			requireThat(fixture.setupArguments(), "setupArguments").
-				isEqualTo(List.of("setup", "--harness", "claude", "--home", fixture.claudeHome.toString()));
-			Files.delete(fixture.setupArguments);
+			requireThat(fixture.installArguments(), "installArguments").
+				isEqualTo(List.of("install", "--harness", "claude", "--home", fixture.claudeHome.toString()));
+			Files.delete(fixture.installArguments);
 
 			for (String shell : List.of("", "$env:CLAUDECODE = '1'\n$env:CODEX_THREAD_ID = 'thread'\n"))
 			{
@@ -158,19 +160,19 @@ public final class CatPs1Test
 				requireThat(ambiguous.status(), "status").withContext(ambiguous.output(), "output").isEqualTo(1);
 				requireThat(ambiguous.output(), "output").contains("-Harness claude or -Harness codex");
 				requireThat(fixture.downloads(), "downloads").isEmpty();
-				requireThat(Files.exists(fixture.setupArguments), "setupRan").isFalse();
+				requireThat(Files.exists(fixture.installArguments), "installRan").isFalse();
 			}
 		}
 	}
 
 	/**
-	 * Verifies that an updater archive whose digest differs from the pinned one is refused before extraction or setup.
+	 * Verifies that a plugin archive whose digest differs from the pinned one is refused before extraction or install.
 	 *
 	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
 	 * @throws InterruptedException if PowerShell is interrupted
 	 */
 	@Test
-	public void rejectsUpdaterWithWrongChecksum() throws IOException, InterruptedException
+	public void rejectsPluginWithWrongChecksum() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -181,7 +183,7 @@ public final class CatPs1Test
 
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(1);
 			requireThat(result.output(), "output").contains("does not match the SHA-256 digest");
-			requireThat(Files.exists(fixture.setupArguments), "setupRan").isFalse();
+			requireThat(Files.exists(fixture.installArguments), "installRan").isFalse();
 			requireThat(fixture.temporaryEntries(), "temporaryEntries").isEmpty();
 		}
 	}
@@ -208,7 +210,7 @@ public final class CatPs1Test
 				requireThat(result.output(), "output").contains(retired + " is no longer supported").
 					contains("ask your agent to uninstall CAT");
 				requireThat(fixture.downloads(), "downloads").isEmpty();
-				requireThat(Files.exists(fixture.setupArguments), "setupRan").isFalse();
+				requireThat(Files.exists(fixture.installArguments), "installRan").isFalse();
 			}
 		}
 	}
@@ -236,7 +238,7 @@ public final class CatPs1Test
 
 	/**
 	 * The folders of one test: harness homes, a fake release, a temporary folder for the entry script and the files in
-	 * which the fake updater and the fake download record what happened.
+	 * which the fake installer and the fake download record what happened.
 	 */
 	private static final class Fixture
 	{
@@ -246,8 +248,8 @@ public final class CatPs1Test
 		private final Path release;
 		private final Path temporary;
 		private final Path downloadLog;
-		private final Path setupArguments;
-		private final Path setupLocation;
+		private final Path installArguments;
+		private final Path installLocation;
 
 		/**
 		 * Creates the folders of a test.
@@ -266,39 +268,52 @@ public final class CatPs1Test
 			this.release = Files.createDirectories(root.resolve("release"));
 			this.temporary = Files.createDirectories(root.resolve("temp"));
 			this.downloadLog = root.resolve("downloads.log");
-			this.setupArguments = root.resolve("setup-arguments.log");
-			this.setupLocation = root.resolve("setup-location.log");
+			this.installArguments = root.resolve("install-arguments.log");
+			this.installLocation = root.resolve("install-location.log");
 		}
 
 		/**
-		 * Publishes the updater and plugin archives and fills the entry template with their pinned digests.
+		 * Publishes the plugin archive of each harness and fills the entry template with their pinned digests.
 		 *
-		 * @param wrongChecksum indicates whether to alter the updater archive after pinning its digest
+		 * @param wrongChecksum indicates whether to alter the plugin archives after pinning their digests
 		 * @throws IOException if the fixture cannot be written
 		 */
 		private void release(boolean wrongChecksum) throws IOException
 		{
-			Path updater = root.resolve(UPDATER_NAME);
-			Path runtime = Files.createDirectories(updater.resolve("runtime"));
-			Files.writeString(runtime.resolve("marker"), "release runtime\n");
-			Path bin = Files.createDirectories(updater.resolve("1.0/bin"));
-			Files.writeString(bin.resolve("cat-updater.ps1"), """
-				$args | Set-Content -LiteralPath $env:SETUP_ARGUMENTS -Encoding UTF8
-				$runtime = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\\..\\runtime\\marker')
-				@($PSCommandPath, $runtime) | Set-Content -LiteralPath $env:SETUP_LOCATION -Encoding UTF8
-				Write-Output '{"result":"set_up"}'
-				exit [int] $env:FAKE_SETUP_STATUS
-				""");
-			Path plugin = Files.createDirectories(root.resolve(PLUGIN_NAME));
-			Files.writeString(plugin.resolve("marker"), "plugin\n");
-			Path updaterArchive = archive(updater);
-			Path pluginArchive = archive(plugin);
-			String sums = sha256(pluginArchive) + "  " + pluginArchive.getFileName() + "\n" +
-				sha256(updaterArchive) + "  " + updaterArchive.getFileName();
+			List<Path> archives = List.of(archive(plugin(CLAUDE_PLUGIN)), archive(plugin(CODEX_PLUGIN)));
+			StringJoiner sums = new StringJoiner("\n");
+			for (Path archive : archives)
+				sums.add(sha256(archive) + "  " + archive.getFileName());
 			Files.writeString(release.resolve("cat.ps1"), Files.readString(RELEASE_SOURCES.resolve("cat.ps1")).
-				replace("@CAT_RELEASE_TAG@", "v1.0").replace("@CAT_SHA256SUMS@", sums));
+				replace("@CAT_RELEASE_TAG@", "v1.0").replace("@CAT_SHA256SUMS@", sums.toString()));
 			if (wrongChecksum)
-				Files.writeString(updaterArchive, "tampered");
+			{
+				for (Path archive : archives)
+					Files.writeString(archive, "tampered");
+			}
+		}
+
+		/**
+		 * Creates a plugin folder whose installer records how it was run and what it found in the plugin's Java
+		 * runtime.
+		 *
+		 * @param name the plugin folder's name
+		 * @return the folder
+		 * @throws IOException if the folder cannot be written
+		 */
+		private Path plugin(String name) throws IOException
+		{
+			Path plugin = root.resolve(name);
+			Path runtime = Files.createDirectories(plugin.resolve("bin/runtime"));
+			Files.writeString(runtime.resolve("marker"), "release runtime\n");
+			Files.writeString(plugin.resolve("bin/installer.ps1"), """
+				$args | Set-Content -LiteralPath $env:INSTALL_ARGUMENTS -Encoding UTF8
+				$runtime = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'runtime\\marker')
+				@($PSCommandPath, $runtime) | Set-Content -LiteralPath $env:INSTALL_LOCATION -Encoding UTF8
+				Write-Output '{"result":"installed"}'
+				exit [int] $env:FAKE_INSTALL_STATUS
+				""");
+			return plugin;
 		}
 
 		/**
@@ -371,14 +386,14 @@ public final class CatPs1Test
 		}
 
 		/**
-		 * Returns the arguments that the fake updater's setup received, one per element.
+		 * Returns the arguments that the fake installer received, one per element.
 		 *
 		 * @return the arguments
-		 * @throws IOException if the fake updater did not run or its record cannot be read
+		 * @throws IOException if the fake installer did not run or its record cannot be read
 		 */
-		private List<String> setupArguments() throws IOException
+		private List<String> installArguments() throws IOException
 		{
-			return lines(setupArguments);
+			return lines(installArguments);
 		}
 
 		/**
@@ -431,9 +446,9 @@ public final class CatPs1Test
 				"$env:CLAUDE_CONFIG_DIR = " + literal(claudeHome) + "\n" +
 				"$env:CODEX_HOME = " + literal(codexHome) + "\n" +
 				"$env:TEMP = " + literal(temporary) + "\n" +
-				"$env:SETUP_ARGUMENTS = " + literal(setupArguments) + "\n" +
-				"$env:SETUP_LOCATION = " + literal(setupLocation) + "\n" +
-				"Remove-Item Env:CLAUDECODE, Env:CODEX_THREAD_ID, Env:FAKE_SETUP_STATUS -ErrorAction SilentlyContinue\n" +
+				"$env:INSTALL_ARGUMENTS = " + literal(installArguments) + "\n" +
+				"$env:INSTALL_LOCATION = " + literal(installLocation) + "\n" +
+				"Remove-Item Env:CLAUDECODE, Env:CODEX_THREAD_ID, Env:FAKE_INSTALL_STATUS -ErrorAction SilentlyContinue\n" +
 				"""
 				function Invoke-WebRequest
 				{
