@@ -23,7 +23,6 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
-import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -33,7 +32,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
@@ -48,7 +46,7 @@ import java.util.Set;
 import java.util.function.IntFunction;
 
 /**
- * Parses Codex runner commands to serve JSON requests or maintain isolated execution directories.
+ * Parses Codex runner commands to serve JSON requests.
  */
 public final class CodexRunnerCli
 {
@@ -63,14 +61,13 @@ public final class CodexRunnerCli
 	private static final String TOOL_OUTPUT_TOKEN_LIMIT = "--tool-output-token-limit";
 
 	/**
-	 * Prints the usage, verifies an artifact, runs a lifecycle-only command, or serves JSONL turns
-	 * through one persistent isolated Codex process, as the arguments select. The launcher always runs the artifact
-	 * that holds it and the {@code codex} command that the {@code PATH} finds: before anything else, it refuses
-	 * {@code --artifact} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the
-	 * launch as a session request.
+	 * Prints the usage, verifies an artifact, or serves JSONL turns through one persistent isolated Codex process, as
+	 * the arguments select. The launcher always runs the artifact that holds it and the {@code codex} command that the
+	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
+	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request.
 	 * <p>
-	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead:
-	 * the run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
+	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
+	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
 	 * receipt.
 	 *
 	 * @param args the command and its options
@@ -90,11 +87,6 @@ public final class CodexRunnerCli
 		if (args.length == 2 && args[0].equals("--verify-artifact"))
 		{
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
-			return;
-		}
-		if (HarnessRunnerMaintenance.isMaintenanceCommand(args))
-		{
-			executeMaintenance(args, Path.of(""), environment, Pause::sleeping, System.out);
 			return;
 		}
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
@@ -143,28 +135,6 @@ public final class CodexRunnerCli
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		boolean forwarded = requests != null && !requests.isBlank();
 		return !forwarded && HarnessRunnerOptions.refusesOverride(HARNESS_ID, args, errors);
-	}
-
-	/**
-	 * Runs one lifecycle-only command without starting Codex.
-	 *
-	 * @param args lifecycle command arguments
-	 * @param workingDirectory the directory from which the command was invoked
-	 * @param environment the command's environment, whose session variable names the session
-	 * @param waiting how the command waits between the attempts of a retried operation
-	 * @param out receives the command's output
-	 * @throws NullPointerException if any argument is null
-	 * @throws IOException if owned-run cleanup fails
-	 */
-	public static void executeMaintenance(String[] args, Path workingDirectory, Map<String, String> environment,
-		Waiting waiting, PrintStream out) throws IOException
-	{
-		requireThat(args, "args").isNotNull();
-		requireThat(out, "out").isNotNull();
-		try (ToolScope scope = toolScope(workingDirectory, environment, waiting))
-		{
-			HarnessRunnerMaintenance.execute(scope, args, HARNESS_ID, HarnessTemporaryRoot.from(scope), environment, out);
-		}
 	}
 
 	/**

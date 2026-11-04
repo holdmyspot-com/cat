@@ -208,7 +208,7 @@ public final class TestabilityAuditTest
 		List<Path> scanned = Scan.MODULE_FILES.stream().map(SourceFile::path).toList();
 		for (String source : List.of(
 			"codex/cli/src/test/java/com/holdmyspot/cat/codex/runner/test/CodexProcessTest.java",
-			"claude/cli/src/test/java/com/holdmyspot/cat/claude/runner/test/MaintenanceTest.java",
+			"claude/cli/src/test/java/com/holdmyspot/cat/claude/runner/test/ClaudeRunnerCliTest.java",
 			"common/cli/src/test/java/com/holdmyspot/cat/common/test/HookScopeTest.java",
 			"common/distribution/src/test/java/com/holdmyspot/cat/distribution/bundle/test/JlinkImageBuilderTest.java",
 			"common/updater/src/test/java/com/holdmyspot/cat/common/updater/engine/test/HttpsReleaseSourceTest.java",
