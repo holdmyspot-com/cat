@@ -38,7 +38,8 @@ public final class IntegrationTest
 	private static final String METADATA = "{\"name\":\"cat\",\"plugins\":[]}\n";
 
 	/**
-	 * Discovery records the real path of the first executable {@code codex} on PATH, a PATH without relative,
+	 * Discovery records the path at which it found the first executable {@code codex} on PATH, without resolving
+	 * symbolic links, a PATH without relative,
 	 * empty, repeated or excluded entries, and only the environment that Codex needs, after {@code codex --version}
 	 * succeeds.
 	 *
@@ -69,12 +70,47 @@ public final class IntegrationTest
 
 			HarnessCommand command = provider().discover(home, Map.of("HOME", userHome.toString(), "PATH", path,
 				"XDG_DATA_HOME", xdgData.toString(), "CODEX_SECRET", "not recorded"));
-			requireThat(command.command(), "command").isEqualTo(List.of(real.resolve("codex").toRealPath().toString()));
+			requireThat(command.command(), "command").isEqualTo(List.of(linked.resolve("codex").toString()));
 			requireThat(command.environment(), "environment").isEqualTo(Map.of("HOME", userHome.toString(),
 				"PATH", String.join(File.pathSeparator, notExecutable.toString(), linked.toString(), real.toString()),
 				"CODEX_HOME", home.toString()));
-			requireThat(Files.readString(real.resolve("invocations")), "invocations").isEqualTo("--version\n");
+			requireThat(Files.readString(linked.resolve("invocations")), "invocations").isEqualTo("--version\n");
 			requireThat(Files.exists(underHome.resolve("invocations")), "underHomeRan").isFalse();
+		}
+	}
+
+	/**
+	 * Discovery refuses a {@code codex} found outside the excluded locations whose symbolic link leads into one of
+	 * them, without running it.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void refusesLinkIntoExcludedLocation() throws IOException
+	{
+		requirePosix();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(testRoot(), "discover-"));
+			Path home = Files.createDirectories(root.resolve("codex-home"));
+			Path userHome = Files.createDirectories(root.resolve("user"));
+			Path underCat = fake(userHome.resolve(".cat/bin"), 0);
+			Path linked = Files.createDirectories(root.resolve("linked"));
+			Files.createSymbolicLink(linked.resolve("codex"), underCat.resolve("codex"));
+
+			IOException failure = null;
+			try
+			{
+				provider().discover(home, Map.of("HOME", userHome.toString(), "PATH", linked.toString()));
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains(linked.resolve("codex").toString());
+			requireThat(Files.exists(underCat.resolve("invocations")), "underCatRan").isFalse();
+			requireThat(Files.exists(linked.resolve("invocations")), "linkedRan").isFalse();
 		}
 	}
 

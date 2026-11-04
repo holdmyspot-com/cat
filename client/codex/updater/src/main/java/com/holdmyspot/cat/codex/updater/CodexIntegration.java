@@ -111,7 +111,9 @@ public final class CodexIntegration implements HarnessIntegration
 	/**
 	 * Finds {@code codex} on the setup PATH and confirms that {@code codex --version} succeeds.
 	 * <p>
-	 * The recorded program is the real path of the first match. On Windows, a match is {@code codex} followed by an
+	 * The recorded program is the path of the first match as PATH names it, without resolving symbolic links, so a
+	 * program that updates itself by re-pointing a link keeps working. Discovery refuses the match when it or its
+	 * real path lies in an excluded location. On Windows, a match is {@code codex} followed by an
 	 * extension from {@code PATHEXT}, and a {@code .cmd} or {@code .bat} match runs through
 	 * {@code %SystemRoot%\System32\cmd.exe /d /s /c}. The recorded PATH keeps only absolute entries outside the setup
 	 * working directory, the system temporary directory, the harness home, {@code <HOME>/.cat} and the updater's data
@@ -138,8 +140,15 @@ public final class CodexIntegration implements HarnessIntegration
 		if (windows)
 			userHomeName = "USERPROFILE";
 		Path userHome = absolute(lookup.get(userHomeName));
-		List<Path> searchPath = searchPath(lookup, home, userHome, windows);
+		List<Path> excluded = excludedLocations(lookup, home, userHome, windows);
+		List<Path> searchPath = searchPath(lookup, excluded);
 		Path program = find(searchPath, lookup, windows);
+		if (isUnder(program, excluded))
+		{
+			throw new IOException("The Codex command-line program " + program + " links into the working " +
+				"directory, the temporary directory, the Codex home, ~/.cat or CAT's updater data; put a \"codex\" " +
+				"outside them first on PATH and rerun this command.");
+		}
 
 		List<String> command = new ArrayList<>();
 		String name = program.getFileName().toString().toLowerCase(Locale.ROOT);
@@ -354,15 +363,17 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the PATH entries that discovery may search and record.
+	 * Returns the locations that discovery neither searches nor accepts a program from: the setup working directory,
+	 * the system temporary directory, the harness home, {@code <HOME>/.cat} and the updater's data directory.
 	 *
 	 * @param environment the setup environment
 	 * @param home        the harness home
 	 * @param userHome    the user's home directory, or null
 	 * @param windows     {@code true} on Windows
-	 * @return the absolute, normalized entries in PATH order, without excluded locations or repeats
+	 * @return the absolute, normalized locations
 	 */
-	private static List<Path> searchPath(Map<String, String> environment, Path home, Path userHome, boolean windows)
+	private static List<Path> excludedLocations(Map<String, String> environment, Path home, Path userHome,
+		boolean windows)
 	{
 		List<Path> excluded = new ArrayList<>();
 		excluded.add(Path.of("").toAbsolutePath().normalize());
@@ -373,7 +384,18 @@ public final class CodexIntegration implements HarnessIntegration
 		Path data = updaterData(environment, userHome, windows);
 		if (data != null)
 			excluded.add(data);
+		return excluded;
+	}
 
+	/**
+	 * Returns the PATH entries that discovery may search and record.
+	 *
+	 * @param environment the setup environment
+	 * @param excluded    the locations that discovery excludes
+	 * @return the absolute, normalized entries in PATH order, without excluded locations or repeats
+	 */
+	private static List<Path> searchPath(Map<String, String> environment, List<Path> excluded)
+	{
 		List<Path> entries = new ArrayList<>();
 		String value = environment.getOrDefault("PATH", "");
 		for (String text : value.split(Pattern.quote(File.pathSeparator), -1))
@@ -411,9 +433,10 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Reports whether a PATH entry lies in an excluded location, comparing both the written and the real paths.
+	 * Reports whether a PATH entry or program lies in an excluded location, comparing both the written and the real
+	 * paths.
 	 *
-	 * @param entry    the absolute, normalized entry
+	 * @param entry    the absolute, normalized entry or program
 	 * @param excluded the excluded locations
 	 * @return {@code true} if the entry is excluded
 	 */
@@ -461,7 +484,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 * @param searchPath  the PATH entries to search
 	 * @param environment the setup environment
 	 * @param windows     {@code true} on Windows
-	 * @return the real path of the program
+	 * @return the program's path within its PATH entry, without resolving symbolic links
 	 * @throws IOException if no entry holds an executable Codex program
 	 */
 	private static Path find(List<Path> searchPath, Map<String, String> environment, boolean windows)
@@ -485,7 +508,7 @@ public final class CodexIntegration implements HarnessIntegration
 			{
 				Path candidate = entry.resolve(name);
 				if (Files.isRegularFile(candidate) && Files.isExecutable(candidate))
-					return candidate.toRealPath();
+					return candidate;
 			}
 		}
 		throw new IOException("The Codex command-line program \"codex\" is not on PATH; install Codex, make sure " +
