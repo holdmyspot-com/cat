@@ -10,12 +10,15 @@ import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
+import com.holdmyspot.cat.common.installer.engine.Consent;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
 import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
-import com.holdmyspot.cat.common.installer.engine.PermissionRecord;
+import com.holdmyspot.cat.common.installer.engine.PluginInstall;
+import com.holdmyspot.cat.common.installer.engine.PluginInstall.InstalledEntries;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
 import com.holdmyspot.cat.common.installer.engine.TreeCopy;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
@@ -29,10 +32,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -104,15 +106,17 @@ public final class Install
 	 * @param integration the harness's integration
 	 * @param others      the integrations of the other harnesses, whose CAT installations the harness's sandbox may
 	 *                    reach
+	 * @param consent     decides whether the user allows a change that needs their permission
 	 * @return the outcome
 	 * @throws NullPointerException if any argument other than {@code home} is null
-	 * @throws TrustException       if a check refuses install
+	 * @throws TrustException       if a check refuses install, or the user withholds a permission that install needs;
+	 *                              the message of the latter is the question that the integration asked
 	 * @throws IOException          if the harness program is not found, the harness configuration is invalid, the
 	 *                              harness does not install the plugin, or a file cannot be read, written or replaced
 	 */
 	public Outcome install(String harness, Path home, Path cwd, Map<String, String> environment, Path userHome,
-		PluginActivation activation, HarnessIntegration integration, List<HarnessIntegration> others)
-		throws TrustException, IOException
+		PluginActivation activation, HarnessIntegration integration, List<HarnessIntegration> others,
+		Consent consent) throws TrustException, IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(cwd, "cwd").isDirectory();
@@ -121,6 +125,7 @@ public final class Install
 		requireThat(activation.harness(), "activation.harness()").isEqualTo(harness, "harness");
 		requireThat(integration.harness(), "integration.harness()").isEqualTo(harness, "harness");
 		requireThat(others, "others").isNotNull();
+		requireThat(consent, "consent").isNotNull();
 		if (home == null)
 			home = integration.installation(environment, userHome).home();
 		if (!home.isAbsolute() || !Files.isDirectory(home))
@@ -144,11 +149,16 @@ public final class Install
 		requireWritable(policyFile);
 		HarnessCommand command = discoverProgram(integration, home, installation.dataDirectory(), cwd, environment);
 		integration.validateConfiguration(home);
+		Path catLocks = CapacityLocks.root(userHome);
+		Optional<String> consentRequest = integration.consentRequest(home, catLocks);
+		if (consentRequest.isPresent() && !consent.grants(consentRequest.get()))
+			throw refusal(consentRequest.get());
 
 		Path marketplace = integration.marketplaceFolder(home, version);
 		Path versionFolder = installation.versionFolder(version);
 		writeMarketplace(plugin, marketplace, versionFolder, home);
-		integration.register(home, version, cliFactory.create(command, home), replacer);
+		HarnessCli cli = cliFactory.create(command, home);
+		integration.register(home, version, cli, replacer);
 		if (!Files.isDirectory(versionFolder, NOFOLLOW_LINKS))
 		{
 			throw new IOException(harness + " did not install CAT " + version + " into its version folder " +
@@ -165,9 +175,11 @@ public final class Install
 		setPermissions(policyFile);
 
 		Path installer = installer(versionFolder);
-		Map<String, List<String>> permissions = installEntries(integration, home, installer, installation,
-			environment, userHome, others);
-		return new Outcome(version, versionFolder, installer, startupCache, permissions, policy);
+		List<HarnessInstallation> otherInstallations = others.stream().
+			map(other -> other.installation(environment, userHome)).toList();
+		InstalledEntries entries = new PluginInstall(integration, cli, replacer).installEntries(home, installer,
+			installation, otherInstallations, catLocks, consentRequest.isPresent());
+		return new Outcome(version, versionFolder, installer, startupCache, entries, policy);
 	}
 
 	/**
@@ -228,67 +240,6 @@ public final class Install
 		RuntimeBinding.write(staged, versionFolder.resolve(PluginDirectory.RUNTIME));
 		LinkSafeDeletion.delete(marketplace, home);
 		Files.move(staged, marketplace);
-	}
-
-	/**
-	 * Adds the permission entries and the sandbox entries, removes the recorded entries that the integration no longer
-	 * maintains, and records the added ones.
-	 *
-	 * @param integration  the harness's integration
-	 * @param home         the harness home
-	 * @param installer    the installer launcher in the version folder
-	 * @param installation the harness's CAT installation
-	 * @param environment  the user's environment, which selects the other harnesses' homes
-	 * @param userHome     the user's home directory
-	 * @param others       the integrations of the other harnesses
-	 * @return the recorded entries, by entry key
-	 * @throws IOException if an entry or the record cannot be read or written
-	 */
-	private Map<String, List<String>> installEntries(HarnessIntegration integration, Path home, Path installer,
-		HarnessInstallation installation, Map<String, String> environment, Path userHome,
-		List<HarnessIntegration> others) throws IOException
-	{
-		Path record = InstallerState.of(installation.dataDirectory(), integration.harness()).permissions();
-		Path catLocks = CapacityLocks.root(userHome);
-		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(installer));
-		List<HarnessInstallation> otherInstallations = new ArrayList<>();
-		for (HarnessIntegration other : others)
-		{
-			HarnessInstallation otherInstallation = other.installation(environment, userHome);
-			otherInstallations.add(otherInstallation);
-			merge(maintained, integration.sandboxEntries(home, otherInstallation, catLocks));
-		}
-		Map<String, List<String>> obsolete = PermissionRecord.obsolete(record, maintained);
-		if (!obsolete.isEmpty())
-		{
-			integration.removePermissions(home, obsolete, replacer);
-			PermissionRecord.remove(record, obsolete);
-		}
-		Map<String, List<String>> added = new LinkedHashMap<>(integration.installPermissions(home, installer,
-			replacer));
-		for (HarnessInstallation otherInstallation : otherInstallations)
-			merge(added, integration.installSandboxEntries(home, otherInstallation, catLocks, replacer));
-		return PermissionRecord.add(record, added);
-	}
-
-	/**
-	 * Adds entries to a map of entries, keeping each key's entries in order and each entry once.
-	 *
-	 * @param target  the entries that receive the others
-	 * @param entries the added entries
-	 */
-	private static void merge(Map<String, List<String>> target, Map<String, List<String>> entries)
-	{
-		for (Map.Entry<String, List<String>> entry : entries.entrySet())
-		{
-			List<String> values = new ArrayList<>(target.getOrDefault(entry.getKey(), List.of()));
-			for (String value : entry.getValue())
-			{
-				if (!values.contains(value))
-					values.add(value);
-			}
-			target.put(entry.getKey(), List.copyOf(values));
-		}
 	}
 
 	/**
@@ -402,11 +353,12 @@ public final class Install
 	 * @param versionFolder the version folder that the harness loads the plugin from
 	 * @param installer     the installer launcher in the version folder, which the permission entries name
 	 * @param startupCache  whether the plugin got its startup cache
-	 * @param permissions   the permission and sandbox entries that install has recorded, by entry key
+	 * @param entries       the permission and sandbox entries that install has recorded, and what the user needs to
+	 *                      know about the ones that it added
 	 * @param policy        the written policy
 	 */
 	public record Outcome(PluginVersion version, Path versionFolder, Path installer, boolean startupCache,
-		Map<String, List<String>> permissions, TrustPolicy policy)
+		InstalledEntries entries, TrustPolicy policy)
 	{
 		/**
 		 * Creates the outcome.
@@ -415,7 +367,8 @@ public final class Install
 		 * @param versionFolder the version folder that the harness loads the plugin from
 		 * @param installer     the installer launcher in the version folder, which the permission entries name
 		 * @param startupCache  whether the plugin got its startup cache
-		 * @param permissions   the permission and sandbox entries that install has recorded, by entry key
+		 * @param entries       the permission and sandbox entries that install has recorded, and what the user needs
+		 *                      to know about the ones that it added
 		 * @param policy        the written policy
 		 * @throws NullPointerException if any of the arguments are null
 		 */
@@ -424,8 +377,8 @@ public final class Install
 			requireThat(version, "version").isNotNull();
 			requireThat(versionFolder, "versionFolder").isNotNull();
 			requireThat(installer, "installer").isNotNull();
+			requireThat(entries, "entries").isNotNull();
 			requireThat(policy, "policy").isNotNull();
-			permissions = Map.copyOf(permissions);
 		}
 	}
 }

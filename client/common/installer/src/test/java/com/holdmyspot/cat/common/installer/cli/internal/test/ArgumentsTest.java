@@ -106,6 +106,28 @@ public final class ArgumentsTest
 	}
 
 	/**
+	 * Install accepts the user's permission to create a permission profile last, after the optional harness home and
+	 * release; without it, install has no such permission.
+	 */
+	@Test
+	public void parsesProfilePermission()
+	{
+		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
+		Arguments bare = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--create-profile"},
+			Set.of("harness-a"));
+		Arguments full = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home", home.toString(),
+			"v1.2", "--create-profile"}, Set.of("harness-a"));
+		Arguments without = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home",
+			home.toString(), "v1.2"}, Set.of("harness-a"));
+		requireThat(bare.createProfile(), "bare").isTrue();
+		requireThat(bare.tag(), "bareTag").isNull();
+		requireThat(full.createProfile(), "full").isTrue();
+		requireThat(full.home(), "fullHome").isEqualTo(home);
+		requireThat(full.tag(), "fullTag").isEqualTo("v1.2");
+		requireThat(without.createProfile(), "without").isFalse();
+	}
+
+	/**
 	 * Supplies complete vectors that would expand project authority or bypass the documented grammar.
 	 *
 	 * @return rejected argument vectors
@@ -145,7 +167,12 @@ public final class ArgumentsTest
 			{new String[]{"uninstall", "--harness", "harness-a", "--delete-data", "--delete-data"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "extra"}},
 			{new String[]{"install", "--harness", "harness-a", "--delete-data"}},
-			{new String[]{"status", "--delete-data"}}
+			{new String[]{"status", "--delete-data"}},
+			{new String[]{"install", "--harness", "harness-a", "--create-profile", "v1.0"}},
+			{new String[]{"install", "--harness", "harness-a", "--create-profile", "--home", "/home/a"}},
+			{new String[]{"install", "--harness", "harness-a", "--create-profile", "--create-profile"}},
+			{new String[]{"uninstall", "--harness", "harness-a", "--create-profile"}},
+			{new String[]{"status", "--create-profile"}}
 		};
 	}
 

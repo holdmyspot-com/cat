@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.StringJoiner;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -67,6 +68,10 @@ public final class Uninstaller
 	private final Waiting waiting;
 	private final InstallerState state;
 	private final Path journal;
+	/**
+	 * The sentences that tell the user which recorded entries this uninstall left in place.
+	 */
+	private final List<String> retained = new ArrayList<>();
 
 	/**
 	 * Creates an uninstaller.
@@ -165,7 +170,8 @@ public final class Uninstaller
 			Thread.currentThread().interrupt();
 			return failure(Result.LOCKED, "Interrupted while waiting for the harness lock.", List.of());
 		}
-		return uninstalled(activation.harness(), policy.keys().stream().map(TrustedKey::id).toList(), unregistered);
+		return uninstalled(activation.harness(), policy.keys().stream().map(TrustedKey::id).toList(), unregistered,
+			retained);
 	}
 
 	/**
@@ -182,7 +188,8 @@ public final class Uninstaller
 		Optional<Progress> progress = readProgress(data.toAbsolutePath().normalize().resolve(JOURNAL));
 		if (progress.isEmpty() || !progress.get().completed().contains(STEPS.getLast()))
 			return Optional.empty();
-		return Optional.of(uninstalled(harness, List.of(), progress.get().completed().contains(UNREGISTER)));
+		return Optional.of(uninstalled(harness, List.of(), progress.get().completed().contains(UNREGISTER),
+			List.of()));
 	}
 
 	/**
@@ -203,18 +210,23 @@ public final class Uninstaller
 	 * @param harness      the installation's harness
 	 * @param keyIds       the identifiers of the policy's keys
 	 * @param unregistered true if the plugin was unregistered through the harness program
+	 * @param retained     the sentences that tell the user which recorded entries the uninstall left in place
 	 * @return the outcome
 	 */
-	private static UninstallResult uninstalled(String harness, List<String> keyIds, boolean unregistered)
+	private static UninstallResult uninstalled(String harness, List<String> keyIds, boolean unregistered,
+		List<String> retained)
 	{
-		String message = "CAT was removed from this harness.";
-		if (!unregistered)
+		StringJoiner message = new StringJoiner(" ");
+		if (unregistered)
+			message.add("CAT was removed from this harness.");
+		else
 		{
-			message = "CAT was removed from this harness, but the " + harness + " program that setup recorded no " +
-				"longer exists, so the harness may still list the plugin.";
+			message.add("CAT was removed from this harness, but the " + harness + " program that setup recorded no " +
+				"longer exists, so the harness may still list the plugin.");
 		}
+		retained.forEach(message::add);
 		return new UninstallResult(new UpdateResult(Result.UNINSTALLED, harness, Optional.empty(), Optional.empty(),
-			message, List.of(), true, keyIds), unregistered);
+			message.toString(), List.of(), true, keyIds), unregistered);
 	}
 
 	/**
@@ -259,7 +271,10 @@ public final class Uninstaller
 			{
 				Map<String, List<String>> recorded = PermissionRecord.read(state.permissions());
 				if (!recorded.isEmpty())
+				{
 					session.integration().removePermissions(home, recorded, session.replacer());
+					retained.addAll(session.integration().describeRetained(home, recorded));
+				}
 			}
 			case "policy" -> deletePolicy();
 			default -> throw new AssertionError(step);

@@ -276,7 +276,7 @@ public final class UninstallTest
 				Clock.systemUTC(), interval -> () -> {});
 			RecordingIntegration integration = new RecordingIntegration().fail("removePermissions");
 			InstallRequest request = new InstallRequest(integration.session(), root.resolve("download/plugin"),
-				List.of(), root.resolve("user/.cat/locks"));
+				List.of(), root.resolve("user/.cat/locks"), _ -> false);
 			requireThat(engine.install("v1.1", request).result(), "installed").
 				isEqualTo(Result.INSTALLED);
 			Files.createDirectories(data.resolve("state/permissions"));

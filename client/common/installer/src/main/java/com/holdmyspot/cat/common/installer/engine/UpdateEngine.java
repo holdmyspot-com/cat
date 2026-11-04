@@ -393,8 +393,9 @@ public final class UpdateEngine
 
 	/**
 	 * Installs a validated plugin tree into the harness: refuses a pending data migration and a version folder that
-	 * the running installer belongs to, then writes the marketplace, asks the harness to install the version, trains
-	 * its startup cache, rewrites the permission entries and records the data migration version.
+	 * the running installer belongs to, and a change that needs the user's permission when the user withholds it, then
+	 * writes the marketplace, asks the harness to install the version, trains its startup cache, rewrites the
+	 * permission entries and records the data migration version.
 	 *
 	 * @param tree    the validated plugin tree, which this method does not change
 	 * @param plugin  the plugin version that the tree states
@@ -434,14 +435,18 @@ public final class UpdateEngine
 			}
 		}
 		integration.validateConfiguration(home);
+		Optional<String> consentRequest = integration.consentRequest(home, request.catLocks());
+		if (consentRequest.isPresent() && !request.consent().grants(consentRequest.get()))
+			return result(Result.REFUSED, active.version(), null, consentRequest.get(), List.of());
 		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer());
 		boolean startupCache;
+		PluginInstall.InstalledEntries entries;
 		try
 		{
 			steps.deliver(home, tree, plugin);
 			startupCache = trainer.train(versionFolder);
-			steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
-				request.others(), request.catLocks());
+			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
+				request.others(), request.catLocks(), consentRequest.isPresent());
 			StateFiles.write(migrationFile, (release + "\n").getBytes(StandardCharsets.UTF_8));
 		}
 		catch (AccessDeniedException e)
@@ -457,11 +462,11 @@ public final class UpdateEngine
 		}
 		if (active.version() == null)
 		{
-			return result(Result.INSTALLED, plugin.toString(), null, "CAT was installed.", List.of()).
-				withAotCache(startupCache);
+			return result(Result.INSTALLED, plugin.toString(), null, entries.withNotices("CAT was installed."),
+				List.of()).withAotCache(startupCache);
 		}
-		return result(Result.UPDATED, plugin.toString(), active.version(), "CAT was updated.", List.of()).
-			withAotCache(startupCache);
+		return result(Result.UPDATED, plugin.toString(), active.version(), entries.withNotices("CAT was updated."),
+			List.of()).withAotCache(startupCache);
 	}
 
 	/**

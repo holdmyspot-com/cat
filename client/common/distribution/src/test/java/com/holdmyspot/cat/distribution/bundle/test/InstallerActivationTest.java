@@ -141,7 +141,7 @@ public final class InstallerActivationTest
 			Map<String, String> activeBefore = snapshot(activeFolder);
 
 			UpdateResult updated = engine.install("v1.1", new InstallRequest(session, root.resolve("download/plugin"),
-				List.of(), root.resolve("user/.cat/locks")));
+				List.of(), root.resolve("user/.cat/locks"), _ -> false));
 
 			requireThat(updated.result(), "updateResult").withContext(updated.message(), "message").
 				isEqualTo(Result.UPDATED);
@@ -476,6 +476,30 @@ public final class InstallerActivationTest
 		@Override
 		public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
 		{
+		}
+
+		@Override
+		public Optional<String> consentRequest(Path home, Path catLocks)
+		{
+			return Optional.empty();
+		}
+
+		@Override
+		public Map<String, List<String>> installConsentedEntries(Path home, FileReplacer replacer)
+		{
+			return Map.of();
+		}
+
+		@Override
+		public List<String> describeAdded(Path home, Map<String, List<String>> added)
+		{
+			return List.of();
+		}
+
+		@Override
+		public List<String> describeRetained(Path home, Map<String, List<String>> added)
+		{
+			return List.of();
 		}
 	}
 }

@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.engine.InstallRequest;
+import com.holdmyspot.cat.common.installer.engine.InstallerState;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
@@ -16,8 +17,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -94,6 +97,75 @@ public final class InstallTest
 	}
 
 	/**
+	 * An update that needs a change that the user does not allow changes nothing, and its refusal is the question
+	 * that the integration asked, so that the user can decide.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void updateChangesNothingWithoutConsent() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-no-consent-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
+			fixture.installActive("1.0");
+			fixture.integration.asking("May CAT change the shared setting?", Map.of("config#selection",
+				List.of("built-in")));
+			Map<String, String> before = Releases.snapshot(fixture.home);
+			List<String> questions = new ArrayList<>();
+
+			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
+				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
+				question ->
+				{
+					questions.add(question);
+					return false;
+				}));
+
+			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
+			requireThat(result.message(), "message").isEqualTo("May CAT change the shared setting?");
+			requireThat(questions, "questions").isEqualTo(List.of("May CAT change the shared setting?"));
+			requireThat(Releases.snapshot(fixture.home), "after").isEqualTo(before);
+			requireThat(fixture.integration.calls(), "calls").doesNotContain("installConsentedEntries");
+		}
+	}
+
+	/**
+	 * An update that needs a change that the user allows makes it before it adds the sandbox entries, records its
+	 * entries, and tells the user about them in the updated message.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void updateMakesChangeThatUserAllows() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-consent-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
+			fixture.installActive("1.0");
+			fixture.integration.asking("May CAT change the shared setting?", Map.of("config#selection",
+				List.of("built-in"))).describing("config#selection", "CAT changed the shared setting.");
+
+			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
+				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
+				_ -> true));
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UPDATED);
+			requireThat(result.message(), "message").isEqualTo("CAT was updated. CAT changed the shared setting.");
+			List<String> calls = fixture.integration.calls();
+			requireThat(calls.indexOf("installConsentedEntries"), "consented").isNotNegative().
+				isLessThan(calls.lastIndexOf("installPermissions"));
+			requireThat(Files.readString(InstallerState.of(fixture.data(), "harness-a").permissions()), "record").
+				contains("config#selection");
+		}
+	}
+
+	/**
 	 * A harness home that is reached through a symbolic link is installed into where the link points.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
@@ -116,7 +188,7 @@ public final class InstallTest
 			}, Duration.ZERO, _ -> false);
 
 			UpdateResult result = engine.install("v1.1", new InstallRequest(integration.session(),
-				root.resolve("download/plugin"), List.of(), root.resolve("user/.cat/locks")));
+				root.resolve("download/plugin"), List.of(), root.resolve("user/.cat/locks"), _ -> false));
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.INSTALLED);

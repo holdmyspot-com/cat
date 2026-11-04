@@ -781,6 +781,63 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
+	 * Asks nothing: install adds every entry that Claude Code needs to settings that only CAT's entries change.
+	 *
+	 * @return empty
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 */
+	@Override
+	public Optional<String> consentRequest(Path home, Path catLocks)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(catLocks, "catLocks").isAbsolute();
+		return Optional.empty();
+	}
+
+	/**
+	 * Changes nothing, because {@link #consentRequest} asks nothing.
+	 *
+	 * @return an empty map
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 */
+	@Override
+	public Map<String, List<String>> installConsentedEntries(Path home, FileReplacer replacer)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(replacer, "replacer").isNotNull();
+		return Map.of();
+	}
+
+	/**
+	 * Returns no sentences: install reports nothing about the entries that it adds to {@code settings.json}.
+	 *
+	 * @return an empty list
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 */
+	@Override
+	public List<String> describeAdded(Path home, Map<String, List<String>> added)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(added, "added").isNotNull();
+		return List.of();
+	}
+
+	/**
+	 * Returns no sentences, because {@link #removePermissions} removes each recorded entry that is still present and
+	 * leaves nothing of CAT's in place.
+	 *
+	 * @return an empty list
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 */
+	@Override
+	public List<String> describeRetained(Path home, Map<String, List<String>> added)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(added, "added").isNotNull();
+		return List.of();
+	}
+
+	/**
 	 * Removes the given entries that {@code settings.json} still holds, keeping every other member and entry.
 	 *
 	 * @param home     the absolute Claude Code configuration directory recorded in policy

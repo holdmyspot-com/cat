@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 
 /**
  * The steps with which the installer installs a plugin tree into one harness: it writes the tree into CAT's
@@ -117,20 +118,22 @@ public final class PluginInstall
 	}
 
 	/**
-	 * Adds the permission entries and the sandbox entries, removes the recorded entries that the integration no longer
-	 * maintains, and records the added ones.
+	 * Makes the change that the user allowed, when {@code consented}, then adds the permission entries and the sandbox
+	 * entries, removes the recorded entries that the integration no longer maintains, and records the added ones.
 	 *
 	 * @param home         the harness home
 	 * @param installer    the installer launcher in the version folder
 	 * @param installation the harness's CAT installation
 	 * @param others       the CAT installations of the other harnesses
 	 * @param catLocks     the directory of the capacity locks
-	 * @return the recorded entries, by entry key
+	 * @param consented    true if the user allowed the change that {@link HarnessIntegration#consentRequest} asks
+	 *                     about
+	 * @return the recorded entries, the entries that this call added and what the user needs to know about them
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if an entry or the record cannot be read or written
 	 */
-	public Map<String, List<String>> installEntries(Path home, Path installer, HarnessInstallation installation,
-		List<HarnessInstallation> others, Path catLocks) throws IOException
+	public InstalledEntries installEntries(Path home, Path installer, HarnessInstallation installation,
+		List<HarnessInstallation> others, Path catLocks, boolean consented) throws IOException
 	{
 		requireThat(home, "home").isNotNull();
 		requireThat(installer, "installer").isNotNull();
@@ -138,6 +141,10 @@ public final class PluginInstall
 		requireThat(others, "others").isNotNull();
 		requireThat(catLocks, "catLocks").isNotNull();
 		Path record = InstallerState.of(installation.dataDirectory(), integration.harness()).permissions();
+		Map<String, List<String>> added = new LinkedHashMap<>();
+		if (consented)
+			merge(added, integration.installConsentedEntries(home, replacer));
+
 		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(installer));
 		for (HarnessInstallation other : others)
 			merge(maintained, integration.sandboxEntries(home, other, catLocks));
@@ -147,11 +154,11 @@ public final class PluginInstall
 			integration.removePermissions(home, obsolete, replacer);
 			PermissionRecord.remove(record, obsolete);
 		}
-		Map<String, List<String>> added = new LinkedHashMap<>(integration.installPermissions(home, installer,
-			replacer));
+		merge(added, integration.installPermissions(home, installer, replacer));
 		for (HarnessInstallation other : others)
 			merge(added, integration.installSandboxEntries(home, other, catLocks, replacer));
-		return PermissionRecord.add(record, added);
+		Map<String, List<String>> recorded = PermissionRecord.add(record, added);
+		return new InstalledEntries(recorded, integration.describeAdded(home, added));
 	}
 
 	/**
@@ -171,6 +178,44 @@ public final class PluginInstall
 					values.add(value);
 			}
 			target.put(entry.getKey(), List.copyOf(values));
+		}
+	}
+
+	/**
+	 * The permission and sandbox entries after an install.
+	 *
+	 * @param recorded every entry that the installer has recorded, by entry key
+	 * @param notices  the sentences that tell the user what the entries that this install added change beyond CAT
+	 */
+	public record InstalledEntries(Map<String, List<String>> recorded, List<String> notices)
+	{
+		/**
+		 * Creates the entries.
+		 *
+		 * @param recorded every entry that the installer has recorded, by entry key
+		 * @param notices  the sentences that tell the user what the entries that this install added change beyond CAT
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public InstalledEntries
+		{
+			recorded = Map.copyOf(recorded);
+			notices = List.copyOf(notices);
+		}
+
+		/**
+		 * Returns a message followed by the notices.
+		 *
+		 * @param message the message
+		 * @return the message and the notices, separated by spaces
+		 * @throws NullPointerException if {@code message} is null
+		 */
+		public String withNotices(String message)
+		{
+			requireThat(message, "message").isNotNull();
+			StringJoiner joined = new StringJoiner(" ");
+			joined.add(message);
+			notices.forEach(joined::add);
+			return joined.toString();
 		}
 	}
 }

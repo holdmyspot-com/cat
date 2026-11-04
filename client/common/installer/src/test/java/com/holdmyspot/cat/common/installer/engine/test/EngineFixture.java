@@ -121,7 +121,7 @@ final class EngineFixture
 	 */
 	InstallRequest request(Path image)
 	{
-		return new InstallRequest(integration.session(), image, List.of(), root.resolve("user/.cat/locks"));
+		return new InstallRequest(integration.session(), image, List.of(), root.resolve("user/.cat/locks"), _ -> false);
 	}
 
 	/**

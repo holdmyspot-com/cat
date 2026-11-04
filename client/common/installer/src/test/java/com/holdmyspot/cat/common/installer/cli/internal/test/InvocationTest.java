@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
+import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
@@ -29,6 +30,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -673,6 +675,205 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Install appends what the harness integration says about the entries that it added to the installed message.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void installTellsAboutAddedEntries() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-notice-")));
+			RecordingIntegration integration = new RecordingIntegration().
+				adding(Map.of("config#profile", List.of("locks"))).
+				describing("config#profile", "CAT added the lock folder to a shared profile.");
+
+			Run run = archive.run(integration, _ -> Optional.empty());
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("message").stringValue(), "message").
+				isEqualTo("CAT is installed for harness-a. CAT added the lock folder to a shared profile.");
+		}
+	}
+
+	/**
+	 * When the integration needs the user's permission and the user answers yes in the terminal, install makes the
+	 * change and installs CAT.
+	 *
+	 * @param answer the user's answer
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test(dataProvider = "yes")
+	public void installMakesChangeThatUserAllows(String answer) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-consent-")));
+			RecordingIntegration integration = new RecordingIntegration().
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+			List<String> questions = new ArrayList<>();
+
+			Run run = archive.run(integration, question ->
+			{
+				questions.add(question);
+				return Optional.of(answer);
+			});
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("installed");
+			requireThat(questions.size(), "questions").isEqualTo(1);
+			requireThat(questions.getFirst(), "question").startsWith("May CAT change the shared setting?");
+			requireThat(integration.calls(), "calls").contains("installConsentedEntries");
+			requireThat(run.result().path("permissions").path("config#selection").get(0).stringValue(),
+				"recorded").isEqualTo("built-in");
+		}
+	}
+
+	/**
+	 * Supplies the answers that mean yes.
+	 *
+	 * @return each answer
+	 */
+	@DataProvider
+	public Object[][] yes()
+	{
+		return new Object[][]
+			{
+				{"y"},
+				{" YES "}
+			};
+	}
+
+	/**
+	 * When the user does not answer yes in the terminal, install refuses with the question and changes nothing.
+	 *
+	 * @param answer the user's answer, where an empty answer takes the default, no
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test(dataProvider = "no")
+	public void installChangesNothingWhenUserDeclines(String answer) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-decline-")));
+			RecordingIntegration integration = new RecordingIntegration().
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+			Map<String, String> before = Releases.snapshot(archive.root);
+
+			Run run = archive.run(integration, _ -> Optional.of(answer));
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").
+				startsWith("May CAT change the shared setting?").contains("You answered no, so CAT changed nothing.");
+			requireThat(run.result().has("consent_command"), "consentCommand").isFalse();
+			requireThat(integration.calls(), "calls").doesNotContain("installConsentedEntries").
+				doesNotContain("register");
+			requireThat(Releases.snapshot(archive.root), "after").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Supplies the answers that do not mean yes.
+	 *
+	 * @return each answer
+	 */
+	@DataProvider
+	public Object[][] no()
+	{
+		return new Object[][]
+			{
+				{""},
+				{"n"},
+				{"sure"}
+			};
+	}
+
+	/**
+	 * Without an interactive terminal, the extracted plugin archive's install refuses with the question and changes
+	 * nothing, and says to run the entry command in a terminal, where install can ask.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void archiveInstallNeedsTerminal() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-no-terminal-")));
+			RecordingIntegration integration = new RecordingIntegration().
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+			Map<String, String> before = Releases.snapshot(archive.root);
+
+			Run run = archive.run(integration, _ -> Optional.empty());
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("message").stringValue(), "message").
+				startsWith("May CAT change the shared setting?").contains("CAT changed nothing.").
+				contains("cat.sh --harness harness-a").contains("open a terminal");
+			requireThat(run.result().has("consent_command"), "consentCommand").isFalse();
+			requireThat(Releases.snapshot(archive.root), "after").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * With {@code --create-profile} on the command line, install makes the change without asking.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void consentFlagAllowsWithoutAsking() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-consent-flag-")));
+			RecordingIntegration integration = new RecordingIntegration().
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+
+			Run run = archive.run(integration, _ ->
+			{
+				throw new AssertionError("install asked although the command line allows the change");
+			}, "--create-profile");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(integration.calls(), "calls").contains("installConsentedEntries");
+		}
+	}
+
+	/**
+	 * Uninstall appends what the harness integration says about the entries that it left in place.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void uninstallTellsAboutRetainedEntries() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-retained-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.createDirectories(installation.data.resolve("state/permissions"));
+			Files.writeString(installation.data.resolve("state/permissions/harness-a.json"),
+				"{\"config#selection\": [\"built-in\"]}\n");
+			RecordingIntegration integration = new RecordingIntegration().
+				retaining(List.of("CAT left the shared setting as you changed it."));
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("message").stringValue(), "message").
+				isEqualTo("CAT was removed from this harness. CAT left the shared setting as you changed it.");
+		}
+	}
+
+	/**
 	 * Runs one installer invocation whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
@@ -686,6 +887,24 @@ public final class InvocationTest
 	private static Run run(Path image, Path cwd, Map<String, String> environment,
 		List<PluginActivation> activations, HarnessIntegration integration, String... arguments)
 	{
+		return run(image, cwd, environment, activations, integration, _ -> Optional.empty(), arguments);
+	}
+
+	/**
+	 * Runs one installer invocation, with a terminal, whose harness program never starts.
+	 *
+	 * @param image        the plugin folder of the running installer
+	 * @param cwd          the caller's working directory
+	 * @param environment  the caller's environment
+	 * @param activations  the installed activation providers
+	 * @param integration  the harness integration
+	 * @param terminal     the user's terminal
+	 * @param arguments    the command line
+	 * @return the outcome
+	 */
+	private static Run run(Path image, Path cwd, Map<String, String> environment,
+		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, String... arguments)
+	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 		int status;
@@ -696,7 +915,7 @@ public final class InvocationTest
 			Path userHome = Path.of(environment.getOrDefault("HOME", cwd.toString()));
 			Invocation invocation = new Invocation(image, cwd, userHome, Platform.LINUX_X64, environment, activations,
 				List.of(integration), (command, home) -> RecordingIntegration.cli(), Clock.systemUTC(),
-				interval -> () -> {}, replacer(), stdout, stderr);
+				interval -> () -> {}, replacer(), terminal, stdout, stderr);
 			status = invocation.run(arguments);
 		}
 		return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));
@@ -794,6 +1013,53 @@ public final class InvocationTest
 			HarnessIntegration integration, String... arguments)
 		{
 			return InvocationTest.run(image, root, environment, activations, integration, arguments);
+		}
+	}
+
+	/**
+	 * An extracted plugin archive of {@code harness-a} with a harness home into which nothing is installed yet.
+	 */
+	private static final class Archive
+	{
+		private final Path root;
+		private final Path plugin;
+		private final Path home;
+		private final Path project;
+		private final Map<String, String> environment;
+
+		/**
+		 * Creates the archive.
+		 *
+		 * @param directory the test directory
+		 * @throws IOException    if the archive cannot be created
+		 * @throws TrustException if the release's policy is invalid
+		 */
+		private Archive(Path directory) throws IOException, TrustException
+		{
+			this.root = directory.toRealPath();
+			this.plugin = PluginArchive.create(root.resolve("download"), List.of(trusted("release-key", keyPair())));
+			this.home = Files.createDirectory(root.resolve("home"));
+			Path user = Files.createDirectory(root.resolve("user"));
+			this.project = Files.createDirectory(root.resolve("project"));
+			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
+			this.environment = Map.of("HOME", user.toString(), "PATH", tools.toString());
+		}
+
+		/**
+		 * Runs install from the archive into the harness home.
+		 *
+		 * @param integration the harness integration
+		 * @param terminal    the user's terminal
+		 * @param options     the options after the harness home
+		 * @return the outcome
+		 */
+		private Run run(HarnessIntegration integration, Terminal terminal, String... options)
+		{
+			List<String> arguments = new ArrayList<>(List.of("install", "--harness", "harness-a", "--home",
+				home.toString()));
+			arguments.addAll(List.of(options));
+			return InvocationTest.run(plugin, project, environment, List.of(new LiveProvider()), integration,
+				terminal, arguments.toArray(String[]::new));
 		}
 	}
 

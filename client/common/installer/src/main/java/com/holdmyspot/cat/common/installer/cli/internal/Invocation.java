@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Arguments.Operation;
+import com.holdmyspot.cat.common.installer.engine.Consent;
 import com.holdmyspot.cat.common.installer.engine.HttpsReleaseSource;
 import com.holdmyspot.cat.common.installer.engine.HarnessSession;
 import com.holdmyspot.cat.common.installer.engine.InstallRequest;
@@ -69,6 +70,7 @@ public final class Invocation
 	private final Clock clock;
 	private final Waiting waiting;
 	private final FileReplacer replacer;
+	private final Terminal terminal;
 	private final PrintStream stdout;
 	private final PrintStream stderr;
 	private final JsonMapper mapper = JsonMapper.builder().build();
@@ -97,13 +99,15 @@ public final class Invocation
 	 * @param clock        supplies UTC diagnostic times
 	 * @param waiting      creates pauses between installer lock attempts
 	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
+	 * @param terminal     asks the user whether they allow a change that needs their permission
 	 * @param stdout       receives exactly one JSON result
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Invocation(Path image, Path cwd, Path userHome, Platform platform, Map<String, String> environment,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
-		Clock clock, Waiting waiting, FileReplacer replacer, PrintStream stdout, PrintStream stderr)
+		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, PrintStream stdout,
+		PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(cwd, "cwd").isNotNull();
@@ -113,6 +117,7 @@ public final class Invocation
 		requireThat(clock, "clock").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
+		requireThat(terminal, "terminal").isNotNull();
 		requireThat(stdout, "stdout").isNotNull();
 		requireThat(stderr, "stderr").isNotNull();
 		this.image = image;
@@ -126,6 +131,7 @@ public final class Invocation
 		this.clock = clock;
 		this.waiting = waiting;
 		this.replacer = replacer;
+		this.terminal = terminal;
 		this.stdout = stdout;
 		this.stderr = stderr;
 	}
@@ -284,7 +290,11 @@ public final class Invocation
 		{
 			UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 				platform.id(), clock, waiting);
-			return print(engine.install(arguments.tag(), request(managed, locations.image())), arguments, locations);
+			UserConsent consent = new UserConsent(arguments.createProfile());
+			UpdateResult result = engine.install(arguments.tag(), request(managed, locations.image(), consent));
+			if (result.result() == Result.REFUSED && consent.withheld())
+				return print(result, withheld(result, consent, arguments, locations.image()), arguments, locations);
+			return print(result, arguments, locations);
 		}
 	}
 
@@ -336,7 +346,11 @@ public final class Invocation
 					{
 						UpdateEngine engine = new UpdateEngine(installation.dataDirectory(), managed.policy(), source,
 							activation, platform.id(), clock, waiting);
-						return print(engine.installFrom(image, request(managed, image)), arguments, null);
+						UserConsent consent = new UserConsent(arguments.createProfile());
+						UpdateResult result = engine.installFrom(image, request(managed, image, consent));
+						if (result.result() == Result.REFUSED && consent.withheld())
+							return print(result, withheld(result, consent, arguments, null), arguments, null);
+						return print(result, arguments, null);
 					}
 				}
 			}
@@ -447,15 +461,16 @@ public final class Invocation
 	 *
 	 * @param managed the checked installation
 	 * @param plugin  the plugin folder that the running installer runs from
+	 * @param consent decides whether the user allows a change that needs their permission
 	 * @return the request
 	 */
-	private InstallRequest request(Managed managed, Path plugin)
+	private InstallRequest request(Managed managed, Path plugin, Consent consent)
 	{
 		String harness = managed.activation().harness();
 		List<HarnessInstallation> others = integrations.stream().
 			filter(provider -> !provider.harness().equals(harness)).
 			map(provider -> provider.installation(environment, userHome)).toList();
-		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome));
+		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome), consent);
 	}
 
 	/**
@@ -475,24 +490,71 @@ public final class Invocation
 		String harness = arguments.harness();
 		List<HarnessIntegration> others = integrations.stream().
 			filter(provider -> !provider.harness().equals(harness)).toList();
-		Install.Outcome outcome = new Install(image, platform, replacer, cliFactory, ProcessElevation::isElevated).
-			install(harness, arguments.home(), cwd, environment, userHome, activation, integration, others);
+		UserConsent consent = new UserConsent(arguments.createProfile());
+		Install.Outcome outcome;
+		try
+		{
+			outcome = new Install(image, platform, replacer, cliFactory, ProcessElevation::isElevated).
+				install(harness, arguments.home(), cwd, environment, userHome, activation, integration, others, consent);
+		}
+		catch (TrustException e)
+		{
+			if (!consent.withheld())
+				throw e;
+			UpdateResult refusal = failure(Result.REFUSED, harness, e.getMessage(), List.of());
+			return print(refusal, withheld(refusal, consent, arguments, null), arguments, null);
+		}
 		Path policyFile = integration.installation(outcome.policy().harnesses().get(harness)).policy();
 		ObjectNode object = encode(new UpdateResult(Result.INSTALLED, harness,
-			Optional.of(outcome.version().release()), Optional.empty(), "CAT is installed for " + harness + ".",
+			Optional.of(outcome.version().release()), Optional.empty(),
+			outcome.entries().withNotices("CAT is installed for " + harness + "."),
 			List.of(outcome.versionFolder(), policyFile), true,
 			outcome.policy().keys().stream().map(TrustedKey::id).toList()));
 		object.put("plugin_version", outcome.version().toString());
 		object.put("aot_cache", outcome.startupCache());
 		object.put("launcher", outcome.installer().toString());
 		ObjectNode permissions = object.putObject("permissions");
-		for (Map.Entry<String, List<String>> entry : outcome.permissions().entrySet())
+		for (Map.Entry<String, List<String>> entry : outcome.entries().recorded().entrySet())
 		{
 			ArrayNode entries = permissions.putArray(entry.getKey());
 			entry.getValue().forEach(entries::add);
 		}
 		stdout.println(mapper.writeValueAsString(object));
 		return 0;
+	}
+
+	/**
+	 * Encodes the refusal of an install whose change the user did not allow, saying how to allow it.
+	 *
+	 * @param refusal   the refusal, whose message is the question that install asked
+	 * @param consent   the user's answer
+	 * @param arguments the validated install operation
+	 * @param plugin    the version folder that the running installer runs from, or null when it runs from the
+	 *                  extracted plugin archive, which only the entry command runs
+	 * @return the encoded refusal
+	 */
+	private ObjectNode withheld(UpdateResult refusal, UserConsent consent, Arguments arguments, Path plugin)
+	{
+		String command = null;
+		String answer;
+		if (consent.declined())
+			answer = "You answered no, so CAT changed nothing.";
+		else if (plugin == null)
+		{
+			answer = "CAT changed nothing. To allow it, open a terminal and " +
+				Locations.rerunEntryCommand(refusal.harness()) + "; install then asks for your permission.";
+		}
+		else
+		{
+			command = ConsentCommand.of(plugin, platform, arguments);
+			answer = "CAT changed nothing. To allow it, run: " + command;
+		}
+		ObjectNode object = encode(new UpdateResult(refusal.result(), refusal.harness(), refusal.version(),
+			refusal.previousVersion(), refusal.message() + " " + answer, refusal.paths(), refusal.consistent(),
+			refusal.keyIds()));
+		if (command != null)
+			object.put("consent_command", command);
+		return object;
 	}
 
 	/**
@@ -631,6 +693,65 @@ public final class Invocation
 		if (resolvedHarness != null)
 			return resolvedHarness;
 		return "unknown";
+	}
+
+	/**
+	 * The user's permission for a change that install needs, given by the command line or asked in the terminal.
+	 */
+	private final class UserConsent implements Consent
+	{
+		private final boolean given;
+		private boolean declined;
+		private boolean unasked;
+
+		/**
+		 * Creates the user's permission.
+		 *
+		 * @param given true if the command line gives it
+		 */
+		UserConsent(boolean given)
+		{
+			this.given = given;
+		}
+
+		@Override
+		public boolean grants(String request) throws IOException
+		{
+			requireThat(request, "request").isNotNull();
+			if (given)
+				return true;
+			Optional<String> answer = terminal.ask(request + " Allow this change? [y/N] ");
+			if (answer.isEmpty())
+			{
+				unasked = true;
+				return false;
+			}
+			String reply = answer.get().strip().toLowerCase(Locale.ROOT);
+			if (reply.equals("y") || reply.equals("yes"))
+				return true;
+			declined = true;
+			return false;
+		}
+
+		/**
+		 * Returns whether the user withheld a permission that install asked for.
+		 *
+		 * @return true if the user answered no or install could not ask them
+		 */
+		boolean withheld()
+		{
+			return declined || unasked;
+		}
+
+		/**
+		 * Returns whether the user answered no.
+		 *
+		 * @return true if the user answered no in the terminal
+		 */
+		boolean declined()
+		{
+			return declined;
+		}
 	}
 
 	/**

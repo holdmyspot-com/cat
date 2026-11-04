@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessHarnessCli;
+import com.holdmyspot.cat.common.installer.cli.internal.ProcessTerminal;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -38,7 +39,7 @@ public final class InstallerMain
 				ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).toList(),
 				ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).toList(),
 				ProcessHarnessCli::new, Clock.systemUTC(), Pause::sleeping, FileReplacer.retrying(Pause::sleeping),
-				System.out, System.err);
+				new ProcessTerminal(platform), System.out, System.err);
 			status = invocation.run(CommandLineArguments.recover(args));
 		}
 		catch (Exception | ServiceConfigurationError failure)

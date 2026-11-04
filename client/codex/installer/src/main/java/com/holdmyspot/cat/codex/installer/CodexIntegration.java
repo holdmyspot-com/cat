@@ -21,11 +21,14 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFileAttributeView;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
@@ -44,7 +47,9 @@ import tools.jackson.databind.node.ObjectNode;
  * Permissions live in the CAT-owned file {@code rules/cat-installer.rules}, which Codex reads beside the user's rules.
  * The only sandbox entry lets sandboxed commands write CAT's capacity locks. In {@code config.toml} it is a writable
  * root, or, when the file selects a permission profile that it defines, a write entry in that profile, because Codex
- * then ignores the writable roots. Other projects that use the profile get the entry too.
+ * then ignores the writable roots. Other projects that use the profile get the entry too. When the file selects a
+ * built-in profile that limits which files commands may write, to which CAT cannot add an entry, install asks the user
+ * for permission to select a profile of CAT's that extends the built-in one and holds the entry.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -79,6 +84,11 @@ public final class CodexIntegration implements HarnessIntegration
 	 * The start of a sandbox key in Codex's configuration, which the setting's dotted TOML key follows.
 	 */
 	private static final String CONFIGURATION_KEY = "config.toml#";
+	/**
+	 * The record key of the built-in permission profile that {@code default_permissions} selected before CAT selected
+	 * its own profile in its place.
+	 */
+	private static final String SELECTION_KEY = CONFIGURATION_KEY + BuiltInProfile.SELECTION;
 	/**
 	 * The plugin as Codex identifies it: the plugin name, then the marketplace name.
 	 */
@@ -235,7 +245,8 @@ public final class CodexIntegration implements HarnessIntegration
 	 *
 	 * @param home the Codex home
 	 * @throws IOException if the file is a symbolic link, not a regular file, not valid TOML, or in a form whose
-	 *                     writable roots, or whose selected permission profile, CAT does not edit
+	 *                     writable roots, whose selected permission profile, or whose selection of a built-in profile
+	 *                     CAT does not edit
 	 */
 	private static void validateSandboxEntry(Path home) throws IOException
 	{
@@ -247,7 +258,15 @@ public final class CodexIntegration implements HarnessIntegration
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("Codex's configuration is not a regular file: " + file);
 		String content = read(file);
-		Optional<String> profile = PermissionProfile.selected(TomlText.parse(content, file));
+		ObjectNode document = TomlText.parse(content, file);
+		Optional<String> builtIn = BuiltInProfile.selected(document);
+		if (builtIn.isPresent())
+		{
+			String created = BuiltInProfile.create(content, builtIn.get(), file);
+			PermissionProfile.requireEditable(created, BuiltInProfile.catProfile(builtIn.get()), file);
+			return;
+		}
+		Optional<String> profile = PermissionProfile.selected(document);
 		if (profile.isPresent())
 			PermissionProfile.requireEditable(content, profile.get(), file);
 		else
@@ -367,6 +386,83 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Asks for permission to select a profile of CAT's when {@code config.toml} selects {@code :workspace} or
+	 * {@code :read-only}, which are built into Codex.
+	 *
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
+	 * @throws IOException              if {@code config.toml} cannot be read or is not valid TOML
+	 */
+	@Override
+	public Optional<String> consentRequest(Path home, Path catLocks) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
+		Path file = new CodexInstallation(home).configuration();
+		Optional<String> builtIn = selectedBuiltIn(file);
+		if (builtIn.isEmpty())
+			return Optional.empty();
+		String profile = TomlText.quote(BuiltInProfile.catProfile(builtIn.get()));
+		String quoted = TomlText.quote(builtIn.get());
+		return Optional.of("Codex's configuration " + file + " sets default_permissions to the permission profile " +
+			quoted + ", which is built into Codex, so CAT cannot add its capacity lock folder " + catLocks + " to it. " +
+			"Without write access to that folder, CAT's runners cannot start Codex or Claude Code sessions inside " +
+			"Codex's sandbox, because each session takes a capacity lock there. With your permission, CAT creates " +
+			"the permission profile " + profile + ", which extends " + quoted + " and adds only write access to " +
+			catLocks + ", and sets default_permissions to it. Uninstalling CAT sets it back to " + quoted + ".");
+	}
+
+	/**
+	 * Sets {@code default_permissions} to CAT's profile of the selected built-in profile, and creates that profile with
+	 * {@code extends} set to the built-in profile unless the file already defines it.
+	 *
+	 * @return {@code {"config.toml#default_permissions": [<built-in>], "config.toml#permissions.cat-<name>":
+	 * 	[<built-in>]}}, or an empty map when {@code config.toml} selects no built-in profile that limits which files
+	 * 	commands may write
+	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
+	 * @throws IOException              if {@code config.toml} is in a form whose selection CAT does not edit, or
+	 *                                  cannot be read or written
+	 */
+	@Override
+	public Map<String, List<String>> installConsentedEntries(Path home, FileReplacer replacer) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(replacer, "replacer").isNotNull();
+		validateSandboxEntry(home);
+		Path file = new CodexInstallation(home).configuration();
+		Optional<String> builtIn = selectedBuiltIn(file);
+		if (builtIn.isEmpty())
+			return Map.of();
+		write(file, BuiltInProfile.create(read(file), builtIn.get(), file), replacer);
+		return Map.of(SELECTION_KEY, List.of(builtIn.get()),
+			catProfileKey(builtIn.get()), List.of(builtIn.get()));
+	}
+
+	/**
+	 * Returns the built-in profile that limits which files commands may write and that a {@code config.toml} selects.
+	 *
+	 * @param file the {@code config.toml}
+	 * @return the profile's name, or empty when the file is absent, not a regular file or selects no such profile
+	 * @throws IOException if the file cannot be read or is not valid TOML
+	 */
+	private static Optional<String> selectedBuiltIn(Path file) throws IOException
+	{
+		if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		return BuiltInProfile.selected(TomlText.parse(read(file), file));
+	}
+
+	/**
+	 * Returns the record key of CAT's profile of a built-in profile.
+	 *
+	 * @param builtIn the built-in profile
+	 * @return {@code config.toml#permissions.cat-<name>}
+	 */
+	private static String catProfileKey(String builtIn)
+	{
+		return CONFIGURATION_KEY + "permissions." + BuiltInProfile.catProfile(builtIn);
+	}
+
+	/**
 	 * Lets sandboxed commands write {@code catLocks}. When {@code config.toml} selects with {@code default_permissions}
 	 * a permission profile that it defines, adds {@code "<catLocks>" = "write"} to that profile's {@code filesystem}
 	 * table, creating the table when it is absent, unless the profile already has an entry for {@code catLocks}.
@@ -428,7 +524,8 @@ public final class CodexIntegration implements HarnessIntegration
 	 * @param catLocks the capacity lock directory
 	 * @return {@code {"config.toml#permissions.<profile>.filesystem": [<catLocks>]}} when {@code config.toml} selects
 	 * 	a permission profile that it defines, with the profile's name quoted when TOML requires it, otherwise
-	 * 	{@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}
+	 * 	{@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}; when the selected profile is
+	 * 	CAT's profile of a built-in profile, also the entries that {@link #installConsentedEntries} returns for it
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
 	 * @throws UncheckedIOException     if {@code config.toml} cannot be read or is not valid TOML
@@ -440,33 +537,41 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(other, "other").isNotNull();
 		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
 		Path file = new CodexInstallation(home).configuration();
-		Optional<String> profile;
+		ObjectNode document;
 		try
 		{
-			profile = selectedProfile(file);
+			document = readDocument(file);
 		}
 		catch (IOException e)
 		{
 			throw new UncheckedIOException(e);
 		}
-		if (profile.isPresent())
-			return Map.of(profileKey(profile.get()), List.of(catLocks.toString()));
-		return Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
+		Optional<String> profile = PermissionProfile.selected(document);
+		if (profile.isEmpty())
+			return Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
+		Map<String, List<String>> entries = new HashMap<>();
+		entries.put(profileKey(profile.get()), List.of(catLocks.toString()));
+		Optional<String> builtIn = BuiltInProfile.extended(document, profile.get());
+		if (builtIn.isPresent())
+		{
+			entries.put(SELECTION_KEY, List.of(builtIn.get()));
+			entries.put(catProfileKey(builtIn.get()), List.of(builtIn.get()));
+		}
+		return Map.copyOf(entries);
 	}
 
 	/**
-	 * Returns the permission profile that a {@code config.toml} selects and defines.
+	 * Reads a {@code config.toml}.
 	 *
 	 * @param file the {@code config.toml}
-	 * @return the profile's name, or empty when the file is absent, not a regular file, selects no profile or selects
-	 * 	one that it does not define
+	 * @return the document, which is empty when the file is absent or not a regular file
 	 * @throws IOException if the file cannot be read or is not valid TOML
 	 */
-	private static Optional<String> selectedProfile(Path file) throws IOException
+	private static ObjectNode readDocument(Path file) throws IOException
 	{
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
-			return Optional.empty();
-		return PermissionProfile.selected(TomlText.parse(read(file), file));
+			return TomlText.table();
+		return TomlText.parse(read(file), file);
 	}
 
 	/**
@@ -481,10 +586,112 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Tells the user that CAT selected its profile of a built-in profile, and that a write entry that CAT added to a
+	 * profile of the user's applies to every project that uses the profile.
+	 *
+	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
+	 * @throws IOException              if {@code config.toml} cannot be read or is not valid TOML
+	 */
+	@Override
+	public List<String> describeAdded(Path home, Map<String, List<String>> added) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(added, "added").isNotNull();
+		Path file = new CodexInstallation(home).configuration();
+		List<String> sentences = new ArrayList<>();
+		List<String> selected = added.getOrDefault(SELECTION_KEY, List.of());
+		for (String builtIn : selected)
+		{
+			String quoted = TomlText.quote(builtIn);
+			sentences.add("CAT set default_permissions in " + file + " to its permission profile " +
+				TomlText.quote(BuiltInProfile.catProfile(builtIn)) + ", which extends " + quoted + " and lets " +
+				"sandboxed commands take CAT's capacity locks; uninstalling CAT sets it back to " + quoted + ".");
+		}
+		if (added.keySet().stream().noneMatch(key -> key.startsWith(CONFIGURATION_KEY + "permissions.")))
+			return List.copyOf(sentences);
+		ObjectNode document = readDocument(file);
+		for (String profile : document.path("permissions").propertyNames())
+		{
+			if (BuiltInProfile.extended(document, profile).filter(selected::contains).isPresent())
+				continue;
+			for (String path : added.getOrDefault(profileKey(profile), List.of()))
+			{
+				sentences.add("CAT added " + TomlText.quote(path) + " = \"write\" to the Codex permission profile " +
+					TomlText.quote(profile) + " in " + file + ", so that sandboxed commands can take CAT's capacity " +
+					"locks; every project that uses this profile can now write that folder too.");
+			}
+		}
+		return List.copyOf(sentences);
+	}
+
+	/**
+	 * Tells the user when uninstall left {@code default_permissions} or CAT's profile of a built-in profile in place.
+	 *
+	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
+	 * @throws IOException              if {@code config.toml} cannot be read or is not valid TOML
+	 */
+	@Override
+	public List<String> describeRetained(Path home, Map<String, List<String>> added) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(added, "added").isNotNull();
+		Path file = new CodexInstallation(home).configuration();
+		List<String> builtIns = recordedBuiltIns(added);
+		if (builtIns.isEmpty() || Files.isSymbolicLink(home) || Files.isSymbolicLink(file))
+			return List.of();
+		ObjectNode document = readDocument(file);
+		String selection = document.path(BuiltInProfile.SELECTION).asString("");
+		List<String> sentences = new ArrayList<>();
+		for (String builtIn : builtIns)
+		{
+			String profile = BuiltInProfile.catProfile(builtIn);
+			if (added.getOrDefault(SELECTION_KEY, List.of()).contains(builtIn) && !selection.equals(builtIn))
+			{
+				if (selection.equals(profile))
+				{
+					sentences.add("CAT could not set default_permissions in " + file + " back to " +
+						TomlText.quote(builtIn) + ", because it cannot edit that line; set it yourself.");
+				}
+				else
+				{
+					sentences.add("CAT left default_permissions in " + file + " as it is, because it no longer " +
+						"names CAT's permission profile " + TomlText.quote(profile) + ".");
+				}
+			}
+			if (document.path("permissions").has(profile))
+			{
+				String reason = "it holds settings that CAT did not write";
+				if (selection.equals(profile))
+					reason = "default_permissions still names it";
+				sentences.add("CAT left its permission profile " + TomlText.quote(profile) + " in " + file +
+					", because " + reason + ".");
+			}
+		}
+		return List.copyOf(sentences);
+	}
+
+	/**
+	 * Returns the built-in profiles whose replacement by CAT's profile an install recorded.
+	 *
+	 * @param added the recorded entries, by entry key
+	 * @return the built-in profiles, without repeats
+	 */
+	private static List<String> recordedBuiltIns(Map<String, List<String>> added)
+	{
+		Set<String> builtIns = new TreeSet<>(added.getOrDefault(SELECTION_KEY, List.of()));
+		for (String builtIn : BuiltInProfile.LIMITED)
+			builtIns.addAll(added.getOrDefault(catProfileKey(builtIn), List.of()));
+		builtIns.retainAll(BuiltInProfile.LIMITED);
+		return List.copyOf(builtIns);
+	}
+
+	/**
 	 * Deletes {@code rules/cat-installer.rules} when its content equals a recorded content, removes each recorded
 	 * writable root from {@code config.toml}, and removes each recorded write entry from the permission profile that it
-	 * was added to, when that entry still grants write access. Leaves a changed rules file, a file reached through a
-	 * symbolic link, the writable roots' array and table, each profile's filesystem table, and every other entry in
+	 * was added to, when that entry still grants write access. Then sets {@code default_permissions} back to the
+	 * recorded built-in profile while it still names CAT's profile of it, and removes CAT's profile while it holds only
+	 * what CAT wrote and is not selected. Leaves a changed rules file, a file reached through a symbolic link, the
+	 * writable roots' array and table, each profile's filesystem table of the user's profiles, and every other entry in
 	 * place.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
@@ -522,8 +729,10 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Removes recorded writable roots and recorded profile write entries from {@code config.toml}. A recorded entry of
-	 * a profile that the file no longer defines needs no removal.
+	 * Removes recorded writable roots and recorded profile write entries from {@code config.toml}, then sets
+	 * {@code default_permissions} back to a recorded built-in profile while it names CAT's profile of it, and removes
+	 * CAT's profile while it holds only what CAT wrote. A recorded entry of a profile that the file no longer defines
+	 * needs no removal.
 	 *
 	 * @param home     the Codex home
 	 * @param added    the recorded entries, by entry key
@@ -548,6 +757,8 @@ public final class CodexIntegration implements HarnessIntegration
 			for (String path : added.getOrDefault(profileKey(profile), List.of()))
 				edited = PermissionProfile.remove(edited, profile, path, file);
 		}
+		for (String builtIn : recordedBuiltIns(added))
+			edited = BuiltInProfile.remove(edited, builtIn, file);
 		if (!edited.equals(content))
 			write(file, edited, replacer);
 	}

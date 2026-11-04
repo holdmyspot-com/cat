@@ -104,7 +104,7 @@ public final class InstallCommandTest
 			Path installer = fixture.versionFolder().resolve("bin/installer");
 			requireThat(outcome.installer(), "installer").isEqualTo(installer);
 			requireThat(fixture.integration.callsWithSubjects(), "calls").contains("installPermissions " + installer);
-			requireThat(outcome.permissions(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
+			requireThat(outcome.entries().recorded(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
 			requireThat(Files.readString(fixture.home.resolve("plugins/data/cat-cat/state/permissions/harness-a.json")),
 				"record").contains("settings.json").contains("entry");
 		}
@@ -131,7 +131,7 @@ public final class InstallCommandTest
 
 			requireThat(fixture.integration.callsWithSubjects(), "calls").contains("installSandboxEntries " +
 				fixture.user.resolve("harness-b-home") + " " + fixture.user.resolve(".cat/locks"));
-			requireThat(outcome.permissions(), "permissions").
+			requireThat(outcome.entries().recorded(), "permissions").
 				isEqualTo(Map.of("settings.json#sandbox", List.of("other")));
 		}
 	}
@@ -274,7 +274,7 @@ public final class InstallCommandTest
 
 			requireThat(fixture.integration.removed(), "removed").
 				isEqualTo(List.of(Map.of("settings.json", List.of("retired"))));
-			requireThat(outcome.permissions(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
+			requireThat(outcome.entries().recorded(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
 			requireThat(Files.readString(record), "record").contains("entry").doesNotContain("retired");
 		}
 	}
@@ -355,7 +355,7 @@ public final class InstallCommandTest
 			Install install = new Install(archive, Platform.LINUX_X64, replacer(),
 				(recorded, recordedHome) -> RecordingIntegration.cli(), _ -> false);
 			return install.install("harness-a", requestedHome, cwd, environment, user, new LiveProvider(),
-				integration, others);
+				integration, others, _ -> false);
 		}
 	}
 }

@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Integrates the installer with one harness's installation layout, command-line program, agent permissions and
@@ -159,6 +160,37 @@ public interface HarnessIntegration
 	Map<String, List<String>> permissions(Path installer) throws IOException;
 
 	/**
+	 * Returns the question that install must put to the user before it lets sandboxed commands take the capacity
+	 * locks, because the only change that achieves it also changes a setting that is not CAT's alone. Install changes
+	 * nothing unless the user agrees, and then calls {@link #installConsentedEntries} before
+	 * {@link #installSandboxEntries}.
+	 *
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param catLocks the absolute directory of CAT's capacity locks
+	 * @return the question, which explains the problem, what fails without the change, and the change; empty when
+	 * 	install needs no permission
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 * @throws IOException              if the configuration cannot be read
+	 */
+	Optional<String> consentRequest(Path home, Path catLocks) throws IOException;
+
+	/**
+	 * Makes the change that {@link #consentRequest} asks the user to allow, once the user has allowed it. Does nothing
+	 * when {@link #consentRequest} asks nothing.
+	 *
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                 replacement
+	 * @return the entries that this call added, keyed as {@link #installPermissions} keys them, which
+	 * 	{@link #sandboxEntries} maintains afterwards and {@link #removePermissions} undoes
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the configuration cannot be changed
+	 */
+	Map<String, List<String>> installConsentedEntries(Path home, FileReplacer replacer) throws IOException;
+
+	/**
 	 * Adds the sandbox settings that keep sandboxed commands from writing the other harness's CAT installation and
 	 * that let them take the capacity locks. Idempotent.
 	 *
@@ -188,6 +220,33 @@ public interface HarnessIntegration
 	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
 	 */
 	Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks);
+
+	/**
+	 * Returns the sentences that tell the user what entries that install added change beyond CAT, such as a setting
+	 * that other projects share.
+	 *
+	 * @param home  the absolute, normalized harness home from the trust policy
+	 * @param added the entries that this install added, as {@link #installPermissions},
+	 *              {@link #installConsentedEntries} and {@link #installSandboxEntries} returned them
+	 * @return the sentences, empty when the entries need no explanation
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the configuration cannot be read
+	 */
+	List<String> describeAdded(Path home, Map<String, List<String>> added) throws IOException;
+
+	/**
+	 * Returns the sentences that tell the user which recorded entries {@link #removePermissions} left in place
+	 * because the user changed them after install added them. Called after {@link #removePermissions}.
+	 *
+	 * @param home  the absolute, normalized harness home from the trust policy
+	 * @param added the entries that {@link #removePermissions} was asked to remove
+	 * @return the sentences, empty when it removed every entry
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the configuration cannot be read
+	 */
+	List<String> describeRetained(Path home, Map<String, List<String>> added) throws IOException;
 
 	/**
 	 * Removes previously added entries that are still present, leaving everything else.

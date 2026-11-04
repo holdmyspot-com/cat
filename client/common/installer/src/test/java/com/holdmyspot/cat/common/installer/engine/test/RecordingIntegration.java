@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -72,6 +73,27 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * The version that each {@code register} call received, in call order.
 	 */
 	private final List<PluginVersion> registered = new ArrayList<>();
+	/**
+	 * The question that {@code consentRequest} returns, or null when install needs no permission.
+	 */
+	private String question;
+	/**
+	 * The entries that {@code installConsentedEntries} reports as added, which {@code sandboxEntries} also reports
+	 * as maintained once they are added.
+	 */
+	private Map<String, List<String>> consented = Map.of();
+	/**
+	 * Whether {@code installConsentedEntries} has added its entries.
+	 */
+	private boolean consentedAdded;
+	/**
+	 * The sentence that {@code describeAdded} returns for each added entry key.
+	 */
+	private final Map<String, String> notices = new LinkedHashMap<>();
+	/**
+	 * The sentences that {@code describeRetained} returns.
+	 */
+	private List<String> retained = List.of();
 
 	/**
 	 * Creates an integration of {@code harness-a} whose calls all succeed.
@@ -172,6 +194,46 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration sandboxing(Map<String, List<String>> entries)
 	{
 		this.sandbox = Map.copyOf(entries);
+		return this;
+	}
+
+	/**
+	 * Makes install ask the user a question before it changes anything, and sets the entries that it adds once the
+	 * user agrees.
+	 *
+	 * @param question the question
+	 * @param entries  the entries that {@code installConsentedEntries} adds
+	 * @return this integration
+	 */
+	public RecordingIntegration asking(String question, Map<String, List<String>> entries)
+	{
+		this.question = question;
+		this.consented = Map.copyOf(entries);
+		return this;
+	}
+
+	/**
+	 * Sets the sentence that tells the user about an added entry.
+	 *
+	 * @param key      the entry key
+	 * @param sentence the sentence that {@code describeAdded} returns when the key is among the added entries
+	 * @return this integration
+	 */
+	public RecordingIntegration describing(String key, String sentence)
+	{
+		notices.put(key, sentence);
+		return this;
+	}
+
+	/**
+	 * Sets the sentences that tell the user which entries uninstall left in place.
+	 *
+	 * @param sentences the sentences that {@code describeRetained} returns
+	 * @return this integration
+	 */
+	public RecordingIntegration retaining(List<String> sentences)
+	{
+		this.retained = List.copyOf(sentences);
 		return this;
 	}
 
@@ -390,7 +452,46 @@ public final class RecordingIntegration implements HarnessIntegration
 	@Override
 	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
 	{
-		return sandbox;
+		if (!consentedAdded)
+			return sandbox;
+		Map<String, List<String>> entries = new LinkedHashMap<>(sandbox);
+		entries.putAll(consented);
+		return entries;
+	}
+
+	/**
+	 * Returns the question that the test set, until the user's change was made.
+	 */
+	@Override
+	public Optional<String> consentRequest(Path home, Path catLocks)
+	{
+		if (consentedAdded)
+			return Optional.empty();
+		return Optional.ofNullable(question);
+	}
+
+	/**
+	 * Records the call and returns the entries that the test set.
+	 */
+	@Override
+	public Map<String, List<String>> installConsentedEntries(Path home, FileReplacer replacer) throws IOException
+	{
+		record("installConsentedEntries", home);
+		consentedAdded = true;
+		return consented;
+	}
+
+	@Override
+	public List<String> describeAdded(Path home, Map<String, List<String>> added)
+	{
+		return notices.entrySet().stream().filter(entry -> added.containsKey(entry.getKey())).
+			map(Map.Entry::getValue).toList();
+	}
+
+	@Override
+	public List<String> describeRetained(Path home, Map<String, List<String>> added)
+	{
+		return retained;
 	}
 
 	@Override
