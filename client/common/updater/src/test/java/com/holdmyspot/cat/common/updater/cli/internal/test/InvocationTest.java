@@ -355,6 +355,36 @@ public final class InvocationTest
 	}
 
 	/**
+	 * A complete uninstall leaves neither a previous bundle nor a runtime replacement that the stable launcher has not
+	 * finished in its way: it removes CAT and hands the data directory that holds them to the stable launcher, which
+	 * deletes it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void uninstallHandsOverPendingSwap() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-swap-")));
+			installation.update();
+			requireThat(installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+				"rollback", "--harness", "harness-a").status, "rollback").isEqualTo(78);
+			RecordingIntegration integration = new RecordingIntegration();
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(79);
+			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(
+				installation.data.resolve("state/uninstall-result.json"), UTF_8));
+			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(integration.calls(), "calls").contains("unregister");
+			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
+		}
+	}
+
+	/**
 	 * When the recorded harness program no longer exists, uninstall still removes CAT, skipping only the unregistration
 	 * that needs the program, and its saved result says that the plugin was not unregistered.
 	 *

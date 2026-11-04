@@ -241,6 +241,21 @@ exit 5"
 	[ ! -e "${DATA}" ]
 }
 
+@test "a complete uninstall deletes the previous bundle and an unfinished runtime replacement with the data directory" {
+	install_uninstalling_runtime "${DATA}"
+	write_runtime "${DATA}/runtime.next" staged 0
+	write_runtime "${DATA}/runtime.previous" kept 0
+	mkdir -p "${DATA}/0.9/bin"
+	printf 'previous\n' > "${DATA}/0.9/bin/cat-updater"
+	printf '%s\n' rollback 1.0 0.9 0 - - > "${DATA}/state/runtime-swap"
+
+	run "${DATA}/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-result.json")" ]
+	[ ! -e "${DATA}" ]
+}
+
 @test "after a complete uninstall the stable launcher also removes the installation root that it leaves empty" {
 	base="${TEST_ROOT}/cat-updater"
 	create_data_directory "${base}/harness-a"
