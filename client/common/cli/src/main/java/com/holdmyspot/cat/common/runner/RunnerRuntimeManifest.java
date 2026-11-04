@@ -28,6 +28,8 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
  * The plugin's {@link RuntimeBinding runtime binding} is written by each installation, so it is not a packaged entry:
  * binding the same package to another installation keeps its packaged identity. The Java runtime that the binding
  * names is part of the execution identity instead, so a changed runtime also starts a new evaluation environment.
+ * The installation also writes the plugin's {@link StartupCache startup cache}, which only speeds up the start of the
+ * same programs, so neither identity includes it.
  */
 public final class RunnerRuntimeManifest
 {
@@ -158,8 +160,8 @@ public final class RunnerRuntimeManifest
 	}
 
 	/**
-	 * Lists the package-declared files that can change harness runner behavior, except the manifest itself and the
-	 * installation-specific runtime binding.
+	 * Lists the package-declared files that can change harness runner behavior, except the manifest itself, the
+	 * installation-specific runtime binding and the installation-written startup cache.
 	 *
 	 * @param root the assembled artifact directory
 	 *
@@ -178,7 +180,8 @@ public final class RunnerRuntimeManifest
 			try (Stream<Path> paths = Files.walk(source))
 			{
 				for (Path path : paths.filter(path -> !path.equals(root.resolve(PATH)) &&
-					!path.equals(root.resolve(RuntimeBinding.PATH))).
+					!path.equals(root.resolve(RuntimeBinding.PATH)) &&
+					!path.startsWith(root.resolve(StartupCache.DIRECTORY))).
 					filter(path -> Files.isRegularFile(path, NOFOLLOW_LINKS) || Files.isSymbolicLink(path)).sorted().
 				toList())
 				{

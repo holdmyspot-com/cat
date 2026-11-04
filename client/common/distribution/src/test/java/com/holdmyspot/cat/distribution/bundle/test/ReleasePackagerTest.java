@@ -81,6 +81,30 @@ public final class ReleasePackagerTest
 	}
 
 	/**
+	 * Verifies that a plugin's archive leaves out the startup cache that an installation wrote, which Java accepts only
+	 * at the location where it was written.
+	 */
+	@Test
+	public void leavesOutStartupCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-"));
+			Path client = Files.createDirectories(temporary.resolve("plugin/client"));
+			Files.writeString(client.resolve("VERSION"), "1.0\n");
+			Path cache = Files.createDirectories(client.resolve("aot"));
+			Files.writeString(cache.resolve("session-start.aot"), "cache");
+			Files.writeString(cache.resolve("session-start.aot.tmp"), "partial");
+			Path archive = new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("claude", Platform.LINUX_X64,
+				temporary.resolve("plugin"), temporary.resolve("release"));
+
+			requireThat(readEntries(archive).stream().map(TarArchiveEntry::getName).toList(), "entries").isEqualTo(
+				List.of("cat-claude-v1.0-linux-x64/", "cat-claude-v1.0-linux-x64/client/",
+					"cat-claude-v1.0-linux-x64/client/VERSION"));
+		}
+	}
+
+	/**
 	 * Verifies checksum manifest entries are sorted.
 	 */
 	@Test

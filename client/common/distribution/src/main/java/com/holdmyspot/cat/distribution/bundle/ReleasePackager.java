@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -60,7 +61,8 @@ public final class ReleasePackager
 
 	/**
 	 * Packages a plugin or updater artifact as a deterministic archive, replacing an existing archive at its generated
-	 * path. The archive leaves out {@link #RUNTIME_BINDING}, which names a runtime on the building machine.
+	 * path. The archive leaves out {@link #RUNTIME_BINDING}, which names a runtime on the building machine, and the
+	 * {@link StartupCache startup cache}, which Java accepts only at the location where it was written.
 	 *
 	 * @param component        the plugin harness identifier or {@code updater}, used in the generated archive filename
 	 * @param platform         distribution platform whose identifier is included in the generated archive filename
@@ -106,7 +108,7 @@ public final class ReleasePackager
 					artifactRoot.relativize(candidate).toString())).toList())
 				{
 					Path relative = artifactRoot.relativize(path);
-					if (relative.equals(RUNTIME_BINDING))
+					if (relative.equals(RUNTIME_BINDING) || relative.startsWith(StartupCache.DIRECTORY))
 						continue;
 					String relativeName = "/";
 					if (!relative.toString().isEmpty())

@@ -8,6 +8,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 
 import static java.nio.file.FileVisitResult.CONTINUE;
+import static java.nio.file.FileVisitResult.SKIP_SUBTREE;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -19,7 +20,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class LocalMarketplace
 {
 	/**
-	 * Copies an artifact into an isolated marketplace plugin directory without following links.
+	 * Copies an artifact into an isolated marketplace plugin directory without following links. The copy leaves out
+	 * the artifact's {@link StartupCache startup cache}, which Java accepts only at the artifact's own location.
 	 *
 	 * @param artifact the validated unpacked plugin directory
 	 *
@@ -43,6 +45,8 @@ public final class LocalMarketplace
 					throw new IOException("Artifact directory is a symbolic link: " + artifact.relativize(directory) +
 						". Replace it with a real directory before installing the artifact.");
 				}
+				if (artifact.relativize(directory).equals(StartupCache.DIRECTORY))
+					return SKIP_SUBTREE;
 				Files.createDirectories(plugin.resolve(artifact.relativize(directory)));
 				return CONTINUE;
 			}

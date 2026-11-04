@@ -142,6 +142,33 @@ public final class RunnerRuntimeManifestTest
 	}
 
 	/**
+	 * Verifies that the startup cache that an installation writes leaves the plugin's packaged and execution identities
+	 * unchanged, because the cache is written by the installation rather than packaged.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void excludesStartupCacheFromIdentity() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("runner-runtime-cache"));
+			Path artifact = packagedArtifact(root.resolve("artifact"), "application one\n");
+			RunnerRuntimeManifest.write(artifact);
+			RuntimeBinding.write(artifact, runtime(root.resolve("runtime"), "runtime one\n"));
+			String packaged = RunnerRuntimeManifest.packagedFingerprint(artifact);
+			String execution = RunnerRuntimeManifest.fingerprint(artifact);
+
+			write(artifact, "client/aot/session-start.aot", "cache\n");
+
+			requireThat(RunnerRuntimeManifest.packagedFingerprint(artifact), "packagedWithCache").
+				isEqualTo(packaged, "packagedWithoutCache");
+			requireThat(RunnerRuntimeManifest.fingerprint(artifact), "executionWithCache").
+				isEqualTo(execution, "executionWithoutCache");
+		}
+	}
+
+	/**
 	 * Verifies that replacing the Java runtime that a plugin is bound to changes its execution identity, so that
 	 * results recorded with one runtime are not reused with another, while its packaged identity stays unchanged.
 	 *

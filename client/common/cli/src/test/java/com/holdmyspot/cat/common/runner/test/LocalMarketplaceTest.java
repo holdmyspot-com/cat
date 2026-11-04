@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.test;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 
 import com.holdmyspot.cat.common.Platform;
@@ -71,6 +72,30 @@ public final class LocalMarketplaceTest
 			LocalMarketplace.copy(artifact, plugin);
 
 			requireThat(RuntimeBinding.read(plugin), "copiedBinding").isEqualTo(runtime);
+		}
+	}
+
+	/**
+	 * Verifies that the isolated copy of a plugin that a trial installs leaves out the plugin's startup cache, which
+	 * Java accepts only at the location where it was written.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void copyLeavesOutStartupCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-artifact-"));
+			Files.createDirectories(artifact.resolve("client/aot"));
+			Files.writeString(artifact.resolve("client/aot/session-start.aot"), "cache");
+			Files.writeString(artifact.resolve("client/VERSION"), "1.0\n");
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
+
+			LocalMarketplace.copy(artifact, plugin);
+
+			requireThat(Files.exists(plugin.resolve("client/aot"), LinkOption.NOFOLLOW_LINKS), "copiedCache").isFalse();
+			requireThat(Files.readString(plugin.resolve("client/VERSION")), "copiedVersion").isEqualTo("1.0\n");
 		}
 	}
 
