@@ -2,6 +2,8 @@ package com.holdmyspot.cat.codex.updater.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
@@ -12,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -195,12 +198,42 @@ public final class IntegrationTest
 				return new CommandResult(0, "");
 			});
 
-			provider().register(home, cli);
+			provider().register(home, cli, replacer());
 			requireThat(cli.calls, "calls").isEqualTo(List.of(
 				List.of("plugin", "marketplace", "add", home.resolve("plugins/cat-marketplace").toString()),
 				List.of("plugin", "add", "cat@cat")));
 			requireThat(Files.readString(home.resolve("plugins/cat-marketplace/.agents/plugins/marketplace.json")),
 				"marketplace").isEqualTo(METADATA);
+		}
+	}
+
+	/**
+	 * Registration replaces an outdated marketplace manifest although the file system refuses the first attempt, as
+	 * Windows does while another process reads the file.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void registerRetriesRefusedManifest() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			activate(home);
+			Path manifest = home.resolve("plugins/cat-marketplace/.agents/plugins/marketplace.json");
+			write(manifest, "{\"name\": \"outdated\"}\n");
+			TransientRefusal refusal = new TransientRefusal(manifest);
+			FakeCli cli = new FakeCli(arguments ->
+			{
+				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
+					codexCopiesPlugin(home, "");
+				return new CommandResult(0, "");
+			});
+
+			provider().register(home, cli, refusal.replacer());
+
+			requireThat(Files.readString(manifest), "marketplace").isEqualTo(METADATA);
+			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
 		}
 	}
 
@@ -225,7 +258,7 @@ public final class IntegrationTest
 
 			try
 			{
-				provider().register(home, cli);
+				provider().register(home, cli, replacer());
 				throw new AssertionError("Registration accepted a divergent cache");
 			}
 			catch (IOException e)
@@ -253,7 +286,7 @@ public final class IntegrationTest
 
 			try
 			{
-				provider().register(home, cli);
+				provider().register(home, cli, replacer());
 				throw new AssertionError("Registration ignored a failed marketplace add");
 			}
 			catch (IOException e)
@@ -313,11 +346,35 @@ public final class IntegrationTest
 			Path launcher = home.resolveSibling("updater data/bin/cat-updater");
 			String expected = rules(launcher);
 
-			Map<String, List<String>> added = provider().installPermissions(home, launcher);
+			Map<String, List<String>> added = provider().installPermissions(home, launcher, replacer());
 			requireThat(added, "added").isEqualTo(Map.of("rules/cat-updater.rules#", List.of(expected)));
 			requireThat(Files.readString(home.resolve("rules/cat-updater.rules")), "content").isEqualTo(expected);
-			requireThat(provider().installPermissions(home, launcher), "repeated").isEmpty();
+			requireThat(provider().installPermissions(home, launcher, replacer()), "repeated").isEmpty();
 			provider().validateConfiguration(home);
+		}
+	}
+
+	/**
+	 * Replacing the rules file that CAT wrote for another launcher succeeds although the file system refuses the
+	 * first attempt, as Windows does while another process reads the file.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void rulesRetryRefusedReplacement() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			provider().installPermissions(home, home.resolveSibling("old/bin/cat-updater"), replacer());
+			Path launcher = home.resolveSibling("bin/cat-updater");
+			TransientRefusal refusal = new TransientRefusal(home.resolve("rules/cat-updater.rules"));
+
+			provider().installPermissions(home, launcher, refusal.replacer());
+
+			requireThat(Files.readString(home.resolve("rules/cat-updater.rules")), "content").
+				isEqualTo(rules(launcher));
+			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
 		}
 	}
 
@@ -332,10 +389,10 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			provider().installPermissions(home, home.resolveSibling("old/bin/cat-updater"));
+			provider().installPermissions(home, home.resolveSibling("old/bin/cat-updater"), replacer());
 			Path launcher = home.resolveSibling("new/bin/cat-updater");
 
-			requireThat(provider().installPermissions(home, launcher), "added").
+			requireThat(provider().installPermissions(home, launcher, replacer()), "added").
 				isEqualTo(Map.of("rules/cat-updater.rules#", List.of(rules(launcher))));
 		}
 	}
@@ -363,7 +420,7 @@ public final class IntegrationTest
 					if (attempt == 0)
 						provider().validateConfiguration(home);
 					else
-						provider().installPermissions(home, home.resolveSibling("bin/cat-updater"));
+						provider().installPermissions(home, home.resolveSibling("bin/cat-updater"), replacer());
 					throw new AssertionError("Accepted a rules file that CAT did not write");
 				}
 				catch (IOException e)
@@ -435,14 +492,15 @@ public final class IntegrationTest
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path file = home.resolve("rules/cat-updater.rules");
 			Path userRules = home.resolve("rules/default.rules");
-			Map<String, List<String>> added = provider().installPermissions(home, home.resolveSibling("bin/cat-updater"));
+			Map<String, List<String>> added = provider().installPermissions(home, home.resolveSibling("bin/cat-updater"),
+				replacer());
 			Files.writeString(userRules, "prefix_rule(pattern=[\"git\", \"status\"], decision=\"allow\")\n");
 			Files.writeString(file, Files.readString(file) + "# edited\n");
 
-			provider().removePermissions(home, added);
+			provider().removePermissions(home, added, replacer());
 			requireThat(file, "file").exists();
 			Files.writeString(file, added.get("rules/cat-updater.rules#").getFirst());
-			provider().removePermissions(home, added);
+			provider().removePermissions(home, added, replacer());
 			requireThat(Files.exists(file), "fileExists").isFalse();
 			requireThat(userRules, "userRules").isRegularFile();
 		}
@@ -574,6 +632,18 @@ public final class IntegrationTest
 	private static Path testRoot() throws IOException
 	{
 		return Files.createDirectories(Path.of(System.getProperty("cat.updater.test.directory")).toAbsolutePath());
+	}
+
+	/**
+	 * Returns a replacer whose test-owned files never need a retry wait.
+	 *
+	 * @return the replacer
+	 */
+	private static FileReplacer replacer()
+	{
+		return new FileReplacer(Platform.current(), () ->
+		{
+		}, Clock.systemUTC());
 	}
 
 	/**

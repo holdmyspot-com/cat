@@ -372,7 +372,7 @@ public final class UpdateEngine
 		String version = verified.manifest().version().toString();
 		if (mode != Mode.SETUP && version.equals(active) && installed.consistent())
 		{
-			registration.integration().register(home, registration.cli());
+			registration.integration().register(home, registration.cli(), registration.replacer());
 			return result(Result.UP_TO_DATE, active, transaction.previousVersion().orElse(null),
 				"CAT is up to date.", List.of());
 		}
@@ -489,7 +489,8 @@ public final class UpdateEngine
 			StagedRelease.requireNoPendingMigration(tree, migrationFile, version, version);
 		requireRuntime(tree, version);
 		Files.writeString(tree.resolve(BINDING_FILE), runtime + "\n", StandardCharsets.UTF_8);
-		Completion register = () -> registration.integration().register(home, registration.cli());
+		Completion register = () -> registration.integration().register(home, registration.cli(),
+			registration.replacer());
 		if (active == null)
 		{
 			for (Path path : activation.removalPaths(home))

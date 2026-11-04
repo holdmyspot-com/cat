@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.updater.engine;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 
@@ -10,19 +11,22 @@ import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
  *
  * @param integration the harness's integration
  * @param cli         runs the recorded harness program
+ * @param replacer    replaces the harness configuration files that the integration writes
  */
-public record Registration(HarnessIntegration integration, HarnessCli cli)
+public record Registration(HarnessIntegration integration, HarnessCli cli, FileReplacer replacer)
 {
 	/**
 	 * Creates a registration.
 	 *
 	 * @param integration the harness's integration
 	 * @param cli         runs the recorded harness program
-	 * @throws NullPointerException if {@code integration} or {@code cli} are null
+	 * @param replacer    replaces the harness configuration files that the integration writes
+	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Registration
 	{
 		requireThat(integration, "integration").isNotNull();
 		requireThat(cli, "cli").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 	}
 }

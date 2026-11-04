@@ -250,7 +250,8 @@ public final class Invocation
 				arguments, locations);
 		}
 		Path home = policy.harnesses().get(own);
-		Registration registration = new Registration(integration.get(), cliFactory.create(command.get(), home));
+		Registration registration = new Registration(integration.get(), cliFactory.create(command.get(), home),
+			replacer);
 		if (arguments.operation() == Operation.UNINSTALL)
 		{
 			UninstallResult result = new Uninstaller(locations.data(), locations.policy(), policy, activation.get(),

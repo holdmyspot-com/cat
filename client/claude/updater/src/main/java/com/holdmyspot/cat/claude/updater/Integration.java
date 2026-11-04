@@ -3,6 +3,7 @@ package com.holdmyspot.cat.claude.updater;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
@@ -15,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -481,17 +481,19 @@ public final class Integration implements HarnessIntegration
 	 * Writes the release's marketplace manifest beside the activated plugin, adds the marketplace and installs CAT
 	 * from it. Claude Code answers success when either is already registered.
 	 *
-	 * @param home the absolute Claude Code configuration directory recorded in policy
-	 * @param cli  runs the recorded {@code claude} program
+	 * @param home     the absolute Claude Code configuration directory recorded in policy
+	 * @param cli      runs the recorded {@code claude} program
+	 * @param replacer replaces the marketplace manifest
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative
 	 * @throws IOException              if the activated release lacks its marketplace metadata, a path component is
 	 *                                  a symbolic link, or Claude Code refuses a command
 	 */
 	@Override
-	public void register(Path home, HarnessCli cli) throws IOException
+	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
 		requireThat(cli, "cli").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		Path root = Locations.marketplaceRoot(home);
 		Path metadata = Locations.pluginDirectory(home).resolve("install/claude-marketplace.json");
 		Path manifest = root.resolve(".claude-plugin/marketplace.json");
@@ -503,7 +505,7 @@ public final class Integration implements HarnessIntegration
 		if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS) ||
 			!Arrays.equals(Files.readAllBytes(manifest), content))
 		{
-			replace(manifest, content);
+			replace(manifest, content, replacer);
 		}
 
 		require(cli, List.of("plugin", "marketplace", "add", root.toString()), "");
@@ -555,6 +557,7 @@ public final class Integration implements HarnessIntegration
 	 *
 	 * @param home           the absolute Claude Code configuration directory recorded in policy
 	 * @param stableLauncher the absolute path of the installed stable updater launcher
+	 * @param replacer       replaces {@code settings.json}
 	 * @return the added entries, keyed {@code settings.json#sandbox.excludedCommands} and
 	 * 	{@code settings.json#permissions.allow}; a key is absent when nothing was added to it
 	 * @throws NullPointerException     if any of the arguments are null
@@ -563,9 +566,11 @@ public final class Integration implements HarnessIntegration
 	 *                                  holds a character that the shell would expand inside double quotes
 	 */
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher) throws IOException
+	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+		throws IOException
 	{
 		requireThat(stableLauncher, "stableLauncher").isAbsolute();
+		requireThat(replacer, "replacer").isNotNull();
 		Map<String, List<String>> entries = entries(stableLauncher);
 		ObjectNode root = readSettings(home);
 
@@ -592,7 +597,7 @@ public final class Integration implements HarnessIntegration
 				added.put(SETTINGS + "#" + setting.getKey(), List.copyOf(addedToSetting));
 		}
 		if (!added.isEmpty())
-			writeSettings(home, root);
+			writeSettings(home, root, replacer);
 		return Map.copyOf(added);
 	}
 
@@ -692,31 +697,32 @@ public final class Integration implements HarnessIntegration
 	/**
 	 * Writes the settings through a temporary sibling and an atomic replacement.
 	 *
-	 * @param home the configuration directory
-	 * @param root the settings
+	 * @param home     the configuration directory
+	 * @param root     the settings
+	 * @param replacer replaces the file
 	 * @throws IOException if the file cannot be written
 	 */
-	private static void writeSettings(Path home, ObjectNode root) throws IOException
+	private static void writeSettings(Path home, ObjectNode root, FileReplacer replacer) throws IOException
 	{
-		replace(settingsFile(home), (WRITER.writeValueAsString(root) + "\n").getBytes(UTF_8));
+		replace(settingsFile(home), (WRITER.writeValueAsString(root) + "\n").getBytes(UTF_8), replacer);
 	}
 
 	/**
 	 * Replaces a file's content through a temporary sibling and an atomic rename.
 	 *
-	 * @param target  the file
-	 * @param content the new content
+	 * @param target   the file
+	 * @param content  the new content
+	 * @param replacer replaces the file, retrying while Windows refuses the replacement
 	 * @throws IOException if the file cannot be written
 	 */
-	private static void replace(Path target, byte[] content) throws IOException
+	private static void replace(Path target, byte[] content, FileReplacer replacer) throws IOException
 	{
 		Files.createDirectories(target.getParent());
 		Path temporary = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".new");
 		try
 		{
 			Files.write(temporary, content);
-			// The interface passes no retrying replacer, and only a main method may create a sleeping pause.
-			Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+			replacer.replace(temporary, target);
 		}
 		finally
 		{
@@ -727,17 +733,20 @@ public final class Integration implements HarnessIntegration
 	/**
 	 * Removes the given entries that {@code settings.json} still holds, keeping every other member and entry.
 	 *
-	 * @param home  the absolute Claude Code configuration directory recorded in policy
-	 * @param added the entries that {@link #installPermissions} returned
+	 * @param home     the absolute Claude Code configuration directory recorded in policy
+	 * @param added    the entries that {@link #installPermissions} returned
+	 * @param replacer replaces {@code settings.json}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative or {@code added} has a key that
 	 *                                  {@link #installPermissions} does not return
 	 * @throws IOException              if the settings cannot be changed safely
 	 */
 	@Override
-	public void removePermissions(Path home, Map<String, List<String>> added) throws IOException
+	public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
+		throws IOException
 	{
 		requireThat(added, "added").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		Map<String, List<String>> removals = new HashMap<>();
 		for (Map.Entry<String, List<String>> entry : added.entrySet())
 		{
@@ -772,6 +781,6 @@ public final class Integration implements HarnessIntegration
 			}
 		}
 		if (changed)
-			writeSettings(home, root);
+			writeSettings(home, root, replacer);
 	}
 }

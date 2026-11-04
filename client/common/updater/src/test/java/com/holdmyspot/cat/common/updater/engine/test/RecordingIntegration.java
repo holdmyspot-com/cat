@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.updater.engine.test;
 
+import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
@@ -7,6 +9,7 @@ import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.engine.Registration;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -148,13 +151,16 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns a registration that uses this integration and a harness program that always succeeds.
+	 * Returns a registration that uses this integration, a harness program that always succeeds and a replacer that
+	 * never waits.
 	 *
 	 * @return the registration
 	 */
 	public Registration registration()
 	{
-		return new Registration(this, cli());
+		return new Registration(this, cli(), new FileReplacer(Platform.current(), () ->
+		{
+		}, Clock.systemUTC()));
 	}
 
 	/**
@@ -190,7 +196,7 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public void register(Path home, HarnessCli cli) throws IOException
+	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
 		record("register", home);
 	}
@@ -202,7 +208,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher) throws IOException
+	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+		throws IOException
 	{
 		record("installPermissions", home);
 		Map<String, List<String>> entries = added;
@@ -211,7 +218,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public void removePermissions(Path home, Map<String, List<String>> entries) throws IOException
+	public void removePermissions(Path home, Map<String, List<String>> entries, FileReplacer replacer)
+		throws IOException
 	{
 		record("removePermissions", home);
 		removed.add(Map.copyOf(entries));

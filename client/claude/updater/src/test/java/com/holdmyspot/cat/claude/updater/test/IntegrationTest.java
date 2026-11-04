@@ -3,6 +3,7 @@ package com.holdmyspot.cat.claude.updater.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.updater.Integration;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -252,13 +254,70 @@ public final class IntegrationTest
 				new CommandResult(0, "Installing plugin \"cat@cat\"...✔ Plugin \"cat@cat\" is already installed " +
 					"(scope: user)\n")));
 
-			integration(home).register(home, cli);
+			integration(home).register(home, cli, replacer());
 
 			requireThat(cli.calls(), "calls").isEqualTo(List.of(
 				List.of("plugin", "marketplace", "add", root.toString()),
 				List.of("plugin", "install", "cat@cat")));
 			requireThat(Files.readString(root.resolve(".claude-plugin/marketplace.json")), "marketplaceManifest").
 				isEqualTo(Files.readString(root.resolve("plugins/cat/install/claude-marketplace.json")));
+		}
+	}
+
+	/**
+	 * Registration replaces an outdated marketplace manifest although the file system refuses the first attempt, as
+	 * Windows does while another process reads the file.
+	 *
+	 * @throws IOException if the fixture cannot be created or registration fails
+	 */
+	@Test
+	public void registerRetriesRefusedManifest() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path root = activatedMarketplace(home);
+			Path manifest = Files.createDirectories(root.resolve(".claude-plugin")).resolve("marketplace.json");
+			Files.writeString(manifest, "{\"name\": \"outdated\"}\n");
+			TransientRefusal refusal = new TransientRefusal(manifest);
+
+			integration(home).register(home, new RecordingCli(List.of(new CommandResult(0, "ok"),
+				new CommandResult(0, "ok"))), refusal.replacer());
+
+			requireThat(Files.readString(manifest), "marketplaceManifest").
+				isEqualTo(Files.readString(root.resolve("plugins/cat/install/claude-marketplace.json")));
+			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Adding and removing permission entries rewrite {@code settings.json} although the file system refuses each
+	 * first attempt, as Windows does while another process reads the file.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void permissionsRetryRefusedSettings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path settings = Files.writeString(home.resolve("settings.json"), "{}\n");
+			Path launcher = home.resolve("data/bin/cat-updater");
+			TransientRefusal adding = new TransientRefusal(settings);
+
+			Map<String, List<String>> added = integration(home).installPermissions(home, launcher,
+				adding.replacer());
+
+			requireThat(added, "added").isEqualTo(posixEntries(launcher));
+			requireThat(Files.readString(settings), "settings").contains("excludedCommands");
+			requireThat(adding.pauses(), "addingPauses").isEqualTo(1);
+			TransientRefusal removing = new TransientRefusal(settings);
+
+			integration(home).removePermissions(home, added, removing.replacer());
+
+			requireThat(Files.readString(settings), "settings").doesNotContain(launcher.toString());
+			requireThat(removing.pauses(), "removingPauses").isEqualTo(1);
 		}
 	}
 
@@ -280,7 +339,7 @@ public final class IntegrationTest
 				new CommandResult(0, "ok")));
 			answers.set(failingCall, new CommandResult(1, "✘ network unavailable"));
 
-			integration(home).register(home, new RecordingCli(answers));
+			integration(home).register(home, new RecordingCli(answers), replacer());
 		}
 	}
 
@@ -363,7 +422,7 @@ public final class IntegrationTest
 			Path launcher = home.resolve("data/bin/cat-updater");
 			Map<String, List<String>> expected = posixEntries(launcher);
 
-			Map<String, List<String>> added = integration(home).installPermissions(home, launcher);
+			Map<String, List<String>> added = integration(home).installPermissions(home, launcher, replacer());
 
 			requireThat(added, "added").isEqualTo(expected);
 			StringJoiner excluded = new StringJoiner(",\n", "", "\n");
@@ -399,7 +458,7 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 			Path launcher = home.resolve("data/bin/cat-updater");
 
-			Map<String, List<String>> added = integration(home).installPermissions(home, launcher);
+			Map<String, List<String>> added = integration(home).installPermissions(home, launcher, replacer());
 
 			String quoted = ShellQuoting.posix(launcher.toString());
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
@@ -436,7 +495,7 @@ public final class IntegrationTest
 			Integration integration = new Integration(Platform.WINDOWS_X64, home.resolve("project"),
 				home.resolve("temporary"));
 
-			Map<String, List<String>> added = integration.installPermissions(home, launcher);
+			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
 
 			String prefix = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher +
 				"\"";
@@ -486,7 +545,7 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 
 			Map<String, List<String>> added = new Integration(Platform.LINUX_X64, home.resolve("project"),
-				home.resolve("temporary")).installPermissions(home, launcher);
+				home.resolve("temporary")).installPermissions(home, launcher, replacer());
 
 			requireThat(added, "added").isEqualTo(posixEntries(launcher));
 		}
@@ -512,10 +571,10 @@ public final class IntegrationTest
 				"\"sandbox\":{\"enabled\":true}}");
 			Integration integration = integration(home);
 
-			Map<String, List<String>> added = integration.installPermissions(home, launcher);
+			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
 			String merged = Files.readString(settings);
 			FileTime modified = Files.getLastModifiedTime(settings);
-			Map<String, List<String>> repeated = integration.installPermissions(home, launcher);
+			Map<String, List<String>> repeated = integration.installPermissions(home, launcher, replacer());
 
 			List<String> expectedAllowed = new ArrayList<>(expected.get(SETTINGS_KEY_ALLOW));
 			expectedAllowed.removeFirst();
@@ -547,11 +606,11 @@ public final class IntegrationTest
 			Path settings = Files.writeString(home.resolve("settings.json"),
 				"{\"permissions\":{\"allow\":[\"Bash(ls)\"]},\"theme\":\"dark\"}");
 			Integration integration = integration(home);
-			Map<String, List<String>> added = integration.installPermissions(home, launcher);
+			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
 			String removedByUser = added.get(SETTINGS_KEY_ALLOW).getFirst();
 			Files.writeString(settings, Files.readString(settings).replace(json(removedByUser) + ",", ""));
 
-			integration.removePermissions(home, added);
+			integration.removePermissions(home, added, replacer());
 
 			requireThat(Files.readString(settings), "settings").isEqualTo("""
 				{
@@ -581,7 +640,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 
-			integration(home).removePermissions(home, Map.of(SETTINGS_KEY_ALLOW, List.of("Bash(ls)")));
+			integration(home).removePermissions(home, Map.of(SETTINGS_KEY_ALLOW, List.of("Bash(ls)")), replacer());
 
 			requireThat(Files.exists(home.resolve("settings.json")), "settingsCreated").isFalse();
 		}
@@ -636,7 +695,7 @@ public final class IntegrationTest
 			Integration integration = integration(home);
 
 			requireRefusal(() -> integration.validateConfiguration(home));
-			requireRefusal(() -> integration.installPermissions(home, home.resolve("data/bin/cat-updater")));
+			requireRefusal(() -> integration.installPermissions(home, home.resolve("data/bin/cat-updater"), replacer()));
 			requireThat(Files.readString(settings), "settings").isEqualTo(content);
 		}
 	}
@@ -734,6 +793,18 @@ public final class IntegrationTest
 	private static String json(String value)
 	{
 		return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+	}
+
+	/**
+	 * Returns a replacer whose test-owned files never need a retry wait.
+	 *
+	 * @return the replacer
+	 */
+	private static FileReplacer replacer()
+	{
+		return new FileReplacer(Platform.current(), () ->
+		{
+		}, Clock.systemUTC());
 	}
 
 	/**

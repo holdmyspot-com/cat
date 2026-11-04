@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.updater.activation;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -41,12 +42,13 @@ public interface HarnessIntegration
 	/**
 	 * Registers the plugin files already activated under {@code home} with the harness.
 	 *
-	 * @param home the absolute, normalized harness home from the trust policy
-	 * @param cli  runs the recorded harness program
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param cli      runs the recorded harness program
+	 * @param replacer replaces each file that registration writes, retrying while Windows refuses the replacement
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if registration fails
 	 */
-	void register(Path home, HarnessCli cli) throws IOException;
+	void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException;
 
 	/**
 	 * Unregisters CAT from the harness. An answer that CAT is not registered is success.
@@ -64,20 +66,25 @@ public interface HarnessIntegration
 	 *
 	 * @param home           the absolute, normalized harness home from the trust policy
 	 * @param stableLauncher the absolute path of the installed stable updater launcher
+	 * @param replacer       replaces each configuration file that this call writes, retrying while Windows refuses
+	 *                       the replacement
 	 * @return the entries that this call added, keyed by {@code <path relative to home>#<setting>}, with an empty
 	 * 	setting for a whole CAT-owned file; entries that already existed are not returned
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the configuration cannot be changed
 	 */
-	Map<String, List<String>> installPermissions(Path home, Path stableLauncher) throws IOException;
+	Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+		throws IOException;
 
 	/**
 	 * Removes previously added entries that are still present, leaving everything else.
 	 *
-	 * @param home  the absolute, normalized harness home from the trust policy
-	 * @param added the entries that {@link #installPermissions} returned
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param added    the entries that {@link #installPermissions} returned
+	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                 replacement
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the configuration cannot be changed
 	 */
-	void removePermissions(Path home, Map<String, List<String>> added) throws IOException;
+	void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer) throws IOException;
 }

@@ -209,7 +209,7 @@ public final class Uninstaller
 			{
 				Map<String, List<String>> recorded = PermissionRecord.read(state.permissions());
 				if (!recorded.isEmpty())
-					registration.integration().removePermissions(home, recorded);
+					registration.integration().removePermissions(home, recorded, registration.replacer());
 			}
 			case "policy" -> deletePolicy();
 			default -> throw new AssertionError(step);

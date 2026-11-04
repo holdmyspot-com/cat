@@ -213,7 +213,7 @@ public final class Setup
 
 		UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation, platform.id(), clock,
 			waiting);
-		Registration registration = new Registration(integration, cliFactory.create(command, home));
+		Registration registration = new Registration(integration, cliFactory.create(command, home), replacer);
 		UpdateResult pluginResult;
 		if (plugin == null)
 			pluginResult = engine.setUp(version, registration);
@@ -223,7 +223,7 @@ public final class Setup
 		if (pluginResult.result().exitStatus() == 0)
 		{
 			permissions = PermissionRecord.add(UpdaterState.of(locations.data(), harness).permissions(),
-				integration.installPermissions(home, launcher));
+				integration.installPermissions(home, launcher, replacer));
 			new SharedLayout(locations.data().getParent(), locations.sharedPolicy(), replacer).retire(harness);
 		}
 		return new Outcome(version, pluginResult, launcher, permissions, policy);

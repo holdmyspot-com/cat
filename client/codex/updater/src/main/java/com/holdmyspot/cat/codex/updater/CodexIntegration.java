@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.updater;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
@@ -226,16 +227,17 @@ public final class CodexIntegration implements HarnessIntegration
 	 *                                  cache copy differs from the marketplace source
 	 */
 	@Override
-	public void register(Path home, HarnessCli cli) throws IOException
+	public void register(Path home, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(cli, "cli").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		Path plugin = home.resolve(MARKETPLACE_PLUGIN);
 		requireNoLinks(home, MARKETPLACE_METADATA);
 		requireNoLinks(home, MARKETPLACE_PLUGIN.resolve(RELEASE_METADATA));
 		if (!Files.isDirectory(plugin, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("CAT's marketplace source is not activated: " + plugin);
-		writeMetadata(plugin.resolve(RELEASE_METADATA), home.resolve(MARKETPLACE_METADATA));
+		writeMetadata(plugin.resolve(RELEASE_METADATA), home.resolve(MARKETPLACE_METADATA), replacer);
 
 		run(cli, List.of("plugin", "marketplace", "add", home.resolve(MARKETPLACE_ROOT).toString()));
 		try
@@ -283,10 +285,12 @@ public final class CodexIntegration implements HarnessIntegration
 	 *                                  cannot be written
 	 */
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher) throws IOException
+	public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+		throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(stableLauncher, "stableLauncher").isAbsolute().isEqualTo(stableLauncher.normalize());
+		requireThat(replacer, "replacer").isNotNull();
 		validateConfiguration(home);
 		String content = UpdaterRules.render(stableLauncher, isWindows());
 		Path file = home.resolve(RULES_FILE);
@@ -298,7 +302,7 @@ public final class CodexIntegration implements HarnessIntegration
 		try
 		{
 			Files.writeString(temporary, content, StandardCharsets.UTF_8);
-			Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			replacer.replace(temporary, file);
 		}
 		finally
 		{
@@ -314,7 +318,8 @@ public final class CodexIntegration implements HarnessIntegration
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 */
 	@Override
-	public void removePermissions(Path home, Map<String, List<String>> added) throws IOException
+	public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
+		throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(added, "added").isNotNull();
@@ -540,16 +545,26 @@ public final class CodexIntegration implements HarnessIntegration
 	 *
 	 * @param source      the release's metadata file
 	 * @param destination the marketplace root's metadata file
+	 * @param replacer    replaces the destination, retrying while Windows refuses the replacement
 	 * @throws IOException if the source is absent or not a regular file, or the copy fails
 	 */
-	private static void writeMetadata(Path source, Path destination) throws IOException
+	private static void writeMetadata(Path source, Path destination, FileReplacer replacer) throws IOException
 	{
 		if (!Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("The activated release lacks its Codex marketplace metadata: " + source);
 		if (Files.isRegularFile(destination, LinkOption.NOFOLLOW_LINKS) && Files.mismatch(source, destination) == -1)
 			return;
 		Files.createDirectories(destination.getParent());
-		Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
+		Path temporary = Files.createTempFile(destination.getParent(), ".marketplace-", ".tmp");
+		try
+		{
+			Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING);
+			replacer.replace(temporary, destination);
+		}
+		finally
+		{
+			Files.deleteIfExists(temporary);
+		}
 	}
 
 	/**

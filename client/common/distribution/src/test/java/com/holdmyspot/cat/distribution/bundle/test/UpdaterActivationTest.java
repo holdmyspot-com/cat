@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
@@ -112,7 +114,9 @@ public final class UpdaterActivationTest
 			UpdateEngine engine = new UpdateEngine(data, policy, release, provider,
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 			Registration registration = new Registration(new UnusedIntegration(harness),
-				arguments -> new CommandResult(0, ""));
+				arguments -> new CommandResult(0, ""), new FileReplacer(Platform.current(), () ->
+			{
+			}, Clock.systemUTC()));
 
 			UpdateResult updated = engine.update("v1.1", registration);
 
@@ -328,7 +332,7 @@ public final class UpdaterActivationTest
 		}
 
 		@Override
-		public void register(Path home, HarnessCli cli)
+		public void register(Path home, HarnessCli cli, FileReplacer replacer)
 		{
 		}
 
@@ -338,13 +342,13 @@ public final class UpdaterActivationTest
 		}
 
 		@Override
-		public Map<String, List<String>> installPermissions(Path home, Path stableLauncher)
+		public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
 		{
 			return Map.of();
 		}
 
 		@Override
-		public void removePermissions(Path home, Map<String, List<String>> added)
+		public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
 		{
 		}
 	}
