@@ -288,6 +288,31 @@ public final class InvocationTest
 	}
 
 	/**
+	 * An uninstall whose step fails prints a result of its own, which tells the caller to run the same uninstall again
+	 * to continue, and never the stable launcher's result for a data directory that it could not delete.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void stoppedUninstallIsIncomplete() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-stopped-")));
+			installation.writePolicy(installation.trustPolicy());
+			RecordingIntegration integration = new RecordingIntegration().fail("unregister");
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+
+			requireThat(run.status, "status").isEqualTo(9);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("uninstall_incomplete");
+			requireThat(run.result().path("message").stringValue(), "message").contains("unregister").
+				contains("run the same uninstall command again");
+		}
+	}
+
+	/**
 	 * A rollback restores the previous plugin, saves its one-line result for the stable launcher, which restores the
 	 * previous Java runtime and updater after the updater exits, prints nothing itself, and exits with the runtime
 	 * hand-over status.

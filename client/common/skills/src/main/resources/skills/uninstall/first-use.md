@@ -53,6 +53,8 @@
 	- `not_removed`: tell the user that CAT's files remain, name the directory that the launcher printed to standard
 		error, and ask them to delete that directory themselves, outside the sandbox, after they close every session
 		that uses CAT.
+	- `uninstall_incomplete`: the removal stopped at a step and kept its progress. Run the same command once more; it
+		continues with that step. When it prints `uninstall_incomplete` again, stop and report its `message`.
 	- `locked`: report that another operation on CAT is running, and that the user can ask again once it finishes.
 	- `usage`: report its `message` as a defect in CAT.
 	- Any other result: report its `message` and tell the user that running the same command again continues the

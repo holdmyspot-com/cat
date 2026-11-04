@@ -240,6 +240,7 @@ without restart remains unverified.
 | `6` | Activation and restoration failed; recover the paths reported in the result. |
 | `7` | Uninstall could not delete CAT's installation directory; delete the directory that the launcher names. |
 | `8` | The launcher could not put the new Java runtime in place and restored the old one; the next operation undoes the rest. |
+| `9` | Uninstall stopped at a step (`uninstall_incomplete`); run the same uninstall command again to continue. |
 | `75` | Lock wait expired; retry after the other update finishes. |
 | `77` | A required path is not writable; run the operation yourself outside the agent's sandbox. |
 

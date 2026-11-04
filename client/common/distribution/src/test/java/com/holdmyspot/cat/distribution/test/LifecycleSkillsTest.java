@@ -131,6 +131,8 @@ public final class LifecycleSkillsTest
 				contains("the default is to keep it").contains("`<launcher> uninstall --harness <h>`").
 				contains("`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it").
 				contains("`uninstalled`").contains("`not_removed`").contains("needs the one manual entry command again").
+				contains("`uninstall_incomplete`: the removal stopped at a step and kept its progress. Run the same " +
+					"command once more").
 				contains("When the result's `unregistered` field is false").
 				contains("`claude plugin uninstall cat@cat`").contains("`codex plugin remove cat@cat`").
 				contains("not the other harness's CAT installation").

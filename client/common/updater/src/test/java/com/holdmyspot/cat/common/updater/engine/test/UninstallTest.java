@@ -207,7 +207,7 @@ public final class UninstallTest
 
 			UpdateResult failed = fixture.uninstaller(integration).uninstall(false).outcome();
 
-			requireThat(failed.result(), "result").isEqualTo(Result.NOT_REMOVED);
+			requireThat(failed.result(), "result").isEqualTo(Result.UNINSTALL_INCOMPLETE);
 			requireThat(failed.result().exitStatus(), "exitStatus").isNotEqualTo(0);
 			requireThat(failed.message(), "message").contains("permissions");
 			requireThat(Files.exists(fixture.data.resolve("state/uninstall.json"), NOFOLLOW_LINKS), "journal").isTrue();

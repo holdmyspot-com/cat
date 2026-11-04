@@ -157,8 +157,8 @@ public final class Uninstaller
 		}
 		catch (IOException | IllegalArgumentException e)
 		{
-			return failure(Result.NOT_REMOVED, "Uninstall stopped at the " + step + " step: " + e.getMessage() +
-				"; run uninstall again to continue.", List.of(journal));
+			return failure(Result.UNINSTALL_INCOMPLETE, "Uninstall stopped at the " + step + " step: " +
+				e.getMessage() + "; run the same uninstall command again to continue.", List.of(journal));
 		}
 		catch (InterruptedException _)
 		{

@@ -137,8 +137,8 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		NOT_RESTORED(6),
 		/**
-		 * Uninstall stopped before CAT was removed completely; its progress is kept so that the next uninstall
-		 * continues with the step that failed.
+		 * The stable launcher could not delete the updater's data directory after the updater removed CAT from the
+		 * harness; the user deletes the directory. Only the stable launcher prints this outcome.
 		 */
 		NOT_REMOVED(7),
 		/**
@@ -147,6 +147,11 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 * this outcome.
 		 */
 		NOT_SWAPPED(8),
+		/**
+		 * Uninstall stopped before CAT was removed completely; its progress is kept so that running the same
+		 * uninstall command again continues with the step that failed.
+		 */
+		UNINSTALL_INCOMPLETE(9),
 		/**
 		 * Another operation held the lock beyond the wait limit.
 		 */
