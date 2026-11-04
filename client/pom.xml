@@ -118,6 +118,16 @@
 			</dependency>
 			<dependency>
 				<groupId>com.holdmyspot.cat</groupId>
+				<artifactId>client-claude-layout</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.holdmyspot.cat</groupId>
+				<artifactId>client-codex-layout</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>com.holdmyspot.cat</groupId>
 				<artifactId>client-claude-installer</artifactId>
 				<version>${project.version}</version>
 			</dependency>
