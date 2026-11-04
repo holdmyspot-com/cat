@@ -6,6 +6,8 @@
 
 bats_require_minimum_version 1.5.0
 
+load updater-jvm-options
+
 # Creates a test-owned updater data directory, mirroring the installed layout, beneath the build output.
 # Side effects: Creates TEST_ROOT, which teardown removes, holding the data directory DATA with the stable launcher in
 # bin/, current naming version 1.0, and a fake versioned launcher that reports its environment and arguments.
@@ -115,6 +117,17 @@ not_swapped_result()
 		"CAT's hooks may not work until the next successful update. Report this message to the user."
 }
 
+# Prints the Java options that every updater launcher passes, as the fake java scripts print their arguments.
+# Arguments: the data directory as the launcher's path names it, and the updater version it starts.
+# Output: each option enclosed in angle brackets, on one line.
+expected_java_options()
+{
+	local option
+	updater_java_options "$1/runtime/conf/logging.properties" "$1/$2/app" | while IFS= read -r option; do
+		printf '<%s>' "${option}"
+	done
+}
+
 # Removes only the directory created for this test, including after failed setup or assertions.
 teardown()
 {
@@ -180,13 +193,16 @@ printf "<%s>" "$@"'
 		JLINK_VM_OPTIONS=hostile "${DATA}/1.0/bin/cat-updater" status 'argument with spaces'
 
 	[ "${status}" -eq 0 ]
-	[ "${output}" = "<-Xshare:auto><-Xlog:all=off:stdout><-Xlog:all=warning:stderr><-XX:+PerfDisableSharedMem>\
-<-Dstdout.encoding=UTF-8><-Dstderr.encoding=UTF-8><-Djdk.http.auth.tunneling.disabledSchemes=>\
-<--enable-native-access=com.holdmyspot.cat.common.cli>\
-<-Djava.util.logging.config.file=${DATA}/runtime/conf/logging.properties>\
-<--module-path><${DATA}/1.0/app><--add-modules><org.slf4j.nop>\
-<-m><com.holdmyspot.cat.common.updater/com.holdmyspot.cat.common.updater.cli.UpdaterMain>\
-<status><argument with spaces>" ]
+	[ "${output}" = "$(expected_java_options "${DATA}" 1.0)<status><argument with spaces>" ]
+}
+
+@test "the stable launcher starts the updater's Java with the options that every updater launcher passes" {
+	install_runtime "${DATA}" 'printf "<%s>" "$@"'
+
+	run "${DATA}/bin/cat-updater" update --harness claude
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(expected_java_options "${DATA}" 1.0)<update><--harness><claude>" ]
 }
 
 @test "the versioned launcher started through a symbolic link runs the runtime beside its real version directory" {

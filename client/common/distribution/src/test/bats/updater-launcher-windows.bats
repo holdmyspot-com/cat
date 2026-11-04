@@ -8,6 +8,7 @@
 bats_require_minimum_version 1.5.0
 
 load windows-helpers
+load updater-jvm-options
 
 # Builds the fake java.exe that every test's runtimes copy, and finds the Windows directory.
 # Side effects: Exports FAKE_JAVA, the fake's path, and WINDOWS_DIRECTORY, the Windows directory's Windows form.
@@ -130,17 +131,24 @@ java_variable()
 	sed -n "s/^env:$2=//p" "$1/java-invocation.txt"
 }
 
-# Prints the arguments that the updater's launchers pass to java.exe before the updater operation's own, one
-# [argument] per line.
+# Prints the Java options that every updater launcher passes, as java_arguments prints them, for a logging
+# configuration file and an application module directory in the form that names them to Java.
+# Arguments: the logging configuration file and the application module directory.
+# Output: the options, one [option] per line.
+bracketed_java_options()
+{
+	local option
+	updater_java_options "$1" "$2" | while IFS= read -r option; do
+		printf '[%s]\n' "${option}"
+	done
+}
+
+# Prints the Java options that the Windows updater launchers pass to java.exe before the updater operation's own.
 # Arguments: the data directory in the form that names it to Java.
-# Output: the arguments.
+# Output: the options, one [option] per line.
 fixed_java_arguments()
 {
-	printf '[%s]\n' -Xshare:auto -Xlog:all=off:stdout -Xlog:all=warning:stderr -XX:+PerfDisableSharedMem \
-		-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Djdk.http.auth.tunneling.disabledSchemes= \
-		--enable-native-access=com.holdmyspot.cat.common.cli \
-		"-Djava.util.logging.config.file=$1\\runtime\\conf\\logging.properties" --module-path "$1\\1.0\\app" \
-		--add-modules org.slf4j.nop -m com.holdmyspot.cat.common.updater/com.holdmyspot.cat.common.updater.cli.UpdaterMain
+	bracketed_java_options "$1\\runtime\\conf\\logging.properties" "$1\\1.0\\app"
 }
 
 # Windows PowerShell parses the command line that Git Bash builds for -File itself, so an argument that holds a space,
@@ -492,12 +500,13 @@ XDG_DATA_HOME" ]
 
 	[ "${status}" -eq 0 ]
 	arguments="$(java_arguments "${DATA}")"
-	[ "$(printf '%s\n' "${arguments}" | sed -n '$!d; =')" -eq 20 ]
-	[ "$(printf '%s\n' "${arguments}" | tail -n 5)" = "$(printf '[%s]\n' setup --harness claude --home 'C:\a home')" ]
 	logging="$(printf '%s\n' "${arguments}" | sed -n 's/^\[-Djava\.util\.logging\.config\.file=\(.*\)\]$/\1/p')"
 	modules="$(printf '%s\n' "${arguments}" | sed -n '/^\[--module-path\]$/{n;s/^\[\(.*\)\]$/\1/p;}')"
 	[[ "${logging}" == [A-Za-z]:* ]]
 	[[ "${modules}" == [A-Za-z]:* ]]
 	[ "$(cygpath -u "${logging}")" = "${DATA}/runtime/conf/logging.properties" ]
 	[ "$(cygpath -u "${modules}")" = "${DATA}/1.0/app" ]
+	expected="$(bracketed_java_options "${logging}" "${modules}"
+		printf '[%s]\n' setup --harness claude --home 'C:\a home')"
+	[ "${arguments}" = "${expected}" ]
 }
