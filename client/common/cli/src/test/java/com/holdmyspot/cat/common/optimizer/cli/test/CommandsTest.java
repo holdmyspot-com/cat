@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
@@ -159,11 +160,25 @@ public final class CommandsTest
 	 */
 	private static int run(FakeCore core, List<String> args, StringBuilder output)
 	{
+		return run(core, Platform.LINUX_X64, args, output);
+	}
+
+	/**
+	 * Runs a command on a platform.
+	 *
+	 * @param core     the core
+	 * @param platform the platform that runs the command
+	 * @param args     the arguments
+	 * @param output   receives the printed JSON
+	 * @return the exit code
+	 */
+	private static int run(FakeCore core, Platform platform, List<String> args, StringBuilder output)
+	{
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			exit = new Commands(core, JSON, ZoneOffset.UTC).execute(args, out);
+			exit = new Commands(core, JSON, ZoneOffset.UTC, platform).execute(args, out);
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));
 		return exit;
@@ -208,6 +223,57 @@ public final class CommandsTest
 			"choose c1 MORE_EVIDENCE 0 3",
 			"choose c1 STOP 0 0",
 			"cancel c1"));
+	}
+
+	/**
+	 * Returns each command that starts or continues a campaign, and so can start a trial.
+	 *
+	 * @return the arguments of each command
+	 */
+	@DataProvider
+	public Object[][] campaignCommands()
+	{
+		return new Object[][]
+			{
+				{List.of("start", "prompts/a.md")},
+				{List.of("run", "c1")},
+				{List.of("confirm", "c1")},
+				{List.of("revise", "c1", "tighten the contract")},
+				{List.of("choose", "c1", "stop")},
+				{List.of("choose", "c1", "resolution_1")}
+			};
+	}
+
+	/**
+	 * Verifies that on native Windows a command that starts or continues a campaign is refused before it reaches the
+	 * core, and that the refusal directs the user to WSL2.
+	 *
+	 * @param args the arguments
+	 */
+	@Test(dataProvider = "campaignCommands")
+	public void nativeWindowsRefusesCampaignCommand(List<String> args)
+	{
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		requireThat(run(core, Platform.WINDOWS_X64, args, output), "exit").isEqualTo(1);
+		requireThat(core.calls, "calls").isEmpty();
+		JsonNode result = JSON.readTree(output.toString());
+		requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+		requireThat(result.get("message").asString(), "message").contains("not available on native Windows").
+			contains("WSL2").contains("wsl --install");
+	}
+
+	/**
+	 * Verifies that on native Windows {@code status} and {@code cancel}, which start no trial, still reach the core.
+	 */
+	@Test
+	public void nativeWindowsRunsStatusAndCancel()
+	{
+		FakeCore core = new FakeCore();
+		StringBuilder output = new StringBuilder();
+		requireThat(run(core, Platform.WINDOWS_ARM64, List.of("status", "c1"), output), "statusExit").isEqualTo(0);
+		requireThat(run(core, Platform.WINDOWS_ARM64, List.of("cancel", "c1"), output), "cancelExit").isEqualTo(0);
+		requireThat(core.calls, "calls").isEqualTo(List.of("status c1", "cancel c1"));
 	}
 
 	/**
@@ -457,7 +523,8 @@ public final class CommandsTest
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			exit = new Commands(core, JSON, ZoneId.of("America/Toronto")).execute(List.of("status", "c1"), out);
+			exit = new Commands(core, JSON, ZoneId.of("America/Toronto"), Platform.LINUX_X64).
+				execute(List.of("status", "c1"), out);
 		}
 
 		requireThat(exit, "exit").isEqualTo(0);
@@ -831,7 +898,7 @@ public final class CommandsTest
 	public void parsesContractTools()
 	{
 		// Requirement: R-C27
-		Commands commands = new Commands(new FakeCore(), JSON, ZoneOffset.UTC);
+		Commands commands = new Commands(new FakeCore(), JSON, ZoneOffset.UTC, Platform.LINUX_X64);
 		requireThat(commands.parse(List.of("contract", "check", "cat-contract.json")), "check").
 			isEqualTo(new Command.ContractCheck(Path.of("cat-contract.json")));
 		requireThat(commands.parse(List.of("contract", "workspace", "cat-contract.json", ".cat/tests/CLAUDE/notes", "2",

@@ -9,10 +9,12 @@
 
 ## Supported environments
 
-The optimizer's Claude sessions and trials require Linux or macOS. On native Windows, Claude Code has no command
-sandbox, so CAT cannot confine the session's commands and refuses to start it. Run Claude Code and CAT inside WSL2
-instead; Java reports Linux there, so Claude sessions and trials are supported. Codex sessions and trials also support
-native Windows.
+Prompt optimization requires Linux or macOS, in both harnesses: each trial's session needs a sandbox of its own, which
+native Windows cannot reliably provide. On native Windows, the launcher refuses `start` and every command that
+continues a campaign, and changes nothing. There, run step 1's `start` as usual, show its `message` to the user, which
+tells them to run their harness and CAT inside WSL2 and how to install WSL2, and stop. Do not start a campaign any other
+way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Linux, so prompt optimization is
+supported there.
 
 ## Workflow
 

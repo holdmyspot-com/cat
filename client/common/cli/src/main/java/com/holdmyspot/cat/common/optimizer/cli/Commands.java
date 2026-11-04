@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
@@ -32,6 +33,9 @@ import java.util.regex.Pattern;
  * Every outcome is one JSON object on the output stream, apart from the report of a contract tool, which a contract
  * author session reads as text. The exit codes are 0 for a result, 1 for a refusal or a failure, and 2 for invalid
  * input.
+ * <p>
+ * On native Windows, every command that starts or continues a campaign is refused before it reaches the core, so it
+ * changes nothing; {@code status} and {@code cancel} still run.
  */
 public final class Commands
 {
@@ -61,23 +65,27 @@ public final class Commands
 	private final Core core;
 	private final JsonMapper json;
 	private final ZoneId zone;
+	private final Platform platform;
 
 	/**
 	 * Creates the commands.
 	 *
-	 * @param core what the commands call
-	 * @param json the mapper that renders the output
-	 * @param zone the user's time zone, in which the human summary shows times
+	 * @param core     what the commands call
+	 * @param json     the mapper that renders the output
+	 * @param zone     the user's time zone, in which the human summary shows times
+	 * @param platform the platform that runs the commands
 	 * @throws NullPointerException if any argument is null
 	 */
-	public Commands(Core core, JsonMapper json, ZoneId zone)
+	public Commands(Core core, JsonMapper json, ZoneId zone, Platform platform)
 	{
 		requireThat(core, "core").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(zone, "zone").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		this.core = core;
 		this.json = json;
 		this.zone = zone;
+		this.platform = platform;
 	}
 
 	/**
@@ -555,12 +563,23 @@ public final class Commands
 	 *
 	 * @param command the command
 	 * @return the core's result
-	 * @throws CommandRefusedException if the core refuses the command
-	 * @throws IOException if the core fails
-	 * @throws InterruptedException if the thread is interrupted
+	 * @throws CommandRefusedException if the platform is native Windows and the command can start a trial, or if the
+	 *                                 core refuses the command
+	 * @throws IOException             if the core fails
+	 * @throws InterruptedException    if the thread is interrupted
 	 */
 	private CommandResult dispatch(Command command) throws CommandRefusedException, IOException, InterruptedException
 	{
+		// A trial's session could read the files that the trial hides from it, because native Windows cannot reliably
+		// give that session a sandbox of its own.
+		if (platform.isWindows() && canStartTrial(command))
+		{
+			throw new CommandRefusedException("Prompt optimization is not available on native Windows, because its " +
+				"trials need a sandbox that keeps each trial from reading the files that it must not see, and native " +
+				"Windows cannot reliably provide one. Install Claude Code or Codex, with CAT, inside WSL2 and run prompt " +
+				"optimization there. To install WSL2, run `wsl --install` in PowerShell as an administrator; see " +
+				"https://learn.microsoft.com/windows/wsl/install.");
+		}
 		return switch (command)
 		{
 			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal());
@@ -572,6 +591,23 @@ public final class Commands
 				core.choose(choose.campaign(), choose.choice(), choose.attempt(), choose.reviewPoint());
 			case Command.ResolveConflict resolve -> core.resolveConflict(resolve.campaign(), resolve.resolution());
 			case Command.Cancel cancel -> core.cancel(cancel.campaign());
+			case Command.ContractTool _ -> throw new AssertionError("A contract tool does not reach the core");
+		};
+	}
+
+	/**
+	 * Indicates whether a command starts or continues a campaign, which can start a trial.
+	 *
+	 * @param command the command
+	 * @return {@code false} for {@code status} and {@code cancel}, which start no trial; otherwise {@code true}
+	 */
+	private static boolean canStartTrial(Command command)
+	{
+		return switch (command)
+		{
+			case Command.Status _, Command.Cancel _ -> false;
+			case Command.Start _, Command.Run _, Command.Confirm _, Command.Revise _, Command.Choose _,
+				Command.ResolveConflict _ -> true;
 			case Command.ContractTool _ -> throw new AssertionError("A contract tool does not reach the core");
 		};
 	}

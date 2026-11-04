@@ -638,7 +638,7 @@ public final class OptimizerCoreTest
 				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 				{
 					OptimizerCore core = new OptimizerCore(command);
-					requireThat(new Commands(core, JSON, ZoneOffset.UTC).
+					requireThat(new Commands(core, JSON, ZoneOffset.UTC, Platform.LINUX_X64).
 						execute(List.of("start", target.toString()), out), "exitCode").isEqualTo(1);
 				}
 
@@ -1596,7 +1596,8 @@ public final class OptimizerCoreTest
 				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 				{
-					requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC).execute(args, out), "exit").isEqualTo(0);
+					requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC, Platform.LINUX_X64).
+						execute(args, out), "exit").isEqualTo(0);
 				}
 				String id = JSON.readTree(bytes.toString(StandardCharsets.UTF_8)).get("campaign").asString();
 				Campaign campaign = repository.load(id);
@@ -1840,8 +1841,8 @@ public final class OptimizerCoreTest
 			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 			{
-				requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC).execute(arguments, out), "exitCode").
-					isEqualTo(1);
+				requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC, Platform.LINUX_X64).
+					execute(arguments, out), "exitCode").isEqualTo(1);
 			}
 			ObjectNode result = (ObjectNode) JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
 			String expectedStatus = "error";
@@ -2224,8 +2225,9 @@ public final class OptimizerCoreTest
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC).execute(arguments, out), "exitCode").
-				withContext(bytes.toString(StandardCharsets.UTF_8), "output").isEqualTo(0);
+			requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC, Platform.LINUX_X64).
+				execute(arguments, out), "exitCode").withContext(bytes.toString(StandardCharsets.UTF_8), "output").
+				isEqualTo(0);
 		}
 		return (ObjectNode) JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
 	}

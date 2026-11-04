@@ -1,7 +1,9 @@
 # Install CAT
 
 CAT v1.0 provides distributions for Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, macOS ARM64, and
-Windows x64. Windows ARM64 is not supported. You install CAT for a harness with one command that you run yourself.
+Windows x64. Windows ARM64 is not supported. Prompt optimization is not available on native Windows, because its trials
+need a sandbox that native Windows cannot reliably provide; to optimize prompts on Windows, install your harness and CAT
+inside WSL2 and run them there. You install CAT for a harness with one command that you run yourself.
 Afterwards your agent installs, updates and uninstalls CAT for that harness through its installed trusted installer.
 CAT's Claude Code support needs Claude Code 2.1.277 or later.
 
