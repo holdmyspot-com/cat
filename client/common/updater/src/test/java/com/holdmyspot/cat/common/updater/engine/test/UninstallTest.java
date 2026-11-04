@@ -192,6 +192,30 @@ public final class UninstallTest
 	}
 
 	/**
+	 * Uninstall deletes the directory that holds every harness's policy directory once it is empty, and keeps it while
+	 * another harness's policy directory remains.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void emptyPolicyParentIsDeleted() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture alone = new Fixture(cleanup.add(testDirectory("uninstall-policy-parent-")));
+			Fixture shared = new Fixture(cleanup.add(testDirectory("uninstall-policy-shared-")));
+			Path other = Files.createDirectories(shared.policy.getParent().resolveSibling("harness-b"));
+
+			alone.uninstaller(new RecordingIntegration()).uninstall(false);
+			shared.uninstaller(new RecordingIntegration()).uninstall(false);
+
+			requireThat(Files.exists(alone.policy.getParent().getParent(), NOFOLLOW_LINKS), "emptyParent").isFalse();
+			requireThat(Files.isDirectory(other, NOFOLLOW_LINKS), "otherPolicyDirectory").isTrue();
+		}
+	}
+
+	/**
 	 * A failed step stops uninstall with the step's name and a status that is not zero, and keeps the progress so that
 	 * the next uninstall continues with that step.
 	 *

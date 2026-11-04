@@ -430,6 +430,12 @@ public final class UpdaterActivationTest
 		}
 
 		@Override
+		public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+		{
+			return Map.of();
+		}
+
+		@Override
 		public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
 		{
 		}

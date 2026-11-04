@@ -312,6 +312,21 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns no entries: earlier builds asked the user to put their rule in {@code rules/cat-updater.rules}, which
+	 * {@link #installPermissions} replaces as a whole.
+	 *
+	 * @param legacyLauncher the absolute path of the shared installation's stable launcher
+	 * @return an empty map
+	 * @throws NullPointerException if {@code legacyLauncher} is null
+	 */
+	@Override
+	public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+	{
+		requireThat(legacyLauncher, "legacyLauncher").isNotNull();
+		return Map.of();
+	}
+
+	/**
 	 * Deletes {@code rules/cat-updater.rules} when its content equals a recorded content. Leaves a changed file, a
 	 * file reached through a symbolic link, and every other entry in place.
 	 *

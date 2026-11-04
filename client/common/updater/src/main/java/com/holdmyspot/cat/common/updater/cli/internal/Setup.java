@@ -261,7 +261,8 @@ public final class Setup
 		{
 			permissions = PermissionRecord.add(UpdaterState.of(locations.data(), harness).permissions(),
 				integration.installPermissions(home, launcher, replacer));
-			new SharedLayout(locations.data().getParent(), locations.sharedPolicy(), replacer).retire(harness);
+			new SharedLayout(locations.data().getParent(), locations.sharedPolicy(), replacer).retire(harness,
+				integration, home, platform);
 		}
 		return new Outcome(version, pluginResult, launcher, permissions, policy);
 	}

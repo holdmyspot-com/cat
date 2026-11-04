@@ -316,24 +316,42 @@ public final class Uninstaller
 	}
 
 	/**
-	 * Deletes the policy file, and its directory when nothing else is in it.
+	 * Deletes the policy file, then its directory and the directory that holds every harness's policy directory, each
+	 * when nothing else is in it.
 	 *
 	 * @throws IOException if the policy cannot be deleted
 	 */
 	private void deletePolicy() throws IOException
 	{
-		// The policy's directory belongs to CAT, but the directories above it may be reached through links
-		Path directory = LinkSafeDeletion.resolveRoot(policyFile.getParent().getParent()).
-			resolve(policyFile.getParent().getFileName());
+		// The policy's directory and its parent belong to CAT, but the directories above them may be reached through
+		// links
+		Path parent = LinkSafeDeletion.resolveRoot(policyFile.getParent().getParent());
+		Path directory = parent.resolve(policyFile.getParent().getFileName());
 		LinkSafeDeletion.delete(directory.resolve(policyFile.getFileName()), directory);
-		if (directory.startsWith(data) || !Files.isDirectory(directory, NOFOLLOW_LINKS))
+		if (directory.startsWith(data))
 			return;
+		if (deleteIfEmpty(directory))
+			deleteIfEmpty(parent);
+	}
+
+	/**
+	 * Deletes a directory that holds nothing.
+	 *
+	 * @param directory the directory
+	 * @return true if the directory no longer exists
+	 * @throws IOException if the directory cannot be listed or deleted
+	 */
+	private static boolean deleteIfEmpty(Path directory) throws IOException
+	{
+		if (!Files.isDirectory(directory, NOFOLLOW_LINKS))
+			return !Files.exists(directory, NOFOLLOW_LINKS);
 		try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory))
 		{
 			if (entries.iterator().hasNext())
-				return;
+				return false;
 		}
 		Files.delete(directory);
+		return true;
 	}
 
 	/**

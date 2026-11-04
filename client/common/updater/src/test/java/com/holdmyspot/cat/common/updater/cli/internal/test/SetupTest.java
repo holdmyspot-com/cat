@@ -638,6 +638,31 @@ public final class SetupTest
 	}
 
 	/**
+	 * Setup removes the permission entries that the single updater installation of earlier builds asked the user to
+	 * add for its stable launcher, through the harness integration.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void retiresLegacyPermissions() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-shared-permissions-")));
+			Path base = fixture.data().getParent();
+			fixture.writeSharedLayout(Map.of("harness-a", fixture.home));
+			fixture.integration.retiring(true);
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.INSTALLED);
+			requireThat(fixture.integration.removed(), "removed").isEqualTo(List.of(Map.of("settings.json",
+				List.of(base.resolve("bin/cat-updater").toString()))));
+		}
+	}
+
+	/**
 	 * Setup removes only its own harness from the single updater installation of earlier builds while that
 	 * installation's policy still names another harness, keeping the installation for that harness.
 	 *

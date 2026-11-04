@@ -77,6 +77,18 @@ public interface HarnessIntegration
 		throws IOException;
 
 	/**
+	 * Returns the entries that the updater which earlier builds shared between harnesses asked the user to add for its
+	 * stable launcher, in the form that {@link #removePermissions} accepts, so that they are removed once that launcher
+	 * is retired.
+	 *
+	 * @param legacyLauncher the absolute path of the shared installation's stable launcher
+	 * @return the entries keyed as {@link #installPermissions} returns them; empty when this harness's current
+	 * 	permissions replace them
+	 * @throws NullPointerException if {@code legacyLauncher} is null
+	 */
+	Map<String, List<String>> legacyPermissions(Path legacyLauncher);
+
+	/**
 	 * Removes previously added entries that are still present, leaving everything else.
 	 *
 	 * @param home     the absolute, normalized harness home from the trust policy

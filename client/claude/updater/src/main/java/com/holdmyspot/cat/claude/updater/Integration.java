@@ -734,6 +734,27 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns the exact and the version-pattern {@code update} entries that earlier builds asked the user to add to both
+	 * settings, which named the launcher in POSIX quoting on every platform.
+	 *
+	 * @param legacyLauncher the absolute path of the shared installation's stable launcher
+	 * @return the sandbox exclusions and the prompt-free permissions
+	 * @throws NullPointerException if {@code legacyLauncher} is null
+	 */
+	@Override
+	public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+	{
+		requireThat(legacyLauncher, "legacyLauncher").isNotNull();
+		String update = ShellQuoting.posix(legacyLauncher.toString()).replace("*", "'\\*'") +
+			" update --harness claude";
+		List<String> commands = List.of(update, versionPattern(update));
+		Map<String, List<String>> entries = new LinkedHashMap<>();
+		entries.put(SETTINGS + "#" + EXCLUDED_COMMANDS, commands);
+		entries.put(SETTINGS + "#" + ALLOWED_TOOLS, commands.stream().map(command -> "Bash(" + command + ")").toList());
+		return entries;
+	}
+
+	/**
 	 * Removes the given entries that {@code settings.json} still holds, keeping every other member and entry.
 	 *
 	 * @param home     the absolute Claude Code configuration directory recorded in policy

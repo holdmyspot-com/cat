@@ -51,6 +51,10 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * The environment that the last {@code discover} call received.
 	 */
 	private Map<String, String> discoveredEnvironment = Map.of();
+	/**
+	 * Whether {@code legacyPermissions} reports an entry for the shared stable launcher of earlier builds.
+	 */
+	private boolean retiring;
 
 	/**
 	 * Creates an integration whose calls all succeed.
@@ -105,6 +109,19 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration adding(Map<String, List<String>> entries)
 	{
 		this.added = new LinkedHashMap<>(entries);
+		return this;
+	}
+
+	/**
+	 * Sets whether the integration reports permission entries that earlier builds asked the user to add for their
+	 * shared stable launcher: one entry naming that launcher.
+	 *
+	 * @param retiring true to report the entry, false to report none
+	 * @return this integration
+	 */
+	public RecordingIntegration retiring(boolean retiring)
+	{
+		this.retiring = retiring;
 		return this;
 	}
 
@@ -215,6 +232,14 @@ public final class RecordingIntegration implements HarnessIntegration
 		Map<String, List<String>> entries = added;
 		added = Map.of();
 		return entries;
+	}
+
+	@Override
+	public Map<String, List<String>> legacyPermissions(Path legacyLauncher)
+	{
+		if (!retiring)
+			return Map.of();
+		return Map.of("settings.json", List.of(legacyLauncher.toString()));
 	}
 
 	@Override

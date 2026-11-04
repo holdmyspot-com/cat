@@ -779,6 +779,33 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * The entries that the updater which earlier builds shared between harnesses told the user to add for its stable
+	 * launcher are removed with the provider's permission removal, leaving the user's other entries.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be changed
+	 */
+	@Test
+	public void legacyPermissionsAreRemoved() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = Path.of("/home/user/.local/share/cat-updater/bin/cat-updater");
+			String update = launcher + " update --harness claude";
+			Path settings = Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" +
+				json(update) + "," + json(update + " *") + ",\"git status\"]},\"permissions\":{\"allow\":[" +
+				json("Bash(" + update + ")") + "," + json("Bash(" + update + " *)") + ",\"Bash(ls)\"]}}");
+			Integration integration = integration(home);
+
+			integration.removePermissions(home, integration.legacyPermissions(launcher), replacer());
+
+			String content = Files.readString(settings);
+			requireThat(content, "settings").doesNotContain(launcher.toString()).contains("git status").
+				contains("Bash(ls)");
+		}
+	}
+
+	/**
 	 * Returns the entries that a POSIX stable launcher receives.
 	 *
 	 * @param launcher the launcher's absolute path
