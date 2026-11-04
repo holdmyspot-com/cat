@@ -7,6 +7,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.updater.engine.Bundle;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import com.holdmyspot.cat.common.updater.trust.TrustPolicy;
@@ -29,8 +30,9 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Writes the trusted updater's application directory: its version, modules, launchers, default policy, runtime
- * requirement and legal materials. No other thread or process modifies the directory during assembly.
+ * Writes the trusted updater's application directory: its version, modules, versioned launchers, the stable launchers
+ * that an update or rollback to the release installs, default policy, runtime requirement and legal materials. No
+ * other thread or process modifies the directory during assembly.
  */
 public final class UpdaterArtifactBuilder
 {
@@ -102,7 +104,7 @@ public final class UpdaterArtifactBuilder
 	 * the sibling directory {@code runtime}, both in the extracted release archive and once installed.
 	 *
 	 * @param versionDirectory the new directory that receives the application, named after its version
-	 * @param updaterJar       the updater module JAR containing its versioned launcher templates
+	 * @param updaterJar       the updater module JAR containing its versioned and stable launcher templates
 	 * @param application      the updater's modules, whose JARs it runs from {@code app/} and whose system modules
 	 *                         form its runtime requirement
 	 * @param legalMaterials   the directory containing the generated release license, notices and licenses directory
@@ -129,10 +131,14 @@ public final class UpdaterArtifactBuilder
 		policy.write(configuration.resolve(DEFAULT_POLICY), FileReplacer.retrying(scope.waiting()));
 		application.writeRequirement(versionDirectory.resolve(RUNTIME_REQUIREMENT), scope.json());
 		Path bin = Files.createDirectories(versionDirectory.resolve("bin"));
+		Path stable = Files.createDirectories(versionDirectory.resolve(Bundle.STABLE_LAUNCHERS));
 		try (JarFile jar = new JarFile(updaterJar.toFile()))
 		{
 			copyLauncher(jar, "versioned-launcher.sh", bin.resolve(LAUNCHER_NAME));
 			copyLauncher(jar, "versioned-launcher.ps1", bin.resolve(LAUNCHER_NAME + ".ps1"));
+			// An update or rollback installs the stable launcher of the release that it selects from here
+			copyLauncher(jar, "stable-launcher.sh", stable.resolve(LAUNCHER_NAME));
+			copyLauncher(jar, "stable-launcher.ps1", stable.resolve(LAUNCHER_NAME + ".ps1"));
 		}
 		copyTree(legalMaterials, Files.createDirectories(versionDirectory.resolve("legal")));
 		return versionDirectory;

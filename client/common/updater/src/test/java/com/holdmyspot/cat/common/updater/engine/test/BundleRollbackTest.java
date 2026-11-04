@@ -24,8 +24,8 @@ import org.testng.annotations.Test;
 public final class BundleRollbackTest
 {
 	/**
-	 * Rollback restores the previous plugin and requests the previous runtime and updater from the launcher; afterwards
-	 * no previous bundle remains.
+	 * Rollback restores the previous plugin and stable launcher and requests the previous runtime and updater from the
+	 * launcher; afterwards no previous bundle remains.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -49,6 +49,8 @@ public final class BundleRollbackTest
 			requireThat(result.result(), "result").isEqualTo(Result.ROLLED_BACK);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(Files.readString(data.resolve("bin/cat-updater")), "launcher").
+				isEqualTo(Releases.stableLauncher("1.0"));
 			requireThat(engine(data, home, release).pendingSwap(), "pendingSwap").
 				isEqualTo(Optional.of(new RuntimeSwap(Operation.ROLLBACK, "1.1", "1.0")));
 			LauncherSwap.finish(data);
@@ -89,7 +91,8 @@ public final class BundleRollbackTest
 
 	/**
 	 * A rollback whose runtime replacement the launcher abandoned after the plugin was restored is completed by the
-	 * next operation, which requests the replacement from the launcher again.
+	 * next operation, which installs the previous release's stable launcher and requests the replacement from the
+	 * launcher again.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -109,6 +112,8 @@ public final class BundleRollbackTest
 			LauncherSwap.finish(data);
 			requireThat(engine(data, home, release).rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
 			LauncherSwap.abandon(data);
+			// A rollback that stopped after it restored the plugin leaves the replaced release's launcher in place
+			Files.writeString(data.resolve("bin/cat-updater"), Releases.stableLauncher("1.1"));
 
 			UpdateResult result = engine(data, home, release).update("v1.1",
 				new RecordingIntegration().registration());
@@ -116,6 +121,8 @@ public final class BundleRollbackTest
 			requireThat(result.result(), "result").isEqualTo(Result.ROLLED_BACK);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(Files.readString(data.resolve("bin/cat-updater")), "launcher").
+				isEqualTo(Releases.stableLauncher("1.0"));
 			requireThat(engine(data, home, release).pendingSwap(), "pendingSwap").
 				isEqualTo(Optional.of(new RuntimeSwap(Operation.ROLLBACK, "1.1", "1.0")));
 			LauncherSwap.finish(data);

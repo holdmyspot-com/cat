@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
@@ -11,6 +12,8 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -19,7 +22,8 @@ import java.util.Set;
 /**
  * The directories of one installation's bundle beside its state: the {@code current} selection, the Java runtime that
  * the updater and plugin run on, the runtime staged by an update or kept for rollback, and the updater version
- * directories. An update stages the new runtime and updater; the stable launcher renames the runtimes and rewrites
+ * directories, each of which ships its release's stable launcher. An update stages the new runtime and updater and
+ * installs the new stable launcher; the stable launcher that is running renames the runtimes and rewrites
  * {@code current} after the updater's JVM has exited. The replaced runtime and updater stay as the previous bundle,
  * together with the plugin that the activation journal keeps, until the next update or a rollback.
  */
@@ -59,6 +63,11 @@ public final class Bundle
 	 */
 	public static final Path REQUIREMENT_FILE = Path.of("runtime-requirement.json");
 	/**
+	 * The updater-version-relative directory that holds the release's stable launchers, each under the name that it
+	 * has in the installation's {@code bin} directory.
+	 */
+	public static final Path STABLE_LAUNCHERS = Path.of("stable-launcher");
+	/**
 	 * The updater-version-relative release version file.
 	 */
 	private static final Path VERSION_FILE = Path.of("VERSION");
@@ -70,16 +79,33 @@ public final class Bundle
 	 * The largest policy anchor.
 	 */
 	private static final int MAXIMUM_ANCHOR_BYTES = 65_536;
+	/**
+	 * The largest stable launcher.
+	 */
+	private static final int MAXIMUM_LAUNCHER_BYTES = 65_536;
+	/**
+	 * Only the installing user may execute or change the stable launcher.
+	 */
+	private static final Set<PosixFilePermission> LAUNCHER_MODE = PosixFilePermissions.fromString("rwx------");
 	private final Path data;
+	private final String launcher;
+	private final FileReplacer replacer;
 
 	/**
 	 * Creates the bundle of an installation.
 	 *
-	 * @param data the installation's absolute, normalized data directory
+	 * @param data     the installation's absolute, normalized data directory
+	 * @param windows  true if the installation runs the Windows stable launcher
+	 * @param replacer renames a new stable launcher over the installed one
 	 */
-	Bundle(Path data)
+	Bundle(Path data, boolean windows, FileReplacer replacer)
 	{
 		this.data = data;
+		if (windows)
+			this.launcher = "cat-updater.ps1";
+		else
+			this.launcher = "cat-updater";
+		this.replacer = replacer;
 	}
 
 	/**
@@ -164,14 +190,15 @@ public final class Bundle
 
 	/**
 	 * Checks that an extracted updater archive mirrors an installation of one version: its Java runtime, with a
-	 * readable description, and the updater version directory, with the version and the runtime requirement.
+	 * readable description, and the updater version directory, with the version, the runtime requirement and this
+	 * platform's stable launcher.
 	 *
 	 * @param tree    the archive's top directory
 	 * @param version the release version
 	 * @throws IOException    if the tree is incomplete, contains a link that leaves it, or names another version
 	 * @throws TrustException if a link cannot be resolved or leaves the tree
 	 */
-	static void validate(Path tree, String version) throws IOException, TrustException
+	void validate(Path tree, String version) throws IOException, TrustException
 	{
 		if (!Files.isDirectory(tree, NOFOLLOW_LINKS))
 			throw new ActivationTransaction.Refused("The extracted updater archive is missing: " + tree);
@@ -199,6 +226,51 @@ public final class Bundle
 				" instead of " + version);
 		}
 		RuntimeRequirement.read(image.resolve(REQUIREMENT_FILE));
+		readLauncher(image);
+	}
+
+	/**
+	 * Reads the stable launcher that an installed updater version ships for this platform.
+	 *
+	 * @param version the updater version
+	 * @return the launcher's content
+	 * @throws IOException if the version directory has no such launcher or it cannot be read
+	 */
+	String stableLauncher(String version) throws IOException
+	{
+		return readLauncher(data.resolve(version));
+	}
+
+	/**
+	 * Reads the stable launcher that an updater version directory ships for this platform.
+	 *
+	 * @param image the updater version directory
+	 * @return the launcher's content
+	 * @throws IOException if the directory has no such launcher or it cannot be read
+	 */
+	private String readLauncher(Path image) throws IOException
+	{
+		Path file = image.resolve(STABLE_LAUNCHERS).resolve(launcher);
+		StateFiles.requireNoLinks(file);
+		if (!Files.isRegularFile(file, NOFOLLOW_LINKS))
+		{
+			throw new ActivationTransaction.Refused("The updater version directory has no stable launcher " +
+				file + ".");
+		}
+		return BoundedInput.readUtf8(file, MAXIMUM_LAUNCHER_BYTES, "The stable launcher");
+	}
+
+	/**
+	 * Replaces the installation's stable launcher. The new launcher is written beside the installed one and renamed
+	 * over it, so a launcher that is running, which reads its script while it runs, keeps reading the file that it
+	 * started from.
+	 *
+	 * @param text the new launcher's content
+	 * @throws IOException if the launcher cannot be replaced
+	 */
+	void installLauncher(String text) throws IOException
+	{
+		StateFiles.replace(data.resolve("bin").resolve(launcher), text.getBytes(UTF_8), LAUNCHER_MODE, replacer);
 	}
 
 	/**

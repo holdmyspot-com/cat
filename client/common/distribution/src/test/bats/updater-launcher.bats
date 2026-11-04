@@ -86,11 +86,13 @@ write_runtime()
 }
 
 # Installs a fake shared runtime Java that stands in for an updater operation that staged a Java runtime: it saves
-# its final JSON result in state/runtime-swap-result.json, writes the swap request, and exits with the status that
-# asks the stable launcher to put the staged runtime in place after the JVM exits. Its java -version succeeds.
+# its final JSON result in state/runtime-swap-result.json, writes the swap request, runs an optional last step, and
+# exits with the status that asks the stable launcher to put the staged runtime in place after the JVM exits. Its
+# java -version succeeds.
 # The saved result contains shell metacharacters and JSON escapes, so a launcher that reinterprets it alters it.
-# Arguments: the absolute path of the data directory, the operation, the version it replaces and the version it
-#   selects.
+# Arguments: the absolute path of the data directory, the operation, the version it replaces, the version it
+#   selects, and optionally a shell command that the fake runs last, with the variable data set to the data
+#   directory.
 # Side effects: Writes TEST_ROOT/saved-swap-result.json, which the fake copies, 1.0/bin/cat-updater and runtime/
 #   beneath the data directory, whose marker file reads "installed".
 install_swapping_runtime()
@@ -99,6 +101,7 @@ install_swapping_runtime()
 	install_runtime "$1" "if [ \"\$1\" = -version ]; then exit 0; fi
 cat '${TEST_ROOT}/saved-swap-result.json' > \"\$data/state/runtime-swap-result.json\"
 printf '%s\\n' '$2' '$3' '$4' 0 - - > \"\$data/state/runtime-swap\"
+${5:-}
 exit 78"
 	printf 'installed\n' > "$1/runtime/marker"
 }
@@ -429,6 +432,30 @@ exit 79'
 	[ ! -e "${DATA}/state/runtime-swap" ]
 	[ ! -e "${DATA}/state/runtime-swap-result.json" ]
 	[ -d "${DATA}/1.0" ]
+}
+
+# The updater installs the selected release's stable launcher by renaming a new file over the running one. A shell
+# reads its script while it runs, so a launcher that read on from the new file, as it would after an in-place
+# rewrite, would run the replacement's lines instead of finishing the runtime replacement.
+@test "the stable launcher finishes the runtime replacement after the updater renames a new stable launcher over it" {
+	{
+		printf '#!/bin/sh\n'
+		for _ in $(seq 400); do printf "printf 'replacement ran\\\\n'; exit 99\\n"; done
+	} > "${TEST_ROOT}/new-launcher"
+	install_swapping_runtime "${DATA}" update 1.0 1.1 "cp '${TEST_ROOT}/new-launcher' \"\$data/bin/.cat-updater.new\"
+chmod 700 \"\$data/bin/.cat-updater.new\"
+mv -f \"\$data/bin/.cat-updater.new\" \"\$data/bin/cat-updater\""
+	write_runtime "${DATA}/runtime.next" staged 0
+	mkdir -p "${DATA}/1.1/bin"
+
+	run "${DATA}/bin/cat-updater" update
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-swap-result.json")" ]
+	[ "$(cat "${DATA}/current")" = 1.1 ]
+	[ "$(cat "${DATA}/runtime/marker")" = staged ]
+	[ ! -e "${DATA}/state/runtime-swap" ]
+	cmp -s "${TEST_ROOT}/new-launcher" "${DATA}/bin/cat-updater"
 }
 
 @test "after a rollback hands over the runtime the stable launcher restores the kept runtime and deletes the replaced bundle" {

@@ -4,6 +4,12 @@
 # or a rollback kept in place and selects that operation's updater version, or completes a complete uninstall by
 # deleting the updater data directory, then the directory that holds it when that leaves it empty. Before it starts
 # the updater, it puts back a runtime that a launcher which stopped during a runtime replacement had moved aside.
+# An update or rollback renames the stable launcher of the release that it selects over this file while this launcher
+# runs, and the launcher that is running, not the new one, finishes the runtime replacement; after a replacement that
+# was undone, a launcher can also run an earlier release's updater. Every release therefore keeps the replacement
+# request's first four lines (operation, the version that current selects, the version to select, the process
+# identifier of the finishing launcher) and the meaning of exit status 78, so that a launcher of any release finishes
+# the request of another; a release may add only lines after the fourth.
 # Arguments: the updater operation and its arguments, forwarded without interpretation.
 # Output: the selected updater's JSON result; after a runtime replacement, the result that the updater saved, printed
 #   only once the new runtime runs and current selects the new version, or a not_swapped result; after a complete

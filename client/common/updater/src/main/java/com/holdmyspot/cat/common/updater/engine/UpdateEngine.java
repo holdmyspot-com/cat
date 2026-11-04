@@ -5,6 +5,8 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.release.TarGzExtractor;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
@@ -34,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -113,7 +116,9 @@ public final class UpdateEngine
 		requireThat(lockWait, "lockWait").isGreaterThanOrEqualTo(Duration.ZERO);
 		this.state = UpdaterState.of(dataDirectory, activation.harness());
 		this.data = dataDirectory.toAbsolutePath().normalize();
-		this.bundle = new Bundle(data);
+		boolean windows = Arrays.stream(Platform.values()).
+			anyMatch(candidate -> candidate.id().equals(platform) && candidate.isWindows());
+		this.bundle = new Bundle(data, windows, FileReplacer.retrying(waiting));
 		this.runtime = bundle.runtime();
 		this.swaps = new SwapFiles(data);
 		this.policy = policy;
@@ -648,8 +653,9 @@ public final class UpdateEngine
 	/**
 	 * Activates a release's whole bundle: checks that the release's own Java runtime can run its updater and plugin,
 	 * moves that runtime and the updater version directory into the installation, activates the plugin bound to the
-	 * installation's runtime location, and leaves the request with which the stable launcher puts the new runtime in
-	 * place and selects the new updater once this JVM has exited. The replaced bundle stays for rollback.
+	 * installation's runtime location, installs the release's stable launcher, and leaves the request with which the
+	 * stable launcher that is running puts the new runtime in place and selects the new updater once this JVM has
+	 * exited. The replaced bundle stays for rollback.
 	 *
 	 * @param staged       the extracted release
 	 * @param running      the updater version that {@code current} selects
@@ -665,7 +671,7 @@ public final class UpdateEngine
 		Path home, ActivationTransaction transaction) throws IOException, TrustException
 	{
 		String version = staged.version();
-		Bundle.validate(staged.updater(), version);
+		bundle.validate(staged.updater(), version);
 		Path migrationFile = validatePlugin(staged.plugin(), version, active, home);
 		RuntimeDescription next = RuntimeDescription.read(staged.updater().resolve(Bundle.RUNTIME));
 		requireOwnRuntime(next, RuntimeRequirement.read(staged.plugin().resolve(RuntimeRequirement.PLUGIN_FILE)),
@@ -691,6 +697,8 @@ public final class UpdateEngine
 		try
 		{
 			bundle.deleteOlder(running, version);
+			// The running launcher reads its script while it runs, so the new one is renamed over it
+			bundle.installLauncher(bundle.stableLauncher(version));
 		}
 		catch (IOException e)
 		{
@@ -752,8 +760,9 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Restores the bundle that the last update replaced: the plugin now, and the Java runtime and updater through
-	 * the stable launcher once this JVM has exited. Afterwards no previous bundle remains.
+	 * Restores the bundle that the last update replaced: the plugin and the stable launcher now, and the Java runtime
+	 * and updater through the stable launcher that is running once this JVM has exited. Afterwards no previous bundle
+	 * remains.
 	 *
 	 * @param transaction the harness's activation transaction
 	 * @return the outcome
@@ -766,6 +775,7 @@ public final class UpdateEngine
 		if (previous.isEmpty())
 			return result(Result.REFUSED, null, null, "No previous bundle is kept for rollback.", List.of());
 		String current = bundle.current().orElseThrow();
+		String launcher = bundle.stableLauncher(previous.get());
 		swaps.write(new RuntimeSwap(Operation.ROLLBACK, current, previous.get()), Optional.empty());
 		String restored;
 		try
@@ -777,13 +787,15 @@ public final class UpdateEngine
 			swaps.delete();
 			throw e;
 		}
+		// A failure from here on leaves an interrupted rollback, which the next operation resumes
+		bundle.installLauncher(launcher);
 		return result(Result.ROLLED_BACK, restored, null, "The previous plugin was restored; the stable launcher " +
 			"restores the previous Java runtime and updater once the updater exits.", List.of());
 	}
 
 	/**
 	 * Completes or undoes a runtime replacement that an earlier operation requested and the stable launcher did not
-	 * finish.
+	 * finish. Undoing it also puts back the stable launcher of the version that {@code current} selects.
 	 *
 	 * @param home        the protected harness home
 	 * @param transaction the harness's activation transaction
@@ -825,6 +837,7 @@ public final class UpdateEngine
 		boolean pluginReplaced = swap.toVersion().equals(plugin);
 		if (operation == Operation.ROLLBACK && pluginReplaced)
 		{
+			bundle.installLauncher(bundle.stableLauncher(swap.toVersion()));
 			swaps.write(swap, recorded.pluginVersion());
 			return Optional.of(result(Result.ROLLED_BACK, plugin, null, "An interrupted rollback was resumed; the " +
 				"stable launcher restores the previous Java runtime and updater once the updater exits.", List.of()));
@@ -834,6 +847,7 @@ public final class UpdateEngine
 		{
 			transaction.rollback();
 		}
+		bundle.installLauncher(bundle.stableLauncher(swap.fromVersion()));
 		swaps.delete();
 		if (operation == Operation.UPDATE)
 			bundle.discard(swap.toVersion());

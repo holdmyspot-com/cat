@@ -4,6 +4,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.IOException;
@@ -102,13 +103,61 @@ final class StateFiles
 	 */
 	static void write(Path file, byte[] content) throws IOException
 	{
+		Path temporary = writeBeside(file, content, FILE_MODE);
+		try
+		{
+			Files.move(temporary, file, ATOMIC_MOVE, REPLACE_EXISTING);
+			PortableFiles.forceDirectory(file.getParent());
+		}
+		finally
+		{
+			Files.deleteIfExists(temporary);
+		}
+	}
+
+	/**
+	 * Replaces a file through a new file beside it, forcing its bytes and parent directory. The file is renamed over
+	 * the old one, so a process that has the old file open keeps reading the old content.
+	 *
+	 * @param file     the file to replace
+	 * @param content  the complete bounded content
+	 * @param mode     the file's permissions where the file system records them
+	 * @param replacer renames the new file over the old one
+	 * @throws IOException if creating, forcing or replacing the file fails
+	 */
+	static void replace(Path file, byte[] content, Set<PosixFilePermission> mode, FileReplacer replacer)
+		throws IOException
+	{
+		Path temporary = writeBeside(file, content, mode);
+		try
+		{
+			replacer.replace(temporary, file);
+			PortableFiles.forceDirectory(file.getParent());
+		}
+		finally
+		{
+			Files.deleteIfExists(temporary);
+		}
+	}
+
+	/**
+	 * Writes content to a new hidden file in a file's directory, forcing its bytes.
+	 *
+	 * @param file    the file that the new file will replace
+	 * @param content the complete bounded content
+	 * @param mode    the new file's permissions where the file system records them
+	 * @return the new file
+	 * @throws IOException if creating or forcing the file fails
+	 */
+	private static Path writeBeside(Path file, byte[] content, Set<PosixFilePermission> mode) throws IOException
+	{
 		requireNoLinks(file);
 		createDirectories(file.getParent());
 		Path temporary;
 		if (PortableFiles.hasModes(file))
 		{
 			temporary = Files.createTempFile(file.getParent(), ".cat-record-", ".new",
-				PosixFilePermissions.asFileAttribute(FILE_MODE));
+				PosixFilePermissions.asFileAttribute(mode));
 		}
 		else
 			temporary = Files.createTempFile(file.getParent(), ".cat-record-", ".new");
@@ -121,12 +170,19 @@ final class StateFiles
 					channel.write(buffer);
 				channel.force(true);
 			}
-			Files.move(temporary, file, ATOMIC_MOVE, REPLACE_EXISTING);
-			PortableFiles.forceDirectory(file.getParent());
+			return temporary;
 		}
-		finally
+		catch (IOException e)
 		{
-			Files.deleteIfExists(temporary);
+			try
+			{
+				Files.deleteIfExists(temporary);
+			}
+			catch (IOException cleanupFailure)
+			{
+				e.addSuppressed(cleanupFailure);
+			}
+			throw e;
 		}
 	}
 

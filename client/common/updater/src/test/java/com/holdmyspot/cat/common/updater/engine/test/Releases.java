@@ -44,6 +44,10 @@ public final class Releases implements ReleaseSource
 	 * The installation-relative policy anchor that setup writes into each updater version directory.
 	 */
 	private static final String ANCHOR = "conf/cat-updater/policy-path";
+	/**
+	 * The updater-version-relative directory that holds the release's stable launchers.
+	 */
+	private static final String STABLE_LAUNCHERS = "stable-launcher/";
 	private final KeyPair key = keyPair();
 	private final String version;
 	private byte[] archive;
@@ -54,8 +58,9 @@ public final class Releases implements ReleaseSource
 	/**
 	 * Creates a valid release, optionally corrupting exactly one property named by a test case. Besides the plugin
 	 * defects, {@code noUpdater} omits the updater archive, {@code updaterDigest} misstates its digest,
-	 * {@code updaterRequirement} makes the updater need a newer runtime than its archive contains, and
-	 * {@code newerRuntime} ships a runtime and plugin of a feature release newer than the installed runtime's.
+	 * {@code updaterRequirement} makes the updater need a newer runtime than its archive contains,
+	 * {@code noStableLauncher} omits the stable launchers from the updater archive, and {@code newerRuntime} ships a
+	 * runtime and plugin of a feature release newer than the installed runtime's.
 	 *
 	 * @param version the release version
 	 * @param defect  empty for valid data, or the particular corrupted property
@@ -125,9 +130,9 @@ public final class Releases implements ReleaseSource
 	}
 
 	/**
-	 * Writes the updater installation of one version as setup leaves it: the current selection, the updater version
-	 * directory with its policy anchor and runtime requirement, and the Java runtime, whose {@code release} file names
-	 * the version that installed it.
+	 * Writes the updater installation of one version as setup leaves it on a POSIX platform: the current selection,
+	 * the stable launcher, the updater version directory with its policy anchor, runtime requirement and stable
+	 * launchers, and the Java runtime, whose {@code release} file names the version that installed it.
 	 *
 	 * @param data    the installation's updater data directory
 	 * @param version the installed updater version
@@ -143,8 +148,35 @@ public final class Releases implements ReleaseSource
 		Files.writeString(image.resolve("runtime-requirement.json"), requirement(INSTALLED_FEATURE));
 		Files.createDirectories(image.resolve(ANCHOR).getParent());
 		Files.writeString(image.resolve(ANCHOR), data.toAbsolutePath().getParent().resolve("policy.json") + "\n");
+		Files.createDirectories(image.resolve(STABLE_LAUNCHERS));
+		Files.writeString(image.resolve(STABLE_LAUNCHERS + "cat-updater"), stableLauncher(version));
+		Files.writeString(image.resolve(STABLE_LAUNCHERS + "cat-updater.ps1"), windowsStableLauncher(version));
+		Files.createDirectories(data.resolve("bin"));
+		Files.writeString(data.resolve("bin/cat-updater"), stableLauncher(version));
 		Files.writeString(data.resolve("current"), version + "\n");
 		return runtime;
+	}
+
+	/**
+	 * Returns the POSIX stable launcher that a release of this fixture ships.
+	 *
+	 * @param version the release version
+	 * @return the launcher's text, which names the version
+	 */
+	public static String stableLauncher(String version)
+	{
+		return "#!/bin/sh\n# The stable launcher of release " + version + "\n";
+	}
+
+	/**
+	 * Returns the Windows stable launcher that a release of this fixture ships.
+	 *
+	 * @param version the release version
+	 * @return the launcher's text, which names the version
+	 */
+	private static String windowsStableLauncher(String version)
+	{
+		return "# The Windows stable launcher of release " + version + "\n";
 	}
 
 	/**
@@ -292,7 +324,7 @@ public final class Releases implements ReleaseSource
 
 	/**
 	 * Builds the updater archive, whose top directory mirrors an installation: the Java runtime, whose
-	 * {@code release} file names this version, and the updater version directory.
+	 * {@code release} file names this version, and the updater version directory with the release's stable launchers.
 	 *
 	 * @param version the release version
 	 * @param defect  the corrupted property, or empty
@@ -318,6 +350,12 @@ public final class Releases implements ReleaseSource
 			entry(tar, top + "/" + version + "/runtime-requirement.json", requirement(updaterFeature), 0644);
 			entry(tar, top + "/" + version + "/app/updater.jar", "Never executed by the updater", 0644);
 			entry(tar, top + "/" + version + "/bin/cat-updater", "Never executed by the updater", 0755);
+			if (!defect.equals("noStableLauncher"))
+			{
+				entry(tar, top + "/" + version + "/" + STABLE_LAUNCHERS + "cat-updater", stableLauncher(version), 0755);
+				entry(tar, top + "/" + version + "/" + STABLE_LAUNCHERS + "cat-updater.ps1",
+					windowsStableLauncher(version), 0644);
+			}
 		}
 		return bytes.toByteArray();
 	}

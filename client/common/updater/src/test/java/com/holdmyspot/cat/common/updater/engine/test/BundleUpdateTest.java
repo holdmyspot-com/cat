@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.updater.engine.test;
 import static com.holdmyspot.cat.common.updater.trust.test.ReleaseFixtures.testDirectory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
@@ -13,11 +14,13 @@ import com.holdmyspot.cat.common.updater.trust.TrustException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -62,6 +65,42 @@ public final class BundleUpdateTest
 			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.0\n");
 			requireThat(engine(data, home, new Releases("1.1", "")).pendingSwap(), "pendingSwap").
 				isEqualTo(Optional.of(new RuntimeSwap(Operation.UPDATE, "1.0", "1.1")));
+		}
+	}
+
+	/**
+	 * An update installs the release's stable launcher in place of the running one, so that a later launcher protocol
+	 * arrives with the release, and leaves nothing else beside it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void updateInstallsStableLauncher() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("bundle-launcher-"));
+			Path data = root.resolve("data");
+			Path home = plugin(root, "1.0");
+			Releases.installation(data, "1.0");
+
+			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
+				new RecordingIntegration().registration());
+
+			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
+			Path launcher = data.resolve("bin/cat-updater");
+			requireThat(Files.readString(launcher), "launcher").isEqualTo(Releases.stableLauncher("1.1"));
+			if (PortableFiles.hasModes(launcher))
+			{
+				requireThat(Files.getPosixFilePermissions(launcher), "mode").
+					isEqualTo(PosixFilePermissions.fromString("rwx------"));
+			}
+			try (Stream<Path> files = Files.list(data.resolve("bin")))
+			{
+				requireThat(files.map(file -> file.getFileName().toString()).toList(), "bin").
+					isEqualTo(List.of("cat-updater"));
+			}
 		}
 	}
 
@@ -163,20 +202,21 @@ public final class BundleUpdateTest
 	}
 
 	/**
-	 * Supplies releases whose updater archive is missing or unauthenticated, or whose runtime cannot run the release's
-	 * updater or plugin.
+	 * Supplies releases whose updater archive is missing, unauthenticated or without stable launchers, or whose runtime
+	 * cannot run the release's updater or plugin.
 	 *
 	 * @return the release defects
 	 */
 	@DataProvider
 	public Object[][] refusedBundles()
 	{
-		return new Object[][]{{"noUpdater"}, {"updaterDigest"}, {"updaterRequirement"}, {"requirement"}};
+		return new Object[][]{{"noUpdater"}, {"updaterDigest"}, {"updaterRequirement"}, {"requirement"},
+			{"noStableLauncher"}};
 	}
 
 	/**
-	 * An update whose updater archive is missing or does not verify, or whose new runtime does not satisfy the new
-	 * updater's or plugin's requirement, is refused without changes.
+	 * An update whose updater archive is missing, does not verify or ships no stable launcher, or whose new runtime does
+	 * not satisfy the new updater's or plugin's requirement, is refused without changes.
 	 *
 	 * @param defect the release defect
 	 * @throws IOException    if the fixture cannot be created or inspected
@@ -252,8 +292,8 @@ public final class BundleUpdateTest
 
 	/**
 	 * An update whose runtime replacement the launcher abandoned is undone by the next operation before it does
-	 * anything else: the plugin returns to the version that matches the running runtime and updater, and the staged
-	 * bundle is deleted.
+	 * anything else: the plugin and the stable launcher return to the version that matches the running runtime and
+	 * updater, and the staged bundle is deleted.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -278,6 +318,8 @@ public final class BundleUpdateTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(Files.readString(data.resolve("bin/cat-updater")), "launcher").
+				isEqualTo(Releases.stableLauncher("1.0"));
 			requireThat(Files.exists(data.resolve("runtime.next")), "stagedRuntime").isFalse();
 			requireThat(Files.exists(data.resolve("1.1")), "stagedUpdater").isFalse();
 			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.0\n");

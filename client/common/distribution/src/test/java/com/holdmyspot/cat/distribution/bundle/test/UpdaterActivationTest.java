@@ -86,9 +86,9 @@ public final class UpdaterActivationTest
 	}
 
 	/**
-	 * An authenticated release changes the actual provider destinations and stages its runtime, and rollback restores
-	 * the original version, owned files and runtime, while configuration, user files and staged executable content
-	 * remain untouched.
+	 * An authenticated release changes the actual provider destinations, stages its runtime and installs its stable
+	 * launcher, and rollback restores the original version, owned files, runtime and stable launcher, while
+	 * configuration, user files and staged executable content remain untouched.
 	 *
 	 * @param harness the production provider to exercise
 	 * @throws IOException if fixture files cannot be written or read
@@ -142,6 +142,8 @@ public final class UpdaterActivationTest
 				isEqualTo(Optional.of(new RuntimeSwap(Operation.UPDATE, "1.0", "1.1")));
 			finishSwap(data);
 			requireThat(Files.readString(data.resolve("runtime/release")), "updatedRuntime").isEqualTo("runtime 1.1");
+			requireThat(Files.readString(data.resolve("bin/cat-updater")), "updatedLauncher").
+				isEqualTo("stable launcher 1.1");
 			requireThat(engine.status().previousVersion(), "previousVersion").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.readString(provider.migrationVersionFile(home)), "updatedMigrationVersion").
 				isEqualTo("1.1\n");
@@ -165,6 +167,8 @@ public final class UpdaterActivationTest
 				isEqualTo(Optional.of(new RuntimeSwap(Operation.ROLLBACK, "1.1", "1.0")));
 			finishSwap(data);
 			requireThat(Files.readString(data.resolve("runtime/release")), "restoredRuntime").isEqualTo("runtime 1.0");
+			requireThat(Files.readString(data.resolve("bin/cat-updater")), "restoredLauncher").
+				isEqualTo("stable launcher 1.0");
 			requireThat(engine.status().previousVersion(), "noPreviousVersion").isEqualTo(Optional.empty());
 			if (harness.equals("codex"))
 			{
@@ -202,7 +206,7 @@ public final class UpdaterActivationTest
 
 	/**
 	 * Writes the installation of release 1.0 that setup leaves: its Java runtime, which satisfies the fixture release,
-	 * its updater version directory and the current selection.
+	 * its updater version directory, the stable launcher and the current selection.
 	 *
 	 * @param data the installation's updater data directory
 	 * @throws IOException if writing fails
@@ -214,6 +218,8 @@ public final class UpdaterActivationTest
 		write(data.resolve("1.0/VERSION"), "1.0\n");
 		write(data.resolve("1.0/runtime-requirement.json"), REQUIREMENT);
 		write(data.resolve("1.0/conf/cat-updater/policy-path"), data.resolveSibling("policy.json") + "\n");
+		write(data.resolve("1.0/stable-launcher/cat-updater"), "stable launcher 1.0");
+		write(data.resolve("bin/cat-updater"), "stable launcher 1.0");
 		write(data.resolve("current"), "1.0\n");
 	}
 
@@ -313,6 +319,8 @@ public final class UpdaterActivationTest
 			entry(tar, updaterTop + "/runtime/release", "runtime 1.1", 0644);
 			entry(tar, updaterTop + "/1.1/VERSION", "1.1\n", 0644);
 			entry(tar, updaterTop + "/1.1/runtime-requirement.json", REQUIREMENT, 0644);
+			entry(tar, updaterTop + "/1.1/stable-launcher/cat-updater", "stable launcher 1.1", 0755);
+			entry(tar, updaterTop + "/1.1/stable-launcher/cat-updater.ps1", "stable launcher 1.1", 0644);
 		}
 		byte[] updater = bytes.toByteArray();
 		Map<String, Object> updaterAsset = Map.of("name", updaterTop + ".tar.gz", "kind", "updater",

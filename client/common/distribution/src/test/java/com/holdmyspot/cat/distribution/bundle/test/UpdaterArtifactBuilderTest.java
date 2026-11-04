@@ -86,8 +86,9 @@ public final class UpdaterArtifactBuilderTest
 	}
 
 	/**
-	 * Verifies that the updater's application directory holds its version, modules, launchers, runtime requirement and
-	 * legal materials, and no Java runtime, which the release shares between the updater and the plugins.
+	 * Verifies that the updater's application directory holds its version, modules, versioned launchers, the stable
+	 * launchers that an update installs, its runtime requirement and legal materials, and no Java runtime, which the
+	 * release shares between the updater and the plugins.
 	 */
 	@Test
 	public void applicationDirectoryHoldsNoRuntime() throws IOException
@@ -106,6 +107,12 @@ public final class UpdaterArtifactBuilderTest
 			requireThat(Files.readString(application.resolve("bin/cat-updater.ps1")), "powerShellLauncher").
 				isEqualTo("launcher.ps1");
 			requireThat(Files.isExecutable(application.resolve("bin/cat-updater")), "posixLauncherExecutable").isTrue();
+			requireThat(Files.readString(application.resolve("stable-launcher/cat-updater")), "posixStableLauncher").
+				isEqualTo("stable launcher.sh");
+			requireThat(Files.readString(application.resolve("stable-launcher/cat-updater.ps1")),
+				"powerShellStableLauncher").isEqualTo("stable launcher.ps1");
+			requireThat(Files.isExecutable(application.resolve("stable-launcher/cat-updater")),
+				"posixStableLauncherExecutable").isTrue();
 			requireThat(Files.readString(application.resolve("legal/LICENSE.txt")), "license").isEqualTo("test license");
 			JsonNode requirement = scope.json().readTree(application.resolve("runtime-requirement.json").toFile());
 			requireThat(requirement.get("format").asInt(), "format").isEqualTo(1);
@@ -114,7 +121,8 @@ public final class UpdaterArtifactBuilderTest
 			try (Stream<Path> entries = Files.list(application))
 			{
 				requireThat(entries.map(path -> path.getFileName().toString()).sorted().toList(), "entries").
-					isEqualTo(List.of("VERSION", "app", "bin", "conf", "legal", "runtime-requirement.json"));
+					isEqualTo(List.of("VERSION", "app", "bin", "conf", "legal", "runtime-requirement.json",
+						"stable-launcher"));
 			}
 		}
 	}
@@ -155,6 +163,9 @@ public final class UpdaterArtifactBuilderTest
 			{
 				output.putNextEntry(new JarEntry("com/holdmyspot/cat/common/updater/cli/versioned-launcher." + suffix));
 				output.write(("launcher." + suffix).getBytes(UTF_8));
+				output.closeEntry();
+				output.putNextEntry(new JarEntry("com/holdmyspot/cat/common/updater/cli/stable-launcher." + suffix));
+				output.write(("stable launcher." + suffix).getBytes(UTF_8));
 				output.closeEntry();
 			}
 		}
