@@ -1,94 +1,179 @@
-name: Build
-
-on:
-  push:
-    branches:
-      - '**'
-    tags-ignore:
-      - 'v*'
-  pull_request:
-
+name: Final v1.0 native release candidate
 permissions:
-  contents: read
-
+  contents: write
 jobs:
   build:
-    name: ${{ matrix.platform }}
+    name: Build ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: linux-x64
-            runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
-          - platform: windows-x64
-            runner: windows-2025
+        - platform: linux-x64
+          runner: ubuntu-26.04
+        - platform: linux-arm64
+          runner: ubuntu-26.04-arm
+        - platform: macos-x64
+          runner: macos-26-intel
+        - platform: macos-arm64
+          runner: macos-26
+        - platform: windows-x64
+          runner: windows-2025
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
-        with:
-          distribution: zulu
-          java-version: '27'
-          cache: maven
-          cache-dependency-path: client/pom.xml
-      - name: Install test tools on Linux
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes bats shellcheck
-      - name: Install test tools on macOS
-        if: runner.os == 'macOS'
-        run: brew install bats-core shellcheck
-      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
-      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
-      - name: Install test tools on Windows
-        if: runner.os == 'Windows'
-        run: |
-          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
-          archive="${shellcheck_directory}/shellcheck.zip"
-          mkdir -p "${shellcheck_directory}"
-          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
-            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
-          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
-            sha256sum --check --strict
-          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
-            '$(cygpath --windows "${shellcheck_directory}")'"
-          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
-          "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.11.1
-          bats --version
-      - name: Verify
-        run: client/mvnw -f client/pom.xml verify
-      # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
-      - name: Keep the test reports of a failed Windows build
-        if: failure() && runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-reports-${{ matrix.platform }}
-          path: client/**/target/surefire-reports/
-          if-no-files-found: ignore
-      - name: Verify bootstrap boundaries
-        if: runner.os != 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests
-      - name: Verify bootstrap boundaries on Windows
-        if: runner.os == 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-      - name: Verify the jlink launcher template
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
-      - name: Verify the Codex plugin's part launchers
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+    - uses: actions/checkout@v7
+      with:
+        ref: 65d9c1e5a8df18ddc079595e34d16579c7ae8ef2
+        persist-credentials: false
+    - uses: actions/setup-java@v6
+      with:
+        distribution: zulu
+        java-version: '27'
+    - name: Install test tools on Linux
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install --yes bats shellcheck
+    - name: Install test tools on macOS
+      if: runner.os == 'macOS'
+      run: brew install bats-core shellcheck
+    - name: Install test tools on Windows
+      if: runner.os == 'Windows'
+      run: "shellcheck_directory=\"$(cygpath --unix \"${RUNNER_TEMP}\")/shellcheck\"\narchive=\"${shellcheck_directory}/shellcheck.zip\"\
+        \nmkdir -p \"${shellcheck_directory}\"\ncurl -fsSL --retry 3 --retry-all-errors -o \"${archive}\" \\\n  https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip\n\
+        echo \"8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}\" |\n  sha256sum --check --strict\n\
+        pwsh -NoProfile -Command \"Expand-Archive -LiteralPath '$(cygpath --windows \"${archive}\")' -DestinationPath \\\n\
+        \  '$(cygpath --windows \"${shellcheck_directory}\")'\"\ncygpath --windows \"${shellcheck_directory}\" >> \"${GITHUB_PATH}\"\
+        \n\"${shellcheck_directory}/shellcheck.exe\" --version\nnpm install --global bats@1.11.1\nbats --version\n"
+    - name: Derive release public key
+      id: release-key
+      env:
+        CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
+      run: "if [ -z \"${CAT_RELEASE_SIGNING_KEY}\" ]; then\n  echo \"The secret CAT_RELEASE_SIGNING_KEY is empty or unavailable\
+        \ to this workflow.\" >&2\n  exit 1\nfi\nkey_file=\"${RUNNER_TEMP}/cat-release-signing-key.pem\"\n(umask 077 && printf\
+        \ '%s\\n' \"${CAT_RELEASE_SIGNING_KEY}\" > \"${key_file}\")\npublic_key=\"$(openssl pkey -in \"${key_file}\" -pubout\
+        \ -outform DER | base64 | tr -d '\\r\\n')\"\nrm -f \"${key_file}\"\nif [ -z \"${public_key}\" ]; then\n  echo \"CAT_RELEASE_SIGNING_KEY\
+        \ holds no private key that openssl can read.\" >&2\n  exit 1\nfi\necho \"public-key=${public_key}\" >> \"${GITHUB_OUTPUT}\"\
+        \n"
+    - name: Verify and package
+      env:
+        CAT_RELEASE_PUBLIC_KEY: ${{ steps.release-key.outputs.public-key }}
+      run: client/mvnw -q -f client/pom.xml verify "-Dcat.release.public-key=${CAT_RELEASE_PUBLIC_KEY}"
+    - name: Verify native release checksums
+      if: runner.os != 'macOS'
+      working-directory: client/common/distribution/target/release
+      run: sha256sum --check --strict SHA256SUMS.txt
+    - name: Verify release tag
+      run: "GITHUB_REF_NAME=v1.0\nexport GITHUB_REF_NAME\nversion=\"$(client/mvnw -q -f client/pom.xml help:evaluate -Dexpression=project.version\
+        \ -DforceStdout)\"\nif [ \"${GITHUB_REF_NAME}\" != \"v${version}\" ]; then\n  echo \"Release tag ${GITHUB_REF_NAME}\
+        \ does not match the Maven project version ${version}; \" \\\n    \"create tag v${version}.\" >&2\n  exit 1\nfi\n"
+    - name: Verify bootstrap boundaries
+      if: runner.os != 'Windows'
+      run: bats client/common/distribution/src/test/bats/bootstrap-common.bats client/common/distribution/src/test/bats/bootstrap-claude.bats
+        client/common/distribution/src/test/bats/bootstrap-codex.bats client/common/distribution/src/test/bats/updater-launcher.bats
+    - name: Verify bootstrap boundaries on Windows
+      if: runner.os == 'Windows'
+      run: bats client/common/distribution/src/test/bats/bootstrap-common.bats client/common/distribution/src/test/bats/bootstrap-claude.bats
+        client/common/distribution/src/test/bats/updater-launcher.bats
+    - name: Upload native release files
+      uses: actions/upload-artifact@v7
+      with:
+        name: cat-${{ matrix.platform }}
+        if-no-files-found: error
+        retention-days: 1
+        path: 'client/common/distribution/target/release/cat-*-*.tar.gz
+
+          client/common/distribution/target/release/SHA256SUMS.txt
+
+          client/common/distribution/target/release/cat-release-assets-*.json
+
+          '
+  publish:
+    name: Assemble signed candidate without publication
+    needs: build
+    runs-on: ubuntu-26.04
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        sparse-checkout: '.github/release-notes.md
+
+          client/common/lifecycle/src/main/release/
+
+          '
+        sparse-checkout-cone-mode: false
+        ref: 65d9c1e5a8df18ddc079595e34d16579c7ae8ef2
+        persist-credentials: false
+    - name: Download native release files
+      uses: actions/download-artifact@v8
+      with:
+        pattern: cat-*
+        path: native
+    - name: Assemble release
+      run: 'mkdir release
+
+        find native -type f -name ''cat-*-*.tar.gz'' -exec cp ''{}'' release/ \;
+
+        find native -type f -name SHA256SUMS.txt -exec cat ''{}'' \; | LC_ALL=C sort > release/SHA256SUMS.txt
+
+        test "$(find release -type f -name ''cat-*-*.tar.gz'' | wc -l)" -eq 15
+
+        test "$(wc -l < release/SHA256SUMS.txt)" -eq 15
+
+        mkdir fragments
+
+        find native -type f -name ''cat-release-assets-*.json'' -exec cp ''{}'' fragments/ \;
+
+        test "$(find fragments -type f | wc -l)" -eq 5
+
+        '
+    - name: Write release manifest
+      run: "GITHUB_REF_NAME=v1.0\nexport GITHUB_REF_NAME\njq -s --arg tag \"${GITHUB_REF_NAME}\" --arg published \"$(date\
+        \ -u +%Y-%m-%dT%H:%M:%SZ)\" \\\n  '{format: 1, product: \"cat\", version: ($tag | ltrimstr(\"v\")), tag: $tag, published:\
+        \ $published,\n    assets: (add | sort_by(.name))}' fragments/*.json > release/cat-release-manifest.json\ntest \"\
+        $(jq '.assets | length' release/cat-release-manifest.json)\" -eq 15\n"
+    - name: Sign release manifest
+      env:
+        CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
+      run: "if [ -z \"${CAT_RELEASE_SIGNING_KEY}\" ]; then\n  echo \"The secret CAT_RELEASE_SIGNING_KEY is empty or unavailable\
+        \ to this workflow.\" >&2\n  exit 1\nfi\nkey_file=\"${RUNNER_TEMP}/cat-release-signing-key.pem\"\ntrap 'rm -f \"${key_file}\"\
+        ' EXIT\n(umask 077 && printf '%s\\n' \"${CAT_RELEASE_SIGNING_KEY}\" > \"${key_file}\")\nopenssl pkey -in \"${key_file}\"\
+        \ -pubout -out \"${RUNNER_TEMP}/cat-release-public-key.pem\"\nopenssl pkeyutl -sign -inkey \"${key_file}\" -rawin\
+        \ -in release/cat-release-manifest.json \\\n  -out \"${RUNNER_TEMP}/cat-release-manifest.sig.bin\"\nbase64 < \"${RUNNER_TEMP}/cat-release-manifest.sig.bin\"\
+        \ | tr -d '\\r\\n' > release/cat-release-manifest.json.sig\n# Verifies the published signature, decoded again, against\
+        \ the public key that the build embedded\nbase64 -d < release/cat-release-manifest.json.sig > \"${RUNNER_TEMP}/cat-release-manifest.check.bin\"\
+        \nif ! openssl pkeyutl -verify -pubin -inkey \"${RUNNER_TEMP}/cat-release-public-key.pem\" -rawin \\\n  -in release/cat-release-manifest.json\
+        \ -sigfile \"${RUNNER_TEMP}/cat-release-manifest.check.bin\"; then\n  echo \"The release manifest's signature does\
+        \ not verify against the release public key.\" >&2\n  exit 1\nfi\nfingerprint=\"$(openssl pkey -in \"${key_file}\"\
+        \ -pubout -outform DER | sha256sum | awk '{ print $1 }')\"\necho \"CAT_KEY_FINGERPRINT=${fingerprint}\" >> \"${GITHUB_ENV}\"\
+        \n"
+    - name: Write entry scripts
+      run: "GITHUB_REF_NAME=v1.0\nexport GITHUB_REF_NAME\nrelease_sources=client/common/lifecycle/src/main/release\nsh \"\
+        ${release_sources}/generate-cat-sh.sh\" \"${release_sources}/cat.sh\" \"${GITHUB_REF_NAME}\" \\\n  release/SHA256SUMS.txt\
+        \ release/cat.sh\nsh \"${release_sources}/generate-cat-sh.sh\" \"${release_sources}/cat.ps1\" \"${GITHUB_REF_NAME}\"\
+        \ \\\n  release/SHA256SUMS.txt release/cat.ps1\n# 15 archives, SHA256SUMS.txt, the manifest, its signature, cat.sh\
+        \ and cat.ps1\ntest \"$(find release -type f | wc -l)\" -eq 20\n"
+    - name: Write release notes
+      run: "GITHUB_REF_NAME=v1.0\nexport GITHUB_REF_NAME\ntest -n \"${CAT_KEY_FINGERPRINT}\"\n# The template's placeholders\
+        \ are matched literally, not expanded\n# shellcheck disable=SC2016\nsed -e 's/${GITHUB_REF_NAME}/'\"${GITHUB_REF_NAME}\"\
+        '/g' -e 's/${CAT_KEY_FINGERPRINT}/'\"${CAT_KEY_FINGERPRINT}\"'/g' .github/release-notes.md > \"${RUNNER_TEMP}/release-notes.md\"\
+        \n# A literal ${ left in the notes is a placeholder that was not replaced\n# shellcheck disable=SC2016\nif grep -F\
+        \ '${' \"${RUNNER_TEMP}/release-notes.md\"; then\n  echo \"The release notes template holds a placeholder other than\
+        \ \\${GITHUB_REF_NAME} and\" \\\n    \"\\${CAT_KEY_FINGERPRINT}.\" >&2\n  exit 1\nfi\n"
+    - name: Retain signed release candidate
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-candidate-NPkRnh
+        path: release/
+        if-no-files-found: error
+        retention-days: 1
+    - name: Retain rendered release notes
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-notes-NPkRnh
+        path: ${{ runner.temp }}/release-notes.md
+        if-no-files-found: error
+        retention-days: 1
+'on':
+  push:
+    branches:
+    - validation/release-NPkRnh
