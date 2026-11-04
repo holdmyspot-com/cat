@@ -52,7 +52,7 @@ public final class InstallTest
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				integration.registration());
+				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(0);
@@ -83,7 +83,7 @@ public final class InstallTest
 			Releases.installation(root.resolve("data"), "1.1");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(false));
@@ -109,7 +109,7 @@ public final class InstallTest
 			Releases.installation(root.resolve("data"), "1.1");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(Files.exists(home.resolve("live/leftover"), NOFOLLOW_LINKS), "leftover").isFalse();
@@ -138,7 +138,7 @@ public final class InstallTest
 			Releases.installation(root.resolve("data"), "1.1");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(Files.exists(realHome.resolve("live/leftover"), NOFOLLOW_LINKS), "leftover").isFalse();
@@ -166,7 +166,7 @@ public final class InstallTest
 			RecordingIntegration integration = new RecordingIntegration().fail("register");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
-				integration.registration());
+				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(result.message(), "message").contains("register");
@@ -198,7 +198,7 @@ public final class InstallTest
 			Releases source = new Releases("1.1", "");
 			try
 			{
-				engine(root, home, source).install("v1.1", new RecordingIntegration().crash("register").registration());
+				engine(root, home, source).install("v1.1", new RecordingIntegration().crash("register").session());
 				throw new AssertionError("The stopped install completed");
 			}
 			catch (IllegalStateException _)
@@ -237,7 +237,7 @@ public final class InstallTest
 			Files.writeString(data.resolve("state/harness-a/highest-version"), "1.2\n");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install(null,
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
@@ -289,7 +289,7 @@ public final class InstallTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), release.policy(home), newer,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.install(null, new RecordingIntegration().registration());
+			UpdateResult result = engine.install(null, new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
@@ -323,7 +323,7 @@ public final class InstallTest
 
 			for (String tag : List.of("v1.1", UpdateEngine.LATEST))
 			{
-				UpdateResult result = engine.install(tag, integration.registration());
+				UpdateResult result = engine.install(tag, integration.session());
 
 				requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 				requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(3);
@@ -363,7 +363,7 @@ public final class InstallTest
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "requirement")).update("v1.1",
-				integration.registration());
+				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("entry command");
@@ -391,7 +391,7 @@ public final class InstallTest
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).update("v1.1",
-				integration.registration());
+				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
@@ -421,7 +421,7 @@ public final class InstallTest
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).update("v1.1",
-				integration.registration());
+				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
@@ -444,7 +444,7 @@ public final class InstallTest
 			Releases.runtime(root.resolve("data"));
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("install");

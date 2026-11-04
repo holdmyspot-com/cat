@@ -75,7 +75,7 @@ public final class EngineTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), policy, source, new LiveProvider(),
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.2", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.2", new RecordingIntegration().session());
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("1.2").contains("1.1");
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
@@ -103,7 +103,7 @@ public final class EngineTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(0);
@@ -150,7 +150,7 @@ public final class EngineTest
 			Releases.runtime(root.resolve("data"));
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
 			requireThat(result.result(), "resultFor" + defect).isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
 			requireThat(Files.readString(home.resolve("configuration")), "configuration").isEqualTo("protected");
@@ -180,7 +180,7 @@ public final class EngineTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
@@ -210,7 +210,7 @@ public final class EngineTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("data migration 1.1");
@@ -239,7 +239,7 @@ public final class EngineTest
 			Releases.installation(root.resolve("data"), "1.0");
 			UpdateEngine setup = new UpdateEngine(root.resolve("data"), first.policy(home), first,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			requireThat(setup.setUp("1.0", new RecordingIntegration().registration()).result(), "setup").
+			requireThat(setup.setUp("1.0", new RecordingIntegration().session()).result(), "setup").
 				isEqualTo(Result.UPDATED);
 			requireThat(Files.readString(home.resolve("migration-version")), "marker").
 				isEqualTo(StagedRelease.LAYOUT_MIGRATION + "\n");
@@ -247,7 +247,7 @@ public final class EngineTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), later.policy(home), later,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(Files.readString(home.resolve("migration-version")), "updatedMarker").isEqualTo("1.1\n");
@@ -275,11 +275,11 @@ public final class EngineTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 			requireThat(engine.update("v1.1", new RecordingIntegration().
-				registration()).result(), "update").isEqualTo(Result.UPDATED);
+				session()).result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(root.resolve("data"));
 			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.of("1.0"));
 			requireThat(engine.update("v1.1", new RecordingIntegration().
-				registration()).result(), "repeatUpdate").isEqualTo(Result.UP_TO_DATE);
+				session()).result(), "repeatUpdate").isEqualTo(Result.UP_TO_DATE);
 			requireThat(engine.rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
 			LauncherSwap.finish(root.resolve("data"));
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
@@ -318,7 +318,7 @@ public final class EngineTest
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				provider, "linux-x64", Clock.systemUTC(), interval -> () -> {});
 			requireThat(engine.update("v1.1", new RecordingIntegration().
-				registration()).result(), "result").isEqualTo(Result.REFUSED);
+				session()).result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
 			requireThat(Files.exists(outside.resolve("migration-version")), "outsideMarker").isFalse();
 		}
@@ -411,12 +411,12 @@ public final class EngineTest
 					throw new AssertionError("A zero wait must not pause");
 				}, Duration.ZERO);
 			Future<UpdateResult> running = workers.submit(() -> first.update("v1.1", new RecordingIntegration().
-				registration()));
+				session()));
 			try
 			{
 				requireThat(entered.await(2, TimeUnit.SECONDS), "enteredTransport").isTrue();
 				requireThat(second.update("v1.1", new RecordingIntegration().
-					registration()).result(), "contendingResult").isEqualTo(Result.LOCKED);
+					session()).result(), "contendingResult").isEqualTo(Result.LOCKED);
 				AtomicReference<Instant> now = new AtomicReference<>(Instant.EPOCH);
 				Clock clock = new LockClock(now, ZoneOffset.UTC);
 				List<Duration> pauses = new ArrayList<>();
@@ -431,7 +431,7 @@ public final class EngineTest
 							now.updateAndGet(time -> time.plus(interval));
 					}, deadline);
 				requireThat(timed.update("v1.1", new RecordingIntegration().
-					registration()).result(), "deadlineResult").isEqualTo(Result.LOCKED);
+					session()).result(), "deadlineResult").isEqualTo(Result.LOCKED);
 				requireThat(pauses, "lockPauses").isEqualTo(List.of(Duration.ofMillis(50), Duration.ofMillis(50),
 					Duration.ofMillis(20)));
 				UpdateEngine interrupted = new UpdateEngine(root.resolve("data"), release.policy(home), release,
@@ -442,7 +442,7 @@ public final class EngineTest
 				try
 				{
 					requireThat(interrupted.update("v1.1", new RecordingIntegration().
-						registration()).result(), "interruptedResult").isEqualTo(Result.LOCKED);
+						session()).result(), "interruptedResult").isEqualTo(Result.LOCKED);
 					requireThat(Thread.currentThread().isInterrupted(), "interruptPreserved").isTrue();
 				}
 				finally
@@ -491,7 +491,7 @@ public final class EngineTest
 			Releases.installation(root.resolve("data"), "1.0");
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				provider, "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(5);
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");

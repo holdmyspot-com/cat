@@ -12,7 +12,7 @@ import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.cli.internal.Arguments.Operation;
 import com.holdmyspot.cat.common.updater.engine.Bundle;
 import com.holdmyspot.cat.common.updater.engine.HttpsReleaseSource;
-import com.holdmyspot.cat.common.updater.engine.Registration;
+import com.holdmyspot.cat.common.updater.engine.HarnessSession;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap;
 import com.holdmyspot.cat.common.updater.engine.UninstallResult;
 import com.holdmyspot.cat.common.updater.engine.Uninstaller;
@@ -288,12 +288,12 @@ public final class Invocation
 				arguments, locations);
 		}
 		Path home = policy.harnesses().get(own);
-		Registration registration = new Registration(integration.get(), cliFactory.create(command.get(), home),
+		HarnessSession session = new HarnessSession(integration.get(), cliFactory.create(command.get(), home),
 			replacer);
 		if (arguments.operation() == Operation.UNINSTALL)
 		{
 			UninstallResult result = new Uninstaller(locations.data(), locations.policy(), policy, activation.get(),
-				registration, clock, waiting).uninstall(arguments.deleteData());
+				session, clock, waiting).uninstall(arguments.deleteData());
 			if (result.outcome().result() != Result.UNINSTALLED)
 				return print(result.outcome(), arguments, locations);
 			return handOver(result, locations);
@@ -305,8 +305,8 @@ public final class Invocation
 				clock, waiting);
 			UpdateResult result = switch (arguments.operation())
 			{
-				case INSTALL -> engine.install(arguments.tag(), registration);
-				case UPDATE -> engine.update(arguments.tag(), registration);
+				case INSTALL -> engine.install(arguments.tag(), session);
+				case UPDATE -> engine.update(arguments.tag(), session);
 				case SETUP, STATUS, ROLLBACK, UNINSTALL -> throw new AssertionError(arguments.operation());
 			};
 			return finish(engine, result, arguments, locations);

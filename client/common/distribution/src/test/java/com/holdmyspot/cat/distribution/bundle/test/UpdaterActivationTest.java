@@ -13,7 +13,7 @@ import com.holdmyspot.cat.common.updater.activation.HarnessCli;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
-import com.holdmyspot.cat.common.updater.engine.Registration;
+import com.holdmyspot.cat.common.updater.engine.HarnessSession;
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap;
 import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
@@ -126,12 +126,12 @@ public final class UpdaterActivationTest
 			writeInstallation(data);
 			UpdateEngine engine = new UpdateEngine(data, policy, release, provider,
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
-			Registration registration = new Registration(new UnusedIntegration(harness),
+			HarnessSession session = new HarnessSession(new UnusedIntegration(harness),
 				arguments -> new CommandResult(0, ""), new FileReplacer(Platform.current(), () ->
 			{
 			}, Clock.systemUTC()));
 
-			UpdateResult updated = engine.update("v1.1", registration);
+			UpdateResult updated = engine.update("v1.1", session);
 
 			requireThat(updated.result(), "updateResult").isEqualTo(Result.UPDATED);
 			requireThat(updated.consistent(), "updatedConsistent").isTrue();

@@ -48,7 +48,7 @@ public final class BundleUpdateTest
 			Path runtime = Releases.installation(data, "1.0");
 
 			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.1"));
@@ -86,7 +86,7 @@ public final class BundleUpdateTest
 			Releases.installation(data, "1.0");
 
 			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			Path launcher = data.resolve("bin/cat-updater");
@@ -121,7 +121,7 @@ public final class BundleUpdateTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases first = new Releases("1.1", "");
-			requireThat(engine(data, home, first).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, first).update("v1.1", new RecordingIntegration().session()).
 				result(), "firstUpdate").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 			UpdateResult status = engine(data, home, first).status();
@@ -131,7 +131,7 @@ public final class BundleUpdateTest
 				isEqualTo("runtime 1.0");
 
 			Releases second = new Releases("1.2", "");
-			requireThat(engine(data, home, second).update("v1.2", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, second).update("v1.2", new RecordingIntegration().session()).
 				result(), "secondUpdate").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 
@@ -165,7 +165,7 @@ public final class BundleUpdateTest
 			Map<String, String> before = Releases.snapshot(root);
 
 			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
-				integration.registration());
+				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
@@ -193,7 +193,7 @@ public final class BundleUpdateTest
 			Map<String, String> before = Releases.snapshot(root);
 
 			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("1.2");
@@ -234,7 +234,7 @@ public final class BundleUpdateTest
 			Map<String, String> before = Releases.snapshot(root);
 
 			UpdateResult result = engine(data, home, new Releases("1.1", defect)).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Releases.snapshot(root), "after").isEqualTo(before);
@@ -259,7 +259,7 @@ public final class BundleUpdateTest
 			Releases.installation(data, "1.0");
 
 			UpdateResult result = engine(data, home, new Releases("1.1", "newerRuntime")).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 		}
@@ -286,7 +286,7 @@ public final class BundleUpdateTest
 			RecordingIntegration integration = new RecordingIntegration().fail("register");
 
 			UpdateResult result = engine(data, home, new Releases("1.1", "")).update("v1.1",
-				integration.registration());
+				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(Releases.snapshot(root), "after").isEqualTo(before);
@@ -312,13 +312,13 @@ public final class BundleUpdateTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.abandon(data);
 			Releases installed = new Releases("1.0", "");
 
 			UpdateResult result = engine(data, home, installed).update("v1.0",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
@@ -349,7 +349,7 @@ public final class BundleUpdateTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			// The launcher that reported not_swapped put the installed runtime back, kept the request and the staged
 			// runtime, and exited
@@ -358,7 +358,7 @@ public final class BundleUpdateTest
 			Releases installed = new Releases("1.0", "");
 
 			UpdateResult result = engine(data, home, installed).install(null,
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.0"));
@@ -386,13 +386,13 @@ public final class BundleUpdateTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.renameOnly(data);
 			LauncherSwap.abandon(data);
 
 			UpdateResult result = engine(data, home, release).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.1"));
@@ -421,13 +421,13 @@ public final class BundleUpdateTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.claim(data);
 			Map<String, String> before = Releases.snapshot(root);
 
 			UpdateResult result = engine(data, home, release).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.LOCKED);
 			requireThat(Releases.snapshot(root), "after").isEqualTo(before);

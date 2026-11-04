@@ -779,7 +779,7 @@ public final class InvocationTest
 			Releases release = new Releases("1.0", "");
 			UpdateResult result = new UpdateEngine(data, release.policy(home), release, new LiveProvider(),
 				"linux-x64", Clock.systemUTC(), interval -> () -> {}, Duration.ZERO).
-				update("v1.0", new RecordingIntegration().registration());
+				update("v1.0", new RecordingIntegration().session());
 			requireThat(result.result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 			Path anchor = image.resolve(Locations.POLICY_ANCHOR);

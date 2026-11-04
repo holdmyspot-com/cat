@@ -7,23 +7,24 @@ import com.holdmyspot.cat.common.updater.activation.HarnessCli;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 
 /**
- * Registers an activated plugin with its harness through the harness program that setup recorded.
+ * The handle through which the updater makes every call to a harness integration: registering an activated plugin,
+ * unregistering it and changing the harness's permission entries, through the harness program that setup recorded.
  *
  * @param integration the harness's integration
  * @param cli         runs the recorded harness program
  * @param replacer    replaces the harness configuration files that the integration writes
  */
-public record Registration(HarnessIntegration integration, HarnessCli cli, FileReplacer replacer)
+public record HarnessSession(HarnessIntegration integration, HarnessCli cli, FileReplacer replacer)
 {
 	/**
-	 * Creates a registration.
+	 * Creates a harness session.
 	 *
 	 * @param integration the harness's integration
 	 * @param cli         runs the recorded harness program
 	 * @param replacer    replaces the harness configuration files that the integration writes
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Registration
+	public HarnessSession
 	{
 		requireThat(integration, "integration").isNotNull();
 		requireThat(cli, "cli").isNotNull();

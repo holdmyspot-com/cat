@@ -40,7 +40,7 @@ public final class BundleRollbackTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 
@@ -107,7 +107,7 @@ public final class BundleRollbackTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 			requireThat(engine(data, home, release).rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
@@ -116,7 +116,7 @@ public final class BundleRollbackTest
 			Files.writeString(data.resolve("bin/cat-updater"), Releases.stableLauncher("1.1"));
 
 			UpdateResult result = engine(data, home, release).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.ROLLED_BACK);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.0"));
@@ -147,13 +147,13 @@ public final class BundleRollbackTest
 			Path home = plugin(root, "1.0");
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 			LauncherSwap.requestRollback(data, "1.1", "1.0");
 
 			UpdateResult result = engine(data, home, release).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");

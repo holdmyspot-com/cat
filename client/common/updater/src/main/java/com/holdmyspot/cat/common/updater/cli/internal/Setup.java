@@ -21,7 +21,7 @@ import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
 import com.holdmyspot.cat.common.updater.engine.Bundle;
 import com.holdmyspot.cat.common.updater.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.updater.engine.PermissionRecord;
-import com.holdmyspot.cat.common.updater.engine.Registration;
+import com.holdmyspot.cat.common.updater.engine.HarnessSession;
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.TreeCopy;
 import com.holdmyspot.cat.common.updater.engine.Uninstaller;
@@ -249,12 +249,12 @@ public final class Setup
 		else
 			deleteOtherVersions(List.of(version, kept));
 
-		Registration registration = new Registration(integration, cliFactory.create(command, home), replacer);
+		HarnessSession session = new HarnessSession(integration, cliFactory.create(command, home), replacer);
 		UpdateResult pluginResult;
 		if (plugin == null)
-			pluginResult = engine.setUp(version, registration);
+			pluginResult = engine.setUp(version, session);
 		else
-			pluginResult = engine.setUpFrom(plugin, version, registration);
+			pluginResult = engine.setUpFrom(plugin, version, session);
 		Map<String, List<String>> permissions = Map.of();
 		if (pluginResult.result().exitStatus() == 0)
 		{

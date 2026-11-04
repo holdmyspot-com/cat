@@ -69,7 +69,7 @@ public final class Uninstaller
 	private final Path policyFile;
 	private final TrustPolicy policy;
 	private final PluginActivation activation;
-	private final Registration registration;
+	private final HarnessSession session;
 	private final Clock clock;
 	private final Waiting waiting;
 	private final UpdaterState state;
@@ -82,26 +82,26 @@ public final class Uninstaller
 	 * @param policyFile   the installation's policy file
 	 * @param policy       the installation's policy
 	 * @param activation   the harness's activation provider
-	 * @param registration unregisters the plugin and removes the permission entries
+	 * @param session unregisters the plugin and removes the permission entries
 	 * @param clock        operation time source
 	 * @param waiting      creates pauses between lock attempts
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Uninstaller(Path data, Path policyFile, TrustPolicy policy, PluginActivation activation,
-		Registration registration, Clock clock, Waiting waiting)
+		HarnessSession session, Clock clock, Waiting waiting)
 	{
 		requireThat(data, "data").isNotNull();
 		requireThat(policyFile, "policyFile").isNotNull();
 		requireThat(policy, "policy").isNotNull();
 		requireThat(activation, "activation").isNotNull();
-		requireThat(registration, "registration").isNotNull();
+		requireThat(session, "session").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		this.data = data.toAbsolutePath().normalize();
 		this.policyFile = policyFile.toAbsolutePath().normalize();
 		this.policy = policy;
 		this.activation = activation;
-		this.registration = registration;
+		this.session = session;
 		this.clock = clock;
 		this.waiting = waiting;
 		this.state = UpdaterState.of(this.data, activation.harness());
@@ -256,7 +256,7 @@ public final class Uninstaller
 	{
 		switch (step)
 		{
-			case UNREGISTER -> registration.integration().unregister(home, registration.cli());
+			case UNREGISTER -> session.integration().unregister(home, session.cli());
 			case "plugin" ->
 			{
 				for (Path path : activation.removalPaths(home))
@@ -274,7 +274,7 @@ public final class Uninstaller
 			{
 				Map<String, List<String>> recorded = PermissionRecord.read(state.permissions());
 				if (!recorded.isEmpty())
-					registration.integration().removePermissions(home, recorded, registration.replacer());
+					session.integration().removePermissions(home, recorded, session.replacer());
 			}
 			case "policy" -> deletePolicy();
 			default -> throw new AssertionError(step);

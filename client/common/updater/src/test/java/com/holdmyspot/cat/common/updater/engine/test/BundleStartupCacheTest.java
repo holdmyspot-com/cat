@@ -44,7 +44,7 @@ public final class BundleStartupCacheTest
 			Releases.installation(data, "1.0");
 
 			UpdateResult result = engine(data, home, Releases.trainable("1.0")).install(null,
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
@@ -70,7 +70,7 @@ public final class BundleStartupCacheTest
 			Path home = installed(root, data, true);
 
 			UpdateResult result = engine(data, home, Releases.trainable("1.1")).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
@@ -97,7 +97,7 @@ public final class BundleStartupCacheTest
 			Path data = root.resolve("data");
 			Path home = installed(root, data, true);
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 
@@ -126,7 +126,7 @@ public final class BundleStartupCacheTest
 			// The plugin gets its training description only after the first rollback, so that only the resumed one trains
 			Path home = installed(root, data, false);
 			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().registration()).
+			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 			requireThat(engine(data, home, release).rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
@@ -134,7 +134,7 @@ public final class BundleStartupCacheTest
 			describe(home.resolve("live"));
 
 			UpdateResult result = engine(data, home, release).update("v1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.ROLLED_BACK);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
@@ -159,11 +159,11 @@ public final class BundleStartupCacheTest
 			Path data = root.resolve("data");
 			Path home = installed(root, data, true);
 			requireThat(engine(data, home, new Releases("1.1", "")).update("v1.1",
-				new RecordingIntegration().registration()).result(), "update").isEqualTo(Result.UPDATED);
+				new RecordingIntegration().session()).result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.abandon(data);
 
 			UpdateResult result = engine(data, home, Releases.trainable("1.0")).install(null,
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
@@ -190,7 +190,7 @@ public final class BundleStartupCacheTest
 			Releases.installation(data, "1.0");
 
 			UpdateResult result = engine(data, home, Releases.trainable("1.0")).setUp("1.0",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
@@ -217,7 +217,7 @@ public final class BundleStartupCacheTest
 			Releases.installation(data, "1.1");
 
 			UpdateResult result = engine(data, home, Releases.trainable("1.1")).setUp("1.1",
-				new RecordingIntegration().registration());
+				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));

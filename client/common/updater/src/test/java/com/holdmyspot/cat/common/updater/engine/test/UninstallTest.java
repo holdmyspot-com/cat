@@ -133,7 +133,7 @@ public final class UninstallTest
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UninstallResult result = new Uninstaller(fixture.data,
-				config.resolve("harness-a/policy.json"), trust, new LiveProvider(), integration.registration(),
+				config.resolve("harness-a/policy.json"), trust, new LiveProvider(), integration.session(),
 				Clock.systemUTC(), interval -> () -> {}).uninstall(true);
 
 			requireThat(result.outcome().message(), "message").isEqualTo("CAT was removed from this harness.");
@@ -275,15 +275,15 @@ public final class UninstallTest
 			UpdateEngine engine = new UpdateEngine(data, trust, source, new LiveProvider(), "linux-x64",
 				Clock.systemUTC(), interval -> () -> {});
 			RecordingIntegration integration = new RecordingIntegration().fail("removePermissions");
-			requireThat(engine.install("v1.1", integration.registration()).result(), "installed").
+			requireThat(engine.install("v1.1", integration.session()).result(), "installed").
 				isEqualTo(Result.INSTALLED);
 			Files.createDirectories(data.resolve("state/permissions"));
 			Files.writeString(data.resolve("state/permissions/harness-a.json"), "{\"settings.json\": [\"entry\"]}\n");
 			Uninstaller uninstaller = new Uninstaller(data, policy, trust, new LiveProvider(),
-				integration.registration(), Clock.systemUTC(), interval -> () -> {});
+				integration.session(), Clock.systemUTC(), interval -> () -> {});
 			requireThat(uninstaller.uninstall(false).outcome().result(), "stopped").
 				isEqualTo(Result.UNINSTALL_INCOMPLETE);
-			requireThat(engine.install("v1.1", integration.registration()).result(), "reinstalled").
+			requireThat(engine.install("v1.1", integration.session()).result(), "reinstalled").
 				isEqualTo(Result.INSTALLED);
 			integration.succeed("removePermissions");
 			int before = integration.calls().size();
@@ -433,7 +433,7 @@ public final class UninstallTest
 		 */
 		private Uninstaller uninstaller(RecordingIntegration integration)
 		{
-			return new Uninstaller(data, policy, trust, new LiveProvider(), integration.registration(),
+			return new Uninstaller(data, policy, trust, new LiveProvider(), integration.session(),
 				Clock.systemUTC(), interval -> () -> {});
 		}
 	}

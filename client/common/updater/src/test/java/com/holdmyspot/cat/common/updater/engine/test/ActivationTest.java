@@ -63,7 +63,7 @@ public final class ActivationTest
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(plan), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult update = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult update = engine.update("v1.1", new RecordingIntegration().session());
 
 			requireThat(update.result(), "update").isEqualTo(Result.UPDATED);
 			requireThat(Files.readString(home.resolve("cache/1.1/version")), "addedVersion").isEqualTo("1.1");
@@ -109,7 +109,7 @@ public final class ActivationTest
 				new Provider(List.of(new ReplaceDirectory(home.resolve("live"), home), ownedStep(home))),
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
@@ -153,7 +153,7 @@ public final class ActivationTest
 				new Provider(List.of(new ReplaceDirectory(home.resolve("live"), home), ownedStep(home))),
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
@@ -185,7 +185,7 @@ public final class ActivationTest
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(plan), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());
+			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(5);

@@ -5,7 +5,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCli;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
-import com.holdmyspot.cat.common.updater.engine.Registration;
+import com.holdmyspot.cat.common.updater.engine.HarnessSession;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -140,14 +140,14 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns a registration that uses this integration, a harness program that always succeeds and a replacer that
+	 * Returns a harness session that uses this integration, a harness program that always succeeds and a replacer that
 	 * never waits.
 	 *
-	 * @return the registration
+	 * @return the session
 	 */
-	public Registration registration()
+	public HarnessSession session()
 	{
-		return new Registration(this, cli(), new FileReplacer(Platform.current(), () ->
+		return new HarnessSession(this, cli(), new FileReplacer(Platform.current(), () ->
 		{
 		}, Clock.systemUTC()));
 	}

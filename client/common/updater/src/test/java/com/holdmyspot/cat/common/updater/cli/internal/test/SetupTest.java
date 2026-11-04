@@ -262,7 +262,7 @@ public final class SetupTest
 			Releases.installation(data, "1.0");
 			Releases release = new Releases("1.1", "");
 			requireThat(engine(data, release.policy(fixture.home), release).update("v1.1",
-				new RecordingIntegration().registration()).result(), "update").isEqualTo(Result.UPDATED);
+				new RecordingIntegration().session()).result(), "update").isEqualTo(Result.UPDATED);
 			LauncherSwap.abandon(data);
 			Path other = data.resolveSibling("harness-b");
 			Releases.installation(other, "1.0");
@@ -280,7 +280,7 @@ public final class SetupTest
 			UpdateEngine engine = engine(data, outcome.policy(), fixture.source);
 			requireThat(engine.pendingSwap(), "pendingSwap").isEqualTo(Optional.empty());
 			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.empty());
-			requireThat(engine.update("v1.2", new RecordingIntegration().registration()).result(), "next").
+			requireThat(engine.update("v1.2", new RecordingIntegration().session()).result(), "next").
 				isEqualTo(Result.UP_TO_DATE);
 			requireThat(Releases.snapshot(other), "otherInstallation").isEqualTo(otherBefore);
 		}
@@ -517,7 +517,7 @@ public final class SetupTest
 		Files.writeString(fixture.home.resolve("live/version"), "1.1");
 		Releases.installation(data, "1.1");
 		requireThat(engine(data, fixture.source.policy(fixture.home), fixture.source).update("v1.2",
-			new RecordingIntegration().registration()).result(), "update").isEqualTo(Result.UPDATED);
+			new RecordingIntegration().session()).result(), "update").isEqualTo(Result.UPDATED);
 		LauncherSwap.finish(data);
 		return fixture;
 	}
