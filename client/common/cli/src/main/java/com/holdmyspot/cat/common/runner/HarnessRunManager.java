@@ -97,6 +97,29 @@ public final class HarnessRunManager
 		  "finished_at": (?<finishedAt>null|"(?<finishedAtValue>[^\"]+)"),
 		  "diagnostic": "[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+"
 		}\\n\\z""");
+
+	/**
+	 * Opens the run root of a runner command that is starting. It first deletes the root's stale runs, as
+	 * {@link #deleteStaleRuns(Duration) deleteStaleRuns(DEFAULT_RETENTION)} does, so that a run whose owner ended
+	 * without recording a terminal result is marked failed. A run whose owner is alive stays running.
+	 *
+	 * @param fileLocks the process-owned lock coordinator
+	 * @param root      the absolute owned-run root
+	 * @param clock     the clock used for generated identifiers
+	 * @param replacer  replaces the runs' manifests and output files
+	 * @return a manager of the runs in {@code root}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code root} is relative
+	 * @throws IOException              if run directories cannot be inspected or deleted
+	 */
+	public static HarnessRunManager openRunRoot(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer)
+		throws IOException
+	{
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, root, clock, replacer);
+		manager.deleteStaleRuns(DEFAULT_RETENTION);
+		return manager;
+	}
+
 	private final FileLocks fileLocks;
 	private final Path root;
 	private final Clock clock;

@@ -175,9 +175,8 @@ public final class ClaudeRunnerCli
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
-			HarnessRunManager manager = new HarnessRunManager(process.fileLocks(), options.runRoot(),
+			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
-			manager.deleteStaleRuns(HarnessRunManager.DEFAULT_RETENTION);
 			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, manager, input, output, environment,
 				replacer, capacityForMaximum.apply(options.maximumConcurrency()));
 		}

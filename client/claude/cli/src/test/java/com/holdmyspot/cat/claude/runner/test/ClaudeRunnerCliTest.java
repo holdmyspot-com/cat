@@ -9,8 +9,10 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -20,6 +22,7 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -131,6 +134,95 @@ public final class ClaudeRunnerCliTest
 					requireThat(pauses.get(), "pauses").isEqualTo(5);
 				}
 			}
+		}
+	}
+
+	/**
+	 * Verifies that starting {@code claude-runner} marks a Claude run as failed when the runner that owned it has
+	 * ended, so that the run does not stay running after its runner died.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void marksRunOfEndedOwnerFailed() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path manifest = createRun(jvm, root.resolve("runs"));
+			// A start time that differs from the one of the process holding the recorded identifier means that the
+			// identifier now belongs to another process, so the runner that created the run has ended
+			Files.writeString(manifest, Files.readString(manifest).replaceFirst("\"owner_started_at\": \"[^\"]+\"",
+				"\"owner_started_at\": \"2000-01-01T00:00:00Z\""));
+
+			startUntilCapacityIsRequested(jvm, root);
+
+			requireThat(Files.readString(manifest), "manifest").contains("\"state\": \"failed\"").
+				contains("Runner process ended without recording a terminal result");
+		}
+	}
+
+	/**
+	 * Verifies that starting {@code claude-runner} leaves a Claude run running when the runner that owns it is alive.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void keepsRunOfLiveOwnerRunning() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			// The process that runs the test owns the run and is alive
+			Path manifest = createRun(jvm, root.resolve("runs"));
+
+			startUntilCapacityIsRequested(jvm, root);
+
+			requireThat(Files.readString(manifest), "manifest").contains("\"state\": \"running\"");
+		}
+	}
+
+	/**
+	 * Creates a running run that the process executing the test owns.
+	 *
+	 * @param jvm     the test's process scope
+	 * @param runRoot the directory that holds the runs
+	 * @return the run's manifest
+	 * @throws IOException if the run cannot be created
+	 */
+	private static Path createRun(TestJvmScope jvm, Path runRoot) throws IOException
+	{
+		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+			Yielding.fileReplacer());
+		return manager.create("claude").directory().resolve("run.json");
+	}
+
+	/**
+	 * Starts {@code claude-runner}, which stops when it asks for capacity: it asks only after the steps that it takes
+	 * when it starts to prepare its runs.
+	 *
+	 * @param jvm  the test's process scope
+	 * @param root the test's directory, whose {@code runs} subdirectory holds the runs
+	 * @throws IOException if the launch fails before it asks for capacity
+	 */
+	private static void startUntilCapacityIsRequested(TestJvmScope jvm, Path root) throws IOException
+	{
+		String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
+			root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+			"--effort", "low"};
+		try
+		{
+			ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+			{
+				throw new IllegalStateException("Capacity requested");
+			});
+			throw new AssertionError("The launch did not ask for capacity");
+		}
+		catch (IllegalStateException e)
+		{
+			requireThat(e.getMessage(), "message").isEqualTo("Capacity requested");
 		}
 	}
 

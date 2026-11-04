@@ -200,7 +200,7 @@ public final class CodexRunnerCli
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
-			HarnessRunManager manager = new HarnessRunManager(process.fileLocks(), options.runRoot(),
+			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
 			HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
 			HarnessCapacity.Permit permit;
