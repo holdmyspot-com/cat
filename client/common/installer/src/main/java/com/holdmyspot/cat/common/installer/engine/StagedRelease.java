@@ -32,14 +32,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class StagedRelease
 {
 	/**
-	 * The migration that the release registry names for the move from one installation that every harness shares to
-	 * one installation per harness. The release's setup performs it, so this installer, which runs only from the
-	 * per-harness installation, records it as applied in each harness it activates a plugin in. The version sorts
-	 * directly after {@code 1.0}, so that an installer of the shared installation, which recorded {@code 1.0}, refuses
-	 * every later release as a routine update and directs the user to the release's setup.
-	 */
-	public static final String LAYOUT_MIGRATION = "1.0.0";
-	/**
 	 * Caps a plugin manifest at one MiB, permitting whole-document JSON validation with bounded memory.
 	 */
 	private static final int MANIFEST_LIMIT = 1024 * 1024;
@@ -191,46 +183,6 @@ public final class StagedRelease
 	}
 
 	/**
-	 * Refuses, for the release's setup, registered migrations that {@link #requireNoPendingMigration} refuses, except
-	 * {@link #LAYOUT_MIGRATION} and any earlier one, which setup performs itself.
-	 *
-	 * @param tree                 validated staged top directory
-	 * @param migrationVersionFile installation's recorded migration version file
-	 * @param activeVersion        active release version, used when the recorded version file is absent
-	 * @param newVersion           authenticated release version
-	 * @throws NullPointerException if any argument is null
-	 * @throws TrustException       if the registry is absent or malformed, any release version is malformed, or a
-	 *                              pending migration requires explicit installation
-	 * @throws IOException          if a migration file cannot be read
-	 */
-	public static void requireNoPendingSetupMigration(Path tree, Path migrationVersionFile, String activeVersion,
-		String newVersion) throws IOException, TrustException
-	{
-		ReleaseVersion recorded = recorded(tree, migrationVersionFile, activeVersion, newVersion);
-		ReleaseVersion layout = ReleaseVersion.parse(LAYOUT_MIGRATION);
-		if (recorded.compareTo(layout) < 0)
-			recorded = layout;
-		requireNoPendingMigration(tree, recorded, ReleaseVersion.parse(newVersion));
-	}
-
-	/**
-	 * Returns the migration version to record for a harness that this installer activates a release in: the release's
-	 * version, or {@link #LAYOUT_MIGRATION} where that is later.
-	 *
-	 * @param newVersion the activated release version
-	 * @return the migration version
-	 * @throws NullPointerException if {@code newVersion} is null
-	 * @throws TrustException       if {@code newVersion} is malformed
-	 */
-	public static String migrationVersion(String newVersion) throws TrustException
-	{
-		ReleaseVersion version = ReleaseVersion.parse(newVersion);
-		if (version.compareTo(ReleaseVersion.parse(LAYOUT_MIGRATION)) < 0)
-			return LAYOUT_MIGRATION;
-		return newVersion;
-	}
-
-	/**
 	 * Returns the recorded migration version.
 	 *
 	 * @param tree                 validated staged top directory
@@ -281,9 +233,7 @@ public final class StagedRelease
 	}
 
 	/**
-	 * Returns the data migrations that a release registers after an older release, up to and including a newer one,
-	 * leaving out {@link #LAYOUT_MIGRATION} and every earlier one, which every installation of this installer has
-	 * already performed.
+	 * Returns the data migrations that a release registers after an older release, up to and including a newer one.
 	 *
 	 * @param tree  a validated plugin tree
 	 * @param older the older release
@@ -299,12 +249,11 @@ public final class StagedRelease
 		requireThat(tree, "tree").isNotNull();
 		requireThat(older, "older").isNotNull();
 		requireThat(newer, "newer").isNotNull();
-		ReleaseVersion layout = ReleaseVersion.parse(LAYOUT_MIGRATION);
 		List<String> scripts = new ArrayList<>();
 		for (Migration migration : migrations(tree))
 		{
 			ReleaseVersion target = migration.version();
-			if (target.compareTo(layout) > 0 && target.compareTo(older) > 0 && target.compareTo(newer) <= 0)
+			if (target.compareTo(older) > 0 && target.compareTo(newer) <= 0)
 				scripts.add(migration.script());
 		}
 		return scripts;

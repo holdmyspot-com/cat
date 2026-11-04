@@ -442,8 +442,7 @@ public final class UpdateEngine
 			startupCache = trainer.train(versionFolder);
 			steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
 				request.others(), request.catLocks());
-			StateFiles.write(migrationFile, (StagedRelease.migrationVersion(release) + "\n").
-				getBytes(StandardCharsets.UTF_8));
+			StateFiles.write(migrationFile, (release + "\n").getBytes(StandardCharsets.UTF_8));
 		}
 		catch (AccessDeniedException e)
 		{

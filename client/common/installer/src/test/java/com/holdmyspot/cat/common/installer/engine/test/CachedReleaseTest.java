@@ -20,9 +20,9 @@ import org.testng.annotations.Test;
 public final class CachedReleaseTest
 {
 	/**
-	 * The migration registry of a release that registers only the per-harness layout migration.
+	 * The migration registry of a release that registers no data migration.
 	 */
-	private static final String LAYOUT = "1.0.0\tper-harness-layout.sh\n";
+	private static final String NO_MIGRATION = "# No migration\n";
 	/**
 	 * The plugin archive of release 1.1.
 	 */
@@ -146,7 +146,7 @@ public final class CachedReleaseTest
 	private static EngineFixture updated(TemporaryDirectories cleanup) throws IOException, TrustException
 	{
 		EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("cached-release-")),
-			new ReleaseCatalog("1.1", LAYOUT).add("1.2", LAYOUT));
+			new ReleaseCatalog("1.1", NO_MIGRATION).add("1.2", NO_MIGRATION));
 		fixture.installActive("1.1");
 		UpdateResult result = fixture.install("v1.2");
 		requireThat(result.result(), "update").withContext(result.message(), "message").isEqualTo(Result.UPDATED);

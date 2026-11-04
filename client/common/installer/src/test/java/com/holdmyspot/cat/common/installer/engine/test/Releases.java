@@ -7,7 +7,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
-import com.holdmyspot.cat.common.installer.engine.StagedRelease;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -45,9 +44,7 @@ public final class Releases implements ReleaseSource
 	private final byte[] signature;
 
 	/**
-	 * Creates a valid release, optionally corrupting exactly one property named by a test case. Two valid variants
-	 * change the migration registry: {@code layout} registers only the per-harness layout migration, and
-	 * {@code layoutAndMigration} also registers a data migration for the release.
+	 * Creates a valid release, optionally corrupting exactly one property named by a test case.
 	 *
 	 * @param version the release version
 	 * @param defect  empty for valid data, or the particular corrupted property
@@ -307,14 +304,9 @@ public final class Releases implements ReleaseSource
 	 */
 	private static String registry(String version, String defect)
 	{
-		String layout = StagedRelease.LAYOUT_MIGRATION + "\tper-harness-layout.sh\n";
-		return switch (defect)
-		{
-			case "migration" -> version + "\tmigrate.sh\n";
-			case "layout" -> layout;
-			case "layoutAndMigration" -> layout + version + "\tmigrate.sh\n";
-			default -> "# No migration\n";
-		};
+		if (defect.equals("migration"))
+			return version + "\tmigrate.sh\n";
+		return "# No migration\n";
 	}
 
 	/**

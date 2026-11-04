@@ -8,7 +8,6 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
-import com.holdmyspot.cat.common.installer.engine.StagedRelease;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
@@ -43,10 +42,6 @@ public final class EngineTest
 	 * The migration registry of a release that registers no data migration.
 	 */
 	private static final String NO_MIGRATION = "# No migration\n";
-	/**
-	 * The migration registry of a release that registers only the per-harness layout migration.
-	 */
-	private static final String LAYOUT = StagedRelease.LAYOUT_MIGRATION + "\tper-harness-layout.sh\n";
 
 	/**
 	 * Creates the test.
@@ -178,33 +173,6 @@ public final class EngineTest
 			requireThat(fixture.integration.registered(), "registered").
 				isEqualTo(List.of(PluginVersion.parse(Releases.pluginVersion("1.0"))));
 			requireThat(Files.readString(fixture.migrationVersion()), "migrationVersion").isEqualTo(migrationVersion);
-		}
-	}
-
-	/**
-	 * A first install of release 1.0 records the per-harness layout migration as applied, so that a later update to a
-	 * release that registers that migration is accepted and records the later release.
-	 *
-	 * @throws IOException    if fixture I/O fails
-	 * @throws TrustException if policy construction fails
-	 */
-	@Test
-	public void updateAfterLayoutIsAccepted() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-layout-update-")),
-				new ReleaseCatalog("1.0", NO_MIGRATION));
-			fixture.installActive("1.0");
-			requireThat(Files.readString(fixture.migrationVersion()), "marker").
-				isEqualTo(StagedRelease.LAYOUT_MIGRATION + "\n");
-			fixture.catalog.add("1.1", LAYOUT);
-
-			UpdateResult result = fixture.install("v1.1");
-
-			requireThat(result.result(), "result").withContext(result.message(), "message").
-				isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(fixture.migrationVersion()), "updatedMarker").isEqualTo("1.1\n");
 		}
 	}
 

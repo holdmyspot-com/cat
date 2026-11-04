@@ -22,9 +22,9 @@ import org.testng.annotations.Test;
 public final class DowngradeTest
 {
 	/**
-	 * The migration registry of a release that registers only the per-harness layout migration.
+	 * The migration registry of a release that registers no data migration.
 	 */
-	private static final String LAYOUT = "1.0.0\tper-harness-layout.sh\n";
+	private static final String NO_MIGRATION = "# No migration\n";
 
 	/**
 	 * Creates the test.
@@ -35,14 +35,14 @@ public final class DowngradeTest
 
 	/**
 	 * Supplies migration registries of the active release 1.2 that register no data change after release 1.1: none at
-	 * all, the layout migration, and a migration for release 1.1 itself, which release 1.1 already expects.
+	 * all, and a migration for release 1.1 itself, which release 1.1 already expects.
 	 *
 	 * @return the registries
 	 */
 	@DataProvider
 	public Object[][] compatibleRegistries()
 	{
-		return new Object[][]{{"# No migration\n"}, {LAYOUT}, {LAYOUT + "1.1\tsplit-state.sh\n"}};
+		return new Object[][]{{NO_MIGRATION}, {"1.1\tsplit-state.sh\n"}};
 	}
 
 	/**
@@ -59,7 +59,7 @@ public final class DowngradeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("downgrade-allowed-")),
-				new ReleaseCatalog("1.1", LAYOUT).add("1.2", registry));
+				new ReleaseCatalog("1.1", NO_MIGRATION).add("1.2", registry));
 			fixture.installActive("1.2");
 
 			UpdateResult result = fixture.install("v1.1");
@@ -88,7 +88,7 @@ public final class DowngradeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("downgrade-refused-")),
-				new ReleaseCatalog("1.1", LAYOUT).add("1.2", LAYOUT + "1.1\tearlier.sh\n1.2\tsplit-state.sh\n"));
+				new ReleaseCatalog("1.1", NO_MIGRATION).add("1.2", "1.1\tearlier.sh\n1.2\tsplit-state.sh\n"));
 			fixture.installActive("1.2");
 			Map<String, String> before = Releases.snapshot(fixture.home);
 
@@ -99,32 +99,6 @@ public final class DowngradeTest
 				"and CAT's data structures changed between them (split-state.sh). They are not backward compatible, " +
 				"so installing 1.1 would lose data.");
 			requireThat(Releases.snapshot(fixture.home), "after").isEqualTo(before);
-		}
-	}
-
-	/**
-	 * A downgrade below release 1.0.0 ignores the per-harness layout migration, which every installation of this
-	 * installer has already performed, and records the layout's data version rather than an older one.
-	 *
-	 * @throws IOException    if the fixture cannot be created or inspected
-	 * @throws TrustException if the test policy is invalid
-	 */
-	@Test
-	public void ignoresLayoutMigration() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("downgrade-layout-")),
-				new ReleaseCatalog("0.9", "# No migration\n").add("1.1", LAYOUT));
-			fixture.installActive("1.1");
-
-			UpdateResult result = fixture.install("v0.9");
-
-			requireThat(result.result(), "result").withContext(result.message(), "message").
-				isEqualTo(Result.UPDATED);
-			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
-				isEqualTo(Optional.of(Releases.pluginVersion("0.9")));
-			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.0.0\n");
 		}
 	}
 
@@ -141,7 +115,7 @@ public final class DowngradeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("downgrade-latest-")),
-				new ReleaseCatalog("1.1", LAYOUT).add("1.2", LAYOUT).latest("1.1"));
+				new ReleaseCatalog("1.1", NO_MIGRATION).add("1.2", NO_MIGRATION).latest("1.1"));
 			fixture.installActive("1.2");
 			Map<String, String> before = Releases.snapshot(fixture.home);
 
