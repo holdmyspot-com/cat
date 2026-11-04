@@ -34,8 +34,8 @@ public final class ApplicationModulesTest
 
 	/**
 	 * Verifies that an application ships the modules that its root requires but not a provider that only service
-	 * binding reaches, and that it needs the JDK modules that its shipped modules require, but none that only an
-	 * unshipped module requires.
+	 * binding reaches, and that it needs exactly the JDK modules that its shipped modules require: none that only an
+	 * unshipped module requires, and none that only service binding reaches.
 	 */
 	@Test
 	public void separatesApplicationAndJdkModules() throws IOException
@@ -61,8 +61,8 @@ public final class ApplicationModulesTest
 				Set.of("app"));
 
 			requireThat(modules.jars(), "jars").isEqualTo(List.of(app, library));
-			requireThat(modules.systemModules(), "systemModules").containsAll(Set.of("java.base", "java.logging",
-				"java.net.http")).doesNotContain("java.sql");
+			requireThat(modules.systemModules(), "systemModules").isEqualTo(new TreeSet<>(Set.of("java.base",
+				"java.logging", "java.net.http")));
 		}
 	}
 

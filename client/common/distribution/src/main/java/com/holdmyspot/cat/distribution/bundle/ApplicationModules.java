@@ -28,11 +28,9 @@ import tools.jackson.databind.node.ObjectNode;
  * The modules that one Java application's module graph resolves to: the application's own modular JARs and the
  * system modules of the JDK that runs the build.
  * <p>
- * The application ships the JARs that its roots require, without service binding, as {@code jlink} selects them:
- * every JAR on the application's module path takes part in the {@code java} launcher's service binding, so a JAR that
- * only binding reaches, such as another harness's module, would change which providers the application finds. The
- * system modules are those of the graph that the {@code java} launcher resolves from the shipped JARs, with service
- * binding against every system module of the build's JDK, so that a runtime that holds them can run the application.
+ * The graph is resolved without service binding, as {@code jlink} resolves an image's modules: the application ships
+ * the JARs that its roots require, and needs the system modules that those JARs require. A JAR or system module that
+ * only service binding reaches, such as another harness's module or an optional JDK provider, is left out.
  *
  * @param jars          the application's modular JARs that the graph resolves to, sorted by file name
  * @param systemModules the names of the system modules that the graph resolves to
@@ -77,49 +75,31 @@ public record ApplicationModules(List<Path> jars, SortedSet<String> systemModule
 		requireThat(candidates, "candidates").isNotNull();
 		requireThat(roots, "roots").isNotEmpty();
 		ModuleFinder candidateFinder = ModuleFinder.of(candidates.toArray(Path[]::new));
-		List<Path> jars = new ArrayList<>();
-		for (ResolvedModule module : resolve(candidateFinder, roots, false).modules())
-		{
-			Optional<ModuleReference> found = candidateFinder.find(module.name());
-			if (found.isEmpty())
-				continue;
-			URI location = found.get().location().orElseThrow(() ->
-				new IOException("The module " + module.name() + " has no location"));
-			jars.add(Path.of(location));
-		}
-		jars.sort((left, right) -> left.getFileName().toString().compareTo(right.getFileName().toString()));
-
-		ModuleFinder application = ModuleFinder.of(jars.toArray(Path[]::new));
-		SortedSet<String> systemModules = new TreeSet<>();
-		for (ResolvedModule module : resolve(application, roots, true).modules())
-		{
-			if (application.find(module.name()).isEmpty())
-				systemModules.add(module.name());
-		}
-		return new ApplicationModules(jars, systemModules);
-	}
-
-	/**
-	 * Resolves a module graph against the system modules of the build's JDK.
-	 *
-	 * @param application finds the application's modules, which take precedence over the system modules
-	 * @param roots       the modules that the graph starts from
-	 * @param bind        {@code true} to bind services, as the {@code java} launcher does
-	 * @return the graph
-	 * @throws IOException if the graph cannot be resolved
-	 */
-	private static Configuration resolve(ModuleFinder application, Set<String> roots, boolean bind) throws IOException
-	{
+		Configuration graph;
 		try
 		{
-			if (bind)
-				return Configuration.empty().resolveAndBind(application, ModuleFinder.ofSystem(), roots);
-			return Configuration.empty().resolve(application, ModuleFinder.ofSystem(), roots);
+			graph = Configuration.empty().resolve(candidateFinder, ModuleFinder.ofSystem(), roots);
 		}
 		catch (FindException | ResolutionException e)
 		{
 			throw new IOException("Cannot resolve the modules of " + roots + ": " + e.getMessage(), e);
 		}
+		List<Path> jars = new ArrayList<>();
+		SortedSet<String> systemModules = new TreeSet<>();
+		for (ResolvedModule module : graph.modules())
+		{
+			Optional<ModuleReference> found = candidateFinder.find(module.name());
+			if (found.isEmpty())
+			{
+				systemModules.add(module.name());
+				continue;
+			}
+			URI location = found.get().location().orElseThrow(() ->
+				new IOException("The module " + module.name() + " has no location"));
+			jars.add(Path.of(location));
+		}
+		jars.sort((left, right) -> left.getFileName().toString().compareTo(right.getFileName().toString()));
+		return new ApplicationModules(jars, systemModules);
 	}
 
 	/**
