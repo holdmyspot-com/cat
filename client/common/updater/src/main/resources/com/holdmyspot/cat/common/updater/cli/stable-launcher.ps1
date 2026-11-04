@@ -145,7 +145,8 @@ function Read-Swap
 		return $null
 	}
 	$versionPattern = '([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
-	if ($text -notmatch "\A(update|rollback)\n$versionPattern\n$versionPattern\n([0-9]+)\n")
+	# Matched case-sensitively, as the POSIX launcher matches it, so that both launchers accept the same requests
+	if ($text -cnotmatch "\A(update|rollback)\n$versionPattern\n$versionPattern\n([0-9]+)\n")
 	{
 		return $null
 	}
