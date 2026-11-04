@@ -227,6 +227,12 @@ public final class Invocation
 		}
 		if (!Files.isRegularFile(locations.policy()))
 		{
+			if (arguments.operation() == Operation.UNINSTALL)
+			{
+				Optional<UninstallResult> completed = Uninstaller.completed(locations.data(), own);
+				if (completed.isPresent())
+					return handOver(completed.get(), locations);
+			}
 			return print(failure(Result.REFUSED, own, "Updater policy is missing; " +
 				Locations.rerunEntryCommand(own) + ".", List.of(locations.policy())), arguments, locations);
 		}

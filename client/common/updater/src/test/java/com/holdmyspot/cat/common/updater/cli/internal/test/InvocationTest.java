@@ -313,6 +313,40 @@ public final class InvocationTest
 	}
 
 	/**
+	 * When the stable launcher did not delete the data directory after an uninstall that removed every part of CAT,
+	 * including the policy, running the same uninstall again hands the deletion to the launcher once more instead of
+	 * refusing for the missing policy.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void completedUninstallIsHandedOverAgain() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-again-")));
+			installation.writePolicy(installation.trustPolicy());
+			RecordingIntegration integration = new RecordingIntegration();
+			Run first = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			requireThat(first.status, "firstStatus").isEqualTo(79);
+			// The updater stopped after the policy step, before it saved the result
+			Path saved = installation.data.resolve("state/uninstall-result.json");
+			Files.delete(saved);
+			int calls = integration.calls().size();
+
+			Run again = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+
+			requireThat(again.status, "status").withContext(again.output, "output").isEqualTo(79);
+			requireThat(again.output, "output").isEmpty();
+			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(saved, UTF_8));
+			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(result.path("unregistered").booleanValue(), "unregistered").isTrue();
+			requireThat(integration.calls().size(), "calls").isEqualTo(calls);
+		}
+	}
+
+	/**
 	 * An uninstall whose step fails prints a result of its own, which tells the caller to run the same uninstall again
 	 * to continue, and never the stable launcher's result for a data directory that it could not delete.
 	 *

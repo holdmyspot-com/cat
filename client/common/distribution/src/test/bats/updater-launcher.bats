@@ -327,6 +327,24 @@ exit 5"
 	[ -f "${DATA}/current" ]
 }
 
+@test "running uninstall again after not_removed deletes the data directory once the updater saves its result" {
+	# The updater stops after it removed CAT but before it saves the result; its next run hands the deletion over again
+	install_runtime "${DATA}" 'if [ -e "$data/state/stopped" ]; then
+	printf "{\"result\":\"uninstalled\"}\n" > "$data/state/uninstall-result.json"
+else
+	: > "$data/state/stopped"
+fi
+exit 79'
+	run --separate-stderr "${DATA}/bin/cat-updater" uninstall
+	[ "${status}" -eq 7 ]
+
+	run --separate-stderr "${DATA}/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = '{"result":"uninstalled"}' ]
+	[ ! -e "${DATA}" ]
+}
+
 @test "the stable launcher deletes nothing and reports not_removed when the saved uninstall result is unreadable" {
 	install_runtime "${DATA}" 'printf "{}\n" > "$data/state/uninstall-result.json"
 chmod a-r "$data/state/uninstall-result.json"

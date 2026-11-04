@@ -55,6 +55,10 @@ public final class Uninstaller
 	 * The largest supported progress record.
 	 */
 	private static final int MAXIMUM_JOURNAL_BYTES = 1024 * 1024;
+	/**
+	 * The progress record, relative to the updater data directory.
+	 */
+	private static final String JOURNAL = "state/uninstall.json";
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	private final Path data;
 	private final Path policyFile;
@@ -96,7 +100,7 @@ public final class Uninstaller
 		this.clock = clock;
 		this.waiting = waiting;
 		this.state = UpdaterState.of(this.data, activation.harness());
-		this.journal = this.data.resolve("state/uninstall.json");
+		this.journal = this.data.resolve(JOURNAL);
 	}
 
 	/**
@@ -165,11 +169,45 @@ public final class Uninstaller
 			Thread.currentThread().interrupt();
 			return failure(Result.LOCKED, "Interrupted while waiting for the harness lock.", List.of());
 		}
-		if (unregistered)
-			return new UninstallResult(result(Result.UNINSTALLED, "CAT was removed from this harness.", List.of()), true);
-		return new UninstallResult(result(Result.UNINSTALLED, "CAT was removed from this harness, but the " +
-			activation.harness() + " program that setup recorded no longer exists, so the harness may still list the " +
-			"plugin.", List.of()), false);
+		return uninstalled(activation.harness(), policy.keys().stream().map(TrustedKey::id).toList(), unregistered);
+	}
+
+	/**
+	 * Returns the outcome of an earlier uninstall that completed its last step, deleting the policy, when the stable
+	 * launcher did not delete the data directory afterwards. The policy no longer exists then, so running the same
+	 * uninstall again only hands the deletion to the launcher once more.
+	 *
+	 * @param data    the installation's updater data directory, whose name is its harness
+	 * @param harness the installation's harness
+	 * @return the completed uninstall's outcome, or empty if no uninstall completed its last step
+	 * @throws IOException if the progress record is unreadable or malformed
+	 */
+	public static Optional<UninstallResult> completed(Path data, String harness) throws IOException
+	{
+		Optional<Progress> progress = readProgress(data.toAbsolutePath().normalize().resolve(JOURNAL));
+		if (progress.isEmpty() || !progress.get().completed().contains(STEPS.getLast()))
+			return Optional.empty();
+		return Optional.of(uninstalled(harness, List.of(), progress.get().completed().contains(UNREGISTER)));
+	}
+
+	/**
+	 * Builds the outcome of an uninstall that completed every step that it could run.
+	 *
+	 * @param harness      the installation's harness
+	 * @param keyIds       the identifiers of the policy's keys
+	 * @param unregistered true if the plugin was unregistered through the harness program
+	 * @return the outcome
+	 */
+	private static UninstallResult uninstalled(String harness, List<String> keyIds, boolean unregistered)
+	{
+		String message = "CAT was removed from this harness.";
+		if (!unregistered)
+		{
+			message = "CAT was removed from this harness, but the " + harness + " program that setup recorded no " +
+				"longer exists, so the harness may still list the plugin.";
+		}
+		return new UninstallResult(new UpdateResult(Result.UNINSTALLED, harness, Optional.empty(), Optional.empty(),
+			message, List.of(), true, keyIds), unregistered);
 	}
 
 	/**
@@ -289,9 +327,24 @@ public final class Uninstaller
 	 */
 	private Progress readProgress(ActivationTransaction transaction) throws IOException
 	{
+		Optional<Progress> earlier = readProgress(journal);
+		if (earlier.isPresent())
+			return earlier.get();
+		return new Progress(new ArrayList<>(), transaction.retainedPaths());
+	}
+
+	/**
+	 * Reads the progress of an earlier uninstall.
+	 *
+	 * @param journal the progress record
+	 * @return the progress, or empty if no uninstall recorded any
+	 * @throws IOException if the progress record is unreadable or malformed
+	 */
+	private static Optional<Progress> readProgress(Path journal) throws IOException
+	{
 		StateFiles.requireNoLinks(journal);
 		if (!Files.exists(journal, NOFOLLOW_LINKS))
-			return new Progress(new ArrayList<>(), transaction.retainedPaths());
+			return Optional.empty();
 		JsonNode root;
 		try
 		{
@@ -317,7 +370,7 @@ public final class Uninstaller
 				throw new IOException("The uninstall progress names a relative path: " + journal);
 			retained.add(Path.of(path.stringValue()).normalize());
 		}
-		return new Progress(completed, List.copyOf(retained));
+		return Optional.of(new Progress(completed, List.copyOf(retained)));
 	}
 
 	/**
