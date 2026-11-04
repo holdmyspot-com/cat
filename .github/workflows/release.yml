@@ -104,13 +104,23 @@ jobs:
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
           client/common/distribution/src/test/bats/updater-launcher.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests
+      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests.
+      # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
+      # that plugin has no POSIX launchers. updater-launcher.bats tests the updater's POSIX launchers, which a Windows
+      # installation does not use as its stable launcher.
       - name: Verify bootstrap boundaries on Windows
         if: runner.os == 'Windows'
         run: >-
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/updater-launcher.bats
+          client/common/distribution/src/test/bats/bootstrap-codex.bats
+      # The POSIX launcher templates; the Windows plugins' batch launchers are tested by the Maven build
+      - name: Verify the jlink launcher template
+        if: runner.os != 'Windows'
+        run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
+      - name: Verify the Codex plugin's part launchers
+        if: runner.os != 'Windows'
+        run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
       - name: Upload native release files
         uses: actions/upload-artifact@v7
         with:
