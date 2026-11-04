@@ -5,7 +5,7 @@ import static java.nio.file.attribute.PosixFilePermission.GROUP_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OTHERS_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 
-import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
@@ -104,7 +104,7 @@ public final class CodexPluginExecutablesTest
 			}
 			Path legal = Files.createDirectories(temporary.resolve("legal"));
 			ArtifactLayer layer = DistributionMainSecrets.getDistributionMainAccess().codexPluginLayer(jar);
-			Path artifact = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
+			Path artifact = new PluginArtifactBuilder(PluginVersion.parse("1.0+b0123456789ab")).build(
 				List.of(layer), Files.createDirectories(temporary.resolve("bin")), legal,
 				List.of(Files.createDirectories(temporary.resolve("installers"))), temporary.resolve("output"));
 

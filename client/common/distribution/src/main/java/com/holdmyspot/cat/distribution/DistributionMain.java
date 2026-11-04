@@ -269,7 +269,7 @@ public final class DistributionMain
 		installerArtifacts.writePluginInstaller(codexBin, platform, !platform.isWindows());
 		writeStartupCacheTraining(codexBin, "codex", scope.json());
 
-		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
+		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(version);
 		LegalMaterialsBuilder legalMaterialsBuilder = new LegalMaterialsBuilder(PluginInfo.CAT_VERSION);
 		Path catLicense = projectRoot.resolve("LICENSE.md");
 		Path canonicalLicenses = projectRoot.resolve("client/legal/licenses");

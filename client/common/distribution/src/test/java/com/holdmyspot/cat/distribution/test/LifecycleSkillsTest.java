@@ -5,7 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
@@ -93,7 +93,7 @@ public final class LifecycleSkillsTest
 			Path commonSkills = skillJar("common", temporary.resolve("common-skills.jar"));
 			Path harnessSkills = skillJar(harness, temporary.resolve(harness + "-skills.jar"));
 			Path legal = Files.createDirectories(temporary.resolve("legal"));
-			Path plugin = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
+			Path plugin = new PluginArtifactBuilder(PluginVersion.parse("1.0+b0123456789ab")).build(
 				List.of(new ArtifactLayer("common-skills", commonSkills),
 					new ArtifactLayer(harness + "-skills", harnessSkills)),
 				Files.createDirectories(temporary.resolve("bin")), legal, List.of(), temporary.resolve("plugin"));

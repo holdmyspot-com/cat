@@ -18,23 +18,29 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
 import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Tests {@link PluginArtifactBuilder}.
  */
 public final class PluginArtifactBuilderTest
 {
+	/**
+	 * The full plugin version that the artifacts are built with.
+	 */
+	private static final PluginVersion VERSION = PluginVersion.parse("1.0+b0123456789ab");
+
 	/** Creates a test instance. */
 	public PluginArtifactBuilderTest()
 	{
@@ -63,21 +69,21 @@ public final class PluginArtifactBuilderTest
 			Path installers = Files.createDirectories(temporary.resolve("installers"));
 			Files.createDirectories(installers.resolve("migrations"));
 			Files.writeString(installers.resolve("migrations/1.0.sh"), "migration");
-			Files.writeString(installers.resolve("claude-marketplace.json"), "marketplace");
+			Files.writeString(installers.resolve("claude-marketplace.json"), "{\"plugins\": []}");
 			Files.writeString(installers.resolve("install-claude.sh"), "claude installer");
 			Files.writeString(installers.resolve("install-codex.sh"), "codex installer");
 			Files.writeString(installers.resolve("common.sh"), "shared installer functions");
 			Files.writeString(installers.resolve("uninstall-claude.sh"), "claude uninstaller");
 			Files.writeString(installers.resolve("uninstall-codex.sh"), "codex uninstaller");
 
-			Path output = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
+			Path output = new PluginArtifactBuilder(VERSION).build(
 				List.of(new ArtifactLayer("common", common),
 					new ArtifactLayer("harness", harness, Set.of("skills/help/SKILL.md"))), bin, legal,
 				List.of(installers), temporary.resolve("output"));
 
 			requireThat(Files.readString(output.resolve("skills/help/SKILL.md")), "harnessSkill").isEqualTo("harness");
 			requireThat(Files.readString(output.resolve("bin/VERSION")), "versionFile").isEqualTo(
-				PluginInfo.CAT_VERSION + "\n");
+				VERSION + "\n");
 			requireThat(Files.readString(output.resolve("bin/plugin-info")), "pluginInfoLauncher").
 				isEqualTo(agentLauncher);
 			requireThat(Files.readString(output.resolve("bin/session-start")), "hookLauncher").isEqualTo(
@@ -92,12 +98,59 @@ public final class PluginArtifactBuilderTest
 			requireThat(Files.readString(output.resolve("install/migrations/1.0.sh")), "migration").
 				isEqualTo("migration");
 			requireThat(Files.readString(output.resolve("install/claude-marketplace.json")), "marketplace").
-				isEqualTo("marketplace");
+				contains("\"plugins\"");
 			try (Stream<Path> installed = Files.list(output.resolve("install")))
 			{
 				requireThat(installed.map(path -> path.getFileName().toString()).sorted().toList(), "installFiles").
 					isEqualTo(List.of("claude-marketplace.json", "migrations"));
 			}
+		}
+	}
+
+	/**
+	 * Verifies that the built plugin states its full plugin version, the release and its build, in its plugin
+	 * manifest, its version file and each plugin entry of the marketplace metadata that it ships, and that the
+	 * manifests keep their other fields.
+	 */
+	@Test
+	public void stampsFullVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-artifact-version-"));
+			Path harness = jar(temporary.resolve("harness.jar"), ".harness-plugin/plugin.json", """
+				{
+					"name": "cat",
+					"version": "1.0",
+					"skills": "./skills/"
+				}
+				""");
+			Path bin = Files.createDirectories(temporary.resolve("bin"));
+			Path legal = legalMaterials(temporary);
+			Path installers = Files.createDirectories(temporary.resolve("installers"));
+			Files.writeString(installers.resolve("harness-marketplace.json"), """
+				{
+					"name": "cat",
+					"plugins": [
+						{
+							"name": "cat",
+							"source": "./plugins/cat"
+						}
+					]
+				}
+				""");
+
+			Path output = new PluginArtifactBuilder(VERSION).build(List.of(new ArtifactLayer("harness", harness)), bin,
+				legal, List.of(installers), temporary.resolve("output"));
+
+			JsonNode manifest = scope.json().readTree(output.resolve(".harness-plugin/plugin.json"));
+			requireThat(manifest.path("version").asString(), "manifestVersion").isEqualTo(VERSION.toString());
+			requireThat(manifest.path("skills").asString(), "manifestSkills").isEqualTo("./skills/");
+			requireThat(Files.readString(output.resolve("bin/VERSION")), "versionFile").isEqualTo(VERSION + "\n");
+			JsonNode marketplace = scope.json().readTree(output.resolve("install/harness-marketplace.json"));
+			JsonNode entry = marketplace.path("plugins").path(0);
+			requireThat(entry.path("version").asString(), "marketplaceVersion").isEqualTo(VERSION.toString());
+			requireThat(entry.path("source").asString(), "marketplaceSource").isEqualTo("./plugins/cat");
 		}
 	}
 
@@ -511,7 +564,7 @@ public final class PluginArtifactBuilderTest
 		Path bin = Files.createDirectories(temporary.resolve("bin"));
 		Path legal = legalMaterials(temporary);
 		Path installers = Files.createDirectories(temporary.resolve("installers"));
-		return new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(layers, bin, legal, List.of(installers),
+		return new PluginArtifactBuilder(VERSION).build(layers, bin, legal, List.of(installers),
 			temporary.resolve("output"));
 	}
 

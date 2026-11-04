@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
@@ -70,8 +71,8 @@ public final class PluginArchiveTest
 			access.writeCodexLaunchers(bin, Platform.LINUX_X64);
 			new InstallerArtifactBuilder(scope, PluginInfo.CAT_VERSION, "").writePluginInstaller(bin,
 				Platform.LINUX_X64, true);
-			Path plugin = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(List.of(), bin, legal, List.of(),
-				directory.resolve("plugin"));
+			Path plugin = new PluginArtifactBuilder(PluginVersion.parse("1.0+b0123456789ab")).build(List.of(), bin,
+				legal, List.of(), directory.resolve("plugin"));
 			Path runtime = directory.resolve("runtime");
 			access.writeRuntimeBinding(plugin, runtime);
 

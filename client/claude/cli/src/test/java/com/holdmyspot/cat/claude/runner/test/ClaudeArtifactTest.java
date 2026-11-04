@@ -20,6 +20,11 @@ import org.testng.annotations.Test;
 public final class ClaudeArtifactTest
 {
 	/**
+	 * The full plugin version of the plugin that holds the selector.
+	 */
+	private static final String VERSION = "1.0+b0123456789ab";
+
+	/**
 	 * Creates a test instance.
 	 */
 	public ClaudeArtifactTest()
@@ -51,7 +56,7 @@ public final class ClaudeArtifactTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-own-"));
 			Path plugin = FakeRelease.artifact(root.resolve("plugin"), ".claude-plugin/plugin.json", "claude-runner",
-				PluginInfo.CAT_VERSION, Platform.current()).toAbsolutePath().normalize();
+				VERSION, Platform.current()).toAbsolutePath().normalize();
 			RuntimeBinding.write(plugin, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
 
 			String output = ClaudeArtifact.execute(plugin);
@@ -62,7 +67,7 @@ public final class ClaudeArtifactTest
 	}
 
 	/**
-	 * Verifies that a plugin of another CAT version is refused with the reason instead of being reported.
+	 * Verifies that a plugin of another CAT release is refused with the reason instead of being reported.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -73,13 +78,13 @@ public final class ClaudeArtifactTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-version-"));
 			Path plugin = FakeRelease.artifact(root.resolve("plugin"), ".claude-plugin/plugin.json", "claude-runner",
-				"0.0-other", Platform.current()).toAbsolutePath().normalize();
+				"2.0+b0123456789ab", Platform.current()).toAbsolutePath().normalize();
 			RuntimeBinding.write(plugin, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
 
 			IOException refusal = refusal(plugin);
 
-			requireThat(refusal.getMessage(), "message").isEqualTo("Artifact version does not match CAT " +
-				PluginInfo.CAT_VERSION + ": " + plugin);
+			requireThat(refusal.getMessage(), "message").isEqualTo(
+				"Artifact version 2.0+b0123456789ab is not of CAT release " + PluginInfo.CAT_VERSION + ": " + plugin);
 		}
 	}
 
@@ -95,7 +100,7 @@ public final class ClaudeArtifactTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-runner-"));
 			Path plugin = FakeRelease.artifact(root.resolve("plugin"), ".claude-plugin/plugin.json", "codex-runner",
-				PluginInfo.CAT_VERSION, Platform.current()).toAbsolutePath().normalize();
+				VERSION, Platform.current()).toAbsolutePath().normalize();
 			RuntimeBinding.write(plugin, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
 
 			IOException refusal = refusal(plugin);

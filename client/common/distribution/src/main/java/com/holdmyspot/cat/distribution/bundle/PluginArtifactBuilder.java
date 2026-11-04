@@ -11,6 +11,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.MarkdownIncludes;
 import com.holdmyspot.cat.common.SourceOnlyContent;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RunnerRuntimeManifest;
 import java.io.IOException;
@@ -31,6 +32,10 @@ import java.util.jar.JarFile;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.stream.Stream;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Assembles the installable directory for one harness's CAT plugin.
@@ -38,24 +43,34 @@ import java.util.stream.Stream;
 public final class PluginArtifactBuilder
 {
 	private static final int MAXIMUM_PROMPT_FILE_BYTES = 1_048_576;
-	private final String version;
+	/**
+	 * The suffix of the name of a top-level plugin folder that holds a harness's plugin manifest {@code plugin.json}.
+	 */
+	private static final String MANIFEST_FOLDER_SUFFIX = "-plugin";
+	/**
+	 * The suffix of the name of a marketplace metadata file.
+	 */
+	private static final String MARKETPLACE_SUFFIX = "-marketplace.json";
+	private static final JsonMapper JSON = JsonMapper.builder().build();
+	private final PluginVersion version;
 
 	/**
 	 * Creates an artifact builder.
 	 *
-	 * @param version the CAT version
+	 * @param version the full plugin version that the plugin states
 	 * @throws NullPointerException if {@code version} is null
-	 * @throws IllegalArgumentException if {@code version} is blank
 	 */
-	public PluginArtifactBuilder(String version)
+	public PluginArtifactBuilder(PluginVersion version)
 	{
-		requireThat(version, "version").isNotBlank();
+		requireThat(version, "version").isNotNull();
 		this.version = version;
 	}
 
 	/**
 	 * Builds a plugin artifact from its resources, its {@code bin} folder, generated legal materials, and installer
-	 * resources.
+	 * resources. The artifact states its full plugin version in {@code bin/VERSION}, in the {@code version} of each
+	 * harness plugin manifest {@code <name>-plugin/plugin.json} and in the {@code version} of each plugin entry of the
+	 * marketplace metadata that it ships.
 	 *
 	 * @param resourceLayers resource JARs extracted into the artifact in list order; a later JAR can replace an earlier
 	 *        resource only when its {@link ArtifactLayer#overrides()} declares the path
@@ -91,6 +106,7 @@ public final class PluginArtifactBuilder
 		for (ArtifactLayer layer : resourceLayers)
 			extractLayer(layer, artifactDirectory, owners);
 		resolvePromptIncludes(artifactDirectory);
+		stampManifests(artifactDirectory);
 		copyTree(binDirectory, artifactDirectory.resolve(PluginDirectory.BIN));
 		Files.writeString(artifactDirectory.resolve(PluginDirectory.VERSION), version + "\n");
 		copyTree(legalMaterialsDirectory, artifactDirectory);
@@ -109,7 +125,7 @@ public final class PluginArtifactBuilder
 	 * @param destination the plugin's {@code install} folder
 	 * @throws IOException if {@code source} is not a directory, or the resources cannot be copied
 	 */
-	private static void copyInstallerResources(Path source, Path destination) throws IOException
+	private void copyInstallerResources(Path source, Path destination) throws IOException
 	{
 		if (!Files.isDirectory(source, NOFOLLOW_LINKS))
 			throw new IOException("Copy source is not a directory: " + source);
@@ -119,14 +135,93 @@ public final class PluginArtifactBuilder
 			copyTree(migrations, destination.resolve("migrations"));
 		try (Stream<Path> entries = Files.list(source))
 		{
-			for (Path metadata : entries.filter(path -> path.getFileName().toString().endsWith("-marketplace.json")).
+			for (Path metadata : entries.filter(path -> path.getFileName().toString().endsWith(MARKETPLACE_SUFFIX)).
 				filter(path -> Files.isRegularFile(path, NOFOLLOW_LINKS)).sorted().toList())
 			{
 				Path target = destination.resolve(metadata.getFileName().toString());
 				Files.copy(metadata, target, COPY_ATTRIBUTES);
 				copyPosixPermissions(metadata, target);
+				stampMarketplace(target);
 			}
 		}
+	}
+
+	/**
+	 * Sets the {@code version} of each harness plugin manifest {@code <name>-plugin/plugin.json} in an artifact to the
+	 * full plugin version.
+	 *
+	 * @param artifactDirectory the artifact
+	 * @throws IOException if a manifest cannot be read, is not a JSON object, or cannot be written
+	 */
+	private void stampManifests(Path artifactDirectory) throws IOException
+	{
+		try (Stream<Path> entries = Files.list(artifactDirectory))
+		{
+			for (Path folder : entries.filter(path -> path.getFileName().toString().endsWith(MANIFEST_FOLDER_SUFFIX)).
+				filter(path -> Files.isDirectory(path, NOFOLLOW_LINKS)).sorted().toList())
+			{
+				Path manifest = folder.resolve("plugin.json");
+				if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
+					continue;
+				ObjectNode root = readObject(manifest, "Plugin manifest");
+				root.put("version", version.toString());
+				writeJson(manifest, root);
+			}
+		}
+	}
+
+	/**
+	 * Sets the {@code version} of each plugin entry of a marketplace metadata file to the full plugin version.
+	 *
+	 * @param metadata the marketplace metadata file
+	 * @throws IOException if the file cannot be read, is not a JSON object, or cannot be written
+	 */
+	private void stampMarketplace(Path metadata) throws IOException
+	{
+		ObjectNode root = readObject(metadata, "Marketplace metadata");
+		for (JsonNode entry : root.path("plugins"))
+		{
+			if (!(entry instanceof ObjectNode plugin))
+				throw new IOException("Marketplace metadata " + metadata + " has a plugin entry that is not a JSON object");
+			plugin.put("version", version.toString());
+		}
+		writeJson(metadata, root);
+	}
+
+	/**
+	 * Reads a JSON file that holds an object.
+	 *
+	 * @param file        the file
+	 * @param description the file's description in error messages
+	 * @return the object
+	 * @throws IOException if the file cannot be read or does not hold a JSON object
+	 */
+	private static ObjectNode readObject(Path file, String description) throws IOException
+	{
+		JsonNode root;
+		try
+		{
+			root = JSON.readTree(BoundedInput.readUtf8(file, MAXIMUM_PROMPT_FILE_BYTES, description));
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException(description + " " + file + " is not valid JSON", e);
+		}
+		if (!(root instanceof ObjectNode object))
+			throw new IOException(description + " " + file + " is not a JSON object");
+		return object;
+	}
+
+	/**
+	 * Writes a JSON object to a file, indented and followed by a line feed.
+	 *
+	 * @param file the file
+	 * @param root the object
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void writeJson(Path file, ObjectNode root) throws IOException
+	{
+		Files.writeString(file, JSON.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n");
 	}
 
 	/**
