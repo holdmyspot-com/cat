@@ -197,9 +197,10 @@ The updater cannot replace the Java runtime that it runs on. When an `update` or
 updater exits after staging it, and the stable launcher puts the new runtime in place, checks that it runs, and only
 then prints the result. A result that reports success therefore means the runtime, the updater and the plugin are all
 at the same release. If the launcher cannot put the runtime in place, it restores the old one and prints
-`not_swapped`; the installation's next operation undoes what remains of the failed one. Updates, installs and rollbacks
-also prepare a start-up cache for the plugin; the result's `aot_cache` field says whether that succeeded, and `false`
-only means slower start-up.
+`not_swapped`; the installation's next operation undoes what remains of the failed one. Each operation that activates
+a plugin, including one that undoes or resumes an unfinished update or rollback, also prepares a start-up cache for the
+runtime that the plugin runs once the operation finishes. Its result's `aot_cache` field says whether that succeeded,
+and `false` only means slower start-up. A result without the field activated no plugin.
 
 If a release requires a data migration, routine update refuses it. Run that release's entry command yourself to
 authorize the migration. A validation failure keeps the active installation. An activation failure restores the
