@@ -124,12 +124,14 @@ public final class Setup
 	/**
 	 * Sets the harness's installation up. Setup first checks the harness home, the protected locations, the harness
 	 * program and configuration, and that the archive's Java runtime can run the updater and the installed plugin. It
-	 * then installs the runtime, the updater, the policy, the stable launcher and the current selection, deletes a
-	 * pending runtime replacement, the previous bundle's runtime and every other updater version, activates the plugin
-	 * of this release (also when the harness already has it) and installs the permission entries. A failure of the
-	 * plugin step leaves the updater installed and is reported in the outcome. After a successful plugin step, setup
-	 * removes the harness from the single updater installation that earlier builds shared between harnesses, and
-	 * deletes that installation once it serves no harness.
+	 * then installs the runtime, the updater, the policy, the stable launcher and the current selection, activates the
+	 * plugin of this release (also when the harness already has it) and installs the permission entries. Setup from
+	 * a newer release than the installed one keeps the installed bundle as the previous bundle that rollback restores,
+	 * and setup from the installed release keeps the previous bundle that the installation has. Otherwise setup deletes
+	 * the previous bundle; it always deletes a pending runtime replacement. A failure of the plugin step leaves the
+	 * updater installed and is reported in the outcome. After a successful plugin step, setup removes the harness from
+	 * the single updater installation that earlier builds shared between harnesses, and deletes that installation once
+	 * it serves no harness.
 	 *
 	 * @param harness     the harness
 	 * @param home        the existing absolute harness home
@@ -197,25 +199,50 @@ public final class Setup
 		requireWritable(locations.policy());
 		requireWritable(launcher);
 		requireWritable(locations.data().resolve(CURRENT_FILE));
+		UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation, platform.id(), clock,
+			waiting);
+		String selected = selectedVersion();
+		boolean replacing = !installed && selected != null &&
+			ReleaseVersion.parse(version).compareTo(ReleaseVersion.parse(selected)) > 0 &&
+			Files.isDirectory(locations.data().resolve(selected), NOFOLLOW_LINKS) &&
+			Files.isDirectory(locations.data().resolve(RUNTIME), NOFOLLOW_LINKS);
+		String kept = null;
+		if (replacing)
+			kept = selected;
+		else if (version.equals(selected))
+			kept = previousBundle(engine);
 
 		Files.createDirectories(locations.data());
 		Path installedImage = locations.data().resolve(version);
 		if (!installed)
 		{
-			replaceDirectory(runtime, locations.data().resolve(RUNTIME));
+			Path installedRuntime = locations.data().resolve(RUNTIME);
+			if (replacing)
+				moveIntoPlace(runtime, installedRuntime, locations.data().resolve(Bundle.RUNTIME_PREVIOUS));
+			else
+				replaceDirectory(runtime, installedRuntime);
 			replaceDirectory(image, installedImage);
 		}
 		write(installedImage.resolve(Locations.POLICY_ANCHOR), policyPath + "\n", PRIVATE_FILE);
+		if (replacing)
+		{
+			write(locations.data().resolve(selected).resolve(Locations.POLICY_ANCHOR), policyPath + "\n",
+				PRIVATE_FILE);
+		}
 		Files.createDirectories(locations.policy().getParent());
 		policy.write(locations.policy(), replacer);
 		setPermissions(locations.policy(), PRIVATE_FILE);
 		writeLauncher(launcher);
 		write(locations.data().resolve(CURRENT_FILE), version + "\n", PRIVATE_FILE);
 		discardReplacement();
-		deleteOtherVersions(version);
+		if (kept == null)
+		{
+			LinkSafeDeletion.delete(locations.data().resolve(Bundle.RUNTIME_PREVIOUS), locations.data());
+			deleteOtherVersions(List.of(version));
+		}
+		else
+			deleteOtherVersions(List.of(version, kept));
 
-		UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation, platform.id(), clock,
-			waiting);
 		Registration registration = new Registration(integration, cliFactory.create(command, home), replacer);
 		UpdateResult pluginResult;
 		if (plugin == null)
@@ -358,8 +385,49 @@ public final class Setup
 	}
 
 	/**
-	 * Replaces an installed directory with a copy of the archive's directory. The copy is staged beside the target,
-	 * the target is renamed aside, and the copy is renamed into place; if that fails, the target is renamed back.
+	 * Returns the updater version that the installation selects, unless an operation left a runtime replacement to the
+	 * stable launcher, which leaves the installed bundle in between two releases.
+	 *
+	 * @return the version, or null when the installation selects none, its selection is malformed or a runtime
+	 *         replacement is pending
+	 * @throws IOException if the selection cannot be read
+	 */
+	private String selectedVersion() throws IOException
+	{
+		Path data = locations.data();
+		Path current = data.resolve(CURRENT_FILE);
+		if (Files.exists(data.resolve(Bundle.SWAP_REQUEST), NOFOLLOW_LINKS) ||
+			!Files.isRegularFile(current, NOFOLLOW_LINKS))
+		{
+			return null;
+		}
+		String selected = BoundedInput.readUtf8(current, 128, "The selected updater version").strip();
+		if (!isVersion(selected))
+			return null;
+		return selected;
+	}
+
+	/**
+	 * Returns the version of the previous bundle that the installation keeps for rollback.
+	 *
+	 * @param engine the installation's engine
+	 * @return the version, or null when the installation keeps no previous bundle or its record is unreadable, which
+	 *         setup then repairs
+	 */
+	private static String previousBundle(UpdateEngine engine)
+	{
+		try
+		{
+			return engine.status().previousVersion().orElse(null);
+		}
+		catch (IOException _)
+		{
+			return null;
+		}
+	}
+
+	/**
+	 * Replaces an installed directory with a copy of the archive's directory, and deletes the replaced directory.
 	 *
 	 * @param source the archive's directory
 	 * @param target the installed directory
@@ -367,10 +435,25 @@ public final class Setup
 	 */
 	private void replaceDirectory(Path source, Path target) throws IOException
 	{
+		Path aside = target.resolveSibling("." + target.getFileName() + "-old");
+		moveIntoPlace(source, target, aside);
+		LinkSafeDeletion.delete(aside, target.getParent());
+	}
+
+	/**
+	 * Replaces an installed directory with a copy of the archive's directory, and keeps the replaced directory aside.
+	 * The copy is staged beside the target, the target is renamed aside, and the copy is renamed into place; if that
+	 * fails, the target is renamed back.
+	 *
+	 * @param source the archive's directory
+	 * @param target the installed directory
+	 * @param aside  the location for the replaced directory, beside the target, which this method replaces
+	 * @throws IOException if the copy or a rename fails; the target is then unchanged
+	 */
+	private void moveIntoPlace(Path source, Path target, Path aside) throws IOException
+	{
 		Path parent = target.getParent();
-		String name = target.getFileName().toString();
-		Path staged = parent.resolve("." + name + "-new");
-		Path aside = parent.resolve("." + name + "-old");
+		Path staged = parent.resolve("." + target.getFileName() + "-new");
 		LinkSafeDeletion.delete(staged, parent);
 		LinkSafeDeletion.delete(aside, parent);
 		TreeCopy.copy(source, staged);
@@ -407,7 +490,6 @@ public final class Setup
 			LinkSafeDeletion.delete(staged, parent);
 			throw notReplaced(target, e);
 		}
-		LinkSafeDeletion.delete(aside, parent);
 	}
 
 	/**
@@ -424,9 +506,9 @@ public final class Setup
 	}
 
 	/**
-	 * Deletes a runtime replacement that an earlier operation left to the stable launcher, and the runtime that the
-	 * previous bundle kept, because the installed runtime and {@code current} now select this release. The request
-	 * goes first, so that no later operation acts on it without its staged runtime.
+	 * Deletes a runtime replacement that an earlier operation left to the stable launcher, because the installed
+	 * runtime and {@code current} now select this release. The request goes first, so that no later operation acts on
+	 * it without its staged runtime.
 	 *
 	 * @throws IOException if a file or directory cannot be deleted
 	 */
@@ -436,16 +518,15 @@ public final class Setup
 		LinkSafeDeletion.delete(data.resolve(Bundle.SWAP_REQUEST), data);
 		LinkSafeDeletion.delete(data.resolve(Bundle.SWAP_RESULT), data);
 		LinkSafeDeletion.delete(data.resolve(Bundle.RUNTIME_NEXT), data);
-		LinkSafeDeletion.delete(data.resolve(Bundle.RUNTIME_PREVIOUS), data);
 	}
 
 	/**
-	 * Deletes every updater version directory other than the installed one.
+	 * Deletes every updater version directory other than the kept ones.
 	 *
-	 * @param version the installed version
+	 * @param kept the installed version and the previous bundle's version, if any
 	 * @throws IOException if a directory cannot be deleted
 	 */
-	private void deleteOtherVersions(String version) throws IOException
+	private void deleteOtherVersions(List<String> kept) throws IOException
 	{
 		List<Path> others = new ArrayList<>();
 		try (DirectoryStream<Path> entries = Files.newDirectoryStream(locations.data()))
@@ -453,7 +534,7 @@ public final class Setup
 			for (Path entry : entries)
 			{
 				String name = entry.getFileName().toString();
-				if (!name.equals(version) && isVersion(name) && Files.isDirectory(entry, NOFOLLOW_LINKS))
+				if (!kept.contains(name) && isVersion(name) && Files.isDirectory(entry, NOFOLLOW_LINKS))
 					others.add(entry);
 			}
 		}

@@ -40,8 +40,9 @@ final class ActivationJournal
 	private static final Set<String> ROOT_FIELDS = Set.of("format_version", "previous_version", "new_version",
 		"migration_file", "backup_root", "migration_existed", "prepared", "rollback", "entries");
 	/**
-	 * Format 2 adds the operation, so that an activation into a harness without a plugin is recorded as such
-	 * instead of naming a previous version that never existed. Format 1 journals are always updates.
+	 * Format 2 adds the operation, so that an activation into a harness without a plugin, or one that replaces the
+	 * installed release with the same release, is recorded as such instead of naming a previous version to restore.
+	 * Format 1 journals are always updates.
 	 */
 	private static final Set<String> ROOT_FIELDS_2 = Set.of("format_version", "operation", "previous_version",
 		"new_version", "migration_file", "backup_root", "migration_existed", "prepared", "rollback", "entries");
@@ -101,7 +102,7 @@ final class ActivationJournal
 			if (operation == Operation.UPDATE)
 				previousVersion = text(root, "previous_version");
 			else if (!root.get("previous_version").isString() || !root.get("previous_version").stringValue().isEmpty())
-				throw new IOException("An install activation journal must have an empty previous_version");
+				throw new IOException("An install or repair activation journal must have an empty previous_version");
 			List<Entry> entries = new ArrayList<>();
 			for (JsonNode entry : array(root, "entries"))
 			{
@@ -266,6 +267,7 @@ final class ActivationJournal
 		{
 			case "update" -> Operation.UPDATE;
 			case "install" -> Operation.INSTALL;
+			case "repair" -> Operation.REPAIR;
 			default -> throw new IOException("The activation journal has an unknown operation: " + value);
 		};
 	}
@@ -328,8 +330,9 @@ final class ActivationJournal
 	/**
 	 * One durable transaction, including its migration marker backup.
 	 *
-	 * @param operation        whether the activation replaced an installation or added one where none existed
-	 * @param previousVersion  the version to restore, or empty for an install
+	 * @param operation        whether the activation replaced an installation, added one where none existed or
+	 *                         replaced the installed release with the same release
+	 * @param previousVersion  the version to restore, or empty for an install or a repair
 	 * @param newVersion       the authenticated version being activated
 	 * @param migrationFile    the provider's migration marker
 	 * @param backupRoot       this activation's private backup directory
@@ -344,8 +347,9 @@ final class ActivationJournal
 		/**
 		 * Creates a stable record of activation progress.
 		 *
-		 * @param operation        whether the activation replaced an installation or added one where none existed
-		 * @param previousVersion  the version to restore, or empty for an install
+		 * @param operation        whether the activation replaced an installation, added one where none existed or
+		 *                         replaced the installed release with the same release
+		 * @param previousVersion  the version to restore, or empty for an install or a repair
 		 * @param newVersion       the version being activated
 		 * @param migrationFile    the migration marker
 		 * @param backupRoot       the private backup directory
@@ -451,7 +455,12 @@ final class ActivationJournal
 		/**
 		 * Adds a release where no plugin was installed; undo returns the harness to that absence.
 		 */
-		INSTALL
+		INSTALL,
+		/**
+		 * Replaces the installed release with the same release and keeps the rollback that the last activation
+		 * retained; undo restores the replaced files.
+		 */
+		REPAIR
 	}
 
 	/**

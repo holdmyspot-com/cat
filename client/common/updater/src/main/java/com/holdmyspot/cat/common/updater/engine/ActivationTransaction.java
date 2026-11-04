@@ -150,13 +150,38 @@ final class ActivationTransaction
 	}
 
 	/**
+	 * Replaces the installed release with a validated tree of the same release, then runs {@code completion} before
+	 * the activation is committed. The rollback that the last activation retained stays as it was, so that rollback
+	 * still restores the installation that preceded the last update. When a step or {@code completion} fails, the
+	 * replaced files are restored. An interrupted repair is undone the same way by the next {@link #recover()}.
+	 *
+	 * @param tree          the validated release tree
+	 * @param plan          the provider's plan for the installed version, in execution order
+	 * @param migrationFile the provider's migration marker
+	 * @param version       the installed and authenticated release version
+	 * @param completion    the work that must succeed for the repair to be kept, such as registering the plugin with
+	 *                      the harness
+	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
+	 *                        recovery outcome
+	 * @throws TrustException if the version is malformed
+	 */
+	void repair(Path tree, List<ActivationStep> plan, Path migrationFile, String version, Completion completion)
+		throws IOException, TrustException
+	{
+		requireThat(completion, "completion").isNotNull();
+		if (!provider.plan(home, version).equals(plan))
+			throw new Refused("The activation destinations differ from the provider's plan");
+		run(tree, plan, migrationFile, Operation.REPAIR, "", version, completion);
+	}
+
+	/**
 	 * Runs one journaled activation.
 	 *
 	 * @param tree            the validated release tree
 	 * @param plan            provider-approved changes in execution order
 	 * @param migrationFile   the provider's migration marker
-	 * @param operation       whether the activation replaces an installation or adds one
-	 * @param previousVersion the active version before activation, or empty for an install
+	 * @param operation       whether the activation replaces an installation, adds one or repairs one
+	 * @param previousVersion the active version before activation, or empty for an install or a repair
 	 * @param newVersion      the authenticated release version
 	 * @param completion      the work that must succeed before the activation is committed
 	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
@@ -174,7 +199,7 @@ final class ActivationTransaction
 			throw new Refused("An interrupted activation must be recovered before activating another release");
 		preflight(tree, plan, migrationFile);
 		Path backupRoot = state.previousFiles().resolve(UUID.randomUUID().toString());
-		List<Entry> entries = prepareEntries(tree, plan, backupRoot);
+		List<Entry> entries = prepareEntries(tree, plan, backupRoot, operation == Operation.REPAIR);
 		current = new Document(operation, previousVersion, newVersion, migrationFile, backupRoot,
 			Files.exists(migrationFile, NOFOLLOW_LINKS), false, false, entries);
 		validate(current);
@@ -189,7 +214,11 @@ final class ActivationTransaction
 				execute(index);
 			StateFiles.write(migrationFile, (newVersion + "\n").getBytes(UTF_8));
 			completion.run();
-			Files.move(state.activation(), state.lastActivation(), ATOMIC_MOVE, REPLACE_EXISTING);
+			// A repair keeps the last activation's record, so that rollback still restores what it replaced
+			if (operation == Operation.REPAIR)
+				Files.delete(state.activation());
+			else
+				Files.move(state.activation(), state.lastActivation(), ATOMIC_MOVE, REPLACE_EXISTING);
 			PortableFiles.forceDirectory(state.directory());
 		}
 		catch (IOException failure)
@@ -199,9 +228,10 @@ final class ActivationTransaction
 				if (!Files.exists(state.activation(), NOFOLLOW_LINKS))
 				{
 					// A failure after committing must leave a recoverable reversal before it changes live paths again.
+					// Reversing a committed update also consumes its record; a repair never replaced the record.
 					current = new Document(current.operation(), current.previousVersion(), current.newVersion(),
-						current.migrationFile(),
-						current.backupRoot(), current.migrationExisted(), current.prepared(), true, current.entries());
+						current.migrationFile(), current.backupRoot(), current.migrationExisted(), current.prepared(),
+						current.operation() != Operation.REPAIR, current.entries());
 					save();
 				}
 				undo();
@@ -215,7 +245,10 @@ final class ActivationTransaction
 		}
 		try
 		{
-			cleanupOlder();
+			if (operation == Operation.REPAIR)
+				cleanupReplaced();
+			else
+				cleanupOlder();
 		}
 		catch (IOException failure)
 		{
@@ -274,13 +307,16 @@ final class ActivationTransaction
 	/**
 	 * Computes journal paths without creating them.
 	 *
-	 * @param tree       the validated release tree
-	 * @param plan       provider-approved steps
-	 * @param backupRoot the private backup root
+	 * @param tree          the validated release tree
+	 * @param plan          provider-approved steps
+	 * @param backupRoot    the private backup root
+	 * @param keepsRollback true if the activation keeps the last activation's rollback slots, so that each replaced
+	 *                      directory moves to a scratch slot instead of the rollback slot
 	 * @return every step's concrete paths
 	 * @throws IOException if owned-file inputs are invalid
 	 */
-	private List<Entry> prepareEntries(Path tree, List<ActivationStep> plan, Path backupRoot) throws IOException
+	private List<Entry> prepareEntries(Path tree, List<ActivationStep> plan, Path backupRoot, boolean keepsRollback)
+		throws IOException
 	{
 		List<Entry> entries = new ArrayList<>();
 		for (int index = 0; index < plan.size(); ++index)
@@ -295,7 +331,10 @@ final class ActivationTransaction
 			};
 			String suffix = UUID.randomUUID().toString();
 			Path staging = parent.resolve(STAGING_PREFIX + suffix);
+			Path older = parent.resolve(OLDER_PREFIX + suffix);
 			Path previous = parent.resolve(PREVIOUS_PREFIX + live.getFileName());
+			if (keepsRollback)
+				previous = older;
 			Kind kind;
 			List<FileChange> files = List.of();
 			boolean hadPrevious = false;
@@ -304,7 +343,7 @@ final class ActivationTransaction
 				case ReplaceDirectory _ ->
 				{
 					kind = Kind.REPLACE_DIRECTORY;
-					hadPrevious = Files.exists(previous, NOFOLLOW_LINKS);
+					hadPrevious = !keepsRollback && Files.exists(previous, NOFOLLOW_LINKS);
 				}
 				case AddDirectory _ -> kind = Kind.ADD_DIRECTORY;
 				case ReplaceOwnedFiles owned ->
@@ -313,8 +352,8 @@ final class ActivationTransaction
 					files = ownedFiles(tree, owned, backupRoot.resolve(Integer.toString(index)));
 				}
 			}
-			entries.add(new Entry(kind, live, staging, previous, parent.resolve(OLDER_PREFIX + suffix),
-				parent.resolve(DISCARD_PREFIX + suffix), StepState.PENDING, Undo.LIVE, hadPrevious, files));
+			entries.add(new Entry(kind, live, staging, previous, older, parent.resolve(DISCARD_PREFIX + suffix),
+				StepState.PENDING, Undo.LIVE, hadPrevious, files));
 		}
 		return entries;
 	}
@@ -938,11 +977,12 @@ final class ActivationTransaction
 			throw new IOException("The journal's backup root is outside updater state: " + backupRoot);
 		StateFiles.requireNoLinks(backupRoot);
 		StateFiles.requireNoLinks(document.migrationFile());
-		List<ActivationStep> plan;
-		if (document.operation() == Operation.INSTALL)
-			plan = provider.installPlan(home, document.newVersion());
-		else
-			plan = provider.recoveryPlan(home, document.previousVersion(), document.newVersion());
+		List<ActivationStep> plan = switch (document.operation())
+		{
+			case INSTALL -> provider.installPlan(home, document.newVersion());
+			case REPAIR -> provider.recoveryPlan(home, document.newVersion(), document.newVersion());
+			case UPDATE -> provider.recoveryPlan(home, document.previousVersion(), document.newVersion());
+		};
 		if (plan.size() != document.entries().size())
 			throw new IOException("The journal's step count differs from the provider's plan");
 		for (int index = 0; index < plan.size(); ++index)
@@ -984,7 +1024,15 @@ final class ActivationTransaction
 				validateOwned(owned, entry, document.backupRoot().resolve(Integer.toString(index)));
 			}
 		}
-		if (entry.kind() != kind || !entry.previous().equals(parent.resolve(PREVIOUS_PREFIX + entry.live().getFileName())))
+		// A repair moves each replaced directory to its scratch slot and leaves the rollback slot alone
+		Path previous = parent.resolve(PREVIOUS_PREFIX + entry.live().getFileName());
+		if (document.operation() == Operation.REPAIR)
+		{
+			previous = entry.older();
+			if (entry.hadPrevious())
+				throw new IOException("A repair activation journal moves a rollback slot");
+		}
+		if (entry.kind() != kind || !entry.previous().equals(previous))
 			throw new IOException("The journal's step kind or previous slot differs from its provider");
 		requireScratch(entry.staging(), parent, STAGING_PREFIX);
 		requireScratch(entry.older(), parent, OLDER_PREFIX);
@@ -1140,6 +1188,19 @@ final class ActivationTransaction
 					StateFiles.delete(backup);
 			}
 		}
+	}
+
+	/**
+	 * Deletes what a committed repair replaced: each replaced directory and the before-images of this activation. The
+	 * last activation's rollback files stay.
+	 *
+	 * @throws IOException if a deletion fails
+	 */
+	private void cleanupReplaced() throws IOException
+	{
+		for (Entry entry : current.entries())
+			StateFiles.delete(entry.previous());
+		StateFiles.delete(current.backupRoot());
 	}
 
 	/**

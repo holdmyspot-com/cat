@@ -560,8 +560,9 @@ public final class UpdateEngine
 
 	/**
 	 * Validates a staged release tree, checks that the installation's runtime can run it, binds it to that runtime,
-	 * and activates it: as an install where the harness has no plugin, otherwise as an update. The plugin is
-	 * registered with the harness before the activation is kept.
+	 * and activates it: as an install where the harness has no plugin, as a repair that keeps the previous bundle where
+	 * the harness has this version, otherwise as an update. The plugin is registered with the harness before the
+	 * activation is kept.
 	 *
 	 * @param tree         the staged release tree, which this method may change
 	 * @param version      the release version
@@ -590,7 +591,10 @@ public final class UpdateEngine
 			return result(Result.INSTALLED, version, null, withWarning("CAT was installed.", transaction),
 				List.of());
 		}
-		transaction.activate(tree, activation.plan(home, version), migrationFile, active, version, register);
+		if (active.equals(version))
+			transaction.repair(tree, activation.plan(home, version), migrationFile, version, register);
+		else
+			transaction.activate(tree, activation.plan(home, version), migrationFile, active, version, register);
 		recordHighestVersion(version);
 		return result(Result.UPDATED, version, active, withWarning("CAT was updated.", transaction), List.of());
 	}

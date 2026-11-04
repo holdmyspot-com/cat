@@ -210,7 +210,7 @@ public final class SetupTest
 
 	/**
 	 * Setup deletes every other updater version directory, and activates and registers the plugin again when the
-	 * harness already has this version.
+	 * harness already has this version, without making the replaced plugin a rollback.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if setup refuses
@@ -232,7 +232,9 @@ public final class SetupTest
 			requireThat(Files.exists(fixture.data().resolve("1.0"), NOFOLLOW_LINKS), "1.0").isFalse();
 			requireThat(Files.exists(fixture.data().resolve("1.1"), NOFOLLOW_LINKS), "1.1").isFalse();
 			requireThat(Files.isDirectory(fixture.data().resolve("1.2")), "1.2").isTrue();
-			requireThat(Files.isDirectory(fixture.home.resolve(".cat-previous-live")), "previous").isTrue();
+			requireThat(Files.isRegularFile(fixture.home.resolve("live/.harness-a/plugin.json")), "activated").isTrue();
+			requireThat(Files.exists(fixture.home.resolve(".cat-previous-live"), NOFOLLOW_LINKS), "previous").
+				isFalse();
 			requireThat(fixture.integration.calls(), "calls").contains("register");
 		}
 	}
@@ -282,29 +284,153 @@ public final class SetupTest
 	}
 
 	/**
-	 * Setup from another release over an installation that keeps a previous bundle leaves no previous bundle.
+	 * Setup from an older release discards the previous bundle that the installation kept, because rollback would
+	 * return past the release that the user chose.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if setup refuses
 	 */
 	@Test
-	public void leavesNoPreviousBundle() throws IOException, TrustException
+	public void olderReleaseLeavesNoPreviousBundle() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-previous-")));
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-older-")));
 			Path data = fixture.data();
 			Files.createDirectories(fixture.home.resolve("live"));
-			Files.writeString(fixture.home.resolve("live/version"), "1.1");
-			Releases.updated(data, "1.0", "1.1");
+			Files.writeString(fixture.home.resolve("live/version"), "1.3");
+			Releases.updated(data, "1.1", "1.3");
 
 			Setup.Outcome outcome = fixture.setUp(null);
 
 			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.UPDATED);
 			requireThat(leftovers(data), "leftovers").isEmpty();
+			requireThat(Files.exists(data.resolve("1.3"), NOFOLLOW_LINKS), "1.3").isFalse();
 			requireThat(engine(data, outcome.policy(), fixture.source).status().previousVersion(), "previous").
 				isEqualTo(Optional.empty());
 		}
+	}
+
+	/**
+	 * Setup from a newer release keeps the installed bundle as the previous bundle: status reports it, and rollback
+	 * restores its Java runtime, updater and plugin.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void newerReleaseKeepsReplacedBundle() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-newer-")));
+			Path data = fixture.data();
+			Files.createDirectories(fixture.home.resolve("live"));
+			Files.writeString(fixture.home.resolve("live/version"), "1.1");
+			Releases.installation(data, "1.1");
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.UPDATED);
+			UpdateEngine engine = engine(data, outcome.policy(), fixture.source);
+			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.of("1.1"));
+			requireRollbackTo11(engine, fixture);
+		}
+	}
+
+	/**
+	 * Setup from the installed release keeps the previous bundle that an update left, also though it activates the
+	 * plugin again: status reports it, and rollback restores it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void repairKeepsPreviousBundle() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = updatedFixture(cleanup.add(testDirectory("setup-repair-")));
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.UPDATED);
+			requireThat(fixture.integration.calls(), "calls").contains("register");
+			UpdateEngine engine = engine(fixture.data(), outcome.policy(), fixture.source);
+			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.of("1.1"));
+			requireRollbackTo11(engine, fixture);
+		}
+	}
+
+	/**
+	 * Setup from the installed release that stops while it registers the plugin again leaves the previous bundle that
+	 * an update left: the next operation recovers the plugin, and rollback restores the previous bundle.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void interruptedRepairKeepsPreviousBundle() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = updatedFixture(cleanup.add(testDirectory("setup-interrupted-")));
+			fixture.integration.crash("register");
+
+			try
+			{
+				fixture.setUp(null);
+				throw new AssertionError("Setup completed although registration stopped");
+			}
+			catch (IllegalStateException _)
+			{
+				// The process ended during registration
+			}
+
+			UpdateEngine engine = engine(fixture.data(), TrustPolicy.read(fixture.policy()), fixture.source);
+			requireRollbackTo11(engine, fixture);
+		}
+	}
+
+	/**
+	 * Creates a fixture whose installation an update moved from release 1.1 to release 1.2, so that it keeps the
+	 * bundle of release 1.1 as its previous bundle.
+	 *
+	 * @param directory the test directory
+	 * @return the fixture
+	 * @throws IOException    if the fixture cannot be created
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	private static Fixture updatedFixture(Path directory) throws IOException, TrustException
+	{
+		Fixture fixture = new Fixture(directory);
+		Path data = fixture.data();
+		Files.createDirectories(fixture.home.resolve("live"));
+		Files.writeString(fixture.home.resolve("live/version"), "1.1");
+		Releases.installation(data, "1.1");
+		requireThat(engine(data, fixture.source.policy(fixture.home), fixture.source).update("v1.2",
+			new RecordingIntegration().registration()).result(), "update").isEqualTo(Result.UPDATED);
+		LauncherSwap.finish(data);
+		return fixture;
+	}
+
+	/**
+	 * Rolls an installation back and requires that release 1.1's Java runtime, updater and plugin are restored once
+	 * the stable launcher finishes.
+	 *
+	 * @param engine  the installation's engine
+	 * @param fixture the fixture
+	 * @throws IOException if the installation cannot be read
+	 */
+	private static void requireRollbackTo11(UpdateEngine engine, Fixture fixture) throws IOException
+	{
+		Path data = fixture.data();
+		requireThat(engine.rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
+		LauncherSwap.finish(data);
+		requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.1\n");
+		requireThat(Files.readString(data.resolve("runtime/release")), "runtime").isEqualTo("runtime 1.1");
+		requireThat(Files.readString(data.resolve("1.1/VERSION")), "updater").isEqualTo("1.1\n");
+		requireThat(Files.readString(fixture.home.resolve("live/version")), "plugin").isEqualTo("1.1");
 	}
 
 	/**
