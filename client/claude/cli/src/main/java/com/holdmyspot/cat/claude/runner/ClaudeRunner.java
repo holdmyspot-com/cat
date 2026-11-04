@@ -104,8 +104,7 @@ public final class ClaudeRunner
 	 * @param model the requested model
 	 * @param effort the requested reasoning effort
 	 * @param agent the optional CAT agent selected for the session
-	 * @param installCat whether CAT is installed
-	 * @param includeUserRules whether CAT copies the parent user's rules into the isolated home
+	 * @param installCat whether CAT is installed, along with a copy of the parent user's rules in the isolated home
 	 * @param readOnlyEvidence executor evidence exposed through added directories
 	 * @param deniedReads the files and directories that the session must not read
 	 * @param instructionFilesMode the choice of which instruction files load, such as {@code claude-md}, or an empty
@@ -119,7 +118,7 @@ public final class ClaudeRunner
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
-		ClaudeAgentDefinition agent, boolean installCat, boolean includeUserRules, List<Path> readOnlyEvidence,
+		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests)
 		throws IOException
 	{
@@ -155,7 +154,7 @@ public final class ClaudeRunner
 			// This keeps concurrent runs separate without diverting CAT-owned state to the shared system temporary directory.
 			Path isolatedProcessHome = run.directory().resolve("home");
 			Path isolatedConfiguration = isolatedProcessHome.resolve(".claude");
-			if (installCat && includeUserRules)
+			if (installCat)
 				UserRuleTree.copy(userRulesRoot(environment), ProjectRuleLoader.rulesDirectory(isolatedProcessHome));
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 			// independent trials do not redownload the same immutable registry artifacts.
