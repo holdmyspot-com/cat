@@ -33,7 +33,8 @@ public final class JlinkImageBuilderTest
 
 	/**
 	 * Verifies that the runtime links only the JDK modules that it is given, sorted, without an application module path
-	 * or launchers.
+	 * or launchers, and holds the default class data sharing archive of those modules, which shortens the start-up of
+	 * every program that the runtime runs.
 	 */
 	@Test
 	public void linksOnlyJdkModules() throws IOException
@@ -48,7 +49,7 @@ public final class JlinkImageBuilderTest
 
 			requireThat(tool.arguments, "jlinkArguments").isEqualTo(List.of("--add-modules", "java.base,java.net.http",
 				"--output", output.toAbsolutePath().normalize().toString(), "--strip-debug", "--no-header-files",
-				"--no-man-pages"));
+				"--no-man-pages", "--generate-cds-archive"));
 		}
 	}
 

@@ -53,9 +53,10 @@ public final class JlinkImageBuilder
 	}
 
 	/**
-	 * Builds the shared runtime: links the JDK modules without debug information, header files or manual pages,
-	 * replaces each symbolic link that {@code jlink} writes with a copy of its target, and writes the runtime's
-	 * description and manifest.
+	 * Builds the shared runtime: links the JDK modules without debug information, header files or manual pages, with
+	 * the default class data sharing archive of those modules, which shortens the start-up of every program, replaces
+	 * each symbolic link that {@code jlink} writes with a copy of its target, and writes the runtime's description and
+	 * manifest.
 	 *
 	 * @param modules the JDK modules that the runtime holds
 	 * @param output  the runtime's directory, which must not exist
@@ -72,7 +73,8 @@ public final class JlinkImageBuilder
 		requireThat(json, "json").isNotNull();
 
 		List<String> arguments = List.of("--add-modules", String.join(",", new TreeSet<>(modules)), "--output",
-			output.toAbsolutePath().normalize().toString(), "--strip-debug", "--no-header-files", "--no-man-pages");
+			output.toAbsolutePath().normalize().toString(), "--strip-debug", "--no-header-files", "--no-man-pages",
+			"--generate-cds-archive");
 		StringWriter standardOutput = new StringWriter();
 		StringWriter standardError = new StringWriter();
 		int exitCode;
