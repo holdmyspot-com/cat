@@ -5,14 +5,21 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.StartupCache;
+import com.holdmyspot.cat.common.updater.engine.StartupCacheTrainer;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
@@ -183,6 +190,79 @@ public final class PluginLaunchersTest
 			requireThat(output, "output").isEqualTo("JAVA_TOOL_OPTIONS=unset|" +
 				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + client +
 				"/modules|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
+		}
+	}
+
+	/**
+	 * Verifies that the plugin's {@code java} wrapper on this platform, {@code java.cmd} on Windows, trains a startup
+	 * cache that the wrapper then passes to Java, which accepts it, while the wrapper passes no cache before the
+	 * training writes one. The plugin's path holds spaces, as a user's home directory can.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a wrapper cannot be run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void wrapperTrainsAndPassesStartupCache() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("plugin with spaces ")).toRealPath();
+			Path client = plugin.resolve("client");
+			// A Windows plugin whose harness runs commands in PowerShell holds only the batch launchers
+			PluginLaunchers.write(List.of(), Platform.current(), !Platform.current().isWindows(), client);
+			// Java uses a startup cache that it trained on a module path only for the same module path, which an empty
+			// folder is not; any jar stands in for the plugin's modules
+			Path modules = Files.createDirectories(client.resolve("modules"));
+			Files.copy(Path.of(URI.create(Test.class.getProtectionDomain().getCodeSource().getLocation().toString())),
+				modules.resolve("module.jar"));
+			Path runtime = Path.of(System.getProperty("java.home")).toRealPath();
+			Files.writeString(client.resolve("runtime-binding"), runtime + "\n", UTF_8);
+			Files.writeString(plugin.resolve(StartupCache.TRAINING), """
+				{"format":1,"arguments":["-m","jdk.jartool/sun.tools.jar.Main","--version"],\
+				"plugin_root_variable":"CAT_PLUGIN_ROOT","input":""}""", UTF_8);
+
+			String untrainedFlags = runWrapper(client, "-XX:+PrintCommandLineFlags", "-version");
+			boolean written = new StartupCacheTrainer(plugin.resolve("scratch"), Duration.ofMinutes(1), () -> false).
+				train(plugin);
+			String trainedFlags = runWrapper(client, "-XX:+PrintCommandLineFlags", "-version");
+			// With AOTMode=on, Java fails instead of starting without a cache that it cannot use
+			String trainedRun = runWrapper(client, "-XX:AOTMode=on", "-m", "jdk.jartool/sun.tools.jar.Main", "--version");
+
+			requireThat(untrainedFlags, "untrainedFlags").doesNotContain("-XX:AOTCache=");
+			requireThat(written, "written").isTrue();
+			Matcher cache = Pattern.compile("-XX:AOTCache=(.+?)(?: -XX:|\\R)").matcher(trainedFlags);
+			requireThat(cache.find(), "cachePassed").withContext(trainedFlags, "trainedFlags").isTrue();
+			requireThat(Files.isSameFile(Path.of(cache.group(1)), plugin.resolve(StartupCache.FILE)), "passedCache").
+				withContext(cache.group(1), "passed").isTrue();
+			requireThat(trainedRun.strip(), "trainedRun").startsWith("jar ");
+		}
+	}
+
+	/**
+	 * Runs a plugin's {@code java} wrapper on this platform, {@code java.cmd} on Windows, requiring it to succeed.
+	 *
+	 * @param client    the plugin's {@code client} folder
+	 * @param arguments the wrapper's arguments
+	 * @return the wrapper's standard output and standard error
+	 * @throws IOException          if the wrapper cannot be run or ends with a failure status
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	private static String runWrapper(Path client, String... arguments) throws IOException, InterruptedException
+	{
+		String wrapper = PluginLaunchers.JAVA_WRAPPER;
+		if (Platform.current().isWindows())
+			wrapper += ".cmd";
+		List<String> command = new ArrayList<>();
+		command.add(client.resolve("bin").resolve(wrapper).toString());
+		command.addAll(List.of(arguments));
+		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+		try (Process process = builder.start())
+		{
+			process.getOutputStream().close();
+			String output = new String(process.getInputStream().readAllBytes(), UTF_8);
+			if (process.waitFor() != 0)
+				throw new IOException(command + " failed with status " + process.exitValue() + ": " + output);
+			return output;
 		}
 	}
 
