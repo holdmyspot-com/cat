@@ -7,7 +7,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.cli.internal.DirectoryMover;
 import com.holdmyspot.cat.common.updater.cli.internal.Locations;
@@ -384,7 +384,7 @@ public final class SetupTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory(prefix)));
-			SharedRuntime.writeManifest(fixture.archive.resolve("runtime"));
+			InstalledRuntime.writeManifest(fixture.archive.resolve("runtime"));
 			Path data = fixture.data();
 			Files.createDirectories(fixture.home.resolve("live"));
 			Files.writeString(fixture.home.resolve("live/version"), "1.1");

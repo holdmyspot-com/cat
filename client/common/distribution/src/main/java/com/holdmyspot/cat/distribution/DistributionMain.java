@@ -255,7 +255,7 @@ public final class DistributionMain
 		runtimeModules.addAll(claudeApplication.systemModules());
 		runtimeModules.addAll(codexApplication.systemModules());
 		Path updaterDirectory = runtimeDirectory.resolve("updater");
-		Path sharedRuntime = new JlinkImageBuilder().build(runtimeModules, updaterDirectory.resolve("runtime"),
+		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, updaterDirectory.resolve("runtime"),
 			scope.json());
 		Path claudeClient = stageClient(claudeApplication, clientDirectory.resolve("claude"), scope.json());
 		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeClient);
@@ -346,8 +346,8 @@ public final class DistributionMain
 
 		updaterArtifacts.build(updaterDirectory.resolve(PluginInfo.CAT_VERSION), commonUpdater, updaterApplication,
 			legalMaterials);
-		writeRuntimeBinding(claudeRoot, sharedRuntime);
-		writeRuntimeBinding(codexRoot, sharedRuntime);
+		writeRuntimeBinding(claudeRoot, releaseRuntime);
+		writeRuntimeBinding(codexRoot, releaseRuntime);
 
 		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);

@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.release.RunnerArtifact;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease.Entry;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
-import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
@@ -407,11 +407,11 @@ public final class ReleaseBundlesTest
 			Path root = cleanup.add(Files.createTempDirectory("release-no-description-"));
 			Path release = root.resolve("release");
 			FakeRelease.publish(release, bundleName(), artifact(root.resolve("source"), PluginInfo.CAT_VERSION));
-			Files.delete(runtime(root).resolve(SharedRuntime.DESCRIPTION));
+			Files.delete(runtime(root).resolve(InstalledRuntime.DESCRIPTION));
 
 			IOException failure = expectFailure(bundles(root.resolve("bundles"), release), root);
 
-			requireThat(failure.getMessage(), "message").contains(runtime(root).resolve(SharedRuntime.DESCRIPTION).
+			requireThat(failure.getMessage(), "message").contains(runtime(root).resolve(InstalledRuntime.DESCRIPTION).
 				toString());
 		}
 	}

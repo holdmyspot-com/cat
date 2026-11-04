@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
-import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
@@ -362,7 +362,7 @@ public final class ReleaseBundles
 	 */
 	private void bind(Path bundle) throws IOException
 	{
-		SharedRuntime.requireSatisfies(runtime, bundle.resolve(REQUIREMENT));
+		InstalledRuntime.requireSatisfies(runtime, bundle.resolve(REQUIREMENT));
 		TemporaryDirectories.deleteRecursively(bundle.resolve(StartupCache.DIRECTORY));
 		Path bound;
 		try

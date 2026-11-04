@@ -3,7 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -11,10 +11,10 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests whether the shared Java runtime satisfies an application's runtime requirement, as a downloaded runner bundle
- * is checked before it is bound to the runtime.
+ * Tests whether an installation's Java runtime satisfies an application's runtime requirement, as a downloaded runner
+ * bundle is checked before it is bound to the runtime.
  */
-public final class SharedRuntimeTest
+public final class InstalledRuntimeTest
 {
 	/**
 	 * The description of the fixture runtime: Java 27 with two modules.
@@ -26,7 +26,7 @@ public final class SharedRuntimeTest
 	/**
 	 * Creates the test.
 	 */
-	public SharedRuntimeTest()
+	public InstalledRuntimeTest()
 	{
 	}
 
@@ -40,9 +40,9 @@ public final class SharedRuntimeTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("shared-runtime-accepted-"));
+			Path root = cleanup.add(Files.createTempDirectory("installed-runtime-accepted-"));
 
-			SharedRuntime.requireSatisfies(runtime(root), requirement(root, """
+			InstalledRuntime.requireSatisfies(runtime(root), requirement(root, """
 				{"format": 1, "java_feature": 26, "modules": ["java.net.http"]}"""));
 		}
 	}
@@ -59,7 +59,7 @@ public final class SharedRuntimeTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("shared-runtime-unsatisfied-"));
+			Path root = cleanup.add(Files.createTempDirectory("installed-runtime-unsatisfied-"));
 
 			IOException failure = expectRefusal(runtime(root), requirement(root, requirement));
 
@@ -92,7 +92,7 @@ public final class SharedRuntimeTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("shared-runtime-malformed-"));
+			Path root = cleanup.add(Files.createTempDirectory("installed-runtime-malformed-"));
 			Path file = requirement(root, requirement);
 
 			IOException failure = expectRefusal(runtime(root), file);
@@ -126,7 +126,7 @@ public final class SharedRuntimeTest
 	{
 		try
 		{
-			SharedRuntime.requireSatisfies(runtime, requirement);
+			InstalledRuntime.requireSatisfies(runtime, requirement);
 		}
 		catch (IOException e)
 		{
@@ -145,7 +145,7 @@ public final class SharedRuntimeTest
 	private static Path runtime(Path root) throws IOException
 	{
 		Path runtime = Files.createDirectories(root.resolve("runtime"));
-		Files.writeString(runtime.resolve(SharedRuntime.DESCRIPTION), DESCRIPTION);
+		Files.writeString(runtime.resolve(InstalledRuntime.DESCRIPTION), DESCRIPTION);
 		return runtime;
 	}
 

@@ -5,7 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
-import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -102,16 +102,16 @@ public final class FakeRelease
 	public static Path runtime(Path directory, Platform platform) throws IOException
 	{
 		Path result = directory.toAbsolutePath().normalize();
-		if (Files.exists(result.resolve(SharedRuntime.MANIFEST)))
+		if (Files.exists(result.resolve(InstalledRuntime.MANIFEST)))
 			return result;
 		String java = "bin/java";
 		if (platform.isWindows())
 			java = "bin/java.exe";
 		write(result.resolve(java), "#!/bin/sh\n", true);
-		write(result.resolve(SharedRuntime.DESCRIPTION), "{\"format\": 1, \"java_version\": \"" + JAVA_FEATURE +
+		write(result.resolve(InstalledRuntime.DESCRIPTION), "{\"format\": 1, \"java_version\": \"" + JAVA_FEATURE +
 			".0.1\", \"java_feature\": " + JAVA_FEATURE + ", \"modules\": " + jsonArray("java.base",
 			"java.net.http") + "}\n", false);
-		SharedRuntime.writeManifest(result);
+		InstalledRuntime.writeManifest(result);
 		return result;
 	}
 

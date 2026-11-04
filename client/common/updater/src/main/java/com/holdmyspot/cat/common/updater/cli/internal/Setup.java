@@ -10,7 +10,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.RuntimeDescription;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
-import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
 import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
@@ -464,7 +464,7 @@ public final class Setup
 			return false;
 		try
 		{
-			return SharedRuntime.identity(installed).equals(SharedRuntime.identity(archived));
+			return InstalledRuntime.identity(installed).equals(InstalledRuntime.identity(archived));
 		}
 		catch (IOException _)
 		{

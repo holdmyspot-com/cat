@@ -79,7 +79,7 @@ public final class RunnerRuntimeManifest
 	{
 		Path root = root(artifact);
 		List<Entry> entries = verifiedEntries(root);
-		String runtime = SharedRuntime.identity(RuntimeBinding.read(root));
+		String runtime = InstalledRuntime.identity(RuntimeBinding.read(root));
 		MessageDigest digest = identityDigest(entries);
 		digest.update(("\nruntime\t" + runtime).getBytes(UTF_8));
 		return HexFormat.of().formatHex(digest.digest());

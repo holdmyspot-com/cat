@@ -25,8 +25,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 
 /**
- * Reads the shared Java runtime that CAT's plugins and updater run: its manifest, which identifies it, and its
- * description, which tells whether it satisfies an application's runtime requirement.
+ * Reads the Java runtime that one harness's CAT installation holds for its plugin and updater: its manifest, which
+ * identifies it, and its description, which tells whether it satisfies an application's runtime requirement.
  *
  * <p>
  * The runtime directory holds {@code cat-runtime.json}, its description
@@ -37,7 +37,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * {@code {"format": 1, "java_feature": N, "modules": [...]}} is satisfied by a runtime whose feature release is at
  * least {@code java_feature} and whose modules include every listed module.
  */
-public final class SharedRuntime
+public final class InstalledRuntime
 {
 	/**
 	 * The runtime manifest's location, relative to the runtime directory.
@@ -238,7 +238,7 @@ public final class SharedRuntime
 	/**
 	 * Prevents construction of utility class instances.
 	 */
-	private SharedRuntime()
+	private InstalledRuntime()
 	{
 	}
 }
