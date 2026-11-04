@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
 
@@ -108,8 +109,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		String name = LAUNCHER;
 		if (Platform.current().isWindows())
 			name += ".cmd";
-		return Path.of(System.getProperty("java.home")).toAbsolutePath().normalize().resolveSibling("bin").
-			resolve(name);
+		return PluginDirectory.of(MainOptimizerCommandScope.class).resolve("bin").resolve(name);
 	}
 
 	/**

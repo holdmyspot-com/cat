@@ -24,6 +24,7 @@ import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -81,7 +82,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		this(Platform.current().environment(System.getenv()), home(Platform.current().environment(System.getenv())),
 			Path.of("").toAbsolutePath(),
-			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent(), waiting);
+			PluginDirectory.of(ClaudeOptimizerCommandScope.class), waiting);
 	}
 
 	/**

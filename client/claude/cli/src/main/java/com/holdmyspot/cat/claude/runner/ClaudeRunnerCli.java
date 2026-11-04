@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunStarter;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
@@ -92,8 +93,7 @@ public final class ClaudeRunnerCli
 				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
 				System.out, new PrintWriter(System.err, true, UTF_8)));
 		}
-		args = HarnessRunnerOptions.withArtifact(args,
-			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent());
+		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(ClaudeRunnerCli.class));
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, Pause::sleeping))
 		{

@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessOneShotOptions;
 import com.holdmyspot.cat.common.runner.HarnessOneShotRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerMaintenance;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
@@ -104,7 +105,7 @@ public final class CodexRunnerCli
 				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
 				System.out, new PrintWriter(System.err, true, UTF_8)));
 		}
-		Path artifact = Path.of(System.getProperty("java.home")).toAbsolutePath().getParent();
+		Path artifact = PluginDirectory.of(CodexRunnerCli.class);
 		if (!isOneShotCommand(args))
 			args = HarnessRunnerOptions.withArtifact(args, artifact);
 		Path home = Platform.current().homeDirectory(environment);

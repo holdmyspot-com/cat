@@ -23,6 +23,7 @@ import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -80,7 +81,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		this(Platform.current().environment(System.getenv()), home(Platform.current().environment(System.getenv())),
 			Path.of("").toAbsolutePath(),
-			Path.of(System.getProperty("java.home")).toAbsolutePath().getParent(), waiting);
+			PluginDirectory.of(CodexOptimizerCommandScope.class), waiting);
 	}
 
 	/**

@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.release.RunnerArtifact;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
 import java.nio.file.Path;
 
@@ -36,7 +37,7 @@ public final class ClaudeArtifact
 		}
 		try
 		{
-			System.out.print(execute(Path.of(System.getProperty("java.home")).toAbsolutePath().getParent()));
+			System.out.print(execute(PluginDirectory.of(ClaudeArtifact.class)));
 		}
 		catch (IOException e)
 		{

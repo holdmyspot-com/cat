@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
@@ -117,14 +118,14 @@ public final class CodexReadPart
 
 	/**
 	 * Returns the path of a launcher that agents run: the launcher of the same name in the {@code bin} folder of the
-	 * plugin whose {@code client} folder holds the runtime image that runs this program.
+	 * plugin whose {@code client/modules} folder holds this program.
 	 *
 	 * @param name the launcher's file name
 	 * @return the path
 	 */
 	static Path launcher(String name)
 	{
-		return Path.of(System.getProperty("java.home")).resolveSibling("bin").resolve(name);
+		return PluginDirectory.of(CodexReadPart.class).resolve("bin").resolve(name);
 	}
 
 	/**

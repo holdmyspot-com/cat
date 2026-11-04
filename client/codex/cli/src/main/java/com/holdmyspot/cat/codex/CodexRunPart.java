@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.Console;
 import java.io.File;
 import java.io.IOException;
@@ -134,8 +135,9 @@ public final class CodexRunPart
 		Console console = System.console();
 		boolean terminal = console != null && console.isTerminal();
 		CommandShell shell = CommandShell.current();
+		Path overrides = PluginDirectory.of(CodexRunPart.class).resolve("client").resolve(OVERRIDES);
 		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
-			CodexReadPart.launcher(shell.launcher("read-part")), Path.of(System.getProperty("java.home"), OVERRIDES),
+			CodexReadPart.launcher(shell.launcher("read-part")), overrides,
 			Platform.current().environment(System.getenv()), System.out, System.err, Redirect.INHERIT, Pause::sleeping);
 		System.out.flush();
 		System.exit(status);
