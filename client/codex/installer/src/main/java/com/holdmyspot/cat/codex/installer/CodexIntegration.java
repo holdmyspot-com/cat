@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -30,6 +31,7 @@ import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Integrates the installer with Codex's command-line program and execution policy.
@@ -40,7 +42,9 @@ import tools.jackson.databind.json.JsonMapper;
  * for file. Codex's {@code plugin remove} keeps the plugin data directory.
  * <p>
  * Permissions live in the CAT-owned file {@code rules/cat-installer.rules}, which Codex reads beside the user's rules.
- * The only sandbox entry is one writable root for CAT's capacity locks in {@code config.toml}.
+ * The only sandbox entry lets sandboxed commands write CAT's capacity locks. In {@code config.toml} it is a writable
+ * root, or, when the file selects a permission profile that it defines, a write entry in that profile, because Codex
+ * then ignores the writable roots. Other projects that use the profile get the entry too.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -71,6 +75,10 @@ public final class CodexIntegration implements HarnessIntegration
 	 * The sandbox key of the writable root that CAT adds to Codex's configuration.
 	 */
 	private static final String WRITABLE_ROOTS_KEY = "config.toml#sandbox_workspace_write.writable_roots";
+	/**
+	 * The start of a sandbox key in Codex's configuration, which the setting's dotted TOML key follows.
+	 */
+	private static final String CONFIGURATION_KEY = "config.toml#";
 	/**
 	 * The plugin as Codex identifies it: the plugin name, then the marketplace name.
 	 */
@@ -178,7 +186,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 * Refuses a {@code rules} directory or {@code rules/cat-installer.rules} file that is a symbolic link or not of its
 	 * expected kind, a rules file whose content is not exactly what CAT writes for the launcher that its first rule
 	 * names, and a {@code config.toml} that is a symbolic link, not a regular file, not valid TOML, or in a form whose
-	 * writable roots CAT does not edit.
+	 * writable roots, or whose selected permission profile, CAT does not edit.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 */
@@ -187,7 +195,7 @@ public final class CodexIntegration implements HarnessIntegration
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		validateRules(home);
-		validateWritableRoots(home);
+		validateSandboxEntry(home);
 	}
 
 	/**
@@ -222,13 +230,14 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Refuses a {@code config.toml} whose writable roots CAT cannot edit.
+	 * Refuses a {@code config.toml} to which CAT cannot add its sandbox entry: the selected permission profile when
+	 * the file defines it, otherwise the writable roots.
 	 *
 	 * @param home the Codex home
 	 * @throws IOException if the file is a symbolic link, not a regular file, not valid TOML, or in a form whose
-	 *                     writable roots CAT does not edit
+	 *                     writable roots, or whose selected permission profile, CAT does not edit
 	 */
-	private static void validateWritableRoots(Path home) throws IOException
+	private static void validateSandboxEntry(Path home) throws IOException
 	{
 		Path file = new CodexInstallation(home).configuration();
 		if (Files.isSymbolicLink(file))
@@ -237,7 +246,12 @@ public final class CodexIntegration implements HarnessIntegration
 			return;
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("Codex's configuration is not a regular file: " + file);
-		WritableRoots.requireEditable(read(file), file);
+		String content = read(file);
+		Optional<String> profile = PermissionProfile.selected(TomlText.parse(content, file));
+		if (profile.isPresent())
+			PermissionProfile.requireEditable(content, profile.get(), file);
+		else
+			WritableRoots.requireEditable(content, file);
 	}
 
 	/**
@@ -353,35 +367,52 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Adds {@code catLocks} to {@code sandbox_workspace_write.writable_roots} in {@code config.toml}, creating the file
-	 * or the table when it is absent, unless the writable roots already hold it. Codex's own sandbox already keeps
-	 * sandboxed commands from writing the other harness's CAT installation, so this call adds nothing for it.
+	 * Lets sandboxed commands write {@code catLocks}. When {@code config.toml} selects with {@code default_permissions}
+	 * a permission profile that it defines, adds {@code "<catLocks>" = "write"} to that profile's {@code filesystem}
+	 * table, creating the table when it is absent, unless the profile already has an entry for {@code catLocks}.
+	 * Otherwise adds {@code catLocks} to {@code sandbox_workspace_write.writable_roots}, creating the file or the table
+	 * when it is absent, unless the writable roots already hold it. Codex's own sandbox already keeps sandboxed commands
+	 * from writing the other harness's CAT installation, so this call adds nothing for it.
 	 *
 	 * @param home     the absolute Codex home
 	 * @param other    the other harness's CAT installation
 	 * @param catLocks the capacity lock directory
 	 * @param replacer replaces Codex's configuration
-	 * @return {@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}} when this call added the
-	 * 	writable root, otherwise an empty map
+	 * @return the entry that {@link #sandboxEntries} returns when this call added it, otherwise an empty map
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
 	 * @throws IOException              if {@code config.toml} is a symbolic link, not a regular file, not valid TOML or
-	 *                                  in a form whose writable roots CAT does not edit, or cannot be written
+	 *                                  in a form whose writable roots, or whose selected permission profile, CAT does
+	 *                                  not edit, or cannot be written
 	 */
 	@Override
 	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
 		FileReplacer replacer) throws IOException
 	{
-		Map<String, List<String>> entries = sandboxEntries(home, other, catLocks);
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(other, "other").isNotNull();
+		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
 		requireThat(replacer, "replacer").isNotNull();
-		validateWritableRoots(home);
+		validateSandboxEntry(home);
 
 		Path file = new CodexInstallation(home).configuration();
 		boolean exists = Files.exists(file, LinkOption.NOFOLLOW_LINKS);
 		String content = "";
 		if (exists)
 			content = read(file);
-		String edited = WritableRoots.add(content, catLocks.toString(), file);
+		Optional<String> profile = PermissionProfile.selected(TomlText.parse(content, file));
+		String edited;
+		Map<String, List<String>> entries;
+		if (profile.isPresent())
+		{
+			edited = PermissionProfile.add(content, profile.get(), catLocks.toString(), file);
+			entries = Map.of(profileKey(profile.get()), List.of(catLocks.toString()));
+		}
+		else
+		{
+			edited = WritableRoots.add(content, catLocks.toString(), file);
+			entries = Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
+		}
 		if (exists && edited.equals(content))
 			return Map.of();
 		write(file, edited, replacer);
@@ -389,14 +420,18 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the writable root for {@code catLocks} that {@link #installSandboxEntries} adds.
+	 * Returns the sandbox entry for {@code catLocks} that {@link #installSandboxEntries} adds to the current
+	 * {@code config.toml}.
 	 *
 	 * @param home     the absolute Codex home
 	 * @param other    the other harness's CAT installation
 	 * @param catLocks the capacity lock directory
-	 * @return {@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}
+	 * @return {@code {"config.toml#permissions.<profile>.filesystem": [<catLocks>]}} when {@code config.toml} selects
+	 * 	a permission profile that it defines, with the profile's name quoted when TOML requires it, otherwise
+	 * 	{@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
+	 * @throws UncheckedIOException     if {@code config.toml} cannot be read or is not valid TOML
 	 */
 	@Override
 	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
@@ -404,17 +439,57 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(other, "other").isNotNull();
 		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
+		Path file = new CodexInstallation(home).configuration();
+		Optional<String> profile;
+		try
+		{
+			profile = selectedProfile(file);
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+		if (profile.isPresent())
+			return Map.of(profileKey(profile.get()), List.of(catLocks.toString()));
 		return Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
 	}
 
 	/**
-	 * Deletes {@code rules/cat-installer.rules} when its content equals a recorded content, and removes each recorded
-	 * writable root from {@code config.toml}. Leaves a changed rules file, a file reached through a symbolic link, the
-	 * writable roots' array and table, and every other entry in place.
+	 * Returns the permission profile that a {@code config.toml} selects and defines.
+	 *
+	 * @param file the {@code config.toml}
+	 * @return the profile's name, or empty when the file is absent, not a regular file, selects no profile or selects
+	 * 	one that it does not define
+	 * @throws IOException if the file cannot be read or is not valid TOML
+	 */
+	private static Optional<String> selectedProfile(Path file) throws IOException
+	{
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		return PermissionProfile.selected(TomlText.parse(read(file), file));
+	}
+
+	/**
+	 * Returns the sandbox key of the write entry that CAT adds to a permission profile.
+	 *
+	 * @param profile the profile's name
+	 * @return {@code config.toml#permissions.<profile>.filesystem}
+	 */
+	private static String profileKey(String profile)
+	{
+		return CONFIGURATION_KEY + PermissionProfile.tableKey(profile);
+	}
+
+	/**
+	 * Deletes {@code rules/cat-installer.rules} when its content equals a recorded content, removes each recorded
+	 * writable root from {@code config.toml}, and removes each recorded write entry from the permission profile that it
+	 * was added to, when that entry still grants write access. Leaves a changed rules file, a file reached through a
+	 * symbolic link, the writable roots' array and table, each profile's filesystem table, and every other entry in
+	 * place.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if a file cannot be read or written, or {@code config.toml} holds a recorded
-	 *                                  writable root in a form that CAT does not edit
+	 *                                  entry in a form that CAT does not edit
 	 */
 	@Override
 	public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
@@ -424,7 +499,7 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(added, "added").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		removeRules(home, added.getOrDefault(RULES_KEY, List.of()));
-		removeWritableRoots(home, added.getOrDefault(WRITABLE_ROOTS_KEY, List.of()), replacer);
+		removeSandboxEntries(home, added, replacer);
 	}
 
 	/**
@@ -447,23 +522,32 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Removes recorded writable roots from {@code config.toml}.
+	 * Removes recorded writable roots and recorded profile write entries from {@code config.toml}. A recorded entry of
+	 * a profile that the file no longer defines needs no removal.
 	 *
 	 * @param home     the Codex home
-	 * @param roots    the recorded writable roots
+	 * @param added    the recorded entries, by entry key
 	 * @param replacer replaces Codex's configuration
-	 * @throws IOException if the file cannot be read or written, or holds a recorded writable root in a form that CAT
-	 *                     does not edit
+	 * @throws IOException if the file cannot be read or written, or holds a recorded entry in a form that CAT does not
+	 *                     edit
 	 */
-	private static void removeWritableRoots(Path home, List<String> roots, FileReplacer replacer) throws IOException
+	private static void removeSandboxEntries(Path home, Map<String, List<String>> added, FileReplacer replacer)
+		throws IOException
 	{
 		Path file = new CodexInstallation(home).configuration();
-		if (roots.isEmpty() || Files.isSymbolicLink(home) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+		boolean recorded = added.keySet().stream().anyMatch(key -> key.startsWith(CONFIGURATION_KEY));
+		if (!recorded || Files.isSymbolicLink(home) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 			return;
 		String content = read(file);
 		String edited = content;
-		for (String root : roots)
+		for (String root : added.getOrDefault(WRITABLE_ROOTS_KEY, List.of()))
 			edited = WritableRoots.remove(edited, root, file);
+		ObjectNode document = TomlText.parse(content, file);
+		for (String profile : document.path("permissions").propertyNames())
+		{
+			for (String path : added.getOrDefault(profileKey(profile), List.of()))
+				edited = PermissionProfile.remove(edited, profile, path, file);
+		}
 		if (!edited.equals(content))
 			write(file, edited, replacer);
 	}

@@ -1,15 +1,17 @@
 package com.holdmyspot.cat.codex.installer;
 
+import static com.holdmyspot.cat.codex.installer.TomlText.lines;
+import static com.holdmyspot.cat.codex.installer.TomlText.parse;
+import static com.holdmyspot.cat.codex.installer.TomlText.quote;
+import static com.holdmyspot.cat.codex.installer.TomlText.tryParse;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
-import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Adds one value to, and removes it from, the {@code sandbox_workspace_write.writable_roots} array of Codex's
@@ -40,14 +42,6 @@ final class WritableRoots
 	 * The key of the directories that the workspace-write sandbox lets commands write.
 	 */
 	private static final String KEY = "writable_roots";
-	/**
-	 * Parses the file and its lines.
-	 */
-	private static final TomlMapper TOML = TomlMapper.builder().build();
-	/**
-	 * Quotes a value as a TOML basic string, whose escapes include all that JSON's string form uses.
-	 */
-	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Prevents instantiation.
@@ -85,29 +79,18 @@ final class WritableRoots
 		if (location.key() != -1 && contains(document.get(TABLE).get(KEY), root))
 			return text;
 
-		String quoted = JSON.writeValueAsString(root);
-		String newline = "\n";
-		if (text.contains("\r\n"))
-			newline = "\r\n";
+		String quoted = quote(root);
+		String newline = TomlText.newline(text);
 		ObjectNode expected = document.deepCopy();
 		String edited;
 		if (location.header() == -1)
 		{
-			StringBuilder appended = new StringBuilder(text);
-			if (!text.isEmpty())
-			{
-				if (!text.endsWith("\n"))
-					appended.append(newline);
-				appended.append(newline);
-			}
-			appended.append('[').append(TABLE).append(']').append(newline).
-				append(KEY).append(" = [").append(quoted).append(']').append(newline);
-			edited = appended.toString();
+			edited = TomlText.appendTable(text, "[" + TABLE + "]", KEY + " = [" + quoted + "]", newline);
 			expected.putObject(TABLE).putArray(KEY).add(root);
 		}
 		else if (location.key() == -1)
 		{
-			terminate(lines, location.header(), newline);
+			TomlText.terminate(lines, location.header(), newline);
 			lines.add(location.header() + 1, KEY + " = [" + quoted + "]" + newline);
 			edited = String.join("", lines);
 			((ObjectNode) expected.get(TABLE)).putArray(KEY).add(root);
@@ -158,7 +141,7 @@ final class WritableRoots
 				break;
 			}
 		}
-		String quoted = JSON.writeValueAsString(root);
+		String quoted = quote(root);
 		String line = lines.get(location.key());
 		for (String candidate : List.of(quoted + ", ", ", " + quoted, quoted + ",", "," + quoted, quoted))
 		{
@@ -173,66 +156,6 @@ final class WritableRoots
 		}
 		throw new IOException("CAT cannot remove " + quoted + " from the writable roots in " + file + ". Remove " +
 			"it from " + TABLE + "." + KEY + " yourself, then rerun this command.");
-	}
-
-	/**
-	 * Parses the file's content.
-	 *
-	 * @param text the content
-	 * @param file the file, named in the refusal
-	 * @return the document
-	 * @throws IOException if the content is not valid TOML
-	 */
-	private static ObjectNode parse(String text, Path file) throws IOException
-	{
-		try
-		{
-			return (ObjectNode) TOML.readTree(text);
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("CAT cannot edit " + file + ", because it is not valid TOML: " +
-				e.getOriginalMessage() + ". Correct the file, then rerun this command.", e);
-		}
-	}
-
-	/**
-	 * Parses a text as a TOML document.
-	 *
-	 * @param text the text
-	 * @return the document, or null when the text is not valid TOML
-	 */
-	private static JsonNode tryParse(String text)
-	{
-		try
-		{
-			return TOML.readTree(text);
-		}
-		catch (JacksonException _)
-		{
-			return null;
-		}
-	}
-
-	/**
-	 * Splits a text into lines.
-	 *
-	 * @param text the text
-	 * @return the lines, each with its line terminator; the last line has none when the text does not end with one
-	 */
-	private static List<String> lines(String text)
-	{
-		List<String> lines = new ArrayList<>();
-		int start = 0;
-		while (start < text.length())
-		{
-			int end = text.indexOf('\n', start) + 1;
-			if (end == 0)
-				end = text.length();
-			lines.add(text.substring(start, end));
-			start = end;
-		}
-		return lines;
 	}
 
 	/**
@@ -261,16 +184,7 @@ final class WritableRoots
 				KEY + " is not an array of strings. Correct it, then rerun this command.");
 		}
 
-		int header = -1;
-		for (int index = 0; index < lines.size() && header == -1; ++index)
-		{
-			String line = lines.get(index).strip();
-			if (line.startsWith("[") && !line.startsWith("[[") &&
-				JSON.createObjectNode().set(TABLE, JSON.createObjectNode()).equals(tryParse(line)))
-			{
-				header = index;
-			}
-		}
+		int header = TomlText.findHeader(lines, TomlText.table().set(TABLE, TomlText.table()));
 		if (header == -1)
 			throw uneditable(file);
 		if (roots == null)
@@ -317,20 +231,6 @@ final class WritableRoots
 				return true;
 		}
 		return false;
-	}
-
-	/**
-	 * Ends a line with a line terminator if it has none.
-	 *
-	 * @param lines   the lines
-	 * @param index   the line's index
-	 * @param newline the file's line terminator
-	 */
-	private static void terminate(List<String> lines, int index, String newline)
-	{
-		String line = lines.get(index);
-		if (!line.endsWith("\n"))
-			lines.set(index, line + newline);
 	}
 
 	/**
