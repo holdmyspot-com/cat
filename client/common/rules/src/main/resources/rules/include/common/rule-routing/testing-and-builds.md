@@ -20,6 +20,9 @@ triggers it on only some runs, lazy load `../flaky-tests.md` before changing, re
 
 When a test creates or shares a fixture, lazy load `../temporary-resources.md`.
 
-When creating, updating, or debugging a build script, pipeline, or multi-step build, lazy load `../build-workflow.md`.
+When running a build or selecting, configuring, or reusing a build or workflow cache, lazy load `../build-caching.md`.
+
+When creating, updating, or debugging a build script, pipeline, or multi-step build, or introducing or repairing an
+expensive many-unit workflow, lazy load `../build-workflow.md`.
 
 Before selecting or reporting a command as evidence that a project's build passes, lazy load `../build-verification.md`.
