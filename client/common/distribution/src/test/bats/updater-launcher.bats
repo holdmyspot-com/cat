@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # Tests the trusted updater's POSIX launchers: the stable launcher's environment isolation, argument forwarding,
-# current-version validation, exit-status pass-through, replacement of the Java runtime after an update or rollback
-# and removal of the data directory after a complete uninstall, and the versioned launcher's selection of the shared
-# runtime and its fixed JVM options.
+# current-version validation, exit-status pass-through, replacement of the Java runtime after an update or rollback and
+# removal of the data directory after a complete uninstall, and the versioned launcher's selection of its
+# installation's runtime and its fixed JVM options.
 
 bats_require_minimum_version 1.5.0
 
@@ -46,7 +46,7 @@ CHILD
 	chmod +x "$1/1.0/bin/cat-updater"
 }
 
-# Replaces a data directory's fake versioned launcher with the real one and installs a fake shared runtime Java.
+# Replaces a data directory's fake versioned launcher with the real one and installs a fake installation runtime Java.
 # Arguments: the absolute path of the data directory, then the body of the fake java script, which runs with the
 #   variable data set to the data directory that holds it.
 # Side effects: Writes 1.0/bin/cat-updater and runtime/bin/java beneath the data directory.
@@ -62,7 +62,7 @@ install_runtime()
 	chmod +x "$1/runtime/bin/java"
 }
 
-# Installs a fake shared runtime Java that stands in for the updater's complete uninstall: it saves the final JSON
+# Installs a fake installation runtime Java that stands in for the updater's complete uninstall: it saves the final JSON
 # result in state/uninstall-result.json and exits with the status that asks the stable launcher to delete the data
 # directory after the JVM exits.
 # The saved result contains shell metacharacters and JSON escapes, so a launcher that reinterprets it alters it.
@@ -87,7 +87,7 @@ write_runtime()
 	chmod +x "$1/bin/java"
 }
 
-# Installs a fake shared runtime Java that stands in for an updater operation that staged a Java runtime: it saves
+# Installs a fake installation runtime Java that stands in for an updater operation that staged a Java runtime: it saves
 # its final JSON result in state/runtime-swap-result.json, writes the swap request, runs an optional last step, and
 # exits with the status that asks the stable launcher to put the staged runtime in place after the JVM exits. Its
 # java -version succeeds.
@@ -182,7 +182,7 @@ teardown()
 	[[ "${output}" != *'child'* ]]
 }
 
-@test "the versioned launcher runs the shared runtime's Java with the fixed options and its own application modules" {
+@test "the versioned launcher runs its installation's Java with the fixed options and its own application modules" {
 	install_runtime "${DATA}" '
 if [ "${JAVA_TOOL_OPTIONS+x}${JDK_JAVA_OPTIONS+x}${_JAVA_OPTIONS+x}${CLASSPATH+x}${JLINK_VM_OPTIONS+x}" != "" ]; then
 	exit 99
@@ -216,7 +216,7 @@ printf "<%s>" "$@"'
 	[[ "${output}" == *"<--module-path><${DATA}/1.0/app>"*'<status>' ]]
 }
 
-@test "the versioned launcher reports a missing shared runtime with one diagnostic and status 3" {
+@test "the versioned launcher reports a missing installation runtime with one diagnostic and status 3" {
 	install_runtime "${DATA}" 'printf ran'
 	rm "${DATA}/runtime/bin/java"
 

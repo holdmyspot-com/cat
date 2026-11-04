@@ -24,7 +24,7 @@
 #   nothing more, when the data directory could not be deleted, when it or its parent is a reparse point such as a
 #   symbolic link or junction, or when the updater saved no readable result, in which case the directory's path is
 #   written to standard error; 75 with a locked result when the runtime is missing while another launcher replaces it;
-#   or 3 when current is malformed or the shared runtime has no java.exe.
+#   or 3 when current is malformed or the installation's runtime has no java.exe.
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 

@@ -128,7 +128,7 @@ public final class ReleaseBundlesTest
 	}
 
 	/**
-	 * Returns the shared Java runtime of a test, creating it on first use.
+	 * Returns the installation Java runtime of a test, creating it on first use.
 	 *
 	 * @param root the test's directory
 	 * @return the runtime's directory, {@code runtime} in {@code root}

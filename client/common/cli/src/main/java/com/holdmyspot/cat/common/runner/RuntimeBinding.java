@@ -50,7 +50,7 @@ public final class RuntimeBinding
 		if (!Files.isRegularFile(binding, NOFOLLOW_LINKS))
 		{
 			throw new IOException("The plugin has no runtime binding " + binding + ". Install the plugin through " +
-				"the CAT updater, which binds it to the shared Java runtime.");
+				"the CAT updater, which binds it to its installation's Java runtime.");
 		}
 		String content = BoundedInput.readUtf8(binding, MAXIMUM_BINDING_BYTES, "Runtime binding");
 		String line = content.substring(0, Math.max(content.length() - 1, 0));
@@ -101,7 +101,7 @@ public final class RuntimeBinding
 		{
 			throw new IOException("The runtime binding " + plugin.toAbsolutePath().normalize().resolve(PATH) +
 				" names " + runtime + ", whose program " + java + " is not executable. Rerun the CAT entry command to " +
-				"reinstall the shared Java runtime.");
+				"reinstall this harness's Java runtime.");
 		}
 		return runtime;
 	}

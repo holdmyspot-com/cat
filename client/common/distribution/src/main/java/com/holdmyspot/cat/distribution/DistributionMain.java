@@ -584,12 +584,12 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Binds a plugin assembled in the source checkout to the shared runtime that the build wrote, so that the plugin
+	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote, so that the plugin
 	 * runs from the checkout without the trusted updater. The binding is written after the plugin's runtime manifest,
 	 * because it names a path on the building machine, and release archives leave it out.
 	 *
 	 * @param plugin  the assembled plugin
-	 * @param runtime the shared runtime
+	 * @param runtime the release runtime
 	 * @throws IOException if the binding cannot be written
 	 */
 	static void writeRuntimeBinding(Path plugin, Path runtime) throws IOException

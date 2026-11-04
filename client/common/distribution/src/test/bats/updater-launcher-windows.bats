@@ -2,7 +2,7 @@
 # Tests the trusted updater's Windows launchers as Windows PowerShell runs them through -File from Git Bash: the stable
 # launcher's argument forwarding, environment isolation, current-version validation and exit-status pass-through, its
 # replacement of the Java runtime after an update or rollback and removal of the data directory after a complete
-# uninstall, and the versioned launchers' start of the shared runtime's java.exe, from PowerShell and from Git Bash.
+# uninstall, and the versioned launchers' start of their installation's java.exe, from PowerShell and from Git Bash.
 # Only the Windows build runs this file; the POSIX launchers' tests are in updater-launcher.bats.
 
 bats_require_minimum_version 1.5.0
@@ -42,7 +42,7 @@ teardown()
 }
 
 # Creates an updater data directory as an installation lays it out on Windows: the stable launcher in bin\, current
-# naming version 1.0, that version's PowerShell and POSIX launchers, and the shared runtime.
+# naming version 1.0, that version's PowerShell and POSIX launchers, and the installation's runtime.
 # Arguments: the absolute path of the data directory to create.
 # Side effects: Creates the directory with bin\, 1.0\bin\, state\ and runtime\, whose marker file reads "installed".
 create_data_directory()
@@ -501,7 +501,7 @@ XDG_DATA_HOME" ]
 	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
 }
 
-@test "the Windows versioned launcher reports a missing shared runtime with one diagnostic and status 3" {
+@test "the Windows versioned launcher reports a missing installation runtime with one diagnostic and status 3" {
 	rm -rf -- "${DATA}/runtime"
 
 	run --separate-stderr powershell_file "${DATA}/1.0/bin/cat-updater.ps1" status

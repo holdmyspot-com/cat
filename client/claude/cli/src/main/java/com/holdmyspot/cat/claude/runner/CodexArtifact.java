@@ -62,7 +62,8 @@ public final class CodexArtifact
 	 *                    Windows); {@code CODEX_HOME}, the Codex home, which defaults to {@code .codex} in the home
 	 *                    directory; {@code CAT_CODEX_MARKETPLACE_ROOT}, CAT's Codex marketplace, which defaults to
 	 *                    {@code plugins/cat-marketplace} in the Codex home
-	 * @param runtime     the shared Java runtime that a bundle is bound to, which is the runtime of the running JVM
+	 * @param runtime     the installation's Java runtime that a bundle is bound to, which is the runtime of the running
+	 *                    JVM
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the home directory is not set, or the artifact cannot be downloaded, verified or

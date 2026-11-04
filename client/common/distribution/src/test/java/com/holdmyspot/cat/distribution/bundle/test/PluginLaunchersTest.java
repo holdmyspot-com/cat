@@ -167,7 +167,7 @@ public final class PluginLaunchersTest
 			Path client = plugin.resolve("client");
 			PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, client);
 			PluginLaunchers.move(Set.of("read-part"), client, plugin.resolve("bin"));
-			Path runtime = Files.createDirectories(plugin.resolve("shared runtime/bin")).getParent();
+			Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
 			Path java = Files.writeString(runtime.resolve("bin/java"), """
 				#!/bin/sh
 				printf '%s|' "JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS-unset}" "$@"

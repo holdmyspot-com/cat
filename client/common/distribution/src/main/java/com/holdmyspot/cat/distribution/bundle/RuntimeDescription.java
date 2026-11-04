@@ -25,7 +25,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Writes the files that describe a shared Java runtime: {@value #DESCRIPTION}, which names its Java version and
+ * Writes the files that describe a release's Java runtime: {@value #DESCRIPTION}, which names its Java version and
  * modules, and {@value #MANIFEST}, which holds the SHA-256 digest of every other file in the runtime.
  */
 public final class RuntimeDescription

@@ -74,9 +74,9 @@ import java.util.stream.Collectors;
  * and only then moves it into place, so that a failed download, checksum or extraction leaves no copy for a later
  * resolution to use.
  * <p>
- * Before a resolution uses a downloaded or earlier-downloaded bundle, it checks that the shared Java runtime it was
- * given satisfies the bundle's {@code client/runtime-requirement.json} and refuses the bundle otherwise. It then binds
- * the bundle to that runtime unless the bundle's runtime binding already names it and is usable, so a bundle that
+ * Before a resolution uses a downloaded or earlier-downloaded bundle, it checks that the installation's Java runtime it
+ * was given satisfies the bundle's {@code client/runtime-requirement.json} and refuses the bundle otherwise. It then
+ * binds the bundle to that runtime unless the bundle's runtime binding already names it and is usable, so a bundle that
  * another installation bound to its own runtime, or to a runtime that was since removed, is rebound rather than
  * refused. It also removes any startup cache that the bundle holds, because Java accepts a startup cache only at the
  * location that it was trained at. An installed plugin keeps the binding and startup cache of its own installation.
@@ -222,8 +222,8 @@ public final class ReleaseBundles
 	 * @param platform    the platform whose artifact to resolve
 	 * @param environment the process environment, whose proxy variables a download over HTTP follows, as
 	 *                    {@link Platform#environment(Map)} returns it
-	 * @param runtime     the shared Java runtime that this resolution binds a bundle to, which is the runtime of the
-	 *                    running JVM in production
+	 * @param runtime     the installation's Java runtime that this resolution binds a bundle to, which is the
+	 *                    runtime of the running JVM in production
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public ReleaseBundles(Path directory, URI release, Platform platform, Map<String, String> environment,
@@ -240,7 +240,7 @@ public final class ReleaseBundles
 	 * @param release       the location of this CAT version's release
 	 * @param platform      the platform whose artifact to resolve
 	 * @param environment   the process environment, whose proxy variables a download over HTTP follows
-	 * @param runtime       the shared Java runtime that this resolution binds a bundle to
+	 * @param runtime       the installation's Java runtime that this resolution binds a bundle to
 	 * @param connectLimit  how long a download waits to connect to the release's server
 	 * @param responseLimit how long a download waits for the server's response headers
 	 * @param downloadLimit how long a download of one file may take in total
@@ -352,7 +352,7 @@ public final class ReleaseBundles
 	}
 
 	/**
-	 * Binds a bundle to the shared Java runtime of this resolution after checking that the runtime satisfies the
+	 * Binds a bundle to the installation's Java runtime of this resolution after checking that the runtime satisfies the
 	 * bundle's requirement, and removes the bundle's startup cache. The binding is rewritten only when it does not
 	 * already name that runtime usably.
 	 *

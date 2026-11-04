@@ -1,9 +1,9 @@
 #!/bin/sh
-# Runs this updater version on the shared runtime beside its version directory, with fixed JVM options;
+# Runs this updater version on its installation's runtime beside its version directory, with fixed JVM options;
 # environment-provided JVM options are discarded.
 # Arguments: the updater operation and its arguments.
 # Output: one updater JSON result.
-# Exit status: the updater operation's status, or 3 when the shared runtime has no executable java.
+# Exit status: the updater operation's status, or 3 when the installation's runtime has no executable java.
 set -eu
 unset JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS CLASSPATH JLINK_VM_OPTIONS
 # The version directory is found from this file's real location, so a symbolic link to the launcher elsewhere still

@@ -92,7 +92,7 @@ public final class InstalledRuntime
 		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
 		{
 			throw new IOException("The Java runtime has no manifest " + manifest + ". Rerun the CAT entry command to " +
-				"reinstall the shared Java runtime.");
+				"reinstall this harness's Java runtime.");
 		}
 		byte[] bytes;
 		try (InputStream in = Files.newInputStream(manifest))
@@ -122,7 +122,7 @@ public final class InstalledRuntime
 	private static IOException mismatch(Path manifest)
 	{
 		return new IOException("The runtime manifest " + manifest + " does not match the files of its Java " +
-			"runtime. Rerun the CAT entry command to reinstall the shared Java runtime.");
+			"runtime. Rerun the CAT entry command to reinstall this harness's Java runtime.");
 	}
 
 	/**

@@ -74,10 +74,10 @@ public interface DistributionMainAccess
 	Path stageClient(ApplicationModules application, Path client, JsonMapper json) throws IOException;
 
 	/**
-	 * Binds a plugin assembled in the source checkout to the shared runtime that the build wrote.
+	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote.
 	 *
 	 * @param plugin  the assembled plugin
-	 * @param runtime the shared runtime
+	 * @param runtime the release runtime
 	 * @throws IOException if the binding cannot be written
 	 */
 	void writeRuntimeBinding(Path plugin, Path runtime) throws IOException;

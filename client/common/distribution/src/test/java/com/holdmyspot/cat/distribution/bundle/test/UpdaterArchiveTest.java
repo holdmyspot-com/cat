@@ -30,7 +30,7 @@ public final class UpdaterArchiveTest
 
 	/**
 	 * Verifies that an archive consumer receives the updater's data layout under the archive's top directory: the
-	 * shared runtime in {@code runtime/} and the updater's version in {@code <version>/VERSION}.
+	 * release's runtime in {@code runtime/} and the updater's version in {@code <version>/VERSION}.
 	 */
 	@Test
 	public void archiveConsumerReadsUpdaterVersion() throws IOException

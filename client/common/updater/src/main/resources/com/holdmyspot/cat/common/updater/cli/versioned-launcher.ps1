@@ -1,9 +1,9 @@
-# Runs this updater version on Windows on the shared runtime beside its version directory, with fixed JVM options;
-# environment-provided JVM options are discarded. The updater receives the caller's PATH and working directory,
+# Runs this updater version on Windows on its installation's runtime beside its version directory, with fixed JVM
+# options; environment-provided JVM options are discarded. The updater receives the caller's PATH and working directory,
 # because setup finds the harness program on that PATH and refuses data locations inside that directory.
 # Arguments: the updater operation and its arguments, forwarded to Java without interpretation.
 # Output: one updater JSON result.
-# Exit status: the updater operation's status, or 3 when the shared runtime has no java.exe.
+# Exit status: the updater operation's status, or 3 when the installation's runtime has no java.exe.
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 

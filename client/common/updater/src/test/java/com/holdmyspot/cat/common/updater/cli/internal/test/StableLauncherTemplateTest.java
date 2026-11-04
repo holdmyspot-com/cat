@@ -69,7 +69,7 @@ public final class StableLauncherTemplateTest
 	 */
 	private static final String REPAIR = "[IO.Directory]::Move($pending.Kept, $runtime)";
 	/**
-	 * The check that ends the launcher when the shared runtime has no Java.
+	 * The check that ends the launcher when the installation's runtime has no Java.
 	 */
 	private static final String MISSING_JAVA = "if (-not (Test-Path -LiteralPath $java -PathType Leaf))";
 
@@ -124,7 +124,7 @@ public final class StableLauncherTemplateTest
 	}
 
 	/**
-	 * Before it requires the shared runtime's Java, the Windows stable launcher puts back a runtime that a launcher
+	 * Before it requires the installation's Java, the Windows stable launcher puts back a runtime that a launcher
 	 * which stopped during a runtime replacement had moved aside.
 	 *
 	 * @throws IOException if the template cannot be read

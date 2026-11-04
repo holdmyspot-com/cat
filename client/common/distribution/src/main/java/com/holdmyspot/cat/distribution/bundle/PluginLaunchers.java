@@ -17,8 +17,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Writes the launchers of a plugin's {@code client/bin} folder, which start the plugin's Java programs on the shared
- * Java runtime that the installation-written file {@code client/runtime-binding} names.
+ * Writes the launchers of a plugin's {@code client/bin} folder, which start the plugin's Java programs on the
+ * installation's Java runtime that the installation-written file {@code client/runtime-binding} names.
  * <p>
  * A launcher finds {@code client/} from its own real folder, reads the binding, and runs nothing when the binding is
  * missing, holds anything but one line naming an absolute, normalized path, or names a runtime without an executable

@@ -100,8 +100,8 @@ public final class UpdaterArtifactBuilder
 	}
 
 	/**
-	 * Writes the updater's application directory, which holds no Java runtime: the launchers run the shared runtime in
-	 * the sibling directory {@code runtime}, both in the extracted release archive and once installed.
+	 * Writes the updater's application directory, which holds no Java runtime: the launchers run the release's runtime
+	 * in the sibling directory {@code runtime}, both in the extracted release archive and once installed.
 	 *
 	 * @param versionDirectory the new directory that receives the application, named after its version
 	 * @param updaterJar       the updater module JAR containing its versioned and stable launcher templates

@@ -44,8 +44,8 @@ public final class PluginArchiveTest
 	}
 
 	/**
-	 * Verifies that a source checkout's plugin is bound to the shared runtime, and that its archive leaves out the
-	 * binding and holds no file of a Java runtime.
+	 * Verifies that a source checkout's plugin is bound to the release runtime that the build wrote, and that its
+	 * archive leaves out the binding and holds no file of a Java runtime.
 	 */
 	@Test
 	public void archiveHoldsNoRuntime() throws IOException

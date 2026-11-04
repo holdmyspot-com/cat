@@ -10,7 +10,7 @@ import java.util.TreeSet;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Describes the shared Java runtime, from the {@code cat-runtime.json} file that the build writes into it.
+ * Describes an installation's Java runtime, from the {@code cat-runtime.json} file that the build writes into it.
  *
  * @param javaVersion the runtime's complete Java version, such as 27.0.1
  * @param javaFeature the runtime's Java feature release, such as 27

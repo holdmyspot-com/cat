@@ -63,7 +63,8 @@ public final class ClaudeArtifact
 	 *                    to {@code .claude} in the home directory; {@code CAT_CLAUDE_MARKETPLACE_ROOT}, CAT's Claude
 	 *                    marketplace, which defaults to {@code plugins/cat-marketplace} in the configuration
 	 *                    directory
-	 * @param runtime     the shared Java runtime that a bundle is bound to, which is the runtime of the running JVM
+	 * @param runtime     the installation's Java runtime that a bundle is bound to, which is the runtime of the running
+	 *                    JVM
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the home directory is not set, or the artifact cannot be downloaded, verified or

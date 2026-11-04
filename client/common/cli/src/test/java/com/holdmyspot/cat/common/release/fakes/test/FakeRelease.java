@@ -90,8 +90,8 @@ public final class FakeRelease
 	}
 
 	/**
-	 * Creates a minimal shared Java runtime of Java {@link #JAVA_FEATURE}, holding the modules {@code java.base} and
-	 * {@code java.net.http}: its {@code java} program, its description and its manifest, which also lists the files
+	 * Creates a minimal installation Java runtime of Java {@link #JAVA_FEATURE}, holding the modules {@code java.base}
+	 * and {@code java.net.http}: its {@code java} program, its description and its manifest, which also lists the files
 	 * that the directory already holds. A directory that already holds a runtime is returned unchanged.
 	 *
 	 * @param directory the runtime's directory

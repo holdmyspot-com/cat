@@ -16,9 +16,9 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Uses the JDK's {@code jlink} tool to build the shared Java runtime that the trusted updater and every CAT plugin of a
- * platform run on. The runtime holds only JDK modules and no launchers; each application's modules stay in its own
- * JARs, on its launchers' module path.
+ * Uses the JDK's {@code jlink} tool to build a release's Java runtime, which each harness's installation of the release
+ * holds for its trusted updater and CAT plugin. The runtime holds only JDK modules and no launchers; each application's
+ * modules stay in its own JARs, on its launchers' module path.
  */
 public final class JlinkImageBuilder
 {
@@ -53,7 +53,7 @@ public final class JlinkImageBuilder
 	}
 
 	/**
-	 * Builds the shared runtime: links the JDK modules without debug information, header files or manual pages, with
+	 * Builds the runtime: links the JDK modules without debug information, header files or manual pages, with
 	 * the default class data sharing archive of those modules, which shortens the start-up of every program, replaces
 	 * each symbolic link that {@code jlink} writes with a copy of its target, and writes the runtime's description and
 	 * manifest.

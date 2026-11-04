@@ -187,7 +187,7 @@ public final class RunnerRuntimeManifestTest
 			String packaged = RunnerRuntimeManifest.packagedFingerprint(artifact);
 			String withFirstRuntime = RunnerRuntimeManifest.fingerprint(artifact);
 
-			// The setup of a newer release replaces the shared runtime in place, at the same path
+			// The setup of a newer release replaces the installation's runtime in place, at the same path
 			TemporaryDirectories.deleteRecursively(runtime);
 			runtime(runtime, "runtime two\n");
 
@@ -258,7 +258,7 @@ public final class RunnerRuntimeManifestTest
 	}
 
 	/**
-	 * Creates a shared Java runtime with its manifest.
+	 * Creates an installation Java runtime with its manifest.
 	 *
 	 * @param directory the runtime's directory
 	 * @param modules   the content of its module image, which distinguishes one runtime from another
