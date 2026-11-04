@@ -23,9 +23,9 @@ import java.util.concurrent.CountDownLatch;
  * The argument {@code -Dfixture.behavior} selects the program's behavior:
  * <ul>
  *   <li>{@code report}: the recording run writes what the program observed, as properties, to the file that
- *   {@code -Dfixture.report} names: its standard input ({@code input}), working directory ({@code directory}) and the
- *   variables {@code HOME} ({@code home}), {@code TMPDIR} ({@code temporary}), {@code GIT_CEILING_DIRECTORIES}
- *   ({@code ceiling}) and {@code FIXTURE_PLUGIN_ROOT} ({@code root}).</li>
+ *   {@code -Dfixture.report} names: its standard input as {@code input}, each environment variable that the
+ *   comma-separated {@code -Dfixture.variables} names as {@code variable.<name>}, and each system property that
+ *   {@code -Dfixture.properties} names as {@code property.<name>}. An unset name is reported as {@code null}.</li>
  *   <li>{@code fail}: the cache-writing run writes part of the cache and then fails.</li>
  *   <li>{@code hang}: the recording run never ends.</li>
  * </ul>
@@ -65,7 +65,10 @@ public final class FakeJava
 				if (behavior.equals("hang"))
 					new CountDownLatch(1).await();
 				if (behavior.equals("report"))
-					report(Path.of(options.get("-Dfixture.report")));
+				{
+					report(Path.of(options.get("-Dfixture.report")), options.get("-Dfixture.variables"),
+						options.get("-Dfixture.properties"));
+				}
 				Files.writeString(Path.of(options.get("-XX:AOTConfiguration")), "configuration", UTF_8);
 			}
 			case "create" ->
@@ -81,18 +84,19 @@ public final class FakeJava
 	/**
 	 * Writes what the program observed.
 	 *
-	 * @param file the file to write
+	 * @param file       the file to write
+	 * @param variables  the comma-separated names of the environment variables to report
+	 * @param properties the comma-separated names of the system properties to report
 	 * @throws IOException if the input cannot be read or the file cannot be written
 	 */
-	private static void report(Path file) throws IOException
+	private static void report(Path file, String variables, String properties) throws IOException
 	{
 		Properties observed = new Properties();
 		observed.setProperty("input", new String(System.in.readAllBytes(), UTF_8));
-		observed.setProperty("directory", System.getProperty("user.dir"));
-		observed.setProperty("home", String.valueOf(System.getenv("HOME")));
-		observed.setProperty("temporary", String.valueOf(System.getenv("TMPDIR")));
-		observed.setProperty("ceiling", String.valueOf(System.getenv("GIT_CEILING_DIRECTORIES")));
-		observed.setProperty("root", String.valueOf(System.getenv("FIXTURE_PLUGIN_ROOT")));
+		for (String name : variables.split(","))
+			observed.setProperty("variable." + name, String.valueOf(System.getenv(name)));
+		for (String name : properties.split(","))
+			observed.setProperty("property." + name, String.valueOf(System.getProperty(name)));
 		try (OutputStream out = Files.newOutputStream(file))
 		{
 			observed.store(out, null);

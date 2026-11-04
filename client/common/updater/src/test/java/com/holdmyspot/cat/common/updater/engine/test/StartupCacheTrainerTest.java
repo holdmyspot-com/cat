@@ -111,11 +111,11 @@ public final class StartupCacheTrainerTest
 				observed.load(in);
 			}
 			requireThat(observed.getProperty("input"), "input").isEqualTo(INPUT);
-			requireThat(observed.getProperty("root"), "root").isEqualTo(plugin.toString());
-			requireThat(Path.of(observed.getProperty("home")).startsWith(scratch), "scratchHome").isTrue();
-			requireThat(Path.of(observed.getProperty("directory")).startsWith(scratch), "scratchProject").isTrue();
-			requireThat(Path.of(observed.getProperty("temporary")).startsWith(scratch), "scratchTemporary").isTrue();
-			requireThat(Path.of(observed.getProperty("ceiling")).startsWith(scratch), "ceiling").isTrue();
+			requireThat(observed.getProperty("variable." + ROOT_VARIABLE), "root").isEqualTo(plugin.toString());
+			requireThat(isIn(observed, "variable.HOME", scratch), "scratchHome").isTrue();
+			requireThat(isIn(observed, "property.user.dir", scratch), "scratchProject").isTrue();
+			requireThat(isIn(observed, "variable.TMPDIR", scratch), "scratchTemporary").isTrue();
+			requireThat(isIn(observed, "variable.GIT_CEILING_DIRECTORIES", scratch), "ceiling").isTrue();
 			requireThat(entries(scratch), "scratchEntries").isEmpty();
 		}
 	}
@@ -298,7 +298,9 @@ public final class StartupCacheTrainerTest
 	{
 		// The fake receives every argument, including the cache options, as a program receives its arguments
 		return plugin(plugin, FakeJava.class, Optional.of(FakeJava.class.getName()),
-			List.of("-Dfixture.behavior=" + behavior, "-Dfixture.report=" + report));
+			List.of("-Dfixture.behavior=" + behavior, "-Dfixture.report=" + report,
+				"-Dfixture.variables=HOME,TMPDIR,GIT_CEILING_DIRECTORIES," + ROOT_VARIABLE,
+				"-Dfixture.properties=user.dir"));
 	}
 
 	/**
@@ -395,6 +397,19 @@ public final class StartupCacheTrainerTest
 		if (Platform.current().isWindows())
 			return jdk.resolve("bin").resolve(name + ".exe").toString();
 		return jdk.resolve("bin").resolve(name).toString();
+	}
+
+	/**
+	 * Indicates whether an observed path lies in a directory.
+	 *
+	 * @param observed  what the fixture program observed
+	 * @param name      the name of the observed path
+	 * @param directory the directory
+	 * @return {@code true} if the observed path is {@code directory} or below it
+	 */
+	private static boolean isIn(Properties observed, String name, Path directory)
+	{
+		return Path.of(observed.getProperty(name)).startsWith(directory);
 	}
 
 	/**
