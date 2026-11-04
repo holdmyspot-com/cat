@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -406,6 +407,46 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies project-directory names match Claude Code 2.1.317, including its 200-character boundary and UTF-16
+	 * replacement semantics.
+	 *
+	 * @param input       the project path supplied to Claude
+	 * @param unixName    the native Claude name when the path uses forward slashes
+	 * @param windowsName the native Claude name when the path uses backslashes
+	 */
+	@Test(dataProvider = "nativeProjectDirectoryNames")
+	public void mapsNativeProjectDirectoryNames(String input, String unixName, String windowsName)
+	{
+		Path worktree = Path.of(input);
+		String expected = unixName;
+		if (worktree.getFileSystem().getSeparator().equals("\\"))
+			expected = windowsName;
+
+		requireThat(ClaudeRunner.claudeProjectDirectory(worktree), "projectDirectory").isEqualTo(expected);
+	}
+
+	/**
+	 * Supplies names recorded from Claude Code 2.1.317's project-directory operation for both separator conventions.
+	 *
+	 * @return native input and output pairs
+	 */
+	@DataProvider
+	public Object[][] nativeProjectDirectoryNames()
+	{
+		String boundaryPrefix = "-" + "a".repeat(199);
+		return new Object[][]
+		{
+			{"/work/short-path", "-work-short-path", "-work-short-path"},
+			{"/work/with_under_score", "-work-with-under-score", "-work-with-under-score"},
+			{"/" + "a".repeat(199), boundaryPrefix, boundaryPrefix},
+			{"/" + "a".repeat(200), boundaryPrefix + "-b6ymvl", boundaryPrefix + "-2e5xwc"},
+			{"/" + "a".repeat(200) + "b", boundaryPrefix + "-85qkr7", boundaryPrefix + "-3604xy"},
+			{"/" + "a".repeat(200) + "EJZGYRZ", boundaryPrefix + "-zik0zk", boundaryPrefix + "-u20cab"},
+			{"/work/caf\u00e9-\ud83d\ude00", "-work-caf----", "-work-caf----"}
+		};
+	}
+
+	/**
 	 * Verifies a Claude worktree subagent can resolve its reported spill-context path without access beyond hook results.
 	 */
 	@Test
@@ -418,9 +459,8 @@ public final class ClaudeRunnerTest
 			HarnessRun run = new HarnessRun("claude", "abc123-def456", directory);
 			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), run);
 			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
-			String canonicalName = worktree.toString().replaceAll("[^A-Za-z0-9_-]", "-");
-			String parentName = capture.resolve("runs").toAbsolutePath().normalize().toString().replaceAll(
-				"[^A-Za-z0-9_-]", "-");
+			String canonicalName = ClaudeRunner.claudeProjectDirectory(worktree);
+			String parentName = ClaudeRunner.claudeProjectDirectory(capture.resolve("runs").toAbsolutePath().normalize());
 			Path canonical = hookResults.resolve(canonicalName);
 			Path alias = hookResults.resolve(parentName).resolve("claude/abc123-def456-project");
 

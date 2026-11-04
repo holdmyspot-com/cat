@@ -420,10 +420,30 @@ public final class ClaudeRunner
 	 * @param worktree an absolute normalized worktree path
 	 * @return the corresponding Claude project-directory name
 	 */
-	private static String claudeProjectDirectory(Path worktree)
+	public static String claudeProjectDirectory(Path worktree)
 	{
 		assert worktree != null;
-		return worktree.toString().replaceAll("[^A-Za-z0-9_-]", "-");
+		String path = worktree.toString();
+		int prefixLimit = 200;
+		StringBuilder directory = new StringBuilder();
+		// Claude Code 2.1.317 replaces UTF-16 code units, so an astral character contributes two hyphens.
+		for (int index = 0; index < Math.min(path.length(), prefixLimit); ++index)
+		{
+			char character = path.charAt(index);
+			boolean asciiAlphanumeric = (character >= 'a' && character <= 'z') ||
+				(character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9');
+			if (asciiAlphanumeric)
+				directory.append(character);
+			else
+				directory.append('-');
+		}
+		if (path.length() > prefixLimit)
+		{
+			// Claude hashes the original path, and Java's hashCode has the same signed 32-bit UTF-16 arithmetic.
+			long hashMagnitude = Math.abs((long) path.hashCode());
+			directory.append('-').append(Long.toString(hashMagnitude, 36));
+		}
+		return directory.toString();
 	}
 
 	/**
