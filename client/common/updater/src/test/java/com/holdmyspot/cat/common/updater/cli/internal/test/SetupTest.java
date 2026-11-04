@@ -11,7 +11,9 @@ import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.cli.internal.DirectoryMover;
 import com.holdmyspot.cat.common.updater.cli.internal.Locations;
 import com.holdmyspot.cat.common.updater.cli.internal.Setup;
+import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
+import com.holdmyspot.cat.common.updater.engine.test.LauncherSwap;
 import com.holdmyspot.cat.common.updater.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.updater.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.updater.engine.test.Releases;
@@ -25,9 +27,11 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -231,6 +235,103 @@ public final class SetupTest
 			requireThat(Files.isDirectory(fixture.home.resolve(".cat-previous-live")), "previous").isTrue();
 			requireThat(fixture.integration.calls(), "calls").contains("register");
 		}
+	}
+
+	/**
+	 * Setup from another release moves the whole bundle of an installation whose runtime replacement the stable
+	 * launcher abandoned: the runtime, the updater and the plugin are at the setup's release, no replacement or previous
+	 * bundle remains, the next operation succeeds, and the other harness's installation is unchanged.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void movesBundleOverPendingReplacement() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-pending-")));
+			Path data = fixture.data();
+			Files.createDirectories(fixture.home.resolve("live"));
+			Files.writeString(fixture.home.resolve("live/version"), "1.0");
+			Releases.installation(data, "1.0");
+			Releases release = new Releases("1.1", "");
+			requireThat(engine(data, release.policy(fixture.home), release).update("v1.1",
+				new RecordingIntegration().registration()).result(), "update").isEqualTo(Result.UPDATED);
+			LauncherSwap.abandon(data);
+			Path other = data.resolveSibling("harness-b");
+			Releases.installation(other, "1.0");
+			LauncherSwap.requestRollback(other, "1.0", "0.9");
+			Map<String, String> otherBefore = Releases.snapshot(other);
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.UPDATED);
+			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.2\n");
+			requireThat(Files.readString(data.resolve("runtime/cat-runtime.json")), "runtime").
+				isEqualTo(Files.readString(fixture.archive.resolve("runtime/cat-runtime.json")));
+			requireThat(Files.readString(fixture.home.resolve("live/version")), "pluginVersion").isEqualTo("1.2");
+			requireThat(leftovers(data), "leftovers").isEmpty();
+			UpdateEngine engine = engine(data, outcome.policy(), fixture.source);
+			requireThat(engine.pendingSwap(), "pendingSwap").isEqualTo(Optional.empty());
+			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.empty());
+			requireThat(engine.update("v1.2", new RecordingIntegration().registration()).result(), "next").
+				isEqualTo(Result.UP_TO_DATE);
+			requireThat(Releases.snapshot(other), "otherInstallation").isEqualTo(otherBefore);
+		}
+	}
+
+	/**
+	 * Setup from another release over an installation that keeps a previous bundle leaves no previous bundle.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if setup refuses
+	 */
+	@Test
+	public void leavesNoPreviousBundle() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-previous-")));
+			Path data = fixture.data();
+			Files.createDirectories(fixture.home.resolve("live"));
+			Files.writeString(fixture.home.resolve("live/version"), "1.1");
+			Releases.updated(data, "1.0", "1.1");
+
+			Setup.Outcome outcome = fixture.setUp(null);
+
+			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.UPDATED);
+			requireThat(leftovers(data), "leftovers").isEmpty();
+			requireThat(engine(data, outcome.policy(), fixture.source).status().previousVersion(), "previous").
+				isEqualTo(Optional.empty());
+		}
+	}
+
+	/**
+	 * Returns what an installation keeps of a runtime replacement or a previous bundle.
+	 *
+	 * @param data the installation's updater data directory
+	 * @return the names of the staged and replaced runtimes, the swap request and result, and the updater version
+	 *         directories other than release 1.2's
+	 */
+	private static List<String> leftovers(Path data)
+	{
+		return Stream.of("runtime.next", "runtime.previous", "state/runtime-swap", "state/runtime-swap-result.json",
+			"1.0", "1.1").filter(name -> Files.exists(data.resolve(name), NOFOLLOW_LINKS)).toList();
+	}
+
+	/**
+	 * Creates an engine for the fixture's harness that does not wait for the lock.
+	 *
+	 * @param data   the installation's updater data directory
+	 * @param policy the installation's policy
+	 * @param source the release source
+	 * @return the engine
+	 */
+	private static UpdateEngine engine(Path data, TrustPolicy policy, Releases source)
+	{
+		return new UpdateEngine(data, policy, source, new LiveProvider(), "linux-x64", Clock.systemUTC(),
+			interval -> () -> {}, Duration.ZERO);
 	}
 
 	/**

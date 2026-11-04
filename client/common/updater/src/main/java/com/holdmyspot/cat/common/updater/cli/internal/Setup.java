@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
+import com.holdmyspot.cat.common.updater.engine.Bundle;
 import com.holdmyspot.cat.common.updater.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.updater.engine.PermissionRecord;
 import com.holdmyspot.cat.common.updater.engine.Registration;
@@ -123,11 +124,12 @@ public final class Setup
 	/**
 	 * Sets the harness's installation up. Setup first checks the harness home, the protected locations, the harness
 	 * program and configuration, and that the archive's Java runtime can run the updater and the installed plugin. It
-	 * then installs the runtime, the updater, the policy, the stable launcher and the current selection, deletes every
-	 * other updater version, activates the plugin of this release (also when the harness already has it) and installs
-	 * the permission entries. A failure of the plugin step leaves the updater installed and is reported in the outcome.
-	 * After a successful plugin step, setup removes the harness from the single updater installation that earlier
-	 * builds shared between harnesses, and deletes that installation once it serves no harness.
+	 * then installs the runtime, the updater, the policy, the stable launcher and the current selection, deletes a
+	 * pending runtime replacement, the previous bundle's runtime and every other updater version, activates the plugin
+	 * of this release (also when the harness already has it) and installs the permission entries. A failure of the
+	 * plugin step leaves the updater installed and is reported in the outcome. After a successful plugin step, setup
+	 * removes the harness from the single updater installation that earlier builds shared between harnesses, and
+	 * deletes that installation once it serves no harness.
 	 *
 	 * @param harness     the harness
 	 * @param home        the existing absolute harness home
@@ -209,6 +211,7 @@ public final class Setup
 		setPermissions(locations.policy(), PRIVATE_FILE);
 		writeLauncher(launcher);
 		write(locations.data().resolve(CURRENT_FILE), version + "\n", PRIVATE_FILE);
+		discardReplacement();
 		deleteOtherVersions(version);
 
 		UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation, platform.id(), clock,
@@ -418,6 +421,22 @@ public final class Setup
 	{
 		return new IOException("Setup could not replace " + target + ": " + cause.getMessage() + ". Close every " +
 			"program that runs from it, then run the entry command again.", cause);
+	}
+
+	/**
+	 * Deletes a runtime replacement that an earlier operation left to the stable launcher, and the runtime that the
+	 * previous bundle kept, because the installed runtime and {@code current} now select this release. The request
+	 * goes first, so that no later operation acts on it without its staged runtime.
+	 *
+	 * @throws IOException if a file or directory cannot be deleted
+	 */
+	private void discardReplacement() throws IOException
+	{
+		Path data = locations.data();
+		LinkSafeDeletion.delete(data.resolve(Bundle.SWAP_REQUEST), data);
+		LinkSafeDeletion.delete(data.resolve(Bundle.SWAP_RESULT), data);
+		LinkSafeDeletion.delete(data.resolve(Bundle.RUNTIME_NEXT), data);
+		LinkSafeDeletion.delete(data.resolve(Bundle.RUNTIME_PREVIOUS), data);
 	}
 
 	/**
