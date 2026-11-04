@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -14,6 +15,7 @@ import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -538,6 +540,83 @@ public final class SessionRequestBrokerTest
 			}
 			requireThat(child.isAlive(), "childAlive").isFalse();
 			requireThat(fixture.await("child").path("status").asString(), "status").isEqualTo("stopped");
+		}
+	}
+
+	/**
+	 * Verifies that a runner launch made inside a session whose run may request no session reaches the session's
+	 * runner, which refuses it without starting a requested session, so that the launch fails with the reason instead of
+	 * starting a harness inside the session.
+	 *
+	 * @throws IOException if fixture or bridge I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesLaunchWithoutRequests() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		// Requirement: R-I9, R-I11
+		try (Fixture fixture = new Fixture(new String[0]);
+			TestHarnessRunnerScope scope = new TestHarnessRunnerScope())
+		{
+			SessionRequestAccess.allowing(fixture.run, fixture.root, 0, Platform.current(),
+				SessionRequestAccess.Shell.POSIX);
+			List<String> started = new CopyOnWriteArrayList<>();
+			AtomicReference<Integer> status = new AtomicReference<>();
+			StringWriter errors = new StringWriter();
+			HarnessProcess parent = new HarnessProcess()
+			{
+				private int checks;
+
+				@Override
+				public HarnessProcessResult sendTurn(String request) throws IOException
+				{
+					// The session's command runs the claude-runner launcher, which forwards its launch while the
+					// session's runner checks for requests on each heartbeat
+					status.set(SessionRequestForwarder.forward("claude", new String[]{"--project",
+						fixture.project.toString(), "--model", "haiku", "--effort", "low"},
+						new StringReader("{\"type\":\"turn\",\"prompt\":\"nested\"}\n{\"type\":\"complete\"}\n"),
+						fixture.requests, () ->
+						{
+							checks += 1;
+							if (checks > 100)
+								throw new IOException("The runner did not answer the forwarded launch");
+							scope.heartbeatTicker().tick();
+						}, OutputStream.nullOutputStream(), new PrintWriter(errors, true)));
+					return new HarnessProcessResult(0, "", "", true, "done", List.of("done"));
+				}
+
+				@Override
+				public void interrupt()
+				{
+				}
+
+				@Override
+				public boolean isAlive()
+				{
+					return true;
+				}
+
+				@Override
+				public void close()
+				{
+				}
+			};
+			try (parent; Reader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"test\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+			{
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run, parent, scope),
+					new HarnessRunManager(fileLocks, fixture.root.resolve("runs"), Clock.systemUTC(),
+						Yielding.fileReplacer()),
+					fixture.options, fixture.json, Yielding.fileReplacer(), input, new StringWriter(),
+					(harness, _, _) ->
+					{
+						started.add(harness);
+						throw new IOException("No requested session may start");
+					});
+			}
+			requireThat(status.get(), "status").isEqualTo(1);
+			requireThat(errors.toString(), "errors").contains("refused: this run allows no further sessions");
+			requireThat(started, "started").isEmpty();
 		}
 	}
 

@@ -112,8 +112,8 @@ public final class HarnessRunnerBridge
 	 * @param keepRun indicates whether the completed run is retained
 	 * @param input the bridge input
 	 * @param output the bridge output
-	 * @param options request settings, null when requests are disabled
-	 * @param requestedStarter starts child runners, null when requests are disabled
+	 * @param options the runner options, null when the caller does not serve the session as a runner
+	 * @param requestedStarter starts child runners, null only when no request broker starts
 	 * @return the completed parent run
 	 * @throws IOException if the bridge or a request broker fails
 	 */
@@ -506,17 +506,19 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Starts request discovery only for a run whose caller explicitly permits it.
+	 * Starts request discovery for a session whose runner gave it access to session requests, so that each runner
+	 * launch that the session's commands make is answered, with a refusal when the options allow no session request.
 	 *
 	 * @param session the parent session
-	 * @param options runner options, null when disabled
+	 * @param options runner options, null when the caller does not serve the session as a runner
 	 * @param starter starts child runners
-	 * @return the started broker, or null when disabled
+	 * @return the started broker, or null if {@code options} is null or the session's run has no requests directory
+	 * @throws NullPointerException if the broker starts and {@code starter} is null
 	 */
 	private static SessionRequestBroker requestBroker(HarnessRunSession session, HarnessRunnerOptions options,
 		RequestedSessionStarter starter)
 	{
-		if (options == null || options.sessionRequests() == 0)
+		if (options == null || !Files.isDirectory(SessionRequestAccess.requestsDirectory(session.run())))
 			return null;
 		requireThat(starter, "requestedStarter").isNotNull();
 		SessionRequestBroker broker = new SessionRequestBroker(session.run(), options, starter);

@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * What a session that may request sessions reaches beyond the limits of {@link SessionCommandLimits}, the same in
+ * What every session that a runner starts reaches beyond the limits of {@link SessionCommandLimits}, the same in
  * every harness. The session's commands may write the run's requests directory, the one directory outside the
  * session's project and home that they may write, and may read, but not write, the run's responses directory, so that
  * a link that the session plants cannot redirect the runner's writes. Their environment names the requests directory
@@ -21,6 +21,10 @@ import java.util.Optional;
  * session's commands every read below it, the logins of those runs included. It holds one run root for each session
  * that the session may request, numbered from 1, so that each of those directories exists before any requested
  * session starts, and the sandbox of each requested session denies the runs of the others.
+ * <p>
+ * A session that may request no session gets the same access with no run root of a requested session. A runner
+ * launcher that its commands run then still hands its launch to the session's runner, instead of starting a harness
+ * inside the session, and the runner refuses every such request with {@link #NO_REQUESTS_REASON}.
  *
  * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
  * @param responses the run's responses directory, where the runner answers each request
@@ -55,6 +59,10 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * The name of the launcher that requests a session, without the extension that it has on Windows.
 	 */
 	public static final String LAUNCHER = "request-session";
+	/**
+	 * The reason with which a runner refuses each request of a session that may request no session.
+	 */
+	public static final String NO_REQUESTS_REASON = "this run allows no further sessions";
 
 	/**
 	 * Creates the access.
@@ -76,7 +84,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the requests directory of a run, which exists only if the run's session may request sessions.
+	 * Returns the requests directory of a run, which exists once a runner has given the run's session its access.
 	 *
 	 * @param run the run
 	 * @return the directory
@@ -89,7 +97,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the responses directory of a run, which exists only if the run's session may request sessions.
+	 * Returns the responses directory of a run, which exists once a runner has given the run's session its access.
 	 *
 	 * @param run the run
 	 * @return the directory
@@ -102,8 +110,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the run root of the runs of the sessions that a run's session requests, which exists only if the run's
-	 * session may request sessions.
+	 * Returns the run root of the runs of the sessions that a run's session requests, which exists once a runner has
+	 * given the run's session its access.
 	 *
 	 * @param run the run
 	 * @return the directory
@@ -129,16 +137,16 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the access of a run's session, creating the run's requests, responses and requested-runs directories if
-	 * the session may request any session. A runner calls this before it decides what the session may read, so that
-	 * its sandbox covers all three directories.
+	 * Returns the access of a run's session, creating the run's requests, responses and requested-runs directories. A
+	 * runner calls this before it decides what the session may read, so that its sandbox covers all three directories.
 	 *
 	 * @param run             the run
 	 * @param artifact        the harness artifact that the run uses, whose {@code bin} directory holds the launcher
-	 * @param sessionRequests how many sessions the session may request
+	 * @param sessionRequests how many sessions the session may request, which is the number of requested-run roots
+	 *                        that this creates
 	 * @param platform        the platform that the session runs on, which decides the launcher's file name
 	 * @param shell           the shell used by the session's instructions
-	 * @return the access, or empty if {@code sessionRequests} is {@code 0}, in which case nothing is created
+	 * @return the access, which is never empty
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code sessionRequests} is negative
 	 * @throws IOException              if a directory cannot be created
@@ -151,8 +159,6 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(shell, "shell").isNotNull();
-		if (sessionRequests == 0)
-			return Optional.empty();
 		Path requests = Files.createDirectories(requestsDirectory(run));
 		Path responses = Files.createDirectories(responsesDirectory(run));
 		Path requestedRuns = Files.createDirectories(requestedRunsDirectory(run));

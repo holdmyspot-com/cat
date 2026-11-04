@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.testng.annotations.Test;
 
 /**
@@ -385,24 +386,34 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that a session that may request no session gets neither the requests nor the responses directory, nor
-	 * the variables that name them.
+	 * Verifies that a session that may request no session still has the run's requests and responses directories and
+	 * the variables that name them, so that a runner launch that its commands make goes to its runner, which refuses it,
+	 * instead of starting a harness inside the session's sandbox; and that no run root of a requested session exists.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void noRequestsByDefault() throws IOException
+	public void launchesGoToRunnerWithoutRequests() throws IOException
 	{
 		// Requirement: R-I9, R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
+			Path requests = fixture.run().directory().resolve("requests");
+			Path responses = fixture.run().directory().resolve("responses");
 
-			requireThat(Files.exists(fixture.run().directory().resolve("requests")), "requestsExist").isFalse();
-			requireThat(Files.exists(fixture.run().directory().resolve("responses")), "responsesExist").isFalse();
-			requireThat(limits.commandEnvironment().keySet(), "commandVariables").doesNotContain("CAT_SESSION_REQUESTS").
-				doesNotContain("CAT_REQUEST_SESSION");
+			requireThat(requests, "requests").isDirectory();
+			requireThat(responses, "responses").isDirectory();
+			requireThat(limits.commandEnvironment().get("CAT_SESSION_REQUESTS"), "CAT_SESSION_REQUESTS").
+				isEqualTo(requests.toString());
+			requireThat(realPaths(limits.writable()), "writable").contains(requests.toRealPath());
+			requireThat(readable(limits, responses), "responsesReadable").isTrue();
+			Path requestedRuns = fixture.run().directory().resolve("requested-runs");
+			try (Stream<Path> roots = Files.list(requestedRuns))
+			{
+				requireThat(roots.toList(), "requestedRunRoots").isEmpty();
+			}
 		}
 	}
 

@@ -27,7 +27,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * Validates session requests, snapshots their inputs before starting children, and publishes retained evidence.
- * Closing the broker stops child process trees and answers unprocessed requests as stopped.
+ * A run whose options allow no session request gets each request refused with
+ * {@link SessionRequestAccess#NO_REQUESTS_REASON}, and one that has accepted all that its options allow gets each
+ * further request refused with {@code limit}. Closing the broker stops child process trees and answers unprocessed
+ * requests as stopped.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -146,6 +149,11 @@ public final class SessionRequestBroker implements Closeable
 					if (stopped)
 					{
 						respond(id, "", "stopped", "The requesting run stopped", "", directory);
+						continue;
+					}
+					if (options.sessionRequests() == 0)
+					{
+						respond(id, "", "refused", SessionRequestAccess.NO_REQUESTS_REASON, "", directory);
 						continue;
 					}
 					if (accepted >= options.sessionRequests())

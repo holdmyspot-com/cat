@@ -26,11 +26,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * Hands a runner launch made inside a run to the run's own runner, which starts the session outside the run's sandbox.
  * <p>
- * A session's commands cannot start a harness: they run in a sandbox and hold no login. When its runner lets it
- * request sessions, a runner launcher that the session runs packs the launch as a session request instead, waits for
- * the parent runner to finish it, and returns the requested session's transcript and receipt as its own. The parent
- * chooses the run root, the artifact, the denied reads and the limits of the sessions it requests, so a launch may not
- * choose them.
+ * A session's commands cannot start a harness: they run in a sandbox and hold no login. Every session that a runner
+ * starts has {@link SessionRequestAccess}, so a runner launcher that the session runs packs the launch as a session
+ * request instead, waits for the parent runner to finish it, and returns the requested session's transcript and receipt
+ * as its own. When the parent's run may request no session, the parent refuses the request and the launch fails with
+ * the reason. The parent chooses the run root, the artifact, the denied reads and the limits of the sessions it
+ * requests, so a launch may not choose them.
  */
 public final class SessionRequestForwarder
 {
