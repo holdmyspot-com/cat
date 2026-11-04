@@ -1,5 +1,6 @@
 module com.holdmyspot.cat.codex.cli.test
 {
+	requires com.holdmyspot.cat.claude.layout;
 	requires com.holdmyspot.cat.codex.cli;
 	requires com.holdmyspot.cat.codex.layout;
 	requires com.holdmyspot.cat.common.cli;

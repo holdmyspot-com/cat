@@ -2,6 +2,8 @@ package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.runner.ClaudeArtifact;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -71,7 +73,7 @@ public final class ClaudeArtifactTest
 	 */
 	private static Path ownPlugin(Path root) throws IOException
 	{
-		return FakeRelease.artifact(root.resolve("codex/plugins/cache/cat/cat").resolve(OWN_VERSION),
+		return FakeRelease.artifact(new CodexInstallation(root.resolve("codex")).versionFolders().resolve(OWN_VERSION),
 			".codex-plugin/plugin.json", "codex-runner", OWN_VERSION, Platform.current()).toAbsolutePath().normalize();
 	}
 
@@ -103,7 +105,7 @@ public final class ClaudeArtifactTest
 	 */
 	private static Path versionFolder(Path root, Path configuration, String version) throws IOException
 	{
-		Path installed = FakeRelease.artifact(configuration.resolve("plugins/cat-marketplace/plugins/cat").
+		Path installed = FakeRelease.artifact(new ClaudeInstallation(configuration).versionFolders().
 			resolve(version), ".claude-plugin/plugin.json", "claude-runner", version, Platform.current()).
 			toAbsolutePath().normalize();
 		RuntimeBinding.write(installed, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
@@ -121,9 +123,10 @@ public final class ClaudeArtifactTest
 	 */
 	private static void record(Path configuration, String version) throws IOException
 	{
-		Path records = configuration.resolve("plugins/installed_plugins.json");
+		Path records = new ClaudeInstallation(configuration).installedPlugins();
 		Files.createDirectories(records.getParent());
-		String cache = configuration.resolve("plugins/cache/cat/cat").resolve(version.replace('+', '-')).toString();
+		String cache = new ClaudeInstallation(configuration).marketplaceCache().resolve("cat").
+			resolve(version.replace('+', '-')).toString();
 		Files.writeString(records, """
 			{
 			  "version": 2,
@@ -261,7 +264,7 @@ public final class ClaudeArtifactTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-marketplace-"));
 			Path configuration = root.resolve("claude");
-			Path marketplace = FakeRelease.artifact(configuration.resolve("plugins/cat-marketplace/plugins/cat"),
+			Path marketplace = FakeRelease.artifact(new ClaudeInstallation(configuration).marketplacePlugin(),
 				".claude-plugin/plugin.json", "claude-runner", OWN_VERSION, Platform.current());
 			RuntimeBinding.write(marketplace, FakeRelease.runtime(root.resolve("runtime"), Platform.current()));
 			Path plugin = ownPlugin(root);

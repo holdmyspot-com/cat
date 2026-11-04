@@ -61,10 +61,6 @@ public final class CodexRunner
 	 */
 	private static final String THREAD_ID = "CODEX_THREAD_ID";
 	/**
-	 * The name of Codex's configuration file in the Codex home.
-	 */
-	private static final String CONFIGURATION = "config.toml";
-	/**
 	 * The name of the file in the Codex home that holds Codex's login.
 	 */
 	private static final String LOGIN = "auth.json";
@@ -153,7 +149,7 @@ public final class CodexRunner
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = codexHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of(LOGIN));
-			Path isolatedConfiguration = isolatedHome.resolve(CONFIGURATION);
+			Path isolatedConfiguration = configuration(isolatedHome);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
 			SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
 			if (Platform.current().isWindows())
@@ -163,7 +159,7 @@ public final class CodexRunner
 			// A runner that a Codex thread starts gives the session the multi-agent state that the thread runs with
 			CodexParentMultiAgentState parentState = CodexParentMultiAgentState.read(scope.json(), hostHome,
 				environment.get(THREAD_ID));
-			CodexConnectionConfiguration.copy(hostHome.resolve(CONFIGURATION), isolatedConfiguration,
+			CodexConnectionConfiguration.copy(configuration(hostHome), isolatedConfiguration,
 				run.directory().resolve("project"), caches,
 				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState);
 			List<String> appServer = appServerCommand(executable, installCat || !trialPlugins.isEmpty());
@@ -608,7 +604,7 @@ public final class CodexRunner
 		harnessFiles.addAll(SessionCommandLimits.harnessFiles(commandEnvironment, platform));
 		// CAT's read-part command reads the session's tool output limit from the session's configuration, and a Codex
 		// process that a command starts, such as a prompt optimizer's session, reads the session's own login
-		Set<Path> readable = Set.of(home.resolve(CONFIGURATION).toAbsolutePath().normalize(),
+		Set<Path> readable = Set.of(configuration(home),
 			home.resolve(LOGIN).toAbsolutePath().normalize());
 		for (Path file : harnessFiles)
 		{
@@ -725,8 +721,8 @@ public final class CodexRunner
 		requireThat(isolatedEnvironment, "isolatedEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
 		requireThat(commands, "commands").isNotNull();
-		Path hostConfiguration = hostHome.resolve(CONFIGURATION);
-		Path isolatedConfiguration = isolatedHome.resolve(CONFIGURATION);
+		Path hostConfiguration = configuration(hostHome);
+		Path isolatedConfiguration = configuration(isolatedHome);
 		List<String> names = new ArrayList<>();
 		for (Path trialPlugin : trialPlugins)
 		{
@@ -971,6 +967,17 @@ public final class CodexRunner
 		return List.of(
 			List.of(executable, "plugin", "marketplace", "add", marketplace.toString()),
 			List.of(executable, "plugin", "add", name + "@" + name));
+	}
+
+	/**
+	 * Returns Codex's configuration file.
+	 *
+	 * @param home a Codex home directory
+	 * @return the configuration file in {@code home}
+	 */
+	private static Path configuration(Path home)
+	{
+		return new CodexInstallation(home.toAbsolutePath()).configuration();
 	}
 
 	/**
