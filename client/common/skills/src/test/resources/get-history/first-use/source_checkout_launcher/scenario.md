@@ -16,4 +16,4 @@ resulting launcher path before retrieving anything.
 
 - **kind**: effect
 - **description**: The build uses client/mvnw with -f client/pom.xml, -pl common/distribution, -am, and package, and the
-  launcher is client/common/distribution/target/jlink/{{harness}}/bin/get-history.
+  launcher is client/common/distribution/target/runtime/{{harness}}/client/bin/get-history.

@@ -1,61 +1,43 @@
-## Install CAT or upgrade its trusted updater
+## Install CAT with one command
 
-Run setup yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Choose your harness explicitly.
+Run the command yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Choose your harness explicitly.
 Each entry script downloads only ${GITHUB_REF_NAME} assets and verifies their embedded SHA-256 digests before use.
-
-Install CAT and its separate trusted updater:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness claude
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness codex
 ```
 
-For an existing CAT installation, add the updater or upgrade only the updater and its policy:
-
-```bash
-curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness claude --updater-only
-curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness codex --updater-only
-```
-
-Codex on Windows, in PowerShell:
+Codex or Claude Code on Windows, in PowerShell:
 
 ```powershell
 & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex
 ```
 
-Add `-UpdaterOnly` to migrate an existing installation or upgrade only the updater. Claude Code on Windows uses the
-POSIX command in Git Bash. If setup cannot write a required path, run the command it prints outside the agent sandbox.
-Setup prints the updater exemption for you to add; it never changes your permission settings. Restart the harness.
+The one command installs everything: the Java runtime that CAT keeps for itself, the trusted updater, the CAT plugin
+for your harness, and the permission entries that let your agent install, update and uninstall CAT afterwards. There
+are no settings to copy. Claude Code on Windows can also use the POSIX command in Git Bash. If the command cannot write
+a required path, run it outside the agent sandbox. Restart the harness.
 
-## Routine updates and trust
+## Install, update and uninstall with your agent
 
-After setup and the exemption, CAT's `update` skill requests approved releases through the installed trusted updater.
-It verifies signed metadata and archive digests, stages the plugin, and activates it without reinstalling CAT or
-rewriting harness configuration. It cannot upgrade the updater or change its policy. Only the most recent successful
-activation has a rollback record; run the updater's `rollback --harness <id>` yourself to restore the previous
-installation.
+After that, ask your agent. CAT's `update` skill installs, updates and rolls back CAT through the installed trusted
+updater, and installs the plugin again when you removed it by other means. The updater verifies signed metadata and
+archive digests, and refuses a release whose Java requirement the installed runtime does not meet; in that case, run
+the newer release's command above again. It never changes the updater or its policy. Only the most recent successful
+activation has a rollback record, and the harness asks you to approve a rollback.
 
 This release's manifest, `cat-release-manifest.json`, is signed with the Ed25519 public key whose X.509 encoding has
 SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`. Initial setup relies on HTTPS to GitHub and the release's embedded
 archive digests; compare this fingerprint through a source you trust. Hooks and MCP servers may execute outside the
 shell sandbox as your user: authentication approves release provenance, not the harmlessness of its code.
 
-See [installation, exemptions, supported platforms, migration, and rollback](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md).
+See [installation, permissions, supported platforms, and rollback](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md).
 
 ## Uninstall
 
-Uninstall CAT while keeping its updater:
-
-```bash
-curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness claude --uninstall
-curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness codex --uninstall
-```
-
-On Windows:
-
-```powershell
-& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex -Uninstall
-```
-
-Codex keeps CAT's data unless you add `--delete-data` (PowerShell `-DeleteData`). Remove the updater separately as
-described in the installation guide.
+Ask your agent to uninstall CAT. It asks whether to also delete CAT's plugin data, then removes all of CAT: the plugin
+and its registration in every harness, the Codex agents that CAT owns, the trusted updater, the Java runtime and the
+permission entries. CAT's plugin data is kept unless you ask to delete it, and your own files, including
+`~/.cat/rules`, are never deleted. Installing CAT again after an uninstall is a new installation: run the one command
+above again.

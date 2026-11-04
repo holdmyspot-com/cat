@@ -47,43 +47,37 @@ a team, see Pricing (docs/PRICING.md) for commercial plans and features.
 
 ## Get Started
 
-### 1. Install CAT and its updater
+### 1. Install CAT
 
-Run setup yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Choose the command for your harness:
+Run one command yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Choose the command for your
+harness:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex
 ```
 
-Each command installs that release and a separate trusted updater. Setup may change your harness configuration. It
-prints the narrow updater exemption for you to add; CAT does not change your permission settings. Windows commands,
-custom harness homes, migration, and the permission boundary are in [Install CAT](docs/installation.md).
+The command installs everything CAT needs: a Java runtime that CAT keeps for itself, a trusted updater, the CAT
+plugin for your harness, and the permission entries that let your agent install, update and uninstall CAT afterwards.
+There is nothing to copy into your settings. Windows commands, custom harness homes, and the permission boundary are
+in [Install CAT](docs/installation.md).
 
 ### 2. Start or resume a session
 
 Start or resume a session. CAT then injects its default rules and your project's applicable rules.
 
-### Routine updates
+### Install, update, reinstall and uninstall
 
-After setup and the exemption, ask your agent to update CAT. CAT's `update` skill requests GitHub's latest release,
-which must satisfy your updater policy. It verifies signed release metadata and the plugin archive before activation,
-without reinstalling the plugin or rewriting harness configuration. The project cannot use this operation to replace the
-updater or its policy. Restart the harness after an update.
+Afterwards, ask your agent. CAT's `update` skill installs, updates and rolls back CAT through the trusted updater, and
+installs the plugin again if you removed it by other means. It requests GitHub's latest release unless you name one;
+the release must satisfy your updater policy. It verifies signed release metadata and the plugin archive before
+activation. Restart the harness after an update. See
+[updates and rollback](docs/installation.md#routine-operations).
 
-To migrate an existing CAT installation or upgrade the updater itself, run the selected release's setup command
-with `--updater-only`. These remain explicit user operations. See [updates and rollback](docs/installation.md#routine-updates-and-rollback).
-
-### Uninstall
-
-Ask your agent to uninstall CAT, or run the release command yourself with an explicit harness:
-
-```bash
-curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex --uninstall
-```
-
-Use `--harness claude` for Claude Code. Codex keeps CAT's data unless you add `--delete-data`. Uninstalling CAT leaves
-the updater installed; [the installation guide](docs/installation.md#uninstall) explains how to remove it too.
+CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes all of CAT: the plugin, the updater,
+the Java runtime and the permission entries. It keeps the plugin data unless you ask to delete it, and never deletes
+your own files or rules. Installing CAT again after that is a new installation that uses the one command above. See
+[uninstall](docs/installation.md#uninstall).
 
 ## Learn More
 

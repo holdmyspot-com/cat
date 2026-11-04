@@ -2,47 +2,59 @@
 
 ## Design Goals
 
-- Remove CAT with the uninstaller that its installed plugin already holds, so that removal downloads nothing.
-- Keep CAT's data unless the user asks to delete it, so that a later installation can migrate it.
-- Leave CAT's trusted updater to the user, who set it up, and tell them how to remove it.
+- Remove all of CAT with the trusted updater that is installed with it, so that removal downloads nothing and leaves
+	nothing behind that the user did not choose to keep.
+- Keep CAT's plugin data unless the user asks to delete it, so that a later installation can migrate it, and ask the
+	user before removing anything.
+- Leave every file that CAT does not own, including the user's rules in `.cat/rules`, untouched.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
 - Give the user the exact command that a blocked change needs, so that they can run it without asking for it.
 
 ## Guidance
 
-CAT's installed plugin directory is two levels above this skill's directory, and its `install/` directory holds CAT's
-uninstaller. The uninstaller removes CAT's plugin and its marketplace registration, and `.cat/bundles` in the user's
-home directory, where CAT's runner launchers keep the CAT artifacts that they downloaded. In Codex it first removes the
-CAT-owned custom agents recorded in CAT's ownership manifest, and it keeps CAT's data directory unless the user asks to
-delete CAT's data as well.
+1. Find the trusted updater's launcher, and write its absolute path in place of `<launcher>` below:
+	- On Linux and macOS, it is `cat-updater/bin/cat-updater` in the directory that the environment variable
+		`XDG_DATA_HOME` names when that variable holds an absolute path, and otherwise in `.local/share` in the user's
+		home directory. `<launcher>` stands for that path.
+	- On Windows, in PowerShell or Git Bash, it is `cat-updater\bin\cat-updater.ps1` in the directory that the
+		environment variable `LOCALAPPDATA` names. `<launcher>` stands for the command `powershell.exe -NoProfile
+		-NonInteractive -ExecutionPolicy Bypass -File` followed by that path in double quotes.
 
-Run one command, writing the installed plugin directory's absolute path in place of `<plugin>`:
+	Read the variable's value first, then write the launcher's absolute path literally in the command that runs it,
+	because the user's permission entries match that exact text. Write the command as the launcher followed by its
+	arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of commands.
 
-- In a POSIX shell, including Git Bash on Windows, run `sh` with the argument `<plugin>/install/uninstall-<h>.sh`. In
-	Codex, add the argument `--delete-data` only when the user asks to delete CAT's data.
-- In PowerShell, where Codex runs commands on Windows, read the text of `<plugin>\install\install-codex.ps1`, create a
-	script block from it, and run the script block with the argument `-Uninstall`, followed by `-DeleteData` only when
-	the user asks to delete CAT's data. Do not run the file itself, which PowerShell's execution policy can block.
+	When the launcher does not exist, there is no trusted updater to remove CAT with. End your turn with a reply that
+	says so, and that the user can install CAT's updater again with the entry command from the `update` skill and then
+	ask you to uninstall. Run nothing else.
+2. Before you run anything, ask the user whether to also delete CAT's plugin data, and state that the default is to
+	keep it. Say that uninstalling removes all of CAT: its plugin and registration in every harness that the updater
+	serves, the updater, the Java runtime that CAT installed, and the permission entries that let you run the updater,
+	but not the user's own files or rules. End your turn with the question, and continue only when the user answers.
+	Skip the question when the user's request already says whether to delete the data.
+3. Run one command: `<launcher> uninstall` to keep CAT's plugin data, or `<launcher> uninstall --delete-data` only when
+	the user asked to delete it. The harness may ask the user to approve this command before it runs; that approval is
+	separate from the user's answer in step 2. When the user declines it, stop and report that nothing was
+	removed.
+4. The launcher prints one line of JSON. Act on its `result` field:
+	- `uninstalled`: tell the user that CAT is removed and that sessions they start from now on run without it. Say
+		whether CAT's plugin data was kept or deleted. Also tell them that installing CAT again is a new installation,
+		which needs the one manual entry command again, and that you cannot run it for them. Run nothing further with
+		the launcher: it no longer exists.
+	- `not_removed`: tell the user that CAT's files remain, name the directory that the launcher printed to standard
+		error, and ask them to delete that directory themselves, outside the sandbox, after they close every session
+		that uses CAT.
+	- `locked`: report that another operation on CAT is running, and that the user can ask again once it finishes.
+	- `usage`: report its `message` as a defect in CAT.
+	- Any other result: report its `message` and tell the user that running the same command again continues the
+		removal.
 
-When the command exits with status 77, or its output says that CAT cannot write a path and gives a command to run
-outside the sandbox, end your turn with a reply that names that path, shows the command in a code block character for
-character as printed, never as a summary or a description of it, and asks the user to run it in a terminal outside the
-sandbox or, in Claude Code only, to type it at the prompt prefixed with `! `. Do no other work in that turn, including
-work the user asked for earlier. Do not run it again, with other permissions, or in any other way to get around the
-sandbox. Report any other failure with the command's output.
+	When the launcher prints anything else, report its output.
 
-After the command succeeds, tell the user that CAT is uninstalled and that sessions they start from now on run without
-it. Also tell them that CAT's trusted updater, if they set it up, stays installed, and that they can remove it
-themselves outside the sandbox. To do so, they delete the updater's data and configuration directories, and remove
-the entries for the updater's launcher that they added to their harness's sandbox and permission settings. The
-launcher is `cat-updater/bin/cat-updater`, or `cat-updater\bin\cat-updater.cmd` on Windows, in the directory that holds
-the data directory. The directories are:
-
-- On Linux, macOS and Git Bash, the data directory `cat-updater` in the directory that the environment variable
-	`XDG_DATA_HOME` names, or in `.local/share` in their home directory when that variable does not hold an absolute
-	path, and the configuration directory `cat-updater` in the directory that `XDG_CONFIG_HOME` names, or in `.config`
-	in their home directory when that variable does not hold an absolute path.
-- On Windows in PowerShell, `cat-updater` in the directory that the environment variable `LOCALAPPDATA` names, which
-	is both the data and the configuration directory.
-
-Do not delete them yourself.
+When the launcher exits with status 77, or its `result` is `not_writable`, or the harness refuses to run the launcher
+command, the user's sandbox or permission settings block the operation, at a path that the result's `paths` may name.
+Then end your turn with a reply that names that path, if the result names one, shows the command you ran in a code
+block character for character as printed, never as a summary or a description of it, and asks the user to run it in a
+terminal outside the sandbox or, in Claude Code only, to type it at the prompt prefixed with `! `. Do no other work in
+that turn, including work the user asked for earlier. Do not run it again, with other permissions, or in any other way
+to get around the sandbox.

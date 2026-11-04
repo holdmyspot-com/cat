@@ -26,8 +26,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests that both plugins hold the {@code update} and {@code uninstall} skills, through which an agent updates CAT
- * through the trusted updater or removes CAT with the uninstaller that the installed plugin holds.
+ * Tests that both plugins hold the {@code update} and {@code uninstall} skills, through which an agent installs,
+ * updates and removes CAT only through the installed trusted updater.
  */
 public final class LifecycleSkillsTest
 {
@@ -42,32 +42,28 @@ public final class LifecycleSkillsTest
 	}
 
 	/**
-	 * Supplies each harness with the installer files that its {@code uninstall} skill runs from the installed plugin's
-	 * {@code install/}, together with the library and installer that they rely on.
+	 * Supplies each harness whose plugin to assemble.
 	 *
-	 * @return the harness's name and the installer files
+	 * @return the harness's name
 	 */
 	@DataProvider
 	public Object[][] harnesses()
 	{
-		return new Object[][]{
-			{"claude", List.of("common.sh", "install-claude.sh", "uninstall-claude.sh")},
-			{"codex", List.of("common.sh", "install-codex.sh", "uninstall-codex.sh", "install-codex.ps1")}};
+		return new Object[][]{{"claude"}, {"codex"}};
 	}
 
 	/**
 	 * Verifies that a harness's plugin, assembled from the skill layers, holds the {@code update} and
 	 * {@code uninstall} skills with routing descriptions, its own harness's frontmatter and identifier, and the shared
-	 * body, which runs the trusted updater and the packaged uninstaller and leaves a sandbox-blocked change to the user,
-	 * and that its {@code install/} holds each installer file that the skills rely on.
+	 * body, which runs only the trusted updater's launcher, never installs through a script of the plugin, and leaves a
+	 * sandbox-blocked change to the user.
 	 *
-	 * @param harness        the harness whose plugin to assemble
-	 * @param installerFiles the installer files that the skills rely on
-	 * @throws IOException        if a skill or installer cannot be read, or the plugin cannot be assembled
+	 * @param harness the harness whose plugin to assemble
+	 * @throws IOException        if a skill cannot be read, or the plugin cannot be assembled
 	 * @throws URISyntaxException if the class path returns a malformed resource location
 	 */
 	@Test(dataProvider = "harnesses")
-	public void pluginHoldsLifecycleSkills(String harness, List<String> installerFiles)
+	public void pluginHoldsLifecycleSkills(String harness)
 		throws IOException, URISyntaxException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -80,26 +76,36 @@ public final class LifecycleSkillsTest
 				List.of(new ArtifactLayer("common-skills", commonSkills),
 					new ArtifactLayer(harness + "-skills", harnessSkills)),
 				Files.createDirectories(temporary.resolve("runtime")), Set.of(), legal,
-				List.of(installers("common"), installers(harness)), temporary.resolve("plugin"));
+				List.of(), temporary.resolve("plugin"));
 
 			requireThat(description(Files.readString(plugin.resolve("skills/update/SKILL.md"))), "updateDescription").
 				startsWith("Use when the user asks").contains("install").contains("update").contains("upgrade");
 			String updateBody = Files.readString(plugin.resolve("skills/update/first-use.md")).replaceAll("\\s+", " ");
 			requireThat(updateBody, "updateBody").contains("cat-updater/bin/cat-updater").
-				contains("cat-updater\\bin\\cat-updater.cmd").contains("`<launcher> update --harness <h>`").
-				contains("`<launcher> update --harness <h> <tag>`").contains("`<launcher> status --harness <h>`").
-				contains("`--updater-only`").contains("releases/latest/download/cat.sh").
-				contains("releases/download/<tag>/cat.sh").contains("`not_writable`").contains("`exemption`").
-				contains("Never run the launcher's `rollback`, `setup` or `upgrade-self` operation yourself").
-				contains("restart or resume the session").doesNotContain("install/cat.sh").doesNotContain("bootstrap");
+				contains("cat-updater\\bin\\cat-updater.ps1").contains("`<launcher> install --harness <h>`").
+				contains("`<launcher> update --harness <h>`").contains("`<launcher> update --harness <h> <tag>`").
+				contains("`<launcher> rollback --harness <h>`").
+				contains("`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`").
+				contains("asks the user to approve this command").doesNotContain("cat-updater.cmd").
+				contains("`<launcher> status --harness <h>`").
+				contains("`installed`").contains("`up_to_date`").contains("`refused`").
+				contains("rerun the entry command of a newer release").contains("releases/latest/download/cat.sh").
+				contains("releases/download/<tag>/cat.sh").contains("cat.ps1").contains("`-Harness <h>`").
+				contains("Never run the launcher's `setup` operation yourself").
+				contains("restart or resume the session").doesNotContain("--updater-only").
+				doesNotContain("upgrade-self").doesNotContain("install/cat.sh").doesNotContain("bootstrap");
 			requireThat(description(Files.readString(plugin.resolve("skills/uninstall/SKILL.md"))),
 				"uninstallDescription").startsWith("Use when the user asks").contains("uninstall").contains("remove");
 			String uninstallBody = Files.readString(plugin.resolve("skills/uninstall/first-use.md")).
 				replaceAll("\\s+", " ");
-			requireThat(uninstallBody, "uninstallBody").contains("`<plugin>/install/uninstall-<h>.sh`").
-				contains("`--delete-data` only when the user asks").contains("`-Uninstall`").contains("`-DeleteData`").
-				contains("trusted updater, if they set it up, stays installed").contains("`XDG_DATA_HOME`").
-				contains("`XDG_CONFIG_HOME`").contains("`LOCALAPPDATA`").doesNotContain("cat.sh");
+			requireThat(uninstallBody, "uninstallBody").contains("cat-updater/bin/cat-updater").
+				contains("cat-updater\\bin\\cat-updater.ps1").contains("Before you run anything, ask the user whether").
+				contains("the default is to keep it").contains("`<launcher> uninstall`").
+				contains("`<launcher> uninstall --delete-data` only when the user asked to delete it").
+				contains("`uninstalled`").contains("`not_removed`").contains("needs the one manual entry command again").
+				contains("may ask the user to approve this command").doesNotContain("cat-updater.cmd").
+				doesNotContain("install/").doesNotContain("uninstall-").doesNotContain("-Uninstall").
+				doesNotContain("-DeleteData").doesNotContain("cat.sh").doesNotContain("XDG_CONFIG_HOME");
 			for (String skill : SKILLS)
 			{
 				String manifest = Files.readString(plugin.resolve("skills/" + skill + "/SKILL.md"));
@@ -125,8 +131,6 @@ public final class LifecycleSkillsTest
 				}
 			}
 			requireThat(Files.exists(plugin.resolve("skills/shared-lazy-body.md")), "sourceOnlyBody").isFalse();
-			for (String file : installerFiles)
-				requireThat(Files.isRegularFile(plugin.resolve("install").resolve(file)), file).isTrue();
 		}
 	}
 
@@ -164,20 +168,6 @@ public final class LifecycleSkillsTest
 				return line.substring("description: ".length());
 		}
 		throw new AssertionError("No description in:\n" + manifest);
-	}
-
-	/**
-	 * Returns a module's source folder of installer scripts.
-	 *
-	 * @param module the module's harness, {@code claude}, {@code codex} or {@code common}
-	 * @return the folder
-	 * @throws URISyntaxException if the class path returns a malformed location
-	 */
-	private static Path installers(String module) throws URISyntaxException
-	{
-		Path classes = Path.of(LifecycleSkillsTest.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-		// target/test-classes is two levels below the module, which is two levels below the client directory
-		return classes.resolve("../../../../" + module + "/lifecycle/src/main/resources/install").normalize();
 	}
 
 	/**
