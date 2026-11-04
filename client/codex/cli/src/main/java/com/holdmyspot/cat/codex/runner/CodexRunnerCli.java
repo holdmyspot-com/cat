@@ -68,8 +68,8 @@ public final class CodexRunnerCli
 	 * Prints the usage, verifies an artifact, runs a lifecycle-only command or one prompt, or serves JSONL turns
 	 * through one persistent isolated Codex process, as the arguments select. The launcher always runs the artifact
 	 * that holds it and the {@code codex} command that the {@code PATH} finds: before anything else, it refuses
-	 * {@code --artifact} and {@code --executable} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS}
-	 * unless it forwards the launch as a session request.
+	 * {@code --artifact} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the
+	 * launch as a session request.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, a bridge launch becomes a session request instead:
 	 * the run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -134,9 +134,9 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Refuses a launch that names {@code --artifact} or {@code --executable}, other than a bridge launch inside a run
-	 * whose runner lets its session request sessions. That launch becomes a session request, whose runner ignores
-	 * both; a one-shot {@code run} is never forwarded, so it is refused inside a run as well.
+	 * Refuses a launch that names {@code --artifact}, other than a bridge launch inside a run whose runner lets its
+	 * session request sessions. That launch becomes a session request, whose runner ignores the option; a one-shot
+	 * {@code run} is never forwarded, so it is refused inside a run as well.
 	 *
 	 * @param args        the command and its options
 	 * @param environment the launcher's environment
@@ -186,7 +186,7 @@ public final class CodexRunnerCli
 		try (HarnessCapacity.Permit _ = capacity.acquire())
 		{
 			HarnessOneShotRunner.run(() -> new CodexRunner(process.waiting()).start(options.artifact(),
-				options.project(), manager, options.executable(), environment, options.model(), options.effort(),
+				options.project(), manager, "codex", environment, options.model(), options.effort(),
 				options.installCat(), agent), manager, prompt, options.output(), options.keepRun());
 		}
 	}
@@ -287,7 +287,7 @@ public final class CodexRunnerCli
 			try (HarnessCapacity.Permit _ = permit)
 			{
 				HarnessRunnerBridge.serve(() -> new CodexRunner(process.waiting()).start(options.artifact(), options.project(),
-					options.workspace(), options.plugins(), manager, options.executable(), environment, options.model(),
+					options.workspace(), options.plugins(), manager, "codex", environment, options.model(),
 					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 					toolOutputTokenLimit,
 					options.sessionTranscripts(), options.sessionRequests()),

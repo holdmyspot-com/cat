@@ -75,19 +75,19 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Returns the options that let a caller choose what the launcher runs.
+	 * Returns the options that would let a caller choose what the launcher runs.
 	 *
 	 * @return each option
 	 */
 	@DataProvider
 	public Object[][] overrides()
 	{
-		return new Object[][]{{"--artifact"}, {"--executable"}};
+		return new Object[][]{{"--artifact"}};
 	}
 
 	/**
-	 * Verifies that outside a run the launcher refuses an option that would choose the artifact or the harness program
-	 * it runs, exiting with status 2 and the reason before it selects an artifact, starts a runner or writes output.
+	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, exiting with
+	 * status 2 and the reason before it selects an artifact, starts a runner or writes output.
 	 *
 	 * @param option the refused option
 	 * @throws IOException if the relay fails

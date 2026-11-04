@@ -192,6 +192,52 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
+	 * Supplies options that no runner accepts, each with its arguments.
+	 *
+	 * @return each option with its arguments
+	 */
+	@DataProvider
+	public Object[][] unsupportedOptions()
+	{
+		return new Object[][]{{List.of("--executable", "/bin/harness")}, {List.of("--exclude-user-rules")}};
+	}
+
+	/**
+	 * Verifies that a launch naming an option that no runner accepts, such as {@code --executable} or
+	 * {@code --exclude-user-rules}, is refused as an unsupported option before any request is written, also when the
+	 * option is the launch's last argument.
+	 *
+	 * @param option the option and its arguments
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "unsupportedOptions", expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = "Unsupported option: --(executable|exclude-user-rules)")
+	public void refusesUnsupportedOption(List<String> option) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString(), "--model",
+				"model-a", "--effort", "effort-a"));
+			arguments.addAll(option);
+			try
+			{
+				fixture.forward("harness-a", arguments.toArray(String[]::new), new StringReader(RECORDS),
+					new ByteArrayOutputStream(), "completed");
+			}
+			finally
+			{
+				try (Stream<Path> files = Files.list(fixture.requests))
+				{
+					requireThat(files.count(), "requests").isEqualTo(0);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Returns launches that lack a model, an effort or both, each with the start of the refusal.
 	 *
 	 * @return the profile options of each launch and the refusal's expected start

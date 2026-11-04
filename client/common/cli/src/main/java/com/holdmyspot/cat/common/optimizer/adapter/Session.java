@@ -567,8 +567,6 @@ final class Session implements SessionHandle
 		// Only a trial's transcripts are read, to learn what its agents received
 		if (request.role() == SessionRole.TRIAL)
 			arguments.add("--session-transcripts");
-		if (!settings.executable().isBlank())
-			arguments.addAll(List.of("--executable", settings.executable()));
 		TrialProfile profile = request.profile();
 		arguments.addAll(List.of("--model", profile.model(), "--effort", profile.effort()));
 		if (profile.toolOutputTokenLimit() > 0)

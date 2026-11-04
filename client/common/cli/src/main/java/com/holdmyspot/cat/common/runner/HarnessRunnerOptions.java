@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Represents command-line settings for a JSONL bridge that serves one or more turns through one harness process.
@@ -15,7 +16,6 @@ import java.util.List;
  * @param artifact the complete harness artifact
  * @param project the source project
  * @param runRoot the absolute owned-run root
- * @param executable the harness executable
  * @param model the selected model
  * @param effort the selected reasoning effort, or {@value #NO_REASONING} for none
  * @param output the optional durable bridge-transcript destination
@@ -24,7 +24,6 @@ import java.util.List;
  * @param sessionTranscripts indicates whether the harness writes its native session transcripts, which the run copies
  *   into its kept artifacts. A run leaves no harness transcript on disk otherwise.
  * @param installCat indicates whether CAT is installed in the isolated harness home
- * @param includeUserRules indicates whether CAT copies the parent's personal rules into the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
  * @param deniedReads the files and directories that the harness sandbox denies the session reading
  * @param readOnlyEvidence the completed evidence files and directories that the session may read but not change, even
@@ -39,11 +38,10 @@ import java.util.List;
  *   with the session's own {@code sessionRequests}; {@code 0} lets the session's requested sessions request none
  * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
  */
-public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String executable, String model,
-	String effort,
-	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat,
-	boolean includeUserRules, int maximumConcurrency, List<Path> deniedReads, List<Path> readOnlyEvidence,
-	Path workspace, List<Path> plugins, int sessionRequests, Duration capacityWait, int requestDepth, Path input)
+public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
+	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
+	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
+	Duration capacityWait, int requestDepth, Path input)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -55,29 +53,34 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 */
 	public static final int REFUSED_LAUNCH_STATUS = 2;
 	/**
-	 * The options that choose the CAT artifact and the harness program that a bridge runs. A runner launcher refuses
-	 * both, since it runs outside the sandbox of the agent that starts it.
+	 * The option that chooses the CAT artifact that a bridge runs. A runner launcher refuses it, since it runs outside
+	 * the sandbox of the agent that starts it.
 	 */
-	private static final List<String> OVERRIDE_OPTIONS = List.of("--artifact", "--executable");
+	private static final String OVERRIDE_OPTION = "--artifact";
+	/**
+	 * The options that take a value.
+	 */
+	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--run-root", "--model",
+		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
+		"--session-requests", "--request-depth", "--capacity-wait");
 
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
 	 *
 	 * @param args the legacy command and its options
-	 * @param defaultExecutable the harness executable name
+	 * @param harness the harness that the bridge runs, such as {@code claude} or {@code codex}
 	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 * @return parsed runner options
 	 * @throws IllegalArgumentException if the command is not {@code serve}, if its options are invalid, or if it names
 	 *   no {@code --run-root} outside a harness session
 	 */
-	public static HarnessRunnerOptions parseServe(String[] args, String defaultExecutable,
-		HarnessTemporaryRoot temporaryRoot)
+	public static HarnessRunnerOptions parseServe(String[] args, String harness, HarnessTemporaryRoot temporaryRoot)
 	{
 		requireThat(args, "args").isNotNull();
-		requireThat(defaultExecutable, "defaultExecutable").isNotBlank();
+		requireThat(harness, "harness").isNotBlank();
 		if (args.length == 0 || !args[0].equals("serve"))
 			throw new IllegalArgumentException("Usage: <runner> serve --artifact <path> [options]");
-		return parse(Arrays.copyOfRange(args, 1, args.length), defaultExecutable, temporaryRoot);
+		return parse(Arrays.copyOfRange(args, 1, args.length), harness, temporaryRoot);
 	}
 
 	/**
@@ -85,21 +88,19 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * invocation sends one {@code turn} message followed by {@code complete}.
 	 *
 	 * @param args command-line arguments
-	 * @param defaultExecutable the harness executable name
+	 * @param harness the harness that the bridge runs, such as {@code claude} or {@code codex}
 	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
 	 * @return parsed runner options
-	 * @throws IllegalArgumentException if arguments are incomplete or invalid, if they name no {@code --model} or no
-	 *   {@code --effort}, or if they name no {@code --run-root} outside a harness session
+	 * @throws IllegalArgumentException if arguments are unsupported, incomplete or invalid, if they name no
+	 *   {@code --model} or no {@code --effort}, or if they name no {@code --run-root} outside a harness session
 	 */
-	public static HarnessRunnerOptions parse(String[] args, String defaultExecutable,
-		HarnessTemporaryRoot temporaryRoot)
+	public static HarnessRunnerOptions parse(String[] args, String harness, HarnessTemporaryRoot temporaryRoot)
 	{
 		requireThat(args, "args").isNotNull();
-		requireThat(defaultExecutable, "defaultExecutable").isNotBlank();
+		requireThat(harness, "harness").isNotBlank();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		Path project = Path.of("").toAbsolutePath().normalize();
 		String explicitRunRoot = null;
-		String executable = defaultExecutable;
 		String model = "";
 		String effort = "";
 		ParsedOptions options = new ParsedOptions();
@@ -125,12 +126,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				index += 1;
 				continue;
 			}
-			if (option.equals("--exclude-user-rules"))
-			{
-				options.includeUserRules = false;
-				index += 1;
-				continue;
-			}
 			if (option.equals("--max-concurrency"))
 			{
 				if (index + 1 >= args.length)
@@ -143,6 +138,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				index += 2;
 				continue;
 			}
+			if (!VALUE_OPTIONS.contains(option))
+				throw new IllegalArgumentException("Unsupported option: " + option);
 			if (option.equals("--read-only-evidence") &&
 				(index + 1 >= args.length || args[index + 1].startsWith("--")))
 				throw new IllegalArgumentException("Missing path after --read-only-evidence");
@@ -180,8 +177,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				project = Path.of(value);
 			else if (option.equals("--run-root"))
 				explicitRunRoot = value;
-			else if (option.equals("--executable"))
-				executable = value;
 			else if (option.equals("--model"))
 				model = value;
 			else if (option.equals("--effort"))
@@ -198,10 +193,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.workspace = Path.of(value);
 			else if (option.equals("--plugin"))
 				options.plugins.add(Path.of(value));
-			else if (option.equals("--input"))
-				options.input = Path.of(value);
 			else
-				throw new IllegalArgumentException("Unsupported option: " + option);
+				options.input = Path.of(value);
 			index += 2;
 		}
 		if (options.artifact == null)
@@ -210,27 +203,25 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
 		if (options.sessionTranscripts && !options.keepRun)
 			throw new IllegalArgumentException("--session-transcripts requires --keep-run");
-		if (!options.installCat && !options.includeUserRules)
-			throw new IllegalArgumentException("--exclude-user-rules requires --install-cat");
 		if (options.requestDepth > 0 && options.sessionRequests == 0)
 			throw new IllegalArgumentException("--request-depth requires --session-requests");
-		requireProfile(defaultExecutable, model, effort);
+		requireProfile(harness, model, effort);
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
-		return new HarnessRunnerOptions(options.artifact, project, runRoot, executable, model, effort, options.output,
-			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.includeUserRules,
-			options.maximumConcurrency, options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins,
-			options.sessionRequests, options.capacityWait, options.requestDepth, options.input);
+		return new HarnessRunnerOptions(options.artifact, project, runRoot, model, effort, options.output,
+			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
+			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
+			options.capacityWait, options.requestDepth, options.input);
 	}
 
 	/**
-	 * Refuses a runner launcher's launch that names {@code --artifact} or {@code --executable}. A runner launcher runs
-	 * outside the sandbox of the agent that starts it, so it always runs its own CAT artifact and the harness program
-	 * that the {@code PATH} finds: either option would let the agent run code of its choice outside its sandbox.
+	 * Refuses a runner launcher's launch that names {@code --artifact}. A runner launcher runs outside the sandbox of
+	 * the agent that starts it, so it always runs its own CAT artifact: the option would let the agent run code of its
+	 * choice outside its sandbox.
 	 *
 	 * @param harness the harness whose runner the launcher runs, such as {@code claude} or {@code codex}
 	 * @param args    the launch's arguments
 	 * @param errors  receives the reason for a refusal
-	 * @return {@code true} if the launch names either option, after the reason is written to {@code errors}
+	 * @return {@code true} if the launch names the option, after the reason is written to {@code errors}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
 	 */
@@ -241,7 +232,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(errors, "errors").isNotNull();
 		for (String arg : args)
 		{
-			if (OVERRIDE_OPTIONS.contains(arg))
+			if (arg.equals(OVERRIDE_OPTION))
 			{
 				errors.println(harness + "-runner refuses " + arg + ": it always runs its own CAT artifact and the " +
 					harness + " command that the PATH finds. Remove " + arg + ".");
@@ -380,7 +371,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " [--project <path>] [--run-root <path>] " +
 			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] [--receipt <path>] " +
-			"[--session-transcripts] [--install-cat] [--exclude-user-rules] [--max-concurrency <1..16>] " +
+			"[--session-transcripts] [--install-cat] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";
 	}
@@ -391,7 +382,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param artifact the complete harness artifact
 	 * @param project the source project
 	 * @param runRoot the absolute owned-run root
-	 * @param executable the harness executable
 	 * @param model the selected model
 	 * @param effort the selected reasoning effort
 	 * @param output the optional durable bridge-transcript destination
@@ -399,7 +389,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param receipt the optional retained-evidence receipt destination
 	 * @param sessionTranscripts whether the harness writes its native session transcripts for the run to copy
 	 * @param installCat whether CAT is installed in the isolated harness home
-	 * @param includeUserRules whether CAT copies the parent's personal rules into the isolated harness home
 	 * @param maximumConcurrency the shared CAT harness capacity ceiling
 	 * @param deniedReads the files and directories that the harness sandbox denies the session reading
 	 * @param readOnlyEvidence the completed evidence files and directories that the session may read but not change
@@ -412,8 +401,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param input the file that holds the run's JSON Lines records, or {@code null} to read standard input
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait} and {@code input}
-	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank, {@code runRoot}
-	 *   or an element of {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
+	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
+	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
 	 *   {@code capacityWait} is not positive
 	 */
@@ -422,7 +411,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(runRoot, "runRoot").isNotNull();
-		requireThat(executable, "executable").isNotBlank();
 		requireThat(model, "model").isNotBlank();
 		requireThat(effort, "effort").isNotBlank();
 		if (!runRoot.isAbsolute())
@@ -462,7 +450,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private boolean keepRun;
 		private boolean sessionTranscripts;
 		private boolean installCat;
-		private boolean includeUserRules = true;
 		private final List<Path> deniedReads = new ArrayList<>();
 		private final List<Path> readOnlyEvidence = new ArrayList<>();
 		private Path workspace;

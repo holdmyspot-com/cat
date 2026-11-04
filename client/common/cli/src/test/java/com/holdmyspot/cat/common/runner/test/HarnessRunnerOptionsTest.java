@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import com.holdmyspot.cat.common.fakes.test.GitAnswers;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -67,6 +68,7 @@ public final class HarnessRunnerOptionsTest
 		requireThat(HarnessRunnerOptions.usage("harness-runner"), "usage").startsWith("Usage: harness-runner ").
 			doesNotContain("--artifact").
 			doesNotContain("--executable").
+			doesNotContain("--exclude-user-rules").
 			contains("--project <path>").
 			contains(" (--model <name> --effort <level> | --agent <name>) ").
 			contains("--max-concurrency <1..16>").
@@ -87,35 +89,46 @@ public final class HarnessRunnerOptionsTest
 	public void parsesBridgeOptions()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--project", absolute("project"), "--run-root", absolute("caller-temp/runs"), "--executable", "/bin/harness",
-			"--model", "test-model", "--effort", "high", "--output", absolute("output"), "--receipt", absolute("receipt"),
+			"--project", absolute("project"), "--run-root", absolute("caller-temp/runs"), "--model",
+			"test-model", "--effort", "high", "--output", absolute("output"), "--receipt", absolute("receipt"),
 			"--keep-run", "--install-cat"},
 			"harness", SESSION);
 
 		requireThat(result.artifact(), "artifact").isEqualTo(path("artifact"));
 		requireThat(result.project(), "project").isEqualTo(path("project"));
 		requireThat(result.runRoot(), "runRoot").isEqualTo(path("caller-temp/runs"));
-		requireThat(result.executable(), "executable").isEqualTo("/bin/harness");
 		requireThat(result.model(), "model").isEqualTo("test-model");
 		requireThat(result.effort(), "effort").isEqualTo("high");
 		requireThat(result.output(), "output").isEqualTo(path("output"));
 		requireThat(result.receipt(), "receipt").isEqualTo(path("receipt"));
 		requireThat(result.keepRun(), "keepRun").isTrue();
 		requireThat(result.installCat(), "installCat").isTrue();
-		requireThat(result.includeUserRules(), "includeUserRules").isTrue();
 	}
 
 	/**
-	 * Verifies controlled evaluations can install CAT without inheriting personal guidance.
+	 * Returns launches that name an option that no runner accepts, wherever it appears in the launch.
+	 *
+	 * @return each launch
 	 */
-	@Test
-	public void excludesUserRulesWhenRequested()
+	@DataProvider
+	public Object[][] unsupportedOptions()
 	{
-		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--install-cat", "--exclude-user-rules"),
-			"harness", SESSION);
+		return new Object[][]{{launch("--executable", "/bin/harness")}, {launch("--exclude-user-rules", "--install-cat")},
+			{launch("--install-cat", "--exclude-user-rules")}};
+	}
 
-		requireThat(result.installCat(), "installCat").isTrue();
-		requireThat(result.includeUserRules(), "includeUserRules").isFalse();
+	/**
+	 * Verifies that a launch naming an option that no runner accepts, such as {@code --executable} or
+	 * {@code --exclude-user-rules}, is refused as an unsupported option, also when the option is the launch's last
+	 * argument.
+	 *
+	 * @param launch the launch
+	 */
+	@Test(dataProvider = "unsupportedOptions", expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = "Unsupported option: --(executable|exclude-user-rules)")
+	public void refusesUnsupportedOption(String[] launch)
+	{
+		HarnessRunnerOptions.parse(launch, "harness", SESSION);
 	}
 
 	/**
@@ -422,16 +435,6 @@ public final class HarnessRunnerOptionsTest
 		{
 			requireThat(e.getMessage(), "message").contains("--capacity-wait");
 		}
-	}
-
-	/**
-	 * Verifies exclusion cannot silently suggest that a non-CAT session isolates injected guidance.
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class)
-	public void rejectsUserRuleExclusionWithoutCat()
-	{
-		HarnessRunnerOptions.parse(launch("--exclude-user-rules"), "harness",
-			SESSION);
 	}
 
 	/**

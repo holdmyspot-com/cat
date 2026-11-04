@@ -311,19 +311,19 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Returns the options that let a caller choose what the launcher runs.
+	 * Returns the options that would let a caller choose what the launcher runs.
 	 *
 	 * @return each option
 	 */
 	@DataProvider
 	public Object[][] overrides()
 	{
-		return new Object[][]{{"--artifact"}, {"--executable"}};
+		return new Object[][]{{"--artifact"}};
 	}
 
 	/**
-	 * Verifies that outside a run the launcher refuses an option that would choose the artifact or the harness program
-	 * it runs, with the reason, before it does anything else.
+	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, with the
+	 * reason, before it does anything else.
 	 *
 	 * @param option the refused option
 	 */
@@ -341,8 +341,8 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that inside a run whose runner lets its session request sessions, the launcher does not refuse either
-	 * option, since it forwards the launch as a session request whose runner ignores both.
+	 * Verifies that inside a run whose runner lets its session request sessions, the launcher does not refuse the
+	 * option, since it forwards the launch as a session request whose runner ignores it.
 	 *
 	 * @param option the option that the forwarded launch names
 	 */
@@ -360,26 +360,23 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that the bridge that the optimizer and tests run in-process still honours a named artifact and harness
-	 * program.
+	 * Verifies that the bridge that the optimizer and tests run in-process still honours a named artifact.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void inProcessBridgeHonoursOverrides() throws IOException
+	public void inProcessBridgeHonoursArtifact() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path artifact = root.resolve("artifact");
-			Path executable = root.resolve("bin/fake-claude");
 			HarnessRunnerOptions options = ClaudeRunnerCli.options(new String[]{"--artifact", artifact.toString(),
-				"--executable", executable.toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
-				"--effort", "low"}, HarnessTemporaryRoot.withoutSession("no session"));
+				"--run-root", root.resolve("runs").toString(), "--model", "sonnet", "--effort", "low"},
+				HarnessTemporaryRoot.withoutSession("no session"));
 
 			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
-			requireThat(options.executable(), "executable").isEqualTo(executable.toString());
 		}
 	}
 

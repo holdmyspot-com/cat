@@ -314,10 +314,10 @@ that a runner started cannot pass `--agent`.
 Your harness's sandbox does not let a command start a harness with your login, so it refuses the launchers until you
 exempt them. Exempt only these two launchers, so that every other command stays sandboxed. Since an exempted launcher
 runs outside the sandbox, it always runs its own CAT artifact and the `claude` or `codex` command that your `PATH`
-finds: a launch that names `--artifact` or `--executable` exits with status 2 and starts nothing. Sessions that a runner
-starts need no configuration. When you pass `--session-requests <count>`, and `--request-depth <levels>` for deeper
-levels, such a session runs the same launchers, which ask the runner that started it to start the session outside its
-sandbox. Without `--session-requests`, it cannot start sessions.
+finds: a launch that names `--artifact` exits with status 2 and starts nothing. Sessions that a runner starts need no
+configuration. When you pass `--session-requests <count>`, and `--request-depth <levels>` for deeper levels, such a
+session runs the same launchers, which ask the runner that started it to start the session outside its sandbox. Without
+`--session-requests`, it cannot start sessions.
 
 On Linux, `codex-runner` needs bubblewrap (`bwrap`) on your `PATH` to start a session that reads earlier sessions'
 results, such as a prompt optimizer's judge: it lets that session read those results while it hides the rest of your

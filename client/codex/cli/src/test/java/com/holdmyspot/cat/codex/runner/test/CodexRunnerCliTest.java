@@ -523,21 +523,20 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Returns each command form of the launcher with each option that lets a caller choose what the launcher runs.
+	 * Returns each command form of the launcher with the option that would let a caller choose what the launcher runs.
 	 *
 	 * @return the command's leading arguments and the option
 	 */
 	@DataProvider
 	public Object[][] overrides()
 	{
-		return new Object[][]{{List.of(), "--artifact"}, {List.of(), "--executable"},
-			{List.of("serve"), "--artifact"}, {List.of("serve"), "--executable"},
-			{List.of("run"), "--artifact"}, {List.of("run"), "--executable"}};
+		return new Object[][]{{List.of(), "--artifact"}, {List.of("serve"), "--artifact"},
+			{List.of("run"), "--artifact"}};
 	}
 
 	/**
-	 * Verifies that outside a run the launcher refuses an option that would choose the artifact or the harness program
-	 * it runs, in the bridge and the one-shot forms, with the reason, before it does anything else.
+	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, in the bridge
+	 * and the one-shot forms, with the reason, before it does anything else.
 	 *
 	 * @param command the command's leading arguments
 	 * @param option  the refused option
@@ -558,19 +557,19 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Returns the options that let a caller choose what the launcher runs.
+	 * Returns the options that would let a caller choose what the launcher runs.
 	 *
 	 * @return each option
 	 */
 	@DataProvider
 	public Object[][] bridgeOverrides()
 	{
-		return new Object[][]{{"--artifact"}, {"--executable"}};
+		return new Object[][]{{"--artifact"}};
 	}
 
 	/**
 	 * Verifies that inside a run whose runner lets its session request sessions, a bridge launch is not refused for
-	 * either option, since it is forwarded as a session request whose runner ignores both.
+	 * the option, since it is forwarded as a session request whose runner ignores it.
 	 *
 	 * @param option the option that the forwarded launch names
 	 */
@@ -589,7 +588,7 @@ public final class CodexRunnerCliTest
 
 	/**
 	 * Verifies that inside a run a one-shot {@code run}, which the launcher runs itself rather than forwarding, is
-	 * refused for either option.
+	 * refused for the option.
 	 *
 	 * @param option the refused option
 	 */
@@ -607,26 +606,23 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that the bridge that the optimizer and tests run in-process still honours a named artifact and harness
-	 * program.
+	 * Verifies that the bridge that the optimizer and tests run in-process still honours a named artifact.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void inProcessBridgeHonoursOverrides() throws IOException
+	public void inProcessBridgeHonoursArtifact() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path artifact = root.resolve("artifact");
-			Path executable = root.resolve("bin/fake-codex");
 			HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-				artifact.toString(), "--executable", executable.toString(), "--run-root", root.resolve("runs").toString(),
-				"--model", "gpt-6-luna", "--effort", "low"}, HarnessTemporaryRoot.withoutSession("no session"));
+				artifact.toString(), "--run-root", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort",
+				"low"}, HarnessTemporaryRoot.withoutSession("no session"));
 
 			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
-			requireThat(options.executable(), "executable").isEqualTo(executable.toString());
 		}
 	}
 

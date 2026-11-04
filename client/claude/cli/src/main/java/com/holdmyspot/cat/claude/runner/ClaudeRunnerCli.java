@@ -53,8 +53,8 @@ public final class ClaudeRunnerCli
 	 * Prints the usage, resolves a profile, verifies an artifact, runs a lifecycle-only command, or serves JSONL turns
 	 * through one persistent isolated Claude process, as the arguments select. The launcher always runs the artifact
 	 * that holds it and the {@code claude} command that the {@code PATH} finds: before anything else, it refuses
-	 * {@code --artifact} and {@code --executable} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS}
-	 * unless it forwards the launch as a session request.
+	 * {@code --artifact} with exit status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the
+	 * launch as a session request.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -113,9 +113,8 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Refuses a launch that names {@code --artifact} or {@code --executable}, other than inside a run whose runner lets
-	 * its session request sessions. There every launch that accepts either option becomes a session request, whose
-	 * runner ignores both.
+	 * Refuses a launch that names {@code --artifact}, other than inside a run whose runner lets its session request
+	 * sessions. There every launch becomes a session request, whose runner ignores the option.
 	 *
 	 * @param args        the launch's options
 	 * @param environment the launcher's environment
@@ -256,10 +255,10 @@ public final class ClaudeRunnerCli
 		try (HarnessCapacity.Permit _ = acquire(capacity, options))
 		{
 			HarnessRunStarter starter = () -> new ClaudeRunner(scope.waiting()).start(
-				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, options.executable(),
+				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, "claude",
 				environment,
 				options.model(),
-				options.effort(), agent, options.installCat(), options.includeUserRules(), readOnlyEvidence,
+				options.effort(), agent, options.installCat(), true, readOnlyEvidence,
 				options.deniedReads(), instructionFilesMode, options.sessionTranscripts(), options.sessionRequests());
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) ->

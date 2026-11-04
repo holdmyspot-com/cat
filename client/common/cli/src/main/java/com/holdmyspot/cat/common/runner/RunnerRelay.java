@@ -74,7 +74,7 @@ public final class RunnerRelay
 	 * @param errors      receives the reason when the launcher refuses the launch or a requested session does not
 	 *                    complete
 	 * @return the runner's exit status, or {@link HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch outside a
-	 *   run names {@code --artifact} or {@code --executable}, which the launcher refuses before it selects an artifact
+	 *   run names {@code --artifact}, which the launcher refuses before it selects an artifact
 	 * @throws IllegalArgumentException if the options are invalid inside a run
 	 * @throws IOException              if no artifact can be selected, the runner cannot be run, or the launch cannot
 	 *                                  be forwarded

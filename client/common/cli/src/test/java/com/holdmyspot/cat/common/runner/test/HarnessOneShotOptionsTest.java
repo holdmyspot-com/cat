@@ -57,6 +57,19 @@ public final class HarnessOneShotOptionsTest
 	}
 
 	/**
+	 * Verifies that a one-shot request cannot choose the harness program, so that it always runs the harness command
+	 * that the {@code PATH} finds.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = "Unsupported option: --executable")
+	public void refusesExecutable()
+	{
+		HarnessOneShotOptions.parse(new String[] {"run", "--artifact", "/artifact", "--prompt-file", "/prompt",
+			"--output", "/output", "--model", "model-a", "--effort", "effort-a", "--executable", "/bin/harness"},
+			"harness", SESSION);
+	}
+
+	/**
 	 * Verifies an oversized whole-prompt input is rejected before it is retained in memory.
 	 *
 	 * @throws IOException if fixture I/O fails

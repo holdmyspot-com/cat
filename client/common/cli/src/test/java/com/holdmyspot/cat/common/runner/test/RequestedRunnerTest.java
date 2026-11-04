@@ -31,8 +31,8 @@ public final class RequestedRunnerTest
 
 	/**
 	 * Verifies that a requested session's runner is started with only the broker's options, so that the runner, which
-	 * refuses {@code --artifact} and {@code --executable}, runs the artifact that holds it. The fake process launcher
-	 * stands for the operating system: it records the command that would start the runner and starts nothing.
+	 * refuses {@code --artifact}, runs the artifact that holds it. The fake process launcher stands for the operating
+	 * system: it records the command that would start the runner and starts nothing.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */

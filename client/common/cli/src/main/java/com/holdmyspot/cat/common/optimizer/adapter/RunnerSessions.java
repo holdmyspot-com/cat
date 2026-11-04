@@ -1250,7 +1250,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param artifact the complete harness artifact that the runner validates and installs
 	 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 	 * @param heldOut lists, when each session starts, the campaigns' held-out directories
-	 * @param executable the harness executable, or blank for the harness's default command
+	 * @param executable unused, since every runner runs the harness command that the {@code PATH} finds; blank
 	 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that the
 	 *   files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 	 * @param environment the host environment that the runner scrubs for the session
@@ -1275,7 +1275,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
-		 * @param executable the harness executable, or blank for the harness's default command
+		 * @param executable unused, since every runner runs the harness command that the {@code PATH} finds; blank
 		 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
 		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 		 * @param environment the host environment that the runner scrubs for the session
@@ -1323,7 +1323,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
-		 * @param executable the harness executable, or blank for the harness's default command
+		 * @param executable unused, since every runner runs the harness command that the {@code PATH} finds; blank
 		 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
 		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 		 * @param environment the host environment that the runner scrubs for the session
@@ -1352,7 +1352,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param artifact the complete harness artifact that the runner validates and installs
 		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
-		 * @param executable the harness executable, or blank for the harness's default command
+		 * @param executable unused, since every runner runs the harness command that the {@code PATH} finds; blank
 		 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that
 		 *   the files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
 		 * @param environment the host environment that the runner scrubs for the session

@@ -38,13 +38,18 @@ public final class SessionRequestForwarder
 	 * Options that the parent runner chooses for the sessions it requests.
 	 */
 	private static final Set<String> PARENT_OPTIONS = Set.of("--deny-read", "--workspace", "--session-requests",
-		"--request-depth", "--max-concurrency", "--capacity-wait", "--exclude-user-rules", "--agent",
-		"--instruction-files", "--read-only-evidence", "--tool-output-token-limit");
+		"--request-depth", "--max-concurrency", "--capacity-wait", "--agent", "--instruction-files",
+		"--read-only-evidence", "--tool-output-token-limit");
 	/**
 	 * Options that a launch may name although the parent runner chooses their effect: the parent keeps every requested
-	 * run and chooses its run root, artifact and harness executable.
+	 * run and chooses its run root and artifact.
 	 */
-	private static final Set<String> IGNORED_OPTIONS = Set.of("--artifact", "--run-root", "--executable");
+	private static final Set<String> IGNORED_OPTIONS = Set.of("--artifact", "--run-root");
+	/**
+	 * The options that take a value and that a launch may name.
+	 */
+	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--run-root", "--project", "--plugin",
+		"--model", "--effort", "--input", "--output", "--receipt");
 
 	/**
 	 * Forwards one launch and waits for its requested session to end.
@@ -111,6 +116,8 @@ public final class SessionRequestForwarder
 				{
 				}
 			}
+			if (!VALUE_OPTIONS.contains(option))
+				throw new IllegalArgumentException("Unsupported option: " + option);
 			if (index + 1 == args.length)
 				throw new IllegalArgumentException("Missing value for " + option);
 			index += 1;
