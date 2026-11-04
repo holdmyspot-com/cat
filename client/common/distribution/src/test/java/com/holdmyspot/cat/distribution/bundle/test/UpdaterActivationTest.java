@@ -16,6 +16,8 @@ import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.engine.Registration;
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
+import com.holdmyspot.cat.common.updater.engine.RuntimeSwap;
+import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
@@ -50,10 +52,21 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs authenticated update and rollback through the engine and the packaged harness providers together.
+ * Runs authenticated update and rollback of the whole bundle through the engine and the packaged harness providers
+ * together.
  */
 public final class UpdaterActivationTest
 {
+	/**
+	 * The description of the installed Java runtime and of the release's runtime.
+	 */
+	private static final String RUNTIME_DESCRIPTION = "{\"format\": 1, \"java_version\": \"25.0.1\", " +
+		"\"java_feature\": 25, \"modules\": [\"java.base\"]}";
+	/**
+	 * The runtime requirement of the updater and the plugin.
+	 */
+	private static final String REQUIREMENT = "{\"format\": 1, \"java_feature\": 25, \"modules\": [\"java.base\"]}";
+
 	/**
 	 * Creates the test.
 	 */
@@ -73,8 +86,9 @@ public final class UpdaterActivationTest
 	}
 
 	/**
-	 * An authenticated release changes the actual provider destinations and rollback restores the original version
-	 * and owned files, while configuration, user files and staged executable content remain untouched.
+	 * An authenticated release changes the actual provider destinations and stages its runtime, and rollback restores
+	 * the original version, owned files and runtime, while configuration, user files and staged executable content
+	 * remain untouched.
 	 *
 	 * @param harness the production provider to exercise
 	 * @throws IOException if fixture files cannot be written or read
@@ -110,7 +124,7 @@ public final class UpdaterActivationTest
 			TrustPolicy policy = TrustPolicy.of(List.of(key), URI.create("https://releases.example/cat/releases/download"),
 				ReleaseVersion.parse("1.0"), 1, Map.of(harness, home));
 			Path data = root.resolve("updater");
-			writeRuntime(data);
+			writeInstallation(data);
 			UpdateEngine engine = new UpdateEngine(data, policy, release, provider,
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
 			Registration registration = new Registration(new UnusedIntegration(harness),
@@ -124,6 +138,10 @@ public final class UpdaterActivationTest
 			requireThat(updated.consistent(), "updatedConsistent").isTrue();
 			requireThat(provider.installed(home), "updatedInstallation").
 				isEqualTo(new InstalledState(Optional.of("1.1"), true));
+			requireThat(engine.pendingSwap(), "updateSwap").
+				isEqualTo(Optional.of(new RuntimeSwap(Operation.UPDATE, "1.0", "1.1")));
+			finishSwap(data);
+			requireThat(Files.readString(data.resolve("runtime/release")), "updatedRuntime").isEqualTo("runtime 1.1");
 			requireThat(engine.status().previousVersion(), "previousVersion").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.readString(provider.migrationVersionFile(home)), "updatedMigrationVersion").
 				isEqualTo("1.1\n");
@@ -143,6 +161,11 @@ public final class UpdaterActivationTest
 				isEqualTo(new InstalledState(Optional.of("1.0"), true));
 			requireThat(Files.readString(provider.migrationVersionFile(home)), "restoredMigrationVersion").
 				isEqualTo("1.0\n");
+			requireThat(engine.pendingSwap(), "rollbackSwap").
+				isEqualTo(Optional.of(new RuntimeSwap(Operation.ROLLBACK, "1.1", "1.0")));
+			finishSwap(data);
+			requireThat(Files.readString(data.resolve("runtime/release")), "restoredRuntime").isEqualTo("runtime 1.0");
+			requireThat(engine.status().previousVersion(), "noPreviousVersion").isEqualTo(Optional.empty());
 			if (harness.equals("codex"))
 			{
 				requireThat(Files.readString(home.resolve("agents/cat-a.toml")), "restoredAgent").isEqualTo("old agent");
@@ -178,15 +201,50 @@ public final class UpdaterActivationTest
 	}
 
 	/**
-	 * Writes the description of the installation's Java runtime, which satisfies the fixture release.
+	 * Writes the installation of release 1.0 that setup leaves: its Java runtime, which satisfies the fixture release,
+	 * its updater version directory and the current selection.
 	 *
 	 * @param data the installation's updater data directory
 	 * @throws IOException if writing fails
 	 */
-	private static void writeRuntime(Path data) throws IOException
+	private static void writeInstallation(Path data) throws IOException
 	{
-		write(data.resolve("runtime/cat-runtime.json"), "{\"format\": 1, \"java_version\": \"25.0.1\", " +
-			"\"java_feature\": 25, \"modules\": [\"java.base\"]}");
+		write(data.resolve("runtime/cat-runtime.json"), RUNTIME_DESCRIPTION);
+		write(data.resolve("runtime/release"), "runtime 1.0");
+		write(data.resolve("1.0/VERSION"), "1.0\n");
+		write(data.resolve("1.0/runtime-requirement.json"), REQUIREMENT);
+		write(data.resolve("1.0/conf/cat-updater/policy-path"), data.resolveSibling("policy.json") + "\n");
+		write(data.resolve("current"), "1.0\n");
+	}
+
+	/**
+	 * Finishes the requested runtime replacement as the stable launcher does after the updater's JVM has exited and
+	 * the new runtime runs.
+	 *
+	 * @param data the installation's updater data directory
+	 * @throws IOException if no replacement is pending or a rename fails
+	 */
+	private static void finishSwap(Path data) throws IOException
+	{
+		List<String> request = Files.readAllLines(data.resolve("state/runtime-swap"), UTF_8);
+		boolean rollback = request.get(0).equals("rollback");
+		String staged = "runtime.next";
+		String kept = "runtime.previous";
+		if (rollback)
+		{
+			staged = "runtime.previous";
+			kept = "runtime.next";
+		}
+		Files.move(data.resolve("runtime"), data.resolve(kept));
+		Files.move(data.resolve(staged), data.resolve("runtime"));
+		Files.writeString(data.resolve("current"), request.get(2) + "\n", UTF_8);
+		Files.delete(data.resolve("state/runtime-swap"));
+		Files.deleteIfExists(data.resolve("state/runtime-swap-result.json"));
+		if (rollback)
+		{
+			TemporaryDirectories.deleteRecursively(data.resolve("runtime.next"));
+			TemporaryDirectories.deleteRecursively(data.resolve(request.get(1)));
+		}
 	}
 
 	/**
@@ -237,8 +295,7 @@ public final class UpdaterActivationTest
 		{
 			entry(tar, top + "/" + provider.pluginManifest(), "{\"name\":\"cat\",\"version\":\"1.1\"}", 0644);
 			entry(tar, top + "/client/VERSION", "1.1\n", 0644);
-			entry(tar, top + "/client/runtime-requirement.json", "{\"format\": 1, \"java_feature\": 25, " +
-				"\"modules\": [\"java.base\"]}", 0644);
+			entry(tar, top + "/client/runtime-requirement.json", REQUIREMENT, 0644);
 			entry(tar, top + "/bin/plugin-info", "#!/bin/sh\nprintf executed > " +
 				ShellQuoting.posix(executionMarker.toString()) + "\n", 0755);
 			entry(tar, top + "/install/migrations/registry.tsv", "# no migrations\n", 0644);
@@ -248,14 +305,30 @@ public final class UpdaterActivationTest
 		Map<String, Object> asset = Map.of("name", top + ".tar.gz", "kind", "plugin", "harness", provider.harness(),
 			"platform", "linux-x64", "size", archive.length, "sha256",
 			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(archive)), "top_directory", top);
+		String updaterTop = "cat-updater-v1.1-linux-x64";
+		bytes = new ByteArrayOutputStream();
+		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
+		{
+			entry(tar, updaterTop + "/runtime/cat-runtime.json", RUNTIME_DESCRIPTION, 0644);
+			entry(tar, updaterTop + "/runtime/release", "runtime 1.1", 0644);
+			entry(tar, updaterTop + "/1.1/VERSION", "1.1\n", 0644);
+			entry(tar, updaterTop + "/1.1/runtime-requirement.json", REQUIREMENT, 0644);
+		}
+		byte[] updater = bytes.toByteArray();
+		Map<String, Object> updaterAsset = Map.of("name", updaterTop + ".tar.gz", "kind", "updater",
+			"platform", "linux-x64", "size", updater.length, "sha256",
+			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(updater)), "top_directory",
+			updaterTop);
 		byte[] manifest = JsonMapper.builder().build().writeValueAsBytes(Map.of("format", 1, "product", "cat",
-			"version", "1.1", "tag", "v1.1", "published", "2026-11-03T13:44:35Z", "assets", List.of(asset)));
+			"version", "1.1", "tag", "v1.1", "published", "2026-11-03T13:44:35Z", "assets",
+			List.of(asset, updaterAsset)));
 		KeyPair key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
 		Signature signer = Signature.getInstance("Ed25519");
 		signer.initSign(key.getPrivate());
 		signer.update(manifest);
 		byte[] signature = Base64.getEncoder().encode(signer.sign());
-		return new SignedRelease(key, archive, manifest, signature);
+		return new SignedRelease(key, Map.of(top + ".tar.gz", archive, updaterTop + ".tar.gz", updater), manifest,
+			signature);
 	}
 
 	/**
@@ -282,11 +355,12 @@ public final class UpdaterActivationTest
 	 * Supplies bytes only; the production engine owns every trust and activation decision.
 	 *
 	 * @param key the fixture signing key
-	 * @param archive the plugin archive
+	 * @param archives the plugin and updater archives, by asset name
 	 * @param manifest the signed manifest bytes
 	 * @param signature the detached signature bytes
 	 */
-	private record SignedRelease(KeyPair key, byte[] archive, byte[] manifest, byte[] signature) implements ReleaseSource
+	private record SignedRelease(KeyPair key, Map<String, byte[]> archives, byte[] manifest, byte[] signature)
+		implements ReleaseSource
 	{
 		@Override
 		public String latestTag()
@@ -309,7 +383,7 @@ public final class UpdaterActivationTest
 		@Override
 		public void download(String tag, String assetName, long expectedSize, Path destination) throws IOException
 		{
-			Files.write(destination, archive);
+			Files.write(destination, archives.get(assetName));
 		}
 	}
 
