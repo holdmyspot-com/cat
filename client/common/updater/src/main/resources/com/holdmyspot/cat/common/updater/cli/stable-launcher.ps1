@@ -1,6 +1,7 @@
 # Starts the installed updater selected by current on Windows, from the Windows directory with PATH set to its
 # System32 directory and only the documented environment variables, and completes a complete uninstall by deleting the
-# updater data directory after the updater's JVM has exited.
+# updater data directory after the updater's JVM has exited, then the directory that holds it when that leaves it
+# empty.
 # Arguments: the updater operation and its arguments, forwarded to Java without interpretation.
 # Output: the selected updater's JSON result; after a complete uninstall, the result that the updater saved, printed
 #   only once the data directory no longer exists, or a not_removed result naming the directory.
@@ -185,6 +186,15 @@ catch
 if (Test-Path -LiteralPath $data)
 {
 	Exit-NotRemoved
+}
+# The directory that holds every harness's installation is removed when this was its last one. A non-recursive delete
+# removes only an empty directory, and a failure leaves the result unchanged.
+try
+{
+	[IO.Directory]::Delete((Split-Path -Parent $data), $false)
+}
+catch
+{
 }
 $output = [Console]::OpenStandardOutput()
 $output.Write($result, 0, $result.Length)

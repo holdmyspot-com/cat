@@ -203,6 +203,32 @@ exit 5"
 	[ ! -e "${DATA}" ]
 }
 
+@test "after a complete uninstall the stable launcher also removes the installation root that it leaves empty" {
+	base="${TEST_ROOT}/cat-updater"
+	create_data_directory "${base}/harness-a"
+	install_uninstalling_runtime "${base}/harness-a"
+
+	run "${base}/harness-a/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-result.json")" ]
+	[ ! -e "${base}" ]
+}
+
+@test "after a complete uninstall the stable launcher keeps an installation root that holds another installation" {
+	base="${TEST_ROOT}/cat-updater"
+	create_data_directory "${base}/harness-a"
+	install_uninstalling_runtime "${base}/harness-a"
+	create_data_directory "${base}/harness-b"
+
+	run "${base}/harness-a/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-result.json")" ]
+	[ ! -e "${base}/harness-a" ]
+	[ "$(cat "${base}/harness-b/current")" = 1.0 ]
+}
+
 @test "the stable launcher started through a symbolic link deletes its real data directory after a complete uninstall" {
 	install_uninstalling_runtime "${DATA}"
 	mkdir "${TEST_ROOT}/links"
@@ -270,12 +296,12 @@ exit 79'
 }
 
 # Each program that a caller could plant on PATH records that it ran and does nothing else, so a launcher that found
-# rm, cat, readlink or env on the caller's PATH leaves the data directory in place or creates the marker.
+# rm, rmdir, cat, readlink or env on the caller's PATH leaves the data directory in place or creates the marker.
 @test "programs on the caller's PATH cannot stand in for those that complete an uninstall" {
 	install_uninstalling_runtime "${DATA}"
 	hostile="${TEST_ROOT}/hostile bin"
 	mkdir "${hostile}" "${TEST_ROOT}/links"
-	for program in rm cat readlink env sed ls; do
+	for program in rm rmdir cat readlink env sed ls; do
 		printf '#!/bin/sh\n: > "%s/planted program ran"\n' "${TEST_ROOT}" > "${hostile}/${program}"
 		chmod +x "${hostile}/${program}"
 	done

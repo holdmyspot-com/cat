@@ -1,7 +1,7 @@
 #!/bin/sh
 # Starts the installed updater selected by current, from the root directory with PATH set to /usr/bin:/bin and only the
 # documented environment variables, and completes a complete uninstall by deleting the updater data directory after
-# the updater's JVM has exited.
+# the updater's JVM has exited, then the directory that holds it when that leaves it empty.
 # Arguments: the updater operation and its arguments, forwarded without interpretation.
 # Output: the selected updater's JSON result; after a complete uninstall, the result that the updater saved, printed
 #   only once the data directory no longer exists, or a not_removed result naming the directory.
@@ -118,5 +118,8 @@ fi
 if [ -e "$data" ] || [ -L "$data" ]; then
 	not_removed
 fi
+# The directory that holds every harness's installation is removed when this was its last one. rmdir removes only an
+# empty directory, and a failure leaves the result unchanged.
+/bin/rmdir -- "${data%/*}" 2>/dev/null || true
 printf '%s' "$result"
 exit 0
