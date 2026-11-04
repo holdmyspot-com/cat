@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import java.io.IOException;
@@ -77,7 +78,8 @@ import java.util.stream.Collectors;
  * given satisfies the bundle's {@code client/runtime-requirement.json} and refuses the bundle otherwise. It then binds
  * the bundle to that runtime unless the bundle's runtime binding already names it and is usable, so a bundle that
  * another installation bound to its own runtime, or to a runtime that was since removed, is rebound rather than
- * refused. An installed plugin keeps the binding of its own installation.
+ * refused. It also removes any startup cache that the bundle holds, because Java accepts a startup cache only at the
+ * location that it was trained at. An installed plugin keeps the binding and startup cache of its own installation.
  * <p>
  * A download over HTTP waits at most 30 seconds to connect, 60 seconds for the server's response headers and 15 minutes
  * for the whole file, and reports the limit that expired. It goes through the HTTP proxy that the process environment
@@ -351,15 +353,17 @@ public final class ReleaseBundles
 
 	/**
 	 * Binds a bundle to the shared Java runtime of this resolution after checking that the runtime satisfies the
-	 * bundle's requirement. The binding is rewritten only when it does not already name that runtime usably.
+	 * bundle's requirement, and removes the bundle's startup cache. The binding is rewritten only when it does not
+	 * already name that runtime usably.
 	 *
 	 * @param bundle the bundle's directory
 	 * @throws IOException if the runtime is not a CAT runtime, does not satisfy the bundle's requirement, or the
-	 *                     binding cannot be written
+	 *                     binding or startup cache cannot be written or removed
 	 */
 	private void bind(Path bundle) throws IOException
 	{
 		SharedRuntime.requireSatisfies(runtime, bundle.resolve(REQUIREMENT));
+		TemporaryDirectories.deleteRecursively(bundle.resolve(StartupCache.DIRECTORY));
 		Path bound;
 		try
 		{

@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease.Entry;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.SharedRuntime;
+import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesSecrets;
 import com.sun.net.httpserver.HttpServer;
@@ -288,6 +289,57 @@ public final class ReleaseBundlesTest
 			RunnerArtifact again = bundles(bundlesDirectory, root.resolve("missing-release")).
 				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 			requireThat(again.source(), "againSource").isEqualTo(RunnerArtifact.Source.BUNDLE);
+		}
+	}
+
+	/**
+	 * Verifies that a downloaded bundle is used without the startup cache that its archive holds, because Java accepts
+	 * a startup cache only at the location that it was trained at.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void downloadedBundleLeavesOutStartupCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-download-cache-"));
+			Path source = artifact(root.resolve("source"), PluginInfo.CAT_VERSION);
+			Files.createDirectories(source.resolve(StartupCache.DIRECTORY));
+			Files.writeString(source.resolve(StartupCache.FILE), "a cache trained at another location");
+			Path release = root.resolve("release");
+			FakeRelease.publish(release, bundleName(), source);
+
+			RunnerArtifact result = bundles(root.resolve("bundles"), release).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
+			requireThat(Files.exists(result.artifact().resolve(StartupCache.DIRECTORY)), "cacheFolder").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that an earlier download is reused without a startup cache that it holds, because Java accepts a
+	 * startup cache only at the location that it was trained at.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void reusedBundleLeavesOutStartupCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("release-reuse-cache-"));
+			Path bundlesDirectory = root.resolve("bundles");
+			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION);
+			Files.createDirectories(bundle.resolve(StartupCache.DIRECTORY));
+			Files.writeString(bundle.resolve(StartupCache.FILE), "a cache trained at another location");
+
+			RunnerArtifact result = bundles(bundlesDirectory, root.resolve("missing-release")).
+				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
+
+			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.BUNDLE);
+			requireThat(Files.exists(result.artifact().resolve(StartupCache.DIRECTORY)), "cacheFolder").isFalse();
 		}
 	}
 
