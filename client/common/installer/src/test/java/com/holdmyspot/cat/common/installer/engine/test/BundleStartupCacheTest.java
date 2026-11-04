@@ -105,7 +105,7 @@ public final class BundleStartupCacheTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.0"));
 			requireThat(cache(home), "cache").isEqualTo(FakeJava.cacheOf("runtime 1.0"));
 			requireThat(binding(home), "binding").isEqualTo(boundRuntime(data));
 		}

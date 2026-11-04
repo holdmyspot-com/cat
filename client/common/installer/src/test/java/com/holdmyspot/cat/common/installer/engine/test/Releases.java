@@ -6,6 +6,7 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.tru
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
 import com.holdmyspot.cat.common.installer.engine.StagedRelease;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
@@ -227,6 +228,17 @@ public final class Releases implements ReleaseSource
 	}
 
 	/**
+	 * Returns the full plugin version that the plugin of a release of this fixture states.
+	 *
+	 * @param release the release version
+	 * @return the release, then the commit that the fixture's releases are built from
+	 */
+	public static String pluginVersion(String release)
+	{
+		return release + PluginVersion.BUILD_SEPARATOR + ReleaseFixtures.BUILD;
+	}
+
+	/**
 	 * Returns the POSIX stable launcher that a release of this fixture ships.
 	 *
 	 * @param version the release version
@@ -349,11 +361,12 @@ public final class Releases implements ReleaseSource
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
 		{
-			String manifestVersion = version;
+			String pluginVersion = pluginVersion(version);
+			String manifestVersion = pluginVersion;
 			if (defect.equals("pluginVersion"))
 				manifestVersion = "1.9";
 			entry(tar, top + "/.harness-a/plugin.json", "{\"version\":\"" + manifestVersion + "\"}", 0644);
-			String binVersion = version;
+			String binVersion = pluginVersion;
 			if (defect.equals("binVersion"))
 				binVersion = "1.9";
 			entry(tar, top + "/bin/VERSION", binVersion, 0644);
@@ -366,7 +379,7 @@ public final class Releases implements ReleaseSource
 					content = registry(version, defect);
 				entry(tar, top + "/install/migrations/registry.tsv", content, 0644);
 			}
-			entry(tar, top + "/version", version, 0644);
+			entry(tar, top + "/version", pluginVersion, 0644);
 			int feature = INSTALLED_FEATURE;
 			if (defect.equals("requirement"))
 				feature = 99;

@@ -66,9 +66,9 @@ public final class DowngradeTest
 				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(result.version(), "version").isEqualTo(Optional.of("1.1"));
+			requireThat(result.version(), "version").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
 			requireThat(result.previousVersion(), "previousVersion").isEqualTo(Optional.of("1.2"));
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(home.resolve("migration-version")), "dataVersion").isEqualTo("1.1\n");
 			requireThat(Files.readString(data.resolve("runtime.next/release")), "stagedRuntime").
 				isEqualTo("runtime 1.1");
@@ -128,7 +128,7 @@ public final class DowngradeTest
 				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("0.9");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("0.9"));
 			requireThat(Files.readString(home.resolve("migration-version")), "dataVersion").isEqualTo("1.0.0\n");
 		}
 	}

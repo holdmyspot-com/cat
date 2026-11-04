@@ -55,7 +55,7 @@ public final class CachedBundleTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(catalog.requests().subList(before, catalog.requests().size()), "requests").isEmpty();
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(data.resolve("runtime.next/release")), "stagedRuntime").
 				isEqualTo("runtime 1.1");
 			requireThat(Files.readString(data.resolve("1.1/VERSION")), "installer").isEqualTo("1.1\n");
@@ -108,7 +108,7 @@ public final class CachedBundleTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(catalog.requests().subList(before, catalog.requests().size()), "requests").contains(request);
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(data.resolve("runtime.next/release")), "stagedRuntime").
 				isEqualTo("runtime 1.1");
 			requireThat(Files.readString(data.resolve("1.1/app/installer.jar")), "installer").
@@ -142,7 +142,7 @@ public final class CachedBundleTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(catalog.requests().subList(before, catalog.requests().size()), "requests").isEmpty();
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.1"));
 		}
 	}
 

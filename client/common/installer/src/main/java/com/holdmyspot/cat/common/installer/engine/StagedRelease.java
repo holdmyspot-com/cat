@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
@@ -50,33 +51,90 @@ public final class StagedRelease
 		enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 
 	/**
-	 * Checks that an extracted top directory contains the selected release and only internal symbolic links.
-	 * Plugin manifests are limited to one MiB and bin/VERSION to 128 bytes, with at most one trailing line ending.
-	 * Windows releases require a regular bin/plugin-info.cmd file; POSIX releases require a regular executable
-	 * bin/plugin-info file.
+	 * Checks that an extracted top directory of a signed release contains the plugin version that the release names,
+	 * and only internal symbolic links. Plugin manifests are limited to one MiB and bin/VERSION to 128 bytes, with at
+	 * most one trailing line ending. Windows releases require a regular bin/plugin-info.cmd file; POSIX releases
+	 * require a regular executable bin/plugin-info file.
 	 *
 	 * @param tree         extracted top directory
-	 * @param version      authenticated release version, spelled as two or three canonical decimal components
+	 * @param version      the authenticated plugin version that the signed release manifest names, which the plugin
+	 *                     manifest and bin/VERSION must state
 	 * @param manifestPath provider-supplied relative path to its plugin manifest
 	 * @param platform     release platform, such as linux-x64 or windows-x64
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if any of {@code manifestPath} or {@code platform} are blank
+	 * @throws TrustException           if the tree lacks matching versions or a regular platform launcher file, or
+	 *                                  contains an escaping link or invalid manifest
+	 * @throws IOException              if a staged file cannot be read
+	 */
+	public static void validate(Path tree, PluginVersion version, String manifestPath, String platform)
+		throws IOException, TrustException
+	{
+		requireThat(version, "version").isNotNull();
+		validate(tree, version.release(), version, manifestPath, platform);
+	}
+
+	/**
+	 * Checks that a local plugin tree, which no signed release describes, contains a plugin of the selected release and
+	 * only internal symbolic links. Its plugin manifest and bin/VERSION must state the same version: the release, or a
+	 * full plugin version of the release whatever its build. The limits and launcher checks of
+	 * {@link #validate(Path, PluginVersion, String, String)} apply.
+	 *
+	 * @param tree         the local plugin tree
+	 * @param version      the selected release version, spelled as two or three canonical decimal components
+	 * @param manifestPath provider-supplied relative path to its plugin manifest
+	 * @param platform     release platform, such as linux-x64 or windows-x64
+	 * @return the version that the tree states: {@code version}, or a full plugin version of it
 	 * @throws NullPointerException     if any argument is null
 	 * @throws IllegalArgumentException if any of {@code manifestPath} or {@code platform} are blank
 	 * @throws TrustException           if {@code version} is malformed, the tree lacks matching versions or a regular
 	 *                                  platform launcher file, or contains an escaping link or invalid manifest
 	 * @throws IOException              if a staged file cannot be read
 	 */
-	public static void validate(Path tree, String version, String manifestPath, String platform)
+	public static String validate(Path tree, String version, String manifestPath, String platform)
 		throws IOException, TrustException
+	{
+		requireThat(version, "version").isNotNull();
+		return validate(tree, version, null, manifestPath, platform);
+	}
+
+	/**
+	 * Checks a staged plugin tree.
+	 *
+	 * @param tree         the tree
+	 * @param release      the release version
+	 * @param exact        the plugin version that the tree must state, or null to accept the release or any full
+	 *                     plugin version of it, provided that the manifest and bin/VERSION agree
+	 * @param manifestPath provider-supplied relative path to its plugin manifest
+	 * @param platform     release platform, such as linux-x64 or windows-x64
+	 * @return the version that the tree states
+	 * @throws TrustException if the tree is refused
+	 * @throws IOException    if a staged file cannot be read
+	 */
+	private static String validate(Path tree, String release, PluginVersion exact, String manifestPath,
+		String platform) throws IOException, TrustException
 	{
 		requireThat(tree, "tree").isNotNull();
 		requireThat(manifestPath, "manifestPath").isNotBlank();
-		requireThat(version, "version").isNotNull();
 		requireThat(platform, "platform").isNotBlank();
-		ReleaseVersion.parse(version);
+		ReleaseVersion.parse(release);
 		if (!Files.isDirectory(tree, NOFOLLOW_LINKS))
 			throw refusal("The extracted release top directory is missing or is a symbolic link: " + tree);
 		Path root = tree.toRealPath();
 		checkLinks(root);
+		Path runtimeVersion = root.resolve(PluginDirectory.VERSION);
+		String version;
+		String required;
+		if (exact != null)
+		{
+			version = exact.toString();
+			required = "plugin version " + version;
+		}
+		else
+		{
+			version = localVersion(runtimeVersion, release);
+			required = "release " + release;
+		}
 		Path manifest = root.resolve(manifestPath).normalize();
 		if (!manifest.startsWith(root) || !Files.isRegularFile(manifest))
 			throw refusal("The staged plugin manifest is missing or outside the release: " + manifestPath);
@@ -95,10 +153,9 @@ public final class StagedRelease
 			throw refusal("The staged plugin manifest must contain a JSON object: " + manifest);
 		JsonNode declared = parsed.get("version");
 		if (declared == null || !declared.isString() || !declared.stringValue().equals(version))
-			throw refusal("The staged plugin manifest version must equal release " + version + ": " + manifest);
-		Path runtimeVersion = root.resolve(PluginDirectory.VERSION);
+			throw refusal("The staged plugin manifest version must equal " + required + ": " + manifest);
 		if (!Files.isRegularFile(runtimeVersion) || !readVersion(runtimeVersion).equals(version))
-			throw refusal("The staged " + PortablePaths.text(PluginDirectory.VERSION) + " must equal release " + version);
+			throw refusal("The staged " + PortablePaths.text(PluginDirectory.VERSION) + " must equal " + required);
 		boolean windows = platform.equals("windows-x64");
 		String launcher = "bin/plugin-info";
 		if (windows)
@@ -106,10 +163,9 @@ public final class StagedRelease
 		Path pluginInfo = root.resolve(launcher);
 		if (!Files.isRegularFile(pluginInfo, NOFOLLOW_LINKS))
 			throw refusal("The staged launcher must be a regular file: " + root.relativize(pluginInfo));
-		if (windows)
-			return;
-		if (!Files.isExecutable(pluginInfo))
+		if (!windows && !Files.isExecutable(pluginInfo))
 			throw refusal("The staged bin/plugin-info must be executable on POSIX platforms");
+		return version;
 	}
 
 	/**
@@ -352,6 +408,33 @@ public final class StagedRelease
 				throw refusal("The staged metadata exceeds " + limit + " bytes: " + file);
 			return bytes;
 		}
+	}
+
+	/**
+	 * Returns the version that a local plugin tree must state: the full plugin version that its bin/VERSION states
+	 * when that is a build of the release, otherwise the release.
+	 *
+	 * @param runtimeVersion the tree's bin/VERSION
+	 * @param release        the release version
+	 * @return the version
+	 * @throws TrustException if bin/VERSION exceeds its size limit
+	 * @throws IOException    if bin/VERSION cannot be read
+	 */
+	private static String localVersion(Path runtimeVersion, String release) throws IOException, TrustException
+	{
+		if (!Files.isRegularFile(runtimeVersion))
+			return release;
+		String declared = readVersion(runtimeVersion);
+		try
+		{
+			if (PluginVersion.parse(declared).release().equals(release))
+				return declared;
+		}
+		catch (IllegalArgumentException _)
+		{
+			// A tree that states no full plugin version must state the release
+		}
+		return release;
 	}
 
 	/**

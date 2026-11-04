@@ -92,7 +92,10 @@ final class SwapFiles
 				start = Optional.of(Instant.parse(lines.get(4)));
 			Optional<String> pluginVersion = Optional.empty();
 			if (!lines.get(5).equals(ABSENT))
-				pluginVersion = Optional.of(ReleaseVersion.parse(lines.get(5)).toString());
+			{
+				InstalledVersions.release(lines.get(5));
+				pluginVersion = Optional.of(lines.get(5));
+			}
 			return Optional.of(new Recorded(swap, launcher, start, pluginVersion));
 		}
 		catch (TrustException | DateTimeParseException | IllegalArgumentException e)

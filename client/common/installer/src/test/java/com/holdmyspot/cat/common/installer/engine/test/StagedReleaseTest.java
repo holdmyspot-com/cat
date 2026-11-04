@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.StagedRelease;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
@@ -40,6 +41,94 @@ public final class StagedReleaseTest
 		{
 			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
 			writeRelease(tree);
+			StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64");
+		}
+	}
+
+	/**
+	 * A staged plugin that states the signed release's full plugin version passes validation.
+	 *
+	 * @throws IOException if fixture files cannot be written or read
+	 * @throws TrustException if the matching plugin version is refused
+	 */
+	@Test
+	public void acceptsMatchingPluginVersion() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
+			writeRelease(tree, "1.1+b0123456789ab");
+			StagedRelease.validate(tree, PluginVersion.parse("1.1+b0123456789ab"), "plugin.json", "linux-x64");
+		}
+	}
+
+	/**
+	 * A staged plugin of another build than the signed release names is refused.
+	 *
+	 * @throws IOException if fixture files cannot be written or read
+	 * @throws TrustException if the plugin version is refused, as expected
+	 */
+	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp =
+		".*must equal plugin version 1\\.1\\+b0123456789ab.*")
+	public void refusesPluginOfAnotherBuild() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
+			writeRelease(tree, "1.1+bfedcba987654");
+			StagedRelease.validate(tree, PluginVersion.parse("1.1+b0123456789ab"), "plugin.json", "linux-x64");
+		}
+	}
+
+	/**
+	 * A staged plugin that states only the release, without the build that the signed release names, is refused.
+	 *
+	 * @throws IOException if fixture files cannot be written or read
+	 * @throws TrustException if the plugin version is refused, as expected
+	 */
+	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp =
+		".*must equal plugin version 1\\.1\\+b0123456789ab.*")
+	public void refusesReleaseOnlyPluginOfSignedRelease() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
+			writeRelease(tree);
+			StagedRelease.validate(tree, PluginVersion.parse("1.1+b0123456789ab"), "plugin.json", "linux-x64");
+		}
+	}
+
+	/**
+	 * A local plugin tree, which no signed release describes, passes validation when it states any build of the
+	 * release.
+	 *
+	 * @throws IOException if fixture files cannot be written or read
+	 * @throws TrustException if the local tree is refused
+	 */
+	@Test
+	public void acceptsLocalTreeOfAnyBuild() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
+			writeRelease(tree, "1.1+bfedcba987654");
+			StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64");
+		}
+	}
+
+	/**
+	 * A local plugin tree of another release is refused.
+	 *
+	 * @throws IOException if fixture files cannot be written or read
+	 * @throws TrustException if the local tree is refused, as expected
+	 */
+	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp = ".*must equal release 1\\.1.*")
+	public void refusesLocalTreeOfAnotherRelease() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
+			writeRelease(tree, "1.2+b0123456789ab");
 			StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64");
 		}
 	}
@@ -381,10 +470,22 @@ public final class StagedReleaseTest
 	 */
 	private static void writeRelease(Path tree) throws IOException
 	{
+		writeRelease(tree, "1.1");
+	}
+
+	/**
+	 * Writes a staged release tree that states a version.
+	 *
+	 * @param tree    the tree
+	 * @param version the version that its plugin manifest and {@code bin/VERSION} state
+	 * @throws IOException if fixture files cannot be created
+	 */
+	private static void writeRelease(Path tree, String version) throws IOException
+	{
 		Files.createDirectories(tree.resolve("bin"));
 		Files.createDirectories(tree.resolve("install/migrations"));
-		Files.writeString(tree.resolve("plugin.json"), "{\"version\":\"1.1\"}", UTF_8);
-		Files.writeString(tree.resolve("bin/VERSION"), "1.1\n", UTF_8);
+		Files.writeString(tree.resolve("plugin.json"), "{\"version\":\"" + version + "\"}", UTF_8);
+		Files.writeString(tree.resolve("bin/VERSION"), version + "\n", UTF_8);
 		Files.writeString(tree.resolve("install/migrations/registry.tsv"), "", UTF_8);
 		Path executable = tree.resolve("bin/plugin-info");
 		Files.writeString(executable, "inert fixture", UTF_8);

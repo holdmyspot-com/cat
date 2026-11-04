@@ -56,11 +56,39 @@ public final class InstallTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(0);
-			requireThat(result.version().orElseThrow(), "version").isEqualTo("1.1");
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(result.version().orElseThrow(), "version").isEqualTo(Releases.pluginVersion("1.1"));
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
+		}
+	}
+
+	/**
+	 * Install accepts a release whose plugin states the full plugin version that the signed release names, its release
+	 * and the commit that it was built from, and activates that plugin.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void installsPluginOfFullVersion() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("install-full-version-"));
+			Path home = Files.createDirectories(root.resolve("home"));
+			Path data = root.resolve("data");
+			Releases.installation(data, "1.1");
+			RecordingIntegration integration = new RecordingIntegration();
+
+			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
+				integration.session());
+
+			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
+			requireThat(Files.readString(home.resolve("live/bin/VERSION")), "pluginVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 		}
 	}
 
@@ -85,7 +113,8 @@ public final class InstallTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(false));
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 		}
 	}
 
@@ -111,7 +140,8 @@ public final class InstallTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(Files.exists(home.resolve("live/leftover"), NOFOLLOW_LINKS), "leftover").isFalse();
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 		}
 	}
 
@@ -140,7 +170,8 @@ public final class InstallTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
 			requireThat(Files.exists(realHome.resolve("live/leftover"), NOFOLLOW_LINKS), "leftover").isFalse();
-			requireThat(Files.readString(realHome.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(realHome.resolve("live/version")), "liveVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(outside), "outside").isEqualTo("kept");
 		}
 	}
@@ -261,7 +292,8 @@ public final class InstallTest
 			UpdateResult result = engine.install(null, new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.INSTALLED);
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 		}
 	}
 
@@ -383,7 +415,7 @@ public final class InstallTest
 		{
 			Path root = cleanup.add(testDirectory("update-current-"));
 			Path home = Files.createDirectories(root.resolve("home/live")).getParent();
-			Files.writeString(home.resolve("live/version"), "1.1");
+			Files.writeString(home.resolve("live/version"), Releases.pluginVersion("1.1"));
 			Releases.installation(root.resolve("data"), "1.1");
 			RecordingIntegration integration = new RecordingIntegration();
 

@@ -107,7 +107,8 @@ public final class EngineTest
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(0);
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(home.resolve(".cat-previous-live/version")), "previousVersion").
 				isEqualTo("1.0");
 			requireThat(Files.readString(home.resolve("configuration")), "configuration").isEqualTo("protected");
@@ -183,7 +184,8 @@ public final class EngineTest
 			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.1\n");
 		}
 	}
@@ -269,7 +271,7 @@ public final class EngineTest
 			Path root = cleanup.add(testDirectory("engine-undo-"));
 			Path home = root.resolve("home");
 			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
+			Files.writeString(home.resolve("live/version"), Releases.pluginVersion("1.0"));
 			Files.writeString(home.resolve("migration-version"), "1.0\n");
 			Releases source = new Releases("1.1", "");
 			Releases.installation(root.resolve("data"), "1.0");
@@ -285,7 +287,7 @@ public final class EngineTest
 			requireThat(undoing.update("v1.0", new RecordingIntegration().session()).result(), "undo").
 				isEqualTo(Result.UP_TO_DATE);
 
-			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
+			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo(Releases.pluginVersion("1.0"));
 			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.0\n");
 			requireThat(undoing.status().previousVersion(), "previous").isEqualTo(Optional.empty());
 		}

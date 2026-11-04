@@ -51,7 +51,7 @@ public final class ActivationTest
 		{
 			Path home = cleanup.add(testDirectory("activation-")).toAbsolutePath().normalize();
 			Files.createDirectory(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
+			Files.writeString(home.resolve("live/version"), Releases.pluginVersion("1.0"));
 			Files.createDirectory(home.resolve("agents"));
 			Files.writeString(home.resolve("agents/cat-old.toml"), "old agent");
 			Files.writeString(home.resolve("agents/user.toml"), "user agent");
@@ -67,7 +67,8 @@ public final class ActivationTest
 			UpdateResult update = engine.update("v1.1", new RecordingIntegration().session());
 
 			requireThat(update.result(), "update").isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(home.resolve("cache/1.1/version")), "addedVersion").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("cache/1.1/version")), "addedVersion").
+				isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(home.resolve("agents/cat-reviewer.toml")), "newAgent").isEqualTo("name = 'new'");
 			requireThat(Files.exists(home.resolve("agents/cat-old.toml")), "oldAgent").isFalse();
 			requireThat(Files.readString(home.resolve("agents/ownership")), "newOwnership").
@@ -80,7 +81,8 @@ public final class ActivationTest
 				new RecordingIntegration().session());
 
 			requireThat(undo.result(), "undo").isEqualTo(Result.UP_TO_DATE);
-			requireThat(Files.readString(home.resolve("live/version")), "restoredVersion").isEqualTo("1.0");
+			requireThat(Files.readString(home.resolve("live/version")), "restoredVersion").
+				isEqualTo(Releases.pluginVersion("1.0"));
 			requireThat(Files.exists(home.resolve("cache/1.1")), "addedTree").isFalse();
 			requireThat(Files.readString(home.resolve("agents/cat-old.toml")), "oldAgent").isEqualTo("old agent");
 			requireThat(Files.exists(home.resolve("agents/cat-reviewer.toml")), "newAgent").isFalse();

@@ -483,7 +483,7 @@ public final class InvocationTest
 			JsonNode requested = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
 				"status", "--harness", "harness-a").result();
 
-			requireThat(updated.path("version").stringValue(), "version").isEqualTo("1.0");
+			requireThat(updated.path("version").stringValue(), "version").isEqualTo(Releases.pluginVersion("1.0"));
 			requireThat(updated.path("cached_bundle").booleanValue(), "cachedBundle").isTrue();
 			requireThat(updated.has("previous_bundle"), "previousBundle").isFalse();
 			requireThat(updated.path("previous_version").stringValue(), "previousVersion").isEqualTo("0.9");

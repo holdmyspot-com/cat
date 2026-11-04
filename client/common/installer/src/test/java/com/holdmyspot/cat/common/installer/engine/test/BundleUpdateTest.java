@@ -51,9 +51,9 @@ public final class BundleUpdateTest
 				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(result.version(), "version").isEqualTo(Optional.of("1.1"));
+			requireThat(result.version(), "version").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
 			requireThat(result.previousVersion(), "previousVersion").isEqualTo(Optional.of("1.0"));
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(Files.readString(data.resolve("1.1/VERSION")), "installer").isEqualTo("1.1\n");
@@ -125,7 +125,7 @@ public final class BundleUpdateTest
 				result(), "firstUpdate").isEqualTo(Result.UPDATED);
 			LauncherSwap.finish(data);
 			UpdateResult status = engine(data, home, first).status();
-			requireThat(status.version(), "statusVersion").isEqualTo(Optional.of("1.1"));
+			requireThat(status.version(), "statusVersion").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
 			requireThat(status.previousVersion(), "statusPrevious").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.readString(data.resolve("runtime.previous/release")), "previousRuntime").
 				isEqualTo("runtime 1.0");
@@ -293,7 +293,7 @@ public final class BundleUpdateTest
 				new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.0"));
 			requireThat(Files.readString(data.resolve("bin/cat-updater")), "launcher").
 				isEqualTo(Releases.stableLauncher("1.0"));
 			requireThat(Files.exists(data.resolve("runtime.next")), "stagedRuntime").isFalse();
@@ -338,9 +338,9 @@ public final class BundleUpdateTest
 			UpdateResult result = engine(data, home, installed).install(null, integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
-			requireThat(result.version(), "version").isEqualTo(Optional.of("1.0"));
+			requireThat(result.version(), "version").isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
 			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.0\n");
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.0"));
 			requireThat(integration.calls(), "calls").contains("register");
 			requireThat(Files.readString(home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
@@ -378,7 +378,7 @@ public final class BundleUpdateTest
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.1"));
 			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.1\n");
-			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");
+			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(engine(data, home, release).pendingSwap(), "pendingSwap").isEqualTo(Optional.empty());
 			requireThat(engine(data, home, release).status().previousVersion(), "previous").
 				isEqualTo(Optional.of("1.0"));
@@ -426,7 +426,7 @@ public final class BundleUpdateTest
 	static Path plugin(Path root, String version) throws IOException
 	{
 		Path home = Files.createDirectories(root.resolve("home/live")).getParent();
-		Files.writeString(home.resolve("live/version"), version);
+		Files.writeString(home.resolve("live/version"), Releases.pluginVersion(version));
 		return home;
 	}
 

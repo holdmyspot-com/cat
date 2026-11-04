@@ -19,7 +19,6 @@ import com.holdmyspot.cat.common.installer.engine.ActivationJournal.Kind;
 import com.holdmyspot.cat.common.installer.engine.ActivationJournal.Operation;
 import com.holdmyspot.cat.common.installer.engine.ActivationJournal.StepState;
 import com.holdmyspot.cat.common.installer.engine.ActivationJournal.Undo;
-import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -107,8 +106,9 @@ final class ActivationTransaction
 	 * @param tree            the validated release tree
 	 * @param plan            provider-approved changes in execution order
 	 * @param migrationFile   the provider's migration marker
-	 * @param previousVersion the active version before activation
-	 * @param newVersion      the authenticated release version
+	 * @param previousVersion the plugin version active before activation: a full plugin version, or the release of a
+	 *                        plugin that states no build
+	 * @param newVersion      the authenticated full plugin version
 	 * @param completion      the work that must succeed for the activation to be kept, such as registering the
 	 *                        plugin with the harness; its failure restores the previous installation
 	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
@@ -119,7 +119,7 @@ final class ActivationTransaction
 		String newVersion, Completion completion) throws IOException, TrustException
 	{
 		requireThat(completion, "completion").isNotNull();
-		ReleaseVersion.parse(previousVersion);
+		InstalledVersions.release(previousVersion);
 		if (!provider.plan(home, newVersion).equals(plan))
 			throw new Refused("The activation destinations differ from the provider's plan");
 		run(tree, plan, migrationFile, Operation.UPDATE, previousVersion, newVersion, completion);
@@ -133,7 +133,7 @@ final class ActivationTransaction
 	 * @param tree          the validated release tree
 	 * @param plan          the provider's install-from-absence plan, in execution order
 	 * @param migrationFile the provider's migration marker
-	 * @param newVersion    the authenticated release version
+	 * @param newVersion    the authenticated full plugin version
 	 * @param completion    the work that must succeed for the install to be kept, such as registering the plugin
 	 *                      with the harness
 	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
@@ -158,7 +158,7 @@ final class ActivationTransaction
 	 * @param tree          the validated release tree
 	 * @param plan          the provider's plan for the installed version, in execution order
 	 * @param migrationFile the provider's migration marker
-	 * @param version       the installed and authenticated release version
+	 * @param version       the installed and authenticated full plugin version
 	 * @param completion    the work that must succeed for the repair to be kept, such as registering the plugin with
 	 *                      the harness
 	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
@@ -181,8 +181,8 @@ final class ActivationTransaction
 	 * @param plan            provider-approved changes in execution order
 	 * @param migrationFile   the provider's migration marker
 	 * @param operation       whether the activation replaces an installation, adds one or repairs one
-	 * @param previousVersion the active version before activation, or empty for an install or a repair
-	 * @param newVersion      the authenticated release version
+	 * @param previousVersion the plugin version active before activation, or empty for an install or a repair
+	 * @param newVersion      the authenticated full plugin version, whose release the migration marker records
 	 * @param completion      the work that must succeed before the activation is committed
 	 * @throws IOException    if staging, activation or {@code completion} fails; ActivationFailure reports the
 	 *                        recovery outcome
@@ -192,7 +192,7 @@ final class ActivationTransaction
 		String previousVersion, String newVersion, Completion completion) throws IOException, TrustException
 	{
 		requireThat(tree, "tree").isDirectory();
-		ReleaseVersion.parse(newVersion);
+		String release = InstalledVersions.release(newVersion).toString();
 		if (!provider.migrationVersionFile(home).equals(migrationFile))
 			throw new Refused("The activation destinations differ from the provider's plan");
 		if (Files.exists(state.activation(), NOFOLLOW_LINKS))
@@ -212,7 +212,7 @@ final class ActivationTransaction
 			save();
 			for (int index = 0; index < entries.size(); ++index)
 				execute(index);
-			StateFiles.write(migrationFile, (StagedRelease.migrationVersion(newVersion) + "\n").getBytes(UTF_8));
+			StateFiles.write(migrationFile, (StagedRelease.migrationVersion(release) + "\n").getBytes(UTF_8));
 			completion.run();
 			// A repair keeps the last activation's record, so that undoing it still restores what it replaced
 			if (operation == Operation.REPAIR)
@@ -963,8 +963,8 @@ final class ActivationTransaction
 		try
 		{
 			if (document.operation() == Operation.UPDATE)
-				ReleaseVersion.parse(document.previousVersion());
-			ReleaseVersion.parse(document.newVersion());
+				InstalledVersions.release(document.previousVersion());
+			InstalledVersions.release(document.newVersion());
 		}
 		catch (TrustException failure)
 		{

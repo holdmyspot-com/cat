@@ -66,6 +66,10 @@ public final class InstallerActivationTest
 	 * The runtime requirement of the installer and the plugin.
 	 */
 	private static final String REQUIREMENT = "{\"format\": 1, \"java_feature\": 25, \"modules\": [\"java.base\"]}";
+	/**
+	 * The full plugin version that the signed release names.
+	 */
+	private static final String PLUGIN_VERSION = "1.1+b0123456789ab";
 
 	/**
 	 * Creates the test.
@@ -136,7 +140,7 @@ public final class InstallerActivationTest
 			requireThat(updated.result(), "updateResult").isEqualTo(Result.UPDATED);
 			requireThat(updated.consistent(), "updatedConsistent").isTrue();
 			requireThat(provider.installed(home), "updatedInstallation").
-				isEqualTo(new InstalledState(Optional.of("1.1"), true));
+				isEqualTo(new InstalledState(Optional.of(PLUGIN_VERSION), true));
 			requireThat(engine.pendingSwap(), "updateSwap").
 				isEqualTo(Optional.of(new RuntimeSwap(Operation.UPDATE, "1.0", "1.1")));
 			finishSwap(data);
@@ -259,8 +263,9 @@ public final class InstallerActivationTest
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
 		{
-			entry(tar, top + "/" + provider.pluginManifest(), "{\"name\":\"cat\",\"version\":\"1.1\"}", 0644);
-			entry(tar, top + "/bin/VERSION", "1.1\n", 0644);
+			entry(tar, top + "/" + provider.pluginManifest(), "{\"name\":\"cat\",\"version\":\"" + PLUGIN_VERSION +
+				"\"}", 0644);
+			entry(tar, top + "/bin/VERSION", PLUGIN_VERSION + "\n", 0644);
 			entry(tar, top + "/bin/runtime-requirement.json", REQUIREMENT, 0644);
 			entry(tar, top + "/bin/plugin-info", "#!/bin/sh\nprintf executed > " +
 				ShellQuoting.posix(executionMarker.toString()) + "\n", 0755);
