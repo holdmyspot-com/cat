@@ -6,6 +6,7 @@ import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.installation.TreeDigest;
 import com.holdmyspot.cat.common.installer.trust.ManifestVerifier;
 import com.holdmyspot.cat.common.installer.trust.ReleaseApproval;
 import com.holdmyspot.cat.common.installer.trust.ReleaseAsset;
@@ -19,14 +20,10 @@ import java.io.InputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
  * Keeps, in the installation's protected data directory, what an operation needs to activate a release again without
@@ -252,39 +249,7 @@ final class ReleaseCache
 	 */
 	private static String identity(Path runtime, Path image) throws IOException
 	{
-		return "runtime " + digest(runtime, null) + "\ninstaller " + digest(image, image.resolve(ANCHOR)) + "\n";
-	}
-
-	/**
-	 * Returns the SHA-256 digest of a tree's relative paths, file contents, executable bits and link targets.
-	 *
-	 * @param tree     the tree
-	 * @param excluded a file to leave out, or null
-	 * @return the digest in lower-case hexadecimal
-	 * @throws IOException if the tree is missing or cannot be read
-	 */
-	private static String digest(Path tree, Path excluded) throws IOException
-	{
-		if (!Files.isDirectory(tree, NOFOLLOW_LINKS))
-			throw new IOException("The installed directory is missing: " + tree);
-		MessageDigest tree256 = sha256();
-		List<Path> files;
-		try (Stream<Path> walk = Files.walk(tree))
-		{
-			files = walk.filter(path -> !Files.isDirectory(path, NOFOLLOW_LINKS) && !path.equals(excluded)).
-				sorted().toList();
-		}
-		for (Path file : files)
-		{
-			String relative = tree.relativize(file).toString().replace('\\', '/');
-			String content;
-			if (Files.isSymbolicLink(file))
-				content = "link " + Files.readSymbolicLink(file);
-			else
-				content = "file " + Files.isExecutable(file) + " " + fileDigest(file);
-			tree256.update((relative + "\0" + content + "\n").getBytes(UTF_8));
-		}
-		return HexFormat.of().formatHex(tree256.digest());
+		return "runtime " + TreeDigest.of(runtime) + "\ninstaller " + TreeDigest.of(image, image.resolve(ANCHOR)) + "\n";
 	}
 
 	/**
@@ -300,42 +265,6 @@ final class ReleaseCache
 		try (InputStream input = Files.newInputStream(file, NOFOLLOW_LINKS))
 		{
 			return BoundedInput.readBytes(input, file, maximum, "The cached release file");
-		}
-	}
-
-	/**
-	 * Returns the SHA-256 digest of a file.
-	 *
-	 * @param file the file
-	 * @return the digest in lower-case hexadecimal
-	 * @throws IOException if the file cannot be read
-	 */
-	private static String fileDigest(Path file) throws IOException
-	{
-		MessageDigest digest = sha256();
-		try (InputStream input = Files.newInputStream(file, NOFOLLOW_LINKS))
-		{
-			byte[] buffer = new byte[64 * 1024];
-			for (int count = input.read(buffer); count != -1; count = input.read(buffer))
-				digest.update(buffer, 0, count);
-		}
-		return HexFormat.of().formatHex(digest.digest());
-	}
-
-	/**
-	 * Returns a SHA-256 digest.
-	 *
-	 * @return the digest
-	 */
-	private static MessageDigest sha256()
-	{
-		try
-		{
-			return MessageDigest.getInstance("SHA-256");
-		}
-		catch (NoSuchAlgorithmException e)
-		{
-			throw new AssertionError("The Java platform cannot provide SHA-256", e);
 		}
 	}
 

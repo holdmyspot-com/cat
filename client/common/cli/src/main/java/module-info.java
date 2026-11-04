@@ -11,6 +11,7 @@ module com.holdmyspot.cat.common.cli
 	exports com.holdmyspot.cat.common;
 	exports com.holdmyspot.cat.common.git to com.holdmyspot.cat.common.cli.test;
 	exports com.holdmyspot.cat.common.history;
+	exports com.holdmyspot.cat.common.installation;
 	exports com.holdmyspot.cat.common.optimizer.adapter;
 	exports com.holdmyspot.cat.common.optimizer.campaign to com.holdmyspot.cat.claude.cli,
 		com.holdmyspot.cat.codex.cli, com.holdmyspot.cat.common.cli.test;

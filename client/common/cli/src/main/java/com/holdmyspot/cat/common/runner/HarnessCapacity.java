@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.secrets.HarnessCapacityAccess;
 import com.holdmyspot.cat.common.secrets.HarnessCapacitySecrets;
 import tools.jackson.core.JacksonException;
@@ -178,9 +179,9 @@ public final class HarnessCapacity
 	/**
 	 * Creates the capacity pool that every CAT process shares for one harness.
 	 * <p>
-	 * The slot files live in {@code .cat/locks/harness-capacity/<harness>} below {@code home}, so sessions of
-	 * different harnesses do not compete for permits. {@link #acquire()} retries every 100 milliseconds, and the
-	 * system clock decides whether a hold lasts.
+	 * The slot files live in {@link CapacityLocks#harnessCapacity(Path, String) the harness's capacity lock directory},
+	 * so sessions of different harnesses do not compete for permits. {@link #acquire()} retries every 100 milliseconds,
+	 * and the system clock decides whether a hold lasts.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param home the user's home directory
@@ -197,8 +198,8 @@ public final class HarnessCapacity
 		requireThat(home, "home").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(waiting, "waiting").isNotNull();
-		Path lockDirectory = home.resolve(".cat").resolve("locks").resolve("harness-capacity").resolve(harness);
-		return of(fileLocks, lockDirectory, maximum, waiting.every(RETRY_INTERVAL), Clock.systemUTC());
+		return of(fileLocks, CapacityLocks.harnessCapacity(home, harness), maximum, waiting.every(RETRY_INTERVAL),
+			Clock.systemUTC());
 	}
 
 	/**
