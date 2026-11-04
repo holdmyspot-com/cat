@@ -42,6 +42,11 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private Map<String, List<String>> added = Map.of();
 	/**
+	 * The entries that {@code permissions} reports as maintained: every entry that a permission installation reported
+	 * as added, and the entries that a test names.
+	 */
+	private final Map<String, List<String>> maintained = new LinkedHashMap<>();
+	/**
 	 * The entries that each {@code removePermissions} call received.
 	 */
 	private final List<Map<String, List<String>>> removed = new ArrayList<>();
@@ -103,6 +108,28 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration adding(Map<String, List<String>> entries)
 	{
 		this.added = new LinkedHashMap<>(entries);
+		maintain(entries);
+		return this;
+	}
+
+	/**
+	 * Adds entries to those that the integration reports as maintained, without reporting them as added.
+	 *
+	 * @param entries each configuration's maintained entries
+	 * @return this integration
+	 */
+	public RecordingIntegration maintain(Map<String, List<String>> entries)
+	{
+		for (Map.Entry<String, List<String>> entry : entries.entrySet())
+		{
+			List<String> values = new ArrayList<>(maintained.getOrDefault(entry.getKey(), List.of()));
+			for (String value : entry.getValue())
+			{
+				if (!values.contains(value))
+					values.add(value);
+			}
+			maintained.put(entry.getKey(), List.copyOf(values));
+		}
 		return this;
 	}
 
@@ -233,6 +260,12 @@ public final class RecordingIntegration implements HarnessIntegration
 		Map<String, List<String>> entries = added;
 		added = Map.of();
 		return entries;
+	}
+
+	@Override
+	public Map<String, List<String>> permissions(Path stableLauncher)
+	{
+		return Map.copyOf(maintained);
 	}
 
 	@Override

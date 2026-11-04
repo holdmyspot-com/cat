@@ -37,14 +37,15 @@ public final class ActivationTest
 	}
 
 	/**
-	 * An update replaces its directory, adds a version copy and replaces only manifest-owned files. Rollback restores
-	 * all three changes and the exact earlier migration marker while preserving unrelated files.
+	 * An update replaces its directory, adds a version copy and replaces only manifest-owned files. Undoing it after
+	 * the stable launcher abandoned its runtime replacement restores all three changes and the exact earlier migration
+	 * marker while preserving unrelated files.
 	 *
 	 * @throws IOException if fixture creation or inspection fails
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void ownedFilesAndAddedTreeRollBack() throws IOException, TrustException
+	public void ownedFilesAndAddedTreeAreUndone() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -72,10 +73,13 @@ public final class ActivationTest
 			requireThat(Files.readString(home.resolve("agents/ownership")), "newOwnership").
 				isEqualTo("cat-reviewer.toml\n");
 
-			LauncherSwap.finish(home.resolve("data"));
-			UpdateResult rollback = engine.rollback();
+			LauncherSwap.abandon(home.resolve("data"));
+			Releases installed = new Releases("1.0", "");
+			UpdateResult undo = new UpdateEngine(home.resolve("data"), installed.policy(home), installed,
+				new Provider(plan), "linux-x64", Clock.systemUTC(), interval -> () -> {}).update("v1.0",
+				new RecordingIntegration().session());
 
-			requireThat(rollback.result(), "rollback").isEqualTo(Result.ROLLED_BACK);
+			requireThat(undo.result(), "undo").isEqualTo(Result.UP_TO_DATE);
 			requireThat(Files.readString(home.resolve("live/version")), "restoredVersion").isEqualTo("1.0");
 			requireThat(Files.exists(home.resolve("cache/1.1")), "addedTree").isFalse();
 			requireThat(Files.readString(home.resolve("agents/cat-old.toml")), "oldAgent").isEqualTo("old agent");

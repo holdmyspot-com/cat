@@ -44,9 +44,8 @@ public final class RecoveryTest
 	}
 
 	/**
-	 * A rollback authorizes an interrupted replacement without normal planning, which requires its absent live tree.
-	 * It restores the exact earlier migration marker, then reports that
-	 * no successful activation remains available for rollback.
+	 * The next operation recovers an interrupted replacement without normal planning, which requires its absent live
+	 * tree, and restores the exact earlier migration marker before it goes on.
 	 *
 	 * @throws IOException if the fixture cannot be written or read
 	 * @throws TrustException if the test policy cannot be created
@@ -62,7 +61,7 @@ public final class RecoveryTest
 			Files.writeString(fixture.state().previousFiles().resolve("recovery/migration"), "0.9\n");
 			Files.writeString(fixture.marker(), "1.1\n");
 
-			UpdateResult result = fixture.engine().rollback();
+			UpdateResult result = fixture.operate();
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(fixture.live().resolve("version")), "restoredVersion").isEqualTo("1.0");
@@ -90,7 +89,7 @@ public final class RecoveryTest
 			fixture.record(unrelated, "swapped", false, false);
 			byte[] before = Files.readAllBytes(fixture.state().activation());
 
-			UpdateResult result = fixture.engine().rollback();
+			UpdateResult result = fixture.operate();
 
 			requireThat(result.result(), "result").isEqualTo(Result.NOT_RESTORED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(6);
@@ -101,35 +100,35 @@ public final class RecoveryTest
 	}
 
 	/**
-	 * An explicit rollback uses its recorded plan despite the active version changing normal planning. It reverses the
-	 * directory replacement, restores an absent marker as absent, and consumes
-	 * its one retained rollback record.
+	 * An interrupted undo of the last successful activation, as an update whose runtime replacement the stable
+	 * launcher abandoned leaves it, and as an earlier build's rollback left it, is finished by the next operation from
+	 * its recorded plan despite the active version changing normal planning. It reverses the directory replacement,
+	 * restores an absent marker as absent and consumes the activation record.
 	 *
 	 * @throws IOException if the fixture cannot be written or read
 	 * @throws TrustException if the test policy cannot be created
 	 */
 	@Test
-	public void rollbackConsumesSuccessfulActivation() throws IOException, TrustException
+	public void interruptedUndoConsumesLastActivation() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("recovery-")).toAbsolutePath().normalize();
 			Fixture fixture = new Fixture(root);
 			fixture.record(fixture.live(), "done", true, false);
+			Files.copy(fixture.state().lastActivation(), fixture.state().activation());
+			fixture.undoing();
 			Files.createDirectory(fixture.live());
 			Files.writeString(fixture.live().resolve("version"), "1.1");
 			Files.writeString(fixture.marker(), "1.1\n");
-			Releases.updated(root.resolve("data"), "1.0", "1.1");
 
-			UpdateResult result = fixture.engine().rollback();
+			UpdateResult result = fixture.operate();
 
-			requireThat(result.result(), "result").isEqualTo(Result.ROLLED_BACK);
-			requireThat(result.version(), "restoredVersion").isEqualTo(Optional.of("1.0"));
+			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(fixture.live().resolve("version")), "liveVersion").isEqualTo("1.0");
 			requireThat(Files.exists(fixture.marker()), "migrationMarker").isFalse();
 			requireThat(Files.exists(fixture.state().lastActivation()), "lastActivation").isFalse();
-			LauncherSwap.finish(root.resolve("data"));
-			requireThat(fixture.engine().rollback().result(), "secondRollback").isEqualTo(Result.REFUSED);
+			requireThat(Files.exists(fixture.state().activation()), "pendingJournal").isFalse();
 		}
 	}
 
@@ -150,7 +149,7 @@ public final class RecoveryTest
 			Files.delete(fixture.previous().resolve("version"));
 			Files.delete(fixture.previous());
 
-			UpdateResult result = fixture.engine().rollback();
+			UpdateResult result = fixture.operate();
 
 			requireThat(result.result(), "result").isEqualTo(Result.NOT_RESTORED);
 			requireThat(result.consistent(), "consistent").isFalse();
@@ -177,7 +176,7 @@ public final class RecoveryTest
 			Files.createDirectory(fixture.live());
 			Files.writeString(fixture.live().resolve("version"), "1.1");
 
-			UpdateResult result = fixture.engine().rollback();
+			UpdateResult result = fixture.operate();
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.readString(fixture.live().resolve("version")), "restoredVersion").isEqualTo("1.0");
@@ -187,7 +186,8 @@ public final class RecoveryTest
 
 	/**
 	 * Owns a fake provider whose documented plan authorizes one isolated directory replacement. The source refuses all
-	 * access because recovery and rollback must use retained before-images without downloading a release.
+	 * access because recovery must use retained before-images without downloading a release. The installation records
+	 * no updater version, so that an install refuses once recovery has run.
 	 *
 	 * @param root the test-owned installation root
 	 */
@@ -287,6 +287,31 @@ public final class RecoveryTest
 			else
 				destination = state.activation();
 			Files.write(destination, mapper.writeValueAsBytes(journal));
+		}
+
+		/**
+		 * Marks the pending journal as an undo of the last successful activation, as the updater records it before it
+		 * starts undoing.
+		 *
+		 * @throws IOException if the journal cannot be rewritten
+		 */
+		private void undoing() throws IOException
+		{
+			JsonMapper mapper = JsonMapper.builder().build();
+			ObjectNode journal = (ObjectNode) mapper.readTree(Files.readAllBytes(state().activation()));
+			journal.put("rollback", true);
+			Files.write(state().activation(), mapper.writeValueAsBytes(journal));
+		}
+
+		/**
+		 * Runs an operation, which recovers an interrupted activation before it does anything else.
+		 *
+		 * @return the outcome
+		 * @throws TrustException if the policy cannot be created
+		 */
+		private UpdateResult operate() throws TrustException
+		{
+			return engine().install(null, new RecordingIntegration().session());
 		}
 
 		/**

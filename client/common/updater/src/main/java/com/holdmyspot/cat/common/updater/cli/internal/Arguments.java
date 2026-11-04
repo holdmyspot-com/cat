@@ -27,7 +27,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 */
 	public enum Operation
 	{
-		SETUP, INSTALL, UPDATE, ROLLBACK, STATUS, UNINSTALL
+		SETUP, INSTALL, UPDATE, STATUS, UNINSTALL
 	}
 
 	/**
@@ -50,7 +50,6 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			case "setup" -> Operation.SETUP;
 			case "install" -> Operation.INSTALL;
 			case "update" -> Operation.UPDATE;
-			case "rollback" -> Operation.ROLLBACK;
 			case "status" -> Operation.STATUS;
 			case "uninstall" -> Operation.UNINSTALL;
 			default -> throw usage();
@@ -66,7 +65,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 		boolean validLength = switch (operation)
 		{
 			case INSTALL, UPDATE, UNINSTALL -> args.length == 3 || args.length == 4;
-			case STATUS, ROLLBACK -> args.length == 3;
+			case STATUS -> args.length == 3;
 			case SETUP -> args.length == 5 || args.length == 7;
 		};
 		if (!validLength || !args[1].equals("--harness") || !harnesses.contains(args[2]))
@@ -82,7 +81,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 				yield new Arguments(operation, harness, null, null, null, args.length == 4);
 			}
 			case INSTALL, UPDATE -> new Arguments(operation, harness, parseTag(args, operation), null, null, false);
-			case STATUS, ROLLBACK -> new Arguments(operation, harness, null, null, null, false);
+			case STATUS -> new Arguments(operation, harness, null, null, null, false);
 		};
 	}
 
@@ -169,7 +168,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	{
 		return new IllegalArgumentException("Usage: cat-updater setup --harness <id> --home <absolute dir> " +
 			"[--plugin <absolute dir>]; install --harness <id> [vX.Y[.Z]|latest]; " +
-			"update --harness <id> [vX.Y[.Z]|latest]; rollback --harness <id>; status [--harness <id>]; " +
+			"update --harness <id> [vX.Y[.Z]|latest]; status [--harness <id>]; " +
 			"uninstall [--harness <id>] [--delete-data]");
 	}
 }

@@ -83,7 +83,7 @@ public final class EngineTest
 	}
 
 	/**
-	 * A verified archive replaces the live tree and retains the original installation for rollback.
+	 * A verified archive replaces the live tree and retains the original installation.
 	 *
 	 * @throws IOException if fixture creation or inspection fails
 	 * @throws TrustException if the test policy is invalid
@@ -255,17 +255,18 @@ public final class EngineTest
 	}
 
 	/**
-	 * A successful activation retains one rollback, restores the migration marker and consumes the record.
+	 * Undoing an update whose runtime replacement the stable launcher abandoned restores the replaced plugin and the
+	 * migration marker, and consumes the activation record, so that the installation keeps no bundle to return to.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 * @throws TrustException if policy construction fails
 	 */
 	@Test
-	public void rollbackRestoresInstallationAndMarker() throws IOException, TrustException
+	public void undoRestoresInstallationAndMarker() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("engine-rollback-"));
+			Path root = cleanup.add(testDirectory("engine-undo-"));
 			Path home = root.resolve("home");
 			Files.createDirectories(home.resolve("live"));
 			Files.writeString(home.resolve("live/version"), "1.0");
@@ -276,15 +277,17 @@ public final class EngineTest
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 			requireThat(engine.update("v1.1", new RecordingIntegration().
 				session()).result(), "update").isEqualTo(Result.UPDATED);
-			LauncherSwap.finish(root.resolve("data"));
-			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.of("1.0"));
-			requireThat(engine.update("v1.1", new RecordingIntegration().
-				session()).result(), "repeatUpdate").isEqualTo(Result.UP_TO_DATE);
-			requireThat(engine.rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
-			LauncherSwap.finish(root.resolve("data"));
+			LauncherSwap.abandon(root.resolve("data"));
+			Releases installed = new Releases("1.0", "");
+			UpdateEngine undoing = new UpdateEngine(root.resolve("data"), installed.policy(home), installed,
+				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+
+			requireThat(undoing.update("v1.0", new RecordingIntegration().session()).result(), "undo").
+				isEqualTo(Result.UP_TO_DATE);
+
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
 			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.0\n");
-			requireThat(engine.rollback().result(), "secondRollback").isEqualTo(Result.REFUSED);
+			requireThat(undoing.status().previousVersion(), "previous").isEqualTo(Optional.empty());
 		}
 	}
 
@@ -460,7 +463,7 @@ public final class EngineTest
 	}
 
 	/**
-	 * A second-step filesystem failure restores the first replacement and the earlier rollback slot.
+	 * A second-step filesystem failure restores the first replacement and the earlier kept copy.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 * @throws TrustException if policy construction fails

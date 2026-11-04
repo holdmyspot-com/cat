@@ -82,7 +82,6 @@ final class SwapFiles
 			Operation operation = switch (lines.get(0))
 			{
 				case "update" -> Operation.UPDATE;
-				case "rollback" -> Operation.ROLLBACK;
 				default -> throw malformed();
 			};
 			RuntimeSwap swap = new RuntimeSwap(operation, ReleaseVersion.parse(lines.get(1)).toString(),

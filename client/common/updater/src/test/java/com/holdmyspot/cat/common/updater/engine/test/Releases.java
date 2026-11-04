@@ -218,7 +218,7 @@ public final class Releases implements ReleaseSource
 
 	/**
 	 * Writes an installation whose last update replaced one bundle with another and whose stable launcher finished the
-	 * runtime replacement: the replaced runtime and updater version directory are kept for rollback.
+	 * runtime replacement: the replaced runtime and updater version directory stay cached.
 	 *
 	 * @param data     the installation's updater data directory
 	 * @param replaced the version that the update replaced

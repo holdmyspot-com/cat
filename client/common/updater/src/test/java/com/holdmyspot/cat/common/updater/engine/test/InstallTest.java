@@ -209,7 +209,7 @@ public final class InstallTest
 			requireThat(Files.readString(journal), "journal").contains("\"operation\"").contains("\"install\"");
 			requireThat(Files.exists(home.resolve("live"), NOFOLLOW_LINKS), "liveBeforeRecovery").isTrue();
 
-			UpdateResult result = engine(root, home, source).rollback();
+			UpdateResult result = engine(root, home, source).update("v1.1", new RecordingIntegration().session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(Files.exists(home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
@@ -219,13 +219,13 @@ public final class InstallTest
 
 	/**
 	 * Install where the harness has no plugin adds the release that the installation runs, also when the harness has
-	 * had a newer release, as after a rollback.
+	 * had a newer release.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void installAfterRollbackAddsSelectedRelease() throws IOException, TrustException
+	public void installAfterNewerAddsSelectedRelease() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{

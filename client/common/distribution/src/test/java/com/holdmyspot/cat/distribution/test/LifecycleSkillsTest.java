@@ -106,9 +106,9 @@ public final class LifecycleSkillsTest
 			requireThat(updateBody, "updateBody").contains("cat-updater/<h>/bin/cat-updater").
 				contains("cat-updater\\<h>\\bin\\cat-updater.ps1").contains("`<launcher> install --harness <h>`").
 				contains("`<launcher> update --harness <h>`").contains("`<launcher> update --harness <h> <tag>`").
-				contains("`<launcher> rollback --harness <h>`").
+				doesNotContain("rollback").doesNotContain("roll back").doesNotContain("rolled_back").
 				contains("`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`").
-				contains("asks the user to approve this command").doesNotContain("cat-updater.cmd").
+				doesNotContain("cat-updater.cmd").
 				contains("`<launcher> status --harness <h>`").
 				contains("`installed`").contains("`up_to_date`").contains("`refused`").
 				contains("`failed`: an unexpected error stopped the operation").
@@ -116,7 +116,6 @@ public final class LifecycleSkillsTest
 				contains("releases/download/<tag>/cat.sh").contains("cat.ps1").contains("`-Harness <h>`").
 				contains("with no release argument").
 				contains("run `<launcher> update --harness <h> <tag>` after `install` reports `installed`").
-				contains("When its `previous_bundle` field is false").contains("do not run `rollback`").
 				contains("`pending_swap`").contains("`aot_cache`").
 				contains("`not_swapped`: the Java runtime could not be put in place, so the operation did not finish. " +
 					"Run `<launcher> install --harness <h>` at once: it undoes the failed operation and puts back " +
@@ -144,7 +143,8 @@ public final class LifecycleSkillsTest
 				contains("not the other harness's CAT installation").
 				contains("may ask the user to approve this command").doesNotContain("cat-updater.cmd").
 				doesNotContain("install/").doesNotContain("uninstall-").doesNotContain("-Uninstall").
-				doesNotContain("-DeleteData").doesNotContain("cat.sh").doesNotContain("XDG_CONFIG_HOME");
+				doesNotContain("-DeleteData").doesNotContain("cat.sh").doesNotContain("XDG_CONFIG_HOME").
+				doesNotContain("rollback").doesNotContain("roll back");
 			for (String skill : SKILLS)
 			{
 				String manifest = Files.readString(plugin.resolve("skills/" + skill + "/SKILL.md"));

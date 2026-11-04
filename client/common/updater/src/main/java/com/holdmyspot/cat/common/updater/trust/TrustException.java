@@ -86,7 +86,7 @@ public final class TrustException extends Exception
 		 */
 		ABOVE_MAXIMUM_MAJOR,
 		/**
-		 * The release is older than the active installation, and only a user's rollback may install it.
+		 * The release is older than the active installation.
 		 */
 		DOWNGRADE
 	}

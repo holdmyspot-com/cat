@@ -31,8 +31,8 @@ import java.util.jar.JarFile;
 
 /**
  * Writes the trusted updater's application directory: its version, modules, versioned launchers, the stable launchers
- * that an update or rollback to the release installs, default policy, runtime requirement and legal materials. No
- * other thread or process modifies the directory during assembly.
+ * that an update to the release installs, default policy, runtime requirement and legal materials. No other thread or
+ * process modifies the directory during assembly.
  */
 public final class UpdaterArtifactBuilder
 {
@@ -136,7 +136,7 @@ public final class UpdaterArtifactBuilder
 		{
 			copyLauncher(jar, "versioned-launcher.sh", bin.resolve(LAUNCHER_NAME));
 			copyLauncher(jar, "versioned-launcher.ps1", bin.resolve(LAUNCHER_NAME + ".ps1"));
-			// An update or rollback installs the stable launcher of the release that it selects from here
+			// An update installs the stable launcher of the release that it selects from here
 			copyLauncher(jar, "stable-launcher.sh", stable.resolve(LAUNCHER_NAME));
 			copyLauncher(jar, "stable-launcher.ps1", stable.resolve(LAUNCHER_NAME + ".ps1"));
 		}

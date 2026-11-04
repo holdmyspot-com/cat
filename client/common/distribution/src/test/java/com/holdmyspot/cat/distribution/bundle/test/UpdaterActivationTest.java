@@ -51,8 +51,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs authenticated update and rollback of the whole bundle through the engine and the packaged harness providers
- * together.
+ * Runs an authenticated update of the whole bundle through the engine and the packaged harness providers together.
  */
 public final class UpdaterActivationTest
 {
@@ -86,8 +85,7 @@ public final class UpdaterActivationTest
 
 	/**
 	 * An authenticated release changes the actual provider destinations, stages its runtime and installs its stable
-	 * launcher, and rollback restores the original version, owned files, runtime and stable launcher, while
-	 * configuration, user files and staged executable content remain untouched.
+	 * launcher, while configuration, user files and staged executable content remain untouched.
 	 *
 	 * @param harness the production provider to exercise
 	 * @throws IOException if fixture files cannot be written or read
@@ -95,7 +93,7 @@ public final class UpdaterActivationTest
 	 * @throws TrustException if the fixture policy cannot be created
 	 */
 	@Test(dataProvider = "harnesses")
-	public void updateRollbackPreservesConfiguration(String harness)
+	public void updatePreservesConfiguration(String harness)
 		throws IOException, GeneralSecurityException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -153,32 +151,6 @@ public final class UpdaterActivationTest
 				requireThat(home.resolve("plugins/cache/cat/cat/1.0"), "retainedCache").isDirectory();
 			}
 			unchanged(contents, times);
-
-			UpdateResult rolledBack = engine.rollback();
-
-			requireThat(rolledBack.result(), "rollbackResult").isEqualTo(Result.ROLLED_BACK);
-			requireThat(rolledBack.consistent(), "rollbackConsistent").isTrue();
-			requireThat(provider.installed(home), "restoredInstallation").
-				isEqualTo(new InstalledState(Optional.of("1.0"), true));
-			requireThat(Files.readString(provider.migrationVersionFile(home)), "restoredMigrationVersion").
-				isEqualTo("1.0\n");
-			requireThat(engine.pendingSwap(), "rollbackSwap").
-				isEqualTo(Optional.of(new RuntimeSwap(Operation.ROLLBACK, "1.1", "1.0")));
-			finishSwap(data);
-			requireThat(Files.readString(data.resolve("runtime/release")), "restoredRuntime").isEqualTo("runtime 1.0");
-			requireThat(Files.readString(data.resolve("bin/cat-updater")), "restoredLauncher").
-				isEqualTo("stable launcher 1.0");
-			requireThat(engine.status().previousVersion(), "noPreviousVersion").isEqualTo(Optional.empty());
-			if (harness.equals("codex"))
-			{
-				requireThat(Files.readString(home.resolve("agents/cat-a.toml")), "restoredAgent").isEqualTo("old agent");
-				requireThat(Files.exists(home.resolve("agents/cat-b.toml"), NOFOLLOW_LINKS), "newAgentExists").isFalse();
-				requireThat(Files.readString(home.resolve("plugins/data/cat-cat/codex-agent-files")), "restoredOwnership").
-					isEqualTo("cat-a.toml\n");
-				requireThat(Files.exists(home.resolve("plugins/cache/cat/cat/1.1"), NOFOLLOW_LINKS), "newCacheExists").
-					isFalse();
-			}
-			unchanged(contents, times);
 			requireThat(Files.exists(root.resolve("executed"), NOFOLLOW_LINKS), "downloadedCodeExecuted").isFalse();
 		}
 	}
@@ -232,24 +204,11 @@ public final class UpdaterActivationTest
 	private static void finishSwap(Path data) throws IOException
 	{
 		List<String> request = Files.readAllLines(data.resolve("state/runtime-swap"), UTF_8);
-		boolean rollback = request.get(0).equals("rollback");
-		String staged = "runtime.next";
-		String kept = "runtime.previous";
-		if (rollback)
-		{
-			staged = "runtime.previous";
-			kept = "runtime.next";
-		}
-		Files.move(data.resolve("runtime"), data.resolve(kept));
-		Files.move(data.resolve(staged), data.resolve("runtime"));
+		Files.move(data.resolve("runtime"), data.resolve("runtime.previous"));
+		Files.move(data.resolve("runtime.next"), data.resolve("runtime"));
 		Files.writeString(data.resolve("current"), request.get(2) + "\n", UTF_8);
 		Files.delete(data.resolve("state/runtime-swap"));
 		Files.deleteIfExists(data.resolve("state/runtime-swap-result.json"));
-		if (rollback)
-		{
-			TemporaryDirectories.deleteRecursively(data.resolve("runtime.next"));
-			TemporaryDirectories.deleteRecursively(data.resolve(request.get(1)));
-		}
 	}
 
 	/**
@@ -436,6 +395,12 @@ public final class UpdaterActivationTest
 
 		@Override
 		public Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
+		{
+			return Map.of();
+		}
+
+		@Override
+		public Map<String, List<String>> permissions(Path stableLauncher)
 		{
 			return Map.of();
 		}

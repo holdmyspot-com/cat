@@ -69,12 +69,12 @@ Start or resume a session. CAT then injects its default rules and your project's
 
 ### Install, update, reinstall and uninstall
 
-Afterwards, ask your agent. CAT's `update` skill installs, updates and rolls back CAT through the trusted updater, and
+Afterwards, ask your agent. CAT's `update` skill installs and updates CAT through the trusted updater, and
 installs the plugin again if you removed it by other means. An update moves the Java runtime, the updater and the
-plugin to the new release together, and a rollback returns all three to the previous release. It requests GitHub's
+plugin to the new release together. It requests GitHub's
 latest release unless you name one; the release must satisfy your updater policy. It verifies signed release metadata
 and the release archives before activation. Restart the harness after an update. See
-[updates and rollback](docs/installation.md#routine-operations).
+[updates](docs/installation.md#routine-operations).
 
 CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes that harness's whole CAT
 installation: the plugin, the updater, the Java runtime and the permission entries. It keeps the plugin data unless you

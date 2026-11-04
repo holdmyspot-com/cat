@@ -260,8 +260,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The rules file permits install, update and status without asking, asks before rollback and uninstall, never
-	 * covers setup, and is reported as added only by the call that wrote it.
+	 * The rules file permits install, update and status without asking, asks before uninstall, never covers setup, and
+	 * is reported as added only by the call that wrote it.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -279,6 +279,36 @@ public final class IntegrationTest
 			requireThat(Files.readString(home.resolve("rules/cat-updater.rules")), "content").isEqualTo(expected);
 			requireThat(provider().installPermissions(home, launcher, replacer()), "repeated").isEmpty();
 			provider().validateConfiguration(home);
+		}
+	}
+
+	/**
+	 * A rules file that an earlier build wrote, which also asked before an operation that the updater no longer has,
+	 * is accepted as CAT's own, replaced with the maintained rules and kept when the earlier content is removed.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void replacesEarlierRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path launcher = home.resolveSibling("updater data/bin/cat-updater");
+			String quoted = MAPPER.writeValueAsString(launcher.toString());
+			String uninstall = "prefix_rule(pattern=[" + quoted + ", \"uninstall\"";
+			String earlier = rules(launcher).replace(uninstall, "prefix_rule(pattern=[" + quoted +
+				", \"rollback\", \"--harness\", \"codex\"], decision=\"prompt\")\n" + uninstall);
+			write(home.resolve("rules/cat-updater.rules"), earlier);
+
+			provider().validateConfiguration(home);
+			Map<String, List<String>> added = provider().installPermissions(home, launcher, replacer());
+			provider().removePermissions(home, Map.of("rules/cat-updater.rules#", List.of(earlier)), replacer());
+
+			requireThat(added, "added").isEqualTo(Map.of("rules/cat-updater.rules#", List.of(rules(launcher))));
+			requireThat(provider().permissions(launcher), "maintained").isEqualTo(added);
+			requireThat(Files.readString(home.resolve("rules/cat-updater.rules")), "content").
+				isEqualTo(rules(launcher));
 		}
 	}
 
@@ -448,7 +478,6 @@ public final class IntegrationTest
 			prefix_rule(pattern=[%1$s, "install", "--harness", "codex"], decision="allow")
 			prefix_rule(pattern=[%1$s, "update", "--harness", "codex"], decision="allow")
 			prefix_rule(pattern=[%1$s, "status"], decision="allow")
-			prefix_rule(pattern=[%1$s, "rollback", "--harness", "codex"], decision="prompt")
 			prefix_rule(pattern=[%1$s, "uninstall", "--harness", "codex"], decision="prompt")
 			""".formatted(quoted);
 	}

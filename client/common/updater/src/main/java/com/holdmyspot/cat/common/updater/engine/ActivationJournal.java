@@ -147,7 +147,8 @@ final class ActivationJournal
 		root.put("backup_root", document.backupRoot().toString());
 		root.put("migration_existed", document.migrationExisted());
 		root.put("prepared", document.prepared());
-		root.put("rollback", document.rollback());
+		// The member keeps the name that journals of earlier builds use, so that recovery finishes their undo too
+		root.put("rollback", document.undoesLast());
 		ArrayNode entries = root.putArray("entries");
 		for (Entry entry : document.entries())
 		{
@@ -338,11 +339,12 @@ final class ActivationJournal
 	 * @param backupRoot       this activation's private backup directory
 	 * @param migrationExisted indicates whether the marker existed before activation
 	 * @param prepared         indicates whether all backups completed before live mutation
-	 * @param rollback         indicates whether recovery must complete an explicit rollback
+	 * @param undoesLast       indicates whether the journal undoes the last successful activation, which recovery
+	 *                         completes and whose record it then consumes
 	 * @param entries          provider steps in execution order
 	 */
 	record Document(Operation operation, String previousVersion, String newVersion, Path migrationFile, Path backupRoot,
-		boolean migrationExisted, boolean prepared, boolean rollback, List<Entry> entries)
+		boolean migrationExisted, boolean prepared, boolean undoesLast, List<Entry> entries)
 	{
 		/**
 		 * Creates a stable record of activation progress.
@@ -355,7 +357,7 @@ final class ActivationJournal
 		 * @param backupRoot       the private backup directory
 		 * @param migrationExisted indicates whether the marker existed
 		 * @param prepared         indicates whether all backups completed
-		 * @param rollback         indicates whether this is explicit rollback
+		 * @param undoesLast       indicates whether this undoes the last successful activation
 		 * @param entries          steps in execution order
 		 */
 		Document
@@ -379,11 +381,11 @@ final class ActivationJournal
 	 * @param live        the destination
 	 * @param staging     the prepared replacement directory
 	 * @param previous    the old live directory's slot
-	 * @param older       a temporary slot for an earlier rollback directory
+	 * @param older       a temporary slot for an earlier previous directory
 	 * @param discard     the removed new live directory during undo
 	 * @param state       forward progress, persisted before the corresponding mutation
 	 * @param undo        reverse progress, persisted before the corresponding mutation
-	 * @param hadPrevious indicates whether an older rollback slot existed
+	 * @param hadPrevious indicates whether an older previous slot existed
 	 * @param files       old and staged files of an owned-file step
 	 */
 	record Entry(Kind kind, Path live, Path staging, Path previous, Path older, Path discard, StepState state,
@@ -396,11 +398,11 @@ final class ActivationJournal
 		 * @param live        the destination
 		 * @param staging     the replacement directory
 		 * @param previous    the old live slot
-		 * @param older       the earlier rollback slot
+		 * @param older       the earlier previous slot
 		 * @param discard     the directory removed during undo
 		 * @param state       forward progress
 		 * @param undo        reverse progress
-		 * @param hadPrevious indicates whether an earlier rollback slot existed
+		 * @param hadPrevious indicates whether an earlier previous slot existed
 		 * @param files       owned-file changes
 		 */
 		Entry
@@ -457,8 +459,8 @@ final class ActivationJournal
 		 */
 		INSTALL,
 		/**
-		 * Replaces the installed release with the same release and keeps the rollback that the last activation
-		 * retained; undo restores the replaced files.
+		 * Replaces the installed release with the same release and keeps what the last activation retained; undo
+		 * restores the replaced files.
 		 */
 		REPAIR
 	}
@@ -480,7 +482,7 @@ final class ActivationJournal
 	}
 
 	/**
-	 * Reverse progress; separates restoring live content from restoring an older rollback slot.
+	 * Reverse progress; separates restoring live content from restoring an older previous slot.
 	 */
 	enum Undo
 	{

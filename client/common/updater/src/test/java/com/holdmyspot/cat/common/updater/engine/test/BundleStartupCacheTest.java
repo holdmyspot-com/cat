@@ -82,68 +82,6 @@ public final class BundleStartupCacheTest
 	}
 
 	/**
-	 * A rollback trains the restored plugin's cache with the previous runtime, which the stable launcher restores
-	 * after the updater exits.
-	 *
-	 * @throws IOException    if the fixture cannot be created or inspected
-	 * @throws TrustException if the test policy is invalid
-	 */
-	@Test
-	public void rollbackTrainsForRestoredRuntime() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("bundle-cache-rollback-"));
-			Path data = root.resolve("data");
-			Path home = installed(root, data, true);
-			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
-				result(), "update").isEqualTo(Result.UPDATED);
-			LauncherSwap.finish(data);
-
-			UpdateResult result = engine(data, home, release).rollback();
-
-			requireThat(result.result(), "result").isEqualTo(Result.ROLLED_BACK);
-			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
-			requireThat(cache(home), "cache").isEqualTo(FakeJava.cacheOf("runtime 1.0"));
-			requireThat(binding(home), "binding").isEqualTo(boundRuntime(data));
-		}
-	}
-
-	/**
-	 * A rollback that the next operation resumes trains the restored plugin's cache with the previous runtime.
-	 *
-	 * @throws IOException    if the fixture cannot be created or inspected
-	 * @throws TrustException if the test policy is invalid
-	 */
-	@Test
-	public void resumedRollbackTrainsForRestoredRuntime() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("bundle-cache-resumed-"));
-			Path data = root.resolve("data");
-			// The plugin gets its training description only after the first rollback, so that only the resumed one trains
-			Path home = installed(root, data, false);
-			Releases release = new Releases("1.1", "");
-			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
-				result(), "update").isEqualTo(Result.UPDATED);
-			LauncherSwap.finish(data);
-			requireThat(engine(data, home, release).rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
-			LauncherSwap.abandon(data);
-			describe(home.resolve("live"));
-
-			UpdateResult result = engine(data, home, release).update("v1.1",
-				new RecordingIntegration().session());
-
-			requireThat(result.result(), "result").isEqualTo(Result.ROLLED_BACK);
-			requireThat(result.aotCache(), "aotCache").isEqualTo(Optional.of(true));
-			requireThat(cache(home), "cache").isEqualTo(FakeJava.cacheOf("runtime 1.0"));
-			requireThat(binding(home), "binding").isEqualTo(boundRuntime(data));
-		}
-	}
-
-	/**
 	 * An operation that undoes an update whose runtime replacement the launcher abandoned trains the restored plugin's
 	 * cache and reports it, also when the operation then finds the installation up to date.
 	 *

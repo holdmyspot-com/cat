@@ -198,7 +198,7 @@ public final class Invocation
 			case STATUS -> failure(Result.REFUSED, harness, message, journals);
 			case SETUP -> failure(Result.FAILED, harness, message + "; " + Locations.rerunEntryCommand(harness) +
 				" to continue.", journals);
-			case INSTALL, UPDATE, ROLLBACK, UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " +
+			case INSTALL, UPDATE, UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " +
 				operation + " command again to continue.", journals);
 		};
 	}
@@ -257,15 +257,13 @@ public final class Invocation
 			return print(failure(Result.REFUSED, own, "This updater has no plugin provider for " + own + ".",
 				List.of()), arguments, locations);
 		}
-		if (arguments.operation() == Operation.STATUS || arguments.operation() == Operation.ROLLBACK)
+		if (arguments.operation() == Operation.STATUS)
 		{
 			try (HttpsReleaseSource source = new HttpsReleaseSource(policy.releaseBaseUrl(), environment,
 				CONNECT_LIMIT, REQUEST_LIMIT))
 			{
 				UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation.get(),
 					platform.id(), clock, waiting);
-				if (arguments.operation() == Operation.ROLLBACK)
-					return finish(engine, engine.rollback(), arguments, locations);
 				UpdateResult status = engine.status();
 				ObjectNode encoded = encodeStatus(status, engine.pendingSwap());
 				return print(status, encoded, arguments, locations);
@@ -307,7 +305,7 @@ public final class Invocation
 			{
 				case INSTALL -> engine.install(arguments.tag(), session);
 				case UPDATE -> engine.update(arguments.tag(), session);
-				case SETUP, STATUS, ROLLBACK, UNINSTALL -> throw new AssertionError(arguments.operation());
+				case SETUP, STATUS, UNINSTALL -> throw new AssertionError(arguments.operation());
 			};
 			return finish(engine, result, arguments, locations);
 		}
@@ -484,7 +482,7 @@ public final class Invocation
 	}
 
 	/**
-	 * Encodes a status outcome with whether the installation keeps a previous bundle for rollback and the runtime
+	 * Encodes a status outcome with whether the installation keeps a previous bundle and the runtime
 	 * replacement that the stable launcher has not finished.
 	 *
 	 * @param status      the status outcome, whose previous version is the previous bundle's

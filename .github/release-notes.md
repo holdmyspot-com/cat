@@ -24,10 +24,10 @@ command again once for each harness you use, because that build's updater cannot
 
 ## Install, update and uninstall with your agent
 
-After that, ask your agent. CAT's `update` skill installs, updates and rolls back CAT through the installed trusted
+After that, ask your agent. CAT's `update` skill installs and updates CAT through the installed trusted
 updater, and installs the plugin again when you removed it by other means. An update moves the installation's Java
-runtime, updater and plugin to the new release together, and the previous bundle stays until the next successful update;
-a rollback restores all three together, and the harness asks you to approve it. The updater verifies signed metadata and
+runtime, updater and plugin to the new release together, and the previous bundle stays until the next successful update.
+The updater verifies signed metadata and
 archive digests against its existing policy, and refuses a release whose Java requirement the runtime that would run it
 does not meet; in that case, run the newer release's command above again. An update never changes the policy's keys,
 release source or version limits.
@@ -37,7 +37,7 @@ SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`. Initial setup relies on HTTPS to G
 archive digests; compare this fingerprint through a source you trust. Hooks and MCP servers may execute outside the
 shell sandbox as your user: authentication approves release provenance, not the harmlessness of its code.
 
-See [installation, permissions, supported platforms, and rollback](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md).
+See [installation, permissions, and supported platforms](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md).
 
 ## Uninstall
 

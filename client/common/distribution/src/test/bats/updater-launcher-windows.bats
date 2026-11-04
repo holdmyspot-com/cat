@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 # Tests the trusted updater's Windows launchers as Windows PowerShell runs them through -File from Git Bash: the stable
 # launcher's argument forwarding, environment isolation, current-version validation and exit-status pass-through, its
-# replacement of the Java runtime after an update or rollback and removal of the data directory after a complete
-# uninstall, and the versioned launchers' start of their installation's java.exe, from PowerShell and from Git Bash.
+# replacement of the Java runtime after an update and removal of the data directory after a complete uninstall, and
+# the versioned launchers' start of their installation's java.exe, from PowerShell and from Git Bash.
 # Only the Windows build runs this file; the POSIX launchers' tests are in updater-launcher.bats.
 
 bats_require_minimum_version 1.5.0
@@ -55,8 +55,8 @@ create_data_directory()
 	write_runtime "$1/runtime" installed 0
 }
 
-# Writes a Java runtime whose java.exe is the fake, as an installation holds it, an update stages it or a rollback
-# keeps it.
+# Writes a Java runtime whose java.exe is the fake, as an installation holds it, an update stages it or keeps the
+# replaced one.
 # Arguments: the absolute path of the runtime directory, its marker text, and the status of its java -version.
 # Side effects: Creates the directory with bin\java.exe, version-status and a marker file that names the runtime.
 write_runtime()
@@ -279,22 +279,22 @@ XDG_DATA_HOME" ]
 	[ "${output}" = 'replacement ran' ]
 }
 
-@test "after a rollback the Windows stable launcher restores the kept runtime and deletes the replaced version" {
+# Only an update replaces the runtime, so a request that an earlier build wrote for another operation, such as a
+# rollback, is refused before any directory moves; the next updater operation reports how to repair it.
+@test "the Windows stable launcher reports not_swapped and moves nothing for a request that names an operation other than update" {
 	request_swap "${DATA}" rollback 1.0 0.9
 	write_runtime "${DATA}/runtime.previous" kept 0
 	mkdir -p "${DATA}/0.9/bin"
 
-	run powershell_file "${DATA}/bin/cat-updater.ps1" rollback --harness claude
+	run --separate-stderr powershell_file "${DATA}/bin/cat-updater.ps1" update --harness claude
 
-	[ "${status}" -eq 0 ]
-	[ "${output}" = "${SAVED_RESULT}" ]
-	[ "$(cat "${DATA}/current")" = 0.9 ]
-	[ "$(cat "${DATA}/runtime/marker")" = kept ]
-	[ ! -e "${DATA}/runtime.previous" ]
-	[ ! -e "${DATA}/runtime.next" ]
-	[ ! -e "${DATA}/1.0" ]
-	[ -d "${DATA}/0.9" ]
-	[ ! -e "${DATA}/state/runtime-swap" ]
+	[ "${status}" -eq 8 ]
+	[ "${output}" = "$(not_swapped_result "${DATA}")" ]
+	[ "$(cat "${DATA}/current")" = 1.0 ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ "$(cat "${DATA}/runtime.previous/marker")" = kept ]
+	[ -d "${DATA}/1.0" ]
+	[ -f "${DATA}/state/runtime-swap" ]
 }
 
 @test "the Windows stable launcher restores the runtime and reports not_swapped when the staged runtime fails" {

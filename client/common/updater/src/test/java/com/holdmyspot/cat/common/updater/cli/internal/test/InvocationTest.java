@@ -399,41 +399,32 @@ public final class InvocationTest
 	}
 
 	/**
-	 * A rollback restores the previous plugin, saves its one-line result for the stable launcher, which restores the
-	 * previous Java runtime and updater after the updater exits, prints nothing itself, and exits with the runtime
-	 * hand-over status.
+	 * The updater has no rollback operation: the command is refused as a usage error and changes nothing.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void rollbackHandsRuntimeToLauncher() throws IOException, TrustException
+	public void rollbackIsUnknownOperation() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-rollback-")));
 			installation.update();
+			Map<String, String> before = Releases.snapshot(installation.root);
 
 			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "rollback",
 				"--harness", "harness-a");
 
-			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(78);
-			requireThat(run.output, "output").isEmpty();
-			String saved = Files.readString(installation.data.resolve("state/runtime-swap-result.json"), UTF_8);
-			requireThat(saved.endsWith("\n"), "newline").isTrue();
-			requireThat(saved.lines().count(), "lines").isEqualTo(1L);
-			JsonNode result = JsonMapper.builder().build().readTree(saved);
-			requireThat(result.path("result").stringValue(), "result").isEqualTo("rolled_back");
-			requireThat(result.path("version").stringValue(), "version").isEqualTo("0.9");
-			requireThat(Files.readString(installation.home.resolve("live/version")), "plugin").isEqualTo("0.9");
-			requireThat(Files.readString(installation.data.resolve("state/runtime-swap")).lines().limit(3).toList(),
-				"request").isEqualTo(List.of("rollback", "1.0", "0.9"));
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(2);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("usage");
+			requireThat(Releases.snapshot(installation.root), "after").isEqualTo(before);
 		}
 	}
 
 	/**
-	 * Status reports whether a previous bundle is kept for rollback and the runtime replacement that the stable
-	 * launcher has not finished.
+	 * Status reports whether the installation keeps the bundle that the last update replaced, and the runtime
+	 * replacement that the stable launcher has not finished.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -448,20 +439,18 @@ public final class InvocationTest
 
 			JsonNode updated = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
 				"status", "--harness", "harness-a").result();
-			requireThat(installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
-				"rollback", "--harness", "harness-a").status, "rollback").isEqualTo(78);
-			JsonNode rolledBack = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+			installation.requestUpdate("1.1");
+			JsonNode requested = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
 				"status", "--harness", "harness-a").result();
 
 			requireThat(updated.path("version").stringValue(), "version").isEqualTo("1.0");
 			requireThat(updated.path("previous_bundle").booleanValue(), "previousBundle").isTrue();
 			requireThat(updated.path("previous_version").stringValue(), "previousVersion").isEqualTo("0.9");
-			requireThat(updated.has("pending_swap"), "pendingBeforeRollback").isFalse();
-			requireThat(rolledBack.path("previous_bundle").booleanValue(), "previousAfterRollback").isFalse();
-			JsonNode pending = rolledBack.path("pending_swap");
-			requireThat(pending.path("operation").stringValue(), "operation").isEqualTo("rollback");
+			requireThat(updated.has("pending_swap"), "pendingBeforeRequest").isFalse();
+			JsonNode pending = requested.path("pending_swap");
+			requireThat(pending.path("operation").stringValue(), "operation").isEqualTo("update");
 			requireThat(pending.path("from_version").stringValue(), "from").isEqualTo("1.0");
-			requireThat(pending.path("to_version").stringValue(), "to").isEqualTo("0.9");
+			requireThat(pending.path("to_version").stringValue(), "to").isEqualTo("1.1");
 		}
 	}
 
@@ -480,8 +469,7 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-swap-")));
 			installation.update();
-			requireThat(installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
-				"rollback", "--harness", "harness-a").status, "rollback").isEqualTo(78);
+			installation.requestUpdate("1.1");
 			RecordingIntegration integration = new RecordingIntegration();
 
 			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
@@ -765,7 +753,7 @@ public final class InvocationTest
 
 		/**
 		 * Writes the policy and replaces the installation with one that an update from 0.9 left after the stable
-		 * launcher finished it, so that it keeps the 0.9 bundle for rollback.
+		 * launcher finished it, so that it keeps the 0.9 bundle that the update replaced.
 		 *
 		 * @throws IOException    if the installation cannot be written
 		 * @throws TrustException if a test policy is invalid
@@ -784,6 +772,19 @@ public final class InvocationTest
 			LauncherSwap.finish(data);
 			Path anchor = image.resolve(Locations.POLICY_ANCHOR);
 			Files.writeString(anchor, policyFile + "\n");
+		}
+
+		/**
+		 * Leaves the request with which an update to a version hands the runtime replacement to a stable launcher that
+		 * stopped before it finished it.
+		 *
+		 * @param version the version that the update selects
+		 * @throws IOException if the request cannot be written
+		 */
+		private void requestUpdate(String version) throws IOException
+		{
+			Files.writeString(data.resolve("state/runtime-swap"), "update\n1.0\n" + version + "\n" + Long.MAX_VALUE +
+				"\n-\n-\n", UTF_8);
 		}
 
 		/**

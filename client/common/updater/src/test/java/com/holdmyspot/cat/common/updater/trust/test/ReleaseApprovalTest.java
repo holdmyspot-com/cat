@@ -22,8 +22,7 @@ import java.util.List;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link ReleaseApproval}: which verified releases the user's trust policy lets a routine update or a rollback
- * install.
+ * Tests {@link ReleaseApproval}: which verified releases the user's trust policy lets an update install.
  */
 public final class ReleaseApprovalTest
 {
@@ -129,13 +128,13 @@ public final class ReleaseApprovalTest
 	}
 
 	/**
-	 * A release older than the active one is refused for an update, but the rollback check allows it.
+	 * A release older than the active one is refused for an update.
 	 *
-	 * @throws TrustException if the rollback is refused
+	 * @throws TrustException if a release is refused before approval
 	 * @throws IOException    if the bytes cannot be read
 	 */
 	@Test
-	public void refusesDowngradeButAllowsRollback() throws TrustException, IOException
+	public void refusesDowngrade() throws TrustException, IOException
 	{
 		KeyPair signer = keyPair();
 		TrustPolicy policy = policy(List.of(trusted("release-key", signer)));
@@ -143,12 +142,10 @@ public final class ReleaseApprovalTest
 
 		requireThat(updateRefusal(release, policy, null, "1.10"), "latest").isEqualTo(Reason.DOWNGRADE);
 		requireThat(updateRefusal(release, policy, "1.9", "1.10"), "requested").isEqualTo(Reason.DOWNGRADE);
-		ReleaseApproval.approveRollback(release, policy, ReleaseVersion.parse("1.9"));
 	}
 
 	/**
-	 * A release below the policy's minimum, or with a major version above its maximum, is refused for both an update
-	 * and a rollback.
+	 * A release below the policy's minimum, or with a major version above its maximum, is refused.
 	 *
 	 * @throws TrustException if a release is refused before approval
 	 * @throws IOException    if the bytes cannot be read
@@ -163,8 +160,6 @@ public final class ReleaseApprovalTest
 
 		requireThat(updateRefusal(belowMinimum, policy, null, null), "belowMinimum").isEqualTo(Reason.BELOW_MINIMUM);
 		requireThat(updateRefusal(aboveMajor, policy, null, null), "aboveMajor").isEqualTo(Reason.ABOVE_MAXIMUM_MAJOR);
-		requireThat(rollbackRefusal(belowMinimum, policy), "rollbackBelowMinimum").isEqualTo(Reason.BELOW_MINIMUM);
-		requireThat(rollbackRefusal(aboveMajor, policy), "rollbackAboveMajor").isEqualTo(Reason.ABOVE_MAXIMUM_MAJOR);
 	}
 
 	/**
@@ -182,25 +177,5 @@ public final class ReleaseApprovalTest
 		TrustPolicy replaced = policy(List.of(trusted("release-key", keyPair())));
 
 		requireThat(updateRefusal(release, replaced, null, null), "reason").isEqualTo(Reason.SIGNATURE_NOT_VERIFIED);
-	}
-
-	/**
-	 * Approves a release for a rollback and returns the refusal.
-	 *
-	 * @param release the verified release
-	 * @param policy  the policy
-	 * @return the reason for the refusal
-	 */
-	private static Reason rollbackRefusal(VerifiedManifest release, TrustPolicy policy)
-	{
-		try
-		{
-			ReleaseApproval.approveRollback(release, policy, null);
-		}
-		catch (TrustException e)
-		{
-			return e.reason();
-		}
-		throw new AssertionError("Release " + release + " was approved");
 	}
 }

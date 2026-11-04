@@ -26,10 +26,6 @@ public final class UpdaterRules
 	 */
 	private static final String UNINSTALL_DECISION = "prompt";
 	/**
-	 * The decision for the rollback rule: Codex asks the user before an agent rolls CAT back.
-	 */
-	private static final String ROLLBACK_DECISION = "prompt";
-	/**
 	 * The decision for operations that an agent may run without asking.
 	 */
 	private static final String ALLOW = "allow";
@@ -66,6 +62,20 @@ public final class UpdaterRules
 	 */
 	public static String render(Path launcher, boolean windows)
 	{
+		return render(launcher, windows, false);
+	}
+
+	/**
+	 * Returns the file content for one stable launcher, as this build or an earlier one wrote it.
+	 *
+	 * @param launcher the absolute, normalized path of the stable updater launcher
+	 * @param windows  {@code true} to name the launcher script through PowerShell
+	 * @param earlier  {@code true} for the content of earlier builds, which also asked before a {@code rollback}
+	 *                 operation that the updater no longer has
+	 * @return the complete file content, ending with a line feed
+	 */
+	private static String render(Path launcher, boolean windows, boolean earlier)
+	{
 		requireThat(launcher, "launcher").isAbsolute().isEqualTo(launcher.normalize());
 		List<String> command = new ArrayList<>();
 		if (windows)
@@ -76,14 +86,15 @@ public final class UpdaterRules
 		rule(content, command, List.of("install", "--harness", CodexActivation.HARNESS), ALLOW);
 		rule(content, command, List.of("update", "--harness", CodexActivation.HARNESS), ALLOW);
 		rule(content, command, List.of("status"), ALLOW);
-		rule(content, command, List.of("rollback", "--harness", CodexActivation.HARNESS), ROLLBACK_DECISION);
+		if (earlier)
+			rule(content, command, List.of("rollback", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
 		rule(content, command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
 		return content.toString();
 	}
 
 	/**
 	 * Reports whether a file's content is exactly what {@link #render} writes for the launcher that its first rule
-	 * names.
+	 * names, or what earlier builds wrote for it, so that the updater replaces their file.
 	 *
 	 * @param content the file's content
 	 * @param windows {@code true} if the file names the launcher through PowerShell
@@ -117,7 +128,7 @@ public final class UpdaterRules
 		Path launcher = Path.of(pattern.path(launcherIndex).stringValue());
 		if (!launcher.isAbsolute() || !launcher.equals(launcher.normalize()))
 			return false;
-		return content.equals(render(launcher, windows));
+		return content.equals(render(launcher, windows)) || content.equals(render(launcher, windows, true));
 	}
 
 	/**

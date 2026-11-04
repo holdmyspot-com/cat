@@ -1,15 +1,15 @@
 # Starts the installed updater selected by current on Windows, from the Windows directory with PATH set to its
 # System32 directory and only the documented environment variables. After the updater's JVM has exited, it puts the
-# Java runtime that an update staged or a rollback kept in place and selects that operation's updater version, or
-# completes a complete uninstall by deleting the updater data directory, then the directory that holds it when that
-# leaves it empty. Before it starts the updater, it puts back a runtime that a launcher which stopped during a runtime
-# replacement had moved aside.
-# An update or rollback renames the stable launcher of the release that it selects over this file while this launcher
-# runs, and the launcher that is running, not the new one, finishes the runtime replacement; after a replacement that
-# was undone, a launcher can also run an earlier release's updater. Every release therefore keeps the replacement
-# request's first four lines (operation, the version that current selects, the version to select, the process
-# identifier of the finishing launcher) and the meaning of exit status 78, so that a launcher of any release finishes
-# the request of another; a release may add only lines after the fourth.
+# Java runtime that an update staged in place and selects that update's updater version, or completes a complete
+# uninstall by deleting the updater data directory, then the directory that holds it when that leaves it empty. Before
+# it starts the updater, it puts back a runtime that a launcher which stopped during a runtime replacement had moved
+# aside.
+# An update renames the stable launcher of the release that it selects over this file while this launcher runs, and the
+# launcher that is running, not the new one, finishes the runtime replacement; after a replacement that was undone, a
+# launcher can also run an earlier release's updater. Every release therefore keeps the replacement request's first four
+# lines (operation, the version that current selects, the version to select, the process identifier of the finishing
+# launcher) and the meaning of exit status 78, so that a launcher of any release finishes the request of another; a
+# release may add only lines after the fourth.
 # Arguments: the updater operation and its arguments, forwarded to Java without interpretation.
 # Output: the selected updater's JSON result; after a runtime replacement, the result that the updater saved, printed
 #   only once the new runtime runs and current selects the new version, or a not_swapped result; after a complete
@@ -150,7 +150,7 @@ function Read-Swap
 	}
 	$versionPattern = '([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
 	# Matched case-sensitively, as the POSIX launcher matches it, so that both launchers accept the same requests
-	if ($text -cnotmatch "\A(update|rollback)\n$versionPattern\n$versionPattern\n([0-9]+)\n")
+	if ($text -cnotmatch "\A(update)\n$versionPattern\n$versionPattern\n([0-9]+)\n")
 	{
 		return $null
 	}
@@ -171,16 +171,8 @@ function Read-Swap
 	{
 		return $null
 	}
-	if ($swap.Operation -eq 'update')
-	{
-		$swap.Staged = Join-Path $data 'runtime.next'
-		$swap.Kept = Join-Path $data 'runtime.previous'
-	}
-	else
-	{
-		$swap.Staged = Join-Path $data 'runtime.previous'
-		$swap.Kept = Join-Path $data 'runtime.next'
-	}
+	$swap.Staged = Join-Path $data 'runtime.next'
+	$swap.Kept = Join-Path $data 'runtime.previous'
 	return $swap
 }
 
@@ -320,7 +312,7 @@ function Restore-Runtime($swap)
 	}
 }
 
-# Status 78 means that the updater finished an update or rollback, saved its final result in the data directory, and
+# Status 78 means that the updater finished an update, saved its final result in the data directory, and
 # left putting the runtime that the operation staged in place, which the updater's own JVM runs on, to this launcher.
 if ($status -eq 78)
 {
@@ -429,22 +421,6 @@ if ($status -eq 78)
 	}
 	catch
 	{
-	}
-	if ($swap.Operation -eq 'rollback')
-	{
-		foreach ($replaced in @((Join-Path $data 'runtime.next'), (Join-Path $data $swap.From)))
-		{
-			try
-			{
-				if (Test-Path -LiteralPath $replaced)
-				{
-					Remove-Tree (Get-Item -LiteralPath $replaced -Force)
-				}
-			}
-			catch
-			{
-			}
-		}
 	}
 	try
 	{

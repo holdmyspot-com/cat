@@ -51,7 +51,7 @@ import java.util.stream.Stream;
 
 /**
  * Coordinates authenticated plugin installs and updates without executing staged code. Harness configuration changes
- * only through the harness integration's registration. Once an install, update or rollback has activated a plugin
+ * only through the harness integration's registration. Once an install, update or setup has activated a plugin
  * directory, its session-start program runs to write the directory's startup cache.
  */
 public final class UpdateEngine
@@ -192,7 +192,7 @@ public final class UpdateEngine
 	/**
 	 * Adds the release that the installation runs where the harness has no plugin and registers it, or installs it
 	 * again over the harness's plugin. A partial installation that the harness does not report is deleted first.
-	 * Refuses any other release, because only update and rollback move the installation to another release.
+	 * Refuses any other release, because only update and setup move the installation to another release.
 	 *
 	 * @param requestedTag the canonical v-prefixed tag, {@link #LATEST} for the latest release, or null for the release
 	 *                     that the installation runs
@@ -241,20 +241,10 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Restores the installation retained by the last successful update.
-	 *
-	 * @return the outcome
-	 */
-	public UpdateResult rollback()
-	{
-		return operate(Mode.ROLLBACK, null, null, null);
-	}
-
-	/**
 	 * Reports the active version and the version of the previous bundle without writes.
 	 *
 	 * @return the status outcome; its version is empty when the harness has no plugin, and its previous version is
-	 *         empty when the installation keeps no previous bundle for rollback
+	 *         empty when the installation keeps no previous bundle
 	 * @throws IOException if provider state is unreadable
 	 */
 	public UpdateResult status() throws IOException
@@ -281,8 +271,8 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Returns the version of the bundle that the last update replaced and rollback restores: its plugin, kept by the
-	 * activation journal, its Java runtime and its updater version directory.
+	 * Returns the version of the bundle that the last update replaced: its plugin, kept by the activation journal, its
+	 * Java runtime and its updater version directory.
 	 *
 	 * @param transaction the harness's activation transaction
 	 * @return the version, or empty when any part of the bundle is missing
@@ -301,9 +291,9 @@ public final class UpdateEngine
 	 * Runs one operation under the harness lock and converts every failure into an outcome.
 	 *
 	 * @param mode         the operation
-	 * @param requestedTag the requested tag, or null for the latest release or a rollback
+	 * @param requestedTag the requested tag, or null for the latest release
 	 * @param localTree    the user's local plugin tree, or null for a signed release
-	 * @param session registers the activated plugin, or null for a rollback
+	 * @param session      registers the activated plugin
 	 * @return the outcome
 	 */
 	private UpdateResult operate(Mode mode, String requestedTag, Path localTree, HarnessSession session)
@@ -363,7 +353,7 @@ public final class UpdateEngine
 	 * @param mode         the operation
 	 * @param requestedTag the requested tag, or null
 	 * @param localTree    the user's local plugin tree, or null
-	 * @param session registers the activated plugin, or null for a rollback
+	 * @param session      registers the activated plugin
 	 * @param home         the protected harness home
 	 * @param transaction  the harness's activation transaction
 	 * @return the outcome
@@ -406,7 +396,7 @@ public final class UpdateEngine
 	 * @param mode         the operation
 	 * @param requestedTag the requested tag, or null
 	 * @param localTree    the user's local plugin tree, or null
-	 * @param session registers the activated plugin, or null for a rollback
+	 * @param session      registers the activated plugin
 	 * @param home         the protected harness home
 	 * @param transaction  the harness's activation transaction
 	 * @return the outcome
@@ -420,8 +410,6 @@ public final class UpdateEngine
 		String active = installed.version().orElse(null);
 		try
 		{
-			if (mode == Mode.ROLLBACK)
-				return rollBack(home, transaction);
 			if (active == null && mode == Mode.UPDATE)
 			{
 				return result(Result.REFUSED, null, null, "CAT is not installed in this harness; run install to add it.",
@@ -525,15 +513,14 @@ public final class UpdateEngine
 			return result(Result.UP_TO_DATE, active, previousBundle(transaction).orElse(null), "CAT is up to date.",
 				List.of());
 		}
-		// Install adds only the release that the user's setup or rollback selected
 		if (mode == Mode.UPDATE)
 		{
 			Optional<ReleaseVersion> highest = highestVersion();
 			if (highest.isPresent() && verified.manifest().version().compareTo(highest.get()) < 0)
 			{
 				return result(Result.REFUSED, active, null, "Release " + version + " is older than " +
-					highest.get() + ", the highest version this harness has had; run rollback, or the entry command " +
-					"to choose an older release.", List.of());
+					highest.get() + ", the highest version this harness has had; run the entry command to choose an " +
+					"older release.", List.of());
 			}
 		}
 		ReleaseAsset asset = verified.manifest().findPlugin(activation.harness(), platform).orElse(null);
@@ -767,7 +754,7 @@ public final class UpdateEngine
 	 * moves that runtime and the updater version directory into the installation, activates the plugin bound to the
 	 * installation's runtime location, installs the release's stable launcher, and leaves the request with which the
 	 * stable launcher that is running puts the new runtime in place and selects the new updater once this JVM has
-	 * exited. The replaced bundle stays for rollback.
+	 * exited. The replaced bundle stays in the installation.
 	 *
 	 * @param staged       the extracted release
 	 * @param running      the updater version that {@code current} selects
@@ -810,7 +797,7 @@ public final class UpdateEngine
 		try
 		{
 			// The stable launcher puts the staged runtime in place, so the cache must suit that runtime
-			trained = train(home, version, bundle.staged(Operation.UPDATE));
+			trained = train(home, version, bundle.staged());
 			bundle.deleteOlder(running, version);
 			// The running launcher reads its script while it runs, so the new one is renamed over it
 			bundle.installLauncher(bundle.stableLauncher(version));
@@ -820,11 +807,11 @@ public final class UpdateEngine
 			boolean restored = true;
 			try
 			{
-				transaction.rollback();
+				transaction.undoLast();
 			}
-			catch (IOException | TrustException rollbackFailure)
+			catch (IOException | TrustException undoFailure)
 			{
-				e.addSuppressed(rollbackFailure);
+				e.addSuppressed(undoFailure);
 				restored = false;
 			}
 			cancelSwap(version, e);
@@ -875,43 +862,6 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Restores the bundle that the last update replaced: the plugin and the stable launcher now, and the Java runtime
-	 * and updater through the stable launcher that is running once this JVM has exited. Afterwards no previous bundle
-	 * remains.
-	 *
-	 * @param home        the protected harness home
-	 * @param transaction the harness's activation transaction
-	 * @return the outcome
-	 * @throws IOException    if the plugin cannot be restored
-	 * @throws TrustException if a recorded version is malformed
-	 */
-	private UpdateResult rollBack(Path home, ActivationTransaction transaction) throws IOException, TrustException
-	{
-		Optional<String> previous = previousBundle(transaction);
-		if (previous.isEmpty())
-			return result(Result.REFUSED, null, null, "No previous bundle is kept for rollback.", List.of());
-		String current = bundle.current().orElseThrow();
-		String launcher = bundle.stableLauncher(previous.get());
-		swaps.write(new RuntimeSwap(Operation.ROLLBACK, current, previous.get()), Optional.empty());
-		String restored;
-		try
-		{
-			restored = transaction.rollback();
-		}
-		catch (ActivationTransaction.Refused e)
-		{
-			swaps.delete();
-			throw e;
-		}
-		// A failure from here on leaves an interrupted rollback, which the next operation resumes
-		boolean trained = train(home, restored, bundle.staged(Operation.ROLLBACK));
-		bundle.installLauncher(launcher);
-		return result(Result.ROLLED_BACK, restored, null, "The previous plugin was restored; the stable launcher " +
-			"restores the previous Java runtime and updater once the updater exits.", List.of()).
-			withAotCache(trained);
-	}
-
-	/**
 	 * Completes or undoes a runtime replacement that an earlier operation requested and the stable launcher did not
 	 * finish. Undoing it also puts back the stable launcher of the version that {@code current} selects, and trains
 	 * the startup cache of a plugin that it restores.
@@ -934,7 +884,6 @@ public final class UpdateEngine
 				"runtime replacement.", List.of()));
 		}
 		RuntimeSwap swap = recorded.swap();
-		Operation operation = swap.operation();
 		Optional<String> current = bundle.current();
 		if (current.equals(Optional.of(swap.toVersion())))
 		{
@@ -948,32 +897,20 @@ public final class UpdateEngine
 				swap.fromVersion() + " to " + swap.toVersion() + " does not match the selected updater version; " +
 				"rerun the entry command to repair the installation.", List.of(swaps.request())));
 		}
-		Path staged = bundle.staged(operation);
-		if (!Files.exists(staged, NOFOLLOW_LINKS))
+		if (!Files.exists(bundle.staged(), NOFOLLOW_LINKS))
 			return Resolution.ending(completeSwap(swap));
 		String plugin = activation.installed(home).version().orElse(null);
-		boolean pluginReplaced = swap.toVersion().equals(plugin);
-		if (operation == Operation.ROLLBACK && pluginReplaced)
-		{
-			boolean trained = train(home, plugin, staged);
-			bundle.installLauncher(bundle.stableLauncher(swap.toVersion()));
-			swaps.write(swap, recorded.pluginVersion());
-			return Resolution.ending(result(Result.ROLLED_BACK, plugin, null, "An interrupted rollback was resumed; " +
-				"the stable launcher restores the previous Java runtime and updater once the updater exits.",
-				List.of()).withAotCache(trained));
-		}
 		Optional<Boolean> trained = Optional.empty();
-		if (operation == Operation.UPDATE && pluginReplaced && recorded.pluginVersion().isPresent() &&
+		if (swap.toVersion().equals(plugin) && recorded.pluginVersion().isPresent() &&
 			transaction.previousVersion().equals(recorded.pluginVersion()))
 		{
-			String restored = transaction.rollback();
+			String restored = transaction.undoLast();
 			// The undone update leaves the running runtime in place
 			trained = Optional.of(train(home, restored, runtime));
 		}
 		bundle.installLauncher(bundle.stableLauncher(swap.fromVersion()));
 		swaps.delete();
-		if (operation == Operation.UPDATE)
-			bundle.discard(swap.toVersion());
+		bundle.discard(swap.toVersion());
 		return new Resolution(Optional.empty(), trained);
 	}
 
@@ -1084,8 +1021,7 @@ public final class UpdateEngine
 	 */
 	private UpdateResult completeSwap(RuntimeSwap swap) throws IOException
 	{
-		Operation operation = swap.operation();
-		if (!Files.isDirectory(bundle.replaced(operation), NOFOLLOW_LINKS) ||
+		if (!Files.isDirectory(bundle.replaced(), NOFOLLOW_LINKS) ||
 			!Files.isDirectory(data.resolve(swap.toVersion()), NOFOLLOW_LINKS))
 		{
 			return result(Result.NOT_RESTORED, null, null, "The runtime replacement from " + swap.fromVersion() +
@@ -1094,12 +1030,6 @@ public final class UpdateEngine
 		}
 		bundle.select(swap.toVersion());
 		swaps.delete();
-		if (operation == Operation.ROLLBACK)
-		{
-			bundle.discard(swap.fromVersion());
-			return result(Result.ROLLED_BACK, swap.toVersion(), null, "An interrupted rollback was completed.",
-				List.of());
-		}
 		return result(Result.UPDATED, swap.toVersion(), swap.fromVersion(), "An interrupted update was completed.",
 			List.of());
 	}
@@ -1350,11 +1280,7 @@ public final class UpdateEngine
 		/**
 		 * Activate the release that setup comes from, whatever the harness has.
 		 */
-		SETUP,
-		/**
-		 * Restore the installation that the last update retained.
-		 */
-		ROLLBACK
+		SETUP
 	}
 
 	/**

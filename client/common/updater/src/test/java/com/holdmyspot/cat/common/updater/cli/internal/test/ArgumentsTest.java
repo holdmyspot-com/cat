@@ -145,6 +145,7 @@ public final class ArgumentsTest
 			{new String[]{"update", "--harness", "harness-a", "latest", "latest"}},
 			{new String[]{"update", "--harness", "harness-a", "../v1.0"}},
 			{new String[]{"update", "--harness", "harness-a", "v1.0?source=other"}},
+			{new String[]{"rollback", "--harness", "harness-a"}},
 			{new String[]{"rollback", "--harness", "harness-a", "v1.0"}},
 			{new String[]{"status", "extra"}},
 			{new String[]{"setup", "--harness", "harness-a"}},
@@ -175,5 +176,23 @@ public final class ArgumentsTest
 	public void refusesUnsupportedArguments(String[] args)
 	{
 		Arguments.parse(args, Set.of("harness-a"));
+	}
+
+	/**
+	 * The usage diagnostic names only the operations that the updater performs.
+	 */
+	@Test
+	public void usageNamesOnlySupportedOperations()
+	{
+		try
+		{
+			Arguments.parse(new String[]{"rollback", "--harness", "harness-a"}, Set.of("harness-a"));
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").startsWith("Usage:").doesNotContain("rollback");
+			return;
+		}
+		throw new AssertionError("rollback was accepted");
 	}
 }

@@ -126,8 +126,9 @@ public final class Setup
 	 * Sets the harness's installation up. Setup first checks the harness home, the protected locations, the harness
 	 * program and configuration, and that the archive's Java runtime can run the updater and the installed plugin. It
 	 * then installs the runtime, the updater, the policy, the stable launcher and the current selection, activates the
-	 * plugin of this release (also when the harness already has it) and installs the permission entries. Setup from
-	 * a newer release than the installed one keeps the installed bundle as the previous bundle that rollback restores,
+	 * plugin of this release (also when the harness already has it) and installs the permission entries, removing the
+	 * recorded entries that the harness integration no longer maintains. Setup from
+	 * a newer release than the installed one keeps the installed bundle as the previous bundle,
 	 * and setup from the installed release keeps the previous bundle that the installation has. Otherwise setup deletes
 	 * the previous bundle; it always deletes a pending runtime replacement. A failure of the plugin step leaves the
 	 * updater installed and is reported in the outcome. After a successful plugin step, setup removes the harness from
@@ -258,8 +259,16 @@ public final class Setup
 		Map<String, List<String>> permissions = Map.of();
 		if (pluginResult.result().exitStatus() == 0)
 		{
-			permissions = PermissionRecord.add(UpdaterState.of(locations.data(), harness).permissions(),
-				integration.installPermissions(home, launcher, replacer));
+			Path record = UpdaterState.of(locations.data(), harness).permissions();
+			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer);
+			Map<String, List<String>> obsolete = PermissionRecord.obsolete(record,
+				integration.permissions(launcher));
+			if (!obsolete.isEmpty())
+			{
+				integration.removePermissions(home, obsolete, replacer);
+				PermissionRecord.remove(record, obsolete);
+			}
+			permissions = PermissionRecord.add(record, added);
 			new LegacySharedLayout(locations.data().getParent(), locations.legacySharedPolicy(), replacer).
 				retire(harness, integration, home, platform);
 		}
@@ -414,7 +423,7 @@ public final class Setup
 	}
 
 	/**
-	 * Returns the version of the previous bundle that the installation keeps for rollback.
+	 * Returns the version of the previous bundle that the installation keeps.
 	 *
 	 * @param engine the installation's engine
 	 * @return the version, or null when the installation keeps no previous bundle or its record is unreadable, which

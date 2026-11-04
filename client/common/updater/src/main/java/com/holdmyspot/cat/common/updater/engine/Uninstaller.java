@@ -356,7 +356,7 @@ public final class Uninstaller
 
 	/**
 	 * Reads the progress of an earlier uninstall, or starts a new one. A new uninstall records the plugin trees that
-	 * the last update kept for a rollback, so that they are deleted with the plugin.
+	 * the last update kept, so that they are deleted with the plugin.
 	 *
 	 * @param transaction the harness's activation transaction
 	 * @return the progress
@@ -458,7 +458,7 @@ public final class Uninstaller
 	 * An uninstall's progress.
 	 *
 	 * @param completed the completed steps, in order
-	 * @param retained  the plugin trees that the last update kept for a rollback
+	 * @param retained  the plugin trees that the last update kept
 	 */
 	private record Progress(List<String> completed, List<Path> retained)
 	{

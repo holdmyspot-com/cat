@@ -2,7 +2,6 @@ package com.holdmyspot.cat.common.updater.engine.test;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,26 +41,10 @@ public final class LauncherSwap
 	public static void finish(Path data) throws IOException
 	{
 		List<String> lines = Files.readAllLines(data.resolve(REQUEST), UTF_8);
-		String operation = lines.get(0);
-		String from = lines.get(1);
-		String to = lines.get(2);
-		String staged = "runtime.next";
-		String kept = "runtime.previous";
-		if (operation.equals("rollback"))
-		{
-			staged = "runtime.previous";
-			kept = "runtime.next";
-		}
-		Files.move(data.resolve("runtime"), data.resolve(kept));
-		Files.move(data.resolve(staged), data.resolve("runtime"));
-		Files.writeString(data.resolve("current"), to + "\n", UTF_8);
+		renameOnly(data);
+		Files.writeString(data.resolve("current"), lines.get(2) + "\n", UTF_8);
 		Files.delete(data.resolve(REQUEST));
 		Files.deleteIfExists(data.resolve("state/runtime-swap-result.json"));
-		if (operation.equals("rollback"))
-		{
-			TemporaryDirectories.deleteRecursively(data.resolve("runtime.next"));
-			TemporaryDirectories.deleteRecursively(data.resolve(from));
-		}
 	}
 
 	/**
@@ -73,16 +56,10 @@ public final class LauncherSwap
 	 */
 	public static void renameOnly(Path data) throws IOException
 	{
-		List<String> lines = Files.readAllLines(data.resolve(REQUEST), UTF_8);
-		String staged = "runtime.next";
-		String kept = "runtime.previous";
-		if (lines.get(0).equals("rollback"))
-		{
-			staged = "runtime.previous";
-			kept = "runtime.next";
-		}
-		Files.move(data.resolve("runtime"), data.resolve(kept));
-		Files.move(data.resolve(staged), data.resolve("runtime"));
+		if (!Files.exists(data.resolve(REQUEST)))
+			throw new IOException("No runtime replacement is pending in " + data);
+		Files.move(data.resolve("runtime"), data.resolve("runtime.previous"));
+		Files.move(data.resolve("runtime.next"), data.resolve("runtime"));
 	}
 
 	/**
@@ -128,18 +105,19 @@ public final class LauncherSwap
 	}
 
 	/**
-	 * Writes a pending rollback request as an updater that stopped before it restored the previous plugin would leave
-	 * it.
+	 * Writes a pending request whose launcher no longer runs, as an updater, or an earlier build's updater, could
+	 * leave it.
 	 *
-	 * @param data the installation's updater data directory
-	 * @param from the version that {@code current} selects
-	 * @param to   the previous bundle's version
+	 * @param data      the installation's updater data directory
+	 * @param operation the request's operation
+	 * @param from      the version that {@code current} selects
+	 * @param to        the version that the request selects
 	 * @throws IOException if the request cannot be written
 	 */
-	public static void requestRollback(Path data, String from, String to) throws IOException
+	public static void request(Path data, String operation, String from, String to) throws IOException
 	{
 		Files.createDirectories(data.resolve(REQUEST).getParent());
-		Files.writeString(data.resolve(REQUEST), "rollback\n" + from + "\n" + to + "\n" + Long.MAX_VALUE + "\n-\n-\n",
-			UTF_8);
+		Files.writeString(data.resolve(REQUEST), operation + "\n" + from + "\n" + to + "\n" + Long.MAX_VALUE +
+			"\n-\n-\n", UTF_8);
 	}
 }

@@ -4,10 +4,9 @@
 
 - Install another CAT release only when it differs from the active one, so that an update with nothing to do changes
 	no installed file and only registers the plugin again when the harness lost it.
-- Install, update, roll back and inspect CAT only through CAT's trusted updater, which accepts only signed releases that
-	the user's policy approves.
-- Treat CAT's Java runtime, updater and plugin as one bundle that moves between releases together, so that a rollback
-	is offered only when the installation keeps a previous bundle.
+- Install, update and inspect CAT only through CAT's trusted updater, which accepts only signed releases that the
+	user's policy approves.
+- Treat CAT's Java runtime, updater and plugin as one bundle that moves between releases together.
 - Leave setting up the trusted updater to the user, because that operation changes what the updater trusts.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
 - Give the user the exact command that a blocked change needs, so that they can apply it without asking for it.
@@ -54,12 +53,6 @@
 		plugin is absent: say so, and offer to install it. When its `pending_swap` field is present, the operation that
 		its `operation` names, from the release that `from_version` names to the one that `to_version` names, has not
 		finished: say so, and that the next operation on CAT finishes or undoes it first.
-	- When the user asks to go back to the previous release, first run `<launcher> status --harness <h>`. When its
-		`previous_bundle` field is false, the installation keeps no previous release to return to: say so, do not run
-		`rollback`, and stop. Otherwise run `<launcher> rollback --harness <h>`, which returns the Java runtime, the
-		updater and the plugin to the previous release together. The harness asks the user to approve this command
-		before it runs, because it can install an older release; tell the user why the prompt appears, and stop when
-		they decline.
 	- Otherwise run `<launcher> update --harness <h>`.
 4. The launcher prints one line of JSON. Act on its `result` field:
 	- `installed`: tell the user that the release that `version` names is installed and registered, and that it takes
@@ -67,12 +60,9 @@
 		changed CAT hook before it runs.
 	- `updated`: tell the user that the release that `version` names replaced the one that `previous_version` names,
 		and that it takes effect once they restart or resume the session. In Codex, also say that Codex asks them to
-		review a new or changed CAT hook before it runs. Say that they can ask you to go back to the previous release.
+		review a new or changed CAT hook before it runs.
 	- `up_to_date`: tell the user that the active CAT release, which `version` names, is already the release they asked
 		for, so no installed file changed.
-	- `rolled_back`: tell the user that the release that `version` names is active again, and that it takes effect once
-		they restart or resume the session. Do not offer another rollback: the installation keeps no previous release
-		now.
 	- `refused`: CAT's release policy, the installed Java runtime or a pending data migration rejected the operation,
 		and the active installation is unchanged. Report its `message`, and do not try to install the release in any
 		other way. When the message tells the user to rerun the entry command of a newer release, the installed Java
@@ -80,14 +70,11 @@
 		names or else for the latest release. When the message says that `install` adds only the release that the
 		installation runs, run `<launcher> update --harness <h> <tag>` for the release that the message names only when
 		the user asked for that release. When the message says that the release is older than one that was installed
-		before, installing it is the user's decision: tell the user, and run `rollback` or give the entry command only
-		when they ask. When the message says that no previous bundle is kept for rollback, report that there is
-		nothing to roll back to.
+		before, installing it is the user's decision: tell the user, and give the entry command only when they ask.
 	- `download_failed`: report its `message`.
 	- `restored`: report that the operation failed and that the previous state is still active, with its `message`.
 	- `not_restored`: report that the operation failed and that the previous state could not be restored, show each of
-		its `paths`, and give the user the command `<launcher> rollback --harness <h>` to run, which you run only when
-		they ask.
+		its `paths`, and give the user the entry command from step 2, which repairs the installation.
 	- `failed`: an unexpected error stopped the operation after it may have changed the installation. Report its
 		`message`, and that running the same command again continues the operation; run it again only when the user
 		asks.

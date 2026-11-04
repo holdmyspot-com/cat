@@ -54,7 +54,7 @@ public record UpdaterState(Path directory)
 	}
 
 	/**
-	 * Returns the journal of an unfinished activation or rollback.
+	 * Returns the journal of an unfinished activation or undo.
 	 *
 	 * @return the journal path
 	 */

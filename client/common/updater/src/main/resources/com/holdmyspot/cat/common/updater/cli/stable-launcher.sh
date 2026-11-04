@@ -1,15 +1,15 @@
 #!/bin/sh
 # Starts the installed updater selected by current, from the root directory with PATH set to /usr/bin:/bin and only the
 # documented environment variables. After the updater's JVM has exited, it puts the Java runtime that an update staged
-# or a rollback kept in place and selects that operation's updater version, or completes a complete uninstall by
-# deleting the updater data directory, then the directory that holds it when that leaves it empty. Before it starts
-# the updater, it puts back a runtime that a launcher which stopped during a runtime replacement had moved aside.
-# An update or rollback renames the stable launcher of the release that it selects over this file while this launcher
-# runs, and the launcher that is running, not the new one, finishes the runtime replacement; after a replacement that
-# was undone, a launcher can also run an earlier release's updater. Every release therefore keeps the replacement
-# request's first four lines (operation, the version that current selects, the version to select, the process
-# identifier of the finishing launcher) and the meaning of exit status 78, so that a launcher of any release finishes
-# the request of another; a release may add only lines after the fourth.
+# in place and selects that update's updater version, or completes a complete uninstall by deleting the updater data
+# directory, then the directory that holds it when that leaves it empty. Before it starts the updater, it puts back a
+# runtime that a launcher which stopped during a runtime replacement had moved aside.
+# An update renames the stable launcher of the release that it selects over this file while this launcher runs, and the
+# launcher that is running, not the new one, finishes the runtime replacement; after a replacement that was undone, a
+# launcher can also run an earlier release's updater. Every release therefore keeps the replacement request's first four
+# lines (operation, the version that current selects, the version to select, the process identifier of the finishing
+# launcher) and the meaning of exit status 78, so that a launcher of any release finishes the request of another; a
+# release may add only lines after the fourth.
 # Arguments: the updater operation and its arguments, forwarded without interpretation.
 # Output: the selected updater's JSON result; after a runtime replacement, the result that the updater saved, printed
 #   only once the new runtime runs and current selects the new version, or a not_swapped result; after a complete
@@ -101,7 +101,7 @@ swap_result=$data/state/runtime-swap-result.json
 # identifier of the launcher that finishes the replacement; later lines are the updater's own.
 # Side effects: sets swap_operation, swap_from, swap_to and swap_launcher, and swap_staged and swap_kept to the runtime
 #   that the replacement puts in place and the location to which it moves the replaced runtime.
-# Exit status: 0 when the request names an update or rollback away from the version that current selects, otherwise 1.
+# Exit status: 0 when the request names an update away from the version that current selects, otherwise 1.
 read_swap()
 {
 	swap_operation=
@@ -118,9 +118,6 @@ read_swap()
 		update)
 			swap_staged=$data/runtime.next
 			swap_kept=$data/runtime.previous ;;
-		rollback)
-			swap_staged=$data/runtime.previous
-			swap_kept=$data/runtime.next ;;
 		*) return 1 ;;
 	esac
 	case $swap_launcher in
@@ -190,7 +187,7 @@ restore_runtime()
 	/bin/mv -- "$data/runtime" "$swap_staged" 2>/dev/null && /bin/mv -- "$swap_kept" "$data/runtime" 2>/dev/null
 }
 
-# Status 78 means that the updater finished an update or rollback, saved its final result in the data directory, and
+# Status 78 means that the updater finished an update, saved its final result in the data directory, and
 # left putting the runtime that the operation staged in place, which the updater's own JVM runs on, to this launcher.
 if [ "$status" -eq 78 ]; then
 	if ! read_swap; then
@@ -225,9 +222,6 @@ if [ "$status" -eq 78 ]; then
 	fi
 	# The replacement is complete; a request or directory that stays is deleted by the next updater operation.
 	/bin/rm -f -- "$swap_request" 2>/dev/null || true
-	if [ "$swap_operation" = rollback ]; then
-		/bin/rm -rf -- "$data/runtime.next" "${data:?}/$swap_from" 2>/dev/null || true
-	fi
 	/bin/rm -f -- "$swap_result" 2>/dev/null || true
 	printf '%s' "$result"
 	exit 0

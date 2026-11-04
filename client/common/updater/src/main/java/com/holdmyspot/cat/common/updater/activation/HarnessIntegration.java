@@ -86,8 +86,8 @@ public interface HarnessIntegration
 	void unregister(Path home, HarnessCli cli) throws IOException;
 
 	/**
-	 * Adds the entries that let an agent run the stable launcher's install, update, rollback, status and uninstall
-	 * operations without a permission prompt or sandbox. Never covers setup. Idempotent.
+	 * Adds the entries that let an agent run the stable launcher's install, update, status and uninstall operations
+	 * without a permission prompt or sandbox. Never covers setup. Idempotent.
 	 *
 	 * @param home           the absolute, normalized harness home from the trust policy
 	 * @param stableLauncher the absolute path of the installed stable updater launcher
@@ -100,6 +100,19 @@ public interface HarnessIntegration
 	 */
 	Map<String, List<String>> installPermissions(Path home, Path stableLauncher, FileReplacer replacer)
 		throws IOException;
+
+	/**
+	 * Returns every entry that {@link #installPermissions} maintains for a stable launcher, whether or not the
+	 * configuration already holds it. An entry that the updater recorded and this set lacks is obsolete, and setup
+	 * removes it.
+	 *
+	 * @param stableLauncher the absolute path of the installed stable updater launcher
+	 * @return the entries keyed as {@link #installPermissions} returns them
+	 * @throws NullPointerException     if {@code stableLauncher} is null
+	 * @throws IllegalArgumentException if {@code stableLauncher} is relative
+	 * @throws IOException              if the launcher path cannot be named in an entry
+	 */
+	Map<String, List<String>> permissions(Path stableLauncher) throws IOException;
 
 	/**
 	 * Returns the entries that the updater which earlier builds shared between harnesses asked the user to add for its

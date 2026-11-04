@@ -59,7 +59,7 @@ public interface PluginActivation
 	List<ActivationStep> plan(Path home, String newVersion) throws IOException;
 
 	/**
-	 * Reconstructs the original activation plan to authorize recovery and rollback journal paths.
+	 * Reconstructs the original activation plan to authorize the journal paths of recovery and of an undo.
 	 * <p>
 	 * The returned steps must equal those planned before activating {@code newVersion} over {@code previousVersion},
 	 * even when a stopped operation left a live directory absent or when the new release is already active. This

@@ -39,12 +39,7 @@ public record RuntimeSwap(Operation operation, String fromVersion, String toVers
 		 * An update stages the release's runtime as {@code runtime.next} and keeps the replaced one as
 		 * {@code runtime.previous}.
 		 */
-		UPDATE,
-		/**
-		 * A rollback restores {@code runtime.previous} and sets the replaced one aside as {@code runtime.next}, which
-		 * the launcher then deletes.
-		 */
-		ROLLBACK;
+		UPDATE;
 
 		/**
 		 * Returns the name that the swap request and results use.

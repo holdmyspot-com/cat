@@ -56,7 +56,7 @@ final class ActivationTransaction
 	 */
 	private static final String PREVIOUS_PREFIX = ".cat-previous-";
 	/**
-	 * An earlier rollback slot is preserved until the new activation has a durable successful record.
+	 * An earlier previous slot is preserved until the new activation has a durable successful record.
 	 */
 	private static final String OLDER_PREFIX = ".cat-older-";
 	/**
@@ -101,8 +101,8 @@ final class ActivationTransaction
 	}
 
 	/**
-	 * Activates a validated tree and retains one rollback. Every replacement is copied and every before-image is saved
-	 * before any live installation changes. A failed live change is reversed before the failure is returned.
+	 * Activates a validated tree and retains what it replaced. Every replacement is copied and every before-image is
+	 * saved before any live installation changes. A failed live change is reversed before the failure is returned.
 	 *
 	 * @param tree            the validated release tree
 	 * @param plan            provider-approved changes in execution order
@@ -151,7 +151,7 @@ final class ActivationTransaction
 
 	/**
 	 * Replaces the installed release with a validated tree of the same release, then runs {@code completion} before
-	 * the activation is committed. The rollback that the last activation retained stays as it was, so that rollback
+	 * the activation is committed. What the last activation retained stays as it was, so that undoing that activation
 	 * still restores the installation that preceded the last update. When a step or {@code completion} fails, the
 	 * replaced files are restored. An interrupted repair is undone the same way by the next {@link #recover()}.
 	 *
@@ -214,7 +214,7 @@ final class ActivationTransaction
 				execute(index);
 			StateFiles.write(migrationFile, (StagedRelease.migrationVersion(newVersion) + "\n").getBytes(UTF_8));
 			completion.run();
-			// A repair keeps the last activation's record, so that rollback still restores what it replaced
+			// A repair keeps the last activation's record, so that undoing it still restores what it replaced
 			if (operation == Operation.REPAIR)
 				Files.delete(state.activation());
 			else
@@ -252,7 +252,7 @@ final class ActivationTransaction
 		}
 		catch (IOException failure)
 		{
-			warning = "The release was activated, but older rollback files could not be removed: " + failure.getMessage();
+			warning = "The release was activated, but older previous copies could not be removed: " + failure.getMessage();
 		}
 	}
 
@@ -310,12 +310,12 @@ final class ActivationTransaction
 	 * @param tree          the validated release tree
 	 * @param plan          provider-approved steps
 	 * @param backupRoot    the private backup root
-	 * @param keepsRollback true if the activation keeps the last activation's rollback slots, so that each replaced
-	 *                      directory moves to a scratch slot instead of the rollback slot
+	 * @param keepsPrevious true if the activation keeps the last activation's previous slots, so that each replaced
+	 *                      directory moves to a scratch slot instead of the previous slot
 	 * @return every step's concrete paths
 	 * @throws IOException if owned-file inputs are invalid
 	 */
-	private List<Entry> prepareEntries(Path tree, List<ActivationStep> plan, Path backupRoot, boolean keepsRollback)
+	private List<Entry> prepareEntries(Path tree, List<ActivationStep> plan, Path backupRoot, boolean keepsPrevious)
 		throws IOException
 	{
 		List<Entry> entries = new ArrayList<>();
@@ -333,7 +333,7 @@ final class ActivationTransaction
 			Path staging = parent.resolve(STAGING_PREFIX + suffix);
 			Path older = parent.resolve(OLDER_PREFIX + suffix);
 			Path previous = parent.resolve(PREVIOUS_PREFIX + live.getFileName());
-			if (keepsRollback)
+			if (keepsPrevious)
 				previous = older;
 			Kind kind;
 			List<FileChange> files = List.of();
@@ -343,7 +343,7 @@ final class ActivationTransaction
 				case ReplaceDirectory _ ->
 				{
 					kind = Kind.REPLACE_DIRECTORY;
-					hadPrevious = !keepsRollback && Files.exists(previous, NOFOLLOW_LINKS);
+					hadPrevious = !keepsPrevious && Files.exists(previous, NOFOLLOW_LINKS);
 				}
 				case AddDirectory _ -> kind = Kind.ADD_DIRECTORY;
 				case ReplaceOwnedFiles owned ->
@@ -778,7 +778,7 @@ final class ActivationTransaction
 			entry.discard(), state, undo, entry.hadPrevious(), entry.files()));
 		current = new Document(current.operation(), current.previousVersion(), current.newVersion(),
 			current.migrationFile(),
-			current.backupRoot(), current.migrationExisted(), current.prepared(), current.rollback(), entries);
+			current.backupRoot(), current.migrationExisted(), current.prepared(), current.undoesLast(), entries);
 		save();
 	}
 
@@ -817,17 +817,17 @@ final class ActivationTransaction
 	}
 
 	/**
-	 * Restores the installation preceding the last successful activation and consumes that rollback record.
+	 * Restores the installation preceding the last successful activation and consumes its record.
 	 *
 	 * @return the restored version
-	 * @throws IOException if rollback fails, or Refused when no activation is recorded
+	 * @throws IOException if the undo fails, or Refused when no activation is recorded
 	 * @throws TrustException if a recorded version is malformed
 	 */
-	String rollback() throws IOException, TrustException
+	String undoLast() throws IOException, TrustException
 	{
 		recover();
 		if (!Files.exists(state.lastActivation(), NOFOLLOW_LINKS))
-			throw new Refused("No previous installation is recorded for rollback");
+			throw new Refused("No previous installation is recorded");
 		StateFiles.requireNoLinks(state.lastActivation());
 		Document last = ActivationJournal.read(state.lastActivation());
 		validate(last);
@@ -869,7 +869,7 @@ final class ActivationTransaction
 			StateFiles.delete(entry.staging());
 			StateFiles.delete(entry.discard());
 		}
-		if (current.rollback())
+		if (current.undoesLast())
 			Files.deleteIfExists(state.lastActivation());
 		Files.deleteIfExists(state.activation());
 		PortableFiles.forceDirectory(state.directory());
@@ -877,7 +877,7 @@ final class ActivationTransaction
 	}
 
 	/**
-	 * Restores one changed step without mistaking a restored older rollback slot for the old live installation.
+	 * Restores one changed step without mistaking a restored older previous slot for the old live installation.
 	 *
 	 * @param index the step's position
 	 * @throws IOException if restoring its paths fails
@@ -1024,13 +1024,13 @@ final class ActivationTransaction
 				validateOwned(owned, entry, document.backupRoot().resolve(Integer.toString(index)));
 			}
 		}
-		// A repair moves each replaced directory to its scratch slot and leaves the rollback slot alone
+		// A repair moves each replaced directory to its scratch slot and leaves the previous slot alone
 		Path previous = parent.resolve(PREVIOUS_PREFIX + entry.live().getFileName());
 		if (document.operation() == Operation.REPAIR)
 		{
 			previous = entry.older();
 			if (entry.hadPrevious())
-				throw new IOException("A repair activation journal moves a rollback slot");
+				throw new IOException("A repair activation journal moves a previous slot");
 		}
 		if (entry.kind() != kind || !entry.previous().equals(previous))
 			throw new IOException("The journal's step kind or previous slot differs from its provider");
@@ -1122,7 +1122,7 @@ final class ActivationTransaction
 	}
 
 	/**
-	 * Returns the rollback and scratch locations that the last successful activation left beside the harness's
+	 * Returns the previous and scratch locations that the last successful activation left beside the harness's
 	 * plugin locations, which removing CAT from the harness must also delete. Locations inside the updater's state are
 	 * excluded because they are deleted with it.
 	 *
@@ -1172,7 +1172,7 @@ final class ActivationTransaction
 	}
 
 	/**
-	 * Removes older rollback slots after a durable successful activation.
+	 * Removes older previous slots after a durable successful activation.
 	 *
 	 * @throws IOException if cleanup fails; the successful activation remains recorded
 	 */
@@ -1192,7 +1192,7 @@ final class ActivationTransaction
 
 	/**
 	 * Deletes what a committed repair replaced: each replaced directory and the before-images of this activation. The
-	 * last activation's rollback files stay.
+	 * last activation's previous copies stay.
 	 *
 	 * @throws IOException if a deletion fails
 	 */

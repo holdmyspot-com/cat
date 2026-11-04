@@ -266,6 +266,18 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns the content of {@code rules/cat-updater.rules} that {@link #installPermissions} writes.
+	 *
+	 * @return {@code {"rules/cat-updater.rules#": [<file content>]}}
+	 * @throws IllegalArgumentException if {@code stableLauncher} is relative or not normalized
+	 */
+	@Override
+	public Map<String, List<String>> permissions(Path stableLauncher)
+	{
+		return Map.of(RULES_KEY, List.of(UpdaterRules.render(stableLauncher, isWindows())));
+	}
+
+	/**
 	 * Returns no entries: earlier builds asked the user to put their rule in {@code rules/cat-updater.rules}, which
 	 * {@link #installPermissions} replaces as a whole.
 	 *

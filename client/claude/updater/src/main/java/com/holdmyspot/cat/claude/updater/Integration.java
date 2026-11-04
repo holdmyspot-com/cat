@@ -314,8 +314,8 @@ public final class Integration implements HarnessIntegration
 	/**
 	 * Merges the updater's entries into {@code sandbox.excludedCommands} and {@code permissions.allow} of
 	 * {@code settings.json}, creating the file and members when absent. Every operation runs outside the shell
-	 * sandbox; install, update and status are also allowed without asking the user, while rollback and uninstall
-	 * keep Claude Code's approval prompt. Setup is never named.
+	 * sandbox; install, update and status are also allowed without asking the user, while uninstall keeps Claude
+	 * Code's approval prompt. Setup is never named.
 	 *
 	 * @param home           the absolute Claude Code configuration directory recorded in policy
 	 * @param stableLauncher the absolute path of the installed stable updater launcher
@@ -364,6 +364,28 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns the sandbox exclusions and prompt-free permissions that {@link #installPermissions} merges into
+	 * {@code settings.json}.
+	 *
+	 * @param stableLauncher the absolute path of the installed stable updater launcher
+	 * @return the entries, keyed {@code settings.json#sandbox.excludedCommands} and
+	 * 	{@code settings.json#permissions.allow}
+	 * @throws NullPointerException     if {@code stableLauncher} is null
+	 * @throws IllegalArgumentException if {@code stableLauncher} is relative
+	 * @throws IOException              if, on Windows, the launcher path holds a character that the shell would expand
+	 *                                  inside double quotes
+	 */
+	@Override
+	public Map<String, List<String>> permissions(Path stableLauncher) throws IOException
+	{
+		requireThat(stableLauncher, "stableLauncher").isAbsolute();
+		Map<String, List<String>> keyed = new LinkedHashMap<>();
+		for (Map.Entry<String, List<String>> setting : entries(stableLauncher).entrySet())
+			keyed.put(SETTINGS + "#" + setting.getKey(), setting.getValue());
+		return keyed;
+	}
+
+	/**
 	 * Returns the entries for each setting. Every sandbox exclusion is one exact command except the pattern for
 	 * {@code update --harness claude} followed by a release, so an update to a named release runs outside the sandbox
 	 * without a prompt. Claude Code 2.1.277 and later run a call outside the sandbox only when every command in it
@@ -388,7 +410,6 @@ public final class Integration implements HarnessIntegration
 		List<String> excluded = new ArrayList<>(List.of(install, update, update + " latest",
 			versionPattern(update)));
 		excluded.addAll(status);
-		excluded.add(launcher + " rollback --harness claude");
 		excluded.addAll(uninstall);
 
 		List<String> promptFree = new ArrayList<>(List.of(install, update, versionPattern(update)));

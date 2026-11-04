@@ -97,10 +97,6 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		UP_TO_DATE(0),
 		/**
-		 * The previous activation was reversed.
-		 */
-		ROLLED_BACK(0),
-		/**
 		 * Installation state was read without writes.
 		 */
 		STATUS(0),

@@ -377,13 +377,13 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Rollback and uninstall are never allowed without a prompt; only status, install and update are. Every operation
-	 * runs outside the sandbox, and setup is never named.
+	 * Uninstall is never allowed without a prompt; only status, install and update are. Every operation runs outside
+	 * the sandbox, and setup is never named.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
 	@Test
-	public void permissionsPromptForRollback() throws IOException
+	public void permissionsPromptForUninstall() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -401,8 +401,7 @@ public final class IntegrationTest
 				"Bash(" + quoted + " status)",
 				"Bash(" + quoted + " status --harness claude)"));
 			requireThat(added.get(SETTINGS_KEY_EXCLUDED), "excluded").containsAll(List.of(
-				quoted + " rollback --harness claude", quoted + " uninstall --harness claude",
-				quoted + " uninstall --harness claude --delete-data"));
+				quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data"));
 			for (List<String> entries : added.values())
 			{
 				for (String entry : entries)
@@ -437,8 +436,8 @@ public final class IntegrationTest
 			requireThat(wildcards, "wildcards").isEqualTo(List.of(updateWildcard));
 			requireThat(excluded, "excluded").containsExactly(List.of(quoted + " install --harness claude",
 				quoted + " update --harness claude", quoted + " update --harness claude latest", updateWildcard,
-				quoted + " status", quoted + " status --harness claude", quoted + " rollback --harness claude",
-				quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data"));
+				quoted + " status", quoted + " status --harness claude", quoted + " uninstall --harness claude",
+				quoted + " uninstall --harness claude --delete-data"));
 			requireThat(added.get(SETTINGS_KEY_ALLOW), "allowed").contains("Bash(" + updateWildcard + ")");
 		}
 	}
@@ -479,6 +478,47 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * The entries that the integration maintains are the ones that it installs, and removing an entry that an earlier
+	 * build installed for an operation that the updater no longer has, the exact sandbox exclusion of
+	 * {@code rollback --harness claude}, leaves {@code settings.json} with exactly the maintained entries.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void obsoleteEntryIsRemoved() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = home.resolve("data/bin/cat-updater");
+			Map<String, List<String>> expected = posixEntries(launcher);
+			String retired = ShellQuoting.posix(launcher.toString()) + " rollback --harness claude";
+			StringJoiner earlierExcluded = new StringJoiner(",");
+			for (String entry : expected.get(SETTINGS_KEY_EXCLUDED))
+				earlierExcluded.add(json(entry));
+			earlierExcluded.add(json(retired));
+			StringJoiner allowed = new StringJoiner(",");
+			for (String entry : expected.get(SETTINGS_KEY_ALLOW))
+				allowed.add(json(entry));
+			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" + earlierExcluded +
+				"]},\"permissions\":{\"allow\":[" + allowed + "]}}");
+			Integration integration = integration();
+
+			requireThat(integration.installPermissions(home, launcher, replacer()), "added").isEmpty();
+			requireThat(integration.permissions(launcher), "maintained").isEqualTo(expected);
+			integration.removePermissions(home, Map.of(SETTINGS_KEY_EXCLUDED, List.of(retired)), replacer());
+
+			String settings = Files.readString(home.resolve("settings.json"));
+			requireThat(settings, "settings").doesNotContain("rollback");
+			for (List<String> entries : expected.values())
+			{
+				for (String entry : entries)
+					requireThat(settings, "settings").contains(json(entry));
+			}
+		}
+	}
+
+	/**
 	 * On Windows, every entry names the stable PowerShell launcher through PowerShell's fixed non-interactive form.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
@@ -499,8 +539,8 @@ public final class IntegrationTest
 			requireThat(added.get(SETTINGS_KEY_EXCLUDED), "excluded").isEqualTo(List.of(
 				prefix + " install --harness claude", prefix + " update --harness claude",
 				prefix + " update --harness claude latest", pattern(prefix + " update --harness claude"),
-				prefix + " status", prefix + " status --harness claude", prefix + " rollback --harness claude",
-				prefix + " uninstall --harness claude", prefix + " uninstall --harness claude --delete-data"));
+				prefix + " status", prefix + " status --harness claude", prefix + " uninstall --harness claude",
+				prefix + " uninstall --harness claude --delete-data"));
 		}
 	}
 
@@ -786,8 +826,8 @@ public final class IntegrationTest
 		String install = quoted + " install --harness claude";
 		String update = quoted + " update --harness claude";
 		List<String> excluded = List.of(install, update, update + " latest", pattern(update), quoted + " status",
-			quoted + " status --harness claude", quoted + " rollback --harness claude",
-			quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data");
+			quoted + " status --harness claude", quoted + " uninstall --harness claude",
+			quoted + " uninstall --harness claude --delete-data");
 		List<String> allowed = List.of("Bash(" + install + ")", "Bash(" + update + ")",
 			"Bash(" + pattern(update) + ")", "Bash(" + quoted + " status)",
 			"Bash(" + quoted + " status --harness claude)");

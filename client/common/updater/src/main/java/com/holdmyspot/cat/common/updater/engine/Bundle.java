@@ -7,7 +7,6 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.runner.RuntimeDescription;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
-import com.holdmyspot.cat.common.updater.engine.RuntimeSwap.Operation;
 import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import java.io.IOException;
@@ -23,11 +22,11 @@ import java.util.Set;
 
 /**
  * The directories of one installation's bundle beside its state: the {@code current} selection, the Java runtime that
- * the updater and plugin run on, the runtime staged by an update or kept for rollback, and the updater version
- * directories, each of which ships its release's stable launcher. An update stages the new runtime and updater and
- * installs the new stable launcher; the stable launcher that is running renames the runtimes and rewrites
+ * the updater and plugin run on, the runtime staged by an update or kept from the bundle that it replaced, and the
+ * updater version directories, each of which ships its release's stable launcher. An update stages the new runtime and
+ * updater and installs the new stable launcher; the stable launcher that is running renames the runtimes and rewrites
  * {@code current} after the updater's JVM has exited. The replaced runtime and updater stay as the previous bundle,
- * together with the plugin that the activation journal keeps, until the next update or a rollback.
+ * together with the plugin that the activation journal keeps, until the next update.
  */
 public final class Bundle
 {
@@ -44,7 +43,7 @@ public final class Bundle
 	 */
 	public static final String RUNTIME_NEXT = "runtime.next";
 	/**
-	 * The name of the runtime that the last update replaced, which rollback restores.
+	 * The name of the runtime that the last update replaced.
 	 */
 	public static final String RUNTIME_PREVIOUS = "runtime.previous";
 	/**
@@ -121,33 +120,23 @@ public final class Bundle
 	}
 
 	/**
-	 * Returns the runtime that the launcher renames into place to finish an operation's runtime replacement.
+	 * Returns the runtime that the launcher renames into place to finish an update's runtime replacement.
 	 *
-	 * @param operation the operation
 	 * @return the staged runtime directory
 	 */
-	Path staged(Operation operation)
+	Path staged()
 	{
-		return switch (operation)
-		{
-			case UPDATE -> data.resolve(RUNTIME_NEXT);
-			case ROLLBACK -> data.resolve(RUNTIME_PREVIOUS);
-		};
+		return data.resolve(RUNTIME_NEXT);
 	}
 
 	/**
 	 * Returns the location to which the launcher renames the replaced runtime.
 	 *
-	 * @param operation the operation
 	 * @return the replaced runtime's new location
 	 */
-	Path replaced(Operation operation)
+	Path replaced()
 	{
-		return switch (operation)
-		{
-			case UPDATE -> data.resolve(RUNTIME_PREVIOUS);
-			case ROLLBACK -> data.resolve(RUNTIME_NEXT);
-		};
+		return data.resolve(RUNTIME_PREVIOUS);
 	}
 
 	/**
