@@ -67,6 +67,11 @@
 		review a new or changed CAT hook before it runs.
 	- `up_to_date`: tell the user that the active CAT release, which `version` names, is already the release they asked
 		for, so no installed file changed.
+	- `refused` with a `consent_command` field: the operation needs a change to the harness's settings that only the
+		user can allow, and it changed nothing. End your turn with a reply that explains its `message` to the user in
+		plain words and asks whether they allow the change. Only when the user answers yes, run the command that
+		`consent_command` holds, character for character as printed. When they answer no, do not run it, and tell them
+		what the message says does not work without the change.
 	- `refused`: CAT's release policy, the installed Java runtime or a pending data migration rejected the operation,
 		and the active installation is unchanged. Report its `message`, and do not try to install the release in any
 		other way. When the message tells the user to rerun the entry command of a newer release, the installed Java
