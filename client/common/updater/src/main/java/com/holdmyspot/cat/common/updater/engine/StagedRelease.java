@@ -164,7 +164,7 @@ public final class StagedRelease
 	 * @throws TrustException if a symbolic link escapes or cannot resolve
 	 * @throws IOException    if the tree cannot be traversed
 	 */
-	private static void checkLinks(Path root) throws IOException, TrustException
+	static void checkLinks(Path root) throws IOException, TrustException
 	{
 		try (Stream<Path> paths = Files.walk(root))
 		{

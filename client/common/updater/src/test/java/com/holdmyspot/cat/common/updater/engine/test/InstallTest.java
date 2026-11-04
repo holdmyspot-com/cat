@@ -229,7 +229,7 @@ public final class InstallTest
 			Path root = cleanup.add(testDirectory("install-present-"));
 			Path home = Files.createDirectories(root.resolve("home/live")).getParent();
 			Files.writeString(home.resolve("live/version"), "1.0");
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.0");
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).install("v1.1",
 				new RecordingIntegration().registration());
@@ -281,7 +281,7 @@ public final class InstallTest
 			Path root = cleanup.add(testDirectory("update-binding-"));
 			Path home = Files.createDirectories(root.resolve("home/live")).getParent();
 			Files.writeString(home.resolve("live/version"), "1.0");
-			Path runtime = Releases.runtime(root.resolve("data"));
+			Path runtime = Releases.installation(root.resolve("data"), "1.0");
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).update("v1.1",
@@ -311,7 +311,7 @@ public final class InstallTest
 			Path root = cleanup.add(testDirectory("update-current-"));
 			Path home = Files.createDirectories(root.resolve("home/live")).getParent();
 			Files.writeString(home.resolve("live/version"), "1.1");
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.1");
 			RecordingIntegration integration = new RecordingIntegration();
 
 			UpdateResult result = engine(root, home, new Releases("1.1", "")).update("v1.1",

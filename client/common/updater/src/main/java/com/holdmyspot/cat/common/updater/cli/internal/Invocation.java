@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.cli.internal.Arguments.Operation;
+import com.holdmyspot.cat.common.updater.engine.Bundle;
 import com.holdmyspot.cat.common.updater.engine.HttpsReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.Registration;
 import com.holdmyspot.cat.common.updater.engine.UninstallResult;
@@ -50,6 +51,11 @@ public final class Invocation
 	 * the installation's data directory after the updater exits and then prints the result.
 	 */
 	public static final int UNINSTALL_HANDOVER_STATUS = 79;
+	/**
+	 * The exit status with which a completed operation that staged a Java runtime hands its saved result to the
+	 * stable launcher, which puts the staged runtime in place after the updater exits and then prints the result.
+	 */
+	public static final int SWAP_HANDOVER_STATUS = 78;
 	/**
 	 * The connection deadline for the fixed policy release source.
 	 */
@@ -226,7 +232,7 @@ public final class Invocation
 				UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation.get(),
 					platform.id(), clock, waiting);
 				if (arguments.operation() == Operation.ROLLBACK)
-					return print(engine.rollback(), arguments, locations);
+					return finish(engine, engine.rollback(), arguments, locations);
 				UpdateResult status = engine.status();
 				if (arguments.harness().isEmpty())
 					return statusAll(status, policy);
@@ -271,7 +277,7 @@ public final class Invocation
 				case UPDATE -> engine.update(arguments.tag(), registration);
 				case SETUP, STATUS, ROLLBACK, UNINSTALL -> throw new AssertionError(arguments.operation());
 			};
-			return print(result, arguments, locations);
+			return finish(engine, result, arguments, locations);
 		}
 	}
 
@@ -357,9 +363,41 @@ public final class Invocation
 	{
 		ObjectNode object = encode(result.outcome());
 		object.put("unregistered", result.unregistered());
-		Path file = locations.data().resolve("state/uninstall-result.json");
+		save(object, locations.data().resolve("state/uninstall-result.json"));
+		return UNINSTALL_HANDOVER_STATUS;
+	}
+
+	/**
+	 * Prints an operation's result, or saves it for the stable launcher when the operation staged a Java runtime that
+	 * the launcher puts in place after the updater exits. The launcher prints the saved result once the runtime runs.
+	 *
+	 * @param engine    the engine that ran the operation
+	 * @param result    the outcome
+	 * @param arguments the validated operation
+	 * @param locations the installation's locations
+	 * @return the printed result's status, or the hand-over status
+	 * @throws IOException if the pending replacement is unreadable or the result cannot be saved
+	 */
+	private int finish(UpdateEngine engine, UpdateResult result, Arguments arguments, Locations locations)
+		throws IOException
+	{
+		if (result.result().exitStatus() != 0 || engine.pendingSwap().isEmpty())
+			return print(result, arguments, locations);
+		save(encode(result), locations.data().resolve(Bundle.SWAP_RESULT));
+		return SWAP_HANDOVER_STATUS;
+	}
+
+	/**
+	 * Saves a one-line result that the stable launcher prints after the updater exits.
+	 *
+	 * @param object the result
+	 * @param file   the file that the launcher reads
+	 * @throws IOException if the result cannot be saved
+	 */
+	private void save(ObjectNode object, Path file) throws IOException
+	{
 		Files.createDirectories(file.getParent());
-		Path temporary = Files.createTempFile(file.getParent(), ".uninstall-result-", ".tmp");
+		Path temporary = Files.createTempFile(file.getParent(), "." + file.getFileName() + "-", ".tmp");
 		try
 		{
 			Files.writeString(temporary, mapper.writeValueAsString(object) + "\n", UTF_8);
@@ -369,7 +407,6 @@ public final class Invocation
 		{
 			Files.deleteIfExists(temporary);
 		}
-		return UNINSTALL_HANDOVER_STATUS;
 	}
 
 	/**

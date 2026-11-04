@@ -1,14 +1,22 @@
 # Starts the installed updater selected by current on Windows, from the Windows directory with PATH set to its
-# System32 directory and only the documented environment variables, and completes a complete uninstall by deleting the
-# updater data directory after the updater's JVM has exited, then the directory that holds it when that leaves it
-# empty.
+# System32 directory and only the documented environment variables. After the updater's JVM has exited, it puts the
+# Java runtime that an update staged or a rollback kept in place and selects that operation's updater version, or
+# completes a complete uninstall by deleting the updater data directory, then the directory that holds it when that
+# leaves it empty. Before it starts the updater, it puts back a runtime that a launcher which stopped during a runtime
+# replacement had moved aside.
 # Arguments: the updater operation and its arguments, forwarded to Java without interpretation.
-# Output: the selected updater's JSON result; after a complete uninstall, the result that the updater saved, printed
-#   only once the data directory no longer exists, or a not_removed result naming the directory.
-# Exit status: the selected updater's status; 0 after a complete uninstall whose data directory was deleted; 7 with a
-#   not_removed result, deleting nothing more, when that directory could not be deleted, when it or its parent is a
-#   reparse point such as a symbolic link or junction, or when the updater saved no readable result, in which case the
-#   directory's path is written to standard error; or 3 when current is malformed or the shared runtime has no java.exe.
+# Output: the selected updater's JSON result; after a runtime replacement, the result that the updater saved, printed
+#   only once the new runtime runs and current selects the new version, or a not_swapped result; after a complete
+#   uninstall, the result that the updater saved, printed only once the data directory no longer exists, or a
+#   not_removed result naming the directory; or a locked result while another launcher replaces the runtime.
+# Exit status: the selected updater's status; 0 after a runtime replacement or a complete uninstall that succeeded; 8
+#   with a not_swapped result, after restoring the runtime that was in place, when the replacement request is invalid,
+#   the updater saved no readable result, a runtime cannot be renamed, the new runtime's java -version fails or current
+#   cannot be replaced, in which case a diagnostic is written to standard error; 7 with a not_removed result, deleting
+#   nothing more, when the data directory could not be deleted, when it or its parent is a reparse point such as a
+#   symbolic link or junction, or when the updater saved no readable result, in which case the directory's path is
+#   written to standard error; 75 with a locked result when the runtime is missing while another launcher replaces it;
+#   or 3 when current is malformed or the shared runtime has no java.exe.
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
@@ -107,6 +115,103 @@ $version = $Matches[1]
 $versionDirectory = Join-Path $data $version
 $runtime = Join-Path $data 'runtime'
 $java = Join-Path $runtime 'bin\java.exe'
+$swapRequest = Join-Path $data 'state\runtime-swap'
+$swapResult = Join-Path $data 'state\runtime-swap-result.json'
+
+# Reads the pending runtime replacement request that the updater wrote before it exited with status 78. The request
+# holds one value per line: the operation, the version that current selects, the version to select, and the process
+# identifier of the launcher that finishes the replacement; later lines are the updater's own.
+# Output: the request's Operation, From, To and Launcher, with Staged and Kept, the runtime that the replacement puts
+#   in place and the location to which it moves the replaced runtime; or $null when the request is missing or invalid
+#   or does not replace the version that current selects.
+function Read-Swap
+{
+	if (-not (Test-Path -LiteralPath $swapRequest -PathType Leaf) -or (Test-ReparsePoint $swapRequest))
+	{
+		return $null
+	}
+	try
+	{
+		$text = [IO.File]::ReadAllText($swapRequest)
+	}
+	catch
+	{
+		return $null
+	}
+	$versionPattern = '([0-9]+\.[0-9]+(?:\.[0-9]+)?)'
+	if ($text -notmatch "\A(update|rollback)\n$versionPattern\n$versionPattern\n([0-9]+)\n")
+	{
+		return $null
+	}
+	$launcher = [long] 0
+	if (-not [long]::TryParse($Matches[4], [ref] $launcher))
+	{
+		$launcher = [long] -1
+	}
+	$swap = @{ Operation = $Matches[1]; From = $Matches[2]; To = $Matches[3]; Launcher = $launcher }
+	if ($swap.From -ne $version -or $swap.To -eq $swap.From)
+	{
+		return $null
+	}
+	if ($swap.Operation -eq 'update')
+	{
+		$swap.Staged = Join-Path $data 'runtime.next'
+		$swap.Kept = Join-Path $data 'runtime.previous'
+	}
+	else
+	{
+		$swap.Staged = Join-Path $data 'runtime.previous'
+		$swap.Kept = Join-Path $data 'runtime.next'
+	}
+	return $swap
+}
+
+# Indicates whether a process runs.
+# Arguments: the process identifier.
+function Test-ProcessRunning([long] $identifier)
+{
+	if ($identifier -le 0 -or $identifier -gt [int]::MaxValue)
+	{
+		return $false
+	}
+	try
+	{
+		$running = [Diagnostics.Process]::GetProcessById([int] $identifier)
+		$running.Dispose()
+		return $true
+	}
+	catch
+	{
+		return $false
+	}
+}
+
+# A launcher that stopped between its two renames left no runtime in place. While that launcher still runs, it is
+# finishing the replacement; otherwise the runtime that it moved aside is put back, and the updater then undoes or
+# completes the rest of the replacement.
+if (-not (Test-Path -LiteralPath $runtime))
+{
+	$pending = Read-Swap
+	if ($null -ne $pending)
+	{
+		if (Test-ProcessRunning $pending.Launcher)
+		{
+			$escaped = $data.Replace('\', '\\').Replace('"', '\"')
+			Write-Utf8 ([Console]::OpenStandardOutput()) "{`"result`":`"locked`",`"message`":`"Another CAT launcher is replacing the Java runtime in $escaped; retry once it has finished.`"}`n"
+			exit 75
+		}
+		if ((Test-Path -LiteralPath $pending.Kept -PathType Container) -and -not (Test-ReparsePoint $pending.Kept))
+		{
+			try
+			{
+				[IO.Directory]::Move($pending.Kept, $runtime)
+			}
+			catch
+			{
+			}
+		}
+	}
+}
 if (-not (Test-Path -LiteralPath $java -PathType Leaf))
 {
 	Stop-Launcher "CAT updater runtime is missing: $java is not a file; rerun the CAT installation command."
@@ -139,6 +244,178 @@ $process = [Diagnostics.Process]::Start($start)
 $process.WaitForExit()
 $status = $process.ExitCode
 $process.Dispose()
+
+# Reports that the runtime replacement failed and ends the launcher with status 8. The request stays, so that the next
+# updater operation undoes the rest of the operation; the saved result is deleted, because it reports an outcome that
+# did not happen.
+# Arguments: the diagnostic, which is written to standard error.
+function Exit-NotSwapped([string] $message)
+{
+	try
+	{
+		[IO.File]::Delete($swapResult)
+	}
+	catch
+	{
+	}
+	$escaped = $data.Replace('\', '\\').Replace('"', '\"')
+	Write-Utf8 ([Console]::OpenStandardOutput()) "{`"result`":`"not_swapped`",`"message`":`"CAT could not switch the Java runtime in $escaped; the next updater operation restores the previous release.`"}`n"
+	Write-Utf8 ([Console]::OpenStandardError()) "$message`n"
+	exit 8
+}
+
+# Moves the replacement's runtime back to where the updater staged it and the replaced runtime back into place.
+# Arguments: the request that Read-Swap returned.
+function Restore-Runtime($swap)
+{
+	try
+	{
+		[IO.Directory]::Move($runtime, $swap.Staged)
+		[IO.Directory]::Move($swap.Kept, $runtime)
+	}
+	catch
+	{
+	}
+}
+
+# Status 78 means that the updater finished an update or rollback, saved its final result in the data directory, and
+# left putting the runtime that the operation staged in place, which the updater's own JVM runs on, to this launcher.
+if ($status -eq 78)
+{
+	$swap = Read-Swap
+	if ($null -eq $swap)
+	{
+		Exit-NotSwapped "The runtime replacement request $swapRequest is missing or invalid; nothing was replaced."
+	}
+	try
+	{
+		$swapOutput = [IO.File]::ReadAllBytes($swapResult)
+	}
+	catch
+	{
+		$swapOutput = $null
+	}
+	if ($null -eq $swapOutput -or $swapOutput.Length -eq 0)
+	{
+		Exit-NotSwapped "The updater saved no readable result in $swapResult; nothing was replaced."
+	}
+	if (-not (Test-Path -LiteralPath $swap.Staged -PathType Container) -or (Test-ReparsePoint $swap.Staged) -or
+		(Test-Path -LiteralPath $swap.Kept) -or (Test-ReparsePoint $swap.Kept))
+	{
+		Exit-NotSwapped "The runtime $($swap.Staged) is missing or $($swap.Kept) exists; nothing was replaced."
+	}
+	try
+	{
+		[IO.Directory]::Move($runtime, $swap.Kept)
+	}
+	catch
+	{
+		Exit-NotSwapped "The runtime $runtime could not be moved aside, for example because a running program uses it; nothing was replaced."
+	}
+	try
+	{
+		[IO.Directory]::Move($swap.Staged, $runtime)
+	}
+	catch
+	{
+		try
+		{
+			[IO.Directory]::Move($swap.Kept, $runtime)
+		}
+		catch
+		{
+		}
+		Exit-NotSwapped "The runtime $($swap.Staged) could not be moved into place; the previous runtime was restored."
+	}
+	$check = New-Object Diagnostics.ProcessStartInfo
+	$check.FileName = $java
+	$check.Arguments = '-version'
+	$check.UseShellExecute = $false
+	$check.WorkingDirectory = $windows
+	$check.RedirectStandardOutput = $true
+	$check.RedirectStandardError = $true
+	$check.EnvironmentVariables.Clear()
+	$check.EnvironmentVariables['PATH'] = $fixedPath
+	$systemRoot = [Environment]::GetEnvironmentVariable('SYSTEMROOT', 'Process')
+	if ($null -ne $systemRoot)
+	{
+		$check.EnvironmentVariables['SYSTEMROOT'] = $systemRoot
+	}
+	$verified = $false
+	try
+	{
+		$checking = [Diagnostics.Process]::Start($check)
+		# Reading both streams to their end keeps a full pipe from blocking java.
+		$checkOutput = $checking.StandardOutput.ReadToEndAsync()
+		$null = $checking.StandardError.ReadToEnd()
+		$null = $checkOutput.Result
+		$checking.WaitForExit()
+		$verified = $checking.ExitCode -eq 0
+		$checking.Dispose()
+	}
+	catch
+	{
+	}
+	if (-not $verified)
+	{
+		Restore-Runtime $swap
+		Exit-NotSwapped "The new runtime's java -version failed; the previous runtime was restored."
+	}
+	# Selecting the new version through a replacement makes current name either version, never a partial line.
+	$selection = Join-Path $data '.current.next'
+	try
+	{
+		[IO.File]::WriteAllText($selection, "$($swap.To)`n")
+		[IO.File]::Replace($selection, $currentPath, $null)
+	}
+	catch
+	{
+		try
+		{
+			[IO.File]::Delete($selection)
+		}
+		catch
+		{
+		}
+		Restore-Runtime $swap
+		Exit-NotSwapped "The updater version $($swap.To) could not be selected; the previous runtime was restored."
+	}
+	# The replacement is complete; a request or directory that stays is deleted by the next updater operation.
+	try
+	{
+		[IO.File]::Delete($swapRequest)
+	}
+	catch
+	{
+	}
+	if ($swap.Operation -eq 'rollback')
+	{
+		foreach ($replaced in @((Join-Path $data 'runtime.next'), (Join-Path $data $swap.From)))
+		{
+			try
+			{
+				if (Test-Path -LiteralPath $replaced)
+				{
+					Remove-Tree (Get-Item -LiteralPath $replaced -Force)
+				}
+			}
+			catch
+			{
+			}
+		}
+	}
+	try
+	{
+		[IO.File]::Delete($swapResult)
+	}
+	catch
+	{
+	}
+	$swapStream = [Console]::OpenStandardOutput()
+	$swapStream.Write($swapOutput, 0, $swapOutput.Length)
+	$swapStream.Flush()
+	exit 0
+}
 
 # Status 79 means that the updater finished a complete uninstall, saved its final result in the data directory, and
 # left the deletion of that directory, including the runtime it ran on, to this launcher.

@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # Tests the trusted updater's POSIX launchers: the stable launcher's environment isolation, argument forwarding,
-# current-version validation, exit-status pass-through and removal of the data directory after a complete uninstall,
-# and the versioned launcher's selection of the shared runtime and its fixed JVM options.
+# current-version validation, exit-status pass-through, replacement of the Java runtime after an update or rollback
+# and removal of the data directory after a complete uninstall, and the versioned launcher's selection of the shared
+# runtime and its fixed JVM options.
 
 bats_require_minimum_version 1.5.0
 
@@ -71,6 +72,43 @@ install_uninstalling_runtime()
 	printf '%s\n' '{"result":"uninstalled","message":"a & b <c> \"d\" $HOME `x` %PATH%"}' > "${TEST_ROOT}/saved-result.json"
 	install_runtime "$1" "cat '${TEST_ROOT}/saved-result.json' > \"\$data/state/uninstall-result.json\"
 exit 79"
+}
+
+# Writes a fake Java runtime beside the installed one, as an update stages it or a rollback keeps it.
+# Arguments: the absolute path of the runtime directory, its marker text, and the status with which its java exits.
+# Side effects: Creates the directory with bin/java and a marker file that names the runtime.
+write_runtime()
+{
+	mkdir -p "$1/bin"
+	printf '%s\n' "$2" > "$1/marker"
+	printf '#!/bin/sh\nexit %s\n' "$3" > "$1/bin/java"
+	chmod +x "$1/bin/java"
+}
+
+# Installs a fake shared runtime Java that stands in for an updater operation that staged a Java runtime: it saves
+# its final JSON result in state/runtime-swap-result.json, writes the swap request, and exits with the status that
+# asks the stable launcher to put the staged runtime in place after the JVM exits. Its java -version succeeds.
+# The saved result contains shell metacharacters and JSON escapes, so a launcher that reinterprets it alters it.
+# Arguments: the absolute path of the data directory, the operation, the version it replaces and the version it
+#   selects.
+# Side effects: Writes TEST_ROOT/saved-swap-result.json, which the fake copies, 1.0/bin/cat-updater and runtime/
+#   beneath the data directory, whose marker file reads "installed".
+install_swapping_runtime()
+{
+	printf '%s\n' '{"result":"updated","message":"a & b <c> \"d\" $HOME `x` %PATH%"}' > "${TEST_ROOT}/saved-swap-result.json"
+	install_runtime "$1" "if [ \"\$1\" = -version ]; then exit 0; fi
+cat '${TEST_ROOT}/saved-swap-result.json' > \"\$data/state/runtime-swap-result.json\"
+printf '%s\\n' '$2' '$3' '$4' 0 - - > \"\$data/state/runtime-swap\"
+exit 78"
+	printf 'installed\n' > "$1/runtime/marker"
+}
+
+# Prints the not_swapped result that the stable launcher writes for a data directory.
+# Arguments: the data directory as the launcher's path names it.
+# Output: the JSON result.
+not_swapped_result()
+{
+	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; the next updater operation restores the previous release."}' "$1"
 }
 
 # Removes only the directory created for this test, including after failed setup or assertions.
@@ -353,4 +391,145 @@ exit 79'
 	[ "${status}" -eq 0 ]
 	[ ! -e "${DATA}" ]
 	[ "$(cat "${TEST_ROOT}/outside/file")" = kept ]
+}
+
+# The reader that receives the launcher's output checks which version current selects when the first line arrives, so a
+# launcher that printed the saved result before it selected the new updater fails this test.
+@test "after an update hands over the runtime the stable launcher puts the staged runtime in place and only then prints the result" {
+	install_swapping_runtime "${DATA}" update 1.0 1.1
+	write_runtime "${DATA}/runtime.next" staged 0
+	mkdir -p "${DATA}/1.1/bin"
+
+	run sh -c '
+		{ "$1" update; printf "%s\n" "$?" > "$3"; } | {
+			IFS= read -r line
+			printf "%s<%s>" "${line}" "$(cat "$2/current")"
+		}' sh "${DATA}/bin/cat-updater" "${DATA}" "${TEST_ROOT}/launcher-status"
+
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-swap-result.json")<1.1>" ]
+	[ "$(cat "${TEST_ROOT}/launcher-status")" = 0 ]
+	[ "$(cat "${DATA}/runtime/marker")" = staged ]
+	[ "$(cat "${DATA}/runtime.previous/marker")" = installed ]
+	[ ! -e "${DATA}/runtime.next" ]
+	[ ! -e "${DATA}/state/runtime-swap" ]
+	[ ! -e "${DATA}/state/runtime-swap-result.json" ]
+	[ -d "${DATA}/1.0" ]
+}
+
+@test "after a rollback hands over the runtime the stable launcher restores the kept runtime and deletes the replaced bundle" {
+	install_swapping_runtime "${DATA}" rollback 1.0 0.9
+	write_runtime "${DATA}/runtime.previous" kept 0
+	mkdir -p "${DATA}/0.9/bin"
+
+	run "${DATA}/bin/cat-updater" rollback --harness claude
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-swap-result.json")" ]
+	[ "$(cat "${DATA}/current")" = 0.9 ]
+	[ "$(cat "${DATA}/runtime/marker")" = kept ]
+	[ ! -e "${DATA}/runtime.previous" ]
+	[ ! -e "${DATA}/runtime.next" ]
+	[ ! -e "${DATA}/1.0" ]
+	[ -d "${DATA}/0.9" ]
+	[ ! -e "${DATA}/state/runtime-swap" ]
+}
+
+@test "the stable launcher restores the installed runtime and reports not_swapped with status 8 when the staged runtime does not run" {
+	data="${TEST_ROOT}/updater \"quoted\" \\ data"
+	create_data_directory "${data}"
+	install_swapping_runtime "${data}" update 1.0 1.1
+	write_runtime "${data}/runtime.next" staged 1
+	mkdir -p "${data}/1.1/bin"
+
+	run --separate-stderr "${data}/bin/cat-updater" update
+
+	[ "${status}" -eq 8 ]
+	[ "${output}" = "$(not_swapped_result "${TEST_ROOT}"'/updater \"quoted\" \\ data')" ]
+	[ -n "${stderr}" ]
+	[ "$(cat "${data}/current")" = 1.0 ]
+	[ "$(cat "${data}/runtime/marker")" = installed ]
+	[ "$(cat "${data}/runtime.next/marker")" = staged ]
+	[ ! -e "${data}/runtime.previous" ]
+	[ -f "${data}/state/runtime-swap" ]
+	[ ! -e "${data}/state/runtime-swap-result.json" ]
+}
+
+@test "the stable launcher changes nothing and reports not_swapped when no staged runtime exists" {
+	install_swapping_runtime "${DATA}" update 1.0 1.1
+
+	run --separate-stderr "${DATA}/bin/cat-updater" update
+
+	[ "${status}" -eq 8 ]
+	[ "${output}" = "$(not_swapped_result "${DATA}")" ]
+	[ "$(cat "${DATA}/current")" = 1.0 ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ ! -e "${DATA}/runtime.previous" ]
+}
+
+@test "the stable launcher changes nothing and reports not_swapped when the request replaces another version" {
+	install_swapping_runtime "${DATA}" update 0.9 1.1
+	write_runtime "${DATA}/runtime.next" staged 0
+
+	run --separate-stderr "${DATA}/bin/cat-updater" update
+
+	[ "${status}" -eq 8 ]
+	[ "${output}" = "$(not_swapped_result "${DATA}")" ]
+	[ "$(cat "${DATA}/current")" = 1.0 ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
+}
+
+@test "the stable launcher changes nothing and reports not_swapped when the updater saved no result" {
+	install_runtime "${DATA}" 'if [ "$1" = -version ]; then exit 0; fi
+printf "%s\n" update 1.0 1.1 0 - - > "$data/state/runtime-swap"
+exit 78'
+	printf 'installed\n' > "${DATA}/runtime/marker"
+	write_runtime "${DATA}/runtime.next" staged 0
+
+	run --separate-stderr "${DATA}/bin/cat-updater" update
+
+	[ "${status}" -eq 8 ]
+	[ "${output}" = "$(not_swapped_result "${DATA}")" ]
+	[ "$(cat "${DATA}/current")" = 1.0 ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
+}
+
+@test "the versioned launcher passes the runtime hand-over status through without replacing the runtime" {
+	install_swapping_runtime "${DATA}" update 1.0 1.1
+	write_runtime "${DATA}/runtime.next" staged 0
+
+	run "${DATA}/1.0/bin/cat-updater" update
+
+	[ "${status}" -eq 78 ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
+}
+
+@test "the stable launcher puts back a runtime that a stopped launcher had moved aside before it runs the updater" {
+	write_runtime "${DATA}/runtime.previous" installed 0
+	write_runtime "${DATA}/runtime.next" staged 0
+	printf '%s\n' update 1.0 1.1 9999999 - - > "${DATA}/state/runtime-swap"
+
+	run "${DATA}/bin/cat-updater" status
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = 'child<status>' ]
+	[ "$(cat "${DATA}/runtime/marker")" = installed ]
+	[ ! -e "${DATA}/runtime.previous" ]
+	[ "$(cat "${DATA}/runtime.next/marker")" = staged ]
+}
+
+@test "the stable launcher reports locked with status 75 while another launcher is replacing the runtime" {
+	write_runtime "${DATA}/runtime.previous" installed 0
+	write_runtime "${DATA}/runtime.next" staged 0
+	printf '%s\n' update 1.0 1.1 "$$" - - > "${DATA}/state/runtime-swap"
+
+	run "${DATA}/bin/cat-updater" status
+
+	[ "${status}" -eq 75 ]
+	[[ "${output}" == '{"result":"locked",'* ]]
+	[[ "${output}" != *'child'* ]]
+	[ ! -e "${DATA}/runtime" ]
+	[ "$(cat "${DATA}/runtime.previous/marker")" = installed ]
 }

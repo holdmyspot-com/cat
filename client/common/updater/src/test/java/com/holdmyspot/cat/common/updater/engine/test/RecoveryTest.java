@@ -119,6 +119,7 @@ public final class RecoveryTest
 			Files.createDirectory(fixture.live());
 			Files.writeString(fixture.live().resolve("version"), "1.1");
 			Files.writeString(fixture.marker(), "1.1\n");
+			Releases.updated(root.resolve("data"), "1.0", "1.1");
 
 			UpdateResult result = fixture.engine().rollback();
 
@@ -127,6 +128,7 @@ public final class RecoveryTest
 			requireThat(Files.readString(fixture.live().resolve("version")), "liveVersion").isEqualTo("1.0");
 			requireThat(Files.exists(fixture.marker()), "migrationMarker").isFalse();
 			requireThat(Files.exists(fixture.state().lastActivation()), "lastActivation").isFalse();
+			LauncherSwap.finish(root.resolve("data"));
 			requireThat(fixture.engine().rollback().result(), "secondRollback").isEqualTo(Result.REFUSED);
 		}
 	}

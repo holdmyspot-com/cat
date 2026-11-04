@@ -59,7 +59,7 @@ public final class ActivationTest
 			Releases source = new Releases("1.1", "");
 			List<ActivationStep> plan = List.of(new ReplaceDirectory(home.resolve("live"), home),
 				new AddDirectory(home.resolve("cache/1.1"), home), ownedStep(home));
-			Releases.runtime(home.resolve("data"));
+			Releases.installation(home.resolve("data"), "1.0");
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(plan), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
@@ -72,6 +72,7 @@ public final class ActivationTest
 			requireThat(Files.readString(home.resolve("agents/ownership")), "newOwnership").
 				isEqualTo("cat-reviewer.toml\n");
 
+			LauncherSwap.finish(home.resolve("data"));
 			UpdateResult rollback = engine.rollback();
 
 			requireThat(rollback.result(), "rollback").isEqualTo(Result.ROLLED_BACK);
@@ -180,7 +181,7 @@ public final class ActivationTest
 			Releases source = new Releases("1.1", "");
 			List<ActivationStep> plan = List.of(new ReplaceDirectory(home.resolve("live"), home),
 				new AddDirectory(home.resolve("blocked/new"), home));
-			Releases.runtime(home.resolve("data"));
+			Releases.installation(home.resolve("data"), "1.0");
 			UpdateEngine engine = new UpdateEngine(home.resolve("data"), source.policy(home), source,
 				new Provider(plan), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 

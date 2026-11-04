@@ -98,7 +98,7 @@ public final class EngineTest
 			Files.writeString(home.resolve("live/version"), "1.0");
 			Files.writeString(home.resolve("configuration"), "protected");
 			Releases source = new Releases("1.1", "");
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.0");
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 
@@ -174,15 +174,17 @@ public final class EngineTest
 			Files.writeString(home.resolve("live/version"), "1.0");
 			Files.writeString(home.resolve("migration-version"), "1.0\n");
 			Releases source = new Releases("1.1", "");
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.0");
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
 			requireThat(engine.update("v1.1", new RecordingIntegration().
 				registration()).result(), "update").isEqualTo(Result.UPDATED);
+			LauncherSwap.finish(root.resolve("data"));
 			requireThat(engine.status().previousVersion(), "previous").isEqualTo(Optional.of("1.0"));
 			requireThat(engine.update("v1.1", new RecordingIntegration().
 				registration()).result(), "repeatUpdate").isEqualTo(Result.UP_TO_DATE);
 			requireThat(engine.rollback().result(), "rollback").isEqualTo(Result.ROLLED_BACK);
+			LauncherSwap.finish(root.resolve("data"));
 			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
 			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.0\n");
 			requireThat(engine.rollback().result(), "secondRollback").isEqualTo(Result.REFUSED);
@@ -303,7 +305,7 @@ public final class EngineTest
 					release.download(tag, name, size, destination);
 				}
 			};
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.0");
 			UpdateEngine first = new UpdateEngine(root.resolve("data"), release.policy(home), blocking,
 				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {}, Duration.ZERO);
 			UpdateEngine second = new UpdateEngine(root.resolve("data"), release.policy(home), release,
@@ -389,7 +391,7 @@ public final class EngineTest
 						new AddDirectory(providerHome.resolve("blocking/new"), providerHome));
 				}
 			};
-			Releases.runtime(root.resolve("data"));
+			Releases.installation(root.resolve("data"), "1.0");
 			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
 				provider, "linux-x64", Clock.systemUTC(), interval -> () -> {});
 			UpdateResult result = engine.update("v1.1", new RecordingIntegration().registration());

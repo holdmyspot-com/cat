@@ -18,8 +18,13 @@ import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.cli.internal.Invocation;
 import com.holdmyspot.cat.common.updater.cli.internal.Locations;
+import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
+import com.holdmyspot.cat.common.updater.engine.UpdateResult;
+import com.holdmyspot.cat.common.updater.engine.UpdateResult.Result;
+import com.holdmyspot.cat.common.updater.engine.test.LauncherSwap;
 import com.holdmyspot.cat.common.updater.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.updater.engine.test.RecordingIntegration;
+import com.holdmyspot.cat.common.updater.engine.test.Releases;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import com.holdmyspot.cat.common.updater.trust.TrustPolicy;
 import java.io.ByteArrayOutputStream;
@@ -28,6 +33,7 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -278,6 +284,39 @@ public final class InvocationTest
 			requireThat(integration.calls(), "calls").contains("unregister");
 			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
 			requireThat(Files.exists(installation.policyFile, NOFOLLOW_LINKS), "policy").isFalse();
+		}
+	}
+
+	/**
+	 * A rollback restores the previous plugin, saves its one-line result for the stable launcher, which restores the
+	 * previous Java runtime and updater after the updater exits, prints nothing itself, and exits with the runtime
+	 * hand-over status.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void rollbackHandsRuntimeToLauncher() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-rollback-")));
+			installation.update();
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "rollback",
+				"--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(78);
+			requireThat(run.output, "output").isEmpty();
+			String saved = Files.readString(installation.data.resolve("state/runtime-swap-result.json"), UTF_8);
+			requireThat(saved.endsWith("\n"), "newline").isTrue();
+			requireThat(saved.lines().count(), "lines").isEqualTo(1L);
+			JsonNode result = JsonMapper.builder().build().readTree(saved);
+			requireThat(result.path("result").stringValue(), "result").isEqualTo("rolled_back");
+			requireThat(result.path("version").stringValue(), "version").isEqualTo("0.9");
+			requireThat(Files.readString(installation.home.resolve("live/version")), "plugin").isEqualTo("0.9");
+			requireThat(Files.readString(installation.data.resolve("state/runtime-swap")).lines().limit(3).toList(),
+				"request").isEqualTo(List.of("rollback", "1.0", "0.9"));
 		}
 	}
 
@@ -544,6 +583,29 @@ public final class InvocationTest
 		{
 			Files.createDirectories(policyFile.getParent());
 			policy.write(policyFile, replacer());
+		}
+
+		/**
+		 * Writes the policy and replaces the installation with one that an update from 0.9 left after the stable
+		 * launcher finished it, so that it keeps the 0.9 bundle for rollback.
+		 *
+		 * @throws IOException    if the installation cannot be written
+		 * @throws TrustException if a test policy is invalid
+		 */
+		private void update() throws IOException, TrustException
+		{
+			writePolicy(trustPolicy());
+			Files.createDirectories(home.resolve("live"));
+			Files.writeString(home.resolve("live/version"), "0.9");
+			Releases.installation(data, "0.9");
+			Releases release = new Releases("1.0", "");
+			UpdateResult result = new UpdateEngine(data, release.policy(home), release, new LiveProvider(),
+				"linux-x64", Clock.systemUTC(), interval -> () -> {}, Duration.ZERO).
+				update("v1.0", new RecordingIntegration().registration());
+			requireThat(result.result(), "update").isEqualTo(Result.UPDATED);
+			LauncherSwap.finish(data);
+			Path anchor = image.resolve(Locations.POLICY_ANCHOR);
+			Files.writeString(anchor, policyFile + "\n");
 		}
 
 		/**

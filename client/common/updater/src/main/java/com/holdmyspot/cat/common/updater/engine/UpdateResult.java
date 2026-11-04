@@ -106,6 +106,12 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		NOT_REMOVED(7),
 		/**
+		 * The stable launcher could not put the Java runtime that an operation staged in place and restored the
+		 * replaced one; the next updater operation undoes the rest of the operation. Only the stable launcher prints
+		 * this outcome.
+		 */
+		NOT_SWAPPED(8),
+		/**
 		 * Another operation held the lock beyond the wait limit.
 		 */
 		LOCKED(75),
