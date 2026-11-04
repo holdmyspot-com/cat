@@ -83,14 +83,15 @@ jobs:
           client/common/distribution/src/test/bats/updater-launcher.bats
       # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests.
       # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
-      # that plugin has no POSIX launchers. updater-launcher.bats tests the updater's POSIX launchers, which a Windows
-      # installation does not use as its stable launcher.
+      # that plugin has no POSIX launchers. A Windows installation's updater launchers are PowerShell scripts, which
+      # updater-launcher-windows.bats tests in place of updater-launcher.bats and its POSIX launchers.
       - name: Verify bootstrap boundaries on Windows
         if: runner.os == 'Windows'
         run: >-
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
+          client/common/distribution/src/test/bats/updater-launcher-windows.bats
       # The POSIX launcher templates; the Windows plugins' batch launchers are tested by the Maven build
       - name: Verify the jlink launcher template
         if: runner.os != 'Windows'
