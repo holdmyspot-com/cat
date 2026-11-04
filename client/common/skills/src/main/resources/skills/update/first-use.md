@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Install another CAT release only when it differs from the active one, so that an update with nothing to do changes
-	nothing.
+	no installed file and only registers the plugin again when the harness lost it.
 - Install, update, roll back and inspect CAT only through CAT's trusted updater, which accepts only signed releases that
 	the user's policy approves.
 - Treat CAT's Java runtime, updater and plugin as one bundle that moves between releases together, so that a rollback
@@ -69,7 +69,7 @@
 		and that it takes effect once they restart or resume the session. In Codex, also say that Codex asks them to
 		review a new or changed CAT hook before it runs. Say that they can ask you to go back to the previous release.
 	- `up_to_date`: tell the user that the active CAT release, which `version` names, is already the release they asked
-		for, so nothing changed.
+		for, so no installed file changed.
 	- `rolled_back`: tell the user that the release that `version` names is active again, and that it takes effect once
 		they restart or resume the session. Do not offer another rollback: the installation keeps no previous release
 		now.

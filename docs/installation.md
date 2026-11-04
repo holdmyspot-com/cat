@@ -95,9 +95,9 @@ Claude Code, it adds them to `sandbox.excludedCommands` and `permissions.allow` 
 keeping every other setting. Each sandbox exclusion is one exact command without a wildcard, because Claude Code runs a
 whole command line outside its sandbox when an exclusion matches part of it. An update to a release that the agent
 names, such as `update --harness claude v1.1`, is therefore allowed without a prompt but runs inside the sandbox; when
-the sandbox blocks it, the agent gives you the exact command to run yourself. In Codex, it writes the CAT-owned file `rules/cat-updater.rules` in your Codex home. Setup
-refuses, before changing anything, a harness configuration that it cannot change safely, such as a malformed
-`settings.json` or a symbolic link in its place.
+the sandbox blocks it, the agent gives you the exact command to run yourself. In Codex, it writes the CAT-owned file
+`rules/cat-updater.rules` in your Codex home. Setup refuses, before changing anything, a harness configuration that it
+cannot change safely, such as a malformed `settings.json` or a symbolic link in its place.
 
 In the table, `<h>` is `claude` or `codex`, and `<data>` is the harness's installation directory.
 
@@ -172,9 +172,10 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$env:LO
 `update` moves this harness's whole installation to the release: the Java runtime, the updater and the plugin. Omitting
 the version, or passing `latest`, requests GitHub's latest release. That release must satisfy the policy; the updater
 refuses an unapproved latest release rather than searching older releases. A named version requests that release and
-must satisfy the same policy. An already active, consistent version reports `up_to_date` without changing it. An update
-verifies the signed release metadata and both archives against your existing policy; it never changes the policy's
-keys, release source or version limits.
+must satisfy the same policy. An already active, consistent version reports `up_to_date` without changing any installed
+file; it only registers the plugin with the harness again when the harness no longer lists it. An update verifies the
+signed release metadata and both archives against your existing policy; it never changes the policy's keys, release
+source or version limits.
 
 Going back to an older release is your decision. `install` and `update` refuse a version below the highest one that
 this installation has already activated for the harness, and tell you to run `rollback` or the entry command. The

@@ -37,9 +37,9 @@
 	your turn with the question, and continue only when the user answers. Skip the question when the user's request
 	already says whether to delete the data.
 3. Run one command: `<launcher> uninstall --harness <h>` to keep CAT's plugin data, or
-	`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it. The harness may ask the user to approve this command before it runs; that approval is
-	separate from the user's answer in step 2. When the user declines it, stop and report that nothing was
-	removed.
+	`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it. The harness may ask the
+	user to approve this command before it runs; that approval is separate from the user's answer in step 2. When the
+	user declines it, stop and report that nothing was removed.
 4. The launcher prints one line of JSON. Act on its `result` field:
 	- `uninstalled`: tell the user that CAT is removed from this harness and that sessions they start from now on run
 		without it. Say whether CAT's plugin data was kept or deleted. Also tell them that installing CAT again is a new
