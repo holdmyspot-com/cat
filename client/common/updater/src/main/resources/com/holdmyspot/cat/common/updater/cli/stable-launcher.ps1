@@ -297,8 +297,10 @@ function Exit-NotSwapped([string] $message)
 	{
 	}
 	$escaped = $data.Replace('\', '\\').Replace('"', '\"')
-	$text = "CAT could not switch the Java runtime in $escaped; CAT's hooks may not work until the next successful " +
-		'update. Report this message to the user.'
+	$text = "CAT could not switch the Java runtime in $escaped; the operation did not finish. Run install --harness " +
+		'<h> with this launcher at once: it undoes the operation and puts back the previous release, so that ' +
+		"CAT's hooks work again. Then tell the user that the operation could not complete, quoting this message, " +
+		"and quote the install's message too if it fails."
 	Write-Utf8 ([Console]::OpenStandardOutput()) "{`"result`":`"not_swapped`",`"message`":`"$text`"}`n"
 	Write-Utf8 ([Console]::OpenStandardError()) "$message`n"
 	exit 8

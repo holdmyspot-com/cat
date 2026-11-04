@@ -334,7 +334,8 @@ public final class BundleUpdateTest
 	/**
 	 * After the stable launcher reported {@code not_swapped} for an update, an {@code install} that the agent runs next
 	 * does not finish the update, even though the staged runtime is still in place: it undoes the update, so the
-	 * installation runs the previous release's plugin, runtime and updater again.
+	 * installation runs the previous release's plugin, runtime and updater again, with the plugin registered with the
+	 * harness and bound to the installed runtime, which is what CAT's hooks need to run.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -347,7 +348,10 @@ public final class BundleUpdateTest
 			Path root = cleanup.add(testDirectory("bundle-not-swapped-"));
 			Path data = root.resolve("data");
 			Path home = plugin(root, "1.0");
-			Releases.installation(data, "1.0");
+			Path runtime = Releases.installation(data, "1.0");
+			// The installed 1.0 plugin is bound to the installation's runtime
+			Files.writeString(Files.createDirectories(home.resolve("live/client")).resolve("runtime-binding"),
+				runtime.toAbsolutePath().normalize() + "\n");
 			Releases release = new Releases("1.1", "");
 			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
 				result(), "update").isEqualTo(Result.UPDATED);
@@ -357,13 +361,18 @@ public final class BundleUpdateTest
 			// Install asks for the release that current selects
 			Releases installed = new Releases("1.0", "");
 
-			UpdateResult result = engine(data, home, installed).install(null,
-				new RecordingIntegration().session());
+			RecordingIntegration integration = new RecordingIntegration();
+
+			UpdateResult result = engine(data, home, installed).install(null, integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UP_TO_DATE);
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.0\n");
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
+			requireThat(integration.calls(), "calls").contains("register");
+			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
+				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
+			requireThat(Files.readString(runtime.resolve("release")), "runtime").isEqualTo("runtime 1.0");
 			requireThat(Files.exists(data.resolve("runtime.next")), "stagedRuntime").isFalse();
 			requireThat(engine(data, home, installed).pendingSwap(), "pendingSwap").isEqualTo(Optional.empty());
 		}

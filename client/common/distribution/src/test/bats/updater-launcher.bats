@@ -108,13 +108,22 @@ exit 78"
 	printf 'installed\n' > "$1/runtime/marker"
 }
 
+# Prints what the stable launcher's not_swapped message tells the agent to do after it names the data directory.
+# Output: the advice, without a line terminator.
+not_swapped_advice()
+{
+	printf '%s' "the operation did not finish. Run install --harness <h> with this launcher at once: it undoes the " \
+		"operation and puts back the previous release, so that CAT's hooks work again. Then tell the user that the " \
+		"operation could not complete, quoting this message, and quote the install's message too if it fails."
+}
+
 # Prints the not_swapped result that the stable launcher writes for a data directory.
 # Arguments: the data directory as the launcher's path names it.
 # Output: the JSON result.
 not_swapped_result()
 {
 	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; %s"}' "$1" \
-		"CAT's hooks may not work until the next successful update. Report this message to the user."
+		"$(not_swapped_advice)"
 }
 
 # Prints the Java options that every updater launcher passes, as the fake java scripts print their arguments.

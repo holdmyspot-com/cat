@@ -91,8 +91,10 @@
 	- `failed`: an unexpected error stopped the operation after it may have changed the installation. Report its
 		`message`, and that running the same command again continues the operation; run it again only when the user
 		asks.
-	- `not_swapped`: the Java runtime could not be put in place, so the operation did not finish and CAT's hooks may
-		not work until the next successful update. Report its `message` to the user.
+	- `not_swapped`: the Java runtime could not be put in place, so the operation did not finish. Run
+		`<launcher> install --harness <h>` at once: it undoes the failed operation and puts back the previous release,
+		so that CAT's hooks work again. Then tell the user that the operation could not complete, quoting the
+		`not_swapped` result's `message`; when that install also fails, quote its `message` too.
 	- `locked`: report that another operation on CAT is running, and that the user can ask again once it finishes.
 	- `usage`: report its `message` as a defect in CAT.
 

@@ -174,9 +174,11 @@ status=0
 not_swapped()
 {
 	/bin/rm -f -- "$swap_result" 2>/dev/null || true
-	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; %s"}\n' \
+	printf '{"result":"not_swapped","message":"CAT could not switch the Java runtime in %s; %s%s%s"}\n' \
 		"$(json_escape "$named_data")" \
-		"CAT's hooks may not work until the next successful update. Report this message to the user."
+		"the operation did not finish. Run install --harness <h> with this launcher at once: it undoes the " \
+		"operation and puts back the previous release, so that CAT's hooks work again. Then tell the user that the " \
+		"operation could not complete, quoting this message, and quote the install's message too if it fails."
 	printf '%s\n' "$1" >&2
 	exit 8
 }
