@@ -9,7 +9,6 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
-import com.holdmyspot.cat.common.installer.engine.Bundle;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -32,10 +31,9 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 /**
- * Writes the trusted installer's application directory: its version, modules, versioned launchers, the stable launchers
- * that an update to the release installs, default policy, runtime requirement and legal materials. Also writes the
- * installer's launchers and default policy into a plugin's {@code bin} folder. No other thread or process modifies the
- * directories during assembly.
+ * Writes the trusted installer's application directory: its version, modules, versioned launchers, default policy,
+ * runtime requirement and legal materials. Also writes the installer's launchers and default policy into a plugin's
+ * {@code bin} folder. No other thread or process modifies the directories during assembly.
  */
 public final class InstallerArtifactBuilder
 {
@@ -107,7 +105,7 @@ public final class InstallerArtifactBuilder
 	 * in the sibling directory {@code runtime}, both in the extracted release archive and once installed.
 	 *
 	 * @param versionDirectory the new directory that receives the application, named after its version
-	 * @param installerJar       the installer module JAR containing its versioned and stable launcher templates
+	 * @param installerJar       the installer module JAR containing its versioned launcher templates
 	 * @param application      the installer's modules, whose JARs it runs from {@code app/} and whose system modules
 	 *                         form its runtime requirement
 	 * @param legalMaterials   the directory containing the generated release license, notices and licenses directory
@@ -134,14 +132,10 @@ public final class InstallerArtifactBuilder
 		policy.write(configuration.resolve(DEFAULT_POLICY), FileReplacer.retrying(scope.waiting()));
 		application.writeRequirement(versionDirectory.resolve(RUNTIME_REQUIREMENT), scope.json());
 		Path bin = Files.createDirectories(versionDirectory.resolve("bin"));
-		Path stable = Files.createDirectories(versionDirectory.resolve(Bundle.STABLE_LAUNCHERS));
 		try (JarFile jar = new JarFile(installerJar.toFile()))
 		{
 			copyLauncher(jar, "versioned-launcher.sh", bin.resolve(LAUNCHER_NAME));
 			copyLauncher(jar, "versioned-launcher.ps1", bin.resolve(LAUNCHER_NAME + ".ps1"));
-			// An update installs the stable launcher of the release that it selects from here
-			copyLauncher(jar, "stable-launcher.sh", stable.resolve(LAUNCHER_NAME));
-			copyLauncher(jar, "stable-launcher.ps1", stable.resolve(LAUNCHER_NAME + ".ps1"));
 		}
 		copyTree(legalMaterials, Files.createDirectories(versionDirectory.resolve("legal")));
 		return versionDirectory;

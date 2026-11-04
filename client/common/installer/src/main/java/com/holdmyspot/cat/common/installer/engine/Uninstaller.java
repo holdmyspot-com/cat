@@ -26,14 +26,12 @@ import java.util.Optional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Removes one harness's CAT installation: the harness registration, the plugin files, the downloaded runner bundles,
  * optionally the plugin's data, the permission entries and the policy. Each completed step is recorded in
- * {@code state/uninstall.json}, so that a later uninstall continues with the first step that did not complete. The
- * installer's own data directory is deleted by the stable launcher after the installer exits.
+ * {@code state/uninstall.json}, so that a later uninstall continues with the first step that did not complete.
  */
 public final class Uninstaller
 {
@@ -59,11 +57,6 @@ public final class Uninstaller
 	 * The progress record, relative to the installer data directory.
 	 */
 	private static final String JOURNAL = "state/uninstall.json";
-	/**
-	 * The result of a completed uninstall that the stable launcher prints once it deleted the data directory,
-	 * relative to the installer data directory.
-	 */
-	public static final String RESULT = "state/uninstall-result.json";
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	private final Path data;
 	private final Path policyFile;
@@ -136,16 +129,14 @@ public final class Uninstaller
 			{
 				if (!lock.isValid())
 					return failure(Result.LOCKED, "The harness lock is no longer valid.", List.of());
-				ActivationTransaction transaction = new ActivationTransaction(state, activation, home);
-				transaction.recover();
-				Progress progress = readProgress(transaction);
+				Progress progress = readProgress(journal).orElseGet(() -> new Progress(new ArrayList<>()));
 				boolean programExists = programExists();
 				for (String next : STEPS)
 				{
 					if (progress.completed().contains(next) || (next.equals(UNREGISTER) && !programExists))
 						continue;
 					step = next;
-					run(next, home, deleteData, progress);
+					run(next, home, deleteData);
 					// Data that this run kept stays for a later uninstall that is asked to delete it
 					if (next.equals(DATA) && !deleteData)
 						continue;
@@ -178,9 +169,8 @@ public final class Uninstaller
 	}
 
 	/**
-	 * Returns the outcome of an earlier uninstall that completed its last step, deleting the policy, when the stable
-	 * launcher did not delete the data directory afterwards. The policy no longer exists then, so running the same
-	 * uninstall again only hands the deletion to the launcher once more.
+	 * Returns the outcome of an earlier uninstall that completed its last step, deleting the policy. The policy no
+	 * longer exists then, so running the same uninstall again reports that outcome again.
 	 *
 	 * @param data    the installation's installer data directory, whose name is its harness
 	 * @param harness the installation's harness
@@ -196,17 +186,15 @@ public final class Uninstaller
 	}
 
 	/**
-	 * Discards the progress and the saved result of an earlier uninstall, because an operation that set up or
-	 * activated CAT again makes them stale: a later uninstall must run every step again.
+	 * Discards the progress of an earlier uninstall, because an operation that installed CAT again makes it stale: a
+	 * later uninstall must run every step again.
 	 *
 	 * @param data the installation's installer data directory
-	 * @throws IOException if the files cannot be deleted
+	 * @throws IOException if the progress cannot be deleted
 	 */
 	public static void discard(Path data) throws IOException
 	{
-		Path directory = data.toAbsolutePath().normalize();
-		Files.deleteIfExists(directory.resolve(JOURNAL));
-		Files.deleteIfExists(directory.resolve(RESULT));
+		Files.deleteIfExists(data.toAbsolutePath().normalize().resolve(JOURNAL));
 	}
 
 	/**
@@ -249,10 +237,9 @@ public final class Uninstaller
 	 * @param step       the step's name
 	 * @param home       the harness home
 	 * @param deleteData true to delete the plugin's data directory
-	 * @param progress   the uninstall's progress
 	 * @throws IOException if the step fails
 	 */
-	private void run(String step, Path home, boolean deleteData, Progress progress) throws IOException
+	private void run(String step, Path home, boolean deleteData) throws IOException
 	{
 		switch (step)
 		{
@@ -260,8 +247,6 @@ public final class Uninstaller
 			case "plugin" ->
 			{
 				for (Path path : activation.removalPaths(home))
-					LinkSafeDeletion.delete(path, home);
-				for (Path path : progress.retained())
 					LinkSafeDeletion.delete(path, home);
 			}
 			case "bundles" -> deleteBundles();
@@ -355,22 +340,6 @@ public final class Uninstaller
 	}
 
 	/**
-	 * Reads the progress of an earlier uninstall, or starts a new one. A new uninstall records the plugin trees that
-	 * the last update kept, so that they are deleted with the plugin.
-	 *
-	 * @param transaction the harness's activation transaction
-	 * @return the progress
-	 * @throws IOException if the progress record is unreadable or malformed
-	 */
-	private Progress readProgress(ActivationTransaction transaction) throws IOException
-	{
-		Optional<Progress> earlier = readProgress(journal);
-		if (earlier.isPresent())
-			return earlier.get();
-		return new Progress(new ArrayList<>(), transaction.retainedPaths());
-	}
-
-	/**
 	 * Reads the progress of an earlier uninstall.
 	 *
 	 * @param journal the progress record
@@ -400,14 +369,7 @@ public final class Uninstaller
 				throw new IOException("The uninstall progress names an unknown step: " + journal);
 			completed.add(step.stringValue());
 		}
-		List<Path> retained = new ArrayList<>();
-		for (JsonNode path : root.path("retained"))
-		{
-			if (!path.isString() || !Path.of(path.stringValue()).isAbsolute())
-				throw new IOException("The uninstall progress names a relative path: " + journal);
-			retained.add(Path.of(path.stringValue()).normalize());
-		}
-		return Optional.of(new Progress(completed, List.copyOf(retained)));
+		return Optional.of(new Progress(completed));
 	}
 
 	/**
@@ -421,9 +383,6 @@ public final class Uninstaller
 		ObjectNode root = MAPPER.createObjectNode();
 		root.put("format", 1);
 		progress.completed().forEach(root.putArray("completed")::add);
-		ArrayNode retained = root.putArray("retained");
-		for (Path path : progress.retained())
-			retained.add(path.toString());
 		StateFiles.write(journal, (MAPPER.writeValueAsString(root) + "\n").getBytes(UTF_8));
 	}
 
@@ -458,9 +417,8 @@ public final class Uninstaller
 	 * An uninstall's progress.
 	 *
 	 * @param completed the completed steps, in order
-	 * @param retained  the plugin trees that the last update kept
 	 */
-	private record Progress(List<String> completed, List<Path> retained)
+	private record Progress(List<String> completed)
 	{
 	}
 }

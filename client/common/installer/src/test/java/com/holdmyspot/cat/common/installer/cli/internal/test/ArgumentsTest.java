@@ -22,16 +22,23 @@ public final class ArgumentsTest
 	}
 
 	/**
-	 * Routine updates accept only a selected provider and an optional approved release selector.
+	 * Install accepts a selected provider, an optional harness home and an optional approved release selector, in that
+	 * order.
 	 */
 	@Test
-	public void parsesRoutineUpdate()
+	public void parsesInstallRelease()
 	{
-		Arguments args = Arguments.parse(new String[]{"update", "--harness", "harness-a", "v1.2.3"},
+		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
+		Arguments tagged = Arguments.parse(new String[]{"install", "--harness", "harness-a", "v1.2.3"},
 			Set.of("harness-a"));
-		requireThat(args.operation(), "operation").isEqualTo(Operation.UPDATE);
-		requireThat(args.harness(), "harness").isEqualTo("harness-a");
-		requireThat(args.tag(), "tag").isEqualTo("v1.2.3");
+		Arguments homed = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home",
+			home.toString(), "v1.2"}, Set.of("harness-a"));
+		requireThat(tagged.operation(), "operation").isEqualTo(Operation.INSTALL);
+		requireThat(tagged.harness(), "harness").isEqualTo("harness-a");
+		requireThat(tagged.tag(), "tag").isEqualTo("v1.2.3");
+		requireThat(tagged.home(), "taggedHome").isNull();
+		requireThat(homed.home(), "home").isEqualTo(home);
+		requireThat(homed.tag(), "homedTag").isEqualTo("v1.2");
 	}
 
 	/**
@@ -40,9 +47,9 @@ public final class ArgumentsTest
 	@Test
 	public void latestHasNoExplicitTag()
 	{
-		Arguments omitted = Arguments.parse(new String[]{"update", "--harness", "harness-a"},
+		Arguments omitted = Arguments.parse(new String[]{"install", "--harness", "harness-a"},
 			Set.of("harness-a"));
-		Arguments latest = Arguments.parse(new String[]{"update", "--harness", "harness-a", "latest"},
+		Arguments latest = Arguments.parse(new String[]{"install", "--harness", "harness-a", "latest"},
 			Set.of("harness-a"));
 		requireThat(omitted.tag(), "omittedTag").isNull();
 		requireThat(latest.tag(), "latestTag").isNull();
@@ -110,25 +117,24 @@ public final class ArgumentsTest
 		{
 			{new String[]{}},
 			{new String[]{"upgrade-self"}},
-			{new String[]{"update", "--harness=harness-a"}},
-			{new String[]{"update", "--harness", "harness-a", "--"}},
-			{new String[]{"update", "--harness", "harness-a", "--url", "https://untrusted.invalid"}},
-			{new String[]{"update", "--harness", "harness-a", "--home", "/other"}},
-			{new String[]{"update", "--harness", "harness-a", "--harness", "harness-a"}},
-			{new String[]{"update", "--harness", "", "--harness", "harness-a"}},
-			{new String[]{"update", "--harness", "other"}},
-			{new String[]{"update", "--harness", "harness-a", "v1.0", "v1.1"}},
-			{new String[]{"update", "--harness", "harness-a", "latest", "latest"}},
-			{new String[]{"update", "--harness", "harness-a", "../v1.0"}},
-			{new String[]{"update", "--harness", "harness-a", "v1.0?source=other"}},
+			{new String[]{"update", "--harness", "harness-a"}},
+			{new String[]{"update", "--harness", "harness-a", "v1.0"}},
+			{new String[]{"install", "--harness=harness-a"}},
+			{new String[]{"install", "--harness", "harness-a", "--"}},
+			{new String[]{"install", "--harness", "harness-a", "--url", "https://untrusted.invalid"}},
+			{new String[]{"install", "--harness", "harness-a", "--harness", "harness-a"}},
+			{new String[]{"install", "--harness", "", "--harness", "harness-a"}},
+			{new String[]{"install", "--harness", "harness-a", "v1.0", "v1.1"}},
+			{new String[]{"install", "--harness", "harness-a", "latest", "latest"}},
+			{new String[]{"install", "--harness", "harness-a", "../v1.0"}},
+			{new String[]{"install", "--harness", "harness-a", "v1.0?source=other"}},
+			{new String[]{"install", "--harness", "harness-a", "v1.0", "--home", "/home/a"}},
 			{new String[]{"rollback", "--harness", "harness-a"}},
 			{new String[]{"rollback", "--harness", "harness-a", "v1.0"}},
 			{new String[]{"status", "extra"}},
 			{new String[]{"setup", "--harness", "harness-a", "--home", "/home/a"}},
 			{new String[]{"install"}},
 			{new String[]{"install", "--harness", "other"}},
-			{new String[]{"install", "--harness", "harness-a", "v1.0"}},
-			{new String[]{"install", "--harness", "harness-a", "latest"}},
 			{new String[]{"install", "--harness", "harness-a", "--home"}},
 			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "extra"}},
 			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "--plugin", "/plugin"}},
@@ -138,7 +144,7 @@ public final class ArgumentsTest
 			{new String[]{"uninstall", "--delete-data", "--harness", "harness-a"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "--delete-data", "--delete-data"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "extra"}},
-			{new String[]{"update", "--harness", "harness-a", "--delete-data"}},
+			{new String[]{"install", "--harness", "harness-a", "--delete-data"}},
 			{new String[]{"status", "--delete-data"}}
 		};
 	}
@@ -168,7 +174,7 @@ public final class ArgumentsTest
 		catch (IllegalArgumentException e)
 		{
 			requireThat(e.getMessage(), "message").startsWith("Usage: installer install").doesNotContain("rollback").
-				doesNotContain("setup");
+				doesNotContain("setup").doesNotContain("update");
 			return;
 		}
 		throw new AssertionError("rollback was accepted");

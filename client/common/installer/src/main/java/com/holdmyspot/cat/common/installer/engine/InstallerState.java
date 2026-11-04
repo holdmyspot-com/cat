@@ -54,26 +54,6 @@ public record InstallerState(Path directory)
 	}
 
 	/**
-	 * Returns the journal of an unfinished activation or undo.
-	 *
-	 * @return the journal path
-	 */
-	public Path activation()
-	{
-		return directory.resolve("activation.json");
-	}
-
-	/**
-	 * Returns the journal of the last successful activation.
-	 *
-	 * @return the retained journal path
-	 */
-	public Path lastActivation()
-	{
-		return directory.resolve("last-activation.json");
-	}
-
-	/**
 	 * Returns the append-only operation log.
 	 *
 	 * @return the log path
@@ -91,15 +71,5 @@ public record InstallerState(Path directory)
 	public Path permissions()
 	{
 		return directory.resolveSibling("permissions").resolve(directory.getFileName() + ".json");
-	}
-
-	/**
-	 * Returns backups of files that CAT owned before activation.
-	 *
-	 * @return the backup directory
-	 */
-	public Path previousFiles()
-	{
-		return directory.resolve("previous-files");
 	}
 }

@@ -32,8 +32,8 @@ final class PluginArchive
 	}
 
 	/**
-	 * Creates the extracted archive: the plugin's manifest, version, installer launcher, Java runtime and default
-	 * policy.
+	 * Creates the extracted archive: the plugin's manifest, version, installer launcher, plugin information launcher,
+	 * migration registry, Java runtime and default policy.
 	 *
 	 * @param parent the directory that receives the archive
 	 * @param keys   the release keys of the archive's default policy
@@ -48,6 +48,11 @@ final class PluginArchive
 		Files.createDirectories(plugin.resolve("bin/runtime/bin"));
 		Files.writeString(plugin.resolve("bin/runtime/bin/java"), "java");
 		Files.writeString(plugin.resolve("bin/installer"), "#!/bin/sh\n");
+		Path pluginInfo = Files.writeString(plugin.resolve("bin/plugin-info"), "#!/bin/sh\n");
+		if (!pluginInfo.toFile().setExecutable(true))
+			throw new IOException("Cannot make " + pluginInfo + " executable");
+		Files.createDirectories(plugin.resolve("install/migrations"));
+		Files.writeString(plugin.resolve("install/migrations/registry.tsv"), "# No migration\n");
 		Files.writeString(plugin.resolve("bin/VERSION"), VERSION + "\n");
 		writeDefaultPolicy(plugin, keys);
 		return plugin;

@@ -1,32 +1,21 @@
 package com.holdmyspot.cat.common.installer.engine.test;
 
-import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.keyPair;
-import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.manifest;
-import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.sign;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.testDirectory;
-import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.trusted;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.Pause;
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
-import com.holdmyspot.cat.common.installer.activation.AddDirectory;
-import com.holdmyspot.cat.common.installer.activation.PluginActivation;
-import com.holdmyspot.cat.common.installer.activation.ReplaceDirectory;
+import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.PluginVersion;
+import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
 import com.holdmyspot.cat.common.installer.engine.StagedRelease;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
-import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
-import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.KeyPair;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -34,26 +23,43 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.testng.annotations.Test;
 import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
 
 /**
- * Exercises routine installer decisions using explicit fake homes and signed in-memory release data.
+ * Tests the installer's routine decisions about signed releases: which release it accepts, what a first install
+ * records, and how concurrent operations on one harness are serialized.
  */
 public final class EngineTest
 {
 	/**
-	 * A signed manifest whose version differs from the requested tag is refused with the installed bytes unchanged.
+	 * The migration registry of a release that registers no data migration.
+	 */
+	private static final String NO_MIGRATION = "# No migration\n";
+	/**
+	 * The migration registry of a release that registers only the per-harness layout migration.
+	 */
+	private static final String LAYOUT = StagedRelease.LAYOUT_MIGRATION + "\tper-harness-layout.sh\n";
+
+	/**
+	 * Creates the test.
+	 */
+	public EngineTest()
+	{
+	}
+
+	/**
+	 * A signed manifest whose version differs from the requested tag is refused before anything is downloaded or
+	 * installed.
 	 *
-	 * @throws IOException if creating the fixture fails
+	 * @throws IOException    if creating the fixture fails
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
@@ -61,59 +67,74 @@ public final class EngineTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("engine-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			KeyPair key = keyPair();
-			TrustPolicy policy = TrustPolicy.of(List.of(trusted("test-key", key)),
-				URI.create("https://releases.example/cat/releases/download"), ReleaseVersion.parse("1.0"), 1,
-				Map.of("harness-a", home));
-			String manifest = manifest("1.1");
-			ReleaseSource source = new MemorySource(manifest.getBytes(UTF_8), sign(manifest.getBytes(UTF_8), key));
-			Releases.runtime(root.resolve("data"));
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), policy, source, new LiveProvider(),
-				"linux-x64", Clock.systemUTC(), interval -> () -> {});
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-other-version-")),
+				new ReleaseCatalog("1.1", NO_MIGRATION));
+			ReleaseSource source = new ReleaseSource()
+			{
+				@Override
+				public String latestTag()
+				{
+					return "v1.1";
+				}
 
-			UpdateResult result = engine.update("v1.2", new RecordingIntegration().session());
+				@Override
+				public byte[] manifest(String tag) throws IOException
+				{
+					return fixture.catalog.manifest("v1.1");
+				}
+
+				@Override
+				public byte[] signature(String tag) throws IOException
+				{
+					return fixture.catalog.signature("v1.1");
+				}
+
+				@Override
+				public void download(String tag, String assetName, long expectedSize, Path destination)
+				{
+					throw new AssertionError("A mismatched manifest must be refused before downloading an archive");
+				}
+			};
+
+			UpdateResult result = fixture.engine(source, Clock.systemUTC(), interval -> () ->
+			{
+			}, Duration.ZERO, false).install("v1.2", fixture.request(fixture.root.resolve("download/plugin")));
+
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("1.2").contains("1.1");
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
+			requireThat(fixture.integration.registered(), "registered").isEmpty();
 		}
 	}
 
 	/**
-	 * A verified archive replaces the live tree and retains the original installation.
+	 * A first install of a verified release asks the harness to install it into its version folder, bound to the Java
+	 * runtime in that folder, and records the release as the harness's data migration version.
 	 *
-	 * @throws IOException if fixture creation or inspection fails
+	 * @throws IOException    if fixture creation or inspection fails
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void activatesVerifiedArchive() throws IOException, TrustException
+	public void installsVerifiedRelease() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("engine-success-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Files.writeString(home.resolve("configuration"), "protected");
-			Releases source = new Releases("1.1", "");
-			Releases.installation(root.resolve("data"), "1.0");
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-install-")),
+				new ReleaseCatalog("1.1", NO_MIGRATION));
 
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
+			UpdateResult result = fixture.install("v1.1");
 
-			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.INSTALLED);
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(0);
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
+			requireThat(result.version(), "version").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
+			requireThat(fixture.integration.registered(), "registered").
+				isEqualTo(List.of(PluginVersion.parse(Releases.pluginVersion("1.1"))));
+			Path folder = fixture.versionFolder("1.1");
+			requireThat(Files.readString(folder.resolve("bin/VERSION")), "pluginVersion").
 				isEqualTo(Releases.pluginVersion("1.1"));
-			requireThat(Files.readString(home.resolve(".cat-previous-live/version")), "previousVersion").
-				isEqualTo("1.0");
-			requireThat(Files.readString(home.resolve("configuration")), "configuration").isEqualTo("protected");
-			requireThat(Files.readString(home.resolve("migration-version")).strip(), "migrationVersion").
-				isEqualTo("1.1");
+			requireThat(Files.readString(folder.resolve("bin/runtime-binding")), "binding").
+				isEqualTo(folder.resolve("bin/runtime") + "\n");
+			requireThat(Files.readString(fixture.migrationVersion()), "migrationVersion").isEqualTo("1.1\n");
 		}
 	}
 
@@ -131,10 +152,10 @@ public final class EngineTest
 	}
 
 	/**
-	 * Refused archives leave installation bytes and protected configuration intact.
+	 * A refused release is never installed: the harness keeps its active version and its data migration version.
 	 *
 	 * @param defect the release defect
-	 * @throws IOException if fixture I/O fails
+	 * @throws IOException    if fixture I/O fails
 	 * @throws TrustException if policy construction fails
 	 */
 	@Test(dataProvider = "defects")
@@ -142,90 +163,29 @@ public final class EngineTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("engine-refusal-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Files.writeString(home.resolve("configuration"), "protected");
-			Releases source = new Releases("1.1", defect);
-			Releases.runtime(root.resolve("data"));
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
-			requireThat(result.result(), "resultFor" + defect).isEqualTo(Result.REFUSED);
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
-			requireThat(Files.readString(home.resolve("configuration")), "configuration").isEqualTo("protected");
-			requireThat(Files.exists(home.resolve("migration-version")), "migrationMarkerCreated").isFalse();
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-refusal-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION));
+			fixture.installActive("1.0");
+			String migrationVersion = Files.readString(fixture.migrationVersion());
+			fixture.catalog.addDefective("1.1", defect);
+
+			UpdateResult result = fixture.install("v1.1");
+
+			requireThat(result.result(), "resultFor" + defect).withContext(result.message(), "message").
+				isEqualTo(Result.REFUSED);
+			InstalledState installed = fixture.provider.installed(fixture.home);
+			requireThat(installed.version(), "installed").isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
+			requireThat(fixture.integration.registered(), "registered").
+				isEqualTo(List.of(PluginVersion.parse(Releases.pluginVersion("1.0"))));
+			requireThat(Files.readString(fixture.migrationVersion()), "migrationVersion").isEqualTo(migrationVersion);
 		}
 	}
 
 	/**
-	 * Setup over a harness whose plugin the shared installation of release 1.0 activated accepts a later release that
-	 * registers the per-harness layout migration, and records that release as the harness's migration version.
+	 * A first install of release 1.0 records the per-harness layout migration as applied, so that a later update to a
+	 * release that registers that migration is accepted and records the later release.
 	 *
-	 * @throws IOException if fixture I/O fails
-	 * @throws TrustException if policy construction fails
-	 */
-	@Test
-	public void setupAppliesLayoutMigration() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("engine-layout-setup-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Files.writeString(home.resolve("migration-version"), "1.0\n");
-			Releases source = new Releases("1.1", "layout");
-			Releases.installation(root.resolve("data"), "1.1");
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-
-			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().session());
-
-			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").
-				isEqualTo(Releases.pluginVersion("1.1"));
-			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.1\n");
-		}
-	}
-
-	/**
-	 * Setup still refuses a release that registers a data migration besides the per-harness layout migration, and
-	 * leaves the harness's migration version unchanged.
-	 *
-	 * @throws IOException if fixture I/O fails
-	 * @throws TrustException if policy construction fails
-	 */
-	@Test
-	public void setupRefusesDataMigration() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("engine-layout-migration-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Files.writeString(home.resolve("migration-version"), "1.0\n");
-			Releases source = new Releases("1.1", "layoutAndMigration");
-			Releases.installation(root.resolve("data"), "1.1");
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-
-			UpdateResult result = engine.setUp("1.1", new RecordingIntegration().session());
-
-			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
-			requireThat(result.message(), "message").contains("data migration 1.1");
-			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.0");
-			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.0\n");
-		}
-	}
-
-	/**
-	 * Release 1.0, activated by this installer, records the per-harness layout migration as applied, so that a routine
-	 * update to a later release that registers that migration is accepted.
-	 *
-	 * @throws IOException if fixture I/O fails
+	 * @throws IOException    if fixture I/O fails
 	 * @throws TrustException if policy construction fails
 	 */
 	@Test
@@ -233,70 +193,26 @@ public final class EngineTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("engine-layout-update-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Releases first = new Releases("1.0", "");
-			Releases.installation(root.resolve("data"), "1.0");
-			UpdateEngine setup = new UpdateEngine(root.resolve("data"), first.policy(home), first,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			requireThat(setup.setUp("1.0", new RecordingIntegration().session()).result(), "setup").
-				isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(home.resolve("migration-version")), "marker").
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-layout-update-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION));
+			fixture.installActive("1.0");
+			requireThat(Files.readString(fixture.migrationVersion()), "marker").
 				isEqualTo(StagedRelease.LAYOUT_MIGRATION + "\n");
-			Releases later = new Releases("1.1", "layout");
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), later.policy(home), later,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
+			fixture.catalog.add("1.1", LAYOUT);
 
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
+			UpdateResult result = fixture.install("v1.1");
 
-			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(home.resolve("migration-version")), "updatedMarker").isEqualTo("1.1\n");
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UPDATED);
+			requireThat(Files.readString(fixture.migrationVersion()), "updatedMarker").isEqualTo("1.1\n");
 		}
 	}
 
 	/**
-	 * Undoing an update whose runtime replacement the stable launcher abandoned restores the replaced plugin and the
-	 * migration marker, and consumes the activation record, so that the installation keeps no bundle to return to.
+	 * A data migration version file that a symbolic-link ancestor redirects is refused before the harness installs
+	 * anything, and nothing is written where the link points.
 	 *
-	 * @throws IOException if fixture I/O fails
-	 * @throws TrustException if policy construction fails
-	 */
-	@Test
-	public void undoRestoresInstallationAndMarker() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("engine-undo-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), Releases.pluginVersion("1.0"));
-			Files.writeString(home.resolve("migration-version"), "1.0\n");
-			Releases source = new Releases("1.1", "");
-			Releases.installation(root.resolve("data"), "1.0");
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			requireThat(engine.update("v1.1", new RecordingIntegration().
-				session()).result(), "update").isEqualTo(Result.UPDATED);
-			LauncherSwap.abandon(root.resolve("data"));
-			Releases installed = new Releases("1.0", "");
-			UpdateEngine undoing = new UpdateEngine(root.resolve("data"), installed.policy(home), installed,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-
-			requireThat(undoing.update("v1.0", new RecordingIntegration().session()).result(), "undo").
-				isEqualTo(Result.UP_TO_DATE);
-
-			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo(Releases.pluginVersion("1.0"));
-			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("1.0\n");
-			requireThat(undoing.status().previousVersion(), "previous").isEqualTo(Optional.empty());
-		}
-	}
-
-	/**
-	 * A marker redirected through a symbolic-link ancestor is refused before live files change.
-	 *
-	 * @throws IOException if fixture I/O fails
+	 * @throws IOException    if fixture I/O fails
 	 * @throws TrustException if policy construction fails
 	 */
 	@Test
@@ -304,35 +220,31 @@ public final class EngineTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("engine-marker-link-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Path outside = Files.createDirectory(root.resolve("outside"));
-			Files.createSymbolicLink(home.resolve("marker-parent"), outside);
-			Releases source = new Releases("1.1", "");
-			PluginActivation provider = new LiveProvider()
+			Path root = cleanup.add(testDirectory("engine-marker-link-")).toRealPath();
+			RegisteredProvider provider = new RegisteredProvider()
 			{
 				@Override
-				public Path migrationVersionFile(Path providerHome)
+				public Path migrationVersionFile(Path home)
 				{
-					return providerHome.resolve("marker-parent/migration-version");
+					return home.resolve("marker-parent/migration-version");
 				}
 			};
-			Releases.runtime(root.resolve("data"));
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				provider, "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			requireThat(engine.update("v1.1", new RecordingIntegration().
-				session()).result(), "result").isEqualTo(Result.REFUSED);
-			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
+			EngineFixture fixture = new EngineFixture(root, new ReleaseCatalog("1.1", NO_MIGRATION), provider);
+			Path outside = Files.createDirectory(root.resolve("outside"));
+			Files.createSymbolicLink(fixture.home.resolve("marker-parent"), outside);
+
+			UpdateResult result = fixture.install("v1.1");
+
+			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
+			requireThat(fixture.integration.registered(), "registered").isEmpty();
 			requireThat(Files.exists(outside.resolve("migration-version")), "outsideMarker").isFalse();
 		}
 	}
 
 	/**
-	 * Reading status does not create installer state.
+	 * Reading status reports the harness's version and creates no installer state.
 	 *
-	 * @throws IOException if fixture I/O fails
+	 * @throws IOException    if fixture I/O fails
 	 * @throws TrustException if policy construction fails
 	 */
 	@Test
@@ -340,20 +252,21 @@ public final class EngineTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("engine-status-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Releases source = new Releases("1.1", "");
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			requireThat(engine.status().version(), "version").isEqualTo(Optional.of("1.0"));
-			requireThat(Files.exists(root.resolve("data")), "stateCreated").isFalse();
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-status-")),
+				new ReleaseCatalog("1.1", NO_MIGRATION));
+			Files.writeString(RecordingIntegration.registeredVersion(fixture.home), Releases.pluginVersion("1.1"));
+
+			UpdateResult status = fixture.engine().status();
+
+			requireThat(status.result(), "result").isEqualTo(Result.STATUS);
+			requireThat(status.version(), "version").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
+			requireThat(Files.exists(fixture.data()), "stateCreated").isFalse();
 		}
 	}
 
 	/**
-	 * A concurrent engine cannot enter transport or activation while the first engine holds the harness lock.
+	 * A concurrent engine cannot enter transport or installation while the first engine holds the harness lock, waits
+	 * for it no longer than its deadline, and stops waiting when interrupted.
 	 *
 	 * @throws Exception if fixture I/O or bounded worker completion fails
 	 */
@@ -363,11 +276,9 @@ public final class EngineTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			ExecutorService workers = Executors.newSingleThreadExecutor())
 		{
-			Path root = cleanup.add(testDirectory("engine-lock-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Releases release = new Releases("1.1", "");
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-lock-")),
+				new ReleaseCatalog("1.1", NO_MIGRATION));
+			ReleaseCatalog release = fixture.catalog;
 			CountDownLatch entered = new CountDownLatch(1);
 			CountDownLatch releaseFirst = new CountDownLatch(1);
 			ReleaseSource blocking = new ReleaseSource()
@@ -396,7 +307,7 @@ public final class EngineTest
 				}
 
 				@Override
-				public byte[] signature(String tag)
+				public byte[] signature(String tag) throws IOException
 				{
 					return release.signature(tag);
 				}
@@ -407,101 +318,57 @@ public final class EngineTest
 					release.download(tag, name, size, destination);
 				}
 			};
-			Releases.installation(root.resolve("data"), "1.0");
-			UpdateEngine first = new UpdateEngine(root.resolve("data"), release.policy(home), blocking,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () -> {}, Duration.ZERO);
-			UpdateEngine second = new UpdateEngine(root.resolve("data"), release.policy(home), release,
-				new LiveProvider(), "linux-x64", Clock.systemUTC(), interval -> () ->
-				{
-					throw new AssertionError("A zero wait must not pause");
-				}, Duration.ZERO);
-			Future<UpdateResult> running = workers.submit(() -> first.update("v1.1", new RecordingIntegration().
-				session()));
+			Path image = fixture.root.resolve("download/plugin");
+			UpdateEngine first = fixture.engine(blocking, Clock.systemUTC(), interval -> () ->
+			{
+			}, Duration.ZERO, false);
+			UpdateEngine second = fixture.engine(release, Clock.systemUTC(), interval -> () ->
+			{
+				throw new AssertionError("A zero wait must not pause");
+			}, Duration.ZERO, false);
+			Future<UpdateResult> running = workers.submit(() -> first.install("v1.1", fixture.request(image)));
 			try
 			{
 				requireThat(entered.await(2, TimeUnit.SECONDS), "enteredTransport").isTrue();
-				requireThat(second.update("v1.1", new RecordingIntegration().
-					session()).result(), "contendingResult").isEqualTo(Result.LOCKED);
+				requireThat(second.install("v1.1", fixture.request(image)).result(), "contendingResult").
+					isEqualTo(Result.LOCKED);
 				AtomicReference<Instant> now = new AtomicReference<>(Instant.EPOCH);
 				Clock clock = new LockClock(now, ZoneOffset.UTC);
 				List<Duration> pauses = new ArrayList<>();
 				Duration deadline = Duration.ofMinutes(5);
-				UpdateEngine timed = new UpdateEngine(root.resolve("data"), release.policy(home), release,
-					new LiveProvider(), "linux-x64", clock, interval -> () ->
-					{
-						pauses.add(interval);
-						if (pauses.size() == 2)
-							now.set(Instant.EPOCH.plus(deadline).minusMillis(20));
-						else
-							now.updateAndGet(time -> time.plus(interval));
-					}, deadline);
-				requireThat(timed.update("v1.1", new RecordingIntegration().
-					session()).result(), "deadlineResult").isEqualTo(Result.LOCKED);
+				UpdateEngine timed = fixture.engine(release, clock, interval -> () ->
+				{
+					pauses.add(interval);
+					if (pauses.size() == 2)
+						now.set(Instant.EPOCH.plus(deadline).minusMillis(20));
+					else
+						now.updateAndGet(time -> time.plus(interval));
+				}, deadline, false);
+				requireThat(timed.install("v1.1", fixture.request(image)).result(), "deadlineResult").
+					isEqualTo(Result.LOCKED);
 				requireThat(pauses, "lockPauses").isEqualTo(List.of(Duration.ofMillis(50), Duration.ofMillis(50),
 					Duration.ofMillis(20)));
-				UpdateEngine interrupted = new UpdateEngine(root.resolve("data"), release.policy(home), release,
-					new LiveProvider(), "linux-x64", clock, interval -> Pause.interruptible(() ->
-					{
-						throw new InterruptedException("Interrupted lock wait");
-					}));
+				UpdateEngine interrupted = fixture.engine(release, clock, interval -> Pause.interruptible(() ->
+				{
+					throw new InterruptedException("Interrupted lock wait");
+				}), deadline, false);
 				try
 				{
-					requireThat(interrupted.update("v1.1", new RecordingIntegration().
-						session()).result(), "interruptedResult").isEqualTo(Result.LOCKED);
+					requireThat(interrupted.install("v1.1", fixture.request(image)).result(), "interruptedResult").
+						isEqualTo(Result.LOCKED);
 					requireThat(Thread.currentThread().isInterrupted(), "interruptPreserved").isTrue();
 				}
 				finally
 				{
 					Thread.interrupted();
 				}
-				requireThat(Files.readString(home.resolve("live/version")), "versionBeforeRelease").isEqualTo("1.0");
+				requireThat(fixture.integration.registered(), "registeredBeforeRelease").isEmpty();
 			}
 			finally
 			{
 				releaseFirst.countDown();
 			}
-			requireThat(running.get(2, TimeUnit.SECONDS).result(), "firstResult").isEqualTo(Result.UPDATED);
-		}
-	}
-
-	/**
-	 * A second-step filesystem failure restores the first replacement and the earlier kept copy.
-	 *
-	 * @throws IOException if fixture I/O fails
-	 * @throws TrustException if policy construction fails
-	 */
-	@Test
-	public void restoresAfterSecondStepFailure() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory("engine-restore-"));
-			Path home = root.resolve("home");
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "1.0");
-			Files.createDirectories(home.resolve(".cat-previous-live"));
-			Files.writeString(home.resolve(".cat-previous-live/version"), "0.9");
-			Files.writeString(home.resolve("blocking"), "a file cannot be a destination parent");
-			Files.writeString(home.resolve("migration-version"), "0.9\n");
-			Releases source = new Releases("1.1", "");
-			PluginActivation provider = new LiveProvider()
-			{
-				@Override
-				public List<ActivationStep> plan(Path providerHome, String version)
-				{
-					return List.of(new ReplaceDirectory(providerHome.resolve("live"), providerHome),
-						new AddDirectory(providerHome.resolve("blocking/new"), providerHome));
-				}
-			};
-			Releases.installation(root.resolve("data"), "1.0");
-			UpdateEngine engine = new UpdateEngine(root.resolve("data"), source.policy(home), source,
-				provider, "linux-x64", Clock.systemUTC(), interval -> () -> {});
-			UpdateResult result = engine.update("v1.1", new RecordingIntegration().session());
-			requireThat(result.result(), "result").isEqualTo(Result.RESTORED);
-			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(5);
-			requireThat(Files.readString(home.resolve("live/version")), "version").isEqualTo("1.0");
-			requireThat(Files.readString(home.resolve(".cat-previous-live/version")), "previousVersion").isEqualTo("0.9");
-			requireThat(Files.readString(home.resolve("migration-version")), "marker").isEqualTo("0.9\n");
+			requireThat(running.get(2, TimeUnit.SECONDS).result(), "firstResult").isEqualTo(Result.INSTALLED);
 		}
 	}
 
@@ -516,7 +383,7 @@ public final class EngineTest
 		/**
 		 * Creates a view of the controlled instant.
 		 *
-		 * @param now the shared instant
+		 * @param now  the shared instant
 		 * @param zone the view's zone
 		 */
 		private LockClock(AtomicReference<Instant> now, ZoneId zone)
@@ -541,39 +408,6 @@ public final class EngineTest
 		public Instant instant()
 		{
 			return now.get();
-		}
-	}
-
-	/**
-	 * Supplies signed bytes without performing network or filesystem activation itself.
-	 *
-	 * @param manifest manifest bytes
-	 * @param signature signature bytes
-	 */
-	private record MemorySource(byte[] manifest, byte[] signature) implements ReleaseSource
-	{
-		@Override
-		public String latestTag()
-		{
-			return "v1.1";
-		}
-
-		@Override
-		public byte[] manifest(String tag)
-		{
-			return manifest.clone();
-		}
-
-		@Override
-		public byte[] signature(String tag)
-		{
-			return signature.clone();
-		}
-
-		@Override
-		public void download(String tag, String assetName, long expectedSize, Path destination)
-		{
-			throw new AssertionError("A mismatched manifest must be refused before downloading an archive");
 		}
 	}
 }

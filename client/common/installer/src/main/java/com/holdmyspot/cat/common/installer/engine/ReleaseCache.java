@@ -1,12 +1,10 @@
 package com.holdmyspot.cat.common.installer.engine;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.holdmyspot.cat.common.BoundedInput;
-import com.holdmyspot.cat.common.installation.TreeDigest;
 import com.holdmyspot.cat.common.installer.trust.ManifestVerifier;
 import com.holdmyspot.cat.common.installer.trust.ReleaseApproval;
 import com.holdmyspot.cat.common.installer.trust.ReleaseAsset;
@@ -27,11 +25,10 @@ import java.util.Optional;
 
 /**
  * Keeps, in the installation's protected data directory, what an operation needs to activate a release again without
- * downloading it: the release's signed manifest and its signature, its plugin archive, and the identity of the Java
- * runtime and installer version directory that the installer installed from it. Each release has a directory
- * {@code releases/<version>}. Nothing in it is trusted until it is verified again: the manifest against the policy's
- * keys, an archive against the manifest's digest, and the installed runtime and installer against the recorded
- * identity. An entry that fails verification is discarded, and the release is downloaded instead.
+ * downloading it: the release's signed manifest and its signature, and its plugin archive. Each release has a
+ * directory {@code releases/<version>}. Nothing in it is trusted until it is verified again: the manifest against the
+ * policy's keys, and an archive against the manifest's digest. An entry that fails verification is discarded, and the
+ * release is downloaded instead.
  */
 final class ReleaseCache
 {
@@ -41,15 +38,6 @@ final class ReleaseCache
 	static final Path DIRECTORY = Path.of("releases");
 	private static final String MANIFEST = "cat-release-manifest.json";
 	private static final String SIGNATURE = "cat-release-manifest.json.sig";
-	private static final String IDENTITY = "bundle-identity";
-	/**
-	 * The largest identity record: two labelled digests.
-	 */
-	private static final int MAXIMUM_IDENTITY_BYTES = 1024;
-	/**
-	 * The installer-version-relative policy anchor, which setup and every update rewrite after installing the directory.
-	 */
-	private static final Path ANCHOR = Bundle.POLICY_ANCHOR;
 	private final Path data;
 	private final Path root;
 
@@ -147,51 +135,6 @@ final class ReleaseCache
 	}
 
 	/**
-	 * Records the identity of the Java runtime and the installer version directory that the installer installed for a
-	 * release.
-	 *
-	 * @param version the release version
-	 * @param runtime the installed runtime
-	 * @param image   the installed installer version directory
-	 * @throws IOException if either cannot be read, or the identity cannot be written
-	 */
-	void recordBundle(String version, Path runtime, Path image) throws IOException
-	{
-		Path directory = directory(version);
-		StateFiles.createDirectories(directory);
-		StateFiles.write(directory.resolve(IDENTITY), identity(runtime, image).getBytes(UTF_8));
-	}
-
-	/**
-	 * Indicates whether a runtime and an installer version directory hold exactly the files that the installer recorded
-	 * when it installed them for a release. A mismatch discards the release's entry.
-	 *
-	 * @param version the release version
-	 * @param runtime the runtime to check
-	 * @param image   the installer version directory to check
-	 * @return true if both match the recorded identity
-	 * @throws IOException if a failed entry cannot be discarded
-	 */
-	boolean matchesBundle(String version, Path runtime, Path image) throws IOException
-	{
-		Path record = directory(version).resolve(IDENTITY);
-		if (!Files.isRegularFile(record, NOFOLLOW_LINKS))
-			return false;
-		try
-		{
-			String recorded = BoundedInput.readUtf8(record, MAXIMUM_IDENTITY_BYTES, "The bundle identity");
-			if (recorded.equals(identity(runtime, image)))
-				return true;
-		}
-		catch (IOException _)
-		{
-			// An unreadable record or bundle is discarded below
-		}
-		discard(version);
-		return false;
-	}
-
-	/**
 	 * Deletes the entries of every release other than the kept ones.
 	 *
 	 * @param kept the versions to keep
@@ -237,19 +180,6 @@ final class ReleaseCache
 		Path directory = root.resolve(version);
 		StateFiles.requireNoLinks(directory);
 		return directory;
-	}
-
-	/**
-	 * Returns the identity of a runtime and an installer version directory, leaving out the policy anchor.
-	 *
-	 * @param runtime the runtime
-	 * @param image   the installer version directory
-	 * @return the identity's text
-	 * @throws IOException if a tree cannot be read
-	 */
-	private static String identity(Path runtime, Path image) throws IOException
-	{
-		return "runtime " + TreeDigest.of(runtime) + "\ninstaller " + TreeDigest.of(image, image.resolve(ANCHOR)) + "\n";
 	}
 
 	/**

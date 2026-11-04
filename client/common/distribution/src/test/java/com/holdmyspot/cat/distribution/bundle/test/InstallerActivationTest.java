@@ -16,9 +16,8 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.engine.HarnessSession;
+import com.holdmyspot.cat.common.installer.engine.InstallRequest;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
-import com.holdmyspot.cat.common.installer.engine.RuntimeSwap;
-import com.holdmyspot.cat.common.installer.engine.RuntimeSwap.Operation;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
@@ -46,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -54,15 +54,10 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs an authenticated update of the whole bundle through the engine and the packaged harness providers together.
+ * Runs an authenticated update through the engine and the packaged harness providers together.
  */
 public final class InstallerActivationTest
 {
-	/**
-	 * The description of the installed Java runtime and of the release's runtime.
-	 */
-	private static final String RUNTIME_DESCRIPTION = "{\"format\": 1, \"java_version\": \"25.0.1\", " +
-		"\"java_feature\": 25, \"modules\": [\"java.base\"]}";
 	/**
 	 * The runtime requirement of the installer and the plugin.
 	 */
@@ -71,6 +66,10 @@ public final class InstallerActivationTest
 	 * The full plugin version that the signed release names.
 	 */
 	private static final String PLUGIN_VERSION = "1.1+b0123456789ab";
+	/**
+	 * The full plugin version that the harness has before the update.
+	 */
+	private static final String ACTIVE_VERSION = "1.0+b00000000000a";
 
 	/**
 	 * Creates the test.
@@ -91,8 +90,8 @@ public final class InstallerActivationTest
 	}
 
 	/**
-	 * An authenticated release changes the actual provider destinations, stages its runtime and installs its stable
-	 * launcher, while configuration, user files and staged executable content remain untouched.
+	 * An authenticated release is installed into its own version folder by the harness, once, while the active version
+	 * folder, configuration, user files and the release's executable content remain untouched.
 	 *
 	 * @param harness the production provider to exercise
 	 * @throws IOException if fixture files cannot be written or read
@@ -131,39 +130,32 @@ public final class InstallerActivationTest
 			TrustPolicy policy = TrustPolicy.of(List.of(key), URI.create("https://releases.example/cat/releases/download"),
 				ReleaseVersion.parse("1.0"), 1, Map.of(harness, home));
 			Path data = root.resolve("installer");
-			writeInstallation(data);
 			UpdateEngine engine = new UpdateEngine(data, policy, release, provider,
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
-			FixtureIntegration integration = new FixtureIntegration(harness, new ArrayList<>());
+			FixtureIntegration integration = new FixtureIntegration(harness, layout(harness), new ArrayList<>());
 			HarnessSession session = new HarnessSession(integration,
 				arguments -> new CommandResult(0, ""), new FileReplacer(Platform.current(), () ->
 			{
 			}, Clock.systemUTC()));
+			Path activeFolder = integration.installation(home).versionFolder(PluginVersion.parse(ACTIVE_VERSION));
+			Map<String, String> activeBefore = snapshot(activeFolder);
 
-			UpdateResult updated = engine.update("v1.1", session);
+			UpdateResult updated = engine.install("v1.1", new InstallRequest(session, root.resolve("download/plugin"),
+				List.of(), root.resolve("user/.cat/locks")));
 
-			requireThat(updated.result(), "updateResult").isEqualTo(Result.UPDATED);
+			requireThat(updated.result(), "updateResult").withContext(updated.message(), "message").
+				isEqualTo(Result.UPDATED);
 			requireThat(updated.consistent(), "updatedConsistent").isTrue();
+			requireThat(updated.previousVersion(), "previousVersion").isEqualTo(Optional.of(ACTIVE_VERSION));
 			requireThat(integration.registered(), "registered").isEqualTo(List.of(PluginVersion.parse(PLUGIN_VERSION)));
 			requireThat(provider.installed(home), "updatedInstallation").
 				isEqualTo(new InstalledState(Optional.of(PLUGIN_VERSION), true));
-			requireThat(engine.pendingSwap(), "updateSwap").
-				isEqualTo(Optional.of(new RuntimeSwap(Operation.UPDATE, "1.0", "1.1")));
-			finishSwap(data);
-			requireThat(Files.readString(data.resolve("runtime/release")), "updatedRuntime").isEqualTo("runtime 1.1");
-			requireThat(Files.readString(data.resolve("bin/cat-updater")), "updatedLauncher").
-				isEqualTo("stable launcher 1.1");
-			requireThat(engine.status().previousVersion(), "previousVersion").isEqualTo(Optional.of("1.0"));
+			Path newFolder = integration.installation(home).versionFolder(PluginVersion.parse(PLUGIN_VERSION));
+			requireThat(Files.readString(newFolder.resolve("bin/runtime-binding")).strip(), "runtimeBinding").
+				isEqualTo(newFolder.resolve("bin/runtime").toString());
+			requireThat(snapshot(activeFolder), "activeFolder").isEqualTo(activeBefore);
 			requireThat(Files.readString(provider.migrationVersionFile(home)), "updatedMigrationVersion").
 				isEqualTo("1.1\n");
-			if (harness.equals("codex"))
-			{
-				requireThat(Files.exists(home.resolve("agents/cat-a.toml"), NOFOLLOW_LINKS), "retiredAgentExists").isFalse();
-				requireThat(Files.readString(home.resolve("agents/cat-b.toml")), "newAgent").isEqualTo("new agent");
-				requireThat(home.resolve("plugins/cache/cat/cat/1.0"), "retainedCache").isDirectory();
-			}
-			else
-				requireThat(home.resolve("plugins/cat-marketplace/plugins/cat/1.0"), "retainedFolder").isDirectory();
 			unchanged(contents, times);
 			requireThat(Files.exists(root.resolve("executed"), NOFOLLOW_LINKS), "downloadedCodeExecuted").isFalse();
 		}
@@ -178,19 +170,18 @@ public final class InstallerActivationTest
 	 */
 	private static void install(Path home, PluginActivation provider) throws IOException
 	{
-		String manifest = "{\"name\":\"cat\",\"version\":\"1.0\"}";
+		String manifest = "{\"name\":\"cat\",\"version\":\"" + ACTIVE_VERSION + "\"}";
 		write(provider.migrationVersionFile(home), "1.0\n");
 		if (provider.harness().equals("claude"))
 		{
-			write(home.resolve("plugins/cat-marketplace/plugins/cat/1.0").resolve(provider.pluginManifest()), manifest);
-			recordClaudeInstallation(home, "1.0");
+			write(home.resolve("plugins/cat-marketplace/plugins/cat/" + ACTIVE_VERSION).
+				resolve(provider.pluginManifest()), manifest);
+			recordClaudeInstallation(home, ACTIVE_VERSION);
 		}
 		else
 		{
 			write(home.resolve("plugins/cat-marketplace/plugins/cat").resolve(provider.pluginManifest()), manifest);
-			write(home.resolve("plugins/cache/cat/cat/1.0").resolve(provider.pluginManifest()), manifest);
-			write(home.resolve("agents/cat-a.toml"), "old agent");
-			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-a.toml\n");
+			write(home.resolve("plugins/cache/cat/cat/" + ACTIVE_VERSION).resolve(provider.pluginManifest()), manifest);
 		}
 	}
 
@@ -209,39 +200,56 @@ public final class InstallerActivationTest
 	}
 
 	/**
-	 * Writes the installation of release 1.0 that setup leaves: its Java runtime, which satisfies the fixture release,
-	 * its installer version directory, the stable launcher and the current selection.
+	 * Returns the harness's own layout of CAT's installation, which the fixture integration reports as the packaged
+	 * integration does.
 	 *
-	 * @param data the installation's installer data directory
-	 * @throws IOException if writing fails
+	 * @param harness the harness identifier
+	 * @return the packaged integration
 	 */
-	private static void writeInstallation(Path data) throws IOException
+	private static HarnessIntegration layout(String harness)
 	{
-		write(data.resolve("runtime/cat-runtime.json"), RUNTIME_DESCRIPTION);
-		write(data.resolve("runtime/release"), "runtime 1.0");
-		write(data.resolve("1.0/VERSION"), "1.0\n");
-		write(data.resolve("1.0/runtime-requirement.json"), REQUIREMENT);
-		write(data.resolve("1.0/conf/cat-updater/policy-path"), data.resolveSibling("policy.json") + "\n");
-		write(data.resolve("1.0/stable-launcher/cat-updater"), "stable launcher 1.0");
-		write(data.resolve("bin/cat-updater"), "stable launcher 1.0");
-		write(data.resolve("current"), "1.0\n");
+		return ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).
+			filter(service -> service.harness().equals(harness)).findFirst().orElseThrow();
 	}
 
 	/**
-	 * Finishes the requested runtime replacement as the stable launcher does after the installer's JVM has exited and
-	 * the new runtime runs.
+	 * Returns the content of each regular file below a directory, by its relative path.
 	 *
-	 * @param data the installation's installer data directory
-	 * @throws IOException if no replacement is pending or a rename fails
+	 * @param directory the directory
+	 * @return the contents
+	 * @throws IOException if a file cannot be read
 	 */
-	private static void finishSwap(Path data) throws IOException
+	private static Map<String, String> snapshot(Path directory) throws IOException
 	{
-		List<String> request = Files.readAllLines(data.resolve("state/runtime-swap"), UTF_8);
-		Files.move(data.resolve("runtime"), data.resolve("runtime.previous"));
-		Files.move(data.resolve("runtime.next"), data.resolve("runtime"));
-		Files.writeString(data.resolve("current"), request.get(2) + "\n", UTF_8);
-		Files.delete(data.resolve("state/runtime-swap"));
-		Files.deleteIfExists(data.resolve("state/runtime-swap-result.json"));
+		Map<String, String> contents = new HashMap<>();
+		try (Stream<Path> paths = Files.walk(directory))
+		{
+			for (Path path : paths.filter(path -> Files.isRegularFile(path, NOFOLLOW_LINKS)).toList())
+				contents.put(directory.relativize(path).toString(), Files.readString(path));
+		}
+		return contents;
+	}
+
+	/**
+	 * Copies a directory tree, as a harness copies CAT's marketplace folder into a version folder.
+	 *
+	 * @param source      the tree
+	 * @param destination the new directory
+	 * @throws IOException if the tree cannot be copied
+	 */
+	private static void copyTree(Path source, Path destination) throws IOException
+	{
+		try (Stream<Path> paths = Files.walk(source))
+		{
+			for (Path path : paths.toList())
+			{
+				Path copy = destination.resolve(source.relativize(path).toString());
+				if (Files.isDirectory(path, NOFOLLOW_LINKS))
+					Files.createDirectories(copy);
+				else
+					Files.copy(path, copy);
+			}
+		}
 	}
 
 	/**
@@ -303,32 +311,15 @@ public final class InstallerActivationTest
 		Map<String, Object> asset = Map.of("name", top + ".tar.gz", "kind", "plugin", "harness", provider.harness(),
 			"platform", "linux-x64", "size", archive.length, "sha256",
 			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(archive)), "top_directory", top);
-		String installerTop = "cat-updater-v1.1-linux-x64";
-		bytes = new ByteArrayOutputStream();
-		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
-		{
-			entry(tar, installerTop + "/runtime/cat-runtime.json", RUNTIME_DESCRIPTION, 0644);
-			entry(tar, installerTop + "/runtime/release", "runtime 1.1", 0644);
-			entry(tar, installerTop + "/1.1/VERSION", "1.1\n", 0644);
-			entry(tar, installerTop + "/1.1/runtime-requirement.json", REQUIREMENT, 0644);
-			entry(tar, installerTop + "/1.1/stable-launcher/cat-updater", "stable launcher 1.1", 0755);
-			entry(tar, installerTop + "/1.1/stable-launcher/cat-updater.ps1", "stable launcher 1.1", 0644);
-		}
-		byte[] installer = bytes.toByteArray();
-		Map<String, Object> installerAsset = Map.of("name", installerTop + ".tar.gz", "kind", "updater",
-			"platform", "linux-x64", "size", installer.length, "sha256",
-			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(installer)), "top_directory",
-			installerTop);
 		byte[] manifest = JsonMapper.builder().build().writeValueAsBytes(Map.of("format", 1, "product", "cat",
 			"version", "1.1", "tag", "v1.1", "build", "0123456789ab", "published", "2026-11-03T13:44:35Z", "assets",
-			List.of(asset, installerAsset)));
+			List.of(asset)));
 		KeyPair key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
 		Signature signer = Signature.getInstance("Ed25519");
 		signer.initSign(key.getPrivate());
 		signer.update(manifest);
 		byte[] signature = Base64.getEncoder().encode(signer.sign());
-		return new SignedRelease(key, Map.of(top + ".tar.gz", archive, installerTop + ".tar.gz", installer), manifest,
-			signature);
+		return new SignedRelease(key, Map.of(top + ".tar.gz", archive), manifest, signature);
 	}
 
 	/**
@@ -355,7 +346,7 @@ public final class InstallerActivationTest
 	 * Supplies bytes only; the production engine owns every trust and activation decision.
 	 *
 	 * @param key the fixture signing key
-	 * @param archives the plugin and installer archives, by asset name
+	 * @param archives the plugin archives, by asset name
 	 * @param manifest the signed manifest bytes
 	 * @param signature the detached signature bytes
 	 */
@@ -388,14 +379,17 @@ public final class InstallerActivationTest
 	}
 
 	/**
-	 * Stands in for the harness's registration, whose commands the providers' own tests cover. It records each version
-	 * that it registers, and records it where the harness reports its installed version: Claude Code in its record of
-	 * installed plugins, while Codex names its cache folder after the version, which activation already wrote.
+	 * Stands in for the harness's registration, whose commands the providers' own tests cover, and reports CAT's
+	 * folders where the packaged integration does. It records each version that it registers and installs it as the
+	 * harness does: Claude Code installs from the version folder itself and records the version in its record of
+	 * installed plugins, while Codex copies CAT's marketplace folder into the version folder.
 	 *
 	 * @param harness    the harness identifier
+	 * @param packaged   the packaged integration of the harness
 	 * @param registered the version of each registration, in call order
 	 */
-	private record FixtureIntegration(String harness, List<PluginVersion> registered) implements HarnessIntegration
+	private record FixtureIntegration(String harness, HarnessIntegration packaged, List<PluginVersion> registered)
+		implements HarnessIntegration
 	{
 		@Override
 		public String programName()
@@ -427,6 +421,8 @@ public final class InstallerActivationTest
 			registered.add(version);
 			if (harness.equals("claude"))
 				recordClaudeInstallation(home, version.toString());
+			else
+				copyTree(packaged.marketplaceFolder(home, version), installation(home).versionFolder(version));
 		}
 
 		@Override
@@ -437,7 +433,7 @@ public final class InstallerActivationTest
 		@Override
 		public HarnessInstallation installation(Path home)
 		{
-			throw new UnsupportedOperationException("Only install locates the harness's installation");
+			return packaged.installation(home);
 		}
 
 		@Override
@@ -449,7 +445,7 @@ public final class InstallerActivationTest
 		@Override
 		public Path marketplaceFolder(Path home, PluginVersion version)
 		{
-			throw new UnsupportedOperationException("Only install writes the marketplace folder");
+			return packaged.marketplaceFolder(home, version);
 		}
 
 		@Override

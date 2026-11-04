@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.installer.engine.test;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.keyPair;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.sign;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.trusted;
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.installation.PluginVersion;
@@ -35,36 +34,19 @@ import org.apache.commons.compress.archivers.tar.TarConstants;
 
 /**
  * Supplies signed releases and small gzip-compressed tar archives to the real engine. The source only writes supplied
- * bytes; signature, length, digest, extraction and activation decisions belong to production code.
+ * bytes; signature, length, digest, extraction and installation decisions belong to production code.
  */
 public final class Releases implements ReleaseSource
 {
-	/**
-	 * The Java feature release of the runtime that {@link #installation(Path, String)} writes.
-	 */
-	private static final int INSTALLED_FEATURE = 25;
-	/**
-	 * The installation-relative policy anchor that setup writes into each installer version directory.
-	 */
-	private static final String ANCHOR = "conf/cat-updater/policy-path";
-	/**
-	 * The installer-version-relative directory that holds the release's stable launchers.
-	 */
-	private static final String STABLE_LAUNCHERS = "stable-launcher/";
 	private final KeyPair key;
 	private final String version;
 	private byte[] archive;
-	private final byte[] installer;
 	private byte[] manifest;
 	private final byte[] signature;
 
 	/**
-	 * Creates a valid release, optionally corrupting exactly one property named by a test case. Besides the plugin
-	 * defects, {@code noInstaller} omits the installer archive, {@code installerDigest} misstates its digest,
-	 * {@code installerRequirement} makes the installer need a newer runtime than its archive contains,
-	 * {@code noStableLauncher} omits the stable launchers from the installer archive, and {@code newerRuntime} ships a
-	 * runtime and plugin of a feature release newer than the installed runtime's. Two valid variants change the
-	 * migration registry: {@code layout} registers only the per-harness layout migration, and
+	 * Creates a valid release, optionally corrupting exactly one property named by a test case. Two valid variants
+	 * change the migration registry: {@code layout} registers only the per-harness layout migration, and
 	 * {@code layoutAndMigration} also registers a data migration for the release.
 	 *
 	 * @param version the release version
@@ -73,7 +55,7 @@ public final class Releases implements ReleaseSource
 	 */
 	public Releases(String version, String defect) throws IOException
 	{
-		this(version, defect, false, null, keyPair());
+		this(version, defect, null, keyPair());
 	}
 
 	/**
@@ -87,40 +69,38 @@ public final class Releases implements ReleaseSource
 	 */
 	Releases(String version, String registry, Releases signer) throws IOException
 	{
-		this(version, "", false, registry, signer.key);
+		this(version, "", registry, signer.key);
 	}
 
 	/**
-	 * Creates a valid release whose plugin describes how to train its startup cache. Its {@code bin/java}
-	 * wrapper runs {@link FakeJava} on the runtime that the plugin's binding names, so the cache that a training writes
-	 * names the runtime that trained it.
+	 * Creates a release that another release's key signs, corrupting exactly one property named by a test case, as
+	 * {@link #Releases(String, String)} describes.
 	 *
 	 * @param version the release version
+	 * @param defect  the corrupted property
+	 * @param signer  the release whose key signs this one
 	 * @return the release
 	 * @throws IOException if creating the in-memory archive fails
 	 */
-	public static Releases trainable(String version) throws IOException
+	static Releases defective(String version, String defect, Releases signer) throws IOException
 	{
-		return new Releases(version, "", true, null, keyPair());
+		return new Releases(version, defect, null, signer.key);
 	}
 
 	/**
 	 * Creates a release.
 	 *
-	 * @param version   the release version
-	 * @param defect    empty for valid data, or the particular corrupted property
-	 * @param trainable true if the plugin describes how to train its startup cache
-	 * @param registry  the plugin's migration registry, or null for the one that {@code defect} selects
-	 * @param key       the key that signs the release
+	 * @param version  the release version
+	 * @param defect   empty for valid data, or the particular corrupted property
+	 * @param registry the plugin's migration registry, or null for the one that {@code defect} selects
+	 * @param key      the key that signs the release
 	 * @throws IOException if creating the in-memory archive fails
 	 */
-	private Releases(String version, String defect, boolean trainable, String registry, KeyPair key)
-		throws IOException
+	private Releases(String version, String defect, String registry, KeyPair key) throws IOException
 	{
 		this.version = version;
 		this.key = key;
-		this.archive = archive(version, defect, trainable, registry);
-		this.installer = installerArchive(version, defect);
+		this.archive = archive(version, defect, registry);
 		String digest = sha256(archive);
 		long size = archive.length;
 		if (defect.equals("digest"))
@@ -130,15 +110,6 @@ public final class Releases implements ReleaseSource
 		String top = "cat-harness-a-linux-x64-v" + version;
 		String assets = ReleaseFixtures.asset(top + ".tar.gz", "plugin", "\"harness\": \"harness-a\", ",
 			"linux-x64", Long.toString(size), digest, top);
-		if (!defect.equals("noInstaller"))
-		{
-			String installerTop = installerTop(version);
-			String installerDigest = sha256(installer);
-			if (defect.equals("installerDigest"))
-				installerDigest = "0".repeat(64);
-			assets += ", " + ReleaseFixtures.asset(installerTop + ".tar.gz", "updater", "", "linux-x64",
-				Integer.toString(installer.length), installerDigest, installerTop);
-		}
 		this.manifest = ReleaseFixtures.manifest(version, "v" + version, assets).getBytes(UTF_8);
 		KeyPair signer = key;
 		if (defect.equals("unknownKey"))
@@ -179,55 +150,6 @@ public final class Releases implements ReleaseSource
 	}
 
 	/**
-	 * Writes the description of an installation's Java runtime, whose feature release and modules satisfy every
-	 * release of this fixture except one with the {@code requirement} or {@code newerRuntime} defect.
-	 *
-	 * @param data the installation's installer data directory
-	 * @return the runtime directory
-	 * @throws IOException if the description cannot be written
-	 */
-	public static Path runtime(Path data) throws IOException
-	{
-		Path runtime = Files.createDirectories(data.resolve("runtime"));
-		Files.writeString(runtime.resolve("cat-runtime.json"), runtimeDescription(INSTALLED_FEATURE));
-		return runtime;
-	}
-
-	/**
-	 * Writes the installer installation of one version as setup leaves it on a POSIX platform: the current selection,
-	 * the stable launcher, the installer version directory with its policy anchor, runtime requirement and stable
-	 * launchers, and the Java runtime, whose {@code release} file names the version that installed it and whose
-	 * {@code java} names that runtime to {@link FakeJava}.
-	 *
-	 * @param data    the installation's installer data directory
-	 * @param version the installed installer version
-	 * @return the runtime directory
-	 * @throws IOException if a file cannot be written
-	 */
-	public static Path installation(Path data, String version) throws IOException
-	{
-		Path runtime = runtime(data);
-		Files.writeString(runtime.resolve("release"), "runtime " + version);
-		Path java = Files.writeString(Files.createDirectories(runtime.resolve("bin")).resolve("java"),
-			StartupCacheFixtures.posixRuntimeJava("runtime " + version));
-		requireThat(java.toFile().setExecutable(true), "executable").isTrue();
-		Files.writeString(runtime.resolve("bin/java.cmd"),
-			StartupCacheFixtures.windowsRuntimeJava("runtime " + version));
-		Path image = Files.createDirectories(data.resolve(version));
-		Files.writeString(image.resolve("VERSION"), version + "\n");
-		Files.writeString(image.resolve("runtime-requirement.json"), requirement(INSTALLED_FEATURE));
-		Files.createDirectories(image.resolve(ANCHOR).getParent());
-		Files.writeString(image.resolve(ANCHOR), data.toAbsolutePath().getParent().resolve("policy.json") + "\n");
-		Files.createDirectories(image.resolve(STABLE_LAUNCHERS));
-		Files.writeString(image.resolve(STABLE_LAUNCHERS + "cat-updater"), stableLauncher(version));
-		Files.writeString(image.resolve(STABLE_LAUNCHERS + "cat-updater.ps1"), windowsStableLauncher(version));
-		Files.createDirectories(data.resolve("bin"));
-		Files.writeString(data.resolve("bin/cat-updater"), stableLauncher(version));
-		Files.writeString(data.resolve("current"), version + "\n");
-		return runtime;
-	}
-
-	/**
 	 * Returns the full plugin version that the plugin of a release of this fixture states.
 	 *
 	 * @param release the release version
@@ -236,55 +158,6 @@ public final class Releases implements ReleaseSource
 	public static String pluginVersion(String release)
 	{
 		return release + PluginVersion.BUILD_SEPARATOR + ReleaseFixtures.BUILD;
-	}
-
-	/**
-	 * Returns the POSIX stable launcher that a release of this fixture ships.
-	 *
-	 * @param version the release version
-	 * @return the launcher's text, which names the version
-	 */
-	public static String stableLauncher(String version)
-	{
-		return "#!/bin/sh\n# The stable launcher of release " + version + "\n";
-	}
-
-	/**
-	 * Returns the Windows stable launcher that a release of this fixture ships.
-	 *
-	 * @param version the release version
-	 * @return the launcher's text, which names the version
-	 */
-	private static String windowsStableLauncher(String version)
-	{
-		return "# The Windows stable launcher of release " + version + "\n";
-	}
-
-	/**
-	 * Writes an installation whose last update replaced one bundle with another and whose stable launcher finished the
-	 * runtime replacement: the replaced runtime and installer version directory stay cached.
-	 *
-	 * @param data     the installation's installer data directory
-	 * @param replaced the version that the update replaced
-	 * @param selected the version that the update installed
-	 * @throws IOException if a file cannot be written
-	 */
-	public static void updated(Path data, String replaced, String selected) throws IOException
-	{
-		installation(data, replaced);
-		Files.move(data.resolve("runtime"), data.resolve("runtime.previous"));
-		installation(data, selected);
-	}
-
-	/**
-	 * Returns the installation-relative policy anchor of an installer version directory.
-	 *
-	 * @param version the installer version
-	 * @return the relative path
-	 */
-	public static Path anchor(String version)
-	{
-		return Path.of(version).resolve(ANCHOR);
 	}
 
 	/**
@@ -335,25 +208,19 @@ public final class Releases implements ReleaseSource
 	@Override
 	public void download(String tag, String assetName, long expectedSize, Path destination) throws IOException
 	{
-		if (assetName.startsWith("cat-updater-"))
-			Files.write(destination, installer);
-		else
-			Files.write(destination, archive);
+		Files.write(destination, archive);
 	}
 
 	/**
-	 * Builds only the entries needed to validate or refuse the named release property, and to train the plugin's
-	 * startup cache when it is trainable.
+	 * Builds only the entries needed to validate or refuse the named release property.
 	 *
-	 * @param version   the declared release version
-	 * @param defect    the corrupted property, or empty
-	 * @param trainable true if the plugin describes how to train its startup cache
-	 * @param registry  the migration registry, or null for the one that {@code defect} selects
+	 * @param version  the declared release version
+	 * @param defect   the corrupted property, or empty
+	 * @param registry the migration registry, or null for the one that {@code defect} selects
 	 * @return the archive bytes
 	 * @throws IOException if archive writing fails
 	 */
-	private static byte[] archive(String version, String defect, boolean trainable, String registry)
-		throws IOException
+	private static byte[] archive(String version, String defect, String registry) throws IOException
 	{
 		String top = "cat-harness-a-linux-x64-v" + version;
 		if (defect.equals("top"))
@@ -380,22 +247,7 @@ public final class Releases implements ReleaseSource
 				entry(tar, top + "/install/migrations/registry.tsv", content, 0644);
 			}
 			entry(tar, top + "/version", pluginVersion, 0644);
-			int feature = INSTALLED_FEATURE;
-			if (defect.equals("requirement"))
-				feature = 99;
-			else if (defect.equals("newerRuntime"))
-				feature = INSTALLED_FEATURE + 1;
-			entry(tar, top + "/bin/runtime-requirement.json", requirement(feature), 0644);
 			entry(tar, top + "/agents/reviewer.toml", "name = 'new'", 0644);
-			if (trainable)
-			{
-				String main = FakeJava.class.getName();
-				entry(tar, top + "/bin/java", StartupCacheFixtures.posixWrapper(main), 0755);
-				entry(tar, top + "/bin/java.cmd", StartupCacheFixtures.windowsWrapper(main, "java.cmd"), 0644);
-				entry(tar, top + "/" + StartupCacheFixtures.JAR, StartupCacheFixtures.jar(FakeJava.class), 0644);
-				entry(tar, top + "/bin/startup-cache-training.json",
-					StartupCacheFixtures.description(List.of("-Dfixture.behavior=train")), 0644);
-			}
 			switch (defect)
 			{
 				case "traversal" -> entry(tar, top + "/../escaped", "hostile", 0644);
@@ -434,80 +286,6 @@ public final class Releases implements ReleaseSource
 			case "layoutAndMigration" -> layout + version + "\tmigrate.sh\n";
 			default -> "# No migration\n";
 		};
-	}
-
-	/**
-	 * Builds the installer archive, whose top directory mirrors an installation: the Java runtime, whose
-	 * {@code release} file names this version, and the installer version directory with the release's stable launchers.
-	 *
-	 * @param version the release version
-	 * @param defect  the corrupted property, or empty
-	 * @return the archive bytes
-	 * @throws IOException if archive writing fails
-	 */
-	private static byte[] installerArchive(String version, String defect) throws IOException
-	{
-		String top = installerTop(version);
-		int runtimeFeature = INSTALLED_FEATURE;
-		if (defect.equals("newerRuntime"))
-			runtimeFeature = INSTALLED_FEATURE + 1;
-		int installerFeature = runtimeFeature;
-		if (defect.equals("installerRequirement"))
-			installerFeature = 99;
-		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
-		{
-			entry(tar, top + "/runtime/cat-runtime.json", runtimeDescription(runtimeFeature), 0644);
-			entry(tar, top + "/runtime/release", "runtime " + version, 0644);
-			entry(tar, top + "/runtime/bin/java", StartupCacheFixtures.posixRuntimeJava("runtime " + version), 0755);
-			entry(tar, top + "/runtime/bin/java.cmd", StartupCacheFixtures.windowsRuntimeJava("runtime " + version),
-				0644);
-			entry(tar, top + "/" + version + "/VERSION", version + "\n", 0644);
-			entry(tar, top + "/" + version + "/runtime-requirement.json", requirement(installerFeature), 0644);
-			entry(tar, top + "/" + version + "/app/installer.jar", "Never executed by the installer", 0644);
-			entry(tar, top + "/" + version + "/bin/cat-updater", "Never executed by the installer", 0755);
-			if (!defect.equals("noStableLauncher"))
-			{
-				entry(tar, top + "/" + version + "/" + STABLE_LAUNCHERS + "cat-updater", stableLauncher(version), 0755);
-				entry(tar, top + "/" + version + "/" + STABLE_LAUNCHERS + "cat-updater.ps1",
-					windowsStableLauncher(version), 0644);
-			}
-		}
-		return bytes.toByteArray();
-	}
-
-	/**
-	 * Returns the top directory of a version's installer archive.
-	 *
-	 * @param version the release version
-	 * @return the directory name
-	 */
-	private static String installerTop(String version)
-	{
-		return "cat-updater-v" + version + "-linux-x64";
-	}
-
-	/**
-	 * Returns a runtime description of the fixture's modules.
-	 *
-	 * @param feature the runtime's Java feature release
-	 * @return the description's JSON text
-	 */
-	private static String runtimeDescription(int feature)
-	{
-		return "{\"format\": 1, \"java_version\": \"" + feature + ".0.1\", \"java_feature\": " + feature +
-			", \"modules\": [\"java.base\", \"java.net.http\"]}";
-	}
-
-	/**
-	 * Returns a runtime requirement for the fixture's modules.
-	 *
-	 * @param feature the required Java feature release
-	 * @return the requirement's JSON text
-	 */
-	private static String requirement(int feature)
-	{
-		return "{\"format\": 1, \"java_feature\": " + feature + ", \"modules\": [\"java.base\"]}";
 	}
 
 	/**

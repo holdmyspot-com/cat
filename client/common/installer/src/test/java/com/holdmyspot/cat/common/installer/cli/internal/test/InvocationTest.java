@@ -17,12 +17,9 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
-import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
-import com.holdmyspot.cat.common.installer.engine.UpdateResult;
-import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
-import com.holdmyspot.cat.common.installer.engine.test.LauncherSwap;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
+import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
 import com.holdmyspot.cat.common.installer.engine.test.Releases;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -32,7 +29,6 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -202,7 +198,7 @@ public final class InvocationTest
 			Map<String, String> before = Releases.snapshot(installation.root);
 
 			for (String[] arguments : List.of(new String[]{"status", "--harness", "harness-a"},
-				new String[]{"uninstall"}, new String[]{"update", "--harness", "harness-a"}))
+				new String[]{"uninstall"}))
 			{
 				Run run = run(image, installation.root, Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
 					arguments);
@@ -290,7 +286,8 @@ public final class InvocationTest
 	}
 
 	/**
-	 * When the recorded harness program no longer exists, an update, which must register the plugin, is refused with
+	 * When the recorded harness program no longer exists, install from the version folder, which must ask the harness
+	 * to install the plugin, is refused with
 	 * the entry command that records it again, before anything changes.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
@@ -306,7 +303,7 @@ public final class InvocationTest
 			Files.delete(installation.program);
 			RecordingIntegration integration = new RecordingIntegration();
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "update", "--harness",
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "install", "--harness",
 				"harness-a");
 
 			requireThat(run.status, "status").isEqualTo(3);
@@ -320,14 +317,13 @@ public final class InvocationTest
 	}
 
 	/**
-	 * A completed uninstall saves its one-line result for the stable launcher, which deletes the data directory after
-	 * the installer exits, prints nothing itself, and exits with the hand-over status.
+	 * A completed uninstall prints its one-line result itself.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void uninstallHandsResultToLauncher() throws IOException, TrustException
+	public void uninstallPrintsResult() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -339,13 +335,10 @@ public final class InvocationTest
 
 			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
 
-			requireThat(run.status, "status").isEqualTo(79);
-			requireThat(run.output, "output").isEmpty();
-			String saved = Files.readString(installation.data.resolve("state/uninstall-result.json"), UTF_8);
-			requireThat(saved.endsWith("\n"), "newline").isTrue();
-			requireThat(saved.lines().count(), "lines").isEqualTo(1L);
-			JsonNode result = JsonMapper.builder().build().readTree(saved);
-			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.output.lines().count(), "lines").isEqualTo(1L);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(run.result().path("unregistered").booleanValue(), "unregistered").isTrue();
 			requireThat(integration.calls(), "calls").contains("unregister");
 			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
 			requireThat(Files.exists(installation.policyFile, NOFOLLOW_LINKS), "policy").isFalse();
@@ -353,15 +346,15 @@ public final class InvocationTest
 	}
 
 	/**
-	 * When the stable launcher did not delete the data directory after an uninstall that removed every part of CAT,
-	 * including the policy, running the same uninstall again hands the deletion to the launcher once more instead of
-	 * refusing for the missing policy.
+	 * Running the same uninstall again after an uninstall that removed every part of CAT, including the policy,
+	 * reports the completed uninstall again instead of refusing for the missing policy, and calls the harness no
+	 * more.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void completedUninstallIsHandedOverAgain() throws IOException, TrustException
+	public void completedUninstallIsReportedAgain() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -369,26 +362,21 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			RecordingIntegration integration = new RecordingIntegration();
 			Run first = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
-			requireThat(first.status, "firstStatus").isEqualTo(79);
-			// The installer stopped after the policy step, before it saved the result
-			Path saved = installation.data.resolve("state/uninstall-result.json");
-			Files.delete(saved);
+			requireThat(first.status, "firstStatus").withContext(first.output, "output").isEqualTo(0);
 			int calls = integration.calls().size();
 
 			Run again = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
 
-			requireThat(again.status, "status").withContext(again.output, "output").isEqualTo(79);
-			requireThat(again.output, "output").isEmpty();
-			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(saved, UTF_8));
-			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
-			requireThat(result.path("unregistered").booleanValue(), "unregistered").isTrue();
+			requireThat(again.status, "status").withContext(again.output, "output").isEqualTo(0);
+			requireThat(again.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(again.result().path("unregistered").booleanValue(), "unregistered").isTrue();
 			requireThat(integration.calls().size(), "calls").isEqualTo(calls);
 		}
 	}
 
 	/**
 	 * An uninstall whose step fails prints a result of its own, which tells the caller to run the same uninstall again
-	 * to continue, and never the stable launcher's result for a data directory that it could not delete.
+	 * to continue.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -450,7 +438,7 @@ public final class InvocationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-rollback-")));
-			installation.update();
+			installation.writePolicy(installation.trustPolicy());
 			Map<String, String> before = Releases.snapshot(installation.root);
 
 			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "rollback",
@@ -463,64 +451,85 @@ public final class InvocationTest
 	}
 
 	/**
-	 * Status reports whether the installation keeps a cached bundle of the release that the last update replaced, which
-	 * going back to it reuses, and the runtime replacement that the stable launcher has not finished.
+	 * Status reports the installed version without fields of a runtime replacement or a cached bundle, which no
+	 * installation has.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void statusReportsBundle() throws IOException, TrustException
+	public void statusHasNoSwapFields() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Installation installation = new Installation(cleanup.add(testDirectory("invocation-bundle-")));
-			installation.update();
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-status-fields-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.createDirectories(installation.home.resolve("live"));
+			Files.writeString(installation.home.resolve("live/version"), "1.2");
 
-			JsonNode updated = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
-				"status", "--harness", "harness-a").result();
-			installation.requestUpdate("1.1");
-			JsonNode requested = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
-				"status", "--harness", "harness-a").result();
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+				"--harness", "harness-a");
 
-			requireThat(updated.path("version").stringValue(), "version").isEqualTo(Releases.pluginVersion("1.0"));
-			requireThat(updated.path("cached_bundle").booleanValue(), "cachedBundle").isTrue();
-			requireThat(updated.has("previous_bundle"), "previousBundle").isFalse();
-			requireThat(updated.path("previous_version").stringValue(), "previousVersion").isEqualTo("0.9");
-			requireThat(updated.has("pending_swap"), "pendingBeforeRequest").isFalse();
-			JsonNode pending = requested.path("pending_swap");
-			requireThat(pending.path("operation").stringValue(), "operation").isEqualTo("update");
-			requireThat(pending.path("from_version").stringValue(), "from").isEqualTo("1.0");
-			requireThat(pending.path("to_version").stringValue(), "to").isEqualTo("1.1");
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			JsonNode result = run.result();
+			requireThat(result.path("version").stringValue(), "version").isEqualTo("1.2");
+			requireThat(result.has("pending_swap"), "pendingSwap").isFalse();
+			requireThat(result.has("cached_bundle"), "cachedBundle").isFalse();
+			requireThat(result.has("previous_version"), "previousVersion").isFalse();
 		}
 	}
 
 	/**
-	 * A complete uninstall leaves neither a previous bundle nor a runtime replacement that the stable launcher has not
-	 * finished in its way: it removes CAT and hands the data directory that holds them to the stable launcher, which
-	 * deletes it.
+	 * The installer has no update operation, which install performs: the command is refused as a usage error and
+	 * changes nothing.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void uninstallHandsOverPendingSwap() throws IOException, TrustException
+	public void updateIsUnknownOperation() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-swap-")));
-			installation.update();
-			installation.requestUpdate("1.1");
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-update-")));
+			installation.writePolicy(installation.trustPolicy());
+			Map<String, String> before = Releases.snapshot(installation.root);
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "update",
+				"--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(2);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("usage");
+			requireThat(Releases.snapshot(installation.root), "after").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Install from the version folder refuses a harness home other than the one that the installation's policy
+	 * records, before it changes anything.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void versionFolderInstallRefusesOtherHome() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-other-home-")));
+			installation.writePolicy(installation.trustPolicy());
+			Path other = Files.createDirectory(installation.root.resolve("other-home"));
 			RecordingIntegration integration = new RecordingIntegration();
+			Map<String, String> before = Releases.snapshot(installation.root);
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "install", "--harness",
+				"harness-a", "--home", other.toString());
 
-			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(79);
-			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(
-				installation.data.resolve("state/uninstall-result.json"), UTF_8));
-			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
-			requireThat(integration.calls(), "calls").contains("unregister");
-			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("message").stringValue(), "message").contains(other.toString()).
+				contains(installation.home.toString());
+			requireThat(integration.calls(), "calls").isEmpty();
+			requireThat(Releases.snapshot(installation.root), "after").isEqualTo(before);
 		}
 	}
 
@@ -545,9 +554,8 @@ public final class InvocationTest
 
 			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
 
-			requireThat(run.status, "status").isEqualTo(79);
-			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(
-				installation.data.resolve("state/uninstall-result.json"), UTF_8));
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			JsonNode result = run.result();
 			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
 			requireThat(result.path("unregistered").isBoolean(), "isBoolean").isTrue();
 			requireThat(result.path("unregistered").booleanValue(), "unregistered").isFalse();
@@ -579,9 +587,8 @@ public final class InvocationTest
 
 			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
 
-			requireThat(run.status, "status").isEqualTo(79);
-			JsonNode result = JsonMapper.builder().build().readTree(Files.readString(
-				installation.data.resolve("state/uninstall-result.json"), UTF_8));
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			JsonNode result = run.result();
 			requireThat(result.path("result").stringValue(), "result").isEqualTo("uninstalled");
 			requireThat(result.path("unregistered").booleanValue(), "unregistered").isTrue();
 			requireThat(integration.calls(), "calls").doesNotContain("unregister");
@@ -631,30 +638,37 @@ public final class InvocationTest
 	}
 
 	/**
-	 * Failure while an activation journal exists must report unknown restoration as inconsistent.
+	 * Install from an extracted plugin archive into a harness that has another CAT version updates it: the harness
+	 * installs the archive's version, and the installation's policy stays as it was.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void existingJournalPreventsConsistentFailure() throws IOException, TrustException
+	public void archiveInstallUpdatesInstalledVersion() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Installation installation = new Installation(cleanup.add(testDirectory("invocation-journal-")));
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-archive-update-")));
 			installation.writePolicy(installation.trustPolicy());
-			Path journal = installation.data.resolve("state/harness-a/activation.json");
-			Files.createDirectories(journal.getParent());
-			Files.writeString(journal, "{}\n");
+			String active = installation.image.getFileName().toString();
+			Files.createDirectories(installation.image.resolve("bin"));
+			Files.writeString(installation.image.resolve("bin/VERSION"), active + "\n");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), active + "\n");
+			byte[] policy = Files.readAllBytes(installation.policyFile);
+			Path archive = PluginArchive.create(installation.root.resolve("download"),
+				List.of(trusted("release-key", keyPair())));
+			RecordingIntegration integration = new RecordingIntegration();
 
-			// The provider fails on the recorded home, which it does not expect
-			Run run = installation.run(Map.of(), List.of(new RecordedHomeProvider(installation.root)),
-				new RecordingIntegration(), "status", "--harness", "harness-a");
+			Run run = run(archive, installation.root, Map.of(), List.of(new RegisteredProvider()), integration,
+				"install", "--harness", "harness-a", "--home", installation.home.toString());
 
-			requireThat(run.status, "status").isEqualTo(6);
-			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("not_restored");
-			requireThat(run.result().path("consistent").booleanValue(), "consistent").isFalse();
-			requireThat(run.output.lines().count(), "outputLines").isEqualTo(1L);
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("updated");
+			requireThat(run.result().path("version").stringValue(), "version").isEqualTo(PluginArchive.VERSION);
+			requireThat(integration.registered().stream().map(Object::toString).toList(), "registered").
+				isEqualTo(List.of(PluginArchive.VERSION));
+			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
 		}
 	}
 
@@ -765,40 +779,6 @@ public final class InvocationTest
 		{
 			Files.createDirectories(policyFile.getParent());
 			policy.write(policyFile, replacer());
-		}
-
-		/**
-		 * Writes the policy and replaces the installation with one that an update from 0.9 left after the stable
-		 * launcher finished it, so that it keeps the 0.9 bundle that the update replaced.
-		 *
-		 * @throws IOException    if the installation cannot be written
-		 * @throws TrustException if a test policy is invalid
-		 */
-		private void update() throws IOException, TrustException
-		{
-			writePolicy(trustPolicy());
-			Files.createDirectories(home.resolve("live"));
-			Files.writeString(home.resolve("live/version"), "0.9");
-			Releases.installation(data, "0.9");
-			Releases release = new Releases("1.0", "");
-			UpdateResult result = new UpdateEngine(data, release.policy(home), release, new LiveProvider(),
-				"linux-x64", Clock.systemUTC(), interval -> () -> {}, Duration.ZERO).
-				update("v1.0", new RecordingIntegration().session());
-			requireThat(result.result(), "update").isEqualTo(Result.UPDATED);
-			LauncherSwap.finish(data);
-		}
-
-		/**
-		 * Leaves the request with which an update to a version hands the runtime replacement to a stable launcher that
-		 * stopped before it finished it.
-		 *
-		 * @param version the version that the update selects
-		 * @throws IOException if the request cannot be written
-		 */
-		private void requestUpdate(String version) throws IOException
-		{
-			Files.writeString(data.resolve("state/runtime-swap"), "update\n1.0\n" + version + "\n" + Long.MAX_VALUE +
-				"\n-\n-\n", UTF_8);
 		}
 
 		/**

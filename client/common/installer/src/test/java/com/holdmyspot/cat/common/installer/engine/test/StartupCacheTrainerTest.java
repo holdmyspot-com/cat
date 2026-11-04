@@ -29,9 +29,9 @@ import org.testng.annotations.Test;
  * Tests writing a plugin directory's startup cache after the plugin directory is activated.
  * <p>
  * Each fixture plugin has a {@code bin/java} wrapper that runs the {@code java} of the runtime that the
- * plugin's binding names, as a plugin's wrapper does. One test runs real Java: its plugin is bound to a staged copy of
- * the testing JVM's runtime and its wrapper runs that runtime's {@code java} with the plugin's {@link StartupProgram}
- * jar. The other tests concern how training reacts to a run's outcome, so their wrapper runs
+ * plugin's binding names, as a plugin's wrapper does. One test runs real Java: its plugin is bound to a copy of the
+ * testing JVM's runtime in its own folder, and its wrapper runs that runtime's {@code java} with the plugin's
+ * {@link StartupProgram} jar. The other tests concern how training reacts to a run's outcome, so their wrapper runs
  * {@link FakeJava}, which reacts to the cache options as Java documents them but records and writes nothing real.
  */
 public final class StartupCacheTrainerTest
@@ -49,27 +49,24 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * A startup cache that real Java trains with a staged runtime, as an update trains the plugin that it activates with
-	 * the runtime that it stages, is accepted by Java through the plugin's wrapper once the staged runtime is renamed
-	 * into place and the plugin is bound to it there. The training removes its scratch folders.
+	 * A startup cache that real Java trains with the runtime in the plugin's own version folder, as an install trains the
+	 * version folder that the harness installed, is accepted by Java through the plugin's wrapper. The training removes
+	 * its scratch folders.
 	 *
 	 * @throws IOException          if the fixture cannot be created or inspected
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test
-	public void stagedRuntimeCacheIsAccepted() throws IOException, InterruptedException
+	public void trainedCacheIsAccepted() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("startup-cache-trains-")).toRealPath();
-			Path staged = linkedRuntime(root.resolve("data/runtime.next"));
-			Path plugin = javaPlugin(root.resolve("plugin"), staged);
+			Path runtime = linkedRuntime(root.resolve("plugin/bin/runtime"));
+			Path plugin = javaPlugin(root.resolve("plugin"), runtime);
 			Path scratch = root.resolve("scratch");
 
 			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
-			// The stable launcher renames the staged runtime into place after the installer exits
-			Path installed = Files.move(staged, staged.resolveSibling("runtime"));
-			bind(plugin, installed);
 
 			requireThat(written, "written").isTrue();
 			requireThat(entries(plugin.resolve(StartupCache.DIRECTORY)), "cacheFolder").

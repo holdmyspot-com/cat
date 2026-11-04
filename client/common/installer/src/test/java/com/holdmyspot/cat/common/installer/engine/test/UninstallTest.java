@@ -8,6 +8,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
+import com.holdmyspot.cat.common.installer.engine.InstallRequest;
 import com.holdmyspot.cat.common.installer.engine.UninstallResult;
 import com.holdmyspot.cat.common.installer.engine.Uninstaller;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
@@ -261,7 +262,6 @@ public final class UninstallTest
 			Path root = cleanup.add(testDirectory("uninstall-reinstalled-")).toRealPath();
 			Path home = Files.createDirectories(root.resolve("home"));
 			Path data = root.resolve("base/harness-a");
-			Releases.installation(data, "1.1");
 			Path program = Files.writeString(Files.createDirectories(root.resolve("bin")).resolve("harness-a"),
 				"#!/bin/sh\n");
 			requireThat(program.toFile().setExecutable(true), "executable").isTrue();
@@ -272,19 +272,20 @@ public final class UninstallTest
 					new HarnessCommand(List.of(program.toString()), Map.of())));
 			Path policy = Files.createDirectories(root.resolve("config/harness-a")).resolve("policy.json");
 			Files.writeString(policy, "{}\n");
-			UpdateEngine engine = new UpdateEngine(data, trust, source, new LiveProvider(), "linux-x64",
+			UpdateEngine engine = new UpdateEngine(data, trust, source, new RegisteredProvider(), "linux-x64",
 				Clock.systemUTC(), interval -> () -> {});
 			RecordingIntegration integration = new RecordingIntegration().fail("removePermissions");
-			requireThat(engine.install("v1.1", integration.session()).result(), "installed").
+			InstallRequest request = new InstallRequest(integration.session(), root.resolve("download/plugin"),
+				List.of(), root.resolve("user/.cat/locks"));
+			requireThat(engine.install("v1.1", request).result(), "installed").
 				isEqualTo(Result.INSTALLED);
 			Files.createDirectories(data.resolve("state/permissions"));
 			Files.writeString(data.resolve("state/permissions/harness-a.json"), "{\"settings.json\": [\"entry\"]}\n");
-			Uninstaller uninstaller = new Uninstaller(data, policy, trust, new LiveProvider(),
+			Uninstaller uninstaller = new Uninstaller(data, policy, trust, new RegisteredProvider(),
 				integration.session(), Clock.systemUTC(), interval -> () -> {});
 			requireThat(uninstaller.uninstall(false).outcome().result(), "stopped").
 				isEqualTo(Result.UNINSTALL_INCOMPLETE);
-			requireThat(engine.install("v1.1", integration.session()).result(), "reinstalled").
-				isEqualTo(Result.INSTALLED);
+			requireThat(engine.install("v1.1", request).result(), "reinstalled").isEqualTo(Result.INSTALLED);
 			integration.succeed("removePermissions");
 			int before = integration.calls().size();
 
@@ -293,7 +294,7 @@ public final class UninstallTest
 			requireThat(result.result(), "result").isEqualTo(Result.UNINSTALLED);
 			requireThat(integration.calls().subList(before, integration.calls().size()), "calls").
 				isEqualTo(List.of("unregister", "removePermissions"));
-			requireThat(Files.exists(home.resolve("live"), NOFOLLOW_LINKS), "plugin").isFalse();
+			requireThat(Files.exists(RecordingIntegration.registeredVersion(home), NOFOLLOW_LINKS), "plugin").isFalse();
 			requireThat(Files.exists(policy, NOFOLLOW_LINKS), "policy").isFalse();
 		}
 	}

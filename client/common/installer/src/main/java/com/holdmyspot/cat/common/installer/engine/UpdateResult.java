@@ -101,15 +101,11 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		STATUS(0),
 		/**
-		 * Setup completed.
-		 */
-		SET_UP(0),
-		/**
 		 * The plugin was added where the harness had none.
 		 */
 		INSTALLED(0),
 		/**
-		 * CAT was removed from the harness; the stable launcher deletes the installer's data directory.
+		 * CAT was removed from the harness.
 		 */
 		UNINSTALLED(0),
 		/**
@@ -125,32 +121,13 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		DOWNLOAD_FAILED(4),
 		/**
-		 * Activation failed and its changes were reversed.
-		 */
-		RESTORED(5),
-		/**
-		 * Reversal failed; the recovery journal remains.
-		 */
-		NOT_RESTORED(6),
-		/**
-		 * The stable launcher could not delete the installer's data directory after the installer removed CAT from the
-		 * harness; the user deletes the directory. Only the stable launcher prints this outcome.
-		 */
-		NOT_REMOVED(7),
-		/**
-		 * The stable launcher could not put the Java runtime that an operation staged in place and restored the
-		 * replaced one; the next installer operation undoes the rest of the operation. Only the stable launcher prints
-		 * this outcome.
-		 */
-		NOT_SWAPPED(8),
-		/**
 		 * Uninstall stopped before CAT was removed completely; its progress is kept so that running the same
 		 * uninstall command again continues with the step that failed.
 		 */
 		UNINSTALL_INCOMPLETE(9),
 		/**
-		 * An unexpected error stopped an operation that may have changed installed state; the next run of the
-		 * operation recovers it.
+		 * An error stopped an operation after it started to change the harness's installation; running the same
+		 * install again repairs it.
 		 */
 		FAILED(10),
 		/**

@@ -29,7 +29,8 @@ import java.util.Set;
  * A harness integration for a generic harness, {@code harness-a} unless a test names another, that records each call
  * and fails the calls that a test names. It never runs a program. Its harness keeps CAT's installation as
  * {@link Layout} describes, and installs a plugin as a harness does: {@code register} copies the plugin in the
- * marketplace folder into the folder of the version that it is asked to register.
+ * marketplace folder into the folder of the version that it is asked to register, and records that version in
+ * {@link #registeredVersion(Path)}.
  */
 public final class RecordingIntegration implements HarnessIntegration
 {
@@ -338,6 +339,18 @@ public final class RecordingIntegration implements HarnessIntegration
 		Files.createDirectories(target.getParent());
 		LinkSafeDeletion.delete(target, target.getParent());
 		TreeCopy.copy(source, target);
+		Files.writeString(registeredVersion(home), version + "\n");
+	}
+
+	/**
+	 * Returns the file in which the harness records the version that it was last asked to install.
+	 *
+	 * @param home the harness home
+	 * @return the file
+	 */
+	public static Path registeredVersion(Path home)
+	{
+		return home.resolve("registered-version");
 	}
 
 	@Override

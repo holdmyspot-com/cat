@@ -2,18 +2,20 @@ package com.holdmyspot.cat.common.installer.cli.internal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.installation.CapacityLocks;
+import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Arguments.Operation;
-import com.holdmyspot.cat.common.installer.engine.Bundle;
 import com.holdmyspot.cat.common.installer.engine.HttpsReleaseSource;
 import com.holdmyspot.cat.common.installer.engine.HarnessSession;
-import com.holdmyspot.cat.common.installer.engine.RuntimeSwap;
+import com.holdmyspot.cat.common.installer.engine.InstallRequest;
 import com.holdmyspot.cat.common.installer.engine.UninstallResult;
 import com.holdmyspot.cat.common.installer.engine.Uninstaller;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
@@ -38,27 +40,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Owns one installer process's explicit inputs, output streams and command dispatch. A routine operation acts only on
- * the harness whose installation directory contains the running installer.
+ * Owns one installer process's explicit inputs, output streams and command dispatch. An installer that runs from a
+ * version folder acts only on the harness whose version folders contain it.
  */
 public final class Invocation
 {
-	/**
-	 * The exit status with which a completed uninstall hands its saved result to the stable launcher, which deletes
-	 * the installation's data directory after the installer exits and then prints the result.
-	 */
-	public static final int UNINSTALL_HANDOVER_STATUS = 79;
-	/**
-	 * The exit status with which a completed operation that staged a Java runtime hands its saved result to the
-	 * stable launcher, which puts the staged runtime in place after the installer exits and then prints the result.
-	 */
-	public static final int SWAP_HANDOVER_STATUS = 78;
 	/**
 	 * The connection deadline for the fixed policy release source.
 	 */
@@ -187,11 +178,8 @@ public final class Invocation
 	}
 
 	/**
-	 * Describes an exception that no operation step anticipated.
-	 * <p>
-	 * An unfinished activation journal means that the installation may be inconsistent. Otherwise, {@code status},
-	 * which never writes, is refused, and every other operation may have changed installed state before it stopped,
-	 * which its next run recovers.
+	 * Describes an exception that no operation step anticipated. {@code status}, which never writes, is refused, and
+	 * every other operation may have changed installed state before it stopped, which its next run repairs.
 	 *
 	 * @param arguments the validated operation
 	 * @param cause     the exception
@@ -203,30 +191,20 @@ public final class Invocation
 		String operation = arguments.operation().name().toLowerCase(Locale.ROOT);
 		String message = "The installer could not complete " + operation + ": " + cause.getMessage();
 		List<Path> journals = List.of();
-		boolean activating = false;
 		if (resolvedData != null)
-		{
-			Path state = resolvedData.resolve("state");
-			Path activationJournal = state.resolve(harness).resolve("activation.json");
-			Path uninstallJournal = state.resolve("uninstall.json");
-			journals = Stream.of(activationJournal, uninstallJournal).filter(Files::exists).toList();
-			activating = Files.exists(activationJournal);
-		}
-		if (activating)
-			return failure(Result.NOT_RESTORED, harness, message, journals);
+			journals = List.of(resolvedData.resolve("state/uninstall.json")).stream().filter(Files::exists).toList();
 		return switch (arguments.operation())
 		{
 			case STATUS -> failure(Result.REFUSED, harness, message, journals);
 			case INSTALL -> failure(Result.FAILED, harness, message + "; " + Locations.rerunEntryCommand(harness) +
 				" to continue.", journals);
-			case UPDATE, UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " + operation +
+			case UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " + operation +
 				" command again to continue.", journals);
 		};
 	}
 
 	/**
-	 * Selects install from the extracted plugin archive, or an operation on the installation whose version folder the
-	 * running installer runs from.
+	 * Selects install, or an operation on the installation whose version folder the running installer runs from.
 	 *
 	 * @param arguments the validated operation
 	 * @return its printed result's status
@@ -243,93 +221,36 @@ public final class Invocation
 		resolvedHarness = locations.harness();
 		String own = locations.harness();
 		if (!arguments.harness().isEmpty() && !arguments.harness().equals(own))
+			return print(otherHarness(own, arguments.harness()), arguments, locations);
+		if (!Files.isRegularFile(locations.policy()) && arguments.operation() == Operation.UNINSTALL)
 		{
-			return print(failure(Result.REFUSED, own, "This installation manages " + own + " only; use the installer " +
-				"of the " + arguments.harness() + " installation for " + arguments.harness() + ".", List.of()),
-				arguments, locations);
+			Optional<UninstallResult> completed = Uninstaller.completed(locations.data(), own);
+			if (completed.isPresent())
+				return printUninstall(completed.get(), arguments, locations);
 		}
-		if (!Files.isRegularFile(locations.policy()))
-		{
-			if (arguments.operation() == Operation.UNINSTALL)
-			{
-				Optional<UninstallResult> completed = Uninstaller.completed(locations.data(), own);
-				if (completed.isPresent())
-					return handOver(completed.get(), locations);
-			}
-			return print(failure(Result.REFUSED, own, "Installer policy is missing; " +
-				Locations.rerunEntryCommand(own) + ".", List.of(locations.policy())), arguments, locations);
-		}
-		TrustPolicy policy = TrustPolicy.read(locations.policy());
-		if (!policy.harnesses().keySet().equals(Set.of(own)))
-		{
-			return print(failure(Result.REFUSED, own, "The policy " + locations.policy() + " records the harnesses " +
-				policy.harnesses().keySet() + ", but this installation manages " + own + " only; " +
-				Locations.rerunEntryCommand(own) + ".", List.of(locations.policy())), arguments, locations);
-		}
-		Optional<HarnessCommand> command = policy.command(own);
-		if (command.isEmpty())
-		{
-			return print(failure(Result.REFUSED, own, "The policy was written by an earlier release and does not " +
-				"record the harness program; " + Locations.rerunEntryCommand(own) + ".", List.of(locations.policy())),
-				arguments, locations);
-		}
-		Optional<PluginActivation> activation = activations.stream().
-			filter(provider -> provider.harness().equals(own)).findFirst();
-		if (activation.isEmpty())
-		{
-			return print(failure(Result.REFUSED, own, "This installer has no plugin provider for " + own + ".",
-				List.of()), arguments, locations);
-		}
+		Managed managed = manage(own, locations.policy(), arguments.operation() == Operation.STATUS,
+			arguments.operation() != Operation.UNINSTALL);
+		if (managed.refusal() != null)
+			return print(managed.refusal(), arguments, locations);
 		if (arguments.operation() == Operation.STATUS)
 		{
-			try (HttpsReleaseSource source = new HttpsReleaseSource(policy.releaseBaseUrl(), environment,
+			try (HttpsReleaseSource source = new HttpsReleaseSource(managed.policy().releaseBaseUrl(), environment,
 				CONNECT_LIMIT, REQUEST_LIMIT))
 			{
-				UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation.get(),
+				UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 					platform.id(), clock, waiting);
-				UpdateResult status = engine.status();
-				ObjectNode encoded = encodeStatus(status, engine.pendingSwap());
-				return print(status, encoded, arguments, locations);
+				return print(engine.status(), arguments, locations);
 			}
 		}
-		Optional<HarnessIntegration> integration = integrations.stream().
-			filter(provider -> provider.harness().equals(own)).findFirst();
-		if (integration.isEmpty())
-		{
-			return print(failure(Result.REFUSED, own, "This installer has no harness integration for " + own + ".",
-				List.of()), arguments, locations);
-		}
-		// Uninstall needs the program only to unregister the plugin, and skips that step when the program is gone
-		Path program = Path.of(command.get().command().getFirst());
-		if (arguments.operation() != Operation.UNINSTALL && (!Files.isRegularFile(program) ||
-			!Files.isExecutable(program)))
-		{
-			return print(failure(Result.REFUSED, own, "The " + own + " program " + program + " that install recorded " +
-				"no longer exists or is not executable; " + Locations.rerunEntryCommand(own) + ".", List.of(program)),
-				arguments, locations);
-		}
-		Path home = policy.harnesses().get(own);
-		HarnessSession session = new HarnessSession(integration.get(), cliFactory.create(command.get(), home),
-			replacer);
-		if (arguments.operation() == Operation.UNINSTALL)
-		{
-			UninstallResult result = new Uninstaller(locations.data(), locations.policy(), policy, activation.get(),
-				session, clock, waiting).uninstall(arguments.deleteData());
-			if (result.outcome().result() != Result.UNINSTALLED)
-				return print(result.outcome(), arguments, locations);
-			return handOver(result, locations);
-		}
-		try (HttpsReleaseSource source = new HttpsReleaseSource(policy.releaseBaseUrl(), environment,
-			CONNECT_LIMIT, REQUEST_LIMIT))
-		{
-			UpdateEngine engine = new UpdateEngine(locations.data(), policy, source, activation.get(), platform.id(),
-				clock, waiting);
-			return finish(engine, engine.update(arguments.tag(), session), arguments, locations);
-		}
+		HarnessSession session = managed.session();
+		UninstallResult result = new Uninstaller(locations.data(), locations.policy(), managed.policy(),
+			managed.activation(), session, clock, waiting).uninstall(arguments.deleteData());
+		return printUninstall(result, arguments, locations);
 	}
 
 	/**
-	 * Installs a harness's plugin from the extracted plugin archive that the running installer belongs to.
+	 * Installs a harness's plugin: through the installation whose version folder the running installer runs from, or
+	 * from the extracted plugin archive that the running installer belongs to.
 	 *
 	 * @param arguments the validated install operation
 	 * @return its printed result's status
@@ -338,9 +259,54 @@ public final class Invocation
 	 */
 	private int install(Arguments arguments) throws IOException, TrustException
 	{
+		Locations locations;
+		try
+		{
+			locations = Locations.installed(image, integrations);
+		}
+		catch (TrustException _)
+		{
+			return installArchive(arguments);
+		}
+		resolvedData = locations.data();
+		resolvedHarness = locations.harness();
+		String own = locations.harness();
+		if (!arguments.harness().equals(own))
+			return print(otherHarness(own, arguments.harness()), arguments, locations);
+		Managed managed = manage(own, locations.policy(), false, true);
+		if (managed.refusal() != null)
+			return print(managed.refusal(), arguments, locations);
+		Optional<UpdateResult> otherHome = refuseOtherHome(own, arguments.home(), managed.home());
+		if (otherHome.isPresent())
+			return print(otherHome.get(), arguments, locations);
+		try (HttpsReleaseSource source = new HttpsReleaseSource(managed.policy().releaseBaseUrl(), environment,
+			CONNECT_LIMIT, REQUEST_LIMIT))
+		{
+			UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
+				platform.id(), clock, waiting);
+			return print(engine.install(arguments.tag(), request(managed, locations.image())), arguments, locations);
+		}
+	}
+
+	/**
+	 * Installs a harness's plugin from the extracted plugin archive that the running installer belongs to. Where the
+	 * harness already has a CAT version and a valid policy of this installation, the archive's version is installed
+	 * under the policy like a signed release; otherwise install writes the policy and installs the archive's version.
+	 *
+	 * @param arguments the validated install operation
+	 * @return its printed result's status
+	 * @throws IOException    if installation files cannot be read or replaced
+	 * @throws TrustException if install refuses
+	 */
+	private int installArchive(Arguments arguments) throws IOException, TrustException
+	{
 		String harness = arguments.harness();
-		PluginActivation activation = activations.stream().filter(provider -> provider.harness().equals(harness)).
-			findFirst().orElseThrow();
+		if (arguments.tag() != null)
+		{
+			return print(failure(Result.REFUSED, harness, "The extracted plugin archive installs only its own " +
+				"version; run the installer in the installed version folder to install release " + arguments.tag() +
+				".", List.of()), arguments, null);
+		}
 		Optional<HarnessIntegration> integration = integrations.stream().
 			filter(provider -> provider.harness().equals(harness)).findFirst();
 		if (integration.isEmpty())
@@ -348,11 +314,170 @@ public final class Invocation
 			return print(failure(Result.REFUSED, harness, "This installer has no harness integration for " + harness +
 				".", List.of()), arguments, null);
 		}
+		PluginActivation activation = activations.stream().filter(provider -> provider.harness().equals(harness)).
+			findFirst().orElseThrow();
+		Path home = arguments.home();
+		if (home == null)
+			home = integration.get().installation(environment, userHome).home();
+		if (home.isAbsolute() && Files.isDirectory(home))
+		{
+			Path real = home.toRealPath();
+			HarnessInstallation installation = integration.get().installation(real);
+			if (Files.isRegularFile(installation.policy(), NOFOLLOW_LINKS) &&
+				activation.installed(real).version().isPresent())
+			{
+				Managed managed = manage(harness, installation.policy(), false, true);
+				if (managed.refusal() == null && refuseOtherHome(harness, real, managed.home()).isEmpty())
+				{
+					resolvedData = installation.dataDirectory();
+					resolvedHarness = harness;
+					try (HttpsReleaseSource source = new HttpsReleaseSource(managed.policy().releaseBaseUrl(),
+						environment, CONNECT_LIMIT, REQUEST_LIMIT))
+					{
+						UpdateEngine engine = new UpdateEngine(installation.dataDirectory(), managed.policy(), source,
+							activation, platform.id(), clock, waiting);
+						return print(engine.installFrom(image, request(managed, image)), arguments, null);
+					}
+				}
+			}
+		}
+		return installFirst(arguments, activation, integration.get());
+	}
+
+	/**
+	 * Returns the refusal of an operation on a harness other than the one whose version folders contain the running
+	 * installer.
+	 *
+	 * @param own     the harness of the running installer
+	 * @param named   the harness that the operation names
+	 * @return the refusal
+	 */
+	private static UpdateResult otherHarness(String own, String named)
+	{
+		return failure(Result.REFUSED, own, "This installation manages " + own + " only; use the installer of the " +
+			named + " installation for " + named + ".", List.of());
+	}
+
+	/**
+	 * Refuses a harness home other than the one that the policy records.
+	 *
+	 * @param harness  the harness
+	 * @param named    the harness home that install names, or null when it names none
+	 * @param recorded the harness home that the policy records
+	 * @return the refusal, or empty when install names no other home
+	 * @throws IOException if a home cannot be resolved
+	 */
+	private static Optional<UpdateResult> refuseOtherHome(String harness, Path named, Path recorded)
+		throws IOException
+	{
+		if (named == null)
+			return Optional.empty();
+		Path real = Locations.resolveExistingAncestor(named.toAbsolutePath().normalize());
+		if (real.equals(Locations.resolveExistingAncestor(recorded)))
+			return Optional.empty();
+		return Optional.of(failure(Result.REFUSED, harness, "This installation manages the " + harness + " home " +
+			recorded + " only, not " + named + "; install CAT into " + named + " with the CAT entry command.",
+			List.of()));
+	}
+
+	/**
+	 * Reads and checks the policy of a harness's installation and selects the harness's providers.
+	 *
+	 * @param own           the harness
+	 * @param policyFile    the installation's policy
+	 * @param readOnly      true when the operation only reads the installation, and needs no harness integration
+	 * @param needsProgram  true when the operation runs the harness program that install recorded
+	 * @return the checked installation, or its refusal
+	 * @throws IOException    if the policy cannot be read
+	 * @throws TrustException if the policy is invalid
+	 */
+	private Managed manage(String own, Path policyFile, boolean readOnly, boolean needsProgram)
+		throws IOException, TrustException
+	{
+		if (!Files.isRegularFile(policyFile))
+		{
+			return Managed.refused(failure(Result.REFUSED, own, "Installer policy is missing; " +
+				Locations.rerunEntryCommand(own) + ".", List.of(policyFile)));
+		}
+		TrustPolicy policy = TrustPolicy.read(policyFile);
+		if (!policy.harnesses().keySet().equals(Set.of(own)))
+		{
+			return Managed.refused(failure(Result.REFUSED, own, "The policy " + policyFile + " records the " +
+				"harnesses " + policy.harnesses().keySet() + ", but this installation manages " + own + " only; " +
+				Locations.rerunEntryCommand(own) + ".", List.of(policyFile)));
+		}
+		Optional<HarnessCommand> command = policy.command(own);
+		if (command.isEmpty())
+		{
+			return Managed.refused(failure(Result.REFUSED, own, "The policy was written by an earlier release and " +
+				"does not record the harness program; " + Locations.rerunEntryCommand(own) + ".", List.of(policyFile)));
+		}
+		Optional<PluginActivation> activation = activations.stream().
+			filter(provider -> provider.harness().equals(own)).findFirst();
+		if (activation.isEmpty())
+		{
+			return Managed.refused(failure(Result.REFUSED, own, "This installer has no plugin provider for " + own +
+				".", List.of()));
+		}
+		Path home = policy.harnesses().get(own);
+		if (readOnly)
+			return new Managed(policy, activation.get(), home, null, null);
+		Optional<HarnessIntegration> integration = integrations.stream().
+			filter(provider -> provider.harness().equals(own)).findFirst();
+		if (integration.isEmpty())
+		{
+			return Managed.refused(failure(Result.REFUSED, own, "This installer has no harness integration for " +
+				own + ".", List.of()));
+		}
+		// Uninstall needs the program only to unregister the plugin, and skips that step when the program is gone
+		Path program = Path.of(command.get().command().getFirst());
+		if (needsProgram && (!Files.isRegularFile(program) || !Files.isExecutable(program)))
+		{
+			return Managed.refused(failure(Result.REFUSED, own, "The " + own + " program " + program + " that install " +
+				"recorded no longer exists or is not executable; " + Locations.rerunEntryCommand(own) + ".",
+				List.of(program)));
+		}
+		HarnessSession session = new HarnessSession(integration.get(), cliFactory.create(command.get(), home),
+			replacer);
+		return new Managed(policy, activation.get(), home, session, null);
+	}
+
+	/**
+	 * Returns the request of an install that the running installer performs.
+	 *
+	 * @param managed the checked installation
+	 * @param plugin  the plugin folder that the running installer runs from
+	 * @return the request
+	 */
+	private InstallRequest request(Managed managed, Path plugin)
+	{
+		String harness = managed.activation().harness();
+		List<HarnessInstallation> others = integrations.stream().
+			filter(provider -> !provider.harness().equals(harness)).
+			map(provider -> provider.installation(environment, userHome)).toList();
+		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome));
+	}
+
+	/**
+	 * Installs a harness's plugin from the extracted plugin archive that the running installer belongs to and writes
+	 * the installation's policy.
+	 *
+	 * @param arguments   the validated install operation
+	 * @param activation  the harness's activation provider
+	 * @param integration the harness's integration
+	 * @return its printed result's status
+	 * @throws IOException    if installation files cannot be read or replaced
+	 * @throws TrustException if install refuses
+	 */
+	private int installFirst(Arguments arguments, PluginActivation activation, HarnessIntegration integration)
+		throws IOException, TrustException
+	{
+		String harness = arguments.harness();
 		List<HarnessIntegration> others = integrations.stream().
 			filter(provider -> !provider.harness().equals(harness)).toList();
 		Install.Outcome outcome = new Install(image, platform, replacer, cliFactory, ProcessElevation::isElevated).
-			install(harness, arguments.home(), cwd, environment, userHome, activation, integration.get(), others);
-		Path policyFile = integration.get().installation(outcome.policy().harnesses().get(harness)).policy();
+			install(harness, arguments.home(), cwd, environment, userHome, activation, integration, others);
+		Path policyFile = integration.installation(outcome.policy().harnesses().get(harness)).policy();
 		ObjectNode object = encode(new UpdateResult(Result.INSTALLED, harness,
 			Optional.of(outcome.version().release()), Optional.empty(), "CAT is installed for " + harness + ".",
 			List.of(outcome.versionFolder(), policyFile), true,
@@ -371,62 +496,20 @@ public final class Invocation
 	}
 
 	/**
-	 * Saves a completed uninstall's result for the stable launcher and exits without printing it, because the launcher
-	 * deletes the data directory first and prints the result only when that succeeded.
+	 * Prints an uninstall's result, with whether the plugin was unregistered through the harness program when the
+	 * uninstall completed.
 	 *
-	 * @param result    the completed uninstall
-	 * @param locations the installation's locations
-	 * @return the hand-over status
-	 * @throws IOException if the result cannot be saved
-	 */
-	private int handOver(UninstallResult result, Locations locations) throws IOException
-	{
-		ObjectNode object = encode(result.outcome());
-		object.put("unregistered", result.unregistered());
-		save(object, locations.data().resolve(Uninstaller.RESULT));
-		return UNINSTALL_HANDOVER_STATUS;
-	}
-
-	/**
-	 * Prints an operation's result, or saves it for the stable launcher when the operation staged a Java runtime that
-	 * the launcher puts in place after the installer exits. The launcher prints the saved result once the runtime runs.
-	 *
-	 * @param engine    the engine that ran the operation
-	 * @param result    the outcome
+	 * @param result    the uninstall's outcome
 	 * @param arguments the validated operation
 	 * @param locations the installation's locations
-	 * @return the printed result's status, or the hand-over status
-	 * @throws IOException if the pending replacement is unreadable or the result cannot be saved
+	 * @return the printed result's status
 	 */
-	private int finish(UpdateEngine engine, UpdateResult result, Arguments arguments, Locations locations)
-		throws IOException
+	private int printUninstall(UninstallResult result, Arguments arguments, Locations locations)
 	{
-		if (result.result().exitStatus() != 0 || engine.pendingSwap().isEmpty())
-			return print(result, arguments, locations);
-		save(encode(result), locations.data().resolve(Bundle.SWAP_RESULT));
-		return SWAP_HANDOVER_STATUS;
-	}
-
-	/**
-	 * Saves a one-line result that the stable launcher prints after the installer exits.
-	 *
-	 * @param object the result
-	 * @param file   the file that the launcher reads
-	 * @throws IOException if the result cannot be saved
-	 */
-	private void save(ObjectNode object, Path file) throws IOException
-	{
-		Files.createDirectories(file.getParent());
-		Path temporary = Files.createTempFile(file.getParent(), "." + file.getFileName() + "-", ".tmp");
-		try
-		{
-			Files.writeString(temporary, mapper.writeValueAsString(object) + "\n", UTF_8);
-			replacer.replace(temporary, file);
-		}
-		finally
-		{
-			Files.deleteIfExists(temporary);
-		}
+		ObjectNode object = encode(result.outcome());
+		if (result.outcome().result() == Result.UNINSTALLED)
+			object.put("unregistered", result.unregistered());
+		return print(result.outcome(), object, arguments, locations);
 	}
 
 	/**
@@ -488,28 +571,6 @@ public final class Invocation
 	}
 
 	/**
-	 * Encodes a status outcome with whether the installation keeps a cached bundle of an earlier release, which going
-	 * back to that release reuses, and the runtime replacement that the stable launcher has not finished.
-	 *
-	 * @param status      the status outcome, whose previous version is the cached bundle's
-	 * @param pendingSwap the unfinished replacement, or empty
-	 * @return the JSON object
-	 */
-	private ObjectNode encodeStatus(UpdateResult status, Optional<RuntimeSwap> pendingSwap)
-	{
-		ObjectNode object = encode(status);
-		object.put("cached_bundle", status.previousVersion().isPresent());
-		pendingSwap.ifPresent(swap ->
-		{
-			ObjectNode pending = object.putObject("pending_swap");
-			pending.put("operation", swap.operation().id());
-			pending.put("from_version", swap.fromVersion());
-			pending.put("to_version", swap.toVersion());
-		});
-		return object;
-	}
-
-	/**
 	 * Appends a diagnostic only where a mutating operation already has its protected state directory.
 	 * Status remains read-only, including its failure paths.
 	 *
@@ -553,8 +614,7 @@ public final class Invocation
 	private static UpdateResult failure(Result result, String harness, String message, List<Path> paths)
 	{
 		return new UpdateResult(result, harness, Optional.empty(), Optional.empty(), message, paths,
-			result != Result.NOT_RESTORED && result != Result.FAILED,
-			List.of());
+			result != Result.FAILED, List.of());
 	}
 
 	/**
@@ -571,5 +631,30 @@ public final class Invocation
 		if (resolvedHarness != null)
 			return resolvedHarness;
 		return "unknown";
+	}
+
+	/**
+	 * A harness's installation whose policy passed the checks, or the refusal of an operation on it.
+	 *
+	 * @param policy     the installation's policy, or null for a refusal
+	 * @param activation the harness's activation provider, or null for a refusal
+	 * @param home       the harness home that the policy records, or null for a refusal
+	 * @param session    runs the harness program that install recorded, or null for a refusal or an operation that
+	 *                   only reads the installation
+	 * @param refusal    the refusal, or null when the checks passed
+	 */
+	private record Managed(TrustPolicy policy, PluginActivation activation, Path home, HarnessSession session,
+		UpdateResult refusal)
+	{
+		/**
+		 * Returns the refusal of an operation.
+		 *
+		 * @param refusal the refusal
+		 * @return the refused installation
+		 */
+		static Managed refused(UpdateResult refusal)
+		{
+			return new Managed(null, null, null, null, refusal);
+		}
 	}
 }

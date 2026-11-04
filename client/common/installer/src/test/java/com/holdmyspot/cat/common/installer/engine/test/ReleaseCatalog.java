@@ -4,11 +4,15 @@ import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 /**
  * Serves several releases that one key signs, each with its own migration registry, and records what it was asked
@@ -46,6 +50,21 @@ final class ReleaseCatalog implements ReleaseSource
 	ReleaseCatalog add(String version, String registry) throws IOException
 	{
 		releases.put("v" + version, new Releases(version, registry, signer));
+		latest = "v" + version;
+		return this;
+	}
+
+	/**
+	 * Adds a release whose one property a test case corrupts, which becomes the latest one.
+	 *
+	 * @param version the release version
+	 * @param defect  the corrupted property, as {@link Releases#Releases(String, String)} names it
+	 * @return this catalog
+	 * @throws IOException if creating the release fails
+	 */
+	ReleaseCatalog addDefective(String version, String defect) throws IOException
+	{
+		releases.put("v" + version, Releases.defective(version, defect, signer));
 		latest = "v" + version;
 		return this;
 	}
@@ -120,6 +139,43 @@ final class ReleaseCatalog implements ReleaseSource
 	{
 		request("download " + assetName);
 		release(tag).download(tag, assetName, expectedSize, destination);
+	}
+
+	/**
+	 * Extracts a release's plugin archive without recording a request.
+	 *
+	 * @param version the release version
+	 * @param parent  the directory that receives the archive's top directory
+	 * @return the archive's top directory
+	 * @throws IOException if the catalog has no such release or the archive cannot be extracted
+	 */
+	Path extract(String version, Path parent) throws IOException
+	{
+		String tag = "v" + version;
+		String top = "cat-harness-a-linux-x64-v" + version;
+		Path archive = parent.resolve(top + ".tar.gz");
+		release(tag).download(tag, archive.getFileName().toString(), 0, archive);
+		try (TarArchiveInputStream tar = new TarArchiveInputStream(new GZIPInputStream(
+			Files.newInputStream(archive))))
+		{
+			for (TarArchiveEntry entry = tar.getNextEntry(); entry != null; entry = tar.getNextEntry())
+			{
+				Path target = parent.resolve(entry.getName()).normalize();
+				if (!target.startsWith(parent.resolve(top)))
+					throw new IOException("The fixture archive entry leaves its top directory: " + entry.getName());
+				if (entry.isDirectory())
+				{
+					Files.createDirectories(target);
+					continue;
+				}
+				Files.createDirectories(target.getParent());
+				Files.copy(tar, target);
+				if ((entry.getMode() & 0100) != 0 && !target.toFile().setExecutable(true))
+					throw new IOException("Cannot make " + target + " executable");
+			}
+		}
+		Files.delete(archive);
+		return parent.resolve(top);
 	}
 
 	/**
