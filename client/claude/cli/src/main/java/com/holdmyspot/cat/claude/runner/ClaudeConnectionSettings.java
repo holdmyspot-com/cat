@@ -167,9 +167,10 @@ public final class ClaudeConnectionSettings
 	 * run its commands, which that sandbox confines, without approval.
 	 * <p>
 	 * Where {@link #lacksCommandSandbox(Platform)}, no sandbox confines the commands, so the settings neither require
-	 * a sandbox nor grant commands. They copy the parent's {@code permissions.allow} and {@code permissions.deny}
-	 * rules, and no other permission setting, so the instance runs the commands that the user allows and refuses
-	 * every other command that would need approval, which the {@code dontAsk} permission mode does.
+	 * a sandbox nor grant commands. They copy the parent's {@code permissions.allow}, {@code permissions.ask} and
+	 * {@code permissions.deny} rules, and no other permission setting. The instance runs the commands that the user
+	 * allows, and the {@code dontAsk} permission mode refuses every other command that would need approval, including
+	 * a command that an ask rule matches, which asks even when a broader allow rule also matches it.
 	 * <p>
 	 * Host settings must not control other isolated-instance behavior. It also denies the instance reading
 	 * each of {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
@@ -281,12 +282,8 @@ public final class ClaudeConnectionSettings
 		}
 		ObjectNode filesystem = null;
 		if (sandboxed)
-		{
 			filesystem = putSandbox(settings, parentSettings.path("sandbox"));
-			copyPermissionRestrictions(parentSettings.path("permissions"), settings);
-		}
-		else
-			copyUserRules(parentSettings.path("permissions"), settings);
+		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		if (instructionFilesMode.isEmpty())
 			copyInstructionFilesMode(parentSettings, settings);
 		else
@@ -386,25 +383,9 @@ public final class ClaudeConnectionSettings
 	}
 
 	/**
-	 * Copies the parent's {@code permissions.deny} rules, for a session that no sandbox confines. Its {@code allow}
-	 * rules follow CAT's own grants, through {@link #appendUserAllowRules(JsonNode, ArrayNode)}. No other permission
-	 * setting is copied: the session runs in the {@code dontAsk} permission mode, which refuses what no allow rule
-	 * grants, so that the parent's ask rules, added directories and default mode have no use.
-	 *
-	 * @param parentPermissions the parent's {@code permissions} settings, or a missing node if it has none
-	 * @param settings          the isolated settings
-	 */
-	private static void copyUserRules(JsonNode parentPermissions, ObjectNode settings)
-	{
-		assert parentPermissions != null;
-		assert settings != null;
-		JsonNode rules = parentPermissions.path("deny");
-		if (rules.isArray())
-			permissions(settings).set("deny", rules.deepCopy());
-	}
-
-	/**
-	 * Appends the parent's {@code permissions.allow} rules to the isolated session's grants.
+	 * Appends the parent's {@code permissions.allow} rules to the isolated session's grants, for a session that no
+	 * sandbox confines. Its {@code ask} and {@code deny} rules come from
+	 * {@link #copyPermissionRestrictions(JsonNode, ObjectNode)}.
 	 *
 	 * @param parentPermissions the parent's {@code permissions} settings, or a missing node if it has none
 	 * @param grants            the isolated settings' {@code permissions.allow} rules

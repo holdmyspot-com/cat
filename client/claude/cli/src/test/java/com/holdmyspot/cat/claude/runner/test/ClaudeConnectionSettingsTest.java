@@ -306,10 +306,12 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that on native Windows the isolated settings carry the user's own allow and deny rules beside the grants
-	 * that CAT adds on every platform, and nothing else from the user's settings: not its ask rules, default mode,
-	 * added directories or sandbox. They hold no blanket grant of commands, because no sandbox confines them there,
-	 * and no sandbox requirement, which the session could not meet.
+	 * Verifies that on native Windows the isolated settings carry the user's own allow, ask and deny rules beside the
+	 * grants that CAT adds on every platform, and nothing else from the user's settings: not its default mode, added
+	 * directories or sandbox. The ask rules stay so that a call they match, which a broader allow rule would otherwise
+	 * permit, needs approval, and the {@code dontAsk} permission mode refuses a call that needs approval. The settings
+	 * hold no blanket grant of commands, because no sandbox confines them there, and no sandbox requirement, which the
+	 * session could not meet.
 	 *
 	 * @param platform the platform that the session runs on
 	 * @throws IOException if fixture I/O fails
@@ -326,10 +328,10 @@ public final class ClaudeConnectionSettingsTest
 				  "sandbox": {"enabled": true, "filesystem": {"allowWrite": ["/host-home"]}},
 				  "permissions": {
 				    "additionalDirectories": ["/workspace"],
-				    "allow": ["Bash(git status:*)", "Read(//docs/**)"],
-				    "ask": ["Bash(rm *)"],
+				    "allow": ["Bash(git:*)", "Read(//docs/**)"],
+				    "ask": ["Bash(git push:*)"],
 				    "defaultMode": "bypassPermissions",
-				    "deny": ["Bash(git push:*)"]
+				    "deny": ["Bash(rm *)"]
 				  }
 				}
 				""");
@@ -341,10 +343,11 @@ public final class ClaudeConnectionSettingsTest
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("permissions").path("allow")), "allow").
-				isEqualTo(List.of("Skill", "Edit(./**)", "Bash(git status:*)", "Read(//docs/**)"));
+				isEqualTo(List.of("Skill", "Edit(./**)", "Bash(git:*)", "Read(//docs/**)"));
 			requireThat(strings(result.path("permissions").path("deny")), "deny").
+				isEqualTo(List.of("Bash(rm *)"));
+			requireThat(strings(result.path("permissions").path("ask")), "ask").
 				isEqualTo(List.of("Bash(git push:*)"));
-			requireThat(result.path("permissions").has("ask"), "ask").isFalse();
 			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
 			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
 			requireThat(result.has("sandbox"), "sandbox").isFalse();
@@ -355,7 +358,7 @@ public final class ClaudeConnectionSettingsTest
 
 	/**
 	 * Verifies that on native Windows with no settings file, the isolated settings carry no user rules: only CAT's own
-	 * grants, and no deny rule.
+	 * grants, and no deny or ask rule.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -375,6 +378,7 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(strings(result.path("permissions").path("allow")), "allow").
 				isEqualTo(List.of("Skill", "Edit(./**)"));
 			requireThat(result.path("permissions").has("deny"), "deny").isFalse();
+			requireThat(result.path("permissions").has("ask"), "ask").isFalse();
 		}
 	}
 
