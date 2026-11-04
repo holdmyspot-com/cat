@@ -112,8 +112,9 @@ public final class ProcessElevationTest
 	 * <a href="https://learn.microsoft.com/windows-server/administration/windows-commands/whoami">whoami</a>, and the
 	 * mandatory label SIDs, {@code S-1-16-} followed by the integrity level's relative ID, at
 	 * <a href="https://learn.microsoft.com/windows/win32/secauthz/well-known-sids">Well-known SIDs</a>: medium
-	 * integrity is 0x2000 ({@code S-1-16-8192}), high 0x3000 ({@code S-1-16-12288}) and system 0x4000
-	 * ({@code S-1-16-16384}). The group names are localized, so only the SIDs identify the levels.
+	 * integrity is 0x2000 ({@code S-1-16-8192}), high 0x3000 ({@code S-1-16-12288}), system 0x4000
+	 * ({@code S-1-16-16384}) and protected process 0x5000 ({@code S-1-16-20480}). The group names are localized, so
+	 * only the SIDs identify the levels.
 	 *
 	 * @return the groups, and whether the check reports administrative rights
 	 */
@@ -141,13 +142,19 @@ public final class ProcessElevationTest
 				"\"Verbindliche Bezeichnung\\Hohe Verbindlichkeitsstufe\",\"Bezeichnung\",\"S-1-16-12288\",\"\"\r\n",
 				true},
 			{"local system", everyone + administrators +
-				"\"Mandatory Label\\System Mandatory Level\",\"Label\",\"S-1-16-16384\",\"\"\r\n", true}
+				"\"Mandatory Label\\System Mandatory Level\",\"Label\",\"S-1-16-16384\",\"\"\r\n", true},
+			{"protected process", everyone + administrators +
+				"\"Mandatory Label\\Protected Process Mandatory Level\",\"Label\",\"S-1-16-20480\",\"\"\r\n", true},
+			// A list without an integrity level is not an answer, and a failed check counts as administrative rights
+			{"list without an integrity level", everyone + administrators + users, true},
+			{"empty list", "", true}
 		};
 	}
 
 	/**
-	 * The Windows check reports administrative rights exactly when the token's groups name the high or system
-	 * integrity level, whatever language names the groups and whether or not the token holds the Administrators group.
+	 * The Windows check reports administrative rights when the token's groups name an integrity level of high or
+	 * above, whatever language names the groups and whether or not the token holds the Administrators group, and
+	 * also when they name no integrity level, so that a failed check never counts as unprivileged.
 	 *
 	 * @param token    what the token stands for
 	 * @param groups   the token's groups, as {@code whoami /groups /fo csv /nh} prints them

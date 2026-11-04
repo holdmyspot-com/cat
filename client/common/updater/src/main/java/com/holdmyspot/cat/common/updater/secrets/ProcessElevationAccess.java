@@ -30,8 +30,8 @@ public interface ProcessElevationAccess
 	 * @param whoami    the program, run with the arguments {@code /groups /fo csv /nh}
 	 * @param limit     the longest time that the program may take before it is stopped
 	 * @param directory a directory that the check may write short-lived files to, which is created when absent
-	 * @return {@code true} if the program reports the high or system integrity level, or cannot be run, fails or does
-	 *   not end in time
+	 * @return {@code true} if the program reports an integrity level of high or above, or cannot be run, fails, does
+	 *   not end in time or reports no integrity level
 	 * @throws NullPointerException if any argument is null
 	 */
 	boolean holdsElevatedToken(Path whoami, Duration limit, Path directory);

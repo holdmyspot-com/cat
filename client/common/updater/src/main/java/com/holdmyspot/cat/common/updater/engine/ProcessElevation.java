@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -25,9 +26,15 @@ public final class ProcessElevation
 	 */
 	private static final Path ID = Path.of("/usr/bin/id");
 	/**
-	 * The Windows integrity levels of an elevated access token: high, and system.
+	 * A line of {@code whoami /groups /fo csv /nh} for a mandatory label, whose SID is {@code S-1-16-} followed by
+	 * the relative ID of the token's integrity level, which the first group captures.
 	 */
-	private static final List<String> ELEVATED_LEVELS = List.of("S-1-16-12288", "S-1-16-16384");
+	private static final Pattern INTEGRITY_LEVEL =
+		Pattern.compile("(?m)^\"[^\"]*\",\"[^\"]*\",\"S-1-16-([0-9]{1,9})\",");
+	/**
+	 * The relative ID of the high integrity level, the lowest level of an elevated access token.
+	 */
+	private static final int HIGH_INTEGRITY = 0x3000;
 	/**
 	 * The longest time that the program of a check may take.
 	 */
@@ -64,7 +71,7 @@ public final class ProcessElevation
 
 	/**
 	 * Returns whether this process runs with administrative rights. On Windows, that is when its access token is
-	 * elevated, which {@code whoami /groups} reports as the high or system integrity level. Elsewhere, it is when its
+	 * elevated, which {@code whoami /groups} reports as an integrity level of high or above. Elsewhere, it is when its
 	 * effective user ID is 0, which {@code /usr/bin/id -u} prints.
 	 *
 	 * @param directory a directory that this process may write short-lived files to, which is created when absent
@@ -88,8 +95,8 @@ public final class ProcessElevation
 	 * @param whoami    the program, run with the arguments {@code /groups /fo csv /nh}
 	 * @param limit     the longest time that the program may take before it is stopped
 	 * @param directory a directory that the check may write short-lived files to, which is created when absent
-	 * @return {@code true} if the program reports the high or system integrity level, or cannot be run, fails or does
-	 *   not end in time
+	 * @return {@code true} if the program reports an integrity level of high or above, or cannot be run, fails, does
+	 *   not end in time or reports no integrity level
 	 */
 	private static boolean holdsElevatedToken(Path whoami, Duration limit, Path directory)
 	{
@@ -99,12 +106,16 @@ public final class ProcessElevation
 		try
 		{
 			String groups = output(List.of(whoami.toString(), "/groups", "/fo", "csv", "/nh"), limit, directory);
-			for (String level : ELEVATED_LEVELS)
+			Matcher level = INTEGRITY_LEVEL.matcher(groups);
+			boolean found = false;
+			while (level.find())
 			{
-				if (groups.contains(level))
+				if (Integer.parseInt(level.group(1)) >= HIGH_INTEGRITY)
 					return true;
+				found = true;
 			}
-			return false;
+			// A list without an integrity level is not an answer
+			return !found;
 		}
 		catch (IOException | RuntimeException _)
 		{
