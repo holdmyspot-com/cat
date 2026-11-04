@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
 import java.io.IOException;
@@ -90,17 +91,21 @@ public final class ClaudeSessionEnvironmentVersionTest
 				}
 				""", UTF_8);
 
+			// Every session that the runner starts may hand a runner launch to its runner, even one that may request
+			// no session
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
+				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(),
-				List.of(deniedFile, deniedDirectory, hostProject), Map.of());
+				List.of(deniedFile, deniedDirectory, hostProject), Map.of(), requestAccess);
 			List<Path> dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
 			Path project = run.directory().resolve("project");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "", null,
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "", requestAccess,
 				project, Platform.LINUX_X64);
 			Path controlDestination = root.resolve("isolated/control-settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, controlDestination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "claude-md",
-				null, project, Platform.LINUX_X64);
+				requestAccess, project, Platform.LINUX_X64);
 
 			String settings = normalize(scope.json(), destination, root, run) + "\n" +
 				normalize(scope.json(), controlDestination, root, run);

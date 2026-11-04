@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -111,12 +112,14 @@ public final class CodexSessionEnvironmentVersionTest
 
 				// Windows adds only the choice of sandbox backend that enforces the same profile, so the hash covers the
 				// configuration that other platforms receive
+				// Every session that the runner starts may hand a runner launch to its runner, even one that may request
+				// no session
+				SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
+					Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
 				CodexConnectionConfiguration.copy(source, destination, run.directory().resolve("project"), caches,
-					temporaryDirectory, 0,
-					Platform.LINUX_X64);
-				String profile = CodexConnectionConfiguration.addSessionProfile(destination, List.of(evidence),
-					CodexRunner.sessionDeniedReads(manager, run, List.of(evidence), List.of(deniedFile, hostProject),
-						Platform.LINUX_X64, Map.of()));
+					temporaryDirectory, 0, requestAccess, Platform.LINUX_X64);
+				String profile = CodexRunner.addSessionProfile(destination, manager, run, List.of(evidence),
+					List.of(deniedFile, hostProject), Platform.LINUX_X64, Map.of(), requestAccess);
 				CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
 				// The instructions name paths in plain text, which each platform separates in its own way
