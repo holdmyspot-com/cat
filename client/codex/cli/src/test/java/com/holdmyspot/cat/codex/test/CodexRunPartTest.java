@@ -49,7 +49,7 @@ public final class CodexRunPartTest
 	 * The folder of the programs that a command finds before the caller's {@code PATH}, in a plugin that the tests do not
 	 * create.
 	 */
-	private static final Path OVERRIDES = Path.of("/plugin/client/run-part-overrides").toAbsolutePath();
+	private static final Path OVERRIDES = Path.of("/plugin/bin/run-part-overrides").toAbsolutePath();
 	/**
 	 * The line separator that the shell's commands end their lines with.
 	 */
@@ -406,7 +406,7 @@ public final class CodexRunPartTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-")).toAbsolutePath();
 			Path plugin = temporary.resolve("plugin");
-			Path overrides = Files.createDirectories(plugin.resolve("client/run-part-overrides"));
+			Path overrides = Files.createDirectories(plugin.resolve("bin/run-part-overrides"));
 			Path override = overrides.resolve("rg");
 			writeExecutable(override, "#!/bin/sh\n");
 			Path caller = Files.createDirectories(temporary.resolve("caller"));

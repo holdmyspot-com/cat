@@ -41,9 +41,10 @@ public final class PluginArtifactBuilderTest
 	}
 
 	/**
-	 * Verifies that resources, the client folder, generated legal materials, migrations and marketplace metadata are
-	 * assembled, that agent launchers move to {@code bin/} and find {@code client/} from there, and that the plugin
-	 * ships no scripts that install CAT, because the trusted installer does.
+	 * Verifies that resources, the {@code bin} folder, generated legal materials, migrations and marketplace metadata
+	 * are assembled, that every launcher, a hook's included, is in {@code bin/} unchanged, that the plugin has no
+	 * {@code client/} folder, and that the plugin ships no scripts that install CAT, because the trusted installer
+	 * does.
 	 */
 	@Test
 	public void assemblesCompleteArtifact() throws IOException
@@ -53,10 +54,11 @@ public final class PluginArtifactBuilderTest
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-artifact-"));
 			Path common = jar(temporary.resolve("common.jar"), "common.txt", "common");
 			Path harness = jar(temporary.resolve("harness.jar"), "skills/help/SKILL.md", "harness");
-			Path runtime = Files.createDirectories(temporary.resolve("client"));
+			Path bin = Files.createDirectories(temporary.resolve("bin"));
 			PluginLaunchers.write(List.of(new Launcher("plugin-info", "app", "example.Main"),
-				new Launcher("session-start", "app", "example.Hook")), Platform.LINUX_X64, true, runtime);
-			String hookLauncher = Files.readString(runtime.resolve("bin/session-start"));
+				new Launcher("session-start", "app", "example.Hook")), Platform.LINUX_X64, true, bin);
+			String agentLauncher = Files.readString(bin.resolve("plugin-info"));
+			String hookLauncher = Files.readString(bin.resolve("session-start"));
 			Path legal = legalMaterials(temporary);
 			Path installers = Files.createDirectories(temporary.resolve("installers"));
 			Files.createDirectories(installers.resolve("migrations"));
@@ -70,18 +72,17 @@ public final class PluginArtifactBuilderTest
 
 			Path output = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
 				List.of(new ArtifactLayer("common", common),
-					new ArtifactLayer("harness", harness, Set.of("skills/help/SKILL.md"))), runtime,
-				Set.of("plugin-info"), legal, List.of(installers),
-				temporary.resolve("output"));
+					new ArtifactLayer("harness", harness, Set.of("skills/help/SKILL.md"))), bin, legal,
+				List.of(installers), temporary.resolve("output"));
 
 			requireThat(Files.readString(output.resolve("skills/help/SKILL.md")), "harnessSkill").isEqualTo("harness");
-			requireThat(Files.readString(output.resolve("client/VERSION")), "versionFile").isEqualTo(
+			requireThat(Files.readString(output.resolve("bin/VERSION")), "versionFile").isEqualTo(
 				PluginInfo.CAT_VERSION + "\n");
 			requireThat(Files.readString(output.resolve("bin/plugin-info")), "pluginInfoLauncher").
-				contains("/../client\"").contains("-m app/example.Main \"$@\"");
-			requireThat(Files.exists(output.resolve("client/bin/plugin-info")), "runtimePluginInfoLauncher").isFalse();
-			requireThat(Files.readString(output.resolve("client/bin/session-start")), "hookLauncher").isEqualTo(
+				isEqualTo(agentLauncher);
+			requireThat(Files.readString(output.resolve("bin/session-start")), "hookLauncher").isEqualTo(
 				hookLauncher);
+			requireThat(Files.exists(output.resolve("client")), "clientFolder").isFalse();
 			requireThat(Files.readString(output.resolve("LICENSE.txt")), "license").isEqualTo("license");
 			requireThat(Files.readString(output.resolve("NOTICE.txt")), "notice").isEqualTo("notice");
 			requireThat(Files.exists(output.resolve("LICENSE.md")), "repositoryLicense").isFalse();
@@ -507,11 +508,11 @@ public final class PluginArtifactBuilderTest
 	{
 		assert that(temporary, "temporary").isNotNull().elseThrow();
 		assert that(layers, "layers").isNotNull().elseThrow();
-		Path runtime = Files.createDirectories(temporary.resolve("runtime"));
+		Path bin = Files.createDirectories(temporary.resolve("bin"));
 		Path legal = legalMaterials(temporary);
 		Path installers = Files.createDirectories(temporary.resolve("installers"));
-		return new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(layers, runtime, Set.of(), legal,
-			List.of(installers), temporary.resolve("output"));
+		return new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(layers, bin, legal, List.of(installers),
+			temporary.resolve("output"));
 	}
 
 	/**

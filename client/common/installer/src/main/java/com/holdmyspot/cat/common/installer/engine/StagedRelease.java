@@ -4,9 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -49,7 +51,7 @@ public final class StagedRelease
 
 	/**
 	 * Checks that an extracted top directory contains the selected release and only internal symbolic links.
-	 * Plugin manifests are limited to one MiB and client/VERSION to 128 bytes, with at most one trailing line ending.
+	 * Plugin manifests are limited to one MiB and bin/VERSION to 128 bytes, with at most one trailing line ending.
 	 * Windows releases require a regular bin/plugin-info.cmd file; POSIX releases require a regular executable
 	 * bin/plugin-info file.
 	 *
@@ -94,9 +96,9 @@ public final class StagedRelease
 		JsonNode declared = parsed.get("version");
 		if (declared == null || !declared.isString() || !declared.stringValue().equals(version))
 			throw refusal("The staged plugin manifest version must equal release " + version + ": " + manifest);
-		Path runtimeVersion = root.resolve("client/VERSION");
+		Path runtimeVersion = root.resolve(PluginDirectory.VERSION);
 		if (!Files.isRegularFile(runtimeVersion) || !readVersion(runtimeVersion).equals(version))
-			throw refusal("The staged client/VERSION must equal release " + version);
+			throw refusal("The staged " + PortablePaths.text(PluginDirectory.VERSION) + " must equal release " + version);
 		boolean windows = platform.equals("windows-x64");
 		String launcher = "bin/plugin-info";
 		if (windows)

@@ -90,7 +90,7 @@ public final class Releases implements ReleaseSource
 	}
 
 	/**
-	 * Creates a valid release whose plugin describes how to train its startup cache. Its {@code client/bin/java}
+	 * Creates a valid release whose plugin describes how to train its startup cache. Its {@code bin/java}
 	 * wrapper runs {@link FakeJava} on the runtime that the plugin's binding names, so the cache that a training writes
 	 * names the runtime that trained it.
 	 *
@@ -353,10 +353,10 @@ public final class Releases implements ReleaseSource
 			if (defect.equals("pluginVersion"))
 				manifestVersion = "1.9";
 			entry(tar, top + "/.harness-a/plugin.json", "{\"version\":\"" + manifestVersion + "\"}", 0644);
-			String clientVersion = version;
-			if (defect.equals("clientVersion"))
-				clientVersion = "1.9";
-			entry(tar, top + "/client/VERSION", clientVersion, 0644);
+			String binVersion = version;
+			if (defect.equals("binVersion"))
+				binVersion = "1.9";
+			entry(tar, top + "/bin/VERSION", binVersion, 0644);
 			if (!defect.equals("missingBinary"))
 				entry(tar, top + "/bin/plugin-info", "Never executed by the installer", 0755);
 			if (!defect.equals("missingRegistry"))
@@ -372,15 +372,15 @@ public final class Releases implements ReleaseSource
 				feature = 99;
 			else if (defect.equals("newerRuntime"))
 				feature = INSTALLED_FEATURE + 1;
-			entry(tar, top + "/client/runtime-requirement.json", requirement(feature), 0644);
+			entry(tar, top + "/bin/runtime-requirement.json", requirement(feature), 0644);
 			entry(tar, top + "/agents/reviewer.toml", "name = 'new'", 0644);
 			if (trainable)
 			{
 				String main = FakeJava.class.getName();
-				entry(tar, top + "/client/bin/java", StartupCacheFixtures.posixWrapper(main), 0755);
-				entry(tar, top + "/client/bin/java.cmd", StartupCacheFixtures.windowsWrapper(main, "java.cmd"), 0644);
+				entry(tar, top + "/bin/java", StartupCacheFixtures.posixWrapper(main), 0755);
+				entry(tar, top + "/bin/java.cmd", StartupCacheFixtures.windowsWrapper(main, "java.cmd"), 0644);
 				entry(tar, top + "/" + StartupCacheFixtures.JAR, StartupCacheFixtures.jar(FakeJava.class), 0644);
-				entry(tar, top + "/client/startup-cache-training.json",
+				entry(tar, top + "/bin/startup-cache-training.json",
 					StartupCacheFixtures.description(List.of("-Dfixture.behavior=train")), 0644);
 			}
 			switch (defect)

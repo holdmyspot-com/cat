@@ -102,14 +102,14 @@ public final class StagedReleaseTest
 	 * @throws IOException if fixture files cannot be written or read
 	 * @throws TrustException expected refusal for mismatched runtime
 	 */
-	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp = ".*client/VERSION.*")
+	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp = ".*bin/VERSION.*")
 	public void refusesRuntimeVersionMismatch() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
 			writeRelease(tree);
-			Files.writeString(tree.resolve("client/VERSION"), "1.0\n", UTF_8);
+			Files.writeString(tree.resolve("bin/VERSION"), "1.0\n", UTF_8);
 			StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64");
 		}
 	}
@@ -147,7 +147,7 @@ public final class StagedReleaseTest
 		{
 			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
 			writeRelease(tree);
-			Files.createSymbolicLink(tree.resolve("internal"), Path.of("client/VERSION"));
+			Files.createSymbolicLink(tree.resolve("internal"), Path.of("bin/VERSION"));
 			StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64");
 		}
 	}
@@ -382,10 +382,9 @@ public final class StagedReleaseTest
 	private static void writeRelease(Path tree) throws IOException
 	{
 		Files.createDirectories(tree.resolve("bin"));
-		Files.createDirectories(tree.resolve("client"));
 		Files.createDirectories(tree.resolve("install/migrations"));
 		Files.writeString(tree.resolve("plugin.json"), "{\"version\":\"1.1\"}", UTF_8);
-		Files.writeString(tree.resolve("client/VERSION"), "1.1\n", UTF_8);
+		Files.writeString(tree.resolve("bin/VERSION"), "1.1\n", UTF_8);
 		Files.writeString(tree.resolve("install/migrations/registry.tsv"), "", UTF_8);
 		Path executable = tree.resolve("bin/plugin-info");
 		Files.writeString(executable, "inert fixture", UTF_8);

@@ -11,6 +11,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.MarkdownIncludes;
 import com.holdmyspot.cat.common.SourceOnlyContent;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RunnerRuntimeManifest;
 import java.io.IOException;
 import java.io.InputStream;
@@ -53,16 +54,13 @@ public final class PluginArtifactBuilder
 	}
 
 	/**
-	 * Builds a plugin artifact from its resources, its {@code client} folder, generated legal materials, and installer
+	 * Builds a plugin artifact from its resources, its {@code bin} folder, generated legal materials, and installer
 	 * resources.
 	 *
 	 * @param resourceLayers resource JARs extracted into the artifact in list order; a later JAR can replace an earlier
 	 *        resource only when its {@link ArtifactLayer#overrides()} declares the path
-	 * @param clientDirectory the folder copied to {@code client/}: the plugin's modules, runtime requirement and the
-	 *        launchers that {@link PluginLaunchers#write} wrote in its {@code bin} folder
-	 * @param agentLaunchers the names of the launchers that agents run, which move from {@code client/bin/} to
-	 *        {@code bin/}; the other launchers, such as the harness's hooks, stay in {@code client/bin/} with
-	 *        {@code java}
+	 * @param binDirectory the folder copied to {@code bin/}: the plugin's modules, its runtime requirement and the
+	 *        launchers that {@link PluginLaunchers#write} wrote there
 	 * @param legalMaterialsDirectory the directory containing generated {@code LICENSE.txt}, {@code NOTICE.txt}, and
 	 *        {@code licenses/} copied to the top level of the assembled plugin directory
 	 * @param installerDirectories ordered directories of common and harness-specific installer resources, of which the
@@ -72,17 +70,16 @@ public final class PluginArtifactBuilder
 	 * @param artifactDirectory the new directory that receives the assembled artifact; unlike
 	 *        {@code installerDirectories}, it is an output rather than an input
 	 * @return {@code artifactDirectory}
-	 * @throws NullPointerException if {@code resourceLayers}, {@code clientDirectory}, {@code agentLaunchers},
-	 *         {@code legalMaterialsDirectory}, {@code installerDirectories}, or {@code artifactDirectory} are null
-	 * @throws IOException if the artifact cannot be assembled, or the client lacks one of {@code agentLaunchers}
+	 * @throws NullPointerException if {@code resourceLayers}, {@code binDirectory}, {@code legalMaterialsDirectory},
+	 *         {@code installerDirectories}, or {@code artifactDirectory} are null
+	 * @throws IOException if the artifact cannot be assembled
 	 */
-	public Path build(List<ArtifactLayer> resourceLayers, Path clientDirectory, Set<String> agentLaunchers,
-		Path legalMaterialsDirectory, List<Path> installerDirectories, Path artifactDirectory)
+	public Path build(List<ArtifactLayer> resourceLayers, Path binDirectory, Path legalMaterialsDirectory,
+		List<Path> installerDirectories, Path artifactDirectory)
 		throws IOException
 	{
 		requireThat(resourceLayers, "resourceLayers").isNotNull();
-		requireThat(clientDirectory, "clientDirectory").isNotNull();
-		requireThat(agentLaunchers, "agentLaunchers").isNotNull();
+		requireThat(binDirectory, "binDirectory").isNotNull();
 		requireThat(legalMaterialsDirectory, "legalMaterialsDirectory").isNotNull();
 		requireThat(installerDirectories, "installerDirectories").isNotNull();
 		requireThat(artifactDirectory, "artifactDirectory").isNotNull();
@@ -94,10 +91,8 @@ public final class PluginArtifactBuilder
 		for (ArtifactLayer layer : resourceLayers)
 			extractLayer(layer, artifactDirectory, owners);
 		resolvePromptIncludes(artifactDirectory);
-		Path client = artifactDirectory.resolve("client");
-		copyTree(clientDirectory, client);
-		PluginLaunchers.move(agentLaunchers, client, artifactDirectory.resolve("bin"));
-		Files.writeString(client.resolve("VERSION"), version + "\n");
+		copyTree(binDirectory, artifactDirectory.resolve(PluginDirectory.BIN));
+		Files.writeString(artifactDirectory.resolve(PluginDirectory.VERSION), version + "\n");
 		copyTree(legalMaterialsDirectory, artifactDirectory);
 		Path installDirectory = artifactDirectory.resolve("install");
 		for (Path installerDirectory : installerDirectories)

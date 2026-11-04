@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 /**
  * Tests writing a plugin directory's startup cache after the plugin directory is activated.
  * <p>
- * Each fixture plugin has a {@code client/bin/java} wrapper that runs the {@code java} of the runtime that the
+ * Each fixture plugin has a {@code bin/java} wrapper that runs the {@code java} of the runtime that the
  * plugin's binding names, as a plugin's wrapper does. One test runs real Java: its plugin is bound to a staged copy of
  * the testing JVM's runtime and its wrapper runs that runtime's {@code java} with the plugin's {@link StartupProgram}
  * jar. The other tests concern how training reacts to a run's outcome, so their wrapper runs
@@ -244,7 +244,7 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * Creates a fixture plugin: a jar of one program in its {@code client/modules} folder, a {@code client/bin/java}
+	 * Creates a fixture plugin: a jar of one program in its {@code bin/modules} folder, a {@code bin/java}
 	 * wrapper that runs the bound runtime's {@code java} with that jar as the class path, the binding, and a training
 	 * description.
 	 *
@@ -259,10 +259,9 @@ public final class StartupCacheTrainerTest
 	private static Path plugin(Path plugin, Path runtime, Class<?> program, String main, List<String> arguments)
 		throws IOException
 	{
-		Path client = Files.createDirectories(plugin.resolve("client"));
-		Files.createDirectories(client.resolve("modules"));
+		Path bin = Files.createDirectories(plugin.resolve("bin"));
+		Files.createDirectories(bin.resolve("modules"));
 		Files.write(plugin.resolve(StartupCacheFixtures.JAR), StartupCacheFixtures.jar(program));
-		Path bin = Files.createDirectories(client.resolve("bin"));
 		if (Platform.current().isWindows())
 			Files.writeString(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper(main, "java.exe"));
 		else
@@ -284,7 +283,7 @@ public final class StartupCacheTrainerTest
 	 */
 	private static void bind(Path plugin, Path runtime) throws IOException
 	{
-		Files.writeString(plugin.resolve("client/runtime-binding"), runtime + "\n", UTF_8);
+		Files.writeString(plugin.resolve("bin/runtime-binding"), runtime + "\n", UTF_8);
 	}
 
 	/**
@@ -355,7 +354,7 @@ public final class StartupCacheTrainerTest
 		if (Platform.current().isWindows())
 			wrapper = "java.cmd";
 		Path error = plugin.resolveSibling("accepted-error.txt");
-		ProcessBuilder builder = new ProcessBuilder(plugin.resolve("client/bin").resolve(wrapper).toString(),
+		ProcessBuilder builder = new ProcessBuilder(plugin.resolve("bin").resolve(wrapper).toString(),
 			"-XX:AOTMode=on", "-XX:AOTCache=" + plugin.resolve(StartupCache.FILE), StartupProgram.class.getName()).
 			redirectInput(Files.writeString(plugin.resolveSibling("input.txt"), INPUT).toFile()).
 			redirectOutput(ProcessBuilder.Redirect.DISCARD).

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# Starts CAT's client/bin/session-start hook from the installed plugin that contains this launcher.
+# Starts CAT's bin/session-start hook from the installed plugin that contains this launcher.
 set -eu
 
 plugin_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 export CAT_INSTALL_DIR="${plugin_dir}"
-exec "${CAT_INSTALL_DIR}/client/bin/session-start"
+exec "${CAT_INSTALL_DIR}/bin/session-start"

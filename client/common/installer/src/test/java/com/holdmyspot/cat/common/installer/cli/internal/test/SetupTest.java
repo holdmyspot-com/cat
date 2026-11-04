@@ -84,7 +84,7 @@ public final class SetupTest
 			requireThat(outcome.launcher(), "outcomeLauncher").isEqualTo(data.resolve("bin/cat-updater"));
 			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.2\n");
 			requireThat(Files.readString(fixture.home.resolve("live/version")), "plugin").isEqualTo("1.2");
-			requireThat(Files.readString(fixture.home.resolve("live/client/runtime-binding")), "binding").
+			requireThat(Files.readString(fixture.home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(data.resolve("runtime") + "\n");
 			requireThat(fixture.integration.calls(), "calls").isEqualTo(List.of("requireIdentity", "validateConfiguration",
 				"register", "installPermissions"));
@@ -122,14 +122,14 @@ public final class SetupTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("setup-refused-")));
-			Files.createDirectories(fixture.home.resolve("live/client"));
+			Files.createDirectories(fixture.home.resolve("live/bin"));
 			Files.writeString(fixture.home.resolve("live/version"), "1.0");
 			switch (condition)
 			{
 				case "configuration" -> fixture.integration.fail("validateConfiguration");
 				case "discovery" -> Files.delete(Path.of(fixture.command.command().getFirst()));
 				case "identity" -> fixture.integration.fail("requireIdentity");
-				case "runtime" -> Files.writeString(fixture.home.resolve("live/client/runtime-requirement.json"),
+				case "runtime" -> Files.writeString(fixture.home.resolve("live/bin/runtime-requirement.json"),
 					"{\"format\": 1, \"java_feature\": 99, \"modules\": [\"java.base\"]}");
 				case "keyless" -> fixture.writeDefaultPolicy(false);
 				case "otherHarness" ->
@@ -748,8 +748,8 @@ public final class SetupTest
 
 			requireThat(outcome.plugin().result(), "plugin").isEqualTo(Result.INSTALLED);
 			requireThat(Files.readString(fixture.home.resolve("live/bin/plugin-info")), "copied").isEqualTo("local");
-			requireThat(Files.exists(fixture.home.resolve("live/client/runtime-binding")), "binding").isTrue();
-			requireThat(Files.exists(tree.resolve("client/runtime-binding"), NOFOLLOW_LINKS), "sourceBinding").
+			requireThat(Files.exists(fixture.home.resolve("live/bin/runtime-binding")), "binding").isTrue();
+			requireThat(Files.exists(tree.resolve("bin/runtime-binding"), NOFOLLOW_LINKS), "sourceBinding").
 				isFalse();
 		}
 	}

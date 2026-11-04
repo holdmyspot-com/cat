@@ -27,7 +27,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
-import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.regex.Matcher;
@@ -97,8 +96,7 @@ public final class LifecycleSkillsTest
 			Path plugin = new PluginArtifactBuilder(PluginInfo.CAT_VERSION).build(
 				List.of(new ArtifactLayer("common-skills", commonSkills),
 					new ArtifactLayer(harness + "-skills", harnessSkills)),
-				Files.createDirectories(temporary.resolve("runtime")), Set.of(), legal,
-				List.of(), temporary.resolve("plugin"));
+				Files.createDirectories(temporary.resolve("bin")), legal, List.of(), temporary.resolve("plugin"));
 
 			requireThat(description(Files.readString(plugin.resolve("skills/update/SKILL.md"))), "updateDescription").
 				startsWith("Use when the user asks").contains("install").contains("update").contains("upgrade");

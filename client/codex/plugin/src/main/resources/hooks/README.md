@@ -6,7 +6,7 @@ For this hook, Codex sets the environment variable `PLUGIN_ROOT` to the director
 locates the shared `$PLUGIN_ROOT/hooks/session-start.sh` launcher. Codex also writes that directory into a hook's
 command in place of `${PLUGIN_ROOT}`, but the shell would then read a `$`, a quote or a backtick in the directory's
 name as syntax, so each command reads the environment variable instead. The launcher derives CAT's installation directory from its own
-location before it runs CAT's `client/bin/session-start` command.
+location before it runs CAT's `bin/session-start` command.
 
 The hook writes the session's rules to `.cat/sessions/<session_id>/rules.md` in the session's project directory. That
 directory is the session's CAT session directory: it also holds `temp/`, the session's `CAT_TEMP`, which the rules
@@ -50,7 +50,7 @@ unchanged. The launcher passes every other event over without starting Java.
 
 On Windows, Codex runs each hook's `commandWindows` in PowerShell instead of `command`. It starts the hook's `.cmd`
 launcher, such as `$env:PLUGIN_ROOT\hooks\session-start.cmd`, with PowerShell's call operator `&`; a quoted path alone
-is a string, which PowerShell prints instead of running. Each `.cmd` launcher runs CAT's `client\bin\<name>.bat`. A
+is a string, which PowerShell prints instead of running. Each `.cmd` launcher runs CAT's `bin\<name>.cmd`. A
 batch file cannot read the event and pass it on unchanged, so the `PostToolUse` command reads the event as UTF-8 in
 PowerShell and starts `post-tool-use.cmd`, piping the event to it as UTF-8, only when the event mentions `run-part` or
 `read-part`.

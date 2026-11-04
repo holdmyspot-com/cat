@@ -29,7 +29,7 @@ public final class PluginDirectoryTest
 	}
 
 	/**
-	 * Verifies that a class loaded from a module file in a plugin's {@code client/modules} directory locates that
+	 * Verifies that a class loaded from a module file in a plugin's {@code bin/modules} directory locates that
 	 * plugin, wherever the Java runtime is.
 	 *
 	 * @throws Exception if the fixture cannot be written or loaded
@@ -40,7 +40,7 @@ public final class PluginDirectoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-")).toAbsolutePath().normalize();
-			Path module = moduleWithProbe(plugin.resolve("client/modules/application.jar"));
+			Path module = moduleWithProbe(plugin.resolve("bin/modules/application.jar"));
 			try (URLClassLoader loader = loaderOf(module))
 			{
 				Class<?> probe = loader.loadClass(Probe.class.getName());
@@ -51,8 +51,8 @@ public final class PluginDirectoryTest
 	}
 
 	/**
-	 * Verifies that a class loaded from a module file outside a plugin's {@code client/modules} directory is
-	 * rejected, naming where it was loaded from.
+	 * Verifies that a class loaded from a module file outside a plugin's {@code bin/modules} directory is rejected,
+	 * naming where it was loaded from.
 	 *
 	 * @throws Exception if the fixture cannot be written or loaded
 	 */
@@ -76,6 +76,26 @@ public final class PluginDirectoryTest
 					return;
 				}
 				throw new AssertionError("The class's plugin directory was found");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a class loaded from a module file in a {@code client/modules} directory, where plugins kept their
+	 * modules before {@code bin/}, is rejected.
+	 *
+	 * @throws Exception if the fixture cannot be written or loaded
+	 */
+	@Test(expectedExceptions = IllegalStateException.class)
+	public void rejectsModuleInClientFolder() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-")).toAbsolutePath().normalize();
+			Path module = moduleWithProbe(plugin.resolve("client/modules/application.jar"));
+			try (URLClassLoader loader = loaderOf(module))
+			{
+				PluginDirectory.of(loader.loadClass(Probe.class.getName()));
 			}
 		}
 	}

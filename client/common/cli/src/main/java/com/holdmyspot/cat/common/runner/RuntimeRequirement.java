@@ -19,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The Java runtime that one application needs: a minimum Java feature release and the system modules that its module
- * graph resolves to. A plugin declares it in {@code client/runtime-requirement.json}, the updater application in
+ * graph resolves to. A plugin declares it in {@code bin/runtime-requirement.json}, the updater application in
  * {@code <version>/runtime-requirement.json}.
  *
  * @param javaFeature the minimum Java feature release, such as 27
@@ -30,7 +30,7 @@ public record RuntimeRequirement(int javaFeature, SortedSet<String> modules)
 	/**
 	 * The plugin-relative requirement file.
 	 */
-	public static final Path PLUGIN_FILE = Path.of("client/runtime-requirement.json");
+	public static final Path PLUGIN_FILE = PluginDirectory.BIN.resolve("runtime-requirement.json");
 	/**
 	 * Runtime descriptions and requirements are small; a larger file is not one CAT wrote.
 	 */

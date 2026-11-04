@@ -258,8 +258,8 @@ public final class InstallerActivationTest
 		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
 		{
 			entry(tar, top + "/" + provider.pluginManifest(), "{\"name\":\"cat\",\"version\":\"1.1\"}", 0644);
-			entry(tar, top + "/client/VERSION", "1.1\n", 0644);
-			entry(tar, top + "/client/runtime-requirement.json", REQUIREMENT, 0644);
+			entry(tar, top + "/bin/VERSION", "1.1\n", 0644);
+			entry(tar, top + "/bin/runtime-requirement.json", REQUIREMENT, 0644);
 			entry(tar, top + "/bin/plugin-info", "#!/bin/sh\nprintf executed > " +
 				ShellQuoting.posix(executionMarker.toString()) + "\n", 0755);
 			entry(tar, top + "/install/migrations/registry.tsv", "# no migrations\n", 0644);

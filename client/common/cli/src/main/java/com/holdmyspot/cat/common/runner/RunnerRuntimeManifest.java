@@ -36,9 +36,9 @@ public final class RunnerRuntimeManifest
 	/**
 	 * The artifact-relative location of the packaged manifest.
 	 */
-	public static final Path PATH = Path.of("client/runner-runtime.manifest");
+	public static final Path PATH = PluginDirectory.BIN.resolve("runner-runtime.manifest");
 	private static final String HEADER = "CAT runner runtime manifest v3";
-	private static final Set<Path> DIRECTORY_ROOTS = Set.of(Path.of("bin"), Path.of("client"), Path.of("hooks"));
+	private static final Set<Path> DIRECTORY_ROOTS = Set.of(PluginDirectory.BIN, Path.of("hooks"));
 	private static final Set<Path> FILE_ROOTS = Set.of(Path.of(".claude-plugin/plugin.json"),
 		Path.of(".codex-plugin/plugin.json"));
 

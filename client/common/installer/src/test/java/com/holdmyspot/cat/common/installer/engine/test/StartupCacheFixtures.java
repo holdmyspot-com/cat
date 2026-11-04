@@ -15,8 +15,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Builds the parts of a plugin directory and a Java runtime that a startup cache training runs.
  * <p>
- * A plugin's {@code client/bin/java} wrapper runs the {@code java} of the runtime that the plugin's
- * {@code client/runtime-binding} names. The fixture wrapper does the same with a jar of one test program as the class
+ * A plugin's {@code bin/java} wrapper runs the {@code java} of the runtime that the plugin's
+ * {@code bin/runtime-binding} names. The fixture wrapper does the same with a jar of one test program as the class
  * path, so a test controls which runtime a training runs by the binding, as an installation does. A fixture runtime's
  * {@code java} runs the testing JVM's {@code java} and names the runtime to the program in the system property
  * {@code fixture.runtime}, so {@link FakeJava} can record which runtime trained a cache.
@@ -34,7 +34,7 @@ public final class StartupCacheFixtures
 	/**
 	 * The fixture jar's path relative to the plugin directory.
 	 */
-	public static final String JAR = "client/modules/fixture.jar";
+	public static final String JAR = "bin/modules/fixture.jar";
 	/**
 	 * The options that a fixture runtime gives the testing JVM: the stand-in program runs for milliseconds, so the
 	 * JVM starts it without the optimizing compiler, the parallel collectors and the performance data file.
@@ -71,7 +71,7 @@ public final class StartupCacheFixtures
 	}
 
 	/**
-	 * Returns the POSIX {@code client/bin/java} wrapper of a fixture plugin: it runs the bound runtime's
+	 * Returns the POSIX {@code bin/java} wrapper of a fixture plugin: it runs the bound runtime's
 	 * {@code bin/java} with the plugin's fixture jar as the class path.
 	 *
 	 * @param main the main class that the wrapper names before the arguments that it receives, or an empty string
@@ -80,13 +80,13 @@ public final class StartupCacheFixtures
 	public static String posixWrapper(String main)
 	{
 		return "#!/bin/sh\n" +
-			"client=$(CDPATH= cd -P -- \"$(dirname -- \"$0\")/..\" && pwd -P)\n" +
-			"IFS= read -r runtime < \"$client/runtime-binding\"\n" +
-			"exec \"$runtime/bin/java\" -cp \"$client/modules/fixture.jar\"" + mainArgument(main) + " \"$@\"\n";
+			"bin=$(CDPATH= cd -P -- \"$(dirname -- \"$0\")\" && pwd -P)\n" +
+			"IFS= read -r runtime < \"$bin/runtime-binding\"\n" +
+			"exec \"$runtime/bin/java\" -cp \"$bin/modules/fixture.jar\"" + mainArgument(main) + " \"$@\"\n";
 	}
 
 	/**
-	 * Returns the Windows {@code client\bin\java.cmd} wrapper of a fixture plugin: it runs a program of the bound
+	 * Returns the Windows {@code bin\java.cmd} wrapper of a fixture plugin: it runs a program of the bound
 	 * runtime with the plugin's fixture jar as the class path.
 	 *
 	 * @param main    the main class that the wrapper names before the arguments that it receives, or an empty string
@@ -96,9 +96,9 @@ public final class StartupCacheFixtures
 	public static String windowsWrapper(String main, String program)
 	{
 		return "@echo off\r\n" +
-			"for %%I in (\"%~dp0..\") do set \"CLIENT=%%~fI\"\r\n" +
-			"set /p RUNTIME=<\"%CLIENT%\\runtime-binding\"\r\n" +
-			"call \"%RUNTIME%\\bin\\" + program + "\" -cp \"%CLIENT%\\modules\\fixture.jar\"" + mainArgument(main) +
+			"for %%I in (\"%~dp0.\") do set \"BIN=%%~fI\"\r\n" +
+			"set /p RUNTIME=<\"%BIN%\\runtime-binding\"\r\n" +
+			"call \"%RUNTIME%\\bin\\" + program + "\" -cp \"%BIN%\\modules\\fixture.jar\"" + mainArgument(main) +
 			" %*\r\n";
 	}
 

@@ -69,8 +69,6 @@ public final class RunnerLaunchersTest
 				"com.holdmyspot.cat.claude.runner.ClaudeRunnerCli")).
 			contains(new Launcher("request-session", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.runner.SessionRequestCli"));
-		requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains("codex-artifact").
-			contains("claude-runner").contains("request-session");
 	}
 
 	/**
@@ -89,8 +87,6 @@ public final class RunnerLaunchersTest
 				"com.holdmyspot.cat.codex.runner.CodexRunnerCli")).
 			contains(new Launcher("request-session", "com.holdmyspot.cat.common.cli",
 				"com.holdmyspot.cat.common.runner.SessionRequestCli"));
-		requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains("claude-artifact").
-			contains("codex-runner").contains("request-session");
 	}
 
 	/**
@@ -108,24 +104,18 @@ public final class RunnerLaunchersTest
 		requireThat(access.codexLaunchers(), "codexLaunchers").
 			contains(new Launcher("claude-runner", CODEX_MODULE,
 				"com.holdmyspot.cat.codex.runner.ClaudeRunnerRelay"));
-		requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains("claude-runner").
-			contains("codex-runner");
-		requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains("claude-runner").
-			contains("codex-runner");
 	}
 
 	/**
-	 * Supplies each plugin's harness with the launchers that the plugin holds in {@code bin/} and the launchers of
-	 * its client folder.
+	 * Supplies each plugin's harness with the launchers that the plugin holds in {@code bin/}.
 	 *
-	 * @return the harness's name, its plugin's launchers' names in {@code bin/}, and its client's launchers
+	 * @return the harness's name and its plugin's launchers
 	 */
 	@DataProvider
 	public Object[][] plugins()
 	{
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
-		return new Object[][]{{"claude", access.claudeAgentLaunchers(), access.claudeLaunchers()},
-			{"codex", access.codexAgentLaunchers(), access.codexLaunchers()}};
+		return new Object[][]{{"claude", access.claudeLaunchers()}, {"codex", access.codexLaunchers()}};
 	}
 
 	/**
@@ -133,18 +123,15 @@ public final class RunnerLaunchersTest
 	 * {@code bin/<launcher>} named in the skill's manifest or in its shared body is in that plugin's {@code bin/}.
 	 *
 	 * @param harness        the harness whose plugin to check
-	 * @param agentLaunchers the launchers in the plugin's {@code bin/}
-	 * @param imageLaunchers the launchers of the plugin's client
+	 * @param imageLaunchers the launchers in the plugin's {@code bin/}
 	 * @throws IOException        if a skill cannot be read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
 	 */
 	@Test(dataProvider = "plugins")
-	public void pluginHoldsEveryLauncherItsSkillsName(String harness, Set<String> agentLaunchers,
-		List<Launcher> imageLaunchers) throws IOException, URISyntaxException
+	public void pluginHoldsEveryLauncherItsSkillsName(String harness, List<Launcher> imageLaunchers)
+		throws IOException, URISyntaxException
 	{
-		Set<String> imageNames = new TreeSet<>();
-		for (Launcher launcher : imageLaunchers)
-			imageNames.add(launcher.name());
+		Set<String> imageNames = names(imageLaunchers);
 		List<String> missing = new ArrayList<>();
 		List<String> skills = new ArrayList<>();
 		forEachSkillTree(harness, harnessSkills ->
@@ -164,7 +151,7 @@ public final class RunnerLaunchersTest
 			forEachSkillTree("common", tree -> collectLaunchers(tree.resolve(skill), named));
 			for (String launcher : named)
 			{
-				if (!agentLaunchers.contains(launcher) || !imageNames.contains(launcher))
+				if (!imageNames.contains(launcher))
 					missing.add(skill + " names bin/" + launcher);
 			}
 		}
@@ -295,8 +282,8 @@ public final class RunnerLaunchersTest
 		for (String launcher : List.of("claude-runner", "claude-artifact", "codex-runner", "codex-artifact"))
 		{
 			requireThat(rule, "rule").contains("`${CAT_PLUGIN_ROOT}/bin/" + launcher + "`");
-			requireThat(access.claudeAgentLaunchers(), "claudeAgentLaunchers").contains(launcher);
-			requireThat(access.codexAgentLaunchers(), "codexAgentLaunchers").contains(launcher);
+			requireThat(names(access.claudeLaunchers()), "claudeLaunchers").contains(launcher);
+			requireThat(names(access.codexLaunchers()), "codexLaunchers").contains(launcher);
 		}
 		requireThat(rule, "rule").contains("CAT_SESSION_REQUESTS").contains("--input").contains("--request-depth").
 			contains("{\"type\":\"turn_completed\"").contains("assistant_response").contains("\"type\":\"turn_").
@@ -430,6 +417,20 @@ public final class RunnerLaunchersTest
 		requireThat(text, "rule-routing.md").
 			contains("starting a session through CAT's `claude-runner`, `codex-runner` or `request-session` launcher").
 			doesNotContain("new Claude Code or Codex session");
+	}
+
+	/**
+	 * Returns the names of launchers.
+	 *
+	 * @param launchers the launchers
+	 * @return their names
+	 */
+	private static Set<String> names(List<Launcher> launchers)
+	{
+		Set<String> names = new TreeSet<>();
+		for (Launcher launcher : launchers)
+			names.add(launcher.name());
+		return names;
 	}
 
 	/**

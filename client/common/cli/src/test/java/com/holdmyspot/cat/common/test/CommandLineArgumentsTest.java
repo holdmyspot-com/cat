@@ -14,7 +14,7 @@ public final class CommandLineArgumentsTest
 	/**
 	 * The start of the command line that a jlink launcher runs: the Java runtime, its options and the main class.
 	 */
-	private static final String LAUNCHER_COMMAND = "\"C:\\Program Files\\cat\\client\\bin\\\\java\" " +
+	private static final String LAUNCHER_COMMAND = "\"C:\\Program Files\\cat\\bin\\\\java\" " +
 		"-Xlog:all=off:stdout -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexReadPart ";
 
 	/**

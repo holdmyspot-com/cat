@@ -64,10 +64,10 @@ public final class StartupCacheTrainingTest
 			TestJvmScope scope = new TestJvmScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("startup-cache-training-"));
-			Path client = Files.createDirectories(plugin.resolve("client"));
+			Path bin = Files.createDirectories(plugin.resolve("bin"));
 			DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 
-			access.writeStartupCacheTraining(client, harness, scope.json());
+			access.writeStartupCacheTraining(bin, harness, scope.json());
 
 			JsonNode training = scope.json().readTree(Files.readString(plugin.resolve(StartupCache.TRAINING)));
 			requireThat(training.propertyNames(), "members").

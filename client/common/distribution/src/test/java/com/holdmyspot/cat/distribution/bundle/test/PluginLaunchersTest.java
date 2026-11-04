@@ -55,20 +55,20 @@ public final class PluginLaunchersTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path client = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("client");
-			PluginLaunchers.write(List.of(READ_PART, SESSION_START), Platform.LINUX_X64, true, client);
+			Path bin = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("bin");
+			PluginLaunchers.write(List.of(READ_PART, SESSION_START), Platform.LINUX_X64, true, bin);
 
-			requireThat(names(client.resolve("bin")), "launchers").isEqualTo(Set.of("java", "read-part",
+			requireThat(names(bin), "launchers").isEqualTo(Set.of("java", "read-part",
 				"session-start"));
-			requireThat(Files.readString(client.resolve("bin/read-part")), "launcher").
+			requireThat(Files.readString(bin.resolve("read-part")), "launcher").
 				startsWith("#!/bin/sh\n").
-				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS + " --module-path \"$client/modules\" " +
+				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS + " --module-path \"$bin/modules\" " +
 					"--add-modules org.slf4j.nop -m app/example.Main \"$@\"\n").
 				contains("java=$runtime/bin/java\n").
 				doesNotContain("bwrap");
-			requireThat(Files.readString(client.resolve("bin/java")), "wrapper").
+			requireThat(Files.readString(bin.resolve("java")), "wrapper").
 				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS +
-					" --module-path \"$client/modules\" \"$@\"\n");
+					" --module-path \"$bin/modules\" \"$@\"\n");
 		}
 	}
 
@@ -82,16 +82,16 @@ public final class PluginLaunchersTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path client = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("client");
-			PluginLaunchers.write(List.of(READ_PART), Platform.WINDOWS_X64, true, client);
+			Path bin = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("bin");
+			PluginLaunchers.write(List.of(READ_PART), Platform.WINDOWS_X64, true, bin);
 
-			requireThat(names(client.resolve("bin")), "launchers").isEqualTo(Set.of("java", "java.cmd", "read-part",
-				"read-part.bat"));
-			requireThat(Files.readString(client.resolve("bin/read-part")), "posixLauncher").
+			requireThat(names(bin), "launchers").isEqualTo(Set.of("java", "java.cmd", "read-part",
+				"read-part.cmd"));
+			requireThat(Files.readString(bin.resolve("read-part")), "posixLauncher").
 				contains("java=$runtime/bin/java.exe\n");
-			String batch = Files.readString(client.resolve("bin/read-part.bat"));
+			String batch = Files.readString(bin.resolve("read-part.cmd"));
 			requireThat(batch, "batchLauncher").
-				contains("\r\n\"%JAVA%\" %CACHE% " + VM_OPTIONS + " --module-path \"%CLIENT%\\modules\" " +
+				contains("\r\n\"%JAVA%\" %CACHE% " + VM_OPTIONS + " --module-path \"%BIN%\\modules\" " +
 					"--add-modules org.slf4j.nop -m app/example.Main %*\r\n").
 				contains("\r\nexit /b 3\r\n");
 			requireThat(batch.replace("\r\n", ""), "lineEndings").doesNotContain("\n");
@@ -107,10 +107,10 @@ public final class PluginLaunchersTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path client = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("client");
-			PluginLaunchers.write(List.of(READ_PART), Platform.WINDOWS_X64, false, client);
+			Path bin = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("bin");
+			PluginLaunchers.write(List.of(READ_PART), Platform.WINDOWS_X64, false, bin);
 
-			requireThat(names(client.resolve("bin")), "launchers").isEqualTo(Set.of("java.cmd", "read-part.bat"));
+			requireThat(names(bin), "launchers").isEqualTo(Set.of("java.cmd", "read-part.cmd"));
 		}
 	}
 
@@ -122,60 +122,56 @@ public final class PluginLaunchersTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path client = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("client");
-			PluginLaunchers.write(List.of(READ_PART), Platform.LINUX_X64, false, client);
+			Path bin = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("bin");
+			PluginLaunchers.write(List.of(READ_PART), Platform.LINUX_X64, false, bin);
 		}
 	}
 
 	/**
-	 * Verifies that a moved launcher, in both forms, finds {@code client/} from its new folder, that its batch form
-	 * takes the extension {@code .cmd}, and that the launchers that do not move stay in {@code client/bin}.
+	 * Verifies that a launcher, in both forms, finds the plugin's {@code bin/} folder as its own folder.
 	 */
 	@Test
-	public void movedLaunchersFindClient() throws IOException
+	public void launchersFindTheirOwnFolder() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path plugin = cleanup.add(Files.createTempDirectory("plugin-launchers-"));
-			Path client = plugin.resolve("client");
-			PluginLaunchers.write(List.of(READ_PART, SESSION_START), Platform.WINDOWS_X64, true, client);
+			Path bin = cleanup.add(Files.createTempDirectory("plugin-launchers-")).resolve("bin");
+			PluginLaunchers.write(List.of(READ_PART, SESSION_START), Platform.WINDOWS_X64, true, bin);
 
-			PluginLaunchers.move(Set.of("read-part"), client, plugin.resolve("bin"));
-
-			requireThat(Files.readString(plugin.resolve("bin/read-part")), "posixLauncher").
-				contains("client=$(CDPATH= cd -P -- \"$(dirname -- \"$self\")/../client\" && pwd -P)");
-			requireThat(Files.readString(plugin.resolve("bin/read-part.cmd")), "batchLauncher").
-				contains("for %%I in (\"%~dp0..\\client\") do set \"CLIENT=%%~fI\"\r\n");
-			requireThat(names(plugin.resolve("bin")), "movedLaunchers").isEqualTo(Set.of("read-part", "read-part.cmd"));
-			requireThat(names(client.resolve("bin")), "keptLaunchers").isEqualTo(Set.of("java", "java.cmd",
-				"session-start", "session-start.bat"));
+			requireThat(Files.readString(bin.resolve("read-part")), "posixLauncher").
+				contains("bin=$(CDPATH= cd -P -- \"$(dirname -- \"$self\")\" && pwd -P)").
+				contains("binding=$bin/runtime-binding\n");
+			requireThat(Files.readString(bin.resolve("read-part.cmd")), "batchLauncher").
+				contains("for %%I in (\"%~dp0.\") do set \"BIN=%%~fI\"\r\n").
+				contains("set \"BINDING=%BIN%\\runtime-binding\"\r\n");
+			requireThat(names(bin), "launchers").isEqualTo(Set.of("java", "java.cmd", "read-part", "read-part.cmd",
+				"session-start", "session-start.cmd"));
 		}
 	}
 
 	/**
-	 * Verifies that a moved POSIX launcher runs the bound {@code java} with the plugin's module path and the caller's
+	 * Verifies that a POSIX launcher runs the bound {@code java} with the plugin's module path and the caller's
 	 * arguments, discarding the JVM options that the environment supplies.
 	 */
 	@Test
-	public void movedLauncherRunsBoundJava() throws IOException, InterruptedException
+	public void launcherRunsBoundJava() throws IOException, InterruptedException
 	{
 		if (Platform.current().isWindows())
 			throw new SkipException("The POSIX launcher runs in a POSIX shell");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("plugin launchers ")).toRealPath();
-			Path client = plugin.resolve("client");
-			PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, client);
-			PluginLaunchers.move(Set.of("read-part"), client, plugin.resolve("bin"));
+			Path bin = plugin.resolve("bin");
+			PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, bin);
 			Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
 			Path java = Files.writeString(runtime.resolve("bin/java"), """
 				#!/bin/sh
 				printf '%s|' "JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS-unset}" "$@"
 				""");
 			requireThat(java.toFile().setExecutable(true, false), "executable").isTrue();
-			Files.writeString(client.resolve("runtime-binding"), runtime + "\n");
+			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
-			ProcessBuilder builder = new ProcessBuilder(plugin.resolve("bin/read-part").toString(), "first arg",
+			ProcessBuilder builder = new ProcessBuilder(bin.resolve("read-part").toString(), "first arg",
 				"second").redirectErrorStream(true);
 			builder.environment().put("JAVA_TOOL_OPTIONS", "-Dinjected=true");
 			builder.environment().put("LC_ALL", "C.UTF-8");
@@ -188,7 +184,7 @@ public final class PluginLaunchersTest
 			}
 
 			requireThat(output, "output").isEqualTo("JAVA_TOOL_OPTIONS=unset|" +
-				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + client +
+				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + bin +
 				"/modules|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
 		}
 	}
@@ -207,26 +203,26 @@ public final class PluginLaunchersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("plugin with spaces ")).toRealPath();
-			Path client = plugin.resolve("client");
+			Path bin = plugin.resolve("bin");
 			// A Windows plugin whose harness runs commands in PowerShell holds only the batch launchers
-			PluginLaunchers.write(List.of(), Platform.current(), !Platform.current().isWindows(), client);
+			PluginLaunchers.write(List.of(), Platform.current(), !Platform.current().isWindows(), bin);
 			// Java uses a startup cache that it trained on a module path only for the same module path, which an empty
 			// folder is not; any jar stands in for the plugin's modules
-			Path modules = Files.createDirectories(client.resolve("modules"));
+			Path modules = Files.createDirectories(bin.resolve("modules"));
 			Files.copy(Path.of(URI.create(Test.class.getProtectionDomain().getCodeSource().getLocation().toString())),
 				modules.resolve("module.jar"));
 			Path runtime = Path.of(System.getProperty("java.home")).toRealPath();
-			Files.writeString(client.resolve("runtime-binding"), runtime + "\n", UTF_8);
+			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n", UTF_8);
 			Files.writeString(plugin.resolve(StartupCache.TRAINING), """
 				{"format":1,"arguments":["-m","jdk.jartool/sun.tools.jar.Main","--version"],\
 				"plugin_root_variable":"CAT_PLUGIN_ROOT","input":""}""", UTF_8);
 
-			String untrainedFlags = runWrapper(client, "-XX:+PrintCommandLineFlags", "-version");
+			String untrainedFlags = runWrapper(bin, "-XX:+PrintCommandLineFlags", "-version");
 			boolean written = new StartupCacheTrainer(plugin.resolve("scratch"), Duration.ofMinutes(1), () -> false).
 				train(plugin);
-			String trainedFlags = runWrapper(client, "-XX:+PrintCommandLineFlags", "-version");
+			String trainedFlags = runWrapper(bin, "-XX:+PrintCommandLineFlags", "-version");
 			// With AOTMode=on, Java fails instead of starting without a cache that it cannot use
-			String trainedRun = runWrapper(client, "-XX:AOTMode=on", "-m", "jdk.jartool/sun.tools.jar.Main", "--version");
+			String trainedRun = runWrapper(bin, "-XX:AOTMode=on", "-m", "jdk.jartool/sun.tools.jar.Main", "--version");
 
 			requireThat(untrainedFlags, "untrainedFlags").doesNotContain("-XX:AOTCache=");
 			requireThat(written, "written").isTrue();
@@ -241,19 +237,19 @@ public final class PluginLaunchersTest
 	/**
 	 * Runs a plugin's {@code java} wrapper on this platform, {@code java.cmd} on Windows, requiring it to succeed.
 	 *
-	 * @param client    the plugin's {@code client} folder
+	 * @param bin       the plugin's {@code bin} folder
 	 * @param arguments the wrapper's arguments
 	 * @return the wrapper's standard output and standard error
 	 * @throws IOException          if the wrapper cannot be run or ends with a failure status
 	 * @throws InterruptedException if the test is interrupted
 	 */
-	private static String runWrapper(Path client, String... arguments) throws IOException, InterruptedException
+	private static String runWrapper(Path bin, String... arguments) throws IOException, InterruptedException
 	{
 		String wrapper = PluginLaunchers.JAVA_WRAPPER;
 		if (Platform.current().isWindows())
 			wrapper += ".cmd";
 		List<String> command = new ArrayList<>();
-		command.add(client.resolve("bin").resolve(wrapper).toString());
+		command.add(bin.resolve(wrapper).toString());
 		command.addAll(List.of(arguments));
 		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 		try (Process process = builder.start())
@@ -263,29 +259,6 @@ public final class PluginLaunchersTest
 			if (process.waitFor() != 0)
 				throw new IOException(command + " failed with status " + process.exitValue() + ": " + output);
 			return output;
-		}
-	}
-
-	/**
-	 * Verifies that moving a launcher that the plugin lacks fails.
-	 */
-	@Test
-	public void moveRequiresLauncher() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path plugin = cleanup.add(Files.createTempDirectory("plugin-launchers-"));
-			Path client = plugin.resolve("client");
-			PluginLaunchers.write(List.of(READ_PART), Platform.LINUX_X64, true, client);
-			try
-			{
-				PluginLaunchers.move(Set.of("run-part"), client, plugin.resolve("bin"));
-				throw new AssertionError("Expected a failure for the missing launcher");
-			}
-			catch (IOException failure)
-			{
-				requireThat(failure.getMessage(), "failureMessage").contains("no launcher named run-part");
-			}
 		}
 	}
 

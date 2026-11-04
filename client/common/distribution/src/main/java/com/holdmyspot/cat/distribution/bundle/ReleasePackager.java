@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,12 +34,6 @@ import org.apache.commons.compress.compressors.gzip.GzipParameters;
  */
 public final class ReleasePackager
 {
-	/**
-	 * The file of an assembled plugin that names the Java runtime that the plugin runs on. Only a plugin assembled in a
-	 * source checkout holds it, naming the runtime that the build wrote; the trusted installer writes it for an installed
-	 * plugin.
-	 */
-	public static final Path RUNTIME_BINDING = Path.of("client", "runtime-binding");
 	private static final Set<PosixFilePermission> DIRECTORY_PERMISSIONS = permissions("rwx", "r-x", "r-x");
 	private static final Set<PosixFilePermission> SYMBOLIC_LINK_PERMISSIONS = permissions("rwx", "rwx", "rwx");
 	private static final Set<PosixFilePermission> EXECUTABLE_FILE_PERMISSIONS = permissions("rwx", "r-x", "r-x");
@@ -61,8 +56,9 @@ public final class ReleasePackager
 
 	/**
 	 * Packages a plugin or installer artifact as a deterministic archive, replacing an existing archive at its generated
-	 * path. The archive leaves out {@link #RUNTIME_BINDING}, which names a runtime on the building machine, and the
-	 * {@link StartupCache startup cache}, which Java accepts only at the location where it was written.
+	 * path. The archive leaves out the {@link RuntimeBinding runtime binding}, which names a runtime on the building
+	 * machine, and the {@link StartupCache startup cache}, which Java accepts only at the location where it was
+	 * written.
 	 *
 	 * @param component        the plugin harness identifier or {@code installer}, used in the generated archive filename
 	 * @param platform         distribution platform whose identifier is included in the generated archive filename
@@ -108,7 +104,7 @@ public final class ReleasePackager
 					artifactRoot.relativize(candidate).toString())).toList())
 				{
 					Path relative = artifactRoot.relativize(path);
-					if (relative.equals(RUNTIME_BINDING) || relative.startsWith(StartupCache.DIRECTORY))
+					if (relative.equals(RuntimeBinding.PATH) || relative.startsWith(StartupCache.DIRECTORY))
 						continue;
 					String relativeName = "/";
 					if (!relative.toString().isEmpty())

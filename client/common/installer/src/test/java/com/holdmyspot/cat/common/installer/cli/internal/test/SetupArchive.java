@@ -96,10 +96,9 @@ final class SetupArchive
 	{
 		Files.createDirectories(tree.resolve(".harness-a"));
 		Files.writeString(tree.resolve(".harness-a/plugin.json"), "{\"version\":\"" + VERSION + "\"}");
-		Files.createDirectories(tree.resolve("client"));
-		Files.writeString(tree.resolve("client/VERSION"), VERSION);
-		Files.writeString(tree.resolve("client/runtime-requirement.json"), REQUIREMENT);
 		Files.createDirectories(tree.resolve("bin"));
+		Files.writeString(tree.resolve("bin/VERSION"), VERSION);
+		Files.writeString(tree.resolve("bin/runtime-requirement.json"), REQUIREMENT);
 		Files.writeString(tree.resolve("bin/plugin-info"), "local");
 		Files.setPosixFilePermissions(tree.resolve("bin/plugin-info"), PosixFilePermissions.fromString("rwxr-xr-x"));
 		Files.createDirectories(tree.resolve("install/migrations"));

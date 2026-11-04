@@ -51,7 +51,7 @@ import java.util.Optional;
  * command's last line from the line that ends a part.
  * <p>
  * The command receives the saved output's path in {@code CAT_RUN_PART_OUTPUT} and, in {@code bash}, finds the
- * plugin's {@code client/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
+ * plugin's {@code bin/run-part-overrides} folder first on its {@code PATH}. A program in that folder, such as
  * {@code rg}, keeps output that it writes straight into that file small enough for the agent that reads it, and leaves
  * other output unchanged. The programs there are POSIX scripts without an extension, so a PowerShell command does not
  * find the folder: PowerShell resolves a command to such a file when it comes first on the {@code PATH}, and hands a
@@ -135,7 +135,7 @@ public final class CodexRunPart
 		Console console = System.console();
 		boolean terminal = console != null && console.isTerminal();
 		CommandShell shell = CommandShell.current();
-		Path overrides = PluginDirectory.of(CodexRunPart.class).resolve("client").resolve(OVERRIDES);
+		Path overrides = PluginDirectory.of(CodexRunPart.class).resolve(PluginDirectory.BIN).resolve(OVERRIDES);
 		int status = run(args, System.in, terminal, Path.of("").toAbsolutePath(), shell,
 			CodexReadPart.launcher(shell.launcher("read-part")), overrides,
 			Platform.current().environment(System.getenv()), System.out, System.err, Redirect.INHERIT, Pause::sleeping);

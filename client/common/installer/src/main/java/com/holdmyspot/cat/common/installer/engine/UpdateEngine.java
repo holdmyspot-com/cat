@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.release.TarGzExtractor;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.RuntimeDescription;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.StartupCache;
@@ -58,10 +59,6 @@ public final class UpdateEngine
 	 * The release selector with which install names the latest approved release.
 	 */
 	public static final String LATEST = "latest";
-	/**
-	 * The plugin-relative file that names the Java runtime the plugin runs on.
-	 */
-	private static final Path BINDING_FILE = Path.of("client/runtime-binding");
 	/**
 	 * The permissions of a plugin's runtime binding where the file system records them.
 	 */
@@ -789,7 +786,7 @@ public final class UpdateEngine
 	{
 		Path migrationFile = validatePlugin(mode, tree, version, active, home);
 		requireRuntime(tree, version);
-		Files.writeString(tree.resolve(BINDING_FILE), runtime + "\n", StandardCharsets.UTF_8);
+		Files.writeString(tree.resolve(RuntimeBinding.PATH), runtime + "\n", StandardCharsets.UTF_8);
 		Completion register = () -> session.integration().register(home, session.cli(),
 			session.replacer());
 		if (active == null)
@@ -911,7 +908,7 @@ public final class UpdateEngine
 		requireOwnRuntime(next, RuntimeRequirement.read(staged.plugin().resolve(RuntimeRequirement.PLUGIN_FILE)),
 			"plugin", version);
 		requireOwnRuntime(next, RuntimeRequirement.read(image.resolve(Bundle.REQUIREMENT_FILE)), "installer", version);
-		Files.writeString(staged.plugin().resolve(BINDING_FILE), runtime + "\n", StandardCharsets.UTF_8);
+		Files.writeString(staged.plugin().resolve(RuntimeBinding.PATH), runtime + "\n", StandardCharsets.UTF_8);
 		Completion register = () -> session.integration().register(home, session.cli(),
 			session.replacer());
 		try
@@ -1106,7 +1103,7 @@ public final class UpdateEngine
 	 */
 	private boolean trainBound(Path plugin, Path training) throws IOException
 	{
-		Path binding = plugin.resolve(BINDING_FILE);
+		Path binding = plugin.resolve(RuntimeBinding.PATH);
 		// The plugin's launchers pass the module path that Java checks the cache against, so training runs through them
 		if (training.equals(runtime) || !Files.exists(binding, NOFOLLOW_LINKS))
 			return trainer.train(plugin);

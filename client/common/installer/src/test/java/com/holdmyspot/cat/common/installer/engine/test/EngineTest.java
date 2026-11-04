@@ -125,7 +125,7 @@ public final class EngineTest
 	public Object[][] defects()
 	{
 		return new Object[][]{{"digest"}, {"size"}, {"unknownKey"}, {"manifest"}, {"truncated"}, {"top"},
-			{"pluginVersion"}, {"clientVersion"}, {"missingBinary"}, {"missingRegistry"}, {"migration"},
+			{"pluginVersion"}, {"binVersion"}, {"missingBinary"}, {"missingRegistry"}, {"migration"},
 			{"traversal"}, {"symlink"}, {"hardLink"}};
 	}
 

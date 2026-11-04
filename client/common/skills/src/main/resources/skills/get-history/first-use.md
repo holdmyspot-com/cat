@@ -12,7 +12,7 @@
 2. If that launcher does not exist, use the
 	source-built launcher only when the current directory is a CAT source-checkout root, verified by
 	`client/pom.xml`. Build it with `client/mvnw -q -f client/pom.xml -pl common/distribution -am package`, then run
-	`client/common/distribution/target/runtime/<harness>/client/bin/get-history`, replacing `<harness>` with the
+	`client/common/distribution/target/runtime/<harness>/bin/get-history`, replacing `<harness>` with the
 	selected harness.
 	Record the launcher path and artifact revision. If neither launcher exists, report the harness-specific location that
 	was checked and whether the source-checkout verification failed, then stop.

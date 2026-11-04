@@ -10,6 +10,9 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
+import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
@@ -48,9 +51,9 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 public final class DistributionMain
 {
 	/**
-	 * The file of a plugin's {@code client} folder that names the Java runtime that the plugin needs.
+	 * The file of a plugin's {@code bin} folder that names the Java runtime that the plugin needs.
 	 */
-	private static final String RUNTIME_REQUIREMENT = "runtime-requirement.json";
+	private static final Path RUNTIME_REQUIREMENT = PluginDirectory.BIN.relativize(RuntimeRequirement.PLUGIN_FILE);
 	/**
 	 * The input that a harness gives its session-start hook when a new session starts, which an installation gives the
 	 * plugin's session-start program to train the plugin's startup cache.
@@ -69,21 +72,9 @@ public final class DistributionMain
 			}
 
 			@Override
-			public Set<String> claudeAgentLaunchers()
-			{
-				return DistributionMain.claudeAgentLaunchers();
-			}
-
-			@Override
 			public List<Launcher> codexLaunchers()
 			{
 				return DistributionMain.codexLaunchers();
-			}
-
-			@Override
-			public Set<String> codexAgentLaunchers()
-			{
-				return DistributionMain.codexAgentLaunchers();
 			}
 
 			@Override
@@ -93,15 +84,15 @@ public final class DistributionMain
 			}
 
 			@Override
-			public void writeCodexLaunchers(Path client, Platform platform) throws IOException
+			public void writeCodexLaunchers(Path bin, Platform platform) throws IOException
 			{
-				DistributionMain.writeCodexLaunchers(client, platform);
+				DistributionMain.writeCodexLaunchers(bin, platform);
 			}
 
 			@Override
-			public Path stageClient(ApplicationModules application, Path client, JsonMapper json) throws IOException
+			public Path stageBin(ApplicationModules application, Path bin, JsonMapper json) throws IOException
 			{
-				return DistributionMain.stageClient(application, client, json);
+				return DistributionMain.stageBin(application, bin, json);
 			}
 
 			@Override
@@ -111,9 +102,9 @@ public final class DistributionMain
 			}
 
 			@Override
-			public void writeStartupCacheTraining(Path client, String harness, JsonMapper json) throws IOException
+			public void writeStartupCacheTraining(Path bin, String harness, JsonMapper json) throws IOException
 			{
-				DistributionMain.writeStartupCacheTraining(client, harness, json);
+				DistributionMain.writeStartupCacheTraining(bin, harness, json);
 			}
 
 			@Override
@@ -181,13 +172,13 @@ public final class DistributionMain
 		Path target = releaseDirectory.getParent();
 		Path runtimeDirectory = target.resolve("runtime");
 		// The inputs that the artifacts are assembled from: the modules that the applications resolve from, the plugins'
-		// client folders, and the legal materials
+		// bin folders, and the legal materials
 		Path staging = target.resolve("distribution-staging");
 		deleteAndRecreateDirectory(releaseDirectory);
 		deleteAndRecreateDirectory(runtimeDirectory);
 		deleteAndRecreateDirectory(staging);
 		Path staged = Files.createDirectory(staging.resolve("modules"));
-		Path clientDirectory = Files.createDirectory(staging.resolve("clients"));
+		Path binDirectory = Files.createDirectory(staging.resolve("bins"));
 		Path legalDirectory = staging.resolve("legal");
 
 		Path commonCli = findDependencyJar(moduleDirectory, "client-common-cli");
@@ -258,12 +249,12 @@ public final class DistributionMain
 		Path installerDirectory = runtimeDirectory.resolve("installer");
 		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, installerDirectory.resolve("runtime"),
 			scope.json());
-		Path claudeClient = stageClient(claudeApplication, clientDirectory.resolve("claude"), scope.json());
-		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeClient);
-		writeStartupCacheTraining(claudeClient, "claude", scope.json());
-		Path codexClient = stageClient(codexApplication, clientDirectory.resolve("codex"), scope.json());
-		writeCodexLaunchers(codexClient, platform);
-		writeStartupCacheTraining(codexClient, "codex", scope.json());
+		Path claudeBin = stageBin(claudeApplication, binDirectory.resolve("claude"), scope.json());
+		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeBin);
+		writeStartupCacheTraining(claudeBin, "claude", scope.json());
+		Path codexBin = stageBin(codexApplication, binDirectory.resolve("codex"), scope.json());
+		writeCodexLaunchers(codexBin, platform);
+		writeStartupCacheTraining(codexBin, "codex", scope.json());
 
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
 		LegalMaterialsBuilder legalMaterialsBuilder = new LegalMaterialsBuilder(PluginInfo.CAT_VERSION);
@@ -325,7 +316,7 @@ public final class DistributionMain
 			new ArtifactLayer("common-rules", commonRules),
 			new ArtifactLayer("claude-plugin", claudePlugin, Set.of(), Set.of("hooks/session-end.sh")),
 			new ArtifactLayer("claude-rules", claudeRules)),
-			claudeClient, claudeAgentLaunchers(), legalMaterials, List.of(commonInstallers, claudeInstallers),
+			claudeBin, legalMaterials, List.of(commonInstallers, claudeInstallers),
 			runtimeDirectory.resolve("claude"));
 		Path codexRoot = artifactBuilder.build(List.of(new ArtifactLayer("common-agents", commonAgents),
 			new ArtifactLayer("common-plugin", commonPlugin, Set.of(), Set.of("hooks/session-start.sh",
@@ -336,8 +327,8 @@ public final class DistributionMain
 				"skills/git-amend/SKILL.md", "skills/git-commit/SKILL.md", "skills/git-merge-linear/SKILL.md",
 				"skills/git-rebase/SKILL.md", "skills/git-rewrite-history/SKILL.md", "skills/git-squash/SKILL.md",
 				"skills/help/SKILL.md")),
-			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexClient,
-			codexAgentLaunchers(), legalMaterials, List.of(commonInstallers, codexInstallers),
+			codexPluginLayer(codexPlugin), new ArtifactLayer("codex-rules", codexRules)), codexBin, legalMaterials,
+			List.of(commonInstallers, codexInstallers),
 			runtimeDirectory.resolve("codex"));
 		validateRuleDependencies(claudeRoot, codexRoot, projectRoot, scope.yaml());
 		RuleArtifactRouter.route(claudeRoot, scope.yaml());
@@ -507,53 +498,54 @@ public final class DistributionMain
 	 */
 	static ArtifactLayer codexPluginLayer(Path jar)
 	{
-		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("client/run-part-overrides/rg",
+		return new ArtifactLayer("codex-plugin", jar, Set.of(), Set.of("bin/run-part-overrides/rg",
 			"hooks/post-tool-use.sh"));
 	}
 
 	/**
-	 * Writes the launchers of the Codex plugin's client. On Windows, the plugin holds only the batch launchers: Codex
-	 * runs commands there in PowerShell, and CAT's skills name each launcher by its path without an extension, which
-	 * PowerShell resolves to the POSIX launcher whenever it exists. The Claude plugin keeps both, because Claude Code
-	 * runs commands in Git Bash.
+	 * Writes the launchers of the Codex plugin's {@code bin} folder. On Windows, the plugin holds only the batch
+	 * launchers: Codex runs commands there in PowerShell, and CAT's skills name each launcher by its path without an
+	 * extension, which PowerShell resolves to the POSIX launcher whenever it exists. The Claude plugin keeps both,
+	 * because Claude Code runs commands in Git Bash.
 	 *
-	 * @param client   the plugin's {@code client} folder
+	 * @param bin      the folder that becomes the plugin's {@code bin} folder
 	 * @param platform the platform that the plugin runs on
 	 * @throws IOException if the launchers cannot be written
 	 */
-	static void writeCodexLaunchers(Path client, Platform platform) throws IOException
+	static void writeCodexLaunchers(Path bin, Platform platform) throws IOException
 	{
-		PluginLaunchers.write(codexLaunchers(), platform, !platform.isWindows(), client);
+		PluginLaunchers.write(codexLaunchers(), platform, !platform.isWindows(), bin);
 	}
 
 	/**
-	 * Stages a plugin's {@code client} folder: its modules and its runtime requirement.
+	 * Stages the folder that becomes a plugin's {@code bin} folder with the plugin's modules and its runtime
+	 * requirement.
 	 *
 	 * @param application the plugin's modules
-	 * @param client      the folder, which must not exist
+	 * @param bin         the folder, which must not exist
 	 * @param json        the JSON writer
-	 * @return {@code client}
+	 * @return {@code bin}
 	 * @throws IOException if the folder cannot be written
 	 */
-	static Path stageClient(ApplicationModules application, Path client, JsonMapper json) throws IOException
+	static Path stageBin(ApplicationModules application, Path bin, JsonMapper json) throws IOException
 	{
-		Path modules = Files.createDirectories(client.resolve("modules"));
+		Path modules = Files.createDirectories(bin.resolve(PluginDirectory.BIN.relativize(PluginDirectory.MODULES)));
 		for (Path jar : application.jars())
 			Files.copy(jar, modules.resolve(jar.getFileName()));
-		application.writeRequirement(client.resolve(RUNTIME_REQUIREMENT), json);
-		return client;
+		application.writeRequirement(bin.resolve(RUNTIME_REQUIREMENT), json);
+		return bin;
 	}
 
 	/**
-	 * Writes the description of how an installation trains a plugin's startup cache into the plugin's {@code client}
+	 * Writes the description of how an installation trains a plugin's startup cache into the plugin's {@code bin}
 	 * folder.
 	 *
-	 * @param client  the plugin's {@code client} folder
+	 * @param bin     the folder that becomes the plugin's {@code bin} folder
 	 * @param harness the plugin's harness, {@code claude} or {@code codex}
 	 * @param json    the JSON writer
 	 * @throws IOException if the description cannot be written
 	 */
-	static void writeStartupCacheTraining(Path client, String harness, JsonMapper json) throws IOException
+	static void writeStartupCacheTraining(Path bin, String harness, JsonMapper json) throws IOException
 	{
 		List<Launcher> launchers;
 		String rootVariable;
@@ -580,7 +572,7 @@ public final class DistributionMain
 		PluginLaunchers.programArguments(sessionStart).forEach(arguments::add);
 		training.put("plugin_root_variable", rootVariable);
 		training.put("input", SESSION_START_INPUT);
-		Files.writeString(client.resolve(Path.of("client").relativize(StartupCache.TRAINING)),
+		Files.writeString(bin.resolve(PluginDirectory.BIN.relativize(StartupCache.TRAINING)),
 			json.writeValueAsString(training) + "\n", UTF_8);
 	}
 
@@ -595,7 +587,7 @@ public final class DistributionMain
 	 */
 	static void writeRuntimeBinding(Path plugin, Path runtime) throws IOException
 	{
-		Files.writeString(plugin.resolve(ReleasePackager.RUNTIME_BINDING),
+		Files.writeString(plugin.resolve(RuntimeBinding.PATH),
 			runtime.toAbsolutePath().normalize() + "\n", UTF_8);
 	}
 
@@ -649,21 +641,6 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Returns the launchers of the Claude plugin that agents run, which the plugin holds in {@code bin/}. They include
-	 * {@code claude-artifact}, which reports this plugin as the Claude CAT artifact, {@code codex-artifact}, which
-	 * finds the Codex CAT artifact, {@code claude-runner}, which the Codex plugin's {@code claude-runner} launcher runs
-	 * from the Claude artifact, and {@code codex-runner}, which runs the runner of the Codex artifact, so that agents
-	 * in both harnesses run the same launchers.
-	 *
-	 * @return the launchers' names
-	 */
-	static Set<String> claudeAgentLaunchers()
-	{
-		return Set.of("get-history", "plugin-info", "prompt-optimizer", "claude-artifact", "claude-runner",
-			"codex-artifact", "codex-runner", "wait-until", "request-session");
-	}
-
-	/**
 	 * Returns the launchers of the Codex plugin.
 	 *
 	 * @return the launchers
@@ -699,21 +676,6 @@ public final class DistributionMain
 				"com.holdmyspot.cat.codex.optimizer.CodexPromptOptimizer"),
 			new Launcher("wait-until", "com.holdmyspot.cat.codex.cli",
 				"com.holdmyspot.cat.codex.CodexWaitUntil")));
-	}
-
-	/**
-	 * Returns the launchers of the Codex plugin that agents run, which the plugin holds in {@code bin/}. They include
-	 * {@code codex-artifact}, which reports this plugin as the Codex CAT artifact, {@code claude-artifact}, which finds
-	 * the Claude CAT artifact, {@code codex-runner}, which the Claude plugin's {@code codex-runner} launcher runs from
-	 * the Codex artifact, and {@code claude-runner}, which runs the runner of the Claude artifact, so that agents in
-	 * both harnesses run the same launchers.
-	 *
-	 * @return the launchers' names
-	 */
-	static Set<String> codexAgentLaunchers()
-	{
-		return Set.of("get-history", "plugin-info", "prompt-optimizer", "run-part", "read-part", "claude-artifact",
-			"claude-runner", "codex-artifact", "codex-runner", "wait-until", "request-session");
 	}
 
 	/**

@@ -40,11 +40,11 @@ public final class HarnessArtifact
 
 	/**
 	 * Validates a complete unpacked plugin directory, built for a platform, for a caller-supplied plugin manifest. The
-	 * required launchers are {@code bin/plugin-info}, which agents run, and the hook launcher
-	 * {@code client/bin/session-start}. On Windows, they are the batch launchers {@code bin/plugin-info.cmd} and
-	 * {@code client/bin/session-start.bat}, which {@code cmd.exe} and PowerShell run, because the Codex image there holds
-	 * no POSIX launchers. Elsewhere, they are the executable POSIX launchers. The plugin's runtime binding must name a
-	 * Java runtime whose {@code java} program the launchers can run.
+	 * required launchers are {@code bin/plugin-info}, which agents run, and the hook launcher {@code bin/session-start}.
+	 * On Windows, they are the batch launchers {@code bin/plugin-info.cmd} and {@code bin/session-start.cmd}, which
+	 * {@code cmd.exe} and PowerShell run, because the Codex image there holds no POSIX launchers. Elsewhere, they are
+	 * the executable POSIX launchers. The plugin's runtime binding must name a Java runtime whose {@code java} program
+	 * the launchers can run.
 	 *
 	 * @param root the unpacked plugin directory
 	 *
@@ -81,7 +81,7 @@ public final class HarnessArtifact
 			throw new IOException("Artifact directory does not exist or is not a directory: " + normalized +
 				". Extract the CAT artifact and use its directory.");
 		}
-		Path version = normalized.resolve("client/VERSION");
+		Path version = normalized.resolve(PluginDirectory.VERSION);
 		Path manifest = normalized.resolve(manifestPath).normalize();
 		if (!manifest.startsWith(normalized))
 		{
@@ -93,12 +93,12 @@ public final class HarnessArtifact
 		if (platform.isWindows())
 		{
 			pluginInfo = normalized.resolve("bin/plugin-info.cmd");
-			sessionStart = normalized.resolve("client/bin/session-start.bat");
+			sessionStart = normalized.resolve("bin/session-start.cmd");
 		}
 		else
 		{
 			pluginInfo = normalized.resolve("bin/plugin-info");
-			sessionStart = normalized.resolve("client/bin/session-start");
+			sessionStart = normalized.resolve("bin/session-start");
 		}
 		if (!Files.isRegularFile(version, NOFOLLOW_LINKS) ||
 			!Files.isRegularFile(manifest, NOFOLLOW_LINKS) ||

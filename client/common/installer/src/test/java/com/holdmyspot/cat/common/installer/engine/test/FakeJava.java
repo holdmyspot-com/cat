@@ -12,7 +12,7 @@ import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 
 /**
- * Stands in for a fixture plugin's {@code client/bin/java} wrapper and the session-start program that it runs, so that
+ * Stands in for a fixture plugin's {@code bin/java} wrapper and the session-start program that it runs, so that
  * a test of how training reacts to a run's outcome does not wait for real Java to record and write a cache.
  * <p>
  * It reacts to the startup cache options as the JDK's {@code java} launcher documents them for its two-step

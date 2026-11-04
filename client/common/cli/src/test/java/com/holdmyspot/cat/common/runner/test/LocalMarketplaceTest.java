@@ -87,15 +87,15 @@ public final class LocalMarketplaceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path artifact = cleanup.add(Files.createTempDirectory("cat-artifact-"));
-			Files.createDirectories(artifact.resolve("client/aot"));
-			Files.writeString(artifact.resolve("client/aot/session-start.aot"), "cache");
-			Files.writeString(artifact.resolve("client/VERSION"), "1.0\n");
+			Files.createDirectories(artifact.resolve("bin/aot"));
+			Files.writeString(artifact.resolve("bin/aot/session-start.aot"), "cache");
+			Files.writeString(artifact.resolve("bin/VERSION"), "1.0\n");
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
 
 			LocalMarketplace.copy(artifact, plugin);
 
-			requireThat(Files.exists(plugin.resolve("client/aot"), LinkOption.NOFOLLOW_LINKS), "copiedCache").isFalse();
-			requireThat(Files.readString(plugin.resolve("client/VERSION")), "copiedVersion").isEqualTo("1.0\n");
+			requireThat(Files.exists(plugin.resolve("bin/aot"), LinkOption.NOFOLLOW_LINKS), "copiedCache").isFalse();
+			requireThat(Files.readString(plugin.resolve("bin/VERSION")), "copiedVersion").isEqualTo("1.0\n");
 		}
 	}
 

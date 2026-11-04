@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 # Tests the run-part and read-part launchers in the Codex plugin's bin folder and the plugin's rg override: the
-# launchers start the client's programs from an installed plugin path that contains spaces, run-part saves a command's
+# launchers start CAT's programs from an installed plugin path that contains spaces, run-part saves a command's
 # output in the temporary folder of the Codex thread's CAT session directory in the project, the line that ends a part
 # names the plugin's read-part, run-part runs the plugin's rg override, and the override keeps the output that run-part
 # saves short.
@@ -93,7 +93,7 @@ run_part()
 # Output: none; Bats' run sets status, output and lines from the command's exit status and saved output
 run_saved()
 {
-	local overrides="${GENERATED_RUNTIME_DIRECTORY}/codex/client/run-part-overrides"
+	local overrides="${GENERATED_RUNTIME_DIRECTORY}/codex/bin/run-part-overrides"
 	local saved="${TEST_ROOT}/run-part-1/output.txt"
 	mkdir -p "${saved%/*}"
 	create_fake_rg

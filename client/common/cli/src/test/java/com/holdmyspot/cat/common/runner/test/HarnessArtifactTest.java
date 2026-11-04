@@ -102,13 +102,33 @@ public final class HarnessArtifactTest
 	}
 
 	/**
+	 * Verifies that an artifact whose version and hook launcher are in a {@code client/} folder, where plugins kept
+	 * them before {@code bin/}, is rejected.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(expectedExceptions = IOException.class)
+	public void rejectsClientFolderLayout() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = createArtifact(cleanup, false);
+			Path client = Files.createDirectories(artifact.resolve("client/bin"));
+			Files.move(artifact.resolve("bin/VERSION"), client.resolveSibling("VERSION"));
+			Files.move(artifact.resolve("bin/session-start"), client.resolve("session-start"));
+
+			HarnessArtifact.validate(artifact, Path.of(".harness/plugin.json"), Platform.LINUX_X64);
+		}
+	}
+
+	/**
 	 * Verifies that a plugin directory without a runtime binding is rejected with a message that names the binding,
 	 * because its launchers cannot find Java.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
-		".*client[/\\\\]runtime-binding.*")
+		".*bin[/\\\\]runtime-binding.*")
 	public void rejectsArtifactWithoutBinding() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -127,7 +147,7 @@ public final class HarnessArtifactTest
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
-		".*client[/\\\\]runtime-binding.*")
+		".*bin[/\\\\]runtime-binding.*")
 	public void rejectsRelativeBinding() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -145,7 +165,7 @@ public final class HarnessArtifactTest
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
-		".*client[/\\\\]runtime-binding.*")
+		".*bin[/\\\\]runtime-binding.*")
 	public void rejectsMultiLineBinding() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -165,7 +185,7 @@ public final class HarnessArtifactTest
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
-		".*client[/\\\\]runtime-binding.*")
+		".*bin[/\\\\]runtime-binding.*")
 	public void rejectsBindingWithoutJava() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -192,9 +212,8 @@ public final class HarnessArtifactTest
 	{
 		Path artifact = cleanup.add(Files.createTempDirectory("cat-artifact-"));
 		Files.createDirectories(artifact.resolve("bin"));
-		Files.createDirectories(artifact.resolve("client/bin"));
 		Files.createDirectories(artifact.resolve(".harness"));
-		Files.writeString(artifact.resolve("client/VERSION"), PluginInfo.CAT_VERSION);
+		Files.writeString(artifact.resolve("bin/VERSION"), PluginInfo.CAT_VERSION);
 		Files.writeString(artifact.resolve(".harness/plugin.json"), "{}");
 		Set<PosixFilePermission> permissions = Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE);
 		Path pluginInfo;
@@ -202,12 +221,12 @@ public final class HarnessArtifactTest
 		if (batch)
 		{
 			pluginInfo = artifact.resolve("bin/plugin-info.cmd");
-			sessionStart = artifact.resolve("client/bin/session-start.bat");
+			sessionStart = artifact.resolve("bin/session-start.cmd");
 		}
 		else
 		{
 			pluginInfo = artifact.resolve("bin/plugin-info");
-			sessionStart = artifact.resolve("client/bin/session-start");
+			sessionStart = artifact.resolve("bin/session-start");
 		}
 		Files.writeString(pluginInfo, "#!/bin/sh\n");
 		Files.writeString(sessionStart, "#!/bin/sh\n");

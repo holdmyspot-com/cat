@@ -60,17 +60,13 @@ public final class FakeRelease
 		throws IOException
 	{
 		String extension = "";
-		String hookExtension = "";
 		if (platform.isWindows())
-		{
 			extension = ".cmd";
-			hookExtension = ".bat";
-		}
-		write(directory.resolve("client/VERSION"), version + "\n", false);
+		write(directory.resolve("bin/VERSION"), version + "\n", false);
 		write(directory.resolve(manifest), "{}\n", false);
 		write(directory.resolve("bin/plugin-info" + extension), "#!/bin/sh\n", true);
 		write(directory.resolve("bin/" + runner + extension), "#!/bin/sh\n", true);
-		write(directory.resolve("client/bin/session-start" + hookExtension), "#!/bin/sh\n", true);
+		write(directory.resolve("bin/session-start" + extension), "#!/bin/sh\n", true);
 		requirement(directory, JAVA_FEATURE, "java.base");
 		return directory;
 	}
@@ -85,7 +81,7 @@ public final class FakeRelease
 	 */
 	public static void requirement(Path artifact, int feature, String... modules) throws IOException
 	{
-		write(artifact.resolve("client/runtime-requirement.json"), "{\"format\": 1, \"java_feature\": " + feature +
+		write(artifact.resolve("bin/runtime-requirement.json"), "{\"format\": 1, \"java_feature\": " + feature +
 			", \"modules\": " + jsonArray(modules) + "}\n", false);
 	}
 

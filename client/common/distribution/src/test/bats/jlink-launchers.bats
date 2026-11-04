@@ -2,10 +2,10 @@
 
 # Tests the template that every generated plugin launcher shares: a launcher runs its program from a plugin path that
 # contains spaces, without Bubblewrap even where it cannot create a namespace, and Java can name a file that is not ASCII
-# in the caller's C locale. A launcher finds Java only through the plugin's client/runtime-binding: it passes its JVM
+# in the caller's C locale. A launcher finds Java only through the plugin's bin/runtime-binding: it passes its JVM
 # options, the plugin's module path and its arguments to the bound java, discards the JVM options that the environment
 # supplies, and refuses an unusable binding with one line naming it and exit status 3. A launcher starts Java from the
-# plugin's startup cache client/aot/session-start.aot when that file exists, and a cache that Java cannot use changes
+# plugin's startup cache bin/aot/session-start.aot when that file exists, and a cache that Java cannot use changes
 # nothing that the program's caller sees.
 
 bats_require_minimum_version 1.5.0
@@ -44,7 +44,7 @@ create_echo_runtime_plugin()
 {
 	PLUGIN="${TEST_ROOT}/copied plugin"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${PLUGIN}"
-	BINDING="${PLUGIN}/client/runtime-binding"
+	BINDING="${PLUGIN}/bin/runtime-binding"
 	local runtime="${TEST_ROOT}/echo runtime"
 	mkdir -p "${runtime}/bin"
 	cat > "${runtime}/bin/java" <<'SCRIPT'
@@ -80,7 +80,7 @@ assert_unusable_binding()
 		"${PLUGIN}/bin/plugin-info" "first argument" '' 'quote " and $dollar'
 
 	[ "${status}" -eq 0 ]
-	modules="$(cd -P "${PLUGIN}/client/modules" && pwd -P)"
+	modules="$(cd -P "${PLUGIN}/bin/modules" && pwd -P)"
 	expected="JAVA_TOOL_OPTIONS=unset
 JDK_JAVA_OPTIONS=unset
 CLASSPATH=unset
@@ -107,20 +107,20 @@ CLASSPATH=unset
 
 @test "a launcher passes the plugin's startup cache to the bound java only when the cache exists" {
 	create_echo_runtime_plugin
-	client="$(cd -P "${PLUGIN}/client" && pwd -P)"
+	bin="$(cd -P "${PLUGIN}/bin" && pwd -P)"
 
 	run "${PLUGIN}/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" != *"AOTCache"* ]]
 
-	mkdir "${PLUGIN}/client/aot"
-	printf 'cache' > "${PLUGIN}/client/aot/session-start.aot"
+	mkdir "${PLUGIN}/bin/aot"
+	printf 'cache' > "${PLUGIN}/bin/aot/session-start.aot"
 
 	run "${PLUGIN}/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
-	[[ "${output}" == *$'\nCLASSPATH=unset\n[-XX:AOTCache='"${client}"$'/aot/session-start.aot]\n[-Xlog:all=off:stdout]\n'* ]]
+	[[ "${output}" == *$'\nCLASSPATH=unset\n[-XX:AOTCache='"${bin}"$'/aot/session-start.aot]\n[-Xlog:all=off:stdout]\n'* ]]
 }
 
 # Trains a startup cache for a copy of the generated Codex plugin at another path, as an installation at that path
@@ -130,17 +130,17 @@ CLASSPATH=unset
 #   $1 - the copy to train the cache in
 #
 # Outputs:
-#   $1/client/aot/session-start.aot - the cache
+#   $1/bin/aot/session-start.aot - the cache
 train_cache_elsewhere()
 {
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "$1"
-	mkdir "$1/client/aot"
-	"$1/client/bin/java" -XX:AOTMode=record -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
+	mkdir "$1/bin/aot"
+	"$1/bin/java" -XX:AOTMode=record -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
 		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
-	"$1/client/bin/java" -XX:AOTMode=create -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
-		-XX:AOTCache="$1/client/aot/session-start.aot" \
+	"$1/bin/java" -XX:AOTMode=create -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
+		-XX:AOTCache="$1/bin/aot/session-start.aot" \
 		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
-	[ -s "$1/client/aot/session-start.aot" ]
+	[ -s "$1/bin/aot/session-start.aot" ]
 }
 
 @test "a launcher's output stays the same and its standard error empty with a foreign, truncated or invalid cache" {
@@ -155,9 +155,9 @@ train_cache_elsewhere()
 	[[ "${expected}" == "harness=codex"$'\n'* ]]
 
 	train_cache_elsewhere "${TEST_ROOT}/other plugin"
-	foreign="${TEST_ROOT}/other plugin/client/aot/session-start.aot"
-	mkdir "${plugin}/client/aot"
-	cache="${plugin}/client/aot/session-start.aot"
+	foreign="${TEST_ROOT}/other plugin/bin/aot/session-start.aot"
+	mkdir "${plugin}/bin/aot"
+	cache="${plugin}/bin/aot/session-start.aot"
 	size=$(wc -c < "${foreign}")
 	for kind in foreign truncated invalid; do
 		case "${kind}" in
@@ -174,19 +174,19 @@ train_cache_elsewhere()
 	done
 }
 
-@test "a launcher run through a link and the java wrapper find the plugin's client folder" {
+@test "a launcher run through a link and the java wrapper find the plugin's bin folder" {
 	create_echo_runtime_plugin
-	ln -s "${PLUGIN}/client/bin/session-start" "${TEST_ROOT}/linked launcher"
+	ln -s "${PLUGIN}/bin/session-start" "${TEST_ROOT}/linked launcher"
 
 	run "${TEST_ROOT}/linked launcher"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *$'\n[com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexSessionStartHook]'* ]]
 
-	run "${PLUGIN}/client/bin/java" -version
+	run "${PLUGIN}/bin/java" -version
 
 	[ "${status}" -eq 0 ]
-	modules="$(cd -P "${PLUGIN}/client/modules" && pwd -P)"
+	modules="$(cd -P "${PLUGIN}/bin/modules" && pwd -P)"
 	[[ "${output}" == *$'\n[--module-path]\n['"${modules}"$']\n[-version]' ]]
 }
 

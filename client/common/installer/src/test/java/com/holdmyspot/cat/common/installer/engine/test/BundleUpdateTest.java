@@ -54,7 +54,7 @@ public final class BundleUpdateTest
 			requireThat(result.version(), "version").isEqualTo(Optional.of("1.1"));
 			requireThat(result.previousVersion(), "previousVersion").isEqualTo(Optional.of("1.0"));
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.1");
-			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
+			requireThat(Files.readString(home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(Files.readString(data.resolve("1.1/VERSION")), "installer").isEqualTo("1.1\n");
 			requireThat(Files.readString(data.resolve(Releases.anchor("1.1"))), "anchor").
@@ -322,7 +322,7 @@ public final class BundleUpdateTest
 			Path home = plugin(root, "1.0");
 			Path runtime = Releases.installation(data, "1.0");
 			// The installed 1.0 plugin is bound to the installation's runtime
-			Files.writeString(Files.createDirectories(home.resolve("live/client")).resolve("runtime-binding"),
+			Files.writeString(Files.createDirectories(home.resolve("live/bin")).resolve("runtime-binding"),
 				runtime.toAbsolutePath().normalize() + "\n");
 			Releases release = new Releases("1.1", "");
 			requireThat(engine(data, home, release).update("v1.1", new RecordingIntegration().session()).
@@ -342,7 +342,7 @@ public final class BundleUpdateTest
 			requireThat(Files.readString(data.resolve("current")), "current").isEqualTo("1.0\n");
 			requireThat(Files.readString(home.resolve("live/version")), "plugin").isEqualTo("1.0");
 			requireThat(integration.calls(), "calls").contains("register");
-			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
+			requireThat(Files.readString(home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(Files.readString(runtime.resolve("release")), "runtime").isEqualTo("runtime 1.0");
 			requireThat(Files.exists(data.resolve("runtime.next")), "stagedRuntime").isFalse();

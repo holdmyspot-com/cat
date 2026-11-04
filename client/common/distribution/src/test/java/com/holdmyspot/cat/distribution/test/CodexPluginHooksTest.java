@@ -107,17 +107,17 @@ public final class CodexPluginHooksTest
 		{
 			Path pluginRoot = cleanup.add(Files.createTempDirectory(PLUGIN_ROOT_PREFIX));
 			Path launchers = Files.createDirectories(pluginRoot.resolve("hooks"));
-			Path client = Files.createDirectories(pluginRoot.resolve("client").resolve("bin"));
+			Path bin = Files.createDirectories(pluginRoot.resolve("bin"));
 			if (platform.isWindows())
 			{
 				copyResource("hooks/post-tool-use.cmd", launchers.resolve("post-tool-use.cmd"));
-				Files.writeString(client.resolve("post-tool-use.bat"), "@echo off\r\necho started\r\nfindstr \"^\"\r\n" +
+				Files.writeString(bin.resolve("post-tool-use.cmd"), "@echo off\r\necho started\r\nfindstr \"^\"\r\n" +
 					"exit /b 0\r\n");
 			}
 			else
 			{
 				makeExecutable(copyResource("hooks/post-tool-use.sh", launchers.resolve("post-tool-use.sh")));
-				makeExecutable(Files.writeString(client.resolve("post-tool-use"), "#!/bin/sh\necho started\ncat\n"));
+				makeExecutable(Files.writeString(bin.resolve("post-tool-use"), "#!/bin/sh\necho started\ncat\n"));
 			}
 			String readPartEvent = PART_EVENT.replace("run-part", "read-part");
 

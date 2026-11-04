@@ -6,6 +6,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
@@ -28,7 +29,7 @@ import tools.jackson.databind.JsonNode;
  * plugin's programs start faster.
  * <p>
  * Java accepts a cache only for the module path that it was trained with, so each plugin directory is trained where
- * it was placed: one run of its session-start program through the plugin's {@code client/bin/java} wrapper, which
+ * it was placed: one run of its session-start program through the plugin's {@code bin/java} wrapper, which
  * passes the same Java options and module path as the plugin's launchers, records what the program loads, and a
  * second run writes the cache from that record. Java also accepts a cache only for the runtime image that trained
  * it, and the wrapper runs the runtime that the directory's runtime binding names, so the caller binds the directory to
@@ -201,7 +202,7 @@ public final class StartupCacheTrainer
 		if (Platform.current().isWindows())
 			wrapper = "java.cmd";
 		List<String> command = new ArrayList<>();
-		command.add(plugin.resolve("client/bin").resolve(wrapper).toString());
+		command.add(plugin.resolve(PluginDirectory.BIN).resolve(wrapper).toString());
 		command.addAll(options);
 		command.addAll(training.arguments());
 		ProcessBuilder builder = new ProcessBuilder(command).

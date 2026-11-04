@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
+import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.secrets.ReleaseBundlesAccess;
@@ -75,7 +76,7 @@ import java.util.stream.Collectors;
  * resolution to use.
  * <p>
  * Before a resolution uses a downloaded or earlier-downloaded bundle, it checks that the installation's Java runtime it
- * was given satisfies the bundle's {@code client/runtime-requirement.json} and refuses the bundle otherwise. It then
+ * was given satisfies the bundle's {@code bin/runtime-requirement.json} and refuses the bundle otherwise. It then
  * binds the bundle to that runtime unless the bundle's runtime binding already names it and is usable, so a bundle that
  * another installation bound to its own runtime, or to a runtime that was since removed, is rebound rather than
  * refused. It also removes any startup cache that the bundle holds, because Java accepts a startup cache only at the
@@ -147,10 +148,6 @@ public final class ReleaseBundles
 	 * The release's checksum file.
 	 */
 	private static final String CHECKSUMS = "SHA256SUMS.txt";
-	/**
-	 * The file in an artifact that names the oldest Java feature release and the modules that it needs.
-	 */
-	private static final Path REQUIREMENT = Path.of("client/runtime-requirement.json");
 	/**
 	 * The largest checksum file that a resolution reads.
 	 */
@@ -362,7 +359,7 @@ public final class ReleaseBundles
 	 */
 	private void bind(Path bundle) throws IOException
 	{
-		InstalledRuntime.requireSatisfies(runtime, bundle.resolve(REQUIREMENT));
+		InstalledRuntime.requireSatisfies(runtime, bundle.resolve(RuntimeRequirement.PLUGIN_FILE));
 		TemporaryDirectories.deleteRecursively(bundle.resolve(StartupCache.DIRECTORY));
 		Path bound;
 		try

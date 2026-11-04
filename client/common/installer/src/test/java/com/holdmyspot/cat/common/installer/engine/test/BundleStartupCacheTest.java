@@ -178,15 +178,14 @@ public final class BundleStartupCacheTest
 	{
 		Path runtime = Releases.installation(data, "1.0");
 		Path home = plugin(root, "1.0");
-		Path client = Files.createDirectories(home.resolve("live/client"));
+		Path bin = Files.createDirectories(home.resolve("live/bin"));
 		String main = FakeJava.class.getName();
-		Path bin = Files.createDirectories(client.resolve("bin"));
 		Path wrapper = Files.writeString(bin.resolve("java"), StartupCacheFixtures.posixWrapper(main));
 		requireThat(wrapper.toFile().setExecutable(true), "executable").isTrue();
 		Files.writeString(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper(main, "java.cmd"));
-		Files.createDirectories(client.resolve("modules"));
+		Files.createDirectories(bin.resolve("modules"));
 		Files.write(home.resolve("live").resolve(StartupCacheFixtures.JAR), StartupCacheFixtures.jar(FakeJava.class));
-		Files.writeString(client.resolve("runtime-binding"), runtime.toAbsolutePath().normalize() + "\n");
+		Files.writeString(bin.resolve("runtime-binding"), runtime.toAbsolutePath().normalize() + "\n");
 		if (described)
 			describe(home.resolve("live"));
 		return home;
@@ -225,7 +224,7 @@ public final class BundleStartupCacheTest
 	 */
 	private static String binding(Path home) throws IOException
 	{
-		return Files.readString(home.resolve("live/client/runtime-binding"));
+		return Files.readString(home.resolve("live/bin/runtime-binding"));
 	}
 
 	/**

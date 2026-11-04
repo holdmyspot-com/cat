@@ -7,7 +7,6 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
-import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.IOException;
@@ -16,13 +15,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-import java.util.Set;
 import org.testng.annotations.Test;
 
 /**
  * Tests that the launchers of the Codex plugin run from the shell that Codex runs commands in, by the absolute path
- * without an extension that CAT's skills name, such as {@code <plugin>/bin/plugin-info}, including the launchers that
- * the plugin moves from {@code client/bin} to its own {@code bin} folder.
+ * without an extension that CAT's skills name, such as {@code <plugin>/bin/plugin-info}.
  */
 public final class CodexImageLaunchersTest
 {
@@ -49,13 +46,9 @@ public final class CodexImageLaunchersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("codex-image-")).toAbsolutePath();
-			Path client = Files.createDirectories(directory.resolve("client/modules")).getParent();
+			Path bin = Files.createDirectories(directory.resolve("bin/modules")).getParent();
 			DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
-			access.writeCodexLaunchers(client, platform);
-			Set<String> agentLaunchers = access.codexAgentLaunchers();
-			requireThat(agentLaunchers, "agentLaunchers").contains("request-session");
-			Path agentBin = directory.resolve("bin");
-			PluginLaunchers.move(agentLaunchers, client, agentBin);
+			access.writeCodexLaunchers(bin, platform);
 			Path runtime;
 			if (platform.isWindows())
 				runtime = Path.of(System.getProperty("java.home")).toAbsolutePath().normalize();
@@ -64,19 +57,12 @@ public final class CodexImageLaunchersTest
 				runtime = Files.createDirectories(directory.resolve("runtime/bin")).getParent();
 				writeExecutable(runtime.resolve("bin/java"), "#!/bin/sh\necho started \"$@\"\n");
 			}
-			Files.writeString(client.resolve("runtime-binding"), runtime + "\n");
+			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
 			List<Launcher> launchers = access.codexLaunchers();
 			List<String> paths = new ArrayList<>();
 			for (Launcher launcher : launchers)
-			{
-				Path bin;
-				if (agentLaunchers.contains(launcher.name()))
-					bin = agentBin;
-				else
-					bin = client.resolve("bin");
 				paths.add(bin.resolve(launcher.name()).toString());
-			}
 			if (platform.isWindows())
 			{
 				String output = runInPowerShell(paths);
@@ -95,7 +81,7 @@ public final class CodexImageLaunchersTest
 				Launcher launcher = launchers.get(i);
 				requireThat(lines.get(i), launcher.name()).startsWith("started ").
 					contains(" -Djdk.http.auth.tunneling.disabledSchemes= ").
-					contains("--module-path " + client.resolve("modules").toRealPath()).
+					contains("--module-path " + bin.resolve("modules").toRealPath()).
 					contains("-m " + launcher.module() + "/" + launcher.mainClass());
 			}
 		}

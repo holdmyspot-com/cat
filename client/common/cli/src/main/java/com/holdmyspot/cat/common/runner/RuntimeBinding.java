@@ -28,7 +28,7 @@ public final class RuntimeBinding
 	/**
 	 * The binding's location, relative to the plugin directory.
 	 */
-	public static final Path PATH = Path.of("client/runtime-binding");
+	public static final Path PATH = PluginDirectory.BIN.resolve("runtime-binding");
 	/**
 	 * The largest binding that CAT reads.
 	 */

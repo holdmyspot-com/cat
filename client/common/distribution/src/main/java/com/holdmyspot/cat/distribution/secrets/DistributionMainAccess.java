@@ -9,7 +9,6 @@ import com.holdmyspot.cat.distribution.bundle.Launcher;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -25,25 +24,11 @@ public interface DistributionMainAccess
 	List<Launcher> claudeLaunchers();
 
 	/**
-	 * Returns the launchers of the Claude plugin that agents run, which the plugin holds in {@code bin/}.
-	 *
-	 * @return the launchers' names
-	 */
-	Set<String> claudeAgentLaunchers();
-
-	/**
 	 * Returns the launchers of the Codex plugin.
 	 *
 	 * @return the launchers
 	 */
 	List<Launcher> codexLaunchers();
-
-	/**
-	 * Returns the launchers of the Codex plugin that agents run, which the plugin holds in {@code bin/}.
-	 *
-	 * @return the launchers' names
-	 */
-	Set<String> codexAgentLaunchers();
 
 	/**
 	 * Returns the layer of the Codex plugin's own resources.
@@ -54,24 +39,25 @@ public interface DistributionMainAccess
 	ArtifactLayer codexPluginLayer(Path jar);
 
 	/**
-	 * Writes the launchers of the Codex plugin's client.
+	 * Writes the launchers of the Codex plugin's {@code bin} folder.
 	 *
-	 * @param client   the plugin's {@code client} folder
+	 * @param bin      the folder that becomes the plugin's {@code bin} folder
 	 * @param platform the platform that the plugin runs on
 	 * @throws IOException if the launchers cannot be written
 	 */
-	void writeCodexLaunchers(Path client, Platform platform) throws IOException;
+	void writeCodexLaunchers(Path bin, Platform platform) throws IOException;
 
 	/**
-	 * Stages a plugin's {@code client} folder: its modules and its runtime requirement.
+	 * Stages the folder that becomes a plugin's {@code bin} folder with the plugin's modules and its runtime
+	 * requirement.
 	 *
 	 * @param application the plugin's modules
-	 * @param client      the folder, which must not exist
+	 * @param bin         the folder, which must not exist
 	 * @param json        the JSON writer
-	 * @return {@code client}
+	 * @return {@code bin}
 	 * @throws IOException if the folder cannot be written
 	 */
-	Path stageClient(ApplicationModules application, Path client, JsonMapper json) throws IOException;
+	Path stageBin(ApplicationModules application, Path bin, JsonMapper json) throws IOException;
 
 	/**
 	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote.
@@ -99,13 +85,13 @@ public interface DistributionMainAccess
 	String dependencyCoordinates(String groupId, String artifactId, Path path);
 
 	/**
-	 * Writes the description of how an installation trains a plugin's startup cache into the plugin's {@code client}
+	 * Writes the description of how an installation trains a plugin's startup cache into the plugin's {@code bin}
 	 * folder.
 	 *
-	 * @param client  the plugin's {@code client} folder
+	 * @param bin     the folder that becomes the plugin's {@code bin} folder
 	 * @param harness the plugin's harness, {@code claude} or {@code codex}
 	 * @param json    the JSON writer
 	 * @throws IOException if the description cannot be written
 	 */
-	void writeStartupCacheTraining(Path client, String harness, JsonMapper json) throws IOException;
+	void writeStartupCacheTraining(Path bin, String harness, JsonMapper json) throws IOException;
 }

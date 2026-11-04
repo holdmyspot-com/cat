@@ -58,7 +58,7 @@ public final class InstallTest
 			requireThat(result.result().exitStatus(), "exitStatus").isEqualTo(0);
 			requireThat(result.version().orElseThrow(), "version").isEqualTo("1.1");
 			requireThat(Files.readString(home.resolve("live/version")), "liveVersion").isEqualTo("1.1");
-			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
+			requireThat(Files.readString(home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
 		}
@@ -363,7 +363,7 @@ public final class InstallTest
 				integration.session());
 
 			requireThat(result.result(), "result").isEqualTo(Result.UPDATED);
-			requireThat(Files.readString(home.resolve("live/client/runtime-binding")), "binding").
+			requireThat(Files.readString(home.resolve("live/bin/runtime-binding")), "binding").
 				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
 			requireThat(integration.calls(), "calls").isEqualTo(List.of("register"));
 		}

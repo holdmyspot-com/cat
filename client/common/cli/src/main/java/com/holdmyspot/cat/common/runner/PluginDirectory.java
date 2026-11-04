@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.PortablePaths;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Files;
@@ -13,20 +14,34 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Finds the CAT plugin directory that holds the running code.
  *
  * <p>
- * A plugin's launchers run its application modules from {@code <plugin>/client/modules}, on the Java runtime that the
- * plugin's runtime binding names, so the plugin directory is found from where a class was loaded rather than from
- * the Java runtime.
+ * Everything that a plugin runs lives in its {@link #BIN bin} folder: its launchers, its application modules and the
+ * files that describe them. A plugin's launchers run its application modules from {@link #MODULES}, on the Java
+ * runtime that the plugin's runtime binding names, so the plugin directory is found from where a class was loaded
+ * rather than from the Java runtime.
  */
 public final class PluginDirectory
 {
 	/**
-	 * Returns the plugin directory whose {@code client/modules} directory holds the module file of a class.
+	 * The folder, relative to the plugin directory, that holds everything that the plugin runs.
+	 */
+	public static final Path BIN = Path.of("bin");
+	/**
+	 * The folder, relative to the plugin directory, that holds the plugin's application modules.
+	 */
+	public static final Path MODULES = BIN.resolve("modules");
+	/**
+	 * The file, relative to the plugin directory, that holds the plugin's CAT version.
+	 */
+	public static final Path VERSION = BIN.resolve("VERSION");
+
+	/**
+	 * Returns the plugin directory whose {@code bin/modules} directory holds the module file of a class.
 	 *
 	 * @param type a class of a CAT application module
 	 * @return the plugin directory, an absolute normalized path
 	 * @throws NullPointerException  if {@code type} is null
 	 * @throws IllegalStateException if the class was not loaded from a module file in a plugin's
-	 *                               {@code client/modules} directory. The message names where it was loaded from.
+	 *                               {@code bin/modules} directory. The message names where it was loaded from.
 	 */
 	public static Path of(Class<?> type)
 	{
@@ -35,7 +50,7 @@ public final class PluginDirectory
 		if (source == null || source.getLocation() == null)
 		{
 			throw new IllegalStateException(type.getName() + " was not loaded from a module file in a CAT plugin's " +
-				"client/modules directory.");
+				PortablePaths.text(MODULES) + " directory.");
 		}
 		URL location = source.getLocation();
 		Path module;
@@ -50,7 +65,7 @@ public final class PluginDirectory
 			throw new IllegalStateException(notInPlugin(type, location.toString()), e);
 		}
 		Path modules = module.getParent();
-		if (!Files.isRegularFile(module) || modules == null || !modules.endsWith("client/modules"))
+		if (!Files.isRegularFile(module) || modules == null || !modules.endsWith(MODULES))
 			throw new IllegalStateException(notInPlugin(type, module.toString()));
 		return modules.getParent().getParent();
 	}
@@ -65,7 +80,7 @@ public final class PluginDirectory
 	private static String notInPlugin(Class<?> type, String location)
 	{
 		return type.getName() + " was loaded from " + location + ", which is not a module file in a CAT plugin's " +
-			"client/modules directory.";
+			PortablePaths.text(MODULES) + " directory.";
 	}
 
 	/**

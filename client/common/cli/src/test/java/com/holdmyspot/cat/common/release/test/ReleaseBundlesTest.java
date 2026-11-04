@@ -281,7 +281,7 @@ public final class ReleaseBundlesTest
 			requireThat(result.artifact(), "artifact").isEqualTo(bundle);
 			requireThat(result.runner(), "runner").isEqualTo(runner(bundle));
 			requireThat(Files.isExecutable(result.runner()), "runnerExecutable").isTrue();
-			requireThat(Files.readString(bundle.resolve("client/VERSION")).strip(), "version").
+			requireThat(Files.readString(bundle.resolve("bin/VERSION")).strip(), "version").
 				isEqualTo(PluginInfo.CAT_VERSION);
 			requireThat(entries(bundlesDirectory), "bundles").isEqualTo(List.of(bundleName()));
 			requireThat(RuntimeBinding.read(bundle), "binding").isEqualTo(runtime(root));
@@ -507,14 +507,14 @@ public final class ReleaseBundlesTest
 			Path bundlesDirectory = root.resolve("bundles");
 			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION).toAbsolutePath().
 				normalize();
-			Files.delete(bundle.resolve("client/runtime-requirement.json"));
+			Files.delete(bundle.resolve("bin/runtime-requirement.json"));
 
 			RunnerArtifact result = bundles(bundlesDirectory, release).
 				resolve(root.resolve("not-installed"), HARNESS, MANIFEST, RUNNER);
 
 			requireThat(result.source(), "source").isEqualTo(RunnerArtifact.Source.DOWNLOAD);
 			requireThat(result.artifact(), "artifact").isEqualTo(bundle);
-			requireThat(Files.isRegularFile(bundle.resolve("client/runtime-requirement.json")), "requirement").
+			requireThat(Files.isRegularFile(bundle.resolve("bin/runtime-requirement.json")), "requirement").
 				isTrue();
 			requireThat(RuntimeBinding.read(bundle), "binding").isEqualTo(runtime(root));
 		}
@@ -562,7 +562,7 @@ public final class ReleaseBundlesTest
 			Path release = Files.createDirectories(root.resolve("release"));
 			Path bundlesDirectory = root.resolve("bundles");
 			Path bundle = artifact(bundlesDirectory.resolve(bundleName()), PluginInfo.CAT_VERSION);
-			Files.delete(bundle.resolve("client/runtime-requirement.json"));
+			Files.delete(bundle.resolve("bin/runtime-requirement.json"));
 
 			IOException failure = expectFailure(bundles(bundlesDirectory, release), root);
 

@@ -68,15 +68,15 @@ public final class ReleasePackagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-"));
-			Path client = Files.createDirectories(temporary.resolve("plugin/client"));
-			Files.writeString(client.resolve("VERSION"), "1.0\n");
-			Files.writeString(client.resolve("runtime-binding"), temporary.resolve("runtime") + "\n");
+			Path bin = Files.createDirectories(temporary.resolve("plugin/bin"));
+			Files.writeString(bin.resolve("VERSION"), "1.0\n");
+			Files.writeString(bin.resolve("runtime-binding"), temporary.resolve("runtime") + "\n");
 			Path archive = new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("claude", Platform.LINUX_X64,
 				temporary.resolve("plugin"), temporary.resolve("release"));
 
 			requireThat(readEntries(archive).stream().map(TarArchiveEntry::getName).toList(), "entries").isEqualTo(
-				List.of("cat-claude-v1.0-linux-x64/", "cat-claude-v1.0-linux-x64/client/",
-					"cat-claude-v1.0-linux-x64/client/VERSION"));
+				List.of("cat-claude-v1.0-linux-x64/", "cat-claude-v1.0-linux-x64/bin/",
+					"cat-claude-v1.0-linux-x64/bin/VERSION"));
 		}
 	}
 
@@ -90,17 +90,17 @@ public final class ReleasePackagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-"));
-			Path client = Files.createDirectories(temporary.resolve("plugin/client"));
-			Files.writeString(client.resolve("VERSION"), "1.0\n");
-			Path cache = Files.createDirectories(client.resolve("aot"));
+			Path bin = Files.createDirectories(temporary.resolve("plugin/bin"));
+			Files.writeString(bin.resolve("VERSION"), "1.0\n");
+			Path cache = Files.createDirectories(bin.resolve("aot"));
 			Files.writeString(cache.resolve("session-start.aot"), "cache");
 			Files.writeString(cache.resolve("session-start.aot.tmp"), "partial");
 			Path archive = new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("claude", Platform.LINUX_X64,
 				temporary.resolve("plugin"), temporary.resolve("release"));
 
 			requireThat(readEntries(archive).stream().map(TarArchiveEntry::getName).toList(), "entries").isEqualTo(
-				List.of("cat-claude-v1.0-linux-x64/", "cat-claude-v1.0-linux-x64/client/",
-					"cat-claude-v1.0-linux-x64/client/VERSION"));
+				List.of("cat-claude-v1.0-linux-x64/", "cat-claude-v1.0-linux-x64/bin/",
+					"cat-claude-v1.0-linux-x64/bin/VERSION"));
 		}
 	}
 

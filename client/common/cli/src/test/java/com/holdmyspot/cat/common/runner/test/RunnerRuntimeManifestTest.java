@@ -159,7 +159,7 @@ public final class RunnerRuntimeManifestTest
 			String packaged = RunnerRuntimeManifest.packagedFingerprint(artifact);
 			String execution = RunnerRuntimeManifest.fingerprint(artifact);
 
-			write(artifact, "client/aot/session-start.aot", "cache\n");
+			write(artifact, "bin/aot/session-start.aot", "cache\n");
 
 			requireThat(RunnerRuntimeManifest.packagedFingerprint(artifact), "packagedWithCache").
 				isEqualTo(packaged, "packagedWithoutCache");
@@ -204,7 +204,7 @@ public final class RunnerRuntimeManifestTest
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
-		".*client[/\\\\]runtime-binding.*")
+		".*bin[/\\\\]runtime-binding.*")
 	public void rejectsMissingBinding() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -250,8 +250,8 @@ public final class RunnerRuntimeManifestTest
 	 */
 	private static Path packagedArtifact(Path artifact, String application) throws IOException
 	{
-		write(artifact, "client/modules/application.jar", application);
-		write(artifact, "client/bin/runner", "runtime v1\n");
+		write(artifact, "bin/modules/application.jar", application);
+		write(artifact, "bin/runner", "runtime v1\n");
 		write(artifact, "hooks/session-start.sh", "hook v1\n");
 		write(artifact, ".codex-plugin/plugin.json", "{}\n");
 		return artifact;
