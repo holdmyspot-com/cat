@@ -2,21 +2,18 @@ package com.holdmyspot.cat.claude.updater.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.updater.cli.SandboxExemption;
 import com.holdmyspot.cat.common.updater.activation.ActivationStep;
+import com.holdmyspot.cat.common.updater.activation.AddDirectory;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
 import com.holdmyspot.cat.common.updater.activation.ReplaceDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.ServiceLoader;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -40,84 +37,6 @@ public final class ActivationTest
 	public void selectsClaudeProvider()
 	{
 		requireThat(provider().pluginManifest(), "manifest").isEqualTo(".claude-plugin/plugin.json");
-	}
-
-	/**
-	 * The exemption service emits the exact latest invocation and version wildcard for both required settings.
-	 */
-	@Test
-	public void suppliesSandboxExemptions()
-	{
-		List<SandboxExemption> providers = ServiceLoader.load(SandboxExemption.class).stream().
-			map(ServiceLoader.Provider::get).filter(provider -> provider.harness().equals("claude")).toList();
-		requireThat(providers, "providers").size().isEqualTo(1);
-		Path launcher = Path.of(System.getProperty("cat.updater.test.directory")).
-			resolve("updater/bin/cat-updater");
-		Path home = Path.of(System.getProperty("cat.updater.test.directory")).resolve("fake-home");
-		String latest = ShellQuoting.posix(launcher.toString()).replace("*", "'\\*'") +
-			" update --harness claude";
-		String version = latest.replace("\\", "\\\\").replace("*", "\\*") + " *";
-
-		Map<String, List<String>> entries = providers.getFirst().entries(launcher, home);
-
-		requireThat(entries, "entries").isEqualTo(Map.of(
-			"sandbox.excludedCommands", List.of(latest, version),
-			"permissions.allow", List.of("Bash(" + latest + ")", "Bash(" + version + ")")));
-	}
-
-	/**
-	 * Supplies shell-sensitive launcher names; a literal star is supplied only on file systems that accept it.
-	 *
-	 * @return launcher names and the exact latest and version-pattern forms that preserve those paths
-	 */
-	@DataProvider
-	public Object[][] launcherNames()
-	{
-		Path base = Path.of(System.getProperty("cat.updater.test.directory"));
-		String spaced = base.resolve("updater data/bin/cat-updater").toString();
-		String metacharacters = base.resolve("updater $payload;echo hi/bin/cat-updater").toString();
-		String apostrophe = base.resolve("updater's data/bin/cat-updater").toString();
-		List<Object[]> cases = new ArrayList<>();
-		for (String launcher : List.of(spaced, metacharacters, apostrophe))
-		{
-			String command = ShellQuoting.posix(launcher).replace("*", "'\\*'") + " update --harness claude";
-			String pattern = command.replace("\\", "\\\\").replace("*", "\\*") + " *";
-			cases.add(new Object[] {Path.of(launcher), command, pattern});
-		}
-		try
-		{
-			Path launcher = base.resolve("updater*data/bin/cat-updater");
-			String command = ShellQuoting.posix(launcher.toString()).replace("*", "'\\*'") +
-				" update --harness claude";
-			String pattern = command.replace("\\", "\\\\").replace("*", "\\*") + " *";
-			cases.add(new Object[] {launcher, command, pattern});
-		}
-		catch (InvalidPathException _)
-		{
-			// Windows cannot supply a launcher path containing a literal star.
-		}
-		return cases.toArray(Object[][]::new);
-	}
-
-	/**
-	 * Exemption entries quote one executable path and keep its literal characters out of the version wildcard.
-	 *
-	 * @param launcher the absolute installed launcher path
-	 * @param latest   the exact shell command that invokes the latest approved release
-	 * @param version  the pattern that adds only the version argument wildcard
-	 */
-	@Test(dataProvider = "launcherNames")
-	public void quotesLauncherInExemptions(Path launcher, String latest, String version)
-	{
-		SandboxExemption exemption = ServiceLoader.load(SandboxExemption.class).stream().
-			map(ServiceLoader.Provider::get).filter(provider -> provider.harness().equals("claude")).
-			findFirst().orElseThrow();
-
-		Map<String, List<String>> entries = exemption.entries(launcher, launcher.getParent());
-
-		requireThat(entries, "entries").isEqualTo(Map.of(
-			"sandbox.excludedCommands", List.of(latest, version),
-			"permissions.allow", List.of("Bash(" + latest + ")", "Bash(" + version + ")")));
 	}
 
 	/**
@@ -184,23 +103,182 @@ public final class ActivationTest
 	}
 
 	/**
-	 * An absent live directory or manifest reports no installation and no consistent copy.
+	 * A home without CAT's marketplace reports no installation, which an install from absence applies to.
 	 *
 	 * @throws IOException if the fake configuration cannot be created or read
 	 */
 	@Test
-	public void missingManifestHasNoVersion() throws IOException
+	public void absentMarketplaceIsAbsence() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			requireThat(provider().installed(home).version().isEmpty(), "absentLiveVersion").isTrue();
-			Files.createDirectories(home.resolve("plugins/cat-marketplace/plugins/cat"));
 
 			InstalledState state = provider().installed(home);
 
-			requireThat(state.version().isEmpty(), "absentManifestVersion").isTrue();
+			requireThat(state.version().isEmpty(), "version.isEmpty()").isTrue();
+			requireThat(state.consistent(), "consistent").isTrue();
+		}
+	}
+
+	/**
+	 * A marketplace without a plugin manifest is a partial installation that an install repairs.
+	 *
+	 * @param present the directory, relative to the fake home, that a partial installation left behind
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test(dataProvider = "partialInstallations")
+	public void partialInstallationInconsistent(String present) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Files.createDirectories(home.resolve(present));
+
+			InstalledState state = provider().installed(home);
+
+			requireThat(state.version().isEmpty(), "version.isEmpty()").isTrue();
 			requireThat(state.consistent(), "consistent").isFalse();
+		}
+	}
+
+	/**
+	 * Supplies the directories that an interrupted installation or removal can leave without a plugin manifest.
+	 *
+	 * @return paths relative to the fake home
+	 */
+	@DataProvider
+	public Object[][] partialInstallations()
+	{
+		return new Object[][] {{"plugins/cat-marketplace"}, {"plugins/cat-marketplace/.claude-plugin"},
+			{"plugins/cat-marketplace/plugins/cat"}};
+	}
+
+	/**
+	 * Installing from absence adds the plugin directory inside the marketplace, staged beside it where Claude Code
+	 * does not load plugins, and changes nothing while planning.
+	 *
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test
+	public void installPlanAddsPlugin() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path live = home.resolve("plugins/cat-marketplace/plugins/cat");
+
+			List<ActivationStep> steps = provider().installPlan(home, "2.0");
+
+			requireThat(steps, "steps").isEqualTo(List.of(new AddDirectory(live, live.getParent())));
+			requireThat(Files.exists(home.resolve("plugins")), "pluginsCreated").isFalse();
+		}
+	}
+
+	/**
+	 * Install planning refuses a link at each directory boundary, so that an install cannot be redirected.
+	 *
+	 * @param component the linked directory relative to the fake home
+	 * @throws IOException if the fake configuration cannot be created or the refusal is returned
+	 */
+	@Test(dataProvider = "linkedComponents", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*symbolic link.*")
+	public void installPlanRefusesSymlink(String component) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory());
+			Path home = Files.createDirectory(root.resolve("home"));
+			Path link = home.resolve(component);
+			Files.createDirectories(link.getParent());
+			Files.createSymbolicLink(link, root.resolve("outside"));
+
+			provider().installPlan(home, "2.0");
+		}
+	}
+
+	/**
+	 * Activating the installed version again replaces the plugin directory, in routine planning and in recovery.
+	 *
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test
+	public void sameVersionPlanReplaces() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path live = home.resolve("plugins/cat-marketplace/plugins/cat");
+			Path manifest = live.resolve(".claude-plugin/plugin.json");
+			Files.createDirectories(manifest.getParent());
+			Files.writeString(manifest, """
+				{"name":"cat","version":"2.0"}
+				""");
+
+			List<ActivationStep> steps = provider().plan(home, "2.0");
+			List<ActivationStep> recovery = provider().recoveryPlan(home, "2.0", "2.0");
+
+			List<ActivationStep> expected = List.of(new ReplaceDirectory(live, live.getParent()));
+			requireThat(steps, "steps").isEqualTo(expected);
+			requireThat(recovery, "recovery").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Uninstall deletes the marketplace and Claude Code's cached copy of CAT, and keeps CAT's data and every other
+	 * plugin's files.
+	 *
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test
+	public void removalPathsListCatOnly() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path marketplace = Files.createDirectories(home.resolve("plugins/cat-marketplace/plugins/cat"));
+			Path cache = Files.createDirectories(home.resolve("plugins/cache/cat/cat/2.0"));
+			Files.createDirectories(home.resolve("plugins/cache/other/other/1.0"));
+			Files.createDirectories(home.resolve("plugins/data/cat-cat"));
+
+			List<Path> paths = provider().removalPaths(home);
+
+			requireThat(paths, "paths").isEqualTo(List.of(marketplace.getParent().getParent(),
+				cache.getParent().getParent()));
+			requireThat(Files.isDirectory(marketplace), "marketplaceKept").isTrue();
+		}
+	}
+
+	/**
+	 * Uninstall of a home without CAT's files deletes nothing, so a repeated uninstall completes.
+	 *
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test
+	public void removalPathsOmitAbsent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+
+			requireThat(provider().removalPaths(home), "paths").isEmpty();
+		}
+	}
+
+	/**
+	 * Uninstall keeps CAT's data in the plugin data directory that Claude Code assigns to CAT.
+	 *
+	 * @throws IOException if the fake configuration cannot be created
+	 */
+	@Test
+	public void dataDirectoryIsPluginData() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+
+			requireThat(provider().dataDirectory(home), "dataDirectory").
+				isEqualTo(home.resolve("plugins/data/cat-cat"));
 		}
 	}
 

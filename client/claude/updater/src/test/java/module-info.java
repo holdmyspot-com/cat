@@ -7,7 +7,7 @@ module com.holdmyspot.cat.claude.updater.test
 	requires org.testng;
 
 	uses com.holdmyspot.cat.common.updater.activation.PluginActivation;
-	uses com.holdmyspot.cat.common.updater.cli.SandboxExemption;
+	uses com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 
 	exports com.holdmyspot.cat.claude.updater.test to org.testng;
 }

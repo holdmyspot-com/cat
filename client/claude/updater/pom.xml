@@ -26,6 +26,10 @@
 			<artifactId>client-common-cli</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>tools.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>io.github.cowwoc.requirements</groupId>
 			<artifactId>requirements-java</artifactId>
 		</dependency>
