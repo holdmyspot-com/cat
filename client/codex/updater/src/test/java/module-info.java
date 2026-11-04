@@ -8,7 +8,7 @@ module com.holdmyspot.cat.codex.updater.test
 	requires tools.jackson.databind;
 
 	uses com.holdmyspot.cat.common.updater.activation.PluginActivation;
-	uses com.holdmyspot.cat.common.updater.cli.SandboxExemption;
+	uses com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 
 	exports com.holdmyspot.cat.codex.updater.test to org.testng;
 }

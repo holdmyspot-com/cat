@@ -53,6 +53,9 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<configuration>
+					<!-- Codex discovery drops PATH entries under its working directory, so the fixtures under the
+					target directory must lie outside the test working directory. -->
+					<workingDirectory>${project.build.directory}/test-working-directory</workingDirectory>
 					<systemPropertyVariables>
 						<cat.updater.test.directory>${project.build.directory}/test-files</cat.updater.test.directory>
 					</systemPropertyVariables>

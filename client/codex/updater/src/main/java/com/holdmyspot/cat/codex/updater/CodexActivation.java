@@ -12,9 +12,11 @@ import com.holdmyspot.cat.common.updater.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.updater.trust.TrustException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -50,6 +52,14 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static final Path MARKETPLACE_PLUGIN = Path.of("plugins/cat-marketplace/plugins/cat");
 	/**
+	 * The marketplace root that CAT registers with Codex.
+	 */
+	private static final Path MARKETPLACE_ROOT = Path.of("plugins/cat-marketplace");
+	/**
+	 * Codex's cache directory for CAT's marketplace, which also holds CAT's staging and previous-installation slots.
+	 */
+	private static final Path MARKETPLACE_CACHE = Path.of("plugins/cache/cat");
+	/**
 	 * The directory whose real children Codex scans for active versions.
 	 */
 	private static final Path CACHE_VERSIONS = Path.of("plugins/cache/cat/cat");
@@ -61,6 +71,18 @@ public final class CodexActivation implements PluginActivation
 	 * The installer-written ownership manifest that authorizes replacing CAT's custom agents.
 	 */
 	private static final Path AGENT_OWNERSHIP = Path.of("plugins/data/cat-cat/codex-agent-files");
+	/**
+	 * The text that starts the name of every custom agent that CAT writes.
+	 */
+	private static final String AGENT_PREFIX = "cat-";
+	/**
+	 * The release directory that holds CAT's custom agents, written with {@code /} between names.
+	 */
+	private static final String AGENT_SOURCES = "agents/codex";
+	/**
+	 * CAT's data in this harness, which uninstall keeps unless asked to delete it.
+	 */
+	private static final Path DATA_DIRECTORY = Path.of("plugins/data/cat-cat");
 	/**
 	 * The last data migration applied to this installation.
 	 */
@@ -96,6 +118,9 @@ public final class CodexActivation implements PluginActivation
 	/**
 	 * Reads the selected cache version. A real {@code local} directory takes precedence and is always inconsistent;
 	 * otherwise both plugin manifests must equal the highest numeric directory name for the state to be consistent.
+	 * Without a cache version, the state is consistent only when neither the marketplace root nor any entry of the
+	 * plugin's cache directory remains. Leftover custom agents and their ownership manifest do not make it
+	 * inconsistent, because installation replaces the agents that the manifest lists.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or a path used by this read is a symbolic link
 	 */
@@ -106,7 +131,7 @@ public final class CodexActivation implements PluginActivation
 		Path source = target(home, MARKETPLACE_PLUGIN);
 		String active = selectVersion(cache);
 		if (active == null)
-			return new InstalledState(Optional.empty(), false);
+			return new InstalledState(Optional.empty(), !hasLeftovers(home));
 		if (active.equals("local"))
 			return new InstalledState(Optional.of(active), false);
 
@@ -162,6 +187,164 @@ public final class CodexActivation implements PluginActivation
 	}
 
 	/**
+	 * Plans owned-agent installation, then adds the marketplace source and the cache version. The plan does not depend
+	 * on the live installation, so recovery of an interrupted installation reconstructs the same steps.
+	 *
+	 * @throws IllegalArgumentException if {@code home} is relative, {@code newVersion} is not a CAT release version,
+	 *                                  or an activation path is a symbolic link
+	 */
+	@Override
+	public List<ActivationStep> installPlan(Path home, String newVersion)
+	{
+		validateVersion(newVersion, "newVersion");
+		Path source = target(home, MARKETPLACE_PLUGIN);
+		Path newCache = target(home, CACHE_VERSIONS.resolve(newVersion));
+		target(home, MIGRATION_VERSION);
+		return List.of(ownedAgents(home), new AddDirectory(source, source.getParent()),
+			new AddDirectory(newCache, newCache.getParent().getParent()));
+	}
+
+	/**
+	 * Lists the marketplace root, the cache directory of CAT's marketplace (every version and CAT's staging and
+	 * previous-installation slots), each listed custom agent whose bytes still equal the release's agent, and then the
+	 * ownership manifest. A listed agent that differs from the release, or that no installed copy of the release can be
+	 * compared with, is left in place; once the manifest is deleted it belongs to the user.
+	 *
+	 * @throws IllegalArgumentException if {@code home} is relative or a listed path is a symbolic link
+	 * @throws IOException              if the ownership manifest is invalid or a file cannot be read
+	 */
+	@Override
+	public List<Path> removalPaths(Path home) throws IOException
+	{
+		Path marketplace = target(home, MARKETPLACE_ROOT);
+		Path cache = target(home, MARKETPLACE_CACHE);
+		Path ownership = target(home, AGENT_OWNERSHIP);
+		List<Path> paths = new ArrayList<>();
+		if (Files.exists(marketplace, LinkOption.NOFOLLOW_LINKS))
+			paths.add(marketplace);
+		if (Files.exists(cache, LinkOption.NOFOLLOW_LINKS))
+			paths.add(cache);
+		if (Files.notExists(ownership, LinkOption.NOFOLLOW_LINKS))
+			return paths;
+
+		List<Path> releases = releaseCopies(home);
+		for (String name : readOwnedNames(ownership))
+		{
+			Path agent = target(home, AGENTS.resolve(name));
+			if (Files.isRegularFile(agent, LinkOption.NOFOLLOW_LINKS) && matchesRelease(agent, name, releases))
+				paths.add(agent);
+		}
+		paths.add(ownership);
+		return paths;
+	}
+
+	/**
+	 * Resolves CAT's data directory without following symbolic links in its installation path.
+	 *
+	 * @throws IllegalArgumentException if {@code home} is relative or a component of the path is a symbolic link
+	 */
+	@Override
+	public Path dataDirectory(Path home)
+	{
+		return target(home, DATA_DIRECTORY);
+	}
+
+	/**
+	 * Reports whether a marketplace root or a cache entry remains without an active cache version.
+	 *
+	 * @param home the absolute harness home
+	 * @return {@code true} if a partial installation remains
+	 * @throws IOException if the cache directory cannot be listed
+	 */
+	private static boolean hasLeftovers(Path home) throws IOException
+	{
+		if (Files.exists(target(home, MARKETPLACE_ROOT), LinkOption.NOFOLLOW_LINKS))
+			return true;
+		Path cache = target(home, CACHE_VERSIONS);
+		if (!Files.isDirectory(cache, LinkOption.NOFOLLOW_LINKS))
+			return Files.exists(cache, LinkOption.NOFOLLOW_LINKS);
+		try (Stream<Path> entries = Files.list(cache))
+		{
+			return entries.findAny().isPresent();
+		}
+	}
+
+	/**
+	 * Returns the installed copies of the release that hold its custom agents: the marketplace source, then every
+	 * real cache version directory.
+	 *
+	 * @param home the absolute harness home
+	 * @return the existing plugin directories
+	 * @throws IOException if the cache directory cannot be listed
+	 */
+	private static List<Path> releaseCopies(Path home) throws IOException
+	{
+		List<Path> copies = new ArrayList<>();
+		Path source = target(home, MARKETPLACE_PLUGIN);
+		if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
+			copies.add(source);
+		Path cache = target(home, CACHE_VERSIONS);
+		if (!Files.isDirectory(cache, LinkOption.NOFOLLOW_LINKS))
+			return copies;
+		try (Stream<Path> entries = Files.list(cache))
+		{
+			for (Path entry : (Iterable<Path>) entries.sorted()::iterator)
+			{
+				if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
+					copies.add(entry);
+			}
+		}
+		return copies;
+	}
+
+	/**
+	 * Reports whether an owned agent still has the bytes of the release agent that CAT installed it from.
+	 *
+	 * @param agent    the installed agent file
+	 * @param name     its name in the ownership manifest, which is {@code cat-} followed by the release file's name
+	 * @param releases the installed plugin directories to compare with
+	 * @return {@code true} if a release copy holds an agent with identical bytes
+	 * @throws IOException if a file cannot be read
+	 */
+	private static boolean matchesRelease(Path agent, String name, List<Path> releases) throws IOException
+	{
+		String sourceName = name.substring(AGENT_PREFIX.length());
+		for (Path release : releases)
+		{
+			Path source = release.resolve(AGENT_SOURCES).resolve(sourceName);
+			if (Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS) && Files.mismatch(source, agent) == -1)
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Reads the agent names that the ownership manifest lists, one per line.
+	 *
+	 * @param ownership the ownership manifest
+	 * @return the listed names
+	 * @throws IOException if the manifest is not a regular file, exceeds 1 MiB or lists a name that is not a CAT
+	 *                     custom-agent file in the agents directory
+	 */
+	private static List<String> readOwnedNames(Path ownership) throws IOException
+	{
+		if (!Files.isRegularFile(ownership, LinkOption.NOFOLLOW_LINKS))
+			throw new IOException("The agent ownership manifest is not a regular file: " + ownership);
+		if (Files.size(ownership) > MAX_MANIFEST_BYTES)
+			throw new IOException("The agent ownership manifest exceeds 1 MiB: " + ownership);
+		List<String> names = Files.readAllLines(ownership, StandardCharsets.UTF_8);
+		for (String name : names)
+		{
+			if (!name.startsWith(AGENT_PREFIX) || !name.endsWith(".toml") || name.contains("/") ||
+				name.contains("\\") || name.contains("..") || name.indexOf('\u0000') >= 0)
+			{
+				throw new IOException("The agent ownership manifest lists an invalid file name: " + name);
+			}
+		}
+		return names;
+	}
+
+	/**
 	 * Validates a canonical release version before resolving paths derived from it.
 	 *
 	 * @param version the release version
@@ -192,8 +375,6 @@ public final class CodexActivation implements PluginActivation
 	 */
 	private static List<ActivationStep> activationSteps(Path home, String newVersion, boolean replaceCache)
 	{
-		Path agents = target(home, AGENTS);
-		Path ownership = target(home, AGENT_OWNERSHIP);
 		Path source = target(home, MARKETPLACE_PLUGIN);
 		Path cache = target(home, CACHE_VERSIONS);
 		Path newCache = target(home, CACHE_VERSIONS.resolve(newVersion));
@@ -203,8 +384,20 @@ public final class CodexActivation implements PluginActivation
 			cacheStep = new ReplaceDirectory(newCache, cache.getParent());
 		else
 			cacheStep = new AddDirectory(newCache, cache.getParent());
-		return List.of(new ReplaceOwnedFiles(agents, ownership, "cat-", "agents/codex", "*.toml"),
-			new ReplaceDirectory(source, source.getParent()), cacheStep);
+		return List.of(ownedAgents(home), new ReplaceDirectory(source, source.getParent()), cacheStep);
+	}
+
+	/**
+	 * Plans replacing CAT's custom agents with the release's agents.
+	 *
+	 * @param home the absolute harness home
+	 * @return the step
+	 * @throws IllegalArgumentException if the home is relative or an agent path is a symbolic link
+	 */
+	private static ReplaceOwnedFiles ownedAgents(Path home)
+	{
+		return new ReplaceOwnedFiles(target(home, AGENTS), target(home, AGENT_OWNERSHIP), AGENT_PREFIX,
+			AGENT_SOURCES, "*.toml");
 	}
 
 	/**

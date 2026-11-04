@@ -183,7 +183,8 @@ public final class ActivationTest
 	}
 
 	/**
-	 * A home without either copy has no installed version and cannot be activated by a routine update.
+	 * A home without any CAT plugin location reports a consistent absence and cannot be activated by a routine
+	 * update.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -194,9 +195,211 @@ public final class ActivationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			requireThat(provider().installed(home), "installed").
-				isEqualTo(new InstalledState(Optional.empty(), false));
+				isEqualTo(new InstalledState(Optional.empty(), true));
 			provider().plan(home, "1.1");
 		}
+	}
+
+	/**
+	 * Custom agents and their ownership manifest left behind by another removal do not make the absence partial,
+	 * because installation replaces the agents that the manifest lists.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void ignoresLeftoverAgentsInAbsence() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			write(home.resolve("agents/cat-a.toml"), "agent");
+			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-a.toml\n");
+			Files.createDirectories(home.resolve("plugins/cache/cat/cat"));
+
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.empty(), true));
+		}
+	}
+
+	/**
+	 * A marketplace root or a cache entry without an active cache version is a partial installation.
+	 *
+	 * @param leftover the path that remains
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "partialLeftovers")
+	public void reportsPartialInstallation(String leftover) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			write(home.resolve(leftover), "leftover");
+
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.empty(), false));
+		}
+	}
+
+	/**
+	 * Supplies paths that a stopped installation or removal can leave behind.
+	 *
+	 * @return leftover paths relative to the home
+	 */
+	@DataProvider
+	public Object[][] partialLeftovers()
+	{
+		return new Object[][]{{"plugins/cat-marketplace/.agents/plugins/marketplace.json"},
+			{"plugins/cache/cat/cat/invalid/file"}};
+	}
+
+	/**
+	 * Installation from absence replaces the owned agents and adds the marketplace source and the cache version,
+	 * whatever the live state, so recovery of an interrupted installation reconstructs the same steps.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void plansInstallationFromAbsence() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			List<ActivationStep> expected = List.of(
+				new ReplaceOwnedFiles(home.resolve("agents"), home.resolve("plugins/data/cat-cat/codex-agent-files"),
+					"cat-", "agents/codex", "*.toml"),
+				new AddDirectory(home.resolve("plugins/cat-marketplace/plugins/cat"),
+					home.resolve("plugins/cat-marketplace/plugins")),
+				new AddDirectory(home.resolve("plugins/cache/cat/cat/1.1"), home.resolve("plugins/cache/cat")));
+			requireThat(provider().installPlan(home, "1.1"), "absentPlan").isEqualTo(expected);
+
+			install(home, "1.1", "1.1", "1.1");
+			requireThat(provider().installPlan(home, "1.1"), "installedPlan").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Installation refuses a version that could escape the cache through path syntax.
+	 *
+	 * @throws IOException if the provider unexpectedly attempts a read
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void refusesInstallVersionPathTraversal() throws IOException
+	{
+		provider().installPlan(Path.of(System.getProperty("cat.updater.test.directory")).resolve("fake-home"),
+			"../outside");
+	}
+
+	/**
+	 * Installation refuses a symbolic link in any of its destinations.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*symbolic link.*")
+	public void refusesInstallSymlink() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path other = Files.createDirectories(home.resolve("other"));
+			Files.createDirectories(home.resolve("plugins"));
+			Files.createSymbolicLink(home.resolve("plugins/cache"), other);
+
+			provider().installPlan(home, "1.1");
+		}
+	}
+
+	/**
+	 * Removal lists the marketplace root, the marketplace's cache directory, each owned agent that still equals the
+	 * release's agent, and then the ownership manifest; a changed agent and the user's agents stay.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void listsOwnedRemovalPaths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, "1.0", "1.0", "1.0");
+			write(home.resolve("plugins/cat-marketplace/plugins/cat/agents/codex/a.toml"), "agent a");
+			write(home.resolve("plugins/cat-marketplace/plugins/cat/agents/codex/b.toml"), "agent b");
+			write(home.resolve("agents/cat-a.toml"), "agent a");
+			write(home.resolve("agents/cat-b.toml"), "agent b, edited by the user");
+			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-a.toml\ncat-b.toml\ncat-c.toml\n");
+
+			requireThat(provider().removalPaths(home), "removalPaths").isEqualTo(List.of(
+				home.resolve("plugins/cat-marketplace"), home.resolve("plugins/cache/cat"),
+				home.resolve("agents/cat-a.toml"), home.resolve("plugins/data/cat-cat/codex-agent-files")));
+		}
+	}
+
+	/**
+	 * Without a marketplace source, removal compares owned agents with a cache copy of the release.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void comparesAgentsWithCacheCopy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			cache(home, "1.0", "1.0");
+			write(home.resolve("plugins/cache/cat/cat/1.0/agents/codex/a.toml"), "agent a");
+			write(home.resolve("agents/cat-a.toml"), "agent a");
+			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-a.toml\n");
+
+			requireThat(provider().removalPaths(home), "removalPaths").isEqualTo(List.of(
+				home.resolve("plugins/cache/cat"), home.resolve("agents/cat-a.toml"),
+				home.resolve("plugins/data/cat-cat/codex-agent-files")));
+		}
+	}
+
+	/**
+	 * A home without CAT has nothing to remove.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void removesNothingFromEmptyHome() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			write(home.resolve("agents/user.toml"), "user agent");
+
+			requireThat(provider().removalPaths(home), "removalPaths").isEmpty();
+		}
+	}
+
+	/**
+	 * An ownership manifest that names a path outside the agents directory is refused.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*invalid file name.*")
+	public void refusesHostileOwnershipManifest() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-../../config.toml\n");
+
+			provider().removalPaths(home);
+		}
+	}
+
+	/**
+	 * CAT's data directory is the plugin's Codex data directory.
+	 *
+	 * @throws IOException if the test directory cannot be created
+	 */
+	@Test
+	public void locatesDataDirectory() throws IOException
+	{
+		Path home = testRoot().resolve("fake-home");
+		requireThat(provider().dataDirectory(home), "dataDirectory").
+			isEqualTo(home.resolve("plugins/data/cat-cat"));
 	}
 
 	/**
@@ -479,6 +682,19 @@ public final class ActivationTest
 		Path ownership = home.resolve("plugins/data/cat-cat/codex-agent-files");
 		Files.createDirectories(ownership.getParent());
 		Files.writeString(ownership, "cat-a.toml\n");
+	}
+
+	/**
+	 * Writes a fixture file, creating its parent directories.
+	 *
+	 * @param file    the file
+	 * @param content its content
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void write(Path file, String content) throws IOException
+	{
+		Files.createDirectories(file.getParent());
+		Files.writeString(file, content);
 	}
 
 	/**

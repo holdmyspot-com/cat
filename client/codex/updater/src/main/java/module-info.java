@@ -1,5 +1,6 @@
 /**
- * Plans activation of authenticated CAT releases in Codex without changing its configuration.
+ * Activates authenticated CAT releases in Codex and integrates the updater with Codex's command-line program and
+ * execution policy.
  */
 module com.holdmyspot.cat.codex.updater
 {
@@ -9,6 +10,6 @@ module com.holdmyspot.cat.codex.updater
 
 	provides com.holdmyspot.cat.common.updater.activation.PluginActivation with
 		com.holdmyspot.cat.codex.updater.CodexActivation;
-	provides com.holdmyspot.cat.common.updater.cli.SandboxExemption with
-		com.holdmyspot.cat.codex.updater.CodexExemption;
+	provides com.holdmyspot.cat.common.updater.activation.HarnessIntegration with
+		com.holdmyspot.cat.codex.updater.CodexIntegration;
 }
