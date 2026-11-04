@@ -141,8 +141,6 @@ final class RequestArchive
 		checkAncestors(source);
 		if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("Input must be a directory without symbolic links: " + source);
-		// Windows has no null device in its file system, so no placeholder there.
-		boolean placeholders = Files.exists(nullDevice, LinkOption.NOFOLLOW_LINKS);
 		try (Stream<Path> paths = Files.walk(source))
 		{
 			for (Path path : (Iterable<Path>) paths::iterator)
@@ -159,7 +157,7 @@ final class RequestArchive
 					archive.putArchiveEntry(new TarArchiveEntry(entryName + "/"));
 					archive.closeArchiveEntry();
 				}
-				else if (!placeholders || attributes.isSymbolicLink() || !Files.isSameFile(path, nullDevice))
+				else if (!SandboxPlaceholders.isPlaceholder(path, attributes, nullDevice))
 					packFile(archive, path, entryName, MAXIMUM_ENTRY_BYTES, budget);
 			}
 		}

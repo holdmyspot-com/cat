@@ -878,6 +878,131 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies that a project file that the sandbox has replaced with the null device is left out of the copy, and the
+	 * copy still succeeds with the other files.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void projectCopySkipsPlaceholders() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path project = root.resolve("project");
+			Files.createDirectories(project.resolve("nested"));
+			Files.writeString(project.resolve("README.md"), "project");
+			// A sandbox mounts the null device itself over each protected file; a second name of one file stands in for
+			// it, since creating a device requires administrator rights.
+			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
+			Files.createLink(project.resolve(".credentials.json"), nullDevice);
+			Files.createLink(project.resolve("nested/token"), nullDevice);
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+
+			manager.copyProject(project, run, nullDevice);
+
+			Path copy = run.directory().resolve("project");
+			requireThat(Files.readString(copy.resolve("README.md")), "readme").isEqualTo("project");
+			requireThat(Files.exists(copy.resolve(".credentials.json")), "credentials").isFalse();
+			requireThat(Files.exists(copy.resolve("nested/token")), "token").isFalse();
+			requireThat(Files.isDirectory(copy.resolve("nested")), "nestedDirectory").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a symbolic link to the null device is still refused, not skipped as a placeholder.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void projectCopyRefusesNullDeviceLink() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
+			Files.createSymbolicLink(project.resolve("link"), nullDevice);
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+
+			try
+			{
+				manager.copyProject(project, run, nullDevice);
+				throw new AssertionError("The symbolic link was copied");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("symbolic-link");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that where the null device does not exist, as on Windows, the copy leaves out no file, including an
+	 * empty one.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void projectCopyKeepsAllWithoutDevice() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.writeString(project.resolve("README.md"), "project");
+			Files.writeString(project.resolve("empty"), "");
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+
+			manager.copyProject(project, run, root.resolve("absent-null-device"));
+
+			Path copy = run.directory().resolve("project");
+			requireThat(Files.readString(copy.resolve("README.md")), "readme").isEqualTo("project");
+			requireThat(Files.exists(copy.resolve("empty")), "empty").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a workspace file that the sandbox has replaced with the null device is left out of the copy.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void workspaceCopySkipsPlaceholders() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.writeString(project.resolve("README.md"), "project");
+			Path workspace = Files.createDirectories(root.resolve("workspaces"));
+			Files.writeString(workspace.resolve("fixture.md"), "fixture");
+			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
+			Files.createLink(workspace.resolve(".credentials.json"), nullDevice);
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(project, run, nullDevice);
+
+			manager.copyWorkspace(workspace, run, nullDevice);
+
+			Path copy = run.directory().resolve("project");
+			requireThat(Files.readString(copy.resolve("fixture.md")), "fixture").isEqualTo("fixture");
+			requireThat(Files.exists(copy.resolve(".credentials.json")), "credentials").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a session is denied reading every other entry under the run root, including other runs, workspaces
 	 * and the records of its own run, but not the paths that it uses, the paths inside them, or the directories that
 	 * contain them.

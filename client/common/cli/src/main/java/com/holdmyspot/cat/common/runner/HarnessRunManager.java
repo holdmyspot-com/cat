@@ -409,7 +409,8 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Copies project files into an owned run without source Git metadata or symlinks.
+	 * Copies project files into an owned run without source Git metadata, symlinks, or the placeholders that the
+	 * sandbox lays over files that the session may not read.
 	 *
 	 * @param source the source project directory
 	 * @param run the owned run
@@ -417,8 +418,26 @@ public final class HarnessRunManager
 	 */
 	public void copyProject(Path source, HarnessRun run) throws IOException
 	{
+		copyProject(source, run, RequestArchive.NULL_DEVICE);
+	}
+
+	/**
+	 * Copies project files into an owned run without source Git metadata, symlinks, or the placeholders that the
+	 * sandbox lays over files that the session may not read.
+	 *
+	 * @param source     the source project directory
+	 * @param run        the owned run
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read; the
+	 *                   copy leaves out each project file that is that device. Where it does not exist, as on Windows,
+	 *                   the copy leaves out no file.
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if the source is not a real directory, contains symbolic links, or copying fails
+	 */
+	public void copyProject(Path source, HarnessRun run, Path nullDevice) throws IOException
+	{
 		requireThat(source, "source").isNotNull();
 		requireThat(run, "run").isNotNull();
+		requireThat(nullDevice, "nullDevice").isNotNull();
 		Path normalized = source.toAbsolutePath().normalize();
 		if (Files.isSymbolicLink(normalized) || !Files.isDirectory(normalized, NOFOLLOW_LINKS))
 			throw new IOException("Project source is not a real directory");
@@ -448,7 +467,7 @@ public final class HarnessRunManager
 				if (Files.isSymbolicLink(file))
 					throw new IOException("Project contains a symbolic-link file");
 				Path relative = normalized.relativize(file);
-				if (!relative.startsWith(".git"))
+				if (!relative.startsWith(".git") && !SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
 					Files.copy(file, destination.resolve(relative), COPY_ATTRIBUTES);
 				return CONTINUE;
 			}
@@ -459,7 +478,8 @@ public final class HarnessRunManager
 	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
 	 * HarnessRun)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused. A
 	 * symbolic link is copied as a link with the same relative target and is never followed, so that a link of a draft
-	 * directory reaches the project file that it names.
+	 * directory reaches the project file that it names. A workspace file that the sandbox has replaced with a
+	 * placeholder is left out.
 	 *
 	 * @param source the directory that holds the workspace files at their paths relative to the project root
 	 * @param run the owned run
@@ -469,8 +489,28 @@ public final class HarnessRunManager
 	 */
 	public void copyWorkspace(Path source, HarnessRun run) throws IOException
 	{
+		copyWorkspace(source, run, RequestArchive.NULL_DEVICE);
+	}
+
+	/**
+	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
+	 * HarnessRun, Path)} copied, as {@link #copyWorkspace(Path, HarnessRun)} does.
+	 *
+	 * @param source     the directory that holds the workspace files at their paths relative to the project root
+	 * @param run        the owned run
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read; the
+	 *                   copy leaves out each workspace file that is that device. Where it does not exist, as on
+	 *                   Windows, the copy leaves out no file.
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if the source is not a real directory, contains a symbolic-link directory, contains
+	 *                              a link whose target is absolute or lies outside the project, a workspace file's path
+	 *                              exists in the project already, or copying fails
+	 */
+	public void copyWorkspace(Path source, HarnessRun run, Path nullDevice) throws IOException
+	{
 		requireThat(source, "source").isNotNull();
 		requireThat(run, "run").isNotNull();
+		requireThat(nullDevice, "nullDevice").isNotNull();
 		Path normalized = source.toAbsolutePath().normalize();
 		if (Files.isSymbolicLink(normalized) || !Files.isDirectory(normalized, NOFOLLOW_LINKS))
 			throw new IOException("Workspace source is not a real directory");
@@ -494,6 +534,8 @@ public final class HarnessRunManager
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
 				throws IOException
 			{
+				if (SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
+					return CONTINUE;
 				Path copy = destination.resolve(normalized.relativize(file));
 				if (Files.isSymbolicLink(file))
 				{
