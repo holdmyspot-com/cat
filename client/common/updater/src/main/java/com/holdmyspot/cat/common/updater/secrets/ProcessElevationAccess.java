@@ -5,9 +5,9 @@ import java.nio.file.Path;
 import java.time.Duration;
 
 /**
- * Exposes the POSIX check of {@link ProcessElevation} to its tests, with the program that reports the user ID.
+ * Exposes the checks of {@link ProcessElevation} to its tests, with the program that reports the user ID or the access
+ * token's groups.
  */
-@FunctionalInterface
 public interface ProcessElevationAccess
 {
 	/**
@@ -22,4 +22,17 @@ public interface ProcessElevationAccess
 	 * @throws NullPointerException if any argument is null
 	 */
 	boolean runsAsRoot(Path id, Duration limit, Path directory);
+
+	/**
+	 * Returns whether this process's access token is elevated, as a program that lists the token's groups reports it,
+	 * counting a failed check as administrative rights.
+	 *
+	 * @param whoami    the program, run with the arguments {@code /groups /fo csv /nh}
+	 * @param limit     the longest time that the program may take before it is stopped
+	 * @param directory a directory that the check may write short-lived files to, which is created when absent
+	 * @return {@code true} if the program reports the high or system integrity level, or cannot be run, fails or does
+	 *   not end in time
+	 * @throws NullPointerException if any argument is null
+	 */
+	boolean holdsElevatedToken(Path whoami, Duration limit, Path directory);
 }

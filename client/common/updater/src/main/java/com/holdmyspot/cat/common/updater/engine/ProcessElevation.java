@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.updater.secrets.ProcessElevationAccess;
 import com.holdmyspot.cat.common.updater.secrets.ProcessElevationSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -38,7 +39,20 @@ public final class ProcessElevation
 
 	static
 	{
-		ProcessElevationSecrets.setProcessElevationAccess(ProcessElevation::runsAsRoot);
+		ProcessElevationSecrets.setProcessElevationAccess(new ProcessElevationAccess()
+		{
+			@Override
+			public boolean runsAsRoot(Path id, Duration limit, Path directory)
+			{
+				return ProcessElevation.runsAsRoot(id, limit, directory);
+			}
+
+			@Override
+			public boolean holdsElevatedToken(Path whoami, Duration limit, Path directory)
+			{
+				return ProcessElevation.holdsElevatedToken(whoami, limit, directory);
+			}
+		});
 	}
 
 	/**
@@ -62,13 +76,29 @@ public final class ProcessElevation
 		requireThat(directory, "directory").isNotNull();
 		if (!Platform.current().isWindows())
 			return runsAsRoot(ID, CHECK_LIMIT, directory);
+		String systemRoot = System.getenv("SystemRoot");
+		if (systemRoot == null || systemRoot.isBlank())
+			return true;
+		return holdsElevatedToken(Path.of(systemRoot, "System32", "whoami.exe"), CHECK_LIMIT, directory);
+	}
+
+	/**
+	 * Returns whether this process's access token is elevated, as a program that lists the token's groups reports it.
+	 *
+	 * @param whoami    the program, run with the arguments {@code /groups /fo csv /nh}
+	 * @param limit     the longest time that the program may take before it is stopped
+	 * @param directory a directory that the check may write short-lived files to, which is created when absent
+	 * @return {@code true} if the program reports the high or system integrity level, or cannot be run, fails or does
+	 *   not end in time
+	 */
+	private static boolean holdsElevatedToken(Path whoami, Duration limit, Path directory)
+	{
+		requireThat(whoami, "whoami").isNotNull();
+		requireThat(limit, "limit").isNotNull();
+		requireThat(directory, "directory").isNotNull();
 		try
 		{
-			String systemRoot = System.getenv("SystemRoot");
-			if (systemRoot == null || systemRoot.isBlank())
-				return true;
-			String groups = output(List.of(Path.of(systemRoot, "System32", "whoami.exe").toString(), "/groups",
-				"/fo", "csv", "/nh"), CHECK_LIMIT, directory);
+			String groups = output(List.of(whoami.toString(), "/groups", "/fo", "csv", "/nh"), limit, directory);
 			for (String level : ELEVATED_LEVELS)
 			{
 				if (groups.contains(level))

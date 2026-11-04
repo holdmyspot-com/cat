@@ -4,7 +4,7 @@ import com.holdmyspot.cat.common.updater.engine.ProcessElevation;
 import java.lang.invoke.MethodHandles;
 
 /**
- * Supplies typed access to {@link ProcessElevation}'s POSIX check for its test module.
+ * Supplies typed access to {@link ProcessElevation}'s checks for its test module.
  */
 public final class ProcessElevationSecrets
 {
@@ -20,7 +20,7 @@ public final class ProcessElevationSecrets
 	/**
 	 * Registers access from the owning class's initializer.
 	 *
-	 * @param access the POSIX check
+	 * @param access the checks
 	 */
 	public static void setProcessElevationAccess(ProcessElevationAccess access)
 	{
@@ -30,7 +30,7 @@ public final class ProcessElevationSecrets
 	/**
 	 * Returns the registered access, initializing its owner when needed.
 	 *
-	 * @return the POSIX check
+	 * @return the checks
 	 */
 	public static ProcessElevationAccess getProcessElevationAccess()
 	{
