@@ -464,7 +464,6 @@ public final class IntegrationTest
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
 			requireThat(allowed, "allowed").isEqualTo(List.of(
 				"Bash(" + quoted + " install --harness claude)",
-				"Bash(" + pattern(quoted + " install --harness claude") + ")",
 				"Bash(" + quoted + " update --harness claude)",
 				"Bash(" + pattern(quoted + " update --harness claude") + ")",
 				"Bash(" + quoted + " status)",
@@ -477,6 +476,36 @@ public final class IntegrationTest
 				for (String entry : entries)
 					requireThat(entry, "entry").doesNotContain("setup");
 			}
+		}
+	}
+
+	/**
+	 * Every sandbox exclusion is one exact command without a wildcard, because Claude Code runs a whole command line
+	 * outside the sandbox when an exclusion matches any part of it. A named release reaches the updater only through
+	 * the prompt-free permission, so it runs inside the sandbox.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void sandboxExclusionsAreExactCommands() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = home.resolve("data/bin/cat-updater");
+
+			Map<String, List<String>> added = integration(home).installPermissions(home, launcher, replacer());
+
+			String quoted = ShellQuoting.posix(launcher.toString());
+			List<String> excluded = added.get(SETTINGS_KEY_EXCLUDED);
+			for (String entry : excluded)
+				requireThat(entry, "entry").doesNotContain("*");
+			requireThat(excluded, "excluded").containsExactly(List.of(quoted + " install --harness claude",
+				quoted + " update --harness claude", quoted + " update --harness claude latest", quoted + " status",
+				quoted + " status --harness claude", quoted + " rollback --harness claude",
+				quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data"));
+			requireThat(added.get(SETTINGS_KEY_ALLOW), "allowed").contains(
+				"Bash(" + pattern(quoted + " update --harness claude") + ")");
 		}
 	}
 
@@ -500,9 +529,8 @@ public final class IntegrationTest
 			String prefix = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher +
 				"\"";
 			requireThat(added.get(SETTINGS_KEY_EXCLUDED), "excluded").isEqualTo(List.of(
-				prefix + " install --harness claude", pattern(prefix + " install --harness claude"),
-				prefix + " update --harness claude", pattern(prefix + " update --harness claude"),
-				prefix + " status", prefix + " status --harness claude",
+				prefix + " install --harness claude", prefix + " update --harness claude",
+				prefix + " update --harness claude latest", prefix + " status", prefix + " status --harness claude",
 				prefix + " rollback --harness claude",
 				prefix + " uninstall --harness claude", prefix + " uninstall --harness claude --delete-data"));
 		}
@@ -762,14 +790,12 @@ public final class IntegrationTest
 		String quoted = ShellQuoting.posix(launcher.toString()).replace("*", "'\\*'");
 		String install = quoted + " install --harness claude";
 		String update = quoted + " update --harness claude";
-		List<String> prompted = List.of(install, pattern(install), update, pattern(update), quoted + " status",
-			quoted + " status --harness claude");
-		List<String> excluded = new ArrayList<>(prompted);
-		excluded.addAll(List.of(quoted + " rollback --harness claude", quoted + " uninstall --harness claude",
-			quoted + " uninstall --harness claude --delete-data"));
-		List<String> allowed = new ArrayList<>();
-		for (String entry : prompted)
-			allowed.add("Bash(" + entry + ")");
+		List<String> excluded = List.of(install, update, update + " latest", quoted + " status",
+			quoted + " status --harness claude", quoted + " rollback --harness claude",
+			quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data");
+		List<String> allowed = List.of("Bash(" + install + ")", "Bash(" + update + ")",
+			"Bash(" + pattern(update) + ")", "Bash(" + quoted + " status)",
+			"Bash(" + quoted + " status --harness claude)");
 		return Map.of(SETTINGS_KEY_EXCLUDED, excluded, SETTINGS_KEY_ALLOW, allowed);
 	}
 

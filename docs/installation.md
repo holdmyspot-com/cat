@@ -92,7 +92,10 @@ its own harness: its updater refuses a `--harness` that names the other one.
 Setup adds the permission entries for exactly those operations on the installed launcher's absolute path, and records
 the entries it added so that uninstall removes only those. Each harness's entries name that harness's own launcher. In
 Claude Code, it adds them to `sandbox.excludedCommands` and `permissions.allow` in `settings.json` in your Claude home,
-keeping every other setting. In Codex, it writes the CAT-owned file `rules/cat-updater.rules` in your Codex home. Setup
+keeping every other setting. Each sandbox exclusion is one exact command without a wildcard, because Claude Code runs a
+whole command line outside its sandbox when an exclusion matches part of it. An update to a release that the agent
+names, such as `update --harness claude v1.1`, is therefore allowed without a prompt but runs inside the sandbox; when
+the sandbox blocks it, the agent gives you the exact command to run yourself. In Codex, it writes the CAT-owned file `rules/cat-updater.rules` in your Codex home. Setup
 refuses, before changing anything, a harness configuration that it cannot change safely, such as a malformed
 `settings.json` or a symbolic link in its place.
 

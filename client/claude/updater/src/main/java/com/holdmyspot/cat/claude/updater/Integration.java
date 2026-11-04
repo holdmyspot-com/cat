@@ -602,7 +602,10 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the entries for each setting.
+	 * Returns the entries for each setting. Every sandbox exclusion is one exact command, because Claude Code runs a
+	 * whole command line outside the sandbox when an exclusion matches any command in it, so a wildcard would let a
+	 * command chained after the launcher escape the sandbox. An update to a named release is allowed by a permission
+	 * pattern only, which Claude Code matches against each command separately, so that update runs inside the sandbox.
 	 *
 	 * @param stableLauncher the absolute path of the installed stable updater launcher
 	 * @return the sandbox exclusions and the prompt-free permissions, in a stable order
@@ -613,19 +616,19 @@ public final class Integration implements HarnessIntegration
 		String launcher = launcherCommand(stableLauncher);
 		String install = launcher + " install --harness claude";
 		String update = launcher + " update --harness claude";
-		List<String> promptFree = new ArrayList<>(List.of(install, versionPattern(install), update,
-			versionPattern(update), launcher + " status", launcher + " status --harness claude"));
+		List<String> status = List.of(launcher + " status", launcher + " status --harness claude");
 		List<String> uninstall = List.of(launcher + " uninstall --harness claude",
 			launcher + " uninstall --harness claude --delete-data");
+
+		List<String> excluded = new ArrayList<>(List.of(install, update, update + " latest"));
+		excluded.addAll(status);
+		excluded.add(launcher + " rollback --harness claude");
+		excluded.addAll(uninstall);
+
+		List<String> promptFree = new ArrayList<>(List.of(install, update, versionPattern(update)));
+		promptFree.addAll(status);
 		if (UNINSTALL_PROMPT_FREE)
 			promptFree.addAll(uninstall);
-		List<String> excluded = new ArrayList<>(promptFree);
-		excluded.add(launcher + " rollback --harness claude");
-		for (String entry : uninstall)
-		{
-			if (!excluded.contains(entry))
-				excluded.add(entry);
-		}
 		List<String> allowed = new ArrayList<>();
 		for (String entry : promptFree)
 			allowed.add("Bash(" + entry + ")");
