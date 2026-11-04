@@ -6,8 +6,13 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.updater.activation.CommandResult;
+import com.holdmyspot.cat.common.updater.activation.HarnessCli;
+import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
+import com.holdmyspot.cat.common.updater.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.updater.activation.InstalledState;
 import com.holdmyspot.cat.common.updater.activation.PluginActivation;
+import com.holdmyspot.cat.common.updater.engine.Registration;
 import com.holdmyspot.cat.common.updater.engine.ReleaseSource;
 import com.holdmyspot.cat.common.updater.engine.UpdateEngine;
 import com.holdmyspot.cat.common.updater.engine.UpdateResult;
@@ -102,10 +107,14 @@ public final class UpdaterActivationTest
 				encodeToString(release.key().getPublic().getEncoded()));
 			TrustPolicy policy = TrustPolicy.of(List.of(key), URI.create("https://releases.example/cat/releases/download"),
 				ReleaseVersion.parse("1.0"), 1, Map.of(harness, home));
-			UpdateEngine engine = new UpdateEngine(root.resolve("updater"), policy, release, provider,
+			Path data = root.resolve("updater");
+			writeRuntime(data);
+			UpdateEngine engine = new UpdateEngine(data, policy, release, provider,
 				"linux-x64", Clock.systemUTC(), interval -> () -> {});
+			Registration registration = new Registration(new UnusedIntegration(harness),
+				arguments -> new CommandResult(0, ""));
 
-			UpdateResult updated = engine.update("v1.1");
+			UpdateResult updated = engine.update("v1.1", registration);
 
 			requireThat(updated.result(), "updateResult").isEqualTo(Result.UPDATED);
 			requireThat(updated.consistent(), "updatedConsistent").isTrue();
@@ -165,6 +174,18 @@ public final class UpdaterActivationTest
 	}
 
 	/**
+	 * Writes the description of the installation's Java runtime, which satisfies the fixture release.
+	 *
+	 * @param data the installation's updater data directory
+	 * @throws IOException if writing fails
+	 */
+	private static void writeRuntime(Path data) throws IOException
+	{
+		write(data.resolve("runtime/cat-runtime.json"), "{\"format\": 1, \"java_version\": \"25.0.1\", " +
+			"\"java_feature\": 25, \"modules\": [\"java.base\"]}");
+	}
+
+	/**
 	 * Checks both byte content and modification time after an operation that must preserve user files.
 	 *
 	 * @param contents the original content
@@ -212,6 +233,8 @@ public final class UpdaterActivationTest
 		{
 			entry(tar, top + "/" + provider.pluginManifest(), "{\"name\":\"cat\",\"version\":\"1.1\"}", 0644);
 			entry(tar, top + "/client/VERSION", "1.1\n", 0644);
+			entry(tar, top + "/client/runtime-requirement.json", "{\"format\": 1, \"java_feature\": 25, " +
+				"\"modules\": [\"java.base\"]}", 0644);
 			entry(tar, top + "/bin/plugin-info", "#!/bin/sh\nprintf executed > " +
 				ShellQuoting.posix(executionMarker.toString()) + "\n", 0755);
 			entry(tar, top + "/install/migrations/registry.tsv", "# no migrations\n", 0644);
@@ -283,6 +306,46 @@ public final class UpdaterActivationTest
 		public void download(String tag, String assetName, long expectedSize, Path destination) throws IOException
 		{
 			Files.write(destination, archive);
+		}
+	}
+
+	/**
+	 * Stands in for the harness's registration, which this test does not observe; the providers' own tests cover it.
+	 *
+	 * @param harness the harness identifier
+	 */
+	private record UnusedIntegration(String harness) implements HarnessIntegration
+	{
+		@Override
+		public HarnessCommand discover(Path home, Map<String, String> environment)
+		{
+			throw new UnsupportedOperationException("Only setup discovers the harness program");
+		}
+
+		@Override
+		public void validateConfiguration(Path home)
+		{
+		}
+
+		@Override
+		public void register(Path home, HarnessCli cli)
+		{
+		}
+
+		@Override
+		public void unregister(Path home, HarnessCli cli)
+		{
+		}
+
+		@Override
+		public Map<String, List<String>> installPermissions(Path home, Path stableLauncher)
+		{
+			return Map.of();
+		}
+
+		@Override
+		public void removePermissions(Path home, Map<String, List<String>> added)
+		{
 		}
 	}
 }
