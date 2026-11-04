@@ -234,15 +234,14 @@ public final class DistributionMain
 			modularizeJavaDiff(javaDiff.path(), staged));
 		Path packagedClaudeCli = copyModule(claudeCli, staged);
 		Path packagedCodexCli = copyModule(codexCli, staged);
-		// Each harness's runner launcher finds the other harness's installed plugin through that harness's layout
+		// Each harness's runner launcher finds the other harness's installed plugin through that harness's layout, and
+		// each harness's installer finds its own installation through it
 		List<Path> layoutModules = List.of(copyModule(findDependencyJar(moduleDirectory, "client-claude-layout"),
 			staged), copyModule(findDependencyJar(moduleDirectory, "client-codex-layout"), staged));
 		Path commonInstaller = findDependencyJar(moduleDirectory, "client-common-installer");
 		List<Path> installerModules = List.of(copyModule(commonInstaller, staged),
 			copyModule(findDependencyJar(moduleDirectory, "client-claude-installer"), staged),
-			copyModule(findDependencyJar(moduleDirectory, "client-codex-installer"), staged),
-			copyModule(findDependencyJar(moduleDirectory, "client-claude-layout"), staged),
-			copyModule(findDependencyJar(moduleDirectory, "client-codex-layout"), staged));
+			copyModule(findDependencyJar(moduleDirectory, "client-codex-installer"), staged));
 		List<Path> jsonRuntimeModules = List.of(copyModule(jacksonCore.path(), staged),
 			copyModule(jacksonAnnotations.path(), staged), copyModule(jacksonDatabind.path(), staged),
 			copyModule(jacksonYaml.path(), staged), copyModule(snakeyaml.path(), staged),
