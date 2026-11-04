@@ -47,10 +47,10 @@ import java.util.function.IntFunction;
 public final class ClaudeRunnerCli
 {
 	/**
-	 * Prints the usage, resolves a profile, verifies an artifact, or serves JSONL turns through one persistent isolated
-	 * Claude process, as the arguments select. The launcher always runs the artifact that holds it and the
-	 * {@code claude} command that the {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit
-	 * status {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request.
+	 * Prints the usage, verifies an artifact, or serves JSONL turns through one persistent isolated Claude process, as
+	 * the arguments select. The launcher always runs the artifact that holds it and the {@code claude} command that the
+	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
+	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -68,11 +68,6 @@ public final class ClaudeRunnerCli
 		if (args.length == 1 && args[0].equals("--help"))
 		{
 			System.out.println(HarnessRunnerOptions.usage("claude-runner"));
-			return;
-		}
-		if (args.length > 0 && args[0].equals("--resolve-profile"))
-		{
-			System.out.print(resolveProfile(args, PluginDirectory.of(ClaudeRunnerCli.class)));
 			return;
 		}
 		if (args.length == 2 && args[0].equals("--verify-artifact"))
@@ -269,47 +264,6 @@ public final class ClaudeRunnerCli
 	 */
 	private ClaudeRunnerCli()
 	{
-	}
-
-	/**
-	 * Resolves the profile of a CAT agent definition in the launcher's artifact without starting a harness process, for
-	 * {@code --resolve-profile --agent <name>}. No default profile exists: a run requires {@code --model} and
-	 * {@code --effort}.
-	 *
-	 * @param args     the profile-resolution options
-	 * @param artifact the artifact that holds this launcher
-	 * @return a stable scalar profile result
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if the options do not name exactly an agent
-	 * @throws IOException              if the selected agent cannot be read
-	 */
-	public static String resolveProfile(String[] args, Path artifact) throws IOException
-	{
-		requireThat(args, "args").isNotNull();
-		requireThat(artifact, "artifact").isNotNull();
-		if (args.length != 3 || !args[1].equals("--agent"))
-		{
-			throw new IllegalArgumentException("Usage: claude-runner --resolve-profile --agent <name>. " +
-				"No default profile exists; a run requires --model and --effort.");
-		}
-		ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(artifact, args[2]);
-		return profile("agent:" + args[2], agent.model(), agent.effort());
-	}
-
-	/**
-	 * Serializes one runner profile as a stable scalar result.
-	 *
-	 * @param owner the profile owner
-	 * @param model the model name
-	 * @param effort the reasoning effort
-	 * @return the complete profile result
-	 */
-	private static String profile(String owner, String model, String effort)
-	{
-		assert owner != null;
-		assert model != null;
-		assert effort != null;
-		return "harness=" + HARNESS_ID + "\nowner=" + owner + "\nmodel=" + model + "\neffort=" + effort + "\n";
 	}
 
 	/**

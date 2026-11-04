@@ -381,29 +381,6 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that {@code --resolve-profile --agent <name>} prints the model and effort of the CAT agent definition
-	 * of that name in the launcher's own artifact.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void resolvesAgentProfileFromOwnArtifact() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			Path artifact = artifactWithAgent(root, "model: opus\neffort: high\n");
-
-			String profile = ClaudeRunnerCli.resolveProfile(new String[]{"--resolve-profile", "--agent", AGENT},
-				artifact);
-
-			requireThat(profile, "profile").isEqualTo("harness=claude\nowner=agent:" + AGENT +
-				"\nmodel=opus\neffort=high\n");
-		}
-	}
-
-	/**
 	 * Creates an artifact that holds one CAT Claude agent definition.
 	 *
 	 * @param root        the test's directory
