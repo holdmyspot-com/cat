@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.updater.activation.CommandResult;
 import com.holdmyspot.cat.common.updater.activation.HarnessCommand;
 import com.holdmyspot.cat.common.updater.cli.internal.ProcessHarnessCli;
 import java.io.IOException;
+import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -31,7 +32,7 @@ public final class ProcessHarnessCliTest
 	 * The harness program receives the recorded prefix followed by the arguments, runs in the harness home with only
 	 * the recorded environment and a closed standard input, and its exit status and combined output are returned.
 	 *
-	 * @throws IOException if the fake program cannot be written or run
+	 * @throws IOException if the fake program cannot be run
 	 */
 	@Test
 	public void runsRecordedProgram() throws IOException
@@ -40,31 +41,14 @@ public final class ProcessHarnessCliTest
 		{
 			Path root = cleanup.add(testDirectory("harness-cli-")).toRealPath();
 			Path home = Files.createDirectory(root.resolve("home"));
-			Path program = root.resolve("Fake.java");
-			Files.writeString(program, """
-				public class Fake
-				{
-					public static void main(String[] args) throws Exception
-					{
-						for (String argument : args)
-							System.out.println("arg=" + argument);
-						System.out.println("directory=" + java.nio.file.Path.of("").toAbsolutePath());
-						System.out.println("value=" + System.getenv("CAT_TEST_VALUE"));
-						System.out.println("path=" + System.getenv("PATH"));
-						System.out.println("input=" + System.in.read());
-						System.err.println("diagnostic");
-						System.exit(4);
-					}
-				}
-				""");
 			Map<String, String> environment = new HashMap<>();
 			environment.put("CAT_TEST_VALUE", "recorded");
 			String systemRoot = System.getenv("SystemRoot");
 			if (systemRoot != null)
 				environment.put("SystemRoot", systemRoot);
 			Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-			HarnessCommand command = new HarnessCommand(List.of(java.toString(), program.toString(), "fixed"),
-				environment);
+			HarnessCommand command = new HarnessCommand(List.of(java.toString(), "-cp", testClasses().toString(),
+				FakeHarnessProgram.class.getName(), "fixed"), environment);
 
 			CommandResult result = new ProcessHarnessCli(command, home).run(List.of("plugin", "a b"));
 
@@ -75,6 +59,23 @@ public final class ProcessHarnessCliTest
 				contains("input=-1").contains("diagnostic");
 			requireThat(output.indexOf("arg=fixed"), "fixedPosition").isLessThan(output.indexOf("arg=plugin"));
 			requireThat(output.indexOf("arg=plugin"), "pluginPosition").isLessThan(output.indexOf("arg=a b"));
+		}
+	}
+
+	/**
+	 * Returns the directory that holds the compiled test classes, which include the fake harness program.
+	 *
+	 * @return the directory
+	 */
+	private static Path testClasses()
+	{
+		try
+		{
+			return Path.of(FakeHarnessProgram.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+		}
+		catch (URISyntaxException e)
+		{
+			throw new AssertionError(e);
 		}
 	}
 }
