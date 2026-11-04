@@ -48,16 +48,17 @@ public interface DistributionMainAccess
 	void writeCodexLaunchers(Path bin, Platform platform) throws IOException;
 
 	/**
-	 * Stages the folder that becomes a plugin's {@code bin} folder with the plugin's modules and its runtime
-	 * requirement.
+	 * Stages the folder that becomes a plugin's {@code bin} folder with the release's Java runtime, the plugin's modules
+	 * beside the runtime's own folders, and the plugin's runtime requirement.
 	 *
 	 * @param application the plugin's modules
+	 * @param runtime     the release's Java runtime
 	 * @param bin         the folder, which must not exist
 	 * @param json        the JSON writer
 	 * @return {@code bin}
-	 * @throws IOException if the folder cannot be written
+	 * @throws IOException if the folder cannot be written, or the runtime already holds the folder of the modules
 	 */
-	Path stageBin(ApplicationModules application, Path bin, JsonMapper json) throws IOException;
+	Path stageBin(ApplicationModules application, Path runtime, Path bin, JsonMapper json) throws IOException;
 
 	/**
 	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote.

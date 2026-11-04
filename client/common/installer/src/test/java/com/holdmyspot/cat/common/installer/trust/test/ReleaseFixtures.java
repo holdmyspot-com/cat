@@ -35,6 +35,10 @@ public final class ReleaseFixtures
 	 * A SHA-256 digest in the manifest's format.
 	 */
 	public static final String SHA256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+	/**
+	 * The release commit of the tests' manifests.
+	 */
+	public static final String BUILD = "0123456789ab";
 
 	/**
 	 * Generates an Ed25519 key pair.
@@ -161,7 +165,7 @@ public final class ReleaseFixtures
 	}
 
 	/**
-	 * Returns a manifest of product {@code cat}.
+	 * Returns a manifest of product {@code cat} built from the commit {@link #BUILD}.
 	 *
 	 * @param version the value of its {@code version} field
 	 * @param tag     the value of its {@code tag} field
@@ -170,16 +174,31 @@ public final class ReleaseFixtures
 	 */
 	public static String manifest(String version, String tag, String assets)
 	{
+		return manifest(version, tag, BUILD, assets);
+	}
+
+	/**
+	 * Returns a manifest of product {@code cat}.
+	 *
+	 * @param version the value of its {@code version} field
+	 * @param tag     the value of its {@code tag} field
+	 * @param build   the value of its {@code build} field
+	 * @param assets  the JSON of its asset entries, separated by commas
+	 * @return the manifest's text
+	 */
+	public static String manifest(String version, String tag, String build, String assets)
+	{
 		return """
 			{
 			  "format": 1,
 			  "product": "cat",
 			  "version": "%s",
 			  "tag": "%s",
+			  "build": "%s",
 			  "published": "2026-11-03T13:44:35Z",
 			  "assets": [%s]
 			}
-			""".formatted(version, tag, assets);
+			""".formatted(version, tag, build, assets);
 	}
 
 	/**
@@ -192,7 +211,7 @@ public final class ReleaseFixtures
 	 */
 	public static String pluginAsset(String version, String harness, String platform)
 	{
-		String top = "cat-" + harness + "-v" + version + "-" + platform;
+		String top = "cat-" + harness + "-" + platform + "-v" + version;
 		return asset(top + ".tar.gz", "plugin", "\"harness\": \"" + harness + "\", ", platform, "123", SHA256, top);
 	}
 

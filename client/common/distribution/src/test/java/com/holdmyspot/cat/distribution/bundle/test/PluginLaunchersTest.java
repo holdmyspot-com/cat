@@ -62,13 +62,13 @@ public final class PluginLaunchersTest
 				"session-start"));
 			requireThat(Files.readString(bin.resolve("read-part")), "launcher").
 				startsWith("#!/bin/sh\n").
-				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS + " --module-path \"$bin/modules\" " +
-					"--add-modules org.slf4j.nop -m app/example.Main \"$@\"\n").
+				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS +
+					" --module-path \"$bin/runtime/modules\" --add-modules org.slf4j.nop -m app/example.Main \"$@\"\n").
 				contains("java=$runtime/bin/java\n").
 				doesNotContain("bwrap");
 			requireThat(Files.readString(bin.resolve("java")), "wrapper").
 				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS +
-					" --module-path \"$bin/modules\" \"$@\"\n");
+					" --module-path \"$bin/runtime/modules\" \"$@\"\n");
 		}
 	}
 
@@ -91,7 +91,7 @@ public final class PluginLaunchersTest
 				contains("java=$runtime/bin/java.exe\n");
 			String batch = Files.readString(bin.resolve("read-part.cmd"));
 			requireThat(batch, "batchLauncher").
-				contains("\r\n\"%JAVA%\" %CACHE% " + VM_OPTIONS + " --module-path \"%BIN%\\modules\" " +
+				contains("\r\n\"%JAVA%\" %CACHE% " + VM_OPTIONS + " --module-path \"%BIN%\\runtime\\modules\" " +
 					"--add-modules org.slf4j.nop -m app/example.Main %*\r\n").
 				contains("\r\nexit /b 3\r\n");
 			requireThat(batch.replace("\r\n", ""), "lineEndings").doesNotContain("\n");
@@ -185,7 +185,7 @@ public final class PluginLaunchersTest
 
 			requireThat(output, "output").isEqualTo("JAVA_TOOL_OPTIONS=unset|" +
 				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + bin +
-				"/modules|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
+				"/runtime/modules|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
 		}
 	}
 
@@ -208,7 +208,7 @@ public final class PluginLaunchersTest
 			PluginLaunchers.write(List.of(), Platform.current(), !Platform.current().isWindows(), bin);
 			// Java uses a startup cache that it trained on a module path only for the same module path, which an empty
 			// folder is not; any jar stands in for the plugin's modules
-			Path modules = Files.createDirectories(bin.resolve("modules"));
+			Path modules = Files.createDirectories(bin.resolve("runtime/modules"));
 			Files.copy(Path.of(URI.create(Test.class.getProtectionDomain().getCodeSource().getLocation().toString())),
 				modules.resolve("module.jar"));
 			Path runtime = Path.of(System.getProperty("java.home")).toRealPath();

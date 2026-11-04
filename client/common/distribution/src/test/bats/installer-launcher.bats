@@ -1,8 +1,9 @@
 #!/usr/bin/env bats
 # Tests the trusted installer's POSIX launchers: the stable launcher's environment isolation, argument forwarding,
 # current-version validation, exit-status pass-through, replacement of the Java runtime after an update and removal of
-# the data directory after a complete uninstall, and the versioned launcher's selection of its installation's runtime
-# and its fixed JVM options.
+# the data directory after a complete uninstall, the versioned launcher's selection of its installation's runtime and
+# its fixed JVM options, and the selection of the plugin's own runtime and modules by the installer launcher that the
+# build writes into each plugin's bin folder.
 
 bats_require_minimum_version 1.5.0
 
@@ -641,4 +642,67 @@ exit 78'
 	[[ "${output}" != *'child'* ]]
 	[ ! -e "${DATA}/runtime" ]
 	[ "$(cat "${DATA}/runtime.previous/marker")" = installed ]
+}
+
+# Copies the installer launcher of the Claude plugin that the build generated into a plugin directory whose path holds
+# spaces, beside a fake Java runtime in its bin/runtime folder.
+# Arguments: the body of the fake java script.
+# Outputs:
+#   PLUGIN - the plugin directory, holding bin/installer and bin/runtime/bin/java
+create_plugin_installer()
+{
+	PLUGIN="${TEST_ROOT}/plugin with spaces"
+	mkdir -p "${PLUGIN}/bin/runtime/bin" "${PLUGIN}/bin/runtime/modules"
+	cp "${BATS_TEST_DIRNAME}/../../../target/runtime/claude/bin/installer" "${PLUGIN}/bin/installer"
+	printf '%s\n' '#!/bin/sh' "$1" > "${PLUGIN}/bin/runtime/bin/java"
+	chmod +x "${PLUGIN}/bin/runtime/bin/java"
+}
+
+# Prints the Java options that the plugin's installer launcher passes, as the fake java scripts print their arguments.
+# Arguments: the plugin directory as the launcher's path names it.
+# Output: each option enclosed in angle brackets, on one line.
+expected_plugin_java_options()
+{
+	local option
+	installer_java_options "$1/bin/runtime/conf/logging.properties" "$1/bin/runtime/modules" |
+		while IFS= read -r option; do
+			printf '<%s>' "${option}"
+		done
+}
+
+@test "the plugin's installer launcher runs the plugin's own runtime with the fixed options and the plugin's modules" {
+	create_plugin_installer '
+if [ "${JAVA_TOOL_OPTIONS+x}${JDK_JAVA_OPTIONS+x}${_JAVA_OPTIONS+x}${CLASSPATH+x}${JLINK_VM_OPTIONS+x}" != "" ]; then
+	exit 99
+fi
+printf "<%s>" "$@"'
+
+	run env JAVA_TOOL_OPTIONS=hostile JDK_JAVA_OPTIONS=hostile _JAVA_OPTIONS=hostile CLASSPATH=hostile \
+		JLINK_VM_OPTIONS=hostile "${PLUGIN}/bin/installer" status 'argument with spaces'
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(expected_plugin_java_options "${PLUGIN}")<status><argument with spaces>" ]
+}
+
+@test "the plugin's installer launcher started through a symbolic link runs the runtime of its real plugin" {
+	create_plugin_installer 'printf "<%s>" "$@"'
+	mkdir "${TEST_ROOT}/links"
+	ln -s "${PLUGIN}/bin/installer" "${TEST_ROOT}/links/installer"
+
+	run "${TEST_ROOT}/links/installer" status
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(expected_plugin_java_options "${PLUGIN}")<status>" ]
+}
+
+@test "the plugin's installer launcher reports a missing plugin runtime with one diagnostic and status 3" {
+	create_plugin_installer 'printf ran'
+	rm "${PLUGIN}/bin/runtime/bin/java"
+
+	run --separate-stderr "${PLUGIN}/bin/installer" status
+
+	[ "${status}" -eq 3 ]
+	[ "${output}" = '' ]
+	[ "${#stderr_lines[@]}" -eq 1 ]
+	[ "${stderr}" = "CAT installer runtime is missing: ${PLUGIN}/bin/runtime/bin/java is not an executable file; reinstall CAT." ]
 }

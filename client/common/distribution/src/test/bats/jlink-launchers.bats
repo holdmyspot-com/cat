@@ -80,7 +80,7 @@ assert_unusable_binding()
 		"${PLUGIN}/bin/plugin-info" "first argument" '' 'quote " and $dollar'
 
 	[ "${status}" -eq 0 ]
-	modules="$(cd -P "${PLUGIN}/bin/modules" && pwd -P)"
+	modules="$(cd -P "${PLUGIN}/bin/runtime/modules" && pwd -P)"
 	expected="JAVA_TOOL_OPTIONS=unset
 JDK_JAVA_OPTIONS=unset
 CLASSPATH=unset
@@ -186,7 +186,7 @@ train_cache_elsewhere()
 	run "${PLUGIN}/bin/java" -version
 
 	[ "${status}" -eq 0 ]
-	modules="$(cd -P "${PLUGIN}/bin/modules" && pwd -P)"
+	modules="$(cd -P "${PLUGIN}/bin/runtime/modules" && pwd -P)"
 	[[ "${output}" == *$'\n[--module-path]\n['"${modules}"$']\n[-version]' ]]
 }
 

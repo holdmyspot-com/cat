@@ -142,7 +142,7 @@ pack_archive()
 create_fake_release()
 {
 	installer_directory="cat-updater-v1.0-$(current_platform)"
-	plugin_directory="cat-claude-v1.0-$(current_platform)"
+	plugin_directory="cat-claude-$(current_platform)-v1.0"
 	staging="${TEST_ROOT}/release staging"
 	mkdir -p "${FAKE_RELEASE_DIRECTORY}" "${staging}/${installer_directory}/1.0/bin" \
 		"${staging}/${installer_directory}/runtime" "${staging}/${plugin_directory}"

@@ -13,6 +13,7 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.ver
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.trust.AssetKind;
 import com.holdmyspot.cat.common.installer.trust.ManifestVerifier;
 import com.holdmyspot.cat.common.installer.trust.ReleaseAsset;
@@ -112,19 +113,42 @@ public final class ManifestVerifierTest
 		ReleaseManifest release = verified.manifest();
 		requireThat(release.version().toString(), "version").isEqualTo("1.0");
 		requireThat(release.tag(), "tag").isEqualTo("v1.0");
+		requireThat(release.pluginVersion(), "pluginVersion").isEqualTo(PluginVersion.parse("1.0+b0123456789ab"));
 		requireThat(release.published(), "published").isEqualTo(Instant.parse("2026-11-03T13:44:35Z"));
 		ReleaseAsset plugin = release.findPlugin("harness-a", "linux-x64").orElseThrow();
-		requireThat(plugin.name(), "plugin.name").isEqualTo("cat-harness-a-v1.0-linux-x64.tar.gz");
+		requireThat(plugin.name(), "plugin.name").isEqualTo("cat-harness-a-linux-x64-v1.0.tar.gz");
 		requireThat(plugin.kind(), "plugin.kind").isEqualTo(AssetKind.PLUGIN);
 		requireThat(plugin.harness(), "plugin.harness").isEqualTo(Optional.of("harness-a"));
 		requireThat(plugin.size(), "plugin.size").isEqualTo(123L);
 		requireThat(plugin.sha256(), "plugin.sha256").isEqualTo(ReleaseFixtures.SHA256);
-		requireThat(plugin.topDirectory(), "plugin.topDirectory").isEqualTo("cat-harness-a-v1.0-linux-x64");
+		requireThat(plugin.topDirectory(), "plugin.topDirectory").isEqualTo("cat-harness-a-linux-x64-v1.0");
 		ReleaseAsset installer = release.findInstaller("linux-x64").orElseThrow();
 		requireThat(installer.name(), "installer.name").isEqualTo("cat-updater-v1.0-linux-x64.tar.gz");
 		requireThat(installer.harness(), "installer.harness").isEmpty();
 		requireThat(release.findPlugin("harness-b", "linux-x64"), "otherHarness").isEmpty();
 		requireThat(release.findPlugin("harness-a", "macos-arm64"), "otherPlatform").isEmpty();
+	}
+
+	/**
+	 * Two manifests of the same release that were built from different commits name different plugin versions, so a
+	 * release that is published again installs beside the earlier one.
+	 *
+	 * @throws TrustException if a manifest is refused
+	 * @throws IOException    if the bytes cannot be read
+	 */
+	@Test
+	public void distinguishesRebuildsOfOneRelease() throws TrustException, IOException
+	{
+		KeyPair signer = keyPair();
+		String asset = pluginAsset("1.0", "harness-a", "linux-x64");
+
+		ReleaseManifest first = signAndVerify(manifest("1.0", "v1.0", "0123456789ab", asset), signer).manifest();
+		ReleaseManifest second = signAndVerify(manifest("1.0", "v1.0", "ba9876543210", asset), signer).manifest();
+
+		requireThat(first.version(), "first.version").isEqualTo(second.version());
+		requireThat(first.pluginVersion(), "first.pluginVersion").isEqualTo(PluginVersion.parse("1.0+b0123456789ab"));
+		requireThat(second.pluginVersion(), "second.pluginVersion").
+			isEqualTo(PluginVersion.parse("1.0+bba9876543210"));
 	}
 
 	/**
@@ -287,13 +311,13 @@ public final class ManifestVerifierTest
 	}
 
 	/**
-	 * A signed manifest whose asset name disagrees with the asset's harness, kind, platform or the release version is
-	 * refused.
+	 * A signed manifest whose asset name disagrees with the asset's harness, kind, platform or the release version, or
+	 * that names a plugin in the older order {@code cat-<harness>-v<version>-<platform>}, is refused.
 	 * <p>
-	 * The five manifests independently exercise harness, version, platform, kind and path mismatches. They share one
-	 * test-local key and trust policy, but each needs its own signature: verification must accept those exact manifest
-	 * bytes before their asset fields are checked. Signing and verifying all five can take one second or longer during
-	 * a parallel build; omitting one would leave its mismatch unchecked by this test.
+	 * The six manifests independently exercise harness, version, platform, kind, path and name-order mismatches. They
+	 * share one test-local key and trust policy, but each needs its own signature: verification must accept those exact
+	 * manifest bytes before their asset fields are checked. Signing and verifying all six can take one second or longer
+	 * during a parallel build; omitting one would leave its mismatch unchecked by this test.
 	 *
 	 * @throws TrustException if the policy is refused
 	 * @throws IOException    if the bytes cannot be read
@@ -304,16 +328,18 @@ public final class ManifestVerifierTest
 		KeyPair signer = keyPair();
 		TrustPolicy policy = policy(List.of(trusted("test-key", signer)));
 		List<String> assets = List.of(
-			asset("cat-harness-b-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
-				"1", ReleaseFixtures.SHA256, "cat-harness-b-v1.0-linux-x64"),
-			asset("cat-harness-a-v1.1-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
-				"1", ReleaseFixtures.SHA256, "cat-harness-a-v1.1-linux-x64"),
-			asset("cat-harness-a-v1.0-linux-arm64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
-				"1", ReleaseFixtures.SHA256, "cat-harness-a-v1.0-linux-arm64"),
-			asset("cat-harness-a-v1.0-linux-x64.tar.gz", "updater", "", "linux-x64", "1", ReleaseFixtures.SHA256,
-				"cat-harness-a-v1.0-linux-x64"),
-			asset("../cat-harness-a-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
-				"1", ReleaseFixtures.SHA256, "../cat-harness-a-v1.0-linux-x64"));
+			asset("cat-harness-b-linux-x64-v1.0.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
+				"1", ReleaseFixtures.SHA256, "cat-harness-b-linux-x64-v1.0"),
+			asset("cat-harness-a-linux-x64-v1.1.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
+				"1", ReleaseFixtures.SHA256, "cat-harness-a-linux-x64-v1.1"),
+			asset("cat-harness-a-linux-arm64-v1.0.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
+				"1", ReleaseFixtures.SHA256, "cat-harness-a-linux-arm64-v1.0"),
+			asset("cat-harness-a-linux-x64-v1.0.tar.gz", "updater", "", "linux-x64", "1", ReleaseFixtures.SHA256,
+				"cat-harness-a-linux-x64-v1.0"),
+			asset("../cat-harness-a-linux-x64-v1.0.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
+				"1", ReleaseFixtures.SHA256, "../cat-harness-a-linux-x64-v1.0"),
+			asset("cat-harness-a-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
+				"1", ReleaseFixtures.SHA256, "cat-harness-a-v1.0-linux-x64"));
 		for (String asset : assets)
 		{
 			byte[] manifest = manifest("1.0", "v1.0", asset).getBytes(UTF_8);
@@ -348,7 +374,7 @@ public final class ManifestVerifierTest
 	@Test
 	public void refusesTopDirectoryThatDiffersFromName() throws IOException
 	{
-		String asset = asset("cat-harness-a-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ",
+		String asset = asset("cat-harness-a-linux-x64-v1.0.tar.gz", "plugin", "\"harness\": \"harness-a\", ",
 			"linux-x64", "1", ReleaseFixtures.SHA256, "cat");
 
 		requireThat(refusal(manifest("1.0", "v1.0", asset)), "reason").isEqualTo(Reason.MALFORMED_MANIFEST);
@@ -378,8 +404,8 @@ public final class ManifestVerifierTest
 	 */
 	private static String manifestWithSize(String size)
 	{
-		return manifest("1.0", "v1.0", asset("cat-harness-a-v1.0-linux-x64.tar.gz", "plugin",
-			"\"harness\": \"harness-a\", ", "linux-x64", size, ReleaseFixtures.SHA256, "cat-harness-a-v1.0-linux-x64"));
+		return manifest("1.0", "v1.0", asset("cat-harness-a-linux-x64-v1.0.tar.gz", "plugin",
+			"\"harness\": \"harness-a\", ", "linux-x64", size, ReleaseFixtures.SHA256, "cat-harness-a-linux-x64-v1.0"));
 	}
 
 	/**
@@ -394,8 +420,8 @@ public final class ManifestVerifierTest
 			ReleaseFixtures.SHA256.substring(1), ReleaseFixtures.SHA256 + "0", "g".repeat(64));
 		for (String digest : digests)
 		{
-			String asset = asset("cat-harness-a-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ",
-				"linux-x64", "1", digest, "cat-harness-a-v1.0-linux-x64");
+			String asset = asset("cat-harness-a-linux-x64-v1.0.tar.gz", "plugin", "\"harness\": \"harness-a\", ",
+				"linux-x64", "1", digest, "cat-harness-a-linux-x64-v1.0");
 			requireThat(refusal(manifest("1.0", "v1.0", asset)), "reason").isEqualTo(Reason.MALFORMED_MANIFEST);
 		}
 	}
@@ -424,8 +450,8 @@ public final class ManifestVerifierTest
 	@Test
 	public void refusesMisplacedHarness() throws IOException
 	{
-		String pluginWithoutHarness = asset("cat-harness-a-v1.0-linux-x64.tar.gz", "plugin", "", "linux-x64", "1",
-			ReleaseFixtures.SHA256, "cat-harness-a-v1.0-linux-x64");
+		String pluginWithoutHarness = asset("cat-harness-a-linux-x64-v1.0.tar.gz", "plugin", "", "linux-x64", "1",
+			ReleaseFixtures.SHA256, "cat-harness-a-linux-x64-v1.0");
 		String installerWithHarness = asset("cat-updater-v1.0-linux-x64.tar.gz", "updater",
 			"\"harness\": \"harness-a\", ", "linux-x64", "1", ReleaseFixtures.SHA256, "cat-updater-v1.0-linux-x64");
 		String malformedHarness = pluginAsset("1.0", "Harness_A", "linux-x64");
@@ -435,7 +461,8 @@ public final class ManifestVerifierTest
 	}
 
 	/**
-	 * A signed manifest of another format, with no assets, or with a repeated key is refused.
+	 * A signed manifest of another format, with no assets, with a repeated key, with an invalid publication time, or
+	 * without the release commit's twelve lower-case hexadecimal digits is refused.
 	 *
 	 * @throws IOException if the bytes cannot be read
 	 */
@@ -447,6 +474,9 @@ public final class ManifestVerifierTest
 			manifest("1.0", "v1.0", ""),
 			manifest("1.0").replace("\"product\": \"cat\",", "\"product\": \"cat\", \"product\": \"cat\","),
 			manifest("1.0").replace("2026-11-03T13:44:35Z", "yesterday"),
+			manifest("1.0").replace("  \"build\": \"" + ReleaseFixtures.BUILD + "\",\n", ""),
+			manifest("1.0", "v1.0", "0123456789AB", pluginAsset("1.0", "harness-a", "linux-x64")),
+			manifest("1.0", "v1.0", "0123456789a", pluginAsset("1.0", "harness-a", "linux-x64")),
 			"[]");
 		for (String manifest : manifests)
 			requireThat(refusal(manifest), "reason").isEqualTo(Reason.MALFORMED_MANIFEST);

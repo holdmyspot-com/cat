@@ -143,7 +143,8 @@ public final class ReleaseAsset
 	}
 
 	/**
-	 * Returns the only name that an asset may have.
+	 * Returns the only name that an asset may have: {@code cat-<harness>-<platform>-v<version>.tar.gz} for a plugin and
+	 * {@code cat-updater-v<version>-<platform>.tar.gz} for the installer.
 	 *
 	 * @param kind     the asset's kind
 	 * @param harness  the harness of a plugin, or {@code null} for the installer
@@ -153,12 +154,9 @@ public final class ReleaseAsset
 	 */
 	private static String expectedName(AssetKind kind, String harness, ReleaseVersion version, String platform)
 	{
-		String component;
 		if (kind == AssetKind.PLUGIN)
-			component = harness;
-		else
-			component = "updater";
-		return "cat-" + component + "-" + version.tag() + "-" + platform + ARCHIVE_SUFFIX;
+			return "cat-" + harness + "-" + platform + "-" + version.tag() + ARCHIVE_SUFFIX;
+		return "cat-updater-" + version.tag() + "-" + platform + ARCHIVE_SUFFIX;
 	}
 
 	/**
@@ -187,7 +185,7 @@ public final class ReleaseAsset
 	/**
 	 * Returns the archive's file name, under which the release publishes it.
 	 *
-	 * @return the name, such as {@code cat-harness-a-v1.0-linux-x64.tar.gz}
+	 * @return the name, such as {@code cat-harness-a-linux-x64-v1.0.tar.gz}
 	 */
 	public String name()
 	{

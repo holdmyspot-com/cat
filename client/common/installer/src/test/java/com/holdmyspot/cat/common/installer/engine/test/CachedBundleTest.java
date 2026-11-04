@@ -25,7 +25,7 @@ public final class CachedBundleTest
 	/**
 	 * The plugin archive of release 1.1.
 	 */
-	private static final String PLUGIN_ARCHIVE = "cat-harness-a-v1.1-linux-x64.tar.gz";
+	private static final String PLUGIN_ARCHIVE = "cat-harness-a-linux-x64-v1.1.tar.gz";
 	/**
 	 * The installer archive of release 1.1.
 	 */

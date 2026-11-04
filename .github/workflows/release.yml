@@ -84,7 +84,10 @@ jobs:
       - name: Verify and package
         env:
           CAT_RELEASE_PUBLIC_KEY: ${{ steps.release-key.outputs.public-key }}
-        run: client/mvnw -f client/pom.xml verify "-Dcat.release.public-key=${CAT_RELEASE_PUBLIC_KEY}"
+        # Each plugin version names the release commit by its first 12 hexadecimal digits
+        run: >-
+          client/mvnw -f client/pom.xml verify "-Dcat.release.public-key=${CAT_RELEASE_PUBLIC_KEY}"
+          "-Dcat.build=${GITHUB_SHA::12}"
       - name: Verify native release checksums
         if: runner.os != 'macOS'
         working-directory: client/common/distribution/target/release
@@ -159,12 +162,17 @@ jobs:
           mkdir fragments
           find native -type f -name 'cat-release-assets-*.json' -exec cp '{}' fragments/ \;
           test "$(find fragments -type f | wc -l)" -eq 5
-      # The manifest lists every platform's archives, sorted by name, under the release's tag and publication time
+      # The manifest lists every platform's archives, sorted by name, under the release's tag, release commit and
+      # publication time. Every platform must have built the archives from the same commit.
       - name: Write release manifest
         run: |
-          jq -s --arg tag "${GITHUB_REF_NAME}" --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            '{format: 1, product: "cat", version: ($tag | ltrimstr("v")), tag: $tag, published: $published,
-              assets: (add | sort_by(.name))}' fragments/*.json > release/cat-release-manifest.json
+          jq -s --arg tag "${GITHUB_REF_NAME}" --arg build "${GITHUB_SHA::12}" \
+            --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            'if all(.[]; .build == $build) then
+              {format: 1, product: "cat", version: ($tag | ltrimstr("v")), tag: $tag, build: $build,
+                published: $published, assets: (map(.assets) | add | sort_by(.name))}
+            else error("A platform built its archives from another commit than " + $build) end' \
+            fragments/*.json > release/cat-release-manifest.json
           test "$(jq '.assets | length' release/cat-release-manifest.json)" -eq 15
       - name: Sign release manifest
         env:

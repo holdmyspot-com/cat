@@ -7,6 +7,8 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.installer.engine.Bundle;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
@@ -31,8 +33,9 @@ import java.util.jar.JarFile;
 
 /**
  * Writes the trusted installer's application directory: its version, modules, versioned launchers, the stable launchers
- * that an update to the release installs, default policy, runtime requirement and legal materials. No other thread or
- * process modifies the directory during assembly.
+ * that an update to the release installs, default policy, runtime requirement and legal materials. Also writes the
+ * installer's launchers and default policy into a plugin's {@code bin} folder. No other thread or process modifies the
+ * directories during assembly.
  */
 public final class InstallerArtifactBuilder
 {
@@ -142,6 +145,30 @@ public final class InstallerArtifactBuilder
 		}
 		copyTree(legalMaterials, Files.createDirectories(versionDirectory.resolve("legal")));
 		return versionDirectory;
+	}
+
+	/**
+	 * Writes the installer's launchers and default policy into a plugin's {@code bin} folder: the launchers run the
+	 * installer from the plugin's modules on the Java runtime in the plugin's {@code bin/runtime} folder, and the policy
+	 * goes in {@code bin/conf/installer}.
+	 *
+	 * @param bin      the folder that becomes the plugin's {@code bin} folder
+	 * @param platform the platform that the plugin runs on
+	 * @param posix    {@code true} to write the POSIX launcher {@code installer}; {@code false} only for a plugin on
+	 *                 Windows whose harness runs commands in PowerShell. On Windows, {@code installer.ps1} is written
+	 *                 too.
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code posix} is {@code false} on a platform other than Windows
+	 * @throws IOException              if a file cannot be written
+	 */
+	public void writePluginInstaller(Path bin, Platform platform, boolean posix) throws IOException
+	{
+		requireThat(bin, "bin").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		InstallerLaunchers.write(bin, platform, posix);
+		Path configuration = Files.createDirectories(bin.resolve(
+			PluginDirectory.BIN.relativize(PluginDirectory.INSTALLER_CONFIGURATION)));
+		policy.write(configuration.resolve(DEFAULT_POLICY), FileReplacer.retrying(scope.waiting()));
 	}
 
 	/**

@@ -2,7 +2,8 @@
 # Tests the trusted installer's Windows launchers as Windows PowerShell runs them through -File from Git Bash: the
 # stable launcher's argument forwarding, environment isolation, current-version validation and exit-status pass-through,
 # its replacement of the Java runtime after an update and removal of the data directory after a complete uninstall, and
-# the versioned launchers' start of their installation's java.exe, from PowerShell and from Git Bash.
+# the versioned launchers' start of their installation's java.exe, from PowerShell and from Git Bash, and the start of
+# the plugin's own java.exe by the PowerShell installer launcher that the build writes into each Windows plugin.
 # Only the Windows build runs this file; the POSIX launchers' tests are in installer-launcher.bats.
 
 bats_require_minimum_version 1.5.0
@@ -537,4 +538,20 @@ XDG_DATA_HOME" ]
 	expected="$(bracketed_java_options "${logging}" "${modules}"
 		printf '[%s]\n' setup --harness claude --home 'C:\a home')"
 	[ "${arguments}" = "${expected}" ]
+}
+
+@test "the plugin's PowerShell installer launcher runs java.exe of the plugin's own runtime with the plugin's modules" {
+	plugin="${TEST_ROOT}/plugin with spaces"
+	mkdir -p "${plugin}/bin/runtime/modules"
+	cp "${BATS_TEST_DIRNAME}/../../../target/runtime/claude/bin/installer.ps1" "${plugin}/bin/installer.ps1"
+	write_runtime "${plugin}/bin/runtime" plugin 0
+
+	run powershell_file "${plugin}/bin/installer.ps1" status --harness claude ''
+
+	[ "${status}" -eq 0 ]
+	windows="$(cygpath -w "${plugin}")"
+	expected="$(bracketed_java_options "${windows}\\bin\\runtime\\conf\\logging.properties" \
+		"${windows}\\bin\\runtime\\modules"
+		printf '[%s]\n' status --harness claude '')"
+	[ "$(java_arguments "${plugin}/bin")" = "${expected}" ]
 }

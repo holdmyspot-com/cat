@@ -6,7 +6,7 @@ package com.holdmyspot.cat.common.installer.trust;
 public enum AssetKind
 {
 	/**
-	 * The CAT plugin for one harness, named {@code cat-<harness>-v<version>-<platform>.tar.gz}.
+	 * The CAT plugin for one harness, named {@code cat-<harness>-<platform>-v<version>.tar.gz}.
 	 */
 	PLUGIN,
 	/**

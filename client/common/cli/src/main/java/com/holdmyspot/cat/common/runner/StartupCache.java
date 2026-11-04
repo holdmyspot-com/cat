@@ -7,10 +7,10 @@ import java.nio.file.Path;
  *
  * <p>
  * The cache is a Java ahead-of-time cache that lets the plugin's programs start faster. Java accepts it only for the
- * exact module path that it was trained with, which is the plugin's {@code bin/modules} folder at the plugin's own
- * location, so it is valid only where it was written. The installation that places a plugin directory writes it there;
- * release archives, copies of a plugin directory and the plugin's packaged identity leave out its folder. A plugin's
- * launchers use the cache only when the file exists.
+ * exact module path that it was trained with, which is the plugin's {@code bin/runtime/modules} folder at the
+ * plugin's own location, so it is valid only where it was written. The installation that places a plugin directory
+ * writes it there; release archives, copies of a plugin directory and the plugin's packaged identity leave out its
+ * folder. A plugin's launchers use the cache only when the file exists.
  * <p>
  * The plugin describes how to train its cache in {@link #TRAINING}, a JSON object of format 1 whose members are
  * {@code arguments}, the arguments that the plugin's {@code bin/java} wrapper runs its session-start program

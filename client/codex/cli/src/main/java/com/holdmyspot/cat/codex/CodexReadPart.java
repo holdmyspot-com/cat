@@ -118,7 +118,7 @@ public final class CodexReadPart
 
 	/**
 	 * Returns the path of a launcher that agents run: the launcher of the same name in the {@code bin} folder of the
-	 * plugin whose {@code bin/modules} folder holds this program.
+	 * plugin whose {@code bin/runtime/modules} folder holds this program.
 	 *
 	 * @param name the launcher's file name
 	 * @return the path

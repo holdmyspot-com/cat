@@ -44,10 +44,10 @@ public final class ReleasePackagerTest
 			Path archive = new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("codex", Platform.LINUX_X64,
 				temporary.resolve("plugin"), temporary.resolve("release"));
 
-			requireThat(archive.getFileName().toString(), "archiveName").isEqualTo("cat-codex-v1.0-linux-x64.tar.gz");
+			requireThat(archive.getFileName().toString(), "archiveName").isEqualTo("cat-codex-linux-x64-v1.0.tar.gz");
 			List<TarArchiveEntry> entries = readEntries(archive);
 			requireThat(entries, "entries").isNotEmpty();
-			requireThat(entries.stream().allMatch(entry -> entry.getName().startsWith("cat-codex-v1.0-linux-x64/")),
+			requireThat(entries.stream().allMatch(entry -> entry.getName().startsWith("cat-codex-linux-x64-v1.0/")),
 				"entryNames").isTrue();
 			requireThat(entries.stream().allMatch(entry -> entry.getModTime().toInstant().toEpochMilli() == 0),
 				"entryTimestamps").isTrue();
@@ -55,6 +55,29 @@ public final class ReleasePackagerTest
 				orElseThrow().getMode(), "pluginInfoMode").isEqualTo(0755);
 			requireThat(entries.stream().anyMatch(entry -> entry.getName().endsWith("LICENSE.txt")), "licenseFile").isTrue();
 			requireThat(entries.stream().anyMatch(entry -> entry.getName().endsWith("NOTICE.txt")), "noticeFile").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a plugin's archive is named after its harness, its platform and the release version, and that the
+	 * installer's archive keeps its name, in which the version precedes the platform.
+	 */
+	@Test
+	public void namesPluginAndInstallerArchives() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-"));
+			Files.createDirectories(temporary.resolve("artifact"));
+			ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
+			Path plugin = packager.packageArtifact("claude", Platform.MACOS_ARM64, temporary.resolve("artifact"),
+				temporary.resolve("release"));
+			Path installer = packager.packageArtifact("updater", Platform.MACOS_ARM64, temporary.resolve("artifact"),
+				temporary.resolve("release"));
+
+			requireThat(plugin.getFileName().toString(), "plugin").isEqualTo("cat-claude-macos-arm64-v1.0.tar.gz");
+			requireThat(readEntries(plugin).getFirst().getName(), "pluginTop").isEqualTo("cat-claude-macos-arm64-v1.0/");
+			requireThat(installer.getFileName().toString(), "installer").isEqualTo("cat-updater-v1.0-macos-arm64.tar.gz");
 		}
 	}
 
@@ -75,8 +98,8 @@ public final class ReleasePackagerTest
 				temporary.resolve("plugin"), temporary.resolve("release"));
 
 			requireThat(readEntries(archive).stream().map(TarArchiveEntry::getName).toList(), "entries").isEqualTo(
-				List.of("cat-claude-v1.0-linux-x64/", "cat-claude-v1.0-linux-x64/bin/",
-					"cat-claude-v1.0-linux-x64/bin/VERSION"));
+				List.of("cat-claude-linux-x64-v1.0/", "cat-claude-linux-x64-v1.0/bin/",
+					"cat-claude-linux-x64-v1.0/bin/VERSION"));
 		}
 	}
 
@@ -99,8 +122,8 @@ public final class ReleasePackagerTest
 				temporary.resolve("plugin"), temporary.resolve("release"));
 
 			requireThat(readEntries(archive).stream().map(TarArchiveEntry::getName).toList(), "entries").isEqualTo(
-				List.of("cat-claude-v1.0-linux-x64/", "cat-claude-v1.0-linux-x64/bin/",
-					"cat-claude-v1.0-linux-x64/bin/VERSION"));
+				List.of("cat-claude-linux-x64-v1.0/", "cat-claude-linux-x64-v1.0/bin/",
+					"cat-claude-linux-x64-v1.0/bin/VERSION"));
 		}
 	}
 
@@ -113,17 +136,17 @@ public final class ReleasePackagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-checksums-"));
-			Path codex = Files.writeString(temporary.resolve("cat-codex-v1.0-linux-x64.tar.gz"), "codex");
-			Path claude = Files.writeString(temporary.resolve("cat-claude-v1.0-linux-x64.tar.gz"), "claude");
+			Path codex = Files.writeString(temporary.resolve("cat-codex-linux-x64-v1.0.tar.gz"), "codex");
+			Path claude = Files.writeString(temporary.resolve("cat-claude-linux-x64-v1.0.tar.gz"), "claude");
 			Path manifest = new ReleasePackager(PluginInfo.CAT_VERSION).writeChecksumManifest(List.of(codex, claude),
 				temporary.resolve("SHA256SUMS.txt"));
 			List<String> lines = Files.readAllLines(manifest);
 
 			requireThat(lines, "checksumLines").size().isEqualTo(2);
-			requireThat(lines.get(0), "firstChecksumLine").endsWith("  cat-claude-v1.0-linux-x64.tar.gz");
-			requireThat(lines.get(1), "secondChecksumLine").endsWith("  cat-codex-v1.0-linux-x64.tar.gz");
+			requireThat(lines.get(0), "firstChecksumLine").endsWith("  cat-claude-linux-x64-v1.0.tar.gz");
+			requireThat(lines.get(1), "secondChecksumLine").endsWith("  cat-codex-linux-x64-v1.0.tar.gz");
 			requireThat(lines.stream().allMatch(
-				line -> line.matches("[0-9a-f]{64}  cat-(claude|codex)-v1\\.0-linux-x64\\.tar\\.gz")),
+				line -> line.matches("[0-9a-f]{64}  cat-(claude|codex)-linux-x64-v1\\.0\\.tar\\.gz")),
 				"checksumLineFormat").isTrue();
 		}
 	}

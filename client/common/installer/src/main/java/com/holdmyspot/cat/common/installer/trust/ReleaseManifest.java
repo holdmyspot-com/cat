@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.installer.trust;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -13,7 +14,8 @@ import java.util.Set;
 import tools.jackson.databind.JsonNode;
 
 /**
- * The declaration of one CAT release: its version, its tag and the archives that it publishes. The installer obtains a
+ * The declaration of one CAT release: its version, its tag, the commit that it was built from and the archives that it
+ * publishes. The installer obtains a
  * manifest only from {@link ManifestVerifier}, after a trusted key verified the manifest's signature, so every value
  * that this class returns is one that the release's signer published.
  * <p>
@@ -28,8 +30,10 @@ public final class ReleaseManifest
 	/**
 	 * The top-level fields of a manifest. The manifest is refused when it has another field.
 	 */
-	private static final Set<String> FIELDS = Set.of("format", "product", "version", "tag", "published", "assets");
+	private static final Set<String> FIELDS = Set.of("format", "product", "version", "tag", "build", "published",
+		"assets");
 	private final ReleaseVersion version;
+	private final PluginVersion pluginVersion;
 	private final Instant published;
 	private final List<ReleaseAsset> assets;
 
@@ -70,9 +74,33 @@ public final class ReleaseManifest
 			throw json.refusal("The release manifest's field \"tag\" must be \"" + version.tag() + "\", which is " +
 				"\"v\" followed by its version: \"" + TrustText.excerpt(tag) + "\"");
 		}
+		PluginVersion pluginVersion = parseBuild(json, version, json.requiredString(root, "", "build"));
 		Instant published = parsePublished(json, json.requiredString(root, "", "published"));
 		List<ReleaseAsset> assets = parseAssets(json, json.requiredArray(root, "", "assets"), version);
-		return new ReleaseManifest(version, published, assets);
+		return new ReleaseManifest(version, pluginVersion, published, assets);
+	}
+
+	/**
+	 * Reads the commit that a release was built from.
+	 *
+	 * @param json    the manifest's field reader
+	 * @param version the release's version
+	 * @param value   the value of the {@code build} field
+	 * @return the plugin version of the release's plugins
+	 * @throws TrustException if the value is not twelve lower-case hexadecimal digits
+	 */
+	private static PluginVersion parseBuild(TrustJson json, ReleaseVersion version, String value)
+		throws TrustException
+	{
+		try
+		{
+			return new PluginVersion(version.toString(), value);
+		}
+		catch (IllegalArgumentException _)
+		{
+			throw json.refusal("The release manifest's field \"build\" must be the first twelve lower-case " +
+				"hexadecimal digits of the release commit, such as 0123456789ab: \"" + TrustText.excerpt(value) + "\"");
+		}
 	}
 
 	/**
@@ -132,13 +160,16 @@ public final class ReleaseManifest
 	/**
 	 * Creates a manifest.
 	 *
-	 * @param version   the release's version
-	 * @param published the time at which the release was published
-	 * @param assets    the release's archives
+	 * @param version       the release's version
+	 * @param pluginVersion the plugin version of the release's plugins
+	 * @param published     the time at which the release was published
+	 * @param assets        the release's archives
 	 */
-	private ReleaseManifest(ReleaseVersion version, Instant published, List<ReleaseAsset> assets)
+	private ReleaseManifest(ReleaseVersion version, PluginVersion pluginVersion, Instant published,
+		List<ReleaseAsset> assets)
 	{
 		this.version = version;
+		this.pluginVersion = pluginVersion;
 		this.published = published;
 		this.assets = List.copyOf(assets);
 	}
@@ -161,6 +192,17 @@ public final class ReleaseManifest
 	public String tag()
 	{
 		return version.tag();
+	}
+
+	/**
+	 * Returns the plugin version of the release's plugins: the release's version and the commit that it was built
+	 * from. Two publications of the same release that were built from different commits have different plugin versions.
+	 *
+	 * @return the plugin version
+	 */
+	public PluginVersion pluginVersion()
+	{
+		return pluginVersion;
 	}
 
 	/**

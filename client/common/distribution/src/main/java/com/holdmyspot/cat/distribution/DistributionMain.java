@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
@@ -23,6 +24,7 @@ import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
 import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import com.holdmyspot.cat.distribution.bundle.ReleaseAsset;
 import com.holdmyspot.cat.distribution.bundle.ReleaseAssetsFragment;
+import com.holdmyspot.cat.distribution.bundle.ReleaseBuild;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import com.holdmyspot.cat.distribution.bundle.RuleReferences;
@@ -34,6 +36,7 @@ import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -90,9 +93,10 @@ public final class DistributionMain
 			}
 
 			@Override
-			public Path stageBin(ApplicationModules application, Path bin, JsonMapper json) throws IOException
+			public Path stageBin(ApplicationModules application, Path runtime, Path bin, JsonMapper json)
+				throws IOException
 			{
-				return DistributionMain.stageBin(application, bin, json);
+				return DistributionMain.stageBin(application, runtime, bin, json);
 			}
 
 			@Override
@@ -118,24 +122,27 @@ public final class DistributionMain
 	/**
 	 * Builds distributions for the current platform.
 	 *
-	 * @param args the project root, module directory, release directory, and base64 release public key (empty for a
-	 *             development build); Maven represents the empty key argument as null
+	 * @param args the project root, module directory, release directory, base64 release public key (empty for a
+	 *             development build) and the release commit's first twelve hexadecimal digits (empty to use the
+	 *             project's {@code HEAD}); Maven represents an empty argument as null
 	 * @throws NullPointerException if {@code args} is null
-	 * @throws IllegalArgumentException if {@code args} does not contain exactly four values
+	 * @throws IllegalArgumentException if {@code args} does not contain exactly five values
 	 * @throws IOException if distribution assembly fails
 	 */
 	public static void main(String[] args) throws IOException
 	{
 		requireThat(args, "args").isNotNull();
-		if (args.length != 4)
+		if (args.length != 5)
 		{
-			throw new IllegalArgumentException(
-				"Usage: DistributionMain <project-root> <module-directory> <release-directory> <release-public-key>");
+			throw new IllegalArgumentException("Usage: DistributionMain <project-root> <module-directory> " +
+				"<release-directory> <release-public-key> <release-commit>");
 		}
+		Path projectRoot = Path.of(args[0]);
+		PluginVersion version = new PluginVersion(PluginInfo.CAT_VERSION, ReleaseBuild.commit(args[4], projectRoot));
 		try (JvmScope scope = new MainJvmScope(Platform.current().environment(System.getenv()), Pause::sleeping))
 		{
-			build(scope, Path.of(args[0]), Path.of(args[1]), Path.of(args[2]), Platform.current(),
-				Objects.requireNonNullElse(args[3], ""));
+			build(scope, projectRoot, Path.of(args[1]), Path.of(args[2]), Platform.current(),
+				Objects.requireNonNullElse(args[3], ""), version);
 		}
 	}
 
@@ -148,12 +155,13 @@ public final class DistributionMain
 	 * @param releaseDirectory the output directory for archives, checksums and the release assets fragment
 	 * @param platform         the target platform
 	 * @param publicKey        the base64 X.509 Ed25519 release key, or empty for a build that trusts no key
+	 * @param version          the plugin version of the release that the build assembles
 	 * @throws NullPointerException     if any argument is null
 	 * @throws IllegalArgumentException if {@code releaseDirectory} is the filesystem root
 	 * @throws IOException              if distribution assembly fails or the public key is invalid
 	 */
 	public static void build(JvmScope scope, Path projectRoot, Path moduleDirectory, Path releaseDirectory,
-		Platform platform, String publicKey) throws IOException
+		Platform platform, String publicKey, PluginVersion version) throws IOException
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(projectRoot, "projectRoot").isNotNull();
@@ -161,6 +169,7 @@ public final class DistributionMain
 		requireThat(releaseDirectory, "releaseDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(publicKey, "publicKey").isNotNull();
+		requireThat(version.release(), "version.release()").isEqualTo(PluginInfo.CAT_VERSION);
 		InstallerArtifactBuilder installerArtifacts = new InstallerArtifactBuilder(scope, PluginInfo.CAT_VERSION,
 			publicKey);
 		projectRoot = projectRoot.toAbsolutePath().normalize();
@@ -236,24 +245,28 @@ public final class DistributionMain
 
 		List<Path> applicationModules = append(append(append(append(sharedRuntimeModules, packagedClaudeCli),
 			packagedCodexCli), installerModules), jsonRuntimeModules);
+		// Each plugin also runs the installer from its own modules
+		Set<String> installerRoots = Set.of("com.holdmyspot.cat.common.installer",
+			"com.holdmyspot.cat.claude.installer", "com.holdmyspot.cat.codex.installer", "com.holdmyspot.cat.common.cli",
+			"java.net.http", "org.slf4j.nop");
 		ApplicationModules claudeApplication = ApplicationModules.resolve(applicationModules,
-			roots(Set.of("com.holdmyspot.cat.claude.cli", "org.slf4j.nop"), claudeLaunchers()));
+			roots(withRoot(installerRoots, "com.holdmyspot.cat.claude.cli"), claudeLaunchers()));
 		ApplicationModules codexApplication = ApplicationModules.resolve(applicationModules,
-			roots(Set.of("com.holdmyspot.cat.codex.cli", "org.slf4j.nop"), codexLaunchers()));
-		ApplicationModules installerApplication = ApplicationModules.resolve(applicationModules,
-			Set.of("com.holdmyspot.cat.common.installer", "com.holdmyspot.cat.claude.installer",
-				"com.holdmyspot.cat.codex.installer", "com.holdmyspot.cat.common.cli", "java.net.http", "org.slf4j.nop"));
+			roots(withRoot(installerRoots, "com.holdmyspot.cat.codex.cli"), codexLaunchers()));
+		ApplicationModules installerApplication = ApplicationModules.resolve(applicationModules, installerRoots);
 		Set<String> runtimeModules = new TreeSet<>(installerApplication.systemModules());
 		runtimeModules.addAll(claudeApplication.systemModules());
 		runtimeModules.addAll(codexApplication.systemModules());
 		Path installerDirectory = runtimeDirectory.resolve("installer");
 		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, installerDirectory.resolve("runtime"),
 			scope.json());
-		Path claudeBin = stageBin(claudeApplication, binDirectory.resolve("claude"), scope.json());
+		Path claudeBin = stageBin(claudeApplication, releaseRuntime, binDirectory.resolve("claude"), scope.json());
 		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeBin);
+		installerArtifacts.writePluginInstaller(claudeBin, platform, true);
 		writeStartupCacheTraining(claudeBin, "claude", scope.json());
-		Path codexBin = stageBin(codexApplication, binDirectory.resolve("codex"), scope.json());
+		Path codexBin = stageBin(codexApplication, releaseRuntime, binDirectory.resolve("codex"), scope.json());
 		writeCodexLaunchers(codexBin, platform);
+		installerArtifacts.writePluginInstaller(codexBin, platform, !platform.isWindows());
 		writeStartupCacheTraining(codexBin, "codex", scope.json());
 
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(PluginInfo.CAT_VERSION);
@@ -347,7 +360,8 @@ public final class DistributionMain
 		Path installerArchive = packager.packageArtifact("updater", platform, installerDirectory, releaseDirectory);
 		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive, installerArchive),
 			releaseDirectory.resolve("SHA256SUMS.txt"));
-		new ReleaseAssetsFragment(scope).write(platform, List.of(ReleaseAsset.plugin("claude", platform, claudeArchive),
+		new ReleaseAssetsFragment(scope).write(version, platform,
+			List.of(ReleaseAsset.plugin("claude", platform, claudeArchive),
 			ReleaseAsset.plugin("codex", platform, codexArchive),
 			ReleaseAsset.installer(platform, installerArchive)), releaseDirectory);
 	}
@@ -518,22 +532,54 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Stages the folder that becomes a plugin's {@code bin} folder with the plugin's modules and its runtime
-	 * requirement.
+	 * Stages the folder that becomes a plugin's {@code bin} folder with the release's Java runtime, the plugin's modules
+	 * beside the runtime's own folders, and the plugin's runtime requirement.
 	 *
 	 * @param application the plugin's modules
+	 * @param runtime     the release's Java runtime
 	 * @param bin         the folder, which must not exist
 	 * @param json        the JSON writer
 	 * @return {@code bin}
-	 * @throws IOException if the folder cannot be written
+	 * @throws IOException if the folder cannot be written, or the runtime already holds the folder of the modules
 	 */
-	static Path stageBin(ApplicationModules application, Path bin, JsonMapper json) throws IOException
+	static Path stageBin(ApplicationModules application, Path runtime, Path bin, JsonMapper json) throws IOException
 	{
-		Path modules = Files.createDirectories(bin.resolve(PluginDirectory.BIN.relativize(PluginDirectory.MODULES)));
+		Path runtimeCopy = bin.resolve(PluginDirectory.BIN.relativize(PluginDirectory.RUNTIME));
+		copyTree(runtime, runtimeCopy);
+		Path modules = bin.resolve(PluginDirectory.BIN.relativize(PluginDirectory.MODULES));
+		if (Files.exists(modules, NOFOLLOW_LINKS))
+			throw new IOException("The Java runtime already holds the plugin modules' folder: " + modules);
+		Files.createDirectories(modules);
 		for (Path jar : application.jars())
 			Files.copy(jar, modules.resolve(jar.getFileName()));
 		application.writeRequirement(bin.resolve(RUNTIME_REQUIREMENT), json);
 		return bin;
+	}
+
+	/**
+	 * Copies a directory tree, keeping its symbolic links and its files' permissions.
+	 *
+	 * @param source      the directory
+	 * @param destination the copy, which must not exist
+	 * @throws IOException if the tree cannot be copied
+	 */
+	private static void copyTree(Path source, Path destination) throws IOException
+	{
+		if (!Files.isDirectory(source, NOFOLLOW_LINKS))
+			throw new IOException("Copy source is not a directory: " + source);
+		try (Stream<Path> paths = Files.walk(source))
+		{
+			for (Path path : paths.sorted().toList())
+			{
+				Path target = destination.resolve(source.relativize(path).toString());
+				if (Files.isSymbolicLink(path))
+					Files.createSymbolicLink(target, Files.readSymbolicLink(path));
+				else if (Files.isDirectory(path, NOFOLLOW_LINKS))
+					Files.createDirectories(target);
+				else
+					Files.copy(path, target, StandardCopyOption.COPY_ATTRIBUTES);
+			}
+		}
 	}
 
 	/**
@@ -589,6 +635,20 @@ public final class DistributionMain
 	{
 		Files.writeString(plugin.resolve(RuntimeBinding.PATH),
 			runtime.toAbsolutePath().normalize() + "\n", UTF_8);
+	}
+
+	/**
+	 * Adds one module to a set of roots.
+	 *
+	 * @param roots the roots
+	 * @param root  the added module
+	 * @return the combined roots
+	 */
+	private static Set<String> withRoot(Set<String> roots, String root)
+	{
+		Set<String> combined = new TreeSet<>(roots);
+		combined.add(root);
+		return combined;
 	}
 
 	/**

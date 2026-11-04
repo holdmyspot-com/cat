@@ -24,9 +24,9 @@ import java.util.Set;
  * missing, holds anything but one line naming an absolute, normalized path, or names a runtime without an executable
  * {@code bin/java}: it writes one line naming the binding to standard error and exits with status
  * {@value #UNUSABLE_BINDING_STATUS}. Otherwise it runs {@code java} with fixed JVM options, the plugin's
- * {@code bin/modules} as the module path, {@code org.slf4j.nop} added so that logging never depends on incidental
- * service binding, and the program's module and main class, followed by the caller's arguments. It discards the JVM
- * options that the environment can supply.
+ * {@code bin/runtime/modules} as the module path, {@code org.slf4j.nop} added so that logging never depends on
+ * incidental service binding, and the program's module and main class, followed by the caller's arguments. It discards
+ * the JVM options that the environment can supply.
  * <p>
  * When the plugin holds its installation-written {@link StartupCache startup cache}, a launcher passes it to Java with
  * {@code -XX:AOTCache}. Java skips a cache that it cannot use, such as one trained at another path or a truncated one,
@@ -85,6 +85,10 @@ public final class PluginLaunchers
 	 * The path from the plugin's {@code bin/} folder to the startup cache.
 	 */
 	private static final String CACHE_FROM_BIN = PluginDirectory.BIN.relativize(StartupCache.FILE).toString();
+	/**
+	 * The path from the plugin's {@code bin/} folder to the plugin's application modules.
+	 */
+	private static final String MODULES_FROM_BIN = PluginDirectory.BIN.relativize(PluginDirectory.MODULES).toString();
 	private static final String POSIX_TEMPLATE = """
 		#!/bin/sh
 		# Starts %1$s on the Java runtime that the plugin's bin/runtime-binding names.
@@ -134,7 +138,7 @@ public final class PluginLaunchers
 		if [ -f "$bin/%6$s" ]; then
 		  cache=-XX:AOTCache=$bin/%6$s
 		fi
-		exec "$java" ${cache:+"$cache"} %4$s --module-path "$bin/modules" %5$s"$@"
+		exec "$java" ${cache:+"$cache"} %4$s --module-path "$bin/%7$s" %5$s"$@"
 		""";
 	private static final String BATCH_TEMPLATE = """
 		@echo off
@@ -176,7 +180,7 @@ public final class PluginLaunchers
 		if not exist "%%JAVA%%" goto fail
 		set "CACHE="
 		if exist "%%BIN%%\\%5$s" set CACHE="-XX:AOTCache=%%BIN%%\\%5$s"
-		"%%JAVA%%" %%CACHE%% %2$s --module-path "%%BIN%%\\modules" %3$s%%*
+		"%%JAVA%%" %%CACHE%% %2$s --module-path "%%BIN%%\\%6$s" %3$s%%*
 		exit /b %%ERRORLEVEL%%
 		:fail
 		setlocal EnableDelayedExpansion
@@ -276,7 +280,7 @@ public final class PluginLaunchers
 		throws IOException
 	{
 		Files.writeString(path, POSIX_TEMPLATE.formatted(program, javaName, UNUSABLE_BINDING_STATUS, VM_OPTIONS,
-			arguments, CACHE_FROM_BIN.replace('\\', '/')), UTF_8);
+			arguments, CACHE_FROM_BIN.replace('\\', '/'), MODULES_FROM_BIN.replace('\\', '/')), UTF_8);
 		PosixFileAttributeView attributes = Files.getFileAttributeView(path, PosixFileAttributeView.class);
 		if (attributes != null)
 			attributes.setPermissions(LAUNCHER_PERMISSIONS);
@@ -293,7 +297,7 @@ public final class PluginLaunchers
 	private static void writeBatch(Path path, String program, String arguments) throws IOException
 	{
 		String content = BATCH_TEMPLATE.formatted(program, VM_OPTIONS, arguments, UNUSABLE_BINDING_STATUS,
-			CACHE_FROM_BIN.replace('/', '\\'));
+			CACHE_FROM_BIN.replace('/', '\\'), MODULES_FROM_BIN.replace('/', '\\'));
 		Files.writeString(path, content.replace("\n", "\r\n"), UTF_8);
 	}
 }

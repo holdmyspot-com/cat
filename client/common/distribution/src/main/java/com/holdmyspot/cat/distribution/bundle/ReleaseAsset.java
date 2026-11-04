@@ -11,7 +11,7 @@ import java.util.Optional;
 /**
  * One archive that a CAT release publishes for a platform, as the release's signed manifest lists it.
  *
- * @param name         the archive's file name, such as {@code cat-claude-v1.0-linux-x64.tar.gz}
+ * @param name         the archive's file name, such as {@code cat-claude-linux-x64-v1.0.tar.gz}
  * @param kind         what the archive holds
  * @param harness      the harness whose plugin the archive holds, or empty for an archive that serves every harness
  * @param platform     the platform that the archive runs on
@@ -27,7 +27,7 @@ public record ReleaseAsset(String name, Kind kind, Optional<String> harness, Pla
 	/**
 	 * Creates an asset.
 	 *
-	 * @param name         the archive's file name, such as {@code cat-claude-v1.0-linux-x64.tar.gz}
+	 * @param name         the archive's file name, such as {@code cat-claude-linux-x64-v1.0.tar.gz}
 	 * @param kind         what the archive holds
 	 * @param harness      the harness whose plugin the archive holds, or empty for an archive that serves every
 	 *                     harness

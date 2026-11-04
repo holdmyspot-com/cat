@@ -15,6 +15,8 @@
 
 	<properties>
 		<cat.release.public-key></cat.release.public-key>
+		<!-- The release commit's first 12 hexadecimal digits; empty to use the HEAD of the working tree -->
+		<cat.build></cat.build>
 		<cat.config.directory>${project.basedir}/../../config</cat.config.directory>
 	</properties>
 
@@ -162,6 +164,7 @@
 								<argument>${project.build.directory}/modules</argument>
 								<argument>${project.build.directory}/release</argument>
 								<argument>${cat.release.public-key}</argument>
+								<argument>${cat.build}</argument>
 							</arguments>
 						</configuration>
 					</execution>

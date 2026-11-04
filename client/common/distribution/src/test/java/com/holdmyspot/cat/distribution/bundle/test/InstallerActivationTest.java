@@ -253,7 +253,7 @@ public final class InstallerActivationTest
 	private static SignedRelease release(PluginActivation provider, Path executionMarker)
 		throws IOException, GeneralSecurityException
 	{
-		String top = "cat-" + provider.harness() + "-v1.1-linux-x64";
+		String top = "cat-" + provider.harness() + "-linux-x64-v1.1";
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
 		{
@@ -286,7 +286,7 @@ public final class InstallerActivationTest
 			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(installer)), "top_directory",
 			installerTop);
 		byte[] manifest = JsonMapper.builder().build().writeValueAsBytes(Map.of("format", 1, "product", "cat",
-			"version", "1.1", "tag", "v1.1", "published", "2026-11-03T13:44:35Z", "assets",
+			"version", "1.1", "tag", "v1.1", "build", "0123456789ab", "published", "2026-11-03T13:44:35Z", "assets",
 			List.of(asset, installerAsset)));
 		KeyPair key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
 		Signature signer = Signature.getInstance("Ed25519");

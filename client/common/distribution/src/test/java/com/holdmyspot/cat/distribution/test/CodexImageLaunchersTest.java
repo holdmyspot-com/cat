@@ -46,7 +46,7 @@ public final class CodexImageLaunchersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("codex-image-")).toAbsolutePath();
-			Path bin = Files.createDirectories(directory.resolve("bin/modules")).getParent();
+			Path bin = Files.createDirectories(directory.resolve("bin/runtime/modules")).getParent().getParent();
 			DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 			access.writeCodexLaunchers(bin, platform);
 			Path runtime;
@@ -81,7 +81,7 @@ public final class CodexImageLaunchersTest
 				Launcher launcher = launchers.get(i);
 				requireThat(lines.get(i), launcher.name()).startsWith("started ").
 					contains(" -Djdk.http.auth.tunneling.disabledSchemes= ").
-					contains("--module-path " + bin.resolve("modules").toRealPath()).
+					contains("--module-path " + bin.resolve("runtime/modules").toRealPath()).
 					contains("-m " + launcher.module() + "/" + launcher.mainClass());
 			}
 		}

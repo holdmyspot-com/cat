@@ -126,7 +126,7 @@ public final class Releases implements ReleaseSource
 			digest = "0".repeat(64);
 		if (defect.equals("size"))
 			size += 1;
-		String top = "cat-harness-a-v" + version + "-linux-x64";
+		String top = "cat-harness-a-linux-x64-v" + version;
 		String assets = ReleaseFixtures.asset(top + ".tar.gz", "plugin", "\"harness\": \"harness-a\", ",
 			"linux-x64", Long.toString(size), digest, top);
 		if (!defect.equals("noInstaller"))
@@ -343,7 +343,7 @@ public final class Releases implements ReleaseSource
 	private static byte[] archive(String version, String defect, boolean trainable, String registry)
 		throws IOException
 	{
-		String top = "cat-harness-a-v" + version + "-linux-x64";
+		String top = "cat-harness-a-linux-x64-v" + version;
 		if (defect.equals("top"))
 			top = "another-top";
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();

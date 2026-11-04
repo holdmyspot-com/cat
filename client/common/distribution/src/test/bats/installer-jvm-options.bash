@@ -1,13 +1,14 @@
 # The Java options that every launcher which starts CAT's installer passes to the installer's Java runtime, before the
-# installer operation's own arguments: the POSIX stable and versioned launchers, which installer-launcher.bats runs, and
-# the Windows stable and versioned launchers, which installer-launcher-windows.bats runs. Both files compare what their
-# fake java receives with this one list, so that the installer runs alike whichever launcher the platform uses.
+# installer operation's own arguments: the POSIX stable and versioned launchers and the plugin's installer launcher,
+# which installer-launcher.bats runs, and the Windows stable and versioned launchers and the plugin's PowerShell
+# installer launcher, which installer-launcher-windows.bats runs. Both files compare what their fake java receives with
+# this one list, so that the installer runs alike whichever launcher the platform uses.
 
 # Prints the Java options that an installer launcher passes, one per line.
 #
 # Arguments:
 #   $1 - The installer runtime's logging configuration file, in the form that names it to Java.
-#   $2 - The installer version's application module directory, in the form that names it to Java.
+#   $2 - The installer's application module directory, in the form that names it to Java.
 #
 # Output:
 #   Writes the options in the order that the launchers pass them.
