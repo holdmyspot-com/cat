@@ -1,24 +1,38 @@
 #!/usr/bin/env bats
-# Tests the trusted updater launchers' environment isolation, argument forwarding and current-version validation.
+# Tests the trusted updater's POSIX launchers: the stable launcher's environment isolation, argument forwarding,
+# current-version validation, exit-status pass-through and removal of the data directory after a complete uninstall,
+# and the versioned launcher's selection of the shared runtime and its fixed JVM options.
 
-# Creates a test-owned updater installation and fake child executable beneath the build output.
-# Side effects: Creates TEST_ROOT, which teardown removes.
+bats_require_minimum_version 1.5.0
+
+# Creates a test-owned updater data directory, mirroring the installed layout, beneath the build output.
+# Side effects: Creates TEST_ROOT, which teardown removes, holding the data directory DATA with the stable launcher in
+# bin/, current naming version 1.0, and a fake versioned launcher that reports its environment and arguments.
 setup()
 {
 	mkdir -p "${BATS_TEST_DIRNAME}/../../../target"
 	TEST_ROOT="$(mktemp -d "${BATS_TEST_DIRNAME}/../../../target/updater-launcher.XXXXXX")"
+	TEST_ROOT="$(cd -P "${TEST_ROOT}" && pwd -P)"
 	export HOME="${TEST_ROOT}/home"
 	export XDG_DATA_HOME="${TEST_ROOT}/data"
 	export XDG_CONFIG_HOME="${TEST_ROOT}/configuration"
 	export LOCALAPPDATA="${TEST_ROOT}/local app data"
 	mkdir -p "${HOME}" "${XDG_DATA_HOME}" "${XDG_CONFIG_HOME}" "${LOCALAPPDATA}"
 	DATA="${TEST_ROOT}/updater with spaces"
-	mkdir -p "${DATA}/bin" "${DATA}/1.0/bin"
 	RESOURCE_DIRECTORY="${BATS_TEST_DIRNAME}/../../../../updater/src/main/resources/com/holdmyspot/cat/common/updater/cli"
-	cp "${RESOURCE_DIRECTORY}/stable-launcher.sh" "${DATA}/bin/cat-updater"
-	chmod +x "${DATA}/bin/cat-updater"
-	printf '1.0\n' > "${DATA}/current"
-	cat > "${DATA}/1.0/bin/cat-updater" <<'CHILD'
+	create_data_directory "${DATA}"
+}
+
+# Creates an updater data directory with the stable launcher, current version 1.0 and a fake versioned launcher.
+# Arguments: the absolute path of the data directory to create.
+# Side effects: Creates the directory and its bin/, 1.0/bin/ and state/ subdirectories.
+create_data_directory()
+{
+	mkdir -p "$1/bin" "$1/1.0/bin" "$1/state"
+	cp "${RESOURCE_DIRECTORY}/stable-launcher.sh" "$1/bin/cat-updater"
+	chmod +x "$1/bin/cat-updater"
+	printf '1.0\n' > "$1/current"
+	cat > "$1/1.0/bin/cat-updater" <<'CHILD'
 #!/bin/sh
 if [ "${JAVA_TOOL_OPTIONS+x}${JDK_JAVA_OPTIONS+x}${_JAVA_OPTIONS+x}${CLASSPATH+x}${JLINK_VM_OPTIONS+x}${LD_PRELOAD+x}${CODEX_HOME+x}${CLAUDE_CONFIG_DIR+x}" != '' ]; then
 	exit 99
@@ -26,13 +40,44 @@ fi
 printf 'child'
 printf '<%s>' "$@"
 CHILD
-	chmod +x "${DATA}/1.0/bin/cat-updater"
+	chmod +x "$1/1.0/bin/cat-updater"
+}
+
+# Replaces a data directory's fake versioned launcher with the real one and installs a fake shared runtime Java.
+# Arguments: the absolute path of the data directory, then the body of the fake java script, which runs with the
+#   variable data set to the data directory that holds it.
+# Side effects: Writes 1.0/bin/cat-updater and runtime/bin/java beneath the data directory.
+install_runtime()
+{
+	cp "${RESOURCE_DIRECTORY}/versioned-launcher.sh" "$1/1.0/bin/cat-updater"
+	chmod +x "$1/1.0/bin/cat-updater"
+	mkdir -p "$1/runtime/bin"
+	{
+		printf '%s\n' '#!/bin/sh' 'data=$(cd -P "${0%/*}/../.." && pwd -P)'
+		printf '%s\n' "$2"
+	} > "$1/runtime/bin/java"
+	chmod +x "$1/runtime/bin/java"
+}
+
+# Installs a fake shared runtime Java that stands in for the updater's complete uninstall: it saves the final JSON
+# result in state/uninstall-result.json and exits with the status that asks the stable launcher to delete the data
+# directory after the JVM exits.
+# The saved result contains shell metacharacters and JSON escapes, so a launcher that reinterprets it alters it.
+# Arguments: the absolute path of the data directory.
+# Side effects: Writes TEST_ROOT/saved-result.json, which the fake copies, and 1.0/bin/cat-updater and runtime/bin/java
+#   beneath the data directory.
+install_uninstalling_runtime()
+{
+	printf '%s\n' '{"result":"uninstalled","message":"a & b <c> \"d\" $HOME `x` %PATH%"}' > "${TEST_ROOT}/saved-result.json"
+	install_runtime "$1" "cat '${TEST_ROOT}/saved-result.json' > \"\$data/state/uninstall-result.json\"
+exit 79"
 }
 
 # Removes only the directory created for this test, including after failed setup or assertions.
 teardown()
 {
 	if [ -n "${TEST_ROOT:-}" ]; then
+		chmod -R u+rwx -- "${TEST_ROOT}" 2>/dev/null || true
 		rm -rf -- "${TEST_ROOT}"
 	fi
 }
@@ -82,25 +127,204 @@ teardown()
 	[[ "${output}" != *'child'* ]]
 }
 
-@test "the direct versioned launcher removes injected JVM settings and supplies the runtime's fixed options" {
-	cp "${RESOURCE_DIRECTORY}/versioned-launcher.sh" "${DATA}/1.0/bin/cat-updater"
-	cat > "${DATA}/1.0/bin/java" <<'JAVA'
-#!/bin/sh
-if [ "${JAVA_TOOL_OPTIONS+x}${JDK_JAVA_OPTIONS+x}${_JAVA_OPTIONS+x}${CLASSPATH+x}${JLINK_VM_OPTIONS+x}" != '' ]; then
+@test "the versioned launcher runs the shared runtime's Java with the fixed options and its own application modules" {
+	install_runtime "${DATA}" '
+if [ "${JAVA_TOOL_OPTIONS+x}${JDK_JAVA_OPTIONS+x}${_JAVA_OPTIONS+x}${CLASSPATH+x}${JLINK_VM_OPTIONS+x}" != "" ]; then
 	exit 99
 fi
-printf '<%s>' "$@"
-JAVA
-	chmod +x "${DATA}/1.0/bin/java"
+printf "<%s>" "$@"'
 
 	run env JAVA_TOOL_OPTIONS=hostile JDK_JAVA_OPTIONS=hostile _JAVA_OPTIONS=hostile CLASSPATH=hostile \
 		JLINK_VM_OPTIONS=hostile "${DATA}/1.0/bin/cat-updater" status 'argument with spaces'
 
 	[ "${status}" -eq 0 ]
-	[[ "${output}" == *'<-Xshare:auto>'* ]]
-	[[ "${output}" == *'<-Xlog:all=off:stdout><-Xlog:all=warning:stderr>'* ]]
-	[[ "${output}" == *'<-XX:+PerfDisableSharedMem>'* ]]
-	[[ "${output}" == *'<-Dstdout.encoding=UTF-8><-Dstderr.encoding=UTF-8>'* ]]
-	[[ "${output}" == *'<-Djdk.http.auth.tunneling.disabledSchemes=>'* ]]
-	[[ "${output}" == *'<-m><com.holdmyspot.cat.common.updater/com.holdmyspot.cat.common.updater.cli.UpdaterMain><status><argument with spaces>' ]]
+	[ "${output}" = "<-Xshare:auto><-Xlog:all=off:stdout><-Xlog:all=warning:stderr><-XX:+PerfDisableSharedMem>\
+<-Dstdout.encoding=UTF-8><-Dstderr.encoding=UTF-8><-Djdk.http.auth.tunneling.disabledSchemes=>\
+<--enable-native-access=com.holdmyspot.cat.common.cli>\
+<-Djava.util.logging.config.file=${DATA}/runtime/conf/logging.properties>\
+<--module-path><${DATA}/1.0/app><--add-modules><org.slf4j.nop>\
+<-m><com.holdmyspot.cat.common.updater/com.holdmyspot.cat.common.updater.cli.UpdaterMain>\
+<status><argument with spaces>" ]
+}
+
+@test "the versioned launcher started through a symbolic link runs the runtime beside its real version directory" {
+	install_runtime "${DATA}" 'printf "<%s>" "$@"'
+	mkdir "${TEST_ROOT}/links"
+	ln -s "${DATA}/1.0/bin/cat-updater" "${TEST_ROOT}/links/cat-updater"
+
+	run "${TEST_ROOT}/links/cat-updater" status
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *"<--module-path><${DATA}/1.0/app>"*'<status>' ]]
+}
+
+@test "the versioned launcher reports a missing shared runtime with one diagnostic and status 3" {
+	install_runtime "${DATA}" 'printf ran'
+	rm "${DATA}/runtime/bin/java"
+
+	run --separate-stderr "${DATA}/1.0/bin/cat-updater" status
+
+	[ "${status}" -eq 3 ]
+	[ "${output}" = '' ]
+	[ "${#stderr_lines[@]}" -eq 1 ]
+	[[ "${stderr}" == *"${DATA}/runtime/bin/java"* ]]
+}
+
+@test "the stable launcher passes another updater status and its output through unchanged" {
+	install_runtime "${DATA}" "printf '%s\n' '{\"result\":\"refused\"}'
+printf '%s\n' 'diagnostic' >&2
+exit 5"
+
+	run --separate-stderr "${DATA}/bin/cat-updater" update --harness claude
+
+	[ "${status}" -eq 5 ]
+	[ "${output}" = '{"result":"refused"}' ]
+	[ "${stderr}" = 'diagnostic' ]
+	[ -d "${DATA}" ]
+}
+
+# The reader that receives the launcher's output checks whether the data directory still exists when the first line
+# arrives, so a launcher that printed the saved result before deleting the directory fails this test.
+@test "after a complete uninstall the stable launcher deletes the data directory and only then prints the saved result" {
+	install_uninstalling_runtime "${DATA}"
+
+	run sh -c '
+		{ "$1" uninstall; printf "%s\n" "$?" > "$3"; } | {
+			IFS= read -r line
+			if [ -e "$2" ]; then
+				printf "printed before deletion: %s" "${line}"
+			else
+				printf "%s" "${line}"
+			fi
+		}' sh "${DATA}/bin/cat-updater" "${DATA}" "${TEST_ROOT}/launcher-status"
+
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-result.json")" ]
+	[ "$(cat "${TEST_ROOT}/launcher-status")" = 0 ]
+	[ ! -e "${DATA}" ]
+}
+
+@test "the stable launcher started through a symbolic link deletes its real data directory after a complete uninstall" {
+	install_uninstalling_runtime "${DATA}"
+	mkdir "${TEST_ROOT}/links"
+	printf 'unrelated\n' > "${TEST_ROOT}/links/unrelated"
+	ln -s "${DATA}/bin/cat-updater" "${TEST_ROOT}/links/cat-updater"
+
+	run "${TEST_ROOT}/links/cat-updater" uninstall
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-result.json")" ]
+	[ ! -e "${DATA}" ]
+	[ "$(cat "${TEST_ROOT}/links/unrelated")" = unrelated ]
+}
+
+@test "the stable launcher reports a data directory that it could not delete with the not_removed result and status 7" {
+	data="${TEST_ROOT}/updater \"quoted\" \\ data"
+	create_data_directory "${data}"
+	install_uninstalling_runtime "${data}"
+	mkdir "${data}/state/locked"
+	printf 'kept\n' > "${data}/state/locked/file"
+	chmod a-w "${data}/state/locked"
+
+	run --separate-stderr "${data}/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 7 ]
+	[ "${output}" = '{"result":"not_removed","message":"CAT could not delete '"${TEST_ROOT}"'/updater \"quoted\" \\ data"}' ]
+	[ "${stderr}" = "${data}" ]
+	[ -e "${data}/state/locked/file" ]
+}
+
+@test "the stable launcher deletes nothing and reports not_removed when a complete uninstall saved no result" {
+	install_runtime "${DATA}" 'exit 79'
+
+	run --separate-stderr "${DATA}/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 7 ]
+	[ "${output}" = '{"result":"not_removed","message":"CAT could not delete '"${DATA}"'"}' ]
+	[ -n "${stderr}" ]
+	[ -x "${DATA}/runtime/bin/java" ]
+	[ -f "${DATA}/current" ]
+}
+
+@test "the stable launcher deletes nothing and reports not_removed when the saved uninstall result is unreadable" {
+	install_runtime "${DATA}" 'printf "{}\n" > "$data/state/uninstall-result.json"
+chmod a-r "$data/state/uninstall-result.json"
+exit 79'
+
+	run --separate-stderr "${DATA}/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 7 ]
+	[ "${output}" = '{"result":"not_removed","message":"CAT could not delete '"${DATA}"'"}' ]
+	[ -n "${stderr}" ]
+	[ -f "${DATA}/state/uninstall-result.json" ]
+	[ -f "${DATA}/current" ]
+}
+
+@test "the stable launcher runs the updater from the root directory with a fixed PATH whatever the caller's are" {
+	install_runtime "${DATA}" 'printf "<%s><%s>" "${PATH}" "$(pwd -P)"'
+	mkdir "${TEST_ROOT}/caller bin"
+
+	run sh -c 'cd "$1" && PATH="$2:${PATH}" "$3" status' sh "${HOME}" "${TEST_ROOT}/caller bin" "${DATA}/bin/cat-updater"
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = '</usr/bin:/bin></>' ]
+}
+
+# Each program that a caller could plant on PATH records that it ran and does nothing else, so a launcher that found
+# rm, cat, readlink or env on the caller's PATH leaves the data directory in place or creates the marker.
+@test "programs on the caller's PATH cannot stand in for those that complete an uninstall" {
+	install_uninstalling_runtime "${DATA}"
+	hostile="${TEST_ROOT}/hostile bin"
+	mkdir "${hostile}" "${TEST_ROOT}/links"
+	for program in rm cat readlink env sed ls; do
+		printf '#!/bin/sh\n: > "%s/planted program ran"\n' "${TEST_ROOT}" > "${hostile}/${program}"
+		chmod +x "${hostile}/${program}"
+	done
+	ln -s "${DATA}/bin/cat-updater" "${TEST_ROOT}/links/cat-updater"
+
+	run /usr/bin/env PATH="${hostile}:${PATH}" "${TEST_ROOT}/links/cat-updater" uninstall
+
+	[ "${status}" -eq 0 ]
+	[ "${output}" = "$(cat "${TEST_ROOT}/saved-result.json")" ]
+	[ ! -e "${DATA}" ]
+	[ ! -e "${TEST_ROOT}/planted program ran" ]
+}
+
+@test "the stable launcher refuses to delete a data directory that its path reaches through a symbolic link" {
+	install_uninstalling_runtime "${DATA}"
+	ln -s "${DATA}" "${TEST_ROOT}/linked data"
+
+	run --separate-stderr "${TEST_ROOT}/linked data/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 7 ]
+	[ "${output}" = '{"result":"not_removed","message":"CAT could not delete '"${TEST_ROOT}"'/linked data"}' ]
+	[[ "${stderr}" == *"${TEST_ROOT}/linked data" ]]
+	[ -f "${DATA}/current" ]
+	[ -L "${TEST_ROOT}/linked data" ]
+}
+
+@test "the stable launcher refuses to delete a data directory whose parent is a symbolic link" {
+	mkdir "${TEST_ROOT}/real parent"
+	create_data_directory "${TEST_ROOT}/real parent/data"
+	install_uninstalling_runtime "${TEST_ROOT}/real parent/data"
+	ln -s "${TEST_ROOT}/real parent" "${TEST_ROOT}/linked parent"
+
+	run --separate-stderr "${TEST_ROOT}/linked parent/data/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 7 ]
+	[ "${output}" = '{"result":"not_removed","message":"CAT could not delete '"${TEST_ROOT}"'/linked parent/data"}' ]
+	[ -f "${TEST_ROOT}/real parent/data/current" ]
+}
+
+@test "deleting the data directory removes symbolic links inside it without deleting what they point to" {
+	install_uninstalling_runtime "${DATA}"
+	mkdir "${TEST_ROOT}/outside"
+	printf 'kept\n' > "${TEST_ROOT}/outside/file"
+	ln -s "${TEST_ROOT}/outside" "${DATA}/state/link to outside"
+	ln -s "${TEST_ROOT}/outside/file" "${DATA}/state/link to outside file"
+
+	run "${DATA}/bin/cat-updater" uninstall
+
+	[ "${status}" -eq 0 ]
+	[ ! -e "${DATA}" ]
+	[ "$(cat "${TEST_ROOT}/outside/file")" = kept ]
 }
