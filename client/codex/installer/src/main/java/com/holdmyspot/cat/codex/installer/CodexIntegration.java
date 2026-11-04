@@ -19,6 +19,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFileAttributeView;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,35 +35,25 @@ import tools.jackson.databind.json.JsonMapper;
  * Integrates the installer with Codex's command-line program and execution policy.
  * <p>
  * Registration runs {@code codex plugin marketplace add} and {@code codex plugin add}. Codex's {@code plugin add}
- * copies the marketplace source into {@code plugins/cache/cat/cat/<version>}, replacing the cache copy that activation
- * added, so registration then requires that copy to equal the validated marketplace source file for file.
+ * copies the marketplace source into the version folder that the plugin's version names, and deletes the folder of
+ * the version it replaces, so registration then requires the new folder to equal the validated marketplace source file
+ * for file. Codex's {@code plugin remove} keeps the plugin data directory.
  * <p>
- * Permissions live in the CAT-owned file {@code rules/cat-updater.rules}, which Codex reads beside the user's rules.
+ * Permissions live in the CAT-owned file {@code rules/cat-installer.rules}, which Codex reads beside the user's rules.
+ * The only sandbox entry is one writable root for CAT's capacity locks in {@code config.toml}.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class CodexIntegration implements HarnessIntegration
 {
 	/**
-	 * The marketplace root that CAT registers.
+	 * The marketplace metadata that Codex reads, relative to the marketplace root.
 	 */
-	private static final Path MARKETPLACE_ROOT = Path.of("plugins/cat-marketplace");
-	/**
-	 * The activated plugin inside the marketplace root.
-	 */
-	private static final Path MARKETPLACE_PLUGIN = MARKETPLACE_ROOT.resolve("plugins/cat");
-	/**
-	 * The marketplace metadata that Codex reads from the marketplace root.
-	 */
-	private static final Path MARKETPLACE_METADATA = MARKETPLACE_ROOT.resolve(".agents/plugins/marketplace.json");
+	private static final Path MARKETPLACE_METADATA = Path.of(".agents/plugins/marketplace.json");
 	/**
 	 * The release's copy of the marketplace metadata, relative to the plugin directory.
 	 */
 	private static final String RELEASE_METADATA = "install/codex-marketplace.json";
-	/**
-	 * The directory whose version directories Codex loads the plugin from.
-	 */
-	private static final Path CACHE_VERSIONS = Path.of("plugins/cache/cat/cat");
 	/**
 	 * The plugin manifest inside the plugin directory.
 	 */
@@ -70,11 +61,23 @@ public final class CodexIntegration implements HarnessIntegration
 	/**
 	 * The CAT-owned execution-policy file.
 	 */
-	private static final Path RULES_FILE = Path.of("rules/cat-updater.rules");
+	private static final Path RULES_FILE = Path.of("rules/cat-installer.rules");
 	/**
 	 * The permission key of the CAT-owned execution-policy file: its path relative to the home and an empty setting.
 	 */
-	private static final String RULES_KEY = "rules/cat-updater.rules#";
+	private static final String RULES_KEY = "rules/cat-installer.rules#";
+	/**
+	 * The execution-policy file that CAT wrote before its installer was called the installer.
+	 */
+	private static final Path UPDATER_RULES_FILE = Path.of("rules/cat-updater.rules");
+	/**
+	 * Codex's configuration file.
+	 */
+	private static final Path CONFIGURATION = Path.of("config.toml");
+	/**
+	 * The sandbox key of the writable root that CAT adds to Codex's configuration.
+	 */
+	private static final String WRITABLE_ROOTS_KEY = "config.toml#sandbox_workspace_write.writable_roots";
 	/**
 	 * The plugin as Codex identifies it: the plugin name, then the marketplace name.
 	 */
@@ -179,9 +182,10 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Refuses a {@code rules} directory or {@code rules/cat-updater.rules} file that is a symbolic link or not of its
-	 * expected kind, and a rules file whose content is not exactly what CAT writes for the launcher that its first
-	 * rule names.
+	 * Refuses a {@code rules} directory or {@code rules/cat-installer.rules} file that is a symbolic link or not of its
+	 * expected kind, a rules file whose content is not exactly what CAT writes for the launcher that its first rule
+	 * names, and a {@code config.toml} that is a symbolic link, not a regular file, not valid TOML, or in a form whose
+	 * writable roots CAT does not edit.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 */
@@ -189,6 +193,19 @@ public final class CodexIntegration implements HarnessIntegration
 	public void validateConfiguration(Path home) throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		validateRules(home);
+		validateWritableRoots(home);
+	}
+
+	/**
+	 * Refuses a {@code rules} directory or {@code rules/cat-installer.rules} file that is a symbolic link or not of its
+	 * expected kind, and a rules file whose content is not exactly what CAT writes.
+	 *
+	 * @param home the Codex home
+	 * @throws IOException if the rules cannot be replaced safely
+	 */
+	private static void validateRules(Path home) throws IOException
+	{
 		Path file = home.resolve(RULES_FILE);
 		Path directory = file.getParent();
 		if (Files.isSymbolicLink(home) || Files.isSymbolicLink(directory))
@@ -212,6 +229,25 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Refuses a {@code config.toml} whose writable roots CAT cannot edit.
+	 *
+	 * @param home the Codex home
+	 * @throws IOException if the file is a symbolic link, not a regular file, not valid TOML, or in a form whose
+	 *                     writable roots CAT does not edit
+	 */
+	private static void validateWritableRoots(Path home) throws IOException
+	{
+		Path file = home.resolve(CONFIGURATION);
+		if (Files.isSymbolicLink(file))
+			throw new IOException("Codex's configuration must not be a symbolic link: " + file);
+		if (Files.notExists(file, LinkOption.NOFOLLOW_LINKS))
+			return;
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			throw new IOException("Codex's configuration is not a regular file: " + file);
+		WritableRoots.requireEditable(read(file), file);
+	}
+
+	/**
 	 * Writes the marketplace metadata from the activated release, then runs {@code codex plugin marketplace add}
 	 * and {@code codex plugin add cat@cat}, and requires the cache copy that Codex loads to equal the marketplace
 	 * source.
@@ -226,22 +262,25 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(cli, "cli").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
-		Path plugin = home.resolve(MARKETPLACE_PLUGIN);
-		requireNoLinks(home, MARKETPLACE_METADATA);
-		requireNoLinks(home, MARKETPLACE_PLUGIN.resolve(RELEASE_METADATA));
+		CodexInstallation installation = new CodexInstallation(home);
+		Path plugin = installation.marketplacePlugin();
+		Path metadata = installation.marketplaceRoot().resolve(MARKETPLACE_METADATA);
+		requireNoLinks(home, home.relativize(metadata));
+		requireNoLinks(home, home.relativize(plugin.resolve(RELEASE_METADATA)));
 		if (!Files.isDirectory(plugin, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("CAT's marketplace source is not activated: " + plugin);
-		writeMetadata(plugin.resolve(RELEASE_METADATA), home.resolve(MARKETPLACE_METADATA), replacer);
+		writeMetadata(plugin.resolve(RELEASE_METADATA), metadata, replacer);
 
-		run(cli, List.of("plugin", "marketplace", "add", home.resolve(MARKETPLACE_ROOT).toString()));
+		run(cli, List.of("plugin", "marketplace", "add", installation.marketplaceRoot().toString()));
 		run(cli, List.of("plugin", "add", PLUGIN_ID));
-		requireCacheMatches(home, plugin);
+		requireCacheMatches(installation);
 	}
 
 	/**
 	 * Runs {@code codex plugin remove cat@cat}, then {@code codex plugin marketplace remove cat}. An exit status other
 	 * than 0 is success only when Codex's output says that the plugin or marketplace is not installed, configured or
-	 * found.
+	 * found. Codex's {@code plugin remove} keeps the plugin data directory and has no option to delete it, so this
+	 * call runs the same commands whatever {@code keepData} says, and the installer deletes the data itself.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 */
@@ -255,10 +294,12 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Writes {@code rules/cat-updater.rules} unless it already holds exactly the rules for {@code installer}.
+	 * Writes {@code rules/cat-installer.rules} unless it already holds exactly the rules for {@code installer}, and
+	 * deletes a {@code rules/cat-updater.rules} file whose content is exactly what CAT wrote there before its installer
+	 * was called the installer.
 	 *
-	 * @return {@code {"rules/cat-updater.rules#": [<file content>]}} when this call wrote the file, otherwise an empty
-	 * 	map
+	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}} when this call wrote the file, otherwise an
+	 * 	empty map
 	 * @throws IllegalArgumentException if any of the paths are relative or not normalized
 	 * @throws IOException              if {@link #validateConfiguration} refuses the configuration or the file
 	 *                                  cannot be written
@@ -271,29 +312,37 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(installer, "installer").isAbsolute().isEqualTo(installer.normalize());
 		requireThat(replacer, "replacer").isNotNull();
 		validateConfiguration(home);
+		deleteUpdaterLeftover(home);
 		String content = InstallerRules.render(installer, isWindows());
 		Path file = home.resolve(RULES_FILE);
 		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && read(file).equals(content))
 			return Map.of();
 
-		Files.createDirectories(file.getParent());
-		Path temporary = Files.createTempFile(file.getParent(), ".cat-updater-", ".tmp");
-		try
-		{
-			Files.writeString(temporary, content, StandardCharsets.UTF_8);
-			replacer.replace(temporary, file);
-		}
-		finally
-		{
-			Files.deleteIfExists(temporary);
-		}
+		write(file, content, replacer);
 		return Map.of(RULES_KEY, List.of(content));
 	}
 
 	/**
-	 * Returns the content of {@code rules/cat-updater.rules} that {@link #installPermissions} writes.
+	 * Deletes the {@code rules/cat-updater.rules} file that CAT wrote before its installer was called the installer,
+	 * whose launcher no longer exists. Leaves a file that CAT did not write, or that is reached through a symbolic
+	 * link, in place.
 	 *
-	 * @return {@code {"rules/cat-updater.rules#": [<file content>]}}
+	 * @param home the Codex home
+	 * @throws IOException if the file cannot be read or deleted
+	 */
+	private static void deleteUpdaterLeftover(Path home) throws IOException
+	{
+		Path file = home.resolve(UPDATER_RULES_FILE);
+		if (Files.isSymbolicLink(file.getParent()) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return;
+		if (InstallerRules.isUpdaterLeftover(read(file), isWindows()))
+			Files.delete(file);
+	}
+
+	/**
+	 * Returns the content of {@code rules/cat-installer.rules} that {@link #installPermissions} writes.
+	 *
+	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}}
 	 * @throws IllegalArgumentException if {@code installer} is relative or not normalized
 	 */
 	@Override
@@ -303,46 +352,68 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Adds no sandbox entries.
+	 * Adds {@code catLocks} to {@code sandbox_workspace_write.writable_roots} in {@code config.toml}, creating the file
+	 * or the table when it is absent, unless the writable roots already hold it. Codex's own sandbox already keeps
+	 * sandboxed commands from writing the other harness's CAT installation, so this call adds nothing for it.
 	 *
 	 * @param home     the absolute Codex home
 	 * @param other    the other harness's CAT installation
 	 * @param catLocks the capacity lock directory
 	 * @param replacer replaces Codex's configuration
-	 * @return no entries
-	 * @throws NullPointerException if any of the arguments are null
+	 * @return {@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}} when this call added the
+	 * 	writable root, otherwise an empty map
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
+	 * @throws IOException              if {@code config.toml} is a symbolic link, not a regular file, not valid TOML or
+	 *                                  in a form whose writable roots CAT does not edit, or cannot be written
 	 */
 	@Override
 	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		FileReplacer replacer)
+		FileReplacer replacer) throws IOException
 	{
+		Map<String, List<String>> entries = sandboxEntries(home, other, catLocks);
 		requireThat(replacer, "replacer").isNotNull();
-		return sandboxEntries(home, other, catLocks);
+		validateWritableRoots(home);
+
+		Path file = home.resolve(CONFIGURATION);
+		boolean exists = Files.exists(file, LinkOption.NOFOLLOW_LINKS);
+		String content = "";
+		if (exists)
+			content = read(file);
+		String edited = WritableRoots.add(content, catLocks.toString(), file);
+		if (exists && edited.equals(content))
+			return Map.of();
+		write(file, edited, replacer);
+		return entries;
 	}
 
 	/**
-	 * Returns no sandbox entries.
+	 * Returns the writable root for {@code catLocks} that {@link #installSandboxEntries} adds.
 	 *
 	 * @param home     the absolute Codex home
 	 * @param other    the other harness's CAT installation
 	 * @param catLocks the capacity lock directory
-	 * @return no entries
-	 * @throws NullPointerException if any of the arguments are null
+	 * @return {@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
 	 */
 	@Override
 	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
 	{
-		requireThat(home, "home").isNotNull();
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(other, "other").isNotNull();
-		requireThat(catLocks, "catLocks").isNotNull();
-		return Map.of();
+		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
+		return Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
 	}
 
 	/**
-	 * Deletes {@code rules/cat-updater.rules} when its content equals a recorded content. Leaves a changed file, a
-	 * file reached through a symbolic link, and every other entry in place.
+	 * Deletes {@code rules/cat-installer.rules} when its content equals a recorded content, and removes each recorded
+	 * writable root from {@code config.toml}. Leaves a changed rules file, a file reached through a symbolic link, the
+	 * writable roots' array and table, and every other entry in place.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
+	 * @throws IOException              if a file cannot be read or written, or {@code config.toml} holds a recorded
+	 *                                  writable root in a form that CAT does not edit
 	 */
 	@Override
 	public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
@@ -350,7 +421,20 @@ public final class CodexIntegration implements HarnessIntegration
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(added, "added").isNotNull();
-		List<String> contents = added.getOrDefault(RULES_KEY, List.of());
+		requireThat(replacer, "replacer").isNotNull();
+		removeRules(home, added.getOrDefault(RULES_KEY, List.of()));
+		removeWritableRoots(home, added.getOrDefault(WRITABLE_ROOTS_KEY, List.of()), replacer);
+	}
+
+	/**
+	 * Deletes {@code rules/cat-installer.rules} when its content equals a recorded content.
+	 *
+	 * @param home     the Codex home
+	 * @param contents the recorded contents
+	 * @throws IOException if the file cannot be read or deleted
+	 */
+	private static void removeRules(Path home, List<String> contents) throws IOException
+	{
 		Path file = home.resolve(RULES_FILE);
 		if (contents.isEmpty() || Files.isSymbolicLink(home) || Files.isSymbolicLink(file.getParent()) ||
 			!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
@@ -359,6 +443,56 @@ public final class CodexIntegration implements HarnessIntegration
 		}
 		if (contents.contains(read(file)))
 			Files.delete(file);
+	}
+
+	/**
+	 * Removes recorded writable roots from {@code config.toml}.
+	 *
+	 * @param home     the Codex home
+	 * @param roots    the recorded writable roots
+	 * @param replacer replaces Codex's configuration
+	 * @throws IOException if the file cannot be read or written, or holds a recorded writable root in a form that CAT
+	 *                     does not edit
+	 */
+	private static void removeWritableRoots(Path home, List<String> roots, FileReplacer replacer) throws IOException
+	{
+		Path file = home.resolve(CONFIGURATION);
+		if (roots.isEmpty() || Files.isSymbolicLink(home) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return;
+		String content = read(file);
+		String edited = content;
+		for (String root : roots)
+			edited = WritableRoots.remove(edited, root, file);
+		if (!edited.equals(content))
+			write(file, edited, replacer);
+	}
+
+	/**
+	 * Replaces a configuration file with new content, keeping the existing file's POSIX permissions.
+	 *
+	 * @param file     the file
+	 * @param content  the new content
+	 * @param replacer replaces the file, retrying while Windows refuses the replacement
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void write(Path file, String content, FileReplacer replacer) throws IOException
+	{
+		Files.createDirectories(file.getParent());
+		Path temporary = Files.createTempFile(file.getParent(), ".cat-installer-", ".tmp");
+		try
+		{
+			Files.writeString(temporary, content, StandardCharsets.UTF_8);
+			if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) &&
+				Files.getFileStore(file).supportsFileAttributeView(PosixFileAttributeView.class))
+			{
+				Files.setPosixFilePermissions(temporary, Files.getPosixFilePermissions(file, LinkOption.NOFOLLOW_LINKS));
+			}
+			replacer.replace(temporary, file);
+		}
+		finally
+		{
+			Files.deleteIfExists(temporary);
+		}
 	}
 
 	/**
@@ -483,22 +617,22 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Requires Codex to load exactly the validated marketplace source.
+	 * Requires Codex to load exactly the validated marketplace source from the version folder that its version names.
 	 *
-	 * @param home   the harness home
-	 * @param plugin the activated marketplace source
+	 * @param installation where Codex keeps CAT's installation
 	 * @throws IOException if Codex selects another version or its cache copy differs from the source
 	 */
-	private static void requireCacheMatches(Path home, Path plugin) throws IOException
+	private static void requireCacheMatches(CodexInstallation installation) throws IOException
 	{
+		Path plugin = installation.marketplacePlugin();
 		String version = readVersion(plugin.resolve(PLUGIN_MANIFEST));
-		InstalledState state = new CodexActivation().installed(home);
+		InstalledState state = new CodexActivation().installed(installation.home());
 		if (!state.equals(new InstalledState(Optional.of(version), true)))
 		{
 			throw new IOException("After \"codex plugin add\", Codex does not load CAT " + version + " consistently: " +
-				home.resolve(CACHE_VERSIONS));
+				installation.versionFolders());
 		}
-		Path cache = home.resolve(CACHE_VERSIONS).resolve(version);
+		Path cache = installation.versionFolders().resolve(version);
 		Optional<String> difference = difference(plugin, cache);
 		if (difference.isPresent())
 		{

@@ -8,6 +8,7 @@ module com.holdmyspot.cat.codex.installer
 	requires com.holdmyspot.cat.common.installer;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
+	requires tools.jackson.dataformat.toml;
 
 	provides com.holdmyspot.cat.common.installer.activation.PluginActivation with
 		com.holdmyspot.cat.codex.installer.CodexActivation;

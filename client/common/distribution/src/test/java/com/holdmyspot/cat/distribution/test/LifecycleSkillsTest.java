@@ -243,7 +243,7 @@ public final class LifecycleSkillsTest
 				{
 					case "settings.json#sandbox.excludedCommands" -> matches(entry, command);
 					case "settings.json#permissions.allow" -> allows(entry, command);
-					case "rules/cat-updater.rules#" -> hasPrefixRule(entry, command);
+					case "rules/cat-installer.rules#" -> hasPrefixRule(entry, command);
 					default -> throw new AssertionError("Unknown permission setting: " + setting.getKey());
 				};
 				if (permitted)

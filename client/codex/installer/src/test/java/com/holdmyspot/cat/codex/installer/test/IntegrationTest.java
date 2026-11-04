@@ -16,9 +16,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -30,6 +33,11 @@ public final class IntegrationTest
 	 * Quotes paths as the rules file writes them.
 	 */
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
+	/**
+	 * Matches one rule of a Codex execution-policy file: its pattern and its decision.
+	 */
+	private static final Pattern PREFIX_RULE = Pattern.compile(
+		"prefix_rule\\(pattern=(\\[[^]]*]), decision=(\"[^\"]*\")\\)");
 
 	/**
 	 * The release's marketplace metadata in the fixtures.
@@ -40,6 +48,11 @@ public final class IntegrationTest
 	 * The plugin version of the activated release, which names its build.
 	 */
 	private static final String VERSION = "1.0+b0123456789ab";
+
+	/**
+	 * The plugin version of an earlier build of the same release.
+	 */
+	private static final String EARLIER_VERSION = "1.0+bfedcba987654";
 
 	/**
 	 * Setup finds the Codex command-line program {@code codex}.
@@ -253,6 +266,83 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Uninstall that keeps CAT's data runs Codex's plain {@code plugin remove}, which keeps the plugin data directory.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void unregisterKeepsData() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path data = home.resolve("plugins/data/cat-cat/policy.json");
+			write(data, "{}");
+			FakeCli cli = new FakeCli(_ -> new CommandResult(0, ""));
+
+			provider().unregister(home, cli, true);
+			requireThat(cli.calls, "calls").isEqualTo(List.of(List.of("plugin", "remove", "cat@cat"),
+				List.of("plugin", "marketplace", "remove", "cat")));
+			requireThat(Files.readString(data), "data").isEqualTo("{}");
+		}
+	}
+
+	/**
+	 * Registering a new build over an earlier one accepts the version folder that {@code codex plugin add} created in
+	 * place of the earlier folder.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void registersNewVersionFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			activate(home);
+			Path versions = home.resolve("plugins/cache/cat/cat");
+			TemporaryDirectories.deleteRecursively(versions.resolve(VERSION));
+			write(versions.resolve(EARLIER_VERSION).resolve(".codex-plugin/plugin.json"),
+				"{\"name\":\"cat\",\"version\":\"" + EARLIER_VERSION + "\"}\n");
+			FakeCli cli = new FakeCli(arguments ->
+			{
+				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
+					codexCopiesPlugin(home, "");
+				return new CommandResult(0, "");
+			});
+
+			provider().register(home, cli, replacer());
+			try (Stream<Path> folders = Files.list(versions))
+			{
+				requireThat(folders.toList(), "versionFolders").isEqualTo(List.of(versions.resolve(VERSION)));
+			}
+		}
+	}
+
+	/**
+	 * Registration fails when {@code codex plugin add} leaves the earlier build's version folder in place of the new
+	 * one.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*does not load CAT 1\\.0\\+b0123456789ab.*")
+	public void refusesKeptEarlierVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			activate(home);
+			Path versions = home.resolve("plugins/cache/cat/cat");
+			TemporaryDirectories.deleteRecursively(versions.resolve(VERSION));
+			write(versions.resolve(EARLIER_VERSION).resolve(".codex-plugin/plugin.json"),
+				"{\"name\":\"cat\",\"version\":\"" + EARLIER_VERSION + "\"}\n");
+
+			provider().register(home, new FakeCli(_ -> new CommandResult(0, "")), replacer());
+		}
+	}
+
+	/**
 	 * Unregistration reports any other Codex failure.
 	 *
 	 * @throws IOException if Codex's failure is reported
@@ -265,8 +355,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The rules file permits install, update and status without asking, asks before uninstall, never covers setup, and
-	 * is reported as added only by the call that wrote it.
+	 * The rules file permits installing into Codex, update and status without asking, asks before uninstall, and is
+	 * reported as added only by the call that wrote it.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -276,45 +366,99 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path launcher = home.resolveSibling("installer data/bin/cat-updater");
+			Path launcher = installer(home, VERSION);
 			String expected = rules(launcher);
 
 			Map<String, List<String>> added = provider().installPermissions(home, launcher, replacer());
-			requireThat(added, "added").isEqualTo(Map.of("rules/cat-updater.rules#", List.of(expected)));
-			requireThat(Files.readString(home.resolve("rules/cat-updater.rules")), "content").isEqualTo(expected);
+			requireThat(added, "added").isEqualTo(Map.of("rules/cat-installer.rules#", List.of(expected)));
+			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").isEqualTo(expected);
 			requireThat(provider().installPermissions(home, launcher, replacer()), "repeated").isEmpty();
 			provider().validateConfiguration(home);
 		}
 	}
 
 	/**
-	 * A rules file that an earlier build wrote, which also asked before an operation that the installer no longer has,
-	 * is accepted as CAT's own, replaced with the maintained rules and kept when the earlier content is removed.
+	 * No rule that runs without asking covers installing CAT into the other harness, which the user approves, and
+	 * uninstall always asks.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void replacesEarlierRules() throws IOException
+	public void otherHarnessInstallPrompts() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path launcher = home.resolveSibling("installer data/bin/cat-updater");
-			String quoted = MAPPER.writeValueAsString(launcher.toString());
-			String uninstall = "prefix_rule(pattern=[" + quoted + ", \"uninstall\"";
-			String earlier = rules(launcher).replace(uninstall, "prefix_rule(pattern=[" + quoted +
-				", \"rollback\", \"--harness\", \"codex\"], decision=\"prompt\")\n" + uninstall);
-			write(home.resolve("rules/cat-updater.rules"), earlier);
+			String launcher = installer(home, VERSION).toString();
+			provider().installPermissions(home, installer(home, VERSION), replacer());
+			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
+
+			requireThat(decisions(content, List.of(launcher, "install", "--harness", "claude")), "otherHarness").
+				isEmpty();
+			requireThat(decisions(content, List.of(launcher, "install", "--harness", "codex")), "ownHarness").
+				isEqualTo(List.of("allow"));
+			requireThat(decisions(content, List.of(launcher, "uninstall", "--harness", "codex")), "uninstall").
+				isEqualTo(List.of("prompt"));
+		}
+	}
+
+	/**
+	 * Install deletes the {@code rules/cat-updater.rules} file that an earlier CAT wrote before the installer was
+	 * renamed, because the launcher it names is gone.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void removesLeftoverUpdaterRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path leftover = home.resolve("rules/cat-updater.rules");
+			write(leftover, updaterRules(home.resolveSibling(".local/share/cat-updater/codex/bin/cat-updater")));
+
+			provider().installPermissions(home, installer(home, VERSION), replacer());
+			requireThat(Files.exists(leftover), "leftoverExists").isFalse();
+			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
+				isEqualTo(rules(installer(home, VERSION)));
+		}
+	}
+
+	/**
+	 * Install keeps a {@code rules/cat-updater.rules} file whose content CAT did not write, including one that asks
+	 * before the removed rollback operation.
+	 *
+	 * @param content the file's content
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "foreignUpdaterRules")
+	public void keepsForeignUpdaterRules(String content) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path file = home.resolve("rules/cat-updater.rules");
+			write(file, content);
 
 			provider().validateConfiguration(home);
-			Map<String, List<String>> added = provider().installPermissions(home, launcher, replacer());
-			provider().removePermissions(home, Map.of("rules/cat-updater.rules#", List.of(earlier)), replacer());
-
-			requireThat(added, "added").isEqualTo(Map.of("rules/cat-updater.rules#", List.of(rules(launcher))));
-			requireThat(provider().permissions(launcher), "maintained").isEqualTo(added);
-			requireThat(Files.readString(home.resolve("rules/cat-updater.rules")), "content").
-				isEqualTo(rules(launcher));
+			provider().installPermissions(home, installer(home, VERSION), replacer());
+			requireThat(Files.readString(file), "content").isEqualTo(content);
 		}
+	}
+
+	/**
+	 * Supplies {@code rules/cat-updater.rules} contents that CAT did not write.
+	 *
+	 * @return file contents
+	 */
+	@DataProvider
+	public Object[][] foreignUpdaterRules()
+	{
+		Path launcher = Path.of(System.getProperty("cat.installer.test.directory")).toAbsolutePath().
+			resolve(".local/share/cat-updater/codex/bin/cat-updater");
+		String rules = updaterRules(launcher);
+		return new Object[][]{{rules + "prefix_rule(pattern=[\"rm\"], decision=\"allow\")\n"},
+			{withRollback(rules, launcher)}, {"prefix_rule(pattern=[\"git\"], decision=\"allow\")\n"}};
 	}
 
 	/**
@@ -329,39 +473,45 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			provider().installPermissions(home, home.resolveSibling("old/bin/cat-updater"), replacer());
-			Path launcher = home.resolveSibling("bin/cat-updater");
-			TransientRefusal refusal = new TransientRefusal(home.resolve("rules/cat-updater.rules"));
+			provider().installPermissions(home, installer(home, EARLIER_VERSION), replacer());
+			Path launcher = installer(home, VERSION);
+			TransientRefusal refusal = new TransientRefusal(home.resolve("rules/cat-installer.rules"));
 
 			provider().installPermissions(home, launcher, refusal.replacer());
 
-			requireThat(Files.readString(home.resolve("rules/cat-updater.rules")), "content").
+			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
 			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
 		}
 	}
 
 	/**
-	 * A rules file that CAT wrote for another launcher is replaced and reported as added.
+	 * Installing a new version rewrites the rules to name the new version folder's installer, and reports them as
+	 * added.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void replacesRulesForMovedLauncher() throws IOException
+	public void rewritesRulesForNewVersion() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			provider().installPermissions(home, home.resolveSibling("old/bin/cat-updater"), replacer());
-			Path launcher = home.resolveSibling("new/bin/cat-updater");
+			provider().installPermissions(home, installer(home, EARLIER_VERSION), replacer());
+			Path launcher = installer(home, VERSION);
 
 			requireThat(provider().installPermissions(home, launcher, replacer()), "added").
-				isEqualTo(Map.of("rules/cat-updater.rules#", List.of(rules(launcher))));
+				isEqualTo(Map.of("rules/cat-installer.rules#", List.of(rules(launcher))));
+			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
+				isEqualTo(rules(launcher));
+			requireThat(provider().permissions(launcher), "maintained").
+				isEqualTo(Map.of("rules/cat-installer.rules#", List.of(rules(launcher))));
 		}
 	}
 
 	/**
-	 * Setup refuses, changing nothing, a rules file that CAT did not write, including a CAT file that was edited.
+	 * Install refuses, changing nothing, a rules file that CAT did not write, including a CAT file that was edited and
+	 * one that asks before the removed rollback operation.
 	 *
 	 * @param content the existing file content
 	 * @throws IOException if a fixture cannot be written or read
@@ -372,7 +522,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path file = home.resolve("rules/cat-updater.rules");
+			Path file = home.resolve("rules/cat-installer.rules");
 			Files.createDirectories(file.getParent());
 			Files.writeString(file, content);
 
@@ -383,7 +533,7 @@ public final class IntegrationTest
 					if (attempt == 0)
 						provider().validateConfiguration(home);
 					else
-						provider().installPermissions(home, home.resolveSibling("bin/cat-updater"), replacer());
+						provider().installPermissions(home, installer(home, VERSION), replacer());
 					throw new AssertionError("Accepted a rules file that CAT did not write");
 				}
 				catch (IOException e)
@@ -404,13 +554,14 @@ public final class IntegrationTest
 	public Object[][] foreignRules()
 	{
 		Path launcher = Path.of(System.getProperty("cat.installer.test.directory")).toAbsolutePath().
-			resolve("bin/cat-updater");
+			resolve("plugins/cache/cat/cat/" + VERSION + "/bin/installer");
 		return new Object[][]{{"prefix_rule(pattern=[\"rm\"], decision=\"allow\")\n"},
-			{rules(launcher) + "prefix_rule(pattern=[\"rm\"], decision=\"allow\")\n"}, {""}};
+			{rules(launcher) + "prefix_rule(pattern=[\"rm\"], decision=\"allow\")\n"}, {""},
+			{withRollback(rules(launcher), launcher)}};
 	}
 
 	/**
-	 * Setup refuses a rules directory or rules file that is a symbolic link.
+	 * Install refuses a rules directory or rules file that is a symbolic link.
 	 *
 	 * @param linked the path replaced with a symbolic link, relative to the home
 	 * @throws IOException if a fixture cannot be written or read
@@ -439,7 +590,7 @@ public final class IntegrationTest
 	@DataProvider
 	public Object[][] linkedRules()
 	{
-		return new Object[][]{{"rules"}, {"rules/cat-updater.rules"}};
+		return new Object[][]{{"rules"}, {"rules/cat-installer.rules"}};
 	}
 
 	/**
@@ -453,16 +604,15 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path file = home.resolve("rules/cat-updater.rules");
+			Path file = home.resolve("rules/cat-installer.rules");
 			Path userRules = home.resolve("rules/default.rules");
-			Map<String, List<String>> added = provider().installPermissions(home, home.resolveSibling("bin/cat-updater"),
-				replacer());
+			Map<String, List<String>> added = provider().installPermissions(home, installer(home, VERSION), replacer());
 			Files.writeString(userRules, "prefix_rule(pattern=[\"git\", \"status\"], decision=\"allow\")\n");
 			Files.writeString(file, Files.readString(file) + "# edited\n");
 
 			provider().removePermissions(home, added, replacer());
 			requireThat(file, "file").exists();
-			Files.writeString(file, added.get("rules/cat-updater.rules#").getFirst());
+			Files.writeString(file, added.get("rules/cat-installer.rules#").getFirst());
 			provider().removePermissions(home, added, replacer());
 			requireThat(Files.exists(file), "fileExists").isFalse();
 			requireThat(userRules, "userRules").isRegularFile();
@@ -472,7 +622,7 @@ public final class IntegrationTest
 	/**
 	 * Returns the rules file that CAT writes for a POSIX launcher.
 	 *
-	 * @param launcher the stable launcher
+	 * @param launcher the installer launcher in the version folder
 	 * @return the file content
 	 */
 	private static String rules(Path launcher)
@@ -485,6 +635,67 @@ public final class IntegrationTest
 			prefix_rule(pattern=[%1$s, "status"], decision="allow")
 			prefix_rule(pattern=[%1$s, "uninstall", "--harness", "codex"], decision="prompt")
 			""".formatted(quoted);
+	}
+
+	/**
+	 * Returns the {@code rules/cat-updater.rules} file that CAT wrote for a POSIX launcher before the installer was
+	 * renamed.
+	 *
+	 * @param launcher the launcher of the earlier layout
+	 * @return the file content
+	 */
+	private static String updaterRules(Path launcher)
+	{
+		return rules(launcher).replace("CAT's installer", "CAT's updater");
+	}
+
+	/**
+	 * Adds a rule that asks before the removed rollback operation, before the uninstall rule.
+	 *
+	 * @param rules    a rules file's content
+	 * @param launcher the launcher that the rules name
+	 * @return the changed content
+	 */
+	private static String withRollback(String rules, Path launcher)
+	{
+		String quoted = MAPPER.writeValueAsString(launcher.toString());
+		String uninstall = "prefix_rule(pattern=[" + quoted + ", \"uninstall\"";
+		return rules.replace(uninstall, "prefix_rule(pattern=[" + quoted +
+			", \"rollback\", \"--harness\", \"codex\"], decision=\"prompt\")\n" + uninstall);
+	}
+
+	/**
+	 * Returns the decisions of the rules whose pattern starts a command, as Codex matches a prefix rule.
+	 *
+	 * @param rules   a rules file's content
+	 * @param command the command's tokens
+	 * @return the decisions in file order
+	 */
+	private static List<String> decisions(String rules, List<String> command)
+	{
+		List<String> decisions = new ArrayList<>();
+		Matcher matcher = PREFIX_RULE.matcher(rules);
+		while (matcher.find())
+		{
+			List<String> pattern = new ArrayList<>();
+			for (JsonNode token : MAPPER.readTree(matcher.group(1)))
+				pattern.add(token.stringValue());
+			if (pattern.size() <= command.size() && command.subList(0, pattern.size()).equals(pattern))
+				decisions.add(MAPPER.readTree(matcher.group(2)).stringValue());
+		}
+		return decisions;
+	}
+
+	/**
+	 * Returns the installer launcher of a version folder.
+	 *
+	 * @param home    the Codex home
+	 * @param version the plugin version
+	 * @return the launcher
+	 */
+	private static Path installer(Path home, String version)
+	{
+		return home.resolve("plugins/cache/cat/cat").resolve(version).resolve("bin/installer");
 	}
 
 	/**

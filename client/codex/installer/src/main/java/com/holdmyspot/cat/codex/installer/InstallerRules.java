@@ -10,12 +10,12 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Writes and recognizes the CAT-owned Codex execution-policy file that lets an agent run the stable installer
- * launcher.
+ * Writes and recognizes the CAT-owned Codex execution-policy file that lets an agent run the installer launcher of the
+ * active version folder.
  * <p>
  * Each rule is a {@code prefix_rule}. Codex applies a prefix rule to every command that starts with its pattern, so
- * the installer validates its complete argument list itself. No rule starts with {@code setup}, so setup always needs
- * the user.
+ * the installer validates its complete argument list itself. Every rule that allows a command names this harness
+ * after {@code --harness}, or names {@code status}, so installing CAT into another harness always needs the user.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -35,6 +35,11 @@ public final class InstallerRules
 	private static final String HEADER =
 		"# Written by CAT's installer, which replaces or deletes this file. Do not edit it.";
 	/**
+	 * The first line of the file that CAT wrote, under another name, before its installer was called the installer.
+	 */
+	private static final String UPDATER_HEADER =
+		"# Written by CAT's updater, which replaces or deletes this file. Do not edit it.";
+	/**
 	 * The fixed tokens that start every Windows launcher command, before the launcher script's path.
 	 */
 	private static final List<String> WINDOWS_PREFIX = List.of("powershell.exe", "-NoProfile", "-NonInteractive",
@@ -52,9 +57,9 @@ public final class InstallerRules
 	}
 
 	/**
-	 * Returns the file content that permits the agent operations on one stable launcher.
+	 * Returns the file content that permits the agent operations on one installer launcher.
 	 *
-	 * @param launcher the absolute, normalized path of the stable installer launcher
+	 * @param launcher the absolute, normalized path of the installer launcher in the active version folder
 	 * @param windows  {@code true} to name the launcher script through PowerShell, as Windows runs it
 	 * @return the complete file content, ending with a line feed
 	 * @throws NullPointerException     if {@code launcher} is null
@@ -62,19 +67,18 @@ public final class InstallerRules
 	 */
 	public static String render(Path launcher, boolean windows)
 	{
-		return render(launcher, windows, false);
+		return render(HEADER, launcher, windows);
 	}
 
 	/**
-	 * Returns the file content for one stable launcher, as this build or an earlier one wrote it.
+	 * Returns the file content for one launcher under a header.
 	 *
-	 * @param launcher the absolute, normalized path of the stable installer launcher
+	 * @param header   the file's first line
+	 * @param launcher the absolute, normalized path of the launcher
 	 * @param windows  {@code true} to name the launcher script through PowerShell
-	 * @param earlier  {@code true} for the content of earlier builds, which also asked before a {@code rollback}
-	 *                 operation that the installer no longer has
 	 * @return the complete file content, ending with a line feed
 	 */
-	private static String render(Path launcher, boolean windows, boolean earlier)
+	private static String render(String header, Path launcher, boolean windows)
 	{
 		requireThat(launcher, "launcher").isAbsolute().isEqualTo(launcher.normalize());
 		List<String> command = new ArrayList<>();
@@ -82,19 +86,17 @@ public final class InstallerRules
 			command.addAll(WINDOWS_PREFIX);
 		command.add(launcher.toString());
 
-		StringBuilder content = new StringBuilder(HEADER).append('\n');
+		StringBuilder content = new StringBuilder(header).append('\n');
 		rule(content, command, List.of("install", "--harness", CodexActivation.HARNESS), ALLOW);
 		rule(content, command, List.of("update", "--harness", CodexActivation.HARNESS), ALLOW);
 		rule(content, command, List.of("status"), ALLOW);
-		if (earlier)
-			rule(content, command, List.of("rollback", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
 		rule(content, command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
 		return content.toString();
 	}
 
 	/**
 	 * Reports whether a file's content is exactly what {@link #render} writes for the launcher that its first rule
-	 * names, or what earlier builds wrote for it, so that the installer replaces their file.
+	 * names, so that the installer may replace the file.
 	 *
 	 * @param content the file's content
 	 * @param windows {@code true} if the file names the launcher through PowerShell
@@ -103,8 +105,35 @@ public final class InstallerRules
 	 */
 	public static boolean isWrittenByCat(String content, boolean windows)
 	{
+		return isRenderedUnder(HEADER, content, windows);
+	}
+
+	/**
+	 * Reports whether a file's content is exactly what CAT wrote into {@code rules/cat-updater.rules} for the launcher
+	 * that its first rule names, before its installer was called the installer.
+	 *
+	 * @param content the file's content
+	 * @param windows {@code true} if the file names the launcher through PowerShell
+	 * @return {@code true} if CAT wrote the content
+	 * @throws NullPointerException if {@code content} is null
+	 */
+	public static boolean isUpdaterLeftover(String content, boolean windows)
+	{
+		return isRenderedUnder(UPDATER_HEADER, content, windows);
+	}
+
+	/**
+	 * Reports whether a file's content is exactly the rules for the launcher that its first rule names, under a header.
+	 *
+	 * @param header  the expected first line
+	 * @param content the file's content
+	 * @param windows {@code true} if the file names the launcher through PowerShell
+	 * @return {@code true} if the content equals the rendered rules
+	 */
+	private static boolean isRenderedUnder(String header, String content, boolean windows)
+	{
 		String[] lines = content.split("\n", -1);
-		if (lines.length < 2 || !lines[0].equals(HEADER))
+		if (lines.length < 2 || !lines[0].equals(header))
 			return false;
 		String rule = lines[1];
 		String start = "prefix_rule(pattern=";
@@ -128,9 +157,8 @@ public final class InstallerRules
 		Path launcher = Path.of(pattern.path(launcherIndex).stringValue());
 		if (!launcher.isAbsolute() || !launcher.equals(launcher.normalize()))
 			return false;
-		return content.equals(render(launcher, windows)) || content.equals(render(launcher, windows, true));
+		return content.equals(render(header, launcher, windows));
 	}
-
 	/**
 	 * Appends one prefix rule.
 	 *
