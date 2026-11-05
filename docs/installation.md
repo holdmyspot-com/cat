@@ -87,8 +87,24 @@ permission.
 
 ### Installing a second harness, repairing, and changing what the installer trusts
 
-To use both harnesses, run the command once with `--harness claude` and once with `--harness codex`. Each run creates
-or changes only its own harness's installation.
+To use both harnesses, install CAT into the second harness with the installer of the first one's installed plugin. In
+Claude Code, for example, the installed plugin's version folder holds `bin/installer`; run, in a terminal:
+
+```sh
+<installed plugin>/bin/installer install --harness codex
+```
+
+On Windows, run `bin/installer.ps1` in PowerShell instead. The installer downloads the other harness's plugin of its
+own release from the release source of its policy, checks the download's signed manifest with the policy's keys, as it
+does for every release that it installs, and installs that plugin as the entry command would: the other harness's
+version folder, policy, permission entries and permission questions are the same. It installs only its own release: a
+command that names another release is refused. It installs only into a harness that has no CAT: where the other harness
+already has CAT, the command is refused and names the command of that installation's own installer that updates it.
+A development build, whose policy trusts no release key, cannot verify a download and refuses; use the entry command
+instead.
+
+Running the entry command once with `--harness claude` and once with `--harness codex` installs both harnesses too.
+Each run creates or changes only its own harness's installation.
 
 The command is repeatable. Running it again repairs an installation that stopped part-way, because every step of an
 install can be repeated. Where the harness already has CAT and the installation has a valid policy, the command installs
@@ -98,9 +114,11 @@ release's entry command where the harness has no CAT or where its policy is not 
 The command then writes the policy from the archive again.
 
 A runner of one harness that starts a session of the other harness runs the other harness's installed CAT plugin, of the
-same release as its own plugin, whatever build of that release. It downloads nothing. When the other harness has no
-plugin of that release, the runner stops before it starts anything and tells you to install CAT in the other harness;
-run the entry command of the same release for that harness.
+same release as its own plugin, whatever build of that release. The runner itself downloads nothing. When the other
+harness has no plugin of that release, the runner stops before it starts anything and names a command that installs or
+updates CAT in the other harness, such as the installer command above. Your harness asks you to approve that command
+before it runs; once it has run, start the runner again. The entry command of the same release for that harness does
+the same.
 
 If the command cannot write a required path, it names the path. Run the command outside the agent's sandbox.
 

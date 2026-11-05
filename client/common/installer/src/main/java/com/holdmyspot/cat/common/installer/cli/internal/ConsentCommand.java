@@ -44,13 +44,10 @@ public final class ConsentCommand
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(arguments, "arguments").isNotNull();
-		boolean windows = platform.isWindows();
 		StringJoiner command = new StringJoiner(" ");
-		if (windows)
-			command.add("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File");
-		command.add(quote(PluginInstall.installer(plugin, windows).toString(), windows));
+		command.add(launcher(plugin, platform));
 		if (arguments.home() != null)
-			command.add("--home").add(quote(arguments.home().toString(), windows));
+			command.add("--home").add(quote(arguments.home().toString(), platform));
 		command.add("--create-profile").add("install").add("--harness").add(arguments.harness());
 		if (arguments.tag() != null)
 			command.add(arguments.tag());
@@ -58,16 +55,40 @@ public final class ConsentCommand
 	}
 
 	/**
-	 * Quotes a path for the shell that runs the command.
+	 * Returns the start of a command that runs the installer launcher of a version folder, in the form that the
+	 * installer's permission entries name the launcher.
 	 *
-	 * @param path    the path
-	 * @param windows true for PowerShell, which gets the path in double quotes; otherwise the path is in single quotes
-	 *                when it holds a character that the shell would interpret
-	 * @return the shell word
+	 * @param plugin   the version folder
+	 * @param platform the running platform, whose shell the command is written for
+	 * @return the launcher, quoted for the shell; on Windows, preceded by
+	 * 	{@code powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File}
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private static String quote(String path, boolean windows)
+	public static String launcher(Path plugin, Platform platform)
 	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		boolean windows = platform.isWindows();
+		String launcher = quote(PluginInstall.installer(plugin, windows).toString(), platform);
 		if (windows)
+			return "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + launcher;
+		return launcher;
+	}
+
+	/**
+	 * Quotes a path for the shell that runs a command that {@link #launcher(Path, Platform)} starts.
+	 *
+	 * @param path     the path
+	 * @param platform the running platform: on Windows, PowerShell gets the path in double quotes; otherwise the path
+	 *                 is in single quotes when it holds a character that the shell would interpret
+	 * @return the shell word
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static String quote(String path, Platform platform)
+	{
+		requireThat(path, "path").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		if (platform.isWindows())
 			return "\"" + path + "\"";
 		if (PLAIN_WORD.matcher(path).matches())
 			return path;

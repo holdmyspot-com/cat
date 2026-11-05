@@ -15,7 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Creates the extracted plugin archive of {@code harness-a}'s plugin, from which install runs.
+ * Creates the extracted plugin archive of a harness's plugin, from which install runs: {@code harness-a}'s unless a
+ * test names another harness.
  */
 final class PluginArchive
 {
@@ -42,9 +43,23 @@ final class PluginArchive
 	 */
 	static Path create(Path parent, List<TrustedKey> keys) throws IOException
 	{
-		Path plugin = Files.createDirectories(parent.resolve("cat-harness-a-linux-x64-v1.2"));
-		Files.createDirectories(plugin.resolve(".harness-a"));
-		Files.writeString(plugin.resolve(".harness-a/plugin.json"), "{\"version\":\"" + VERSION + "\"}");
+		return create(parent, keys, "harness-a");
+	}
+
+	/**
+	 * Creates the extracted archive of a harness's plugin, as {@link #create(Path, List)} describes.
+	 *
+	 * @param parent  the directory that receives the archive
+	 * @param keys    the release keys of the archive's default policy
+	 * @param harness the harness whose plugin the archive holds
+	 * @return the plugin folder, the archive's top directory, {@link #topDirectory(String)}
+	 * @throws IOException if the archive cannot be written
+	 */
+	static Path create(Path parent, List<TrustedKey> keys, String harness) throws IOException
+	{
+		Path plugin = Files.createDirectories(parent.resolve(topDirectory(harness)));
+		Files.createDirectories(plugin.resolve("." + harness));
+		Files.writeString(plugin.resolve("." + harness + "/plugin.json"), "{\"version\":\"" + VERSION + "\"}");
 		Files.createDirectories(plugin.resolve("bin/runtime/bin"));
 		Files.writeString(plugin.resolve("bin/runtime/bin/java"), "java");
 		Files.writeString(plugin.resolve("bin/installer"), "#!/bin/sh\n");
@@ -56,6 +71,17 @@ final class PluginArchive
 		Files.writeString(plugin.resolve("bin/VERSION"), VERSION + "\n");
 		writeDefaultPolicy(plugin, keys);
 		return plugin;
+	}
+
+	/**
+	 * Returns the top directory of the archive of a harness's plugin, which the release's signed manifest names.
+	 *
+	 * @param harness the harness
+	 * @return the directory's name
+	 */
+	static String topDirectory(String harness)
+	{
+		return "cat-" + harness + "-linux-x64-v1.2";
 	}
 
 	/**

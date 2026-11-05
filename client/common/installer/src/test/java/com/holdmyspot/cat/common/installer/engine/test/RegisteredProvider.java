@@ -14,19 +14,31 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Describes the generic harness {@code harness-a} as {@link RecordingIntegration} installs CAT into it: the harness
- * reports the version that it was last asked to install, and the installation is consistent only when that version's
- * folder holds the plugin of that version.
+ * Describes a generic harness, {@code harness-a} unless a test names another, as {@link RecordingIntegration}
+ * installs CAT into it: the harness reports the version that it was last asked to install, and the installation is
+ * consistent only when that version's folder holds the plugin of that version.
  */
 public class RegisteredProvider implements PluginActivation
 {
+	private final String harness;
 	private final List<Path> companions = new ArrayList<>();
 
 	/**
-	 * Creates the provider.
+	 * Creates the provider of {@code harness-a}.
 	 */
 	public RegisteredProvider()
 	{
+		this("harness-a");
+	}
+
+	/**
+	 * Creates the provider.
+	 *
+	 * @param harness the harness
+	 */
+	public RegisteredProvider(String harness)
+	{
+		this.harness = harness;
 	}
 
 	/**
@@ -55,13 +67,13 @@ public class RegisteredProvider implements PluginActivation
 	@Override
 	public String harness()
 	{
-		return "harness-a";
+		return harness;
 	}
 
 	@Override
 	public String pluginManifest()
 	{
-		return ".harness-a/plugin.json";
+		return "." + harness + "/plugin.json";
 	}
 
 	@Override
@@ -81,7 +93,7 @@ public class RegisteredProvider implements PluginActivation
 			// A version without a build has no version folder
 			return new InstalledState(Optional.of(version), false);
 		}
-		Path folder = new RecordingIntegration.Layout(home).versionFolder(plugin);
+		Path folder = RecordingIntegration.layout(harness, home).versionFolder(plugin);
 		Path stated = folder.resolve(PluginDirectory.VERSION);
 		boolean consistent = Files.isRegularFile(stated, NOFOLLOW_LINKS) &&
 			Files.readString(stated).strip().equals(version);
@@ -91,13 +103,13 @@ public class RegisteredProvider implements PluginActivation
 	@Override
 	public Path migrationVersionFile(Path home)
 	{
-		return new RecordingIntegration.Layout(home).dataDirectory().resolve("migration-version");
+		return RecordingIntegration.layout(harness, home).dataDirectory().resolve("migration-version");
 	}
 
 	@Override
 	public List<Path> removalPaths(Path home)
 	{
-		RecordingIntegration.Layout layout = new RecordingIntegration.Layout(home);
+		RecordingIntegration.Layout layout = RecordingIntegration.layout(harness, home);
 		return List.of(layout.marketplaceRoot(), layout.versionFolders().getParent(),
 			RecordingIntegration.registeredVersion(home));
 	}
@@ -105,6 +117,6 @@ public class RegisteredProvider implements PluginActivation
 	@Override
 	public Path dataDirectory(Path home)
 	{
-		return new RecordingIntegration.Layout(home).dataDirectory();
+		return RecordingIntegration.layout(harness, home).dataDirectory();
 	}
 }

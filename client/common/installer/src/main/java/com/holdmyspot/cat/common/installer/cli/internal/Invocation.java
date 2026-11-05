@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -27,6 +28,9 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
 import com.holdmyspot.cat.common.installer.engine.ProcessMigrationRunner;
+import com.holdmyspot.cat.common.installer.engine.ReleaseConnection;
+import com.holdmyspot.cat.common.installer.engine.StagedInstall;
+import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
@@ -50,7 +54,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Owns one installer process's explicit inputs, output streams and command dispatch. An installer that runs from a
- * version folder acts only on the harness whose version folders contain it.
+ * version folder acts only on the harness whose version folders contain it, except that it installs CAT, of its own
+ * release, into another harness that has none.
  */
 public final class Invocation
 {
@@ -75,6 +80,7 @@ public final class Invocation
 	private final FileReplacer replacer;
 	private final Terminal terminal;
 	private final ProcessStarter starter;
+	private final ReleaseSources sources;
 	private final PrintStream stdout;
 	private final PrintStream stderr;
 	private final JsonMapper mapper = JsonMapper.builder().build();
@@ -88,7 +94,7 @@ public final class Invocation
 	private String resolvedHarness;
 
 	/**
-	 * Creates one process invocation with explicit boundaries for isolated tests.
+	 * Creates one process invocation that downloads releases over HTTPS, with its other boundaries explicit.
 	 *
 	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
 	 *                     install, otherwise the version folder of the installed plugin
@@ -115,6 +121,40 @@ public final class Invocation
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
 		PrintStream stdout, PrintStream stderr)
 	{
+		this(image, cwd, userHome, platform, environment, activations, integrations, cliFactory, clock, waiting,
+			replacer, terminal, starter, releaseBaseUrl -> new HttpsReleaseSource(releaseBaseUrl, environment,
+				CONNECT_LIMIT, REQUEST_LIMIT), stdout, stderr);
+	}
+
+	/**
+	 * Creates one process invocation with explicit boundaries, including the release source, for isolated tests.
+	 *
+	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
+	 *                     install, otherwise the version folder of the installed plugin
+	 * @param cwd          the caller's working directory
+	 * @param userHome     the user's home directory, which holds the capacity locks and in which the harness homes lie
+	 *                     unless the environment names them
+	 * @param platform     the running platform
+	 * @param environment  the boundary-captured environment; routine path authority never comes from this map
+	 * @param activations  the installed activation services
+	 * @param integrations the installed harness integration services
+	 * @param cliFactory   runs the recorded harness program
+	 * @param clock        supplies UTC diagnostic times
+	 * @param waiting      creates pauses between installer lock attempts
+	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
+	 * @param terminal     asks the user whether they allow a change that needs their permission
+	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
+	 *                     it cannot delete while it runs
+	 * @param sources      opens the release source at a policy's release location
+	 * @param stdout       receives exactly one JSON result
+	 * @param stderr       receives human diagnostics
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public Invocation(Path image, Path cwd, Path userHome, Platform platform, Map<String, String> environment,
+		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
+		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
+		ReleaseSources sources, PrintStream stdout, PrintStream stderr)
+	{
 		requireThat(image, "image").isNotNull();
 		requireThat(cwd, "cwd").isNotNull();
 		requireThat(userHome, "userHome").isNotNull();
@@ -125,6 +165,7 @@ public final class Invocation
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(terminal, "terminal").isNotNull();
 		requireThat(starter, "starter").isNotNull();
+		requireThat(sources, "sources").isNotNull();
 		requireThat(stdout, "stdout").isNotNull();
 		requireThat(stderr, "stderr").isNotNull();
 		this.image = image;
@@ -140,6 +181,7 @@ public final class Invocation
 		this.replacer = replacer;
 		this.terminal = terminal;
 		this.starter = starter;
+		this.sources = sources;
 		this.stdout = stdout;
 		this.stderr = stderr;
 	}
@@ -242,8 +284,7 @@ public final class Invocation
 			return print(managed.refusal(), arguments, locations);
 		if (arguments.operation() == Operation.STATUS)
 		{
-			try (HttpsReleaseSource source = new HttpsReleaseSource(managed.policy().releaseBaseUrl(), environment,
-				CONNECT_LIMIT, REQUEST_LIMIT))
+			try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 			{
 				UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 					platform.id(), clock, waiting);
@@ -257,8 +298,9 @@ public final class Invocation
 	}
 
 	/**
-	 * Installs a harness's plugin: through the installation whose version folder the running installer runs from, or
-	 * from the extracted plugin archive that the running installer belongs to.
+	 * Installs a harness's plugin: through the installation whose version folder the running installer runs from, from
+	 * the extracted plugin archive that the running installer belongs to, or, for a harness other than the one whose
+	 * version folder the running installer runs from, from that harness's plugin of the running installer's release.
 	 *
 	 * @param arguments the validated install operation
 	 * @return its printed result's status
@@ -280,15 +322,14 @@ public final class Invocation
 		resolvedHarness = locations.harness();
 		String own = locations.harness();
 		if (!arguments.harness().equals(own))
-			return print(otherHarness(own, arguments.harness()), arguments, locations);
+			return installOther(arguments, locations);
 		Managed managed = manage(own, locations.policy(), false, true);
 		if (managed.refusal() != null)
 			return print(managed.refusal(), arguments, locations);
 		Optional<UpdateResult> otherHome = refuseOtherHome(own, arguments.home(), managed.home());
 		if (otherHome.isPresent())
 			return print(otherHome.get(), arguments, locations);
-		try (HttpsReleaseSource source = new HttpsReleaseSource(managed.policy().releaseBaseUrl(), environment,
-			CONNECT_LIMIT, REQUEST_LIMIT))
+		try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 		{
 			UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 				platform.id(), clock, waiting);
@@ -298,6 +339,109 @@ public final class Invocation
 				return print(result, withheld(result, consent, arguments, locations.image()), arguments, locations);
 			return print(result, arguments, locations);
 		}
+	}
+
+	/**
+	 * Installs CAT into a harness other than the one whose version folder the running installer runs from. Where that
+	 * harness has no CAT version, the plugin archive of that harness in the running installer's own release is
+	 * downloaded from the release location of the running installer's policy, verified with the policy's release keys
+	 * as every release that the installation installs is, and installed as a first install from that archive is. A tag
+	 * of another release, a harness that already has CAT, which its own installer updates, and a policy that trusts no
+	 * release key are refused.
+	 *
+	 * @param arguments the validated install operation, which names the other harness
+	 * @param locations the installation that the running installer belongs to
+	 * @return its printed result's status
+	 * @throws IOException    if installation files cannot be read or replaced
+	 * @throws TrustException if install refuses
+	 */
+	private int installOther(Arguments arguments, Locations locations) throws IOException, TrustException
+	{
+		String harness = arguments.harness();
+		Optional<HarnessIntegration> integration = integrations.stream().
+			filter(provider -> provider.harness().equals(harness)).findFirst();
+		if (integration.isEmpty())
+		{
+			return print(failure(Result.REFUSED, harness, "This installer has no harness integration for " + harness +
+				".", List.of()), arguments, locations);
+		}
+		PluginActivation activation = activations.stream().filter(provider -> provider.harness().equals(harness)).
+			findFirst().orElseThrow();
+		ReleaseVersion release = ReleaseVersion.parse(PluginVersion.parse(locations.image().getFileName().toString()).
+			release());
+		Path home = arguments.home();
+		if (home == null)
+			home = integration.get().installation(environment, userHome).home();
+		if (home.isAbsolute() && Files.isDirectory(home))
+		{
+			Path real = home.toRealPath();
+			Optional<String> installed = activation.installed(real).version();
+			if (installed.isPresent())
+			{
+				return print(installedOther(arguments, integration.get().installation(real), installed.get(), release),
+					arguments, locations);
+			}
+		}
+		if (arguments.tag() != null && !arguments.tag().equals(release.tag()))
+		{
+			return print(failure(Result.REFUSED, harness, "This installer installs CAT into " + harness + " only " +
+				"from its own release " + release + ", not from release " + arguments.tag() + "; run install " +
+				"without a release.", List.of()), arguments, locations);
+		}
+		Managed managed = manage(locations.harness(), locations.policy(), true, false);
+		if (managed.refusal() != null)
+			return print(managed.refusal(), arguments, locations);
+		if (managed.policy().keys().isEmpty())
+		{
+			return print(failure(Result.REFUSED, harness, "This installer's policy trusts no release key, as a " +
+				"development build's does, so it cannot verify a download of the " + harness + " plugin; install " +
+				"CAT into " + harness + " with the CAT entry command instead: " + Locations.entryCommand(harness) + ".",
+				List.of()), arguments, locations);
+		}
+		OtherInstall install = new OtherInstall(arguments, activation, integration.get());
+		UpdateResult result;
+		try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
+		{
+			UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
+				platform.id(), clock, waiting);
+			result = engine.installOther(activation, release, install);
+		}
+		return install.print(result);
+	}
+
+	/**
+	 * Returns the refusal of an install of CAT into another harness that already has a CAT version, naming the
+	 * command of that installation's own installer that updates it to the running installer's release.
+	 *
+	 * @param arguments    the validated install operation
+	 * @param installation the other harness's installation
+	 * @param installed    the CAT version that the other harness has
+	 * @param release      the running installer's release
+	 * @return the refusal
+	 */
+	private UpdateResult installedOther(Arguments arguments, HarnessInstallation installation, String installed,
+		ReleaseVersion release)
+	{
+		String harness = arguments.harness();
+		String update = "with the CAT entry command: " + Locations.entryCommand(harness);
+		try
+		{
+			Path folder = installation.versionFolder(PluginVersion.parse(installed));
+			if (Files.isDirectory(folder))
+			{
+				StringBuilder command = new StringBuilder(ConsentCommand.launcher(folder, platform));
+				if (arguments.home() != null)
+					command.append(" --home ").append(ConsentCommand.quote(arguments.home().toString(), platform));
+				command.append(" install --harness ").append(harness).append(' ').append(release.tag());
+				update = "with that installation's installer: " + command;
+			}
+		}
+		catch (IllegalArgumentException _)
+		{
+			// A version without a build has no version folder
+		}
+		return failure(Result.REFUSED, harness, "CAT " + installed + " is already installed in " + harness + ", and " +
+			"only that installation updates it; update it to release " + release + " " + update + ".", List.of());
 	}
 
 	/**
@@ -343,8 +487,7 @@ public final class Invocation
 				{
 					resolvedData = installation.dataDirectory();
 					resolvedHarness = harness;
-					try (HttpsReleaseSource source = new HttpsReleaseSource(managed.policy().releaseBaseUrl(),
-						environment, CONNECT_LIMIT, REQUEST_LIMIT))
+					try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 					{
 						UpdateEngine engine = new UpdateEngine(installation.dataDirectory(), managed.policy(), source,
 							activation, platform.id(), clock, waiting);
@@ -489,6 +632,27 @@ public final class Invocation
 	private int installFirst(Arguments arguments, PluginActivation activation, HarnessIntegration integration)
 		throws IOException, TrustException
 	{
+		Printed printed = firstInstall(arguments, image, null, activation, integration);
+		return print(printed.result(), printed.object(), arguments, null);
+	}
+
+	/**
+	 * Installs a harness's plugin from an extracted plugin archive and writes the installation's policy, then
+	 * completes the install as every later install does.
+	 *
+	 * @param arguments   the validated install operation
+	 * @param plugin      the extracted plugin archive
+	 * @param installer   the version folder whose installer launcher runs the install again, or null when only the
+	 *                    entry command runs it
+	 * @param activation  the harness's activation provider
+	 * @param integration the harness's integration
+	 * @return the install's outcome and its encoding
+	 * @throws IOException    if installation files cannot be read or replaced
+	 * @throws TrustException if install refuses
+	 */
+	private Printed firstInstall(Arguments arguments, Path plugin, Path installer, PluginActivation activation,
+		HarnessIntegration integration) throws IOException, TrustException
+	{
 		String harness = arguments.harness();
 		List<HarnessIntegration> others = integrations.stream().
 			filter(provider -> !provider.harness().equals(harness)).toList();
@@ -496,7 +660,7 @@ public final class Invocation
 		Install.Outcome outcome;
 		try
 		{
-			outcome = new Install(image, platform, replacer, cliFactory, ProcessElevation::isElevated,
+			outcome = new Install(plugin, platform, replacer, cliFactory, ProcessElevation::isElevated,
 				new ProcessMigrationRunner()).
 				install(harness, arguments.home(), cwd, environment, userHome, activation, integration, others, consent);
 		}
@@ -505,7 +669,7 @@ public final class Invocation
 			if (!consent.withheld())
 				throw e;
 			UpdateResult refusal = failure(Result.REFUSED, harness, e.getMessage(), List.of());
-			return print(refusal, withheld(refusal, consent, arguments, null), arguments, null);
+			return new Printed(refusal, withheld(refusal, consent, arguments, installer));
 		}
 		HarnessInstallation installation = integration.installation(outcome.policy().harnesses().get(harness));
 		resolvedData = installation.dataDirectory();
@@ -527,7 +691,7 @@ public final class Invocation
 			ArrayNode entries = permissions.putArray(entry.getKey());
 			entry.getValue().forEach(entries::add);
 		}
-		return print(result, object, arguments, null);
+		return new Printed(result, object);
 	}
 
 	/**
@@ -761,6 +925,87 @@ public final class Invocation
 		boolean declined()
 		{
 			return declined;
+		}
+	}
+
+	/**
+	 * An outcome and the encoding that is printed for it.
+	 *
+	 * @param result the outcome
+	 * @param object the outcome's encoding
+	 */
+	private record Printed(UpdateResult result, ObjectNode object)
+	{
+	}
+
+	/**
+	 * The first install of another harness's plugin from its downloaded, verified archive. It keeps the install's
+	 * outcome, and any exception that the install threw, until the release's download area is released, so that they
+	 * are reported as those of a first install from that archive.
+	 */
+	private final class OtherInstall implements StagedInstall
+	{
+		private final Arguments arguments;
+		private final PluginActivation activation;
+		private final HarnessIntegration integration;
+		private Printed printed;
+		private Exception failure;
+
+		/**
+		 * Creates the install.
+		 *
+		 * @param arguments   the validated install operation
+		 * @param activation  the other harness's activation provider
+		 * @param integration the other harness's integration
+		 */
+		OtherInstall(Arguments arguments, PluginActivation activation, HarnessIntegration integration)
+		{
+			this.arguments = arguments;
+			this.activation = activation;
+			this.integration = integration;
+		}
+
+		@Override
+		public UpdateResult install(Path plugin)
+		{
+			try
+			{
+				printed = firstInstall(arguments, plugin, image, activation, integration);
+				return printed.result();
+			}
+			catch (Exception e)
+			{
+				failure = e;
+				return failure(Result.FAILED, arguments.harness(), "The install stopped: " + e.getMessage(),
+					List.of());
+			}
+		}
+
+		/**
+		 * Prints the outcome of the install, or rethrows the exception that the install threw.
+		 *
+		 * @param result the outcome of the download and the install, whose message tells what the download area's
+		 *               release adds to the install's message
+		 * @return the printed result's status
+		 * @throws IOException    if the install failed
+		 * @throws TrustException if the install refused
+		 */
+		int print(UpdateResult result) throws IOException, TrustException
+		{
+			switch (failure)
+			{
+				case null ->
+				{
+				}
+				case IOException e -> throw e;
+				case TrustException e -> throw e;
+				case RuntimeException e -> throw e;
+				default -> throw new IOException(failure.getMessage(), failure);
+			}
+			if (printed == null)
+				return Invocation.this.print(result, arguments, null);
+			printed.object().put("message", result.message());
+			return Invocation.this.print(printed.result(), printed.object(), arguments, null);
 		}
 	}
 

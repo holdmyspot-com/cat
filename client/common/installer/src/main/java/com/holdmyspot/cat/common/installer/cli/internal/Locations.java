@@ -48,9 +48,20 @@ public record Locations(Path image, String harness, HarnessInstallation installa
 	 */
 	public static String rerunEntryCommand(String harness)
 	{
+		return "run the CAT entry command again: " + entryCommand(harness);
+	}
+
+	/**
+	 * Returns the CAT entry command that installs a harness's plugin.
+	 *
+	 * @param harness the harness
+	 * @return the command, followed by its PowerShell form in parentheses
+	 * @throws IllegalArgumentException if {@code harness} is blank
+	 */
+	public static String entryCommand(String harness)
+	{
 		requireThat(harness, "harness").isNotBlank();
-		return "run the CAT entry command again: cat.sh --harness " + harness + " (in PowerShell: cat.ps1 -Harness " +
-			harness + ")";
+		return "cat.sh --harness " + harness + " (in PowerShell: cat.ps1 -Harness " + harness + ")";
 	}
 
 	/**

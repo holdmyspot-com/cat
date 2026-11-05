@@ -27,7 +27,7 @@ import java.util.Map;
  * Downloads release metadata and archives from a policy's fixed HTTPS location. Every redirect is checked before a
  * request is sent. Downloaded bytes remain untrusted until the caller verifies their signatures and digests.
  */
-public final class HttpsReleaseSource implements ReleaseSource, AutoCloseable
+public final class HttpsReleaseSource implements ReleaseConnection
 {
 	/**
 	 * The signed manifest published inside each release's download directory.

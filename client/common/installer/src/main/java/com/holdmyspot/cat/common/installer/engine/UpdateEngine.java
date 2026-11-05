@@ -191,6 +191,29 @@ public final class UpdateEngine
 	}
 
 	/**
+	 * Installs another harness's plugin of a release while this installation's harness lock is held: the release's
+	 * signed manifest must be one that this installation's policy approves, and the plugin archive that it names for
+	 * the other harness and this platform is downloaded and verified as every release that this installation installs
+	 * is. The verified, extracted plugin is then handed to {@code install}.
+	 *
+	 * @param other   the other harness's activation provider
+	 * @param release the release
+	 * @param install installs the extracted plugin into the other harness
+	 * @return the outcome, about the other harness
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public UpdateResult installOther(PluginActivation other, ReleaseVersion release, StagedInstall install)
+	{
+		requireThat(other, "other").isNotNull();
+		requireThat(release, "release").isNotNull();
+		requireThat(install, "install").isNotNull();
+		UpdateResult outcome = operate(_ -> installOtherRelease(other, release, install));
+		return new UpdateResult(outcome.result(), other.harness(), outcome.version(), outcome.previousVersion(),
+			outcome.message(), outcome.paths(), outcome.consistent(), outcome.keyIds(), outcome.aotCache(),
+			outcome.exitDeletions());
+	}
+
+	/**
 	 * Reports the active version without writes.
 	 *
 	 * @return the status outcome; its version is empty when the harness has no plugin
@@ -322,6 +345,54 @@ public final class UpdateEngine
 			if (outcome.result().exitStatus() != 0)
 				return outcome;
 			return keep(outcome, signed, archive, active);
+		});
+	}
+
+	/**
+	 * Downloads, verifies and installs another harness's plugin of a release while the harness lock is held.
+	 *
+	 * @param other   the other harness's activation provider
+	 * @param release the release
+	 * @param install installs the extracted plugin into the other harness
+	 * @return the outcome
+	 * @throws IOException    if the release cannot be staged or the install fails
+	 * @throws TrustException if the release is not approved or the install is refused
+	 */
+	private UpdateResult installOtherRelease(PluginActivation other, ReleaseVersion release, StagedInstall install)
+		throws IOException, TrustException
+	{
+		String tag = release.tag();
+		SignedRelease signed;
+		try
+		{
+			signed = signed(tag);
+		}
+		catch (IOException e)
+		{
+			return result(Result.DOWNLOAD_FAILED, null, null, e.getMessage(), List.of());
+		}
+		VerifiedManifest verified = signed.verified();
+		ReleaseApproval.approveUpdate(verified, policy, release);
+		PluginVersion plugin = verified.manifest().pluginVersion();
+		ReleaseAsset asset = verified.manifest().findPlugin(other.harness(), platform).orElse(null);
+		if (asset == null)
+		{
+			return result(Result.REFUSED, null, null, "Release " + release + " has no plugin for " + other.harness() +
+				" and this platform.", List.of());
+		}
+		return inScratch((download, extractRoot) ->
+		{
+			try
+			{
+				obtain(tag, release.toString(), asset, download.resolve(asset.name()));
+			}
+			catch (IOException e)
+			{
+				return result(Result.DOWNLOAD_FAILED, null, null, e.getMessage(), List.of());
+			}
+			Path tree = extract(download, extractRoot, asset);
+			StagedRelease.validate(tree, plugin, other.pluginManifest(), platform);
+			return install.install(tree);
 		});
 	}
 

@@ -29,7 +29,9 @@ import java.util.Set;
 /**
  * A harness integration for a generic harness, {@code harness-a} unless a test names another, that records each call
  * and fails the calls that a test names. It never runs a program. Its harness keeps CAT's installation as
- * {@link Layout} describes, and installs a plugin as a harness does: {@code register} copies the plugin in the
+ * {@link Layout} describes, with the version folders of {@code harness-a} in {@code plugins/cache/cat/cat} and those
+ * of any other harness in {@code plugins/cache/<harness>/cat}, so that no folder is a version folder of two harnesses,
+ * and installs a plugin as a harness does: {@code register} copies the plugin in the
  * marketplace folder into the folder of the version that it is asked to register, and records that version in
  * {@link #registeredVersion(Path)}.
  */
@@ -355,6 +357,21 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns where a harness keeps CAT's installation.
+	 *
+	 * @param harness the harness
+	 * @param home    the absolute harness home
+	 * @return the layout
+	 */
+	public static Layout layout(String harness, Path home)
+	{
+		String cacheFolder = "cat";
+		if (!harness.equals("harness-a"))
+			cacheFolder = harness;
+		return new Layout(home, cacheFolder);
+	}
+
+	/**
 	 * Returns a harness program that always succeeds without running anything.
 	 *
 	 * @return the program
@@ -373,7 +390,7 @@ public final class RecordingIntegration implements HarnessIntegration
 	@Override
 	public HarnessInstallation installation(Path home)
 	{
-		return new Layout(home);
+		return layout(harness, home);
 	}
 
 	/**
@@ -383,14 +400,14 @@ public final class RecordingIntegration implements HarnessIntegration
 	@Override
 	public HarnessInstallation installation(Map<String, String> environment, Path userHome)
 	{
-		return new Layout(HarnessInstallation.resolveHome(environment, homeVariable(), userHome,
+		return layout(harness, HarnessInstallation.resolveHome(environment, homeVariable(), userHome,
 			Path.of(harness + "-home")));
 	}
 
 	@Override
 	public Path marketplaceFolder(Path home, PluginVersion version)
 	{
-		return new Layout(home).marketplacePlugin();
+		return layout(harness, home).marketplacePlugin();
 	}
 
 	@Override
@@ -442,7 +459,7 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		record("register", home);
 		registered.add(version);
-		Layout layout = new Layout(home);
+		Layout layout = layout(harness, home);
 		Path source = layout.marketplacePlugin();
 		if (!Files.isRegularFile(source.resolve(PluginDirectory.VERSION)))
 			return;
@@ -578,14 +595,15 @@ public final class RecordingIntegration implements HarnessIntegration
 
 	/**
 	 * Where the generic harness keeps CAT's installation: its marketplace in {@code plugins/cat-marketplace}, with the
-	 * plugin in {@code plugins/cat}, the version folders in {@code plugins/cache/cat/cat} and the plugin data in
-	 * {@code plugins/data/cat-cat}. The harness also keeps a copy of each version in {@code plugins/copies}, named
-	 * {@code copy-} and then the version, which stands for a harness, such as Claude Code, that keeps its own copies
-	 * under other names.
+	 * plugin in {@code plugins/cat}, the version folders in {@code plugins/cache/<cache folder>/cat} and the plugin
+	 * data in {@code plugins/data/cat-cat}. The harness also keeps a copy of each version in {@code plugins/copies},
+	 * named {@code copy-} and then the version, which stands for a harness, such as Claude Code, that keeps its own
+	 * copies under other names.
 	 *
-	 * @param home the absolute harness home
+	 * @param home        the absolute harness home
+	 * @param cacheFolder the folder in {@code plugins/cache} that holds the folder of the version folders
 	 */
-	public record Layout(Path home) implements HarnessInstallation
+	public record Layout(Path home, String cacheFolder) implements HarnessInstallation
 	{
 		/**
 		 * The text before the version in the name of the harness's copy of a plugin version.
@@ -593,9 +611,20 @@ public final class RecordingIntegration implements HarnessIntegration
 		private static final String COPY_PREFIX = "copy-";
 
 		/**
-		 * Creates the layout.
+		 * Creates the layout of {@code harness-a}, whose version folders lie in {@code plugins/cache/cat/cat}.
 		 *
 		 * @param home the absolute harness home
+		 */
+		public Layout(Path home)
+		{
+			this(home, "cat");
+		}
+
+		/**
+		 * Creates the layout.
+		 *
+		 * @param home        the absolute harness home
+		 * @param cacheFolder the folder in {@code plugins/cache} that holds the folder of the version folders
 		 */
 		public Layout
 		{
@@ -625,7 +654,7 @@ public final class RecordingIntegration implements HarnessIntegration
 		@Override
 		public Path versionFolders()
 		{
-			return cacheRoot().resolve("cat/cat");
+			return cacheRoot().resolve(cacheFolder).resolve("cat");
 		}
 
 		@Override
