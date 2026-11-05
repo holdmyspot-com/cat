@@ -1,9 +1,10 @@
 # Install CAT
 
 CAT v1.0 provides distributions for Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, macOS ARM64, and
-Windows x64. Windows ARM64 is not supported. Prompt optimization is not available on native Windows, because its trials
-need a sandbox that native Windows cannot reliably provide; to optimize prompts on Windows, install your harness and CAT
-inside WSL2 and run them there. You install CAT for a harness with one command that you run yourself.
+Windows x64. Windows ARM64 is not supported. CAT's runners and prompt optimization are not available on native Windows,
+because they start each session only inside its harness's sandbox, which Claude Code lacks there and which CAT has not
+yet verified for Codex; to use them on Windows, install your harness and CAT inside WSL2 and run them there. You install
+CAT for a harness with one command that you run yourself.
 Afterwards your agent installs other CAT releases, checks CAT and uninstalls it for that harness through the installer
 in the installed plugin. CAT's Claude Code support needs Claude Code 2.1.277 or later.
 
@@ -370,12 +371,12 @@ that install: the entry command writes the policy again, and it refuses a releas
 
 CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. Both plugins
 hold both launchers, so a session in either harness can run either harness. A session runs a launcher as one command, by
-its absolute path, with no pipe, redirection, `cd` or environment-variable prefix, and gives it its records with
-`--input <file>`. Every run names its model with `--model <name>` and its reasoning effort with `--effort <level>`; the
-launcher refuses a run without either before it starts a session. An agent that runs a launcher always passes both: the
-ones that you or its instructions name, or else ones that it chooses from the values that the harness lists, without
-asking you. The effort `none` runs the model without reasoning: `claude-runner` turns Claude Code's thinking off, and
-`codex-runner` asks Codex for no reasoning.
+its absolute path, with no pipe or redirection, and gives it its records with `--input <file>`. Every run names its
+model with `--model <name>` and its reasoning effort with `--effort <level>`; the launcher refuses a run without either
+before it starts a session. An agent that runs a launcher always passes both: the ones that you or its instructions
+name, or else ones that it chooses from the values that the harness lists, without asking you. The effort `none` runs
+the model without reasoning: `claude-runner` turns Claude Code's thinking off, and `codex-runner` asks Codex for no
+reasoning.
 
 Instead of `--model` and `--effort`, a run started outside a runner session may name `--agent <name>` with
 `--install-cat`, in both launchers. It selects the CAT agent definition of that name in the launcher's CAT artifact, and
@@ -383,89 +384,86 @@ the session runs under the model and the reasoning effort that the definition na
 together with `--model` or `--effort`, and an agent definition that does not name both a model and an effort. A session
 that a runner started cannot pass `--agent`.
 
-Your harness's sandbox does not let a command start a harness with your login, so it refuses the launchers until you
-exempt them. Exempt only these two launchers, so that every other command stays sandboxed. Since an exempted launcher
-runs outside the sandbox, it always runs its own CAT artifact and the `claude` or `codex` command that your `PATH`
-finds: a launch that names `--artifact` exits with status 2 and starts nothing. Sessions that a runner starts need no
-configuration. When you pass `--session-requests <count>`, and `--request-depth <levels>` for deeper levels, such a
-session runs the same launchers, which ask the runner that started it to start the session outside its sandbox. Without
-`--session-requests`, it cannot start sessions.
+The runners need no configuration. When a Claude Code or Codex session starts, CAT's SessionStart hook starts a session
+launcher for it: a process outside the session's sandbox that serves that session until it ends. A runner launcher that
+the session runs asks its session launcher to start the new session, and the session launcher starts it inside that
+harness's own sandbox, so that the new session can read, write and reach no more than the session that asked for it.
+The session launcher reads the asking session's sandbox policy from that harness's own settings and command line, never
+from the request. A launcher always runs its own CAT artifact and the `claude` or `codex` command that your `PATH`
+finds: a launch that names `--artifact` exits with status 2 and starts nothing. Run the launchers from a Claude Code or
+Codex session in which CAT is installed; the runners start no session for a command run anywhere else.
+
+A session that was already running when you installed or updated CAT has no session launcher, so its runner launchers
+start nothing and print: "No CAT session launcher serves this session. CAT starts one when a session starts; sessions
+started before CAT was installed or updated have none. Start a new Claude Code session and run the command again." (or
+"Codex session" in Codex). Start a new session and run the task there.
+
+When CAT cannot read a session's sandbox policy safely, its runner launchers start nothing either. The message begins
+"CAT cannot start the session: it cannot read this Claude Code session's sandbox policy safely:" (or "this Codex
+session's") and goes on to say what failed and how to fix it: for example, a settings file that cannot be parsed, a
+settings file that the session's sandbox lets its commands write, or a harness option that CAT does not know. Make the
+fix that the message names, then start a new session.
+
+Earlier versions of this guide told you to exempt the two runner launchers from your harness's sandbox. They no longer
+need that exception, so `install` removes it and reports each removal: in Claude Code, the
+runner entries in `sandbox.excludedCommands` and `permissions.allow` of your user settings; in Codex, the file
+`rules/cat.rules` in your Codex home when it holds only those runner rules. When that file also holds other content,
+`install` leaves it as it is and lists the runner rules for you to remove; remove them, then restart Codex.
+
+Sessions that a runner starts need no configuration either. When you pass `--session-requests <count>`, and
+`--request-depth <levels>` for deeper levels, such a session runs the same launchers, which ask the runner that started
+it to start the session outside its sandbox. Without `--session-requests`, it cannot start sessions.
+
+Runner sessions need Linux or macOS, in both harnesses. On native Windows, the runner launchers refuse to start a
+session, exit with status 2 and tell you to install your harness and CAT inside WSL2, because Claude Code has no
+sandbox there and CAT has not yet verified that Codex's sandbox confines a session there. Inside WSL2, runner sessions
+are supported.
+
+A Codex session whose sandbox has network access off cannot start runner sessions, because a session that it started
+could not reach its model either. Its runner launchers then start nothing and tell you to set
+`sandbox_workspace_write.network_access = true` in Codex's `config.toml`, or `[permissions.<profile>.network]
+enabled = true` when the session uses the permissions profile `<profile>`, and to start a new Codex session.
 
 On Linux, `codex-runner` needs bubblewrap (`bwrap`) on your `PATH` to start a session that reads earlier sessions'
 results, such as a prompt optimizer's judge: it lets that session read those results while it hides the rest of your
 project. Without it, the runner refuses such a session before it starts Codex. Install your distribution's
 `bubblewrap` package, for example with `sudo apt install bubblewrap` or `sudo dnf install bubblewrap`.
 
-In the examples, replace `/home/me` with your home directory. On Windows, the launchers end in `.cmd`.
+### Claude Code sandbox requirements
 
-<details>
-<summary>Claude Code</summary>
+Every Claude Code session that a runner starts must run inside Claude Code's sandbox. When the sandbox cannot start, or
+the session runs a command outside it, CAT stops the session and says why, followed by "See the Claude Code sandbox
+requirements in CAT's installation guide."
 
-Claude Code 2.1.285 or later runs CAT from `plugins/cat-marketplace/plugins/cat/<version>` in its configuration
-directory: `~/.claude`, or `CLAUDE_CONFIG_DIR` when set. Add the launchers to `sandbox.excludedCommands`, which runs
-them outside the sandbox, and to `permissions.allow`, which runs them without asking, in your user settings
-(`~/.claude/settings.json`):
+On macOS, Claude Code's sandbox needs no setup. On Linux, it needs bubblewrap and socat; install your distribution's
+`bubblewrap` and `socat` packages, for example with `sudo apt install bubblewrap socat` or
+`sudo dnf install bubblewrap socat`.
 
-```json
-{
-	"sandbox": {
-		"excludedCommands": [
-			"/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/claude-runner *",
-			"/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/codex-runner *"
-		]
-	},
-	"permissions": {
-		"allow": [
-			"Bash(/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/claude-runner *)",
-			"Bash(/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/codex-runner *)"
-		]
-	}
+On Ubuntu 24.04 and later, AppArmor keeps bubblewrap from creating the user namespaces that the sandbox needs, so a
+Claude Code session that a runner starts stops with "Claude Code cannot start the session's sandbox, which the session
+requires:" followed by Claude Code's reason. A Codex session that a runner starts stops for the same cause with "CAT
+does not start the session: bubblewrap could not start its sandbox". To let bubblewrap create user namespaces, save this
+AppArmor profile as `/etc/apparmor.d/bwrap` on Ubuntu 24.04, or as `/etc/apparmor.d/zz-bwrap` on Ubuntu 26.04, where
+the file must sort after Ubuntu's own `bwrap-userns-restrict` profile, which has the same profile name:
+
+```text
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
 }
 ```
 
-Replace `1.0+b0123456789ab` with the name of the version folder that you installed, and merge these entries into the
-settings you have. Each CAT version has its own folder, so change the paths when you install another version.
-
-</details>
-
-<details>
-<summary>Codex</summary>
-
-Codex runs CAT from `plugins/cache/cat/cat/<version>` in its home directory: `~/.codex`, or `CODEX_HOME` when set.
-Create `~/.codex/rules/cat.rules`, which lets Codex run the launchers outside the sandbox without asking:
-
-```python
-prefix_rule(
-	pattern = ["/home/me/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/claude-runner"],
-	decision = "allow",
-	justification = "CAT's runner starts an isolated Claude Code session with your login",
-)
-prefix_rule(
-	pattern = ["/home/me/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/codex-runner"],
-	decision = "allow",
-	justification = "CAT's runner starts an isolated Codex session with your login",
-)
-```
-
-Replace `1.0+b0123456789ab` with the name of the version folder that you installed, and update the rule when you install
-another version. To confirm that a rule matches, run:
-
-```bash
-codex execpolicy check --rules ~/.codex/rules/cat.rules \
-	/home/me/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/codex-runner --help
-```
-
-It prints `"decision":"allow"`. Restart Codex after you change its rules.
-
-</details>
+Then run `sudo systemctl reload apparmor`.
 
 ## Git inside a Codex runner session
 
-The Codex runner gives each session an independent repository in its copied project. On Linux and macOS, the session
-can stage, commit, create branches and child worktrees, and merge. Create child worktrees inside the copied project.
-The repository's `.git/config` and `.git/hooks` remain read-only. Use Git's `-c` command options for per-command settings
-such as commit identity. Windows sessions keep Codex's built-in restrictions on Git
-metadata because CAT has not verified that its Windows sandbox protects configuration and hooks under this grant.
+The Codex runner gives each session an independent repository in its copied project. The session can stage, commit,
+create branches and child worktrees, and merge. Create child worktrees inside the copied project. The repository's
+`.git/config` and `.git/hooks` remain read-only. Use Git's `-c` command options for per-command settings such as commit
+identity.
 
 A retained project is session-produced evidence. Treat its Git refs, objects, `info/` and worktree metadata as untrusted
 when running Git on it after the session ends.

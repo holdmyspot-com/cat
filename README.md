@@ -61,7 +61,8 @@ The command downloads CAT's plugin for that harness and installs it. The plugin 
 runtime, so nothing else is downloaded. The command also adds the permission entries that let your agent install and
 check CAT afterwards. Each harness gets its own installation, and each may run a different CAT release. There is nothing
 to copy into your settings. Windows commands, custom harness homes, and the permission boundary are in
-[Install CAT](docs/installation.md). Prompt optimization is not available on native Windows; use WSL2.
+[Install CAT](docs/installation.md). CAT's runners and prompt optimization are not available on native Windows; use
+WSL2.
 
 ### 2. Start or resume a session
 
