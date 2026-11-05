@@ -19,41 +19,45 @@ client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml package
 This developer workflow installs the artifacts built in this checkout; end users should use the release command in
 the [installation guide](installation.md).
 
-The package build writes the installer to `client/common/distribution/target/runtime/installer/`, and each harness's
-plugin to `client/common/distribution/target/runtime/claude/` and `.../codex/`. The installer directory holds a Java
-runtime in `runtime/` and the installer application in `<V>/`, where `<V>` is the CAT version declared in
-`client/pom.xml`, currently `1.0`; the directory's name shows it.
+The package build writes each harness's plugin tree to `client/common/distribution/target/runtime/claude/` and
+`client/common/distribution/target/runtime/codex/`. A plugin tree is complete: its `bin/installer` is the installer, its
+`bin/runtime/` is the Java runtime, and its `bin/` holds the launchers. The version that the build stamps into
+`bin/VERSION` is `1.0+b<commit>`, where `<commit>` is the first 12 hexadecimal digits of the checkout's `HEAD`.
 
-Install through the installer's `setup`, which takes the local plugin tree in place of a signed release. Each harness
-gets its own installation, so run `setup` once for each harness you test. Setup copies the Java runtime and the
-installer into that harness's installation directory, `${XDG_DATA_HOME:-$HOME/.local/share}/cat-updater/<harness>` (on
-Windows, `%LOCALAPPDATA%\cat-updater\<harness>`), and records the policy in
-`${XDG_CONFIG_HOME:-$HOME/.config}/cat-updater/<harness>/policy.json` (on Windows, `policy.json` in that directory).
-Your authority as the person running the command replaces the release signature; setup still validates the tree, checks
-the installation's Java runtime against the plugin's Java requirement, and binds the plugin to that runtime. Pass the
-harness home, and the absolute path to the plugin tree:
+Run a plugin tree's installer with `install --harness <harness>`. It installs the tree's own version, so it takes the
+local plugin tree in place of a signed release, and it needs no `--plugin` argument. Each harness has its own
+installation, so run it once for each harness you test. Install copies the tree to the harness's version folder and
+registers it through the harness's program, which must be on your `PATH`. It writes the policy in the harness's CAT data
+directory, with the release key from the tree's `bin/conf/installer/default-policy.json`, and adds the permission
+entries that name the installed version folder's `bin/installer`. Pass `--home` with the harness home before the
+operation (`--home` is an option of `install`, and it comes before the word `install`):
 
 ```bash
-client/common/distribution/target/runtime/installer/<V>/bin/cat-updater setup --harness claude --home ~/.claude \
-	--plugin "$PWD/client/common/distribution/target/runtime/claude"
-client/common/distribution/target/runtime/installer/<V>/bin/cat-updater setup --harness codex --home ~/.codex \
-	--plugin "$PWD/client/common/distribution/target/runtime/codex"
+client/common/distribution/target/runtime/claude/bin/installer --home ~/.claude install --harness claude
+client/common/distribution/target/runtime/codex/bin/installer --home ~/.codex install --harness codex
 ```
 
 On Windows, the installer's launcher is
-`client\common\distribution\target\runtime\installer\<V>\bin\cat-updater.ps1`. Run it as
-`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "<absolute path to cat-updater.ps1>" setup ...`
-with the same arguments. Use a different `--home` for a throwaway harness home; the home must be an absolute path.
+`client\common\distribution\target\runtime\<harness>\bin\installer.ps1`. Run it through PowerShell with the same
+arguments:
 
-The source checkout's launchers run without installation, because the build binds each plugin tree to the built
-runtime: `client/common/distribution/target/runtime/<harness>/client/bin/<launcher>`, for example
-`client/common/distribution/target/runtime/claude/client/bin/get-history`.
+```powershell
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "<absolute path to installer.ps1>" `
+	--home "<absolute path to the harness home>" install --harness <harness>
+```
+
+Use a different `--home` for a throwaway harness home; the home must be an absolute path.
+
+The built plugin trees' launchers run without installation, from
+`client/common/distribution/target/runtime/<harness>/bin/<launcher>`, for example
+`client/common/distribution/target/runtime/claude/bin/get-history`.
 
 ### Test removal or an upgrade
 
-Use the harness's installed installer's `uninstall` operation, as described in the
+Use the installed version folder's `bin/installer uninstall`, as described in the
 [installation guide](installation.md#uninstall), when testing removal; it removes only that harness's installation. Run
-`setup` again with the same `--plugin` to test an upgrade.
+the same `install --harness <harness>` command from a newly built plugin tree to test an upgrade: it installs the new
+tree's version as a new version folder and keeps the previous one.
 
 Run the external launcher and entry-script boundary tests:
 

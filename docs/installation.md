@@ -4,28 +4,35 @@ CAT v1.0 provides distributions for Claude Code and Codex on Linux x64, Linux AR
 Windows x64. Windows ARM64 is not supported. Prompt optimization is not available on native Windows, because its trials
 need a sandbox that native Windows cannot reliably provide; to optimize prompts on Windows, install your harness and CAT
 inside WSL2 and run them there. You install CAT for a harness with one command that you run yourself.
-Afterwards your agent installs, updates and uninstalls CAT for that harness through its installed trusted installer.
-CAT's Claude Code support needs Claude Code 2.1.277 or later.
+Afterwards your agent installs other CAT releases, checks CAT and uninstalls it for that harness through the installer
+in the installed plugin. CAT's Claude Code support needs Claude Code 2.1.277 or later.
 
-CAT is one bundle per harness: a Java runtime, the trusted installer and the harness's CAT plugin. The bundle is
-installed, updated and removed as a whole. Claude Code and Codex each have their own bundle, with their own
-Java runtime and installer, so using both harnesses puts two Java runtimes on disk. The two bundles never change each
-other, and they may run different CAT releases.
+CAT is one plugin per harness. The plugin carries its own installer, in its `bin/installer`, and its own Java runtime,
+in its `bin/runtime/`, so a release publishes one plugin archive for each harness and platform, named
+`cat-<harness>-<platform>-v<version>.tar.gz` (for example `cat-claude-linux-x64-v1.0.tar.gz`), and nothing else is
+needed to install or change the release. Claude Code and Codex each have their own installation of CAT, with their own
+plugin, installer and Java runtime. The two installations never change each other, and they may run different CAT
+releases.
 
 ## Install CAT
 
-Run the command yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Run it once for each harness
-you use. For the harness you chose, it installs, in one step:
+Run the command yourself in a terminal, or at a Claude Code prompt prefixed with `! `. Run it once for each harness you
+use. The command downloads only that release's plugin archive for your harness and platform, checks it against the
+SHA-256 digest that the command embeds, and runs the installer from the extracted archive. For the harness you chose,
+the installer, in one step:
 
-- a Java runtime for that harness's installation, used by its installer and its CAT plugin;
-- the trusted installer and its policy, which records your harness home and the harness program that setup found;
-- the CAT plugin, registered with the harness through its own command-line program;
-- the permission entries that let your agent run the installer's `install`, `update` and `status` operations without a
-	prompt, and `uninstall` after you approve it in the harness, and never `setup`. The harness asks you before it runs
-	`uninstall`, because it removes CAT.
+- puts the plugin in its own version folder in the harness's plugin folders, and registers it with the harness through
+	the harness's own command-line program, which must be on your `PATH`;
+- runs the data migrations that the release registers after the data version that your kept CAT data records;
+- writes the installation's policy: the release's public key, the oldest release it accepts, the harness home and the
+	harness program that it found;
+- adds the permission entries that let your agent run the installer's `install` and `status` operations without a
+	prompt, and `uninstall` after you approve it in the harness, because `uninstall` removes CAT.
 
 You do not copy any permission or sandbox settings. Then start or restart the harness. The release's version is the one
-in the command's address; there is no version argument.
+in the command's address; there is no version argument. Where the harness has no CAT, the command refuses, before
+changing anything, a release that is older than the data version that your kept CAT data records, because a migration of
+a newer release has shaped that data and the older release cannot read it.
 
 ### Linux and macOS
 
@@ -53,248 +60,293 @@ In PowerShell, run the per-release entry script with `-Harness`:
 ```
 
 For a custom home, set `$env:CODEX_HOME = 'C:\path\to\codex-home'` or `$env:CLAUDE_CONFIG_DIR` before running it. In
-Git Bash, the POSIX command above also works.
+Git Bash, the POSIX command above also works for Claude Code; Codex on Windows needs `cat.ps1`.
+
+### Codex permission profile
+
+Codex's sandbox must let sandboxed commands write CAT's capacity lock folder, `~/.cat/locks`, because each session that
+CAT's runners start takes a capacity lock there. What the installer changes in your Codex configuration, `config.toml`
+in the Codex home, depends on what `default_permissions` selects:
+
+- A permission profile that your `config.toml` defines: the installer adds `"<home>/.cat/locks" = "write"` to that
+	profile's filesystem table. Every other project that uses the profile can then write that folder too, and the
+	installer's result says so.
+- Codex's built-in `:workspace` or `:read-only` profile: the installer cannot add an entry to a built-in profile, so it
+	asks your permission to create the profile `cat-workspace` or `cat-read-only`, which extends the built-in profile and
+	adds only write access to the lock folder, and to set `default_permissions` to it. Uninstalling CAT sets
+	`default_permissions` back to the built-in profile and deletes the profile that CAT created, unless that profile
+	holds settings that CAT did not write or `default_permissions` still names it; the uninstall result then says what
+	it left.
+- No profile: the installer adds the folder to `sandbox_workspace_write.writable_roots`.
+
+The installer asks for the permission in the terminal, with `Allow this change? [y/N]`. Without your permission, or when
+it cannot ask, it changes nothing and refuses with a message that explains the change. When your agent ran the install,
+the refusal carries the exact command that gives the permission: the same installer command with `--create-profile`
+before `install`. The agent asks you first, and your harness asks you to approve that command, because it grants a
+permission.
 
 ### Installing a second harness, repairing, and changing what the installer trusts
 
 To use both harnesses, run the command once with `--harness claude` and once with `--harness codex`. Each run creates
 or changes only its own harness's installation.
 
-The command is repeatable. Running it again repairs an installation that stopped part-way and installs the release's
-Java runtime, installer and plugin again. When the release that the command comes from differs from the installed one,
-the command moves this harness's installation to that release as a whole. When that release is newer, it keeps the
-bundle it replaced until the next successful update. It refuses, before changing anything, a Java runtime that this
-installation's plugin cannot run. Only you can change what the installer trusts: its keys, release source and version
-limits change only when you run a release's entry command yourself.
+The command is repeatable. Running it again repairs an installation that stopped part-way, because every step of an
+install can be repeated. Where the harness already has CAT and the installation has a valid policy, the command installs
+the archive's CAT version under that policy, like an install from a signed release, and leaves the policy as it is. Only
+you can change what the installer trusts: its key, release source and version limits change only when you run a
+release's entry command where the harness has no CAT or where its policy is not usable, for example after an uninstall.
+The command then writes the policy from the archive again.
+
+A runner of one harness that starts a session of the other harness runs the other harness's installed CAT plugin, of the
+same release as its own plugin, whatever build of that release. It downloads nothing. When the other harness has no
+plugin of that release, the runner stops before it starts anything and tells you to install CAT in the other harness;
+run the entry command of the same release for that harness.
 
 If the command cannot write a required path, it names the path. Run the command outside the agent's sandbox.
 
-### Update, reinstall or uninstall with your agent
+### Install another release, check CAT or uninstall with your agent
 
 After the command, ask your agent in plain words:
 
-- "Update CAT", or "update CAT to v1.0": the `update` skill runs the installer's `update` operation, which moves the
-	Java runtime, the installer and the plugin of this harness's installation to the release together.
-- "Go back to CAT v1.0": the `update` skill runs the installer's `update` operation for that release, which moves the
-	whole installation back when CAT's data structures did not change since that release.
-- "Install CAT again" after you removed the plugin with the harness's own commands or deleted its directory: the
-	`update` skill runs the installer's `install` operation, which needs no new command from you.
+- "Update CAT", or "install CAT v1.0": CAT's `update` skill runs the installed plugin's installer `install` operation,
+	which installs the latest release that your policy approves, or the release you name, in a new version folder.
+- "Go back to CAT v1.0": the `update` skill runs `install` for that release, which goes back unless CAT's data
+	structures changed since it. See [Routine operations](#routine-operations).
+- "Install CAT again" after you removed the plugin with the harness's own commands: when the installer in the version
+	folder is still there, the `update` skill runs its `install` operation, which needs no new command from you;
+	otherwise the skill gives you the entry command to run.
+- "Which CAT version is active?": the `update` skill runs the installer's `status` operation.
 - "Uninstall CAT": the `uninstall` skill asks whether to also delete CAT's plugin data, then removes this harness's
 	CAT installation. See [Uninstall](#uninstall).
 
 ## Permission boundary and installed locations
 
-A project's agent can request only a release version through the installer's `install`, `update`, `status` and
-`uninstall` operations, and the harness asks you to approve `uninstall`. It cannot supply a
-repository, download URL, command, installation destination, or replacement trust policy, and it cannot run `setup`.
-Each installation's setup command records that installation's protected data and policy paths, its harness's home, and
-the harness program and environment that it found; later changes to `HOME`, `PATH`, XDG variables,
-`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, or `LOCALAPPDATA` cannot redirect a routine operation. An installation serves only
-its own harness: its installer refuses a `--harness` that names the other one.
+A project's agent can request only a release tag through the installer's `install` operation, can run `status`, and can
+run `uninstall` after you approve it in the harness. It cannot supply a repository, download URL, command, installation
+destination, or replacement trust policy. Two options of `install` give your permission or redirect the installation:
+`--home <directory>` names a harness home, and `--create-profile` allows the Codex profile change above. They go before
+the word `install`, so that no command that the harness lets your agent run without a prompt carries them; the installer
+refuses them after it.
 
-Setup adds the permission entries for exactly those operations on the installed launcher's absolute path, and records
-the entries it added so that uninstall removes only those. Each harness's entries name that harness's own launcher. In
-Claude Code, it adds them to `sandbox.excludedCommands` and `permissions.allow` in `settings.json` in your Claude home,
-keeping every other setting. Each sandbox exclusion is one exact command, except the one for `update --harness claude`
-followed by a release. An exact entry cannot match a command line that carries anything else. Claude Code 2.1.277 and
-later run a command line outside the sandbox only when every command in it matches an entry, and a redirect, a `cd` or a
-`$(...)` keeps it sandboxed, so a command chained after the launcher stays sandboxed. Earlier versions ran the whole
-command line outside the sandbox when one command matched a wildcard entry, so CAT's Claude Code support needs Claude
-Code 2.1.277 or later. An update to a release that the agent names, such as `update --harness claude v1.1`, matches that
-wildcard entry and the allowed entry, so it runs outside the sandbox and without a prompt. In Codex, it writes the
-CAT-owned file `rules/cat-updater.rules` in your Codex home. Setup refuses, before changing anything, a harness
-configuration that it cannot change safely, such as a malformed `settings.json` or a symbolic link in its place.
+The first install records the installation's protected data and policy paths, its harness's home, and the harness
+program that it found; later changes to `HOME`, `PATH`, `CLAUDE_CONFIG_DIR`, or `CODEX_HOME` cannot redirect a routine
+operation. An installation serves only its own harness: its installer refuses a `--harness` that names the other one.
 
-In the table, `<h>` is `claude` or `codex`, and `<data>` is the harness's installation directory.
+Each install writes the permission entries for exactly those operations on the active version folder's installer,
+records the entries it added so that uninstall removes only those, and removes the entries that name an older version
+folder. Each harness's entries name that harness's own installer.
 
-| Location | Linux and macOS | Windows |
+- In Claude Code, the entries go into `settings.json` in your Claude home, keeping every other setting. In
+	`sandbox.excludedCommands`, each sandbox exclusion is one exact command: `install --harness claude`,
+	`install --harness claude latest`, `status`, `status --harness claude`, `uninstall --harness claude` and
+	`uninstall --harness claude --delete-data`, except `install --harness claude` followed by a release tag, which is a
+	wildcard entry. In `permissions.allow`, install and status commands are allowed without a prompt, and `uninstall`
+	keeps Claude Code's prompt. In `sandbox.filesystem.denyWrite`, the install denies sandboxed commands the other
+	harness's marketplace folder, version folders and data directory, and in `sandbox.filesystem.allowWrite` it allows
+	`~/.cat/locks`. Claude Code 2.1.277 and later run a command line outside the sandbox only when every command in it
+	matches an entry, and a redirect, a `cd` or a `$(...)` keeps it sandboxed, so a command chained after the installer
+	stays sandboxed. Earlier versions ran the whole command line outside the sandbox when one command matched a wildcard
+	entry, so CAT's Claude Code support needs Claude Code 2.1.277 or later. An install of a release that the agent names,
+	such as `install --harness claude v1.1`, matches the wildcard entry and the allowed entry, so it runs outside the
+	sandbox and without a prompt.
+- In Codex, the install writes the CAT-owned file `rules/cat-installer.rules` in your Codex home, which allows
+	`install --harness codex` and `status` and keeps Codex's prompt for `uninstall --harness codex`, and adds the lock
+	folder as described in [Codex permission profile](#codex-permission-profile).
+
+An install refuses, before changing anything, a harness configuration that it cannot change safely, such as a malformed
+`settings.json` or a symbolic link in its place.
+
+### Installed locations
+
+In the table, `<home>` is the harness home (`~/.claude` or `CLAUDE_CONFIG_DIR` for Claude Code, `~/.codex` or
+`CODEX_HOME` for Codex), `<version>` is the plugin version, which looks like `1.0+b0123456789ab`, the release followed
+by the first 12 digits of the commit that built the plugin, and `<data>` is the data directory. On Windows, the
+separators are backslashes and the installer is `bin\installer.ps1`.
+
+| Location | Claude Code | Codex |
 | --- | --- | --- |
-| Installation directory `<data>` | `${XDG_DATA_HOME:-$HOME/.local/share}/cat-updater/<h>` | `%LOCALAPPDATA%\cat-updater\<h>` |
-| Policy | `${XDG_CONFIG_HOME:-$HOME/.config}/cat-updater/<h>/policy.json` | `<data>\policy.json` |
-| Stable launcher | `<data>/bin/cat-updater` | `<data>\bin\cat-updater.ps1` |
-| Java runtime | `<data>/runtime/` | `<data>\runtime\` |
-| Installer application | `<data>/<installer-version>/` | `<data>\<installer-version>\` |
-| State and log | `<data>/state/<h>/` | `<data>\state\<h>\` |
+| Marketplace folder | `<home>/plugins/cat-marketplace` | `<home>/plugins/cat-marketplace` |
+| Version folder | `<home>/plugins/cat-marketplace/plugins/cat/<version>/` | `<home>/plugins/cache/cat/cat/<version>/` |
+| Installer | `<version folder>/bin/installer` | `<version folder>/bin/installer` |
+| Java runtime | `<version folder>/bin/runtime/` | `<version folder>/bin/runtime/` |
+| Data directory `<data>` | `<home>/plugins/data/cat-cat/` | `<home>/plugins/data/cat-cat/` |
 
-For example, Claude Code's stable launcher on Linux is `~/.local/share/cat-updater/claude/bin/cat-updater`, and Codex's
-is `~/.local/share/cat-updater/codex/bin/cat-updater`.
+For example, Claude Code's installer for the version `1.0+b0123456789ab` on Linux is
+`~/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/installer`.
 
-These environment variables select locations during setup. Relative XDG values are ignored. Setup refuses data or
-policy locations inside the setup working directory, the harness home, or `~/.cat`. Keep these paths outside
-locations writable by your projects and plugins. No step requires root.
+The data directory holds `policy.json` (the installation's policy); `state/` (the installer's lock, `update.log`, the
+record of the active and replaced versions, the record of the permission entries it added, and the progress of an
+uninstall); `releases/` (the signed manifest, its signature and the plugin archive of the active release and of the
+release it replaced, which a later install reuses without downloading when they verify); and `migration-version`,
+which records the newest data migration that has shaped CAT's data. An install never deletes the data directory. It stays
+after an uninstall unless you ask to delete it.
 
-Each installation has one Java runtime, in its `<data>/runtime`. The installation's installer and its installed plugin
-use it: the plugin records the runtime's path in its `client/runtime-binding` file, and its launchers find Java only
-through that file. No Java runtime is shared with the other harness's installation. An update replaces the runtime, the
-installer and the plugin together, and nothing in one installation changes the other.
+An install keeps the version folder of the active version, the folder of the version it replaced, and the folder of the
+installer that is running, and deletes every other version folder of CAT. A harness session that started before the
+install keeps running from its folder until you restart it, which is why the replaced version's folder stays. Codex runs
+the version folder with the greatest name, so a folder that Codex would run instead of the active version, such as a
+newer version's folder after you go back to an older release, is deleted. A folder that the installer cannot delete,
+such as one whose file a process still has open on Windows, is left, and a later install deletes it. On Windows, the
+installer cannot delete the folder it is running from, so it starts Windows PowerShell, which waits for the installer to
+exit and then deletes that folder, retrying for up to 60 seconds.
 
-The boundary is the harness's shell sandbox plus the installer's validation. An update changes the installation's Java
-runtime and installer, CAT plugin files and CAT-owned Codex agent files, while leaving Claude Code's `.claude.json`,
-`settings.json`, `installed_plugins.json`, and `known_marketplaces.json`, and Codex's `config.toml` unchanged.
-Installing and uninstalling register and unregister the plugin through the harness's own command-line program, which
-changes those files the way the harness itself does.
+The boundary is the harness's shell sandbox plus the installer's validation. An install changes the plugin's version
+folder and marketplace folder, CAT-owned Codex agent files and the permission entries above, and registers the plugin
+through the harness's own command-line program, which changes `.claude.json`, `settings.json`,
+`installed_plugins.json` and `known_marketplaces.json` in Claude Code, and `config.toml` in Codex, the way the harness
+itself does. Installing and uninstalling register and unregister the plugin the same way.
 
 Hooks and MCP servers can run outside the shell sandbox as your user. Such code can change anything you can change,
 including installer files and policy. Signed release approval authenticates the code you activate; it does not make
 that code harmless. Project-controlled harness hooks, MCP servers, sandbox settings, or injected process variables
 such as `LD_PRELOAD` are outside CAT's boundary. Administrator ownership of installer files is optional additional
-hardening, not a requirement of the per-user installation.
+hardening, not a requirement of the per-user installation. No step requires root.
 
 ## Approved releases and first-download trust
 
-Each release publishes `cat-release-manifest.json` and its Ed25519 signature. The installer verifies the exact manifest
-bytes against a key in its protected policy, then checks every downloaded plugin archive against the signed size and
-SHA-256 digest. A checksum beside an unauthenticated archive is insufficient.
+Each release publishes the ten plugin archives, `SHA256SUMS.txt`, `cat-release-manifest.json` with its Ed25519
+signature, and the entry scripts `cat.sh` and `cat.ps1`. The installer verifies the exact manifest bytes against a key
+in its protected policy, then checks every downloaded plugin archive against the signed size and SHA-256 digest. A
+checksum beside an unauthenticated archive is insufficient.
 
-The default policy permits versions at least `1.0` with major version at most `1`, and refuses versions below the
-active version during routine updates. A maintainer signature and these version limits jointly approve a release.
-Changing keys, release source, or version limits requires an explicit user installer or policy upgrade. A build without
-a release key refuses setup. HTTPS proxies may route downloads, but cannot change which signed bytes are accepted.
+The default policy, from `bin/conf/installer/default-policy.json` in the plugin, permits releases at least the release
+that the plugin shipped with and with a major version at most that release's major version. A maintainer signature and
+these version limits jointly approve a release. Changing keys, release source, or version limits requires an explicit
+entry command that you run where the harness has no CAT. A build without a release key refuses the install. HTTPS
+proxies may route downloads, but cannot change which signed bytes are accepted.
 
 The initial `cat.sh` or `cat.ps1` download relies on HTTPS to GitHub. It contains the selected release tag and pinned
-archive digests, including the installer archive that supplies the default public key. The release notes publish the
-SHA-256 fingerprint of the public key's X.509 encoding; confirm that fingerprint through a source you trust before
-authorizing setup. Entry scripts never fetch bootstrap code from a branch or `HEAD`.
+archive digests, including the digest of the plugin archive that supplies the default public key. The release notes
+publish the SHA-256 fingerprint of the public key's X.509 encoding; confirm that fingerprint through a source you trust
+before you run the command. Entry scripts never fetch bootstrap code from a branch or `HEAD`.
 
 ## Routine operations
 
-Ask your agent, or invoke the stable launcher directly:
+Ask your agent, or run the installer in the active version folder directly:
 
 ```bash
-/home/me/.local/share/cat-updater/claude/bin/cat-updater install --harness claude
-/home/me/.local/share/cat-updater/claude/bin/cat-updater update --harness claude
-/home/me/.local/share/cat-updater/codex/bin/cat-updater update --harness codex v1.0
-/home/me/.local/share/cat-updater/codex/bin/cat-updater status --harness codex
+~/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/installer install --harness claude
+~/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/installer install --harness claude v1.1
+~/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer status --harness codex
 ```
 
-Replace the launcher path with the one setup printed. Each harness has its own launcher, and it accepts only its own
-harness. On Windows the launcher is a PowerShell script, and every command has this exact form, with the operation and
-its arguments after the script path:
+Replace the installer path with the one in your active version folder. Each harness has its own installer, and it
+accepts only its own harness. On Windows the installer is a PowerShell script, and every command has this exact form,
+with the operation and its arguments after the script path:
 
 ```powershell
-powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\cat-updater\codex\bin\cat-updater.ps1" status --harness codex
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$env:USERPROFILE\.codex\plugins\cache\cat\cat\1.0+b0123456789ab\bin\installer.ps1" status --harness codex
 ```
 
-`update` moves this harness's whole installation to the release: the Java runtime, the installer and the plugin.
-Omitting the version, or passing `latest`, requests GitHub's latest release. That release must satisfy the policy; the
-installer refuses an unapproved latest release rather than searching older releases. A named version requests that
-release and must satisfy the same policy. An already active, consistent version reports `up_to_date` without changing
-any installed file; it only registers the plugin with the harness again when the harness no longer lists it. An update
-verifies the signed release metadata and both archives against your existing policy; it never changes the policy's keys,
-release source or version limits.
+The installer has three operations, and each accepts these arguments:
 
-`update` goes back to an older release only when you name it; an update to the latest release refuses a latest
-release that is older than the active one. Going back to an older release is an update like any other, with no extra
-prompt, when CAT's data structures did not change between the two releases: the active release's migration registry,
-read from its signed release, registers no data migration after the older release, up to and including the active
-one. Otherwise `update` refuses with exit status `3` and changes nothing, because the older release cannot read data
-that a newer release migrated, and installing it would lose data. The message names the migrations in between.
-After going back, the installation records the older release's data version.
+| Command | Effect |
+| --- | --- |
+| `install --harness <h>` | Installs the latest release that your policy approves. |
+| `install --harness <h> latest` | The same. |
+| `install --harness <h> v1.1` | Installs release `v1.1`, which must satisfy the policy. |
+| `status` or `status --harness <h>` | Reads the active version without changing anything. |
+| `uninstall` or `uninstall --harness <h>` | Uninstalls CAT and keeps its plugin data. |
+| `uninstall --harness <h> --delete-data` | Uninstalls CAT and deletes its plugin data. |
 
-`install` adds the plugin where the harness has none, for example after `claude plugin uninstall` or after deleting the
-plugin directory, and then registers it with the harness. It installs only the release that this installation's
-installer and Java runtime are at, and refuses any other release, including `latest` when that is a newer release;
-run `update` to move to another release. Where the plugin is present, `install` does what `update` does. The installer,
-the Java runtime and the permission entries are not involved in a reinstall, so you do not repeat the entry command.
+`--home <directory>` and `--create-profile` go before the operation and apply to the first install only; an installed
+installer refuses a `--home` other than the one that its policy records.
 
-An operation refuses a release whose Java requirement the Java runtime that would run it does not meet, and leaves the
-active installation unchanged. The message tells you to run the entry command of a newer release, which replaces the
-runtime. If the installer is absent, CAT's `update` skill gives you that command; it does not run installation from the
-project's sandbox.
+`install` installs a release into its own version folder and makes it the active one. Omitting the release, or passing
+`latest`, requests GitHub's latest release. That release must satisfy the policy; the installer refuses an unapproved
+latest release rather than searching older releases. A named release requests that release and must satisfy the same
+policy. The installer verifies the signed release metadata and the plugin archive against your existing policy, and
+never changes the policy's keys, release source or version limits. It then, in this order: writes the plugin into the
+marketplace folder and asks the harness to install it, installs CAT's files that the harness reads outside the plugin
+(Codex's custom agents), runs the data migrations that the release registers after the recorded data version, prepares a
+start-up cache for the plugin's runtime, rewrites the permission entries to name the new version folder's installer, and
+deletes the version folders that are no longer kept.
 
-Updates lock the selected harness, download and validate into staging, then activate without executing any downloaded
-installer or migration script. Unsafe archive paths, escaping symlinks, unsupported entries, and mismatched contents
-are refused before activation. A second update waits up to ten minutes for the lock. Each result is a JSON object;
-diagnostics go to standard error and the log is `<data>/state/<h>/update.log`.
+When the requested release is the build that is already active, `install` reports `up_to_date` and installs no new
+version folder; it still installs CAT's files that the harness reads outside the plugin again, runs the data migrations
+that an earlier install left pending, and brings the permission entries in line with your harness configuration, which
+may have changed since. When the harness has no CAT plugin, for example after `claude plugin uninstall`, an `install`
+that can still run installs the release and reports `installed`.
 
-The installer cannot replace the Java runtime that it runs on. When an `update` changes the runtime, the
-installer exits after staging it, and the stable launcher puts the new runtime in place, checks that it runs, and only
-then prints the result. A result that reports success therefore means the runtime, the installer and the plugin are all
-at the same release. If the launcher cannot put the runtime in place, it restores the old one and prints
-`not_swapped`. The agent then runs `install --harness <h>` at once, which undoes what remains of the failed operation
-and puts back the previous release, so that CAT's hooks work again, and tells you that the operation could not complete.
-Each operation that activates a plugin, including one that undoes or resumes an unfinished update, also
-prepares a start-up cache for the runtime that the plugin runs once the operation finishes. Its result's `aot_cache`
-field says whether that succeeded, and `false` only means slower start-up. A result without the field activated no
-plugin, except the three results that the stable launcher prints itself: `not_swapped`, `not_removed` and `locked` hold
-only `result` and `message`.
+`install` goes back to an older release only when you name it; an install of the latest release refuses a latest release
+that is older than the active one. Going back to an older release is an install like any other, with no extra prompt,
+when CAT's data structures did not change between the two releases: the active release's migration registry, read from
+its signed release, registers no data migration after the older release, up to and including the active one. Otherwise
+`install` refuses with exit status `3` and changes nothing, because the older release cannot read data that a newer
+release migrated, and installing it would lose data. The message names the migrations in between.
 
-If a release requires a data migration, routine update refuses it. Run that release's entry command yourself to
-authorize the migration. A validation failure keeps the active installation. An activation failure restores the
-previous installation; a restoration failure reports the affected paths for recovery. If the installer stops during
-activation, its next mutating operation recovers the recorded activation before proceeding.
+The file `migration-version` in the data directory records the newest migration that has shaped your CAT data. A first
+install, which the entry command runs where the harness has no CAT, refuses a release that is older than that version,
+because a migration of a newer release has shaped the data and the older release cannot read it. The message names the
+release to install instead.
 
-After a successful `update`, the installation keeps the complete bundle that it replaced as a cached bundle until
-the next successful update deletes it: the previous Java runtime, the previous installer and the previous plugin.
-Running the entry command of a newer release also keeps the bundle that it replaced; running it where nothing is
-installed keeps none. For the cached bundle and the active release, `<data>/releases/` also keeps the release's signed
-manifest, its signature and its plugin archive. Going back to the release of the cached bundle reuses it without
-downloading anything, also without a network connection, when the kept manifest's signature verifies against the
-policy's keys, the plugin archive matches the manifest's digest and the runtime and installer are unchanged since the
-installer installed them. Otherwise the installer discards what it kept of that release and downloads the release again.
-Installing the plugin again after you removed it reuses the active release's kept plugin archive in the same way. Older
-Codex cache directories may remain.
+Installs lock the selected harness, download and validate into staging, then install. The installer runs the data
+migration scripts that the release registers and, when it prepares the start-up cache, the plugin's Java runtime; it
+runs nothing else from the archive. Unsafe archive paths, escaping symlinks, unsupported entries, and mismatched
+contents are refused before anything is installed. A second operation waits up to ten minutes for the lock. Each result
+is a JSON object; diagnostics go to standard error and the log is `<data>/state/<h>/update.log`. An install that stops
+after it began to change the harness reports `failed`, or `not_writable` with the path; run the same command again,
+which repeats the steps that did not finish. The installer does not restore the previous version.
 
-`status` reads the active version, whether a cached bundle exists (`cached_bundle`), a Java runtime replacement that
-the launcher has not finished (`pending_swap`) and policy key IDs, without creating state or recovering an unfinished
-activation. Run an update to recover an unfinished activation or finish a pending replacement. Restart the
-harness after updating. Claude Code's plugin list may continue showing the version registered at initial
-installation; use installer status for the active version. Codex needs a restart to reliably observe swapped plugin
-copies. A new or changed Codex hook command may also require your review before it runs. Plugin-loading behavior was
-checked with Claude Code 2.1.317 and Codex 0.160.0; whether a long-running shared Codex app-server notices an update
-without restart remains unverified.
+Each install that adds a plugin prepares a start-up cache for the runtime that the plugin runs. Its result's `aot_cache`
+field says whether that succeeded, and `false` only means slower start-up.
+
+`status` reads the active version, whether the installation is consistent, and the policy key IDs, without creating
+state or recovering an unfinished install. Run `install` to finish one. Restart the harness after an install. A new or
+changed Codex hook command may also require your review before it runs. Plugin-loading behavior was checked with Claude
+Code 2.1.317 and Codex 0.160.0; whether a long-running shared Codex app-server notices an install without restart
+remains unverified.
 
 | Exit status | Meaning and next action |
 | --- | --- |
 | `0` | Operation succeeded, or the approved release is already active. |
 | `2` | Invalid arguments; correct the command. |
-| `3` | Release, signature, archive, policy, Java runtime requirement, or migration refused before anything changed; inspect the message. |
+| `3` | Release, signature, archive, policy, migration or consent refused before anything changed; inspect the message. |
 | `4` | Download failed; retry after restoring connectivity. |
-| `5` | Activation failed and the previous installation was restored. |
-| `6` | Activation and restoration failed; recover the paths reported in the result. |
-| `7` | Uninstall could not delete CAT's installation directory; delete the directory that the launcher names. |
-| `8` | The launcher could not put the new Java runtime in place and restored the old one; the next operation undoes the rest. |
 | `9` | Uninstall stopped at a step (`uninstall_incomplete`); run the same uninstall command again to continue. |
 | `10` | An unexpected error stopped the operation after it may have changed the installation (`failed`); run the same command again to continue. |
-| `75` | Lock wait expired; retry after the other update finishes. |
+| `75` | Lock wait expired; retry after the other operation finishes. |
 | `77` | A required path is not writable; run the operation yourself outside the agent's sandbox. |
 
 ## Uninstall
 
 Ask your agent to uninstall CAT in the harness you are using. The `uninstall` skill first asks whether to also delete
-CAT's plugin data; the default is to keep it. It then runs that harness's installed installer's `uninstall` operation
-for that harness, adding `--delete-data` when you ask to delete the data:
+CAT's plugin data; the default is to keep it. It then runs that harness's installed installer's `uninstall` operation,
+adding `--delete-data` when you ask to delete the data:
 
 ```bash
-/home/me/.local/share/cat-updater/codex/bin/cat-updater uninstall --harness codex
-/home/me/.local/share/cat-updater/codex/bin/cat-updater uninstall --harness codex --delete-data
+~/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer uninstall --harness codex
+~/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer uninstall --harness codex --delete-data
 ```
 
 On Windows, use the PowerShell form shown under [Routine operations](#routine-operations). Your harness asks you to
 approve the `uninstall` command before it runs.
 
-Uninstall removes this harness's whole CAT installation, and no other harness's:
+Uninstall removes this harness's CAT installation, and no other harness's, in three steps that it records in
+`state/uninstall.json` in the data directory:
 
-- the plugin and its registration in the harness, and in Codex the custom agents that CAT owns, recorded in its
-	ownership manifest and still unchanged;
-- the permission entries that setup added for this harness;
-- the installation directory `<data>` and the policy: the installer, its state and logs, the Java runtime, and the
-	cached bundle and release files that the installation kept;
-- the artifacts that CAT's runner launchers downloaded into `~/.cat/bundles`, also while the other harness still has
-	its installation. That installation downloads a copy again the next time it launches the other harness.
+1. the permission entries that install added for this harness, and in Codex the profile selection and profile that
+	CAT added to `config.toml`;
+2. the plugin's registration in the harness;
+3. the plugin files: CAT's marketplace folder and every copy of the plugin that the harness keeps (in Codex,
+	`plugins/cache/cat`), with all version folders, and in Codex the custom agents that CAT owns, recorded in its
+	ownership manifest and still unchanged.
 
-It keeps CAT's plugin data unless you ask to delete it, and it never deletes unrelated settings, agents that CAT does
-not own, or your own files, including `~/.cat/rules`. The installer deletes its own directory last, after its Java
-process has exited, and reports `uninstalled` only once the directory is gone. If it cannot delete the directory, it
-reports `not_removed` and prints the directory so that you can delete it yourself. An interrupted uninstall continues
-from its journal when you run `uninstall` again. If the harness program that setup recorded no longer exists, uninstall
-cannot unregister the plugin: it removes everything else and reports `uninstalled` with `"unregistered": false`, and the
-harness may still list the plugin until you remove it there: in Claude Code with `claude plugin uninstall cat@cat`
-and `claude plugin marketplace remove cat`; in Codex with `codex plugin remove cat@cat` and `codex plugin marketplace
-remove cat`.
+It keeps CAT's plugin data, the data directory, unless you ask to delete it, and it never deletes unrelated settings,
+agents that CAT does not own, or your own files, including `~/.cat/rules`. A stopped uninstall continues from its record
+at the first step that did not finish when you run `uninstall` again; an uninstall that finished leaves no record. The
+installer cannot delete the files it runs from while it runs: on Linux and macOS it deletes the folder that holds its
+version folder after it has printed its result, and on Windows it starts Windows PowerShell, which waits for the
+installer to exit and then deletes that folder, retrying for up to 60 seconds. If the folder is still there after that,
+delete it yourself. If the harness program that the first install recorded no longer exists, uninstall cannot unregister
+the plugin: it removes everything else and reports `uninstalled` with `"unregistered": false`, and the harness may still
+list the plugin until you remove it there: in Claude Code with `claude plugin uninstall cat@cat` and
+`claude plugin marketplace remove cat`; in Codex with `codex plugin remove cat@cat` and
+`codex plugin marketplace remove cat`.
 
-Nothing is kept to support a later installation. To install CAT again for this harness, run the
-[install command](#install-cat) again.
+To install CAT again for this harness, run the [install command](#install-cat) again. Kept plugin data takes part in
+that install: the entry command writes the policy again, and it refuses a release older than the data version in
+`migration-version`.
 
 ## Let sessions run CAT's runners
 
@@ -331,29 +383,30 @@ In the examples, replace `/home/me` with your home directory. On Windows, the la
 <details>
 <summary>Claude Code</summary>
 
-Claude Code 2.1.285 or later runs CAT from `plugins/cat-marketplace/plugins/cat` in its configuration directory:
-`~/.claude`, or `CLAUDE_CONFIG_DIR` when set. Add the launchers to `sandbox.excludedCommands`, which runs them outside
-the sandbox, and to `permissions.allow`, which runs them without asking, in your user settings
+Claude Code 2.1.285 or later runs CAT from `plugins/cat-marketplace/plugins/cat/<version>` in its configuration
+directory: `~/.claude`, or `CLAUDE_CONFIG_DIR` when set. Add the launchers to `sandbox.excludedCommands`, which runs
+them outside the sandbox, and to `permissions.allow`, which runs them without asking, in your user settings
 (`~/.claude/settings.json`):
 
 ```json
 {
 	"sandbox": {
 		"excludedCommands": [
-			"/home/me/.claude/plugins/cat-marketplace/plugins/cat/bin/claude-runner *",
-			"/home/me/.claude/plugins/cat-marketplace/plugins/cat/bin/codex-runner *"
+			"/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/claude-runner *",
+			"/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/codex-runner *"
 		]
 	},
 	"permissions": {
 		"allow": [
-			"Bash(/home/me/.claude/plugins/cat-marketplace/plugins/cat/bin/claude-runner *)",
-			"Bash(/home/me/.claude/plugins/cat-marketplace/plugins/cat/bin/codex-runner *)"
+			"Bash(/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/claude-runner *)",
+			"Bash(/home/me/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0123456789ab/bin/codex-runner *)"
 		]
 	}
 }
 ```
 
-Merge these entries into the settings you have. The paths stay the same across CAT upgrades.
+Replace `1.0+b0123456789ab` with the name of the version folder that you installed, and merge these entries into the
+settings you have. Each CAT version has its own folder, so change the paths when you install another version.
 
 </details>
 
@@ -365,23 +418,23 @@ Create `~/.codex/rules/cat.rules`, which lets Codex run the launchers outside th
 
 ```python
 prefix_rule(
-	pattern = ["/home/me/.codex/plugins/cache/cat/cat/1.0/bin/claude-runner"],
+	pattern = ["/home/me/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/claude-runner"],
 	decision = "allow",
 	justification = "CAT's runner starts an isolated Claude Code session with your login",
 )
 prefix_rule(
-	pattern = ["/home/me/.codex/plugins/cache/cat/cat/1.0/bin/codex-runner"],
+	pattern = ["/home/me/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/codex-runner"],
 	decision = "allow",
 	justification = "CAT's runner starts an isolated Codex session with your login",
 )
 ```
 
-Replace `1.0` with the version that you install, and update the rule when you upgrade to another version. To confirm
-that a rule matches, run:
+Replace `1.0+b0123456789ab` with the name of the version folder that you installed, and update the rule when you install
+another version. To confirm that a rule matches, run:
 
 ```bash
 codex execpolicy check --rules ~/.codex/rules/cat.rules \
-	/home/me/.codex/plugins/cache/cat/cat/1.0/bin/codex-runner --help
+	/home/me/.codex/plugins/cache/cat/cat/1.0+b0123456789ab/bin/codex-runner --help
 ```
 
 It prints `"decision":"allow"`. Restart Codex after you change its rules.

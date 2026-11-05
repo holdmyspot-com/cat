@@ -14,27 +14,26 @@ Codex or Claude Code on Windows, in PowerShell:
 & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex
 ```
 
-The one command installs everything for that harness: the Java runtime that CAT keeps for itself, the trusted installer,
-the CAT plugin, and the permission entries that let your agent install, update and uninstall CAT afterwards. There
-are no settings to copy. Run the command once for each harness you use. Each harness gets its own separate installation,
-with its own Java runtime and installer, so using both puts two Java runtimes on disk and lets the harnesses run
-different CAT releases. Claude Code on Windows can also use the POSIX command in Git Bash. If the command cannot write a
-required path, run it outside the agent sandbox. Restart the harness. If you installed an earlier build of v1.0, run the
-one command again once for each harness you use, because that build's installer cannot move to later releases.
+The command downloads only this release's plugin archive for your harness and platform, and installs it. The archive is
+the CAT plugin together with its own installer and Java runtime, so there is nothing else to download and nothing to
+copy into your settings. The command also adds the permission entries that let your agent install and check CAT
+afterwards, and that make the harness ask you before it uninstalls CAT. Run the command once for each harness you use.
+Each harness gets its own installation of CAT, and the two may run different CAT releases. Claude Code on Windows can
+also use the POSIX command in Git Bash; Codex on Windows needs the PowerShell command. Prompt optimization is not
+available on native Windows; to use it, run your harness and CAT inside WSL2. If the command cannot write a required
+path, run it outside the agent sandbox. Restart the harness.
 
-## Install, update and uninstall with your agent
+## Install another release, check CAT and uninstall with your agent
 
-After that, ask your agent. CAT's `update` skill installs and updates CAT through the installed trusted installer, and
-installs the plugin again when you removed it by other means. An update moves the installation's Java runtime, installer
-and plugin to the new release together, and the replaced bundle stays cached until the next successful update. Naming an
-older release goes back to it, unless CAT's data structures changed since that release; going back to the cached
-bundle's release needs no download once the bundle verifies. The installer verifies signed metadata and archive digests
-against its existing policy, and refuses a release whose Java requirement the runtime that would run it does not meet;
-in that case, run the newer release's command above again. An update never changes the policy's keys, release source or
-version limits.
+After that, ask your agent. CAT's `update` skill runs the installed plugin's installer: `install --harness <h>` installs
+the latest release that your installation's policy approves, or the release you name, and `status` reports the active
+version. Each CAT version gets its own folder in the harness, and the installation keeps the active version's folder and
+the one it replaced. Naming an older release goes back to it, unless CAT's data structures changed since that release.
+The installer verifies signed metadata and archive digests against its existing policy, and never changes the policy's
+keys, release source or version limits.
 
 This release's manifest, `cat-release-manifest.json`, is signed with the Ed25519 public key whose X.509 encoding has
-SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`. Initial setup relies on HTTPS to GitHub and the release's embedded
+SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`. The entry command relies on HTTPS to GitHub and the release's embedded
 archive digests; compare this fingerprint through a source you trust. Hooks and MCP servers may execute outside the
 shell sandbox as your user: authentication approves release provenance, not the harmlessness of its code.
 
@@ -43,8 +42,7 @@ See [installation, permissions, and supported platforms](https://github.com/hold
 ## Uninstall
 
 Ask your agent to uninstall CAT in the harness you use. It asks whether to also delete CAT's plugin data, then removes
-that harness's whole CAT installation: the plugin and its registration, the Codex agents that CAT owns, the trusted
-installer, the Java runtime, the cached bundle and the permission entries. It also deletes the runner artifacts in
-`~/.cat/bundles`; the other harness's installation is otherwise not touched and downloads them again when it next needs
-them. CAT's plugin data is kept unless you ask to delete it, and your own files, including `~/.cat/rules`, are never
-deleted. Installing CAT again after an uninstall is a new installation: run the one command above again.
+that harness's CAT installation: the plugin with all its version folders, its registration in the harness, the Codex
+agents that CAT owns, and the permission entries. The other harness's installation is not touched. CAT's plugin data,
+which holds the installer's policy, state and kept releases, is kept unless you ask to delete it, and your own files,
+including `~/.cat/rules`, are never deleted. Installing CAT again after an uninstall uses the one command above.

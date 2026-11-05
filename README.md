@@ -57,31 +57,29 @@ curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh |
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex
 ```
 
-The command installs everything CAT needs for that harness: a Java runtime that CAT keeps for itself, a trusted
-installer, the CAT plugin, and the permission entries that let your agent install, update and uninstall CAT afterwards.
-Each harness gets its own separate installation, so using both puts two Java runtimes on disk and lets each harness run
-a different CAT release. There is nothing to copy into your settings. Windows commands, custom harness homes, and the
-permission boundary are in [Install CAT](docs/installation.md).
+The command downloads CAT's plugin for that harness and installs it. The plugin carries its own installer and Java
+runtime, so nothing else is downloaded. The command also adds the permission entries that let your agent install and
+check CAT afterwards. Each harness gets its own installation, and each may run a different CAT release. There is nothing
+to copy into your settings. Windows commands, custom harness homes, and the permission boundary are in
+[Install CAT](docs/installation.md). Prompt optimization is not available on native Windows; use WSL2.
 
 ### 2. Start or resume a session
 
 Start or resume a session. CAT then injects its default rules and your project's applicable rules.
 
-### Install, update, reinstall and uninstall
+### Install another release, check CAT and uninstall
 
-Afterwards, ask your agent. CAT's `update` skill installs and updates CAT through the trusted installer, and
-installs the plugin again if you removed it by other means. An update moves the Java runtime, the installer and the
-plugin to the new release together. It requests GitHub's latest release unless you name one; the release must satisfy
-your installer policy. Naming an older release goes back to it, unless CAT's data structures changed since that release.
-It verifies signed release metadata and the release archives before activation. Restart the harness after an update.
-See [updates](docs/installation.md#routine-operations).
+Afterwards, ask your agent. CAT's `update` skill installs the latest release that your installer policy approves, or the
+release you name, through the installed plugin's installer. Each CAT version has its own folder in the harness, and the
+installation keeps the active version's folder and the one it replaced. Naming an older release goes back to it, unless
+CAT's data structures changed since that release. The installer verifies signed release metadata and the release archive
+before it installs. Restart the harness after an install. See [installing releases](docs/installation.md#routine-
+operations).
 
-CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes that harness's whole CAT
-installation: the plugin, the installer, the Java runtime and the permission entries. It keeps the plugin data unless
-you ask to delete it, and never deletes your own files or rules. The other harness's installation is not touched, apart
-from the runner artifacts in `~/.cat/bundles`, which uninstall always deletes and which it downloads again when it next
-needs them. Installing CAT again after that is a new installation that uses the one command above. See
-[uninstall](docs/installation.md#uninstall).
+CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes that harness's CAT installation: the
+plugin with all its version folders, and the permission entries. It keeps the plugin data unless you ask to delete it,
+and never deletes your own files or rules. The other harness's installation is not touched. Installing CAT again after
+that uses the one command above. See [uninstall](docs/installation.md#uninstall).
 
 ## Learn More
 
