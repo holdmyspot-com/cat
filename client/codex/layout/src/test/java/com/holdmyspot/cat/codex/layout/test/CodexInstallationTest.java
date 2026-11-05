@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Map;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -178,13 +179,15 @@ public final class CodexInstallationTest
 
 	/**
 	 * A {@code CODEX_HOME} that is blank but not empty names a folder, as Codex reads it, so a blank value neither
-	 * falls back to the default home nor names an existing folder.
+	 * falls back to the default home nor names an existing folder until a folder of that name exists.
 	 *
-	 * @throws IOException if the temporary directory cannot be created
+	 * @throws IOException if the temporary directories cannot be created
 	 */
 	@Test
 	public void blankVariableNamesAFolder() throws IOException
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException("Windows refuses a file name that ends in a space, so no folder has a blank name");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path user = cleanup.add(Files.createTempDirectory("cat-user-"));
@@ -196,6 +199,53 @@ public final class CodexInstallationTest
 				throw new AssertionError("A blank CODEX_HOME was accepted");
 			}
 			catch (NoSuchFileException e)
+			{
+				requireThat(e.getMessage(), "message").contains("CODEX_HOME");
+			}
+			Path blank = Files.createDirectory(working.resolve("  "));
+			Map<String, String> environment = Map.of("CODEX_HOME", "  ");
+			requireThat(CodexInstallation.resolveHome(environment, user, working), "home").
+				isEqualTo(blank.toRealPath());
+		}
+	}
+
+	/**
+	 * On Windows, which refuses a file name that ends in a space, a blank {@code CODEX_HOME} is refused as Codex refuses
+	 * it there: as a value that cannot be read, not as a folder that does not exist, so that the installer does not
+	 * try to create it.
+	 *
+	 * @throws IOException if the temporary directories cannot be created
+	 */
+	@Test
+	public void windowsRefusesBlankVariable() throws IOException
+	{
+		if (!Platform.current().isWindows())
+			throw new SkipException("Only Windows refuses a file name that ends in a space");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path user = cleanup.add(Files.createTempDirectory("cat-user-"));
+			Path working = cleanup.add(Files.createTempDirectory("cat-working-"));
+			Map<String, String> blank = Map.of("CODEX_HOME", "  ");
+
+			try
+			{
+				CodexInstallation.resolveHome(blank, user, working);
+				throw new AssertionError("A blank CODEX_HOME was accepted");
+			}
+			catch (NoSuchFileException e)
+			{
+				throw new AssertionError("A blank CODEX_HOME was read as a missing folder", e);
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("CODEX_HOME");
+			}
+			try
+			{
+				CodexInstallation.fromEnvironment(blank, user);
+				throw new AssertionError("A blank CODEX_HOME located an installation");
+			}
+			catch (IllegalArgumentException e)
 			{
 				requireThat(e.getMessage(), "message").contains("CODEX_HOME");
 			}
