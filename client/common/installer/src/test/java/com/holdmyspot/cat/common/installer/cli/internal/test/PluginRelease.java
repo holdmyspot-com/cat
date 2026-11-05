@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.installer.cli.internal.test;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.sign;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installer.engine.ReleaseConnection;
 import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
 import java.io.ByteArrayOutputStream;
@@ -22,8 +23,9 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 
 /**
- * Serves release 1.2 of CAT, whose signed manifest names one plugin archive: a gzip-compressed tar archive of an
- * extracted plugin folder. The source records each tag that it is asked for, and never reaches a network.
+ * Serves release 1.2 of CAT, whose signed manifest names one plugin archive, for the platform that runs the test: a
+ * gzip-compressed tar archive of an extracted plugin folder. The source records each tag that it is asked for, and
+ * never reaches a network.
  */
 final class PluginRelease implements ReleaseConnection
 {
@@ -49,7 +51,7 @@ final class PluginRelease implements ReleaseConnection
 		this.archive = archive(plugin);
 		String top = plugin.getFileName().toString();
 		String asset = ReleaseFixtures.asset(top + ".tar.gz", "plugin", "\"harness\": \"" + harness + "\", ",
-			"linux-x64", Long.toString(archive.length), sha256(archive), top);
+			Platform.current().id(), Long.toString(archive.length), sha256(archive), top);
 		this.manifest = ReleaseFixtures.manifest("1.2", TAG, asset).getBytes(UTF_8);
 		this.signature = sign(manifest, key);
 	}

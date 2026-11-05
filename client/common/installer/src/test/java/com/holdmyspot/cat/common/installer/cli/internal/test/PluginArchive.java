@@ -34,7 +34,7 @@ final class PluginArchive
 
 	/**
 	 * Creates the extracted archive: the plugin's manifest, version, installer launcher, plugin information launcher,
-	 * migration registry, Java runtime and default policy.
+	 * migration registry, Java runtime and default policy. On Windows the archive also holds the Windows launchers.
 	 *
 	 * @param parent the directory that receives the archive
 	 * @param keys   the release keys of the archive's default policy
@@ -66,6 +66,13 @@ final class PluginArchive
 		Path pluginInfo = Files.writeString(plugin.resolve("bin/plugin-info"), "#!/bin/sh\n");
 		if (!pluginInfo.toFile().setExecutable(true))
 			throw new IOException("Cannot make " + pluginInfo + " executable");
+		if (Platform.current().isWindows())
+		{
+			// A Windows archive's launchers are a PowerShell installer launcher and batch launchers
+			Files.writeString(plugin.resolve("bin/runtime/bin/java.exe"), "java");
+			Files.writeString(plugin.resolve("bin/installer.ps1"), "exit 0\r\n");
+			Files.writeString(plugin.resolve("bin/plugin-info.cmd"), "@exit /b 0\r\n");
+		}
 		Files.createDirectories(plugin.resolve("install/migrations"));
 		Files.writeString(plugin.resolve("install/migrations/registry.tsv"), "# No migration\n");
 		Files.writeString(plugin.resolve("bin/VERSION"), VERSION + "\n");
@@ -74,14 +81,15 @@ final class PluginArchive
 	}
 
 	/**
-	 * Returns the top directory of the archive of a harness's plugin, which the release's signed manifest names.
+	 * Returns the top directory of the archive of a harness's plugin for the platform that runs the test, which the
+	 * release's signed manifest names.
 	 *
 	 * @param harness the harness
 	 * @return the directory's name
 	 */
 	static String topDirectory(String harness)
 	{
-		return "cat-" + harness + "-linux-x64-v1.2";
+		return "cat-" + harness + "-" + Platform.current().id() + "-v1.2";
 	}
 
 	/**
