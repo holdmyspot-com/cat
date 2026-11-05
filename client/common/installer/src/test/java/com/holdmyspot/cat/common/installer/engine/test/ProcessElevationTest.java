@@ -52,20 +52,23 @@ public final class ProcessElevationTest
 	/**
 	 * Returns how fake {@code id} programs behave and whether the POSIX check reports administrative rights for each.
 	 * Each fake fails unless its single argument is {@code -u}, as the real program prints the effective user ID
-	 * only for that argument.
+	 * only for that argument. A program that ends is given the installer's own 10 seconds, because a Windows
+	 * runner can take longer than a second to start a batch file; only the program that does not end in time is
+	 * given a shorter limit.
 	 *
-	 * @return the POSIX script body, the Windows script body, and the expected result
+	 * @return the POSIX script body, the Windows script body, the time limit, and the expected result
 	 */
 	@DataProvider
 	public static Object[][] idPrograms()
 	{
+		Duration ends = Duration.ofSeconds(10);
 		return new Object[][]
 		{
-			{"echo 0", "@echo 0", true},
-			{"echo 1000", "@echo 1000", false},
-			{"echo 0; exit 1", "@echo 0\r\n@exit /b 1", true},
-			{"echo root", "@echo root", true},
-			{"exec sleep 60", "@ping -n 60 127.0.0.1 >nul", true}
+			{"echo 0", "@echo 0", ends, true},
+			{"echo 1000", "@echo 1000", ends, false},
+			{"echo 0; exit 1", "@echo 0\r\n@exit /b 1", ends, true},
+			{"echo root", "@echo root", ends, true},
+			{"exec sleep 60", "@ping -n 60 127.0.0.1 >nul", Duration.ofMillis(500), true}
 		};
 	}
 
@@ -75,11 +78,13 @@ public final class ProcessElevationTest
 	 *
 	 * @param posix    the fake program's body on POSIX systems
 	 * @param windows  the fake program's body on Windows
+	 * @param limit    how long the check waits for the program
 	 * @param expected whether the check reports administrative rights
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test(dataProvider = "idPrograms")
-	public void readsEffectiveUserId(String posix, String windows, boolean expected) throws IOException
+	public void readsEffectiveUserId(String posix, String windows, Duration limit, boolean expected)
+		throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -97,8 +102,8 @@ public final class ProcessElevationTest
 				requireThat(id.toFile().setExecutable(true), "executable").isTrue();
 			}
 
-			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
-				Duration.ofMillis(500), directory.resolve("probe"));
+			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id, limit,
+				directory.resolve("probe"));
 
 			requireThat(elevated, "elevated").isEqualTo(expected);
 		}
