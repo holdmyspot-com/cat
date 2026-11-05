@@ -439,8 +439,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The rules file permits installing into Codex, update and status without asking, asks before uninstall, and is
-	 * reported as added only by the call that wrote it.
+	 * The rules file permits installing into Codex and status without asking, asks before uninstall, and is reported
+	 * as added only by the call that wrote it.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -462,8 +462,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * No rule that runs without asking covers installing CAT into the other harness, which the user approves, and
-	 * uninstall always asks.
+	 * Installing the latest or a named release into Codex runs without asking. No rule covers installing CAT into the
+	 * other harness, which the user approves, or the removed update command, and uninstall always asks.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -481,6 +481,9 @@ public final class IntegrationTest
 				isEmpty();
 			requireThat(decisions(content, List.of(launcher, "install", "--harness", "codex")), "ownHarness").
 				isEqualTo(List.of("allow"));
+			requireThat(decisions(content, List.of(launcher, "install", "--harness", "codex", "v1.2")),
+				"namedRelease").isEqualTo(List.of("allow"));
+			requireThat(decisions(content, List.of(launcher, "update", "--harness", "codex")), "update").isEmpty();
 			requireThat(decisions(content, List.of(launcher, "uninstall", "--harness", "codex")), "uninstall").
 				isEqualTo(List.of("prompt"));
 		}
@@ -715,7 +718,6 @@ public final class IntegrationTest
 		return """
 			# Written by CAT's installer, which replaces or deletes this file. Do not edit it.
 			prefix_rule(pattern=[%1$s, "install", "--harness", "codex"], decision="allow")
-			prefix_rule(pattern=[%1$s, "update", "--harness", "codex"], decision="allow")
 			prefix_rule(pattern=[%1$s, "status"], decision="allow")
 			prefix_rule(pattern=[%1$s, "uninstall", "--harness", "codex"], decision="prompt")
 			""".formatted(quoted);
@@ -730,7 +732,10 @@ public final class IntegrationTest
 	 */
 	private static String updaterRules(Path launcher)
 	{
-		return rules(launcher).replace("CAT's installer", "CAT's updater");
+		String quoted = MAPPER.writeValueAsString(launcher.toString());
+		String status = "prefix_rule(pattern=[" + quoted + ", \"status\"]";
+		return rules(launcher).replace("CAT's installer", "CAT's updater").replace(status, "prefix_rule(pattern=[" +
+			quoted + ", \"update\", \"--harness\", \"codex\"], decision=\"allow\")\n" + status);
 	}
 
 	/**

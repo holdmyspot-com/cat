@@ -67,7 +67,7 @@ public final class InstallerRules
 	 */
 	public static String render(Path launcher, boolean windows)
 	{
-		return render(HEADER, launcher, windows);
+		return render(HEADER, launcher, windows, false);
 	}
 
 	/**
@@ -76,9 +76,11 @@ public final class InstallerRules
 	 * @param header   the file's first line
 	 * @param launcher the absolute, normalized path of the launcher
 	 * @param windows  {@code true} to name the launcher script through PowerShell
+	 * @param update   {@code true} to add the rule for the removed {@code update} command, as CAT wrote it into
+	 *                 {@code rules/cat-updater.rules}
 	 * @return the complete file content, ending with a line feed
 	 */
-	private static String render(String header, Path launcher, boolean windows)
+	private static String render(String header, Path launcher, boolean windows, boolean update)
 	{
 		requireThat(launcher, "launcher").isAbsolute().isEqualTo(launcher.normalize());
 		List<String> command = new ArrayList<>();
@@ -88,7 +90,8 @@ public final class InstallerRules
 
 		StringBuilder content = new StringBuilder(header).append('\n');
 		rule(content, command, List.of("install", "--harness", CodexActivation.HARNESS), ALLOW);
-		rule(content, command, List.of("update", "--harness", CodexActivation.HARNESS), ALLOW);
+		if (update)
+			rule(content, command, List.of("update", "--harness", CodexActivation.HARNESS), ALLOW);
 		rule(content, command, List.of("status"), ALLOW);
 		rule(content, command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
 		return content.toString();
@@ -105,7 +108,7 @@ public final class InstallerRules
 	 */
 	public static boolean isWrittenByCat(String content, boolean windows)
 	{
-		return isRenderedUnder(HEADER, content, windows);
+		return isRenderedUnder(HEADER, content, windows, false);
 	}
 
 	/**
@@ -119,7 +122,7 @@ public final class InstallerRules
 	 */
 	public static boolean isUpdaterLeftover(String content, boolean windows)
 	{
-		return isRenderedUnder(UPDATER_HEADER, content, windows);
+		return isRenderedUnder(UPDATER_HEADER, content, windows, true);
 	}
 
 	/**
@@ -128,9 +131,10 @@ public final class InstallerRules
 	 * @param header  the expected first line
 	 * @param content the file's content
 	 * @param windows {@code true} if the file names the launcher through PowerShell
+	 * @param update  {@code true} if the rules include the one for the removed {@code update} command
 	 * @return {@code true} if the content equals the rendered rules
 	 */
-	private static boolean isRenderedUnder(String header, String content, boolean windows)
+	private static boolean isRenderedUnder(String header, String content, boolean windows, boolean update)
 	{
 		String[] lines = content.split("\n", -1);
 		if (lines.length < 2 || !lines[0].equals(header))
@@ -157,7 +161,7 @@ public final class InstallerRules
 		Path launcher = Path.of(pattern.path(launcherIndex).stringValue());
 		if (!launcher.isAbsolute() || !launcher.equals(launcher.normalize()))
 			return false;
-		return content.equals(render(header, launcher, windows));
+		return content.equals(render(header, launcher, windows, update));
 	}
 	/**
 	 * Appends one prefix rule.
