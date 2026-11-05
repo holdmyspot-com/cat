@@ -30,8 +30,9 @@ its result. Tell me the result once it finishes. Also add `- {{entry}}` to the U
 
 - **kind**: effect
 - **description**: The agent starts its wait on the deployment before it edits `CHANGELOG.md`, and every run of
-	`sh scripts/deploy-status.sh` comes from that wait: the agent never runs the status command itself or through another
-	script, including between other steps.
+	`sh scripts/deploy-status.sh` comes from that wait, apart from one run of the wait's `--check` command before the
+	wait starts: the agent never runs the status command itself or through another script, including between other
+	steps.
 
 ### wait_until_with_deadline
 

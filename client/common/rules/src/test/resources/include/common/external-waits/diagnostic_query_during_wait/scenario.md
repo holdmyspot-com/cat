@@ -30,8 +30,9 @@ result once it finishes. Do not edit any file in the project.
 ### single_completion_observer
 
 - **kind**: effect
-- **description**: Every run of `sh scripts/deploy-status.sh` comes from the agent's wait on the deployment: the agent
-	never runs the status command itself or through another script, including between other steps.
+- **description**: Every run of `sh scripts/deploy-status.sh` comes from the agent's wait on the deployment, apart
+	from one run of the wait's `--check` command before the wait starts: the agent never runs the status command itself
+	or through another script, including between other steps.
 
 ### result_reported
 

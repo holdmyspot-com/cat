@@ -23,7 +23,8 @@ that build finishes, then its result. Tell me as soon as either build fails, or 
 
 - **kind**: effect
 - **description**: The agent waits for both builds through one wait that ends when the first build finishes, rather
-	than alternating calls that wait on each build's process in turn or checking the builds' statuses itself.
+	than alternating calls that wait on each build's process in turn or checking the builds' statuses itself, apart from
+	one run of each `--check` command before the wait starts.
 
 ### first_result_acted_on
 

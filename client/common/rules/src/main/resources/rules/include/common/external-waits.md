@@ -6,6 +6,9 @@
 	process exiting or a subagent returning, one wait per change, started as soon as the change is needed, is the only
 	check of whether it has occurred. The agent keeps doing in-scope work that does not depend on the change and blocks
 	on the wait once that work runs out, instead of checking the state or reporting progress at intervals.
+- A wait's check reports that the operation has not finished only after reading the operation's state, and one run
+	before the wait starts shows that it does, so a check whose lookup fails ends the wait with that failure instead of
+	holding the agent until the deadline. That run tests the check; it is not a check of whether the change has occurred.
 - While the agent waits with no other work, it wakes only when a wait limit passes or the awaited change occurs.
 - A query for a fact other than whether the change has occurred, such as a failed job's log, stays available whenever
 	the agent's work needs it.
@@ -27,9 +30,11 @@ wait operation, wait on that operation. Otherwise, such as for a hosted build, a
 
 - Give it the operation as `--check '<command>'`: a command that looks up the operation's state once, through its
 	documented status interface, prints that state, and exits with 0 when the operation succeeded, 1 when it failed, or
-	75 while it has not finished. When a documented command already blocks until the operation finishes and exits with
-	its result, such as `gh run watch <run> --exit-status`, give it as `--watch '<command>'` instead. The commands run in
-	your shell, in the current folder.
+	75 while it has not finished. Exit with 75 only when the command read the operation's state and that state says it
+	has not finished. When the lookup itself fails, such as a missing log, a wrong URL, or a refused request, exit with
+	another status, such as 2, so that the failure is not reported as "not finished". When a documented command already
+	blocks until the operation finishes and exits with its result, such as `gh run watch <run> --exit-status`, give it as
+	`--watch '<command>'` instead. The commands run in your shell, in the current folder.
 - Give it `--deadline <duration>`, such as `--deadline 40m`: the operation's own time limit, such as a workflow job's
 	`timeout-minutes`, plus a margin. When the operation declares no limit, base the deadline on its observed or
 	documented duration and state that basis. A check repeats every 30 seconds unless you give another
@@ -38,6 +43,12 @@ wait operation, wait on that operation. Otherwise, such as for a hosted build, a
 	command's last output, with status 0 or 1 respectively. When the deadline passes first, it prints each command's last
 	output and exits with 124. When a command cannot start, or a check exits with another status three times in a row,
 	it prints that command's output and exits with 3.
+
+Before starting the wait, run each `--check` command once yourself and confirm that it prints the operation's current
+state. This one run is part of building the wait, not a completion check: it tests the command that the wait will
+repeat. If it prints an error instead of a state, correct the command before starting the wait. For example, a hosted
+job's log endpoint may return an error while the job runs; a check that searches that log never sees the job's state
+until the job ends, so a check that reports the error as "not finished" holds the wait until its deadline.
 
 Start the wait before any other work. Start `wait-until` in the background: as a process whose exit the harness
 reports to you, or else as one that you can later wait on through the harness's wait operation. Until the wait ends,
@@ -68,4 +79,5 @@ When any of several state changes would let you continue, wait for whichever com
 operation that `wait-until` covers to the same `wait-until`, one `--check` or `--watch` each: it exits when the first
 one finishes and stops the others. When the changes include a process or subagent with its own wait operation, and the
 harness reports each one's exit to you or its wait operation accepts several of them, wait on all of them together
-and block until the first one ends. Act on the result. If you still need one of the other changes, start a new wait for those that remain.
+and block until the first one ends. Act on the result. If you still need one of the other changes, start a new wait
+for those that remain.
