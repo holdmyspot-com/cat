@@ -733,6 +733,38 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies that a read denial inside another read denial is left to the outer one, since Codex's Linux sandbox
+	 * cannot hide a file inside a folder that it already hides.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void nestedReadDenialIsLeftToTheOuterOne() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-nested-denial-")).toRealPath();
+			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path secret = Files.createDirectories(root.resolve("secret"));
+			Path inner = Files.writeString(secret.resolve("hidden.txt"), "private");
+			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder), List.of(), List.of(inner, secret),
+				List.of(), HostAccess.NONE, false, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
+				Set.of()));
+			Path destination = runFolder.resolve("home/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy);
+
+			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("filesystem");
+			requireThat(filesystem.path(secret.toString()).asString(), "secret").isEqualTo("deny");
+			requireThat(filesystem.has(inner.toString()), "innerDenial").isFalse();
+		}
+	}
+
+	/**
 	 * Returns Codex configuration layers that would give a session more than its policy allows, and the setting that
 	 * each names.
 	 *

@@ -826,13 +826,8 @@ public final class CodexConnectionConfiguration
 		addProjectGitPermissions(filesystem, project, platform);
 		for (Path denial : policy.writeDenials())
 			filesystem.put(toml(denial), "read");
-		for (Path denial : policy.readDenials())
-		{
-			// Codex's Linux sandbox creates an empty placeholder at a missing denied path while the session runs, which
-			// would block the parent from creating that path
-			if (Files.exists(denial))
-				filesystem.put(toml(denial.toRealPath()), "deny");
-		}
+		for (Path denial : outermostExisting(policy.readDenials()))
+			filesystem.put(toml(denial), "deny");
 		for (Entry<String, String> entry : filesystem.entrySet())
 		{
 			configuration.append('"').append(entry.getKey()).append("\" = \"").append(entry.getValue()).append('"').
@@ -981,16 +976,50 @@ public final class CodexConnectionConfiguration
 		StringBuilder profile = new StringBuilder(configuration).append(System.lineSeparator()).append(section).
 			append(']').append(System.lineSeparator()).append("extends = \"").append(parentProfile).append('"').
 			append(System.lineSeparator()).append(section).append(".filesystem]").append(System.lineSeparator());
-		for (Path deniedRead : deniedReads)
-		{
-			// Codex's Linux sandbox creates an empty placeholder at a missing denied path while the session runs, which
-			// would block CAT from creating that path. Denying the real path also covers every symbolic-link alias.
-			if (Files.notExists(deniedRead))
-				continue;
-			profile.append('"').append(toml(deniedRead.toRealPath())).append("\" = \"deny\"").
-				append(System.lineSeparator());
-		}
+		for (Path deniedRead : outermostExisting(deniedReads))
+			profile.append('"').append(toml(deniedRead)).append("\" = \"deny\"").append(System.lineSeparator());
 		Files.writeString(destination, profile.toString());
+	}
+
+	/**
+	 * Returns the read denials that Codex's sandbox can apply. Codex's Linux sandbox creates an empty placeholder at a
+	 * missing denied path while the session runs, which would block CAT or the parent from creating that path, so a
+	 * missing path is left out. It cannot hide a file inside a folder that it already hides, so a denial inside
+	 * another one is left to the outer one. Each denial is named by its real path, which also covers every
+	 * symbolic-link alias.
+	 *
+	 * @param denials the files and directories that the session must not read
+	 * @return the real paths of the existing denials that lie inside no other one, each once, in their order
+	 * @throws IOException if the real path of a denial cannot be read
+	 */
+	private static List<Path> outermostExisting(List<Path> denials) throws IOException
+	{
+		List<Path> existing = new ArrayList<>();
+		for (Path denial : denials)
+		{
+			if (Files.exists(denial))
+			{
+				Path realPath = denial.toRealPath();
+				if (!existing.contains(realPath))
+					existing.add(realPath);
+			}
+		}
+		List<Path> outermost = new ArrayList<>();
+		for (Path denial : existing)
+		{
+			boolean nested = false;
+			for (Path other : existing)
+			{
+				if (!other.equals(denial) && denial.startsWith(other))
+				{
+					nested = true;
+					break;
+				}
+			}
+			if (!nested)
+				outermost.add(denial);
+		}
+		return outermost;
 	}
 
 	/**
