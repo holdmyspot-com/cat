@@ -20,8 +20,14 @@ import java.util.StringJoiner;
  * Linux and macOS the installer deletes them itself after it has written its result, because a running program's
  * files can be deleted there. Windows refuses to delete a file that a running program has open, so the installer
  * starts Windows PowerShell, which waits for the installer's process to exit and then deletes the folders, retrying
- * for a limited time. The command is passed encoded on the command line, so no script file is left in a deleted
+ * for a limited time. The commands are passed encoded on the command line, so no script file is left in a deleted
  * folder.
+ * <p>
+ * A process that the installer starts on Windows inherits the handles that the installer inherited from its
+ * PowerShell launcher, among them the pipe through which the installer's caller reads the result, and the caller
+ * waits for the pipe's end until every process that holds it has exited. So the installer starts a Windows PowerShell
+ * that only starts the deleting Windows PowerShell through the Windows shell, which passes on no handle, and then
+ * exits.
  */
 public final class ExitDeletion
 {
@@ -107,7 +113,8 @@ public final class ExitDeletion
 	}
 
 	/**
-	 * Returns the Windows PowerShell command that waits for a process to exit and then deletes folders.
+	 * Returns the Windows PowerShell command that starts, through the Windows shell, a hidden Windows PowerShell that
+	 * waits for a process to exit and then deletes folders.
 	 *
 	 * @param systemRoot the Windows folder
 	 * @param pid        the process to wait for
@@ -133,13 +140,27 @@ public final class ExitDeletion
 			"}\n";
 		String program = systemRoot.replaceAll("[\\\\/]+$", "") +
 			"\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+		// Start-Process without redirection or -NoNewWindow starts the program through the Windows shell
+		String starter = "Start-Process -WindowStyle Hidden -FilePath " + quote(program) +
+			" -ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','" + encode(script) + "'\n";
 		List<String> command = new ArrayList<>();
 		command.add(program);
 		command.add("-NoProfile");
 		command.add("-NonInteractive");
 		command.add("-EncodedCommand");
-		command.add(Base64.getEncoder().encodeToString(script.getBytes(UTF_16LE)));
+		command.add(encode(starter));
 		return command;
+	}
+
+	/**
+	 * Encodes a Windows PowerShell script as its {@code -EncodedCommand} option takes it.
+	 *
+	 * @param script the script
+	 * @return the Base64 of the script's UTF-16LE bytes
+	 */
+	private static String encode(String script)
+	{
+		return Base64.getEncoder().encodeToString(script.getBytes(UTF_16LE));
 	}
 
 	/**

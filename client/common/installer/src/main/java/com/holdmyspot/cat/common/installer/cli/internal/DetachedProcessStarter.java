@@ -10,7 +10,9 @@ import java.util.List;
 
 /**
  * Starts a program that outlives the installer's process. The program gets no input and its output is discarded, so
- * that it holds none of the streams through which the installer's caller reads the installer's result.
+ * that its standard streams are none of those through which the installer's caller reads the installer's result. On
+ * Windows the program still inherits the other handles that the installer may pass on, which {@link ExitDeletion}
+ * accounts for.
  */
 public final class DetachedProcessStarter implements ProcessStarter
 {

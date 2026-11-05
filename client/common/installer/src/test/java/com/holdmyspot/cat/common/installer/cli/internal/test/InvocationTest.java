@@ -37,6 +37,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -962,9 +964,10 @@ public final class InvocationTest
 
 	/**
 	 * On Windows, which refuses to delete the files of a running program, uninstall leaves the folder of plugin files
-	 * that holds the running installer's version folder and starts the system's Windows PowerShell, which waits for
-	 * the installer's process to exit and then deletes the folder, retrying for at most 60 seconds, without a script
-	 * file.
+	 * that holds the running installer's version folder and starts the system's Windows PowerShell, which starts
+	 * another, hidden, through the Windows shell, so that it holds none of the handles through which the installer's
+	 * caller reads the result. That one waits for the installer's process to exit and then deletes the folder,
+	 * retrying for at most 60 seconds, without a script file.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -990,7 +993,13 @@ public final class InvocationTest
 			requireThat(command.getFirst(), "program").
 				isEqualTo("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
 			requireThat(command, "command").contains("-EncodedCommand");
-			String script = new String(Base64.getDecoder().decode(command.getLast()), UTF_16LE);
+			String starter = new String(Base64.getDecoder().decode(command.getLast()), UTF_16LE);
+			Matcher start = Pattern.compile("^Start-Process -WindowStyle Hidden -FilePath " +
+				"'C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1\\.0\\\\powershell\\.exe' " +
+				"-ArgumentList '-NoProfile','-NonInteractive','-EncodedCommand','([A-Za-z0-9+/=]+)'\n$").
+				matcher(starter);
+			requireThat(start.matches(), "startsThroughShell").withContext(starter, "starter").isTrue();
+			String script = new String(Base64.getDecoder().decode(start.group(1)), UTF_16LE);
 			requireThat(script, "script").contains("Wait-Process -Id " + ProcessHandle.current().pid() + "\n").
 				contains("'" + cache + "'").contains("AddSeconds(60)");
 		}
