@@ -177,7 +177,7 @@ public final class ClaudeRunnerCli
 	 * {@code --policy-bound} names the file of the policy that bounds the session's sandbox policy, which the session
 	 * launcher writes. Every session starts through the session launcher, so a launch without it is refused before
 	 * it takes a capacity slot or creates a run. A session that the bounded session requests is bounded in turn by the
-	 * bounded session's policy, widened only by the requested session's own run folder.
+	 * bounded session's policy.
 	 *
 	 * @param process            the process scope, whose lock coordinator and waiting the bridge uses
 	 * @param workingDirectory   the directory from which the command was invoked
