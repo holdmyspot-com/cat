@@ -1041,4 +1041,21 @@ public final class CodexRunnerTest
 		requireThat(refusal.getCause(), "cause").isReferenceEqualTo(loopback, "loopback");
 		requireThat(CodexRunner.refusalOf(other), "failure").isReferenceEqualTo(other, "other");
 	}
+
+	/**
+	 * Verifies that an app-server that cannot start because the system lets bubblewrap create no user namespace, as
+	 * stock Ubuntu 24.04 does, refuses the session with that reason. The failure text is recorded from bubblewrap on a
+	 * hosted ubuntu-24.04 runner.
+	 */
+	@Test
+	public void refusesSandboxWithoutUserNamespaces()
+	{
+		IOException uidMap = new IOException("Codex app-server ended before responding to request 1: bwrap: " +
+			"setting up uid map: Permission denied");
+
+		IOException refusal = CodexRunner.refusalOf(uidMap);
+		requireThat(refusal, "refusal").isInstanceOf(SessionRefusedException.class);
+		requireThat(refusal.getMessage(), "message").contains("bwrap: setting up uid map: Permission denied");
+		requireThat(refusal.getCause(), "cause").isReferenceEqualTo(uidMap, "uidMap");
+	}
 }

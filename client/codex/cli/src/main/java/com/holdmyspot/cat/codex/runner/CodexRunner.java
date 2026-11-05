@@ -82,6 +82,7 @@ public final class CodexRunner
 	 * The text of Codex's failure to start a thread when bubblewrap cannot set up the sandbox's loopback interface.
 	 */
 	private static final String SANDBOX_LOOPBACK_FAILURE = "bwrap: loopback: Failed RTM_NEWADDR";
+	private static final String SANDBOX_UID_MAP_FAILURE = "bwrap: setting up uid map: Permission denied";
 	private static final int MAXIMUM_COMMAND_OUTPUT_BYTES = 1_048_576;
 	private final Waiting waiting;
 
@@ -888,10 +889,11 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the failure to start a session's thread as a refusal when Codex's Linux sandbox cannot start on the
-	 * system: bubblewrap could not set up the loopback interface of the sandbox's network namespace, as on stock
-	 * Ubuntu 24.04, whose AppArmor keeps unprivileged processes from creating that namespace. Codex would then confine
-	 * no command, so the session must not run.
+	 * Returns the failure to start a session's app-server or thread as a refusal when bubblewrap cannot start on the
+	 * system, as on stock Ubuntu 24.04, whose AppArmor keeps unprivileged processes from creating namespaces: either
+	 * bubblewrap could not set up the loopback interface of the sandbox's network namespace, or it could not map the
+	 * user into a new user namespace. Neither Codex's sandbox nor the bubblewrap around the app-server could then
+	 * confine the session, so it must not run.
 	 *
 	 * @param failure the failure to start the thread
 	 * @return the refusal, or {@code failure} itself if the sandbox did not cause it
@@ -901,12 +903,15 @@ public final class CodexRunner
 	{
 		requireThat(failure, "failure").isNotNull();
 		String message = failure.getMessage();
-		if (message == null || !message.contains(SANDBOX_LOOPBACK_FAILURE))
+		if (message == null || !message.contains(SANDBOX_LOOPBACK_FAILURE) &&
+			!message.contains(SANDBOX_UID_MAP_FAILURE))
+		{
 			return failure;
-		return new SessionRefusedException("CAT does not start the session: Codex could not start its sandbox (" +
-			message + "). On Ubuntu 24.04 and later, AppArmor keeps bubblewrap from creating the network namespace " +
-			"that the sandbox needs; let bubblewrap create user namespaces, for example with an AppArmor profile for " +
-			"bwrap, then start the session again.", failure);
+		}
+		return new SessionRefusedException("CAT does not start the session: bubblewrap could not start its sandbox (" +
+			message + "). On Ubuntu 24.04 and later, AppArmor keeps bubblewrap from creating the namespaces that the " +
+			"sandbox needs; let bubblewrap create user namespaces, for example with an AppArmor profile for bwrap, " +
+			"then start the session again.", failure);
 	}
 
 	/**
