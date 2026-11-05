@@ -18,9 +18,307 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Concurrent, cheap tests:** Every work item preserves `design.md` [§10](design.md#10-testability-contract). A change
 	that makes a test depend on shared state, real time or replaying earlier work is rejected in review.
 
-## Current state (2026-11-01)
+## Current handoff: shared JVM and trusted plugin lifecycle
 
-Resume the goal through every [§9 final gate](#9-final-gates); it remains incomplete. This section replaces the
+The user has asked this agent to update this file with all pending work and stop so another agent can take over.
+Do not continue implementation or publication in this handoff session. The broader optimizer goal remains incomplete.
+This section supersedes historical statements below about the current release, running work and remaining publication.
+The optimizer design remains authoritative for optimizer behavior; the latest user requirements below govern the
+revised plugin lifecycle and distribution work, which has not been implemented.
+
+### Status at 2026-11-05 (supersedes the release facts below)
+
+- **Republished v1.0:** tag `v1.0` = `27df4a011f` (force-pushed after deleting the previous GitHub release). Release
+  workflow run 42107426336 passed on all five platforms. Native Build on the v1.0 branch, run 42105928931, passed on all
+  five; a local whole-reactor `clean verify` at `27df4a011f` passed (java.io.tmpdir outside any Git repo, 0 failures).
+  15 release assets; the signed manifest (`build` `27df4a011f1d`) verifies against the `cat-release` ed25519 key that
+  the archives embed, and all 10 archives match `SHA256SUMS.txt` and the manifest digests. The release omits the
+  uncommitted design.md (G4 wording) and plan.md edits, by the user's ruling.
+- **In this release, beyond the earlier lifecycle work:** session launcher (children run inside the child harness's own
+  sandbox, never wider than the parent); LP2-1 (a Codex child's commands can no longer write `config.toml`,
+  `hooks.json` or `plugins/` in its isolated `CODEX_HOME`, which its app server runs outside the command sandbox);
+  U14/U15 (a kept-run copy reports the session's outcome first, leaves out the files the child could not change, and
+  silently skips any other file the sender's sandbox refuses to write, recording them in the receipt as
+  `skipped_copy_paths`); native-platform fixes, including two product fixes: a Codex child on macOS could read a denied
+  file nested under a write grant (the other harness's `.claude/.credentials.json`), and Windows self-uninstall no
+  longer holds the caller's pipe for up to 60 s.
+- **Self-install is pending the user** (cannot run from inside the agent sandbox: Claude's `~/.claude/plugins` is
+  write-denied, and the Codex wrapper needs nvm under the real HOME). The user runs, outside the sandbox:
+  `curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude` and the
+  same with `--harness codex`; then verify each installed `bin/plugin-info` reports the new build.
+- **Known defect in the previously installed build:** its `install/cat.sh` downloads `bootstrap.sh` from
+  `client/common/lifecycle/src/main/resources/install/` on the default branch, which no longer exists (404). Updating
+  from that build needs the release's own `cat.sh` (above).
+- **Open user decisions:** launcher-plan-2 questions A (cross-harness admin-file programs), B (shared-daemon narrowing),
+  C (project-defined programs when the project is the parent's own); a user-made link deeper in a path (e.g.
+  `~/code` -> `/mnt/data`) is still refused by request archives; Q3 (add `"/home/gili/cat/home/.codex/sessions" =
+  "read"` to the cat profile, then verify with a live Codex session).
+- **Next release:** LP2-2..LP2-10 (classifier-based confinement of every unsandboxed program source, wrapper folder,
+  Claude-side trial-plugin hooks/MCP/LSP/monitors, approvals copied by plugin name across marketplaces); U10C (five
+  cooperative hosted checks that the launcher's fakes model the real OS; brief `unit-u10c.md`, on branch `srl-u10`);
+  Windows launcher; one shared managed-settings list (three copies today); `ClaudeConnectionSettings.candidates`
+  reading `//c/...` as POSIX on Windows; the deleter waiting on a possibly reused PID.
+- **Done 2026-11-05 (local v1.0, not pushed, not in the published release):** `srl-rd` then `srl-da` integrated, and
+  the "Subagent tiers" table matches the shipped agent definitions. **After self-install:** resume the optimizer work
+  in `goal.md`.
+
+### Latest authorized requirements
+
+- The user performs the initial installation manually in **one command**. That command must install the shared JVM,
+  trusted updater, selected plugin and required agent permissions. Printing permission snippets for the user to copy
+  does not satisfy this requirement.
+- After initial setup, an agent must be able to install, update and uninstall the plugin through the trusted installed
+  service. **Amended 2026-11-04 (afternoon):** the installer ships inside the plugin. If the plugin is removed by other
+  means, nothing is recovered; the user reruns the one-command install.
+- **Superseded by the user's ruling of 2026-11-04 (answers 1c, 2a, 3a, 4a, 5a):** the CAT plugin of a harness is one
+  bundle made of its JVM, its trusted updater and its harness integration, installed, updated and removed together.
+  Each harness has its own fully separate installation (`<base>/<harness>`), with its own Java runtime and updater;
+  nothing is shared between harnesses. An update never changes trusted keys or policy (only setup does); updates are
+  prompt-free; uninstall goes through the harness's approval prompt. This replaces the earlier "one managed JVM
+  installation per platform".
+- **User rulings of 2026-11-04, later the same day:** rollback is removed. `update --harness <h> <release>` may install
+  an older release, with no prompt, only when the active release's migration registry has no data migration after
+  that release up to and including the active one (the `1.0.0` layout marker excepted); otherwise it refuses (exit 3,
+  nothing changed) because the data structures are not backward compatible and going back would lose data. `update`
+  without a release never goes back. The bundle that an update replaces stays cached in the installation's protected
+  data directory until the next successful update, and an operation that activates a cached release reuses it,
+  without downloading, once its signed manifest, plugin archive and recorded runtime and updater identity verify.
+  `~/.cat/bundles` (the runner cache, which projects can write) is never reused.
+- **User rulings of 2026-11-04, afternoon (supersede the installation location above and the runner sandbox
+  exclusions; all ship in the republished v1.0):**
+  - **Naming:** the updater is renamed the installer everywhere, with the launcher `bin/installer` (`installer.ps1` on
+    Windows).
+  - **Location:** each harness's installation is its plugin's versioned cache folder,
+    `~/.<harness>/plugins/cache/cat/cat/<plugin-version>/`. Everything the plugin runs is under `bin/`: the launchers,
+    with the Java runtime and CAT's code in `bin/runtime/`. There is no `client/` folder.
+  - **Plugin version:** it carries the build, for example `1.0+<release commit>`, so a republished release installs
+    into a new folder and the old one is deleted once nothing holds it.
+  - **Data directory:** the plugin data directory (`~/.<harness>/plugins/data/cat-cat`) holds only configuration and
+    caches. It keeps the other harness's plugin copy, which the installer downloads and checks against the signed
+    manifest, and the release cache. `~/.cat/bundles` goes away.
+  - **Write protection:** Claude Code already blocks sandboxed writes to `~/.claude/plugins`. Setup adds Claude
+    sandbox write-deny entries for the Codex plugin folders.
+  - **Removal by other means** needs no recovery: the user reruns the one-command install.
+  - **Uninstall** keeps data by default, asks whether to remove it, and offers "keep" as the default answer.
+  - **Release assets** are named `cat-<harness>-<platform>-v<version>.tar.gz`.
+  - **Runners run inside the agent's sandbox,** with no runner exclusions. Only the installer, and the hooks the
+    harness starts itself, run outside it.
+  - **Capacity lock:** it stays in `~/.cat/locks`, which setup adds to both sandboxes' write lists.
+  - **Codex network:** with Codex network off, the runner refuses and says how to enable it, and setup leaves the
+    Codex config unchanged.
+  - **Native Windows, Claude:** nested Claude sessions run with the user's own allow and deny rules and
+    `--permission-mode dontAsk`. This replaces the WSL2 refusal of 2026-11-01.
+  - **macOS:** whether a sandbox can start inside another sandbox there is tested before any fallback is chosen.
+  - **Old installation:** the user removed `~/.local/share/cat-updater` by hand, so no migration code is needed.
+  - **Later the same afternoon:**
+    - Claude Code runs a directory-source plugin in place, so its version folder is
+      `~/.claude/plugins/cat-marketplace/plugins/cat/<version>/`; Codex keeps `~/.codex/plugins/cache/cat/cat/<version>/`.
+    - The version form is `1.0+b<commit>` if both harnesses accept it.
+    - The other harness's plugin is installed only on demand, never eagerly. When a runner needs the other harness's
+      plugin and CAT is not installed there, the runner stops. Its message says that CAT will be installed into that
+      harness and asks the user to approve the current harness's `bin/installer install --harness <other>`. That
+      command runs outside the sandbox, is not on the no-prompt list, and does a normal first install there. The
+      runner accepts the other harness's installed plugin only at the same release version. Otherwise it stops and
+      names the update command. There is no bundle cache and no `fetch` command.
+    - Setup may add one Codex `config.toml` entry, a writable root for `~/.cat/locks`, and uninstall removes it.
+    - Data is kept across updates.
+    - The installer's commands are `install`, `uninstall` and `status`. `install` replaces both `setup` and `update`: it
+      installs when the harness has no CAT version yet, and updates otherwise, keeping the same release and downgrade
+      rules.
+    - Nested sessions on macOS must stay within a sandbox. The user does not accept a child that runs without one
+      under a sandboxed parent. Native Windows sandboxing for both harnesses is being tested.
+- Uninstall removes the complete CAT installation, including plugin, updater, JVM, policy and CAT-owned
+  permission entries. By default it preserves plugin data. Before uninstalling, the agent must ask whether the user
+  also wishes to remove that data, and remove it when requested. Preserve unrelated settings and custom agents.
+  This latest ruling supersedes the earlier proposal that ordinary uninstall would retain the updater/runtime.
+  Do not silently retain installation components to support reinstall: reconcile the post-removal entry point with
+  the user's initial-only manual setup requirement in the lifecycle design.
+- Retain all completed rule changes listed below. Use backward design and iterative generalization for the revised
+  implementation. Ask the user only unresolved product or material architecture/design questions; choose the best
+  long-term implementation approach without implementation confirmations.
+- After implementing and verifying the revised contract, publish a new v1.0 release, update this handoff and stop.
+  The latest request changes the present session to handoff-only; the receiving agent owns the remaining work.
+
+Two unnecessary questions were sent just before this handoff, asking about data retention and plan approval. Both
+were explicitly retracted in commentary. They are not approval gates for this handoff or implementation. The subsequent
+user ruling does require a data-removal question when an actual uninstall is requested; this is a product decision,
+not an implementation confirmation. No actual uninstall has been requested in this session.
+
+### What is already published and verified
+
+- **Public release**: [CAT v1.0](https://github.com/holdmyspot-com/cat/releases/tag/v1.0), source and tag
+  `6a17ae364a9bdbb4332c3e510f1bae1a04c9b701`, release ID `432751710`. Publication completed successfully while the new
+  lifecycle requirements arrived. It contains the earlier trusted updater design with three JVM images per platform;
+  it does **not** satisfy the new shared-JVM, one-step permissions or complete agent lifecycle requirements.
+- **Verification**: the full local Maven verification passed 3,828 tests with no failures/errors and 20 skips across
+  316 reports. Hosted run [41750867148](https://github.com/holdmyspot-com/cat/actions/runs/41750867148) passed all five
+  cold native builds and signed assembly, with every checkout pinned to the published source. All 20 release files,
+  15 archive digests, signed manifest bindings, five policy keys, notes, final public status and tag were verified.
+  The actual packaged updater accepted the signature and rejected a byte-flipped manifest. The production release
+  workflow, ID `383785523`, is active. No installed harness cache was refreshed.
+- **Completed commits**: `bf93d5edba` integrates the earlier trusted updater; `08de7d4434` limits questions to unresolved
+  product/material architecture decisions; `65d9c1e5a8` places helpers by their own responsibility, checks reusable
+  project/JDK APIs against their full contracts and prefers equivalent Java 21+ guarded switches. `31a9b37aac` removes
+  the rescinded slow-file concurrent decomposition rule and its four scenarios. Do not restore that rule.
+  `6a17ae364a` adds progressive representative units of work and separately routed valid caching guidance.
+- **Rule behavior**: start expensive changed workflows with a small supported representative subset through their real
+  execution path, double successful scope up to full acceptance, and use targeted failure/lifecycle probes where
+  needed. Units may be crates, packages, datasets or jobs. Reuse only valid completed outputs under matching inputs,
+  dependencies, toolchain, effective features/configuration, target and profile; subset results do not replace full
+  acceptance, and caches do not waive a required clean build. Backward derivation and iterative generalization were
+  applied to Cargo scheduler risks, dataset exports and stable/cheap/indivisible boundaries.
+- **Rule delivery**: the updated question, helper, Java, progressive-workflow and cache rules plus both routing files
+  were checked in all ten plugin archives; source-only goals are stripped and the rescinded procedure is absent.
+  Scenarios were recorded and structurally validated, not model-tested or certified. Example repositories were not
+  changed. Original rule-reference replacement was completed earlier in this conversation.
+- **Download size**: compressed Claude/Codex/updater archives respectively are approximately 34.7/34.8/34.6 MB on Linux
+  ARM64, 34.8/34.9/34.6 MB on Linux x64, 30.6/30.7/30.4 MB on macOS ARM64, 31.8/31.9/31.6 MB on macOS x64 and
+  31.0/31.1/30.8 MB on Windows x64. All 15 total about 488.5 MB. Bundled runtimes dominate; Linux x64 Codex expands to
+  111.5 MB, including a 74.8 MB Java/application module image and 27.9 MB JVM library. Rules occupy about 0.4 MB.
+
+### Revised design and exact starting state
+
+All paths in the following evidence list are relative to
+`.cat/sessions/01a1a29f-4190-7b12-9d92-89ba8febdcdb/temp/` unless stated otherwise.
+
+- **Current invocation**: `shared_runtime_lifecycle-vZqE9s/`, owned by the receiving agent after accepting this handoff.
+  Its `design.md` records backward derivation, analogous/dissimilar cases, implementation boundaries and required
+  acceptance. Its `terminal-gates.json` records the revised scope; all revised implementation gates remain unrun.
+  This is a design proposal, not a completed authoritative artifact-layout contract.
+- **Isolated clones**: `shared_runtime_lifecycle-vZqE9s/distribution/` and `.../lifecycle/`, both separate
+  `git clone --shared` repositories at immutable source `6a17ae364a9bdbb4332c3e510f1bae1a04c9b701`. Workers
+  `runtime_distribution` and `trusted_lifecycle` were interrupted and returned stopped receipts. Neither made edits,
+  ran tests, created commits or started background processes. No binding/layout/self-removal contract was negotiated.
+  Do not assume a partial implementation exists or restart completed native jobs. No worker remains running.
+- **Previous release invocation**: `release-workload-cache-GbtOXa/` contains `local-verification.json`,
+  `final-verification.json`, `packaged-rule-delivery.json`, `publication-receipt.json`, `terminal-gates.json`,
+  `size-breakdown.json`, build/publication logs, notes, candidate archives and previous-release backups.
+  Publication process 7724 exited 0; download 84648 and guidance check 70692 exited 0. There are no live tool sessions
+  from these operations. Detailed final signature/runtime receipt:
+  `question-policy-Q8UPg6/verification/run-6qnemlwz/receipt.json`.
+- **Other evidence**: `updater-native-matrix-Bm8L1Q/updater-acceptance.json` and `accepted-native.json` retain earlier
+  updater acceptance. Rule derivation is under the separate session
+  `.cat/sessions/01a1a3ab-dd42-7cb0-a019-072741a5b1db/temp/staged_workflow_rule-csdxIA/`
+  (`design_checkpoint.md`, `report.json`), with final parent review in
+  `release-workload-cache-GbtOXa/parent-design-review.md`.
+- **Signing**: GitHub Actions secret `CAT_RELEASE_SIGNING_KEY` is already configured. The user-owned private key at
+  `/home/gili/cat/home/secrets/cat-release-signing-key.pem` has mode 600; its contents were never displayed or inspected.
+  Do not read or regenerate it. Public-key fingerprint:
+  `8be98cd395e57f622cd2e1a153050472de54e580c3812f4c31e462ccf0c8d9a8`.
+
+The source findings that determine the next implementation are:
+
+1. `DistributionMain` builds three separate jlink images; `PluginArtifactBuilder` copies each plugin image into
+   `client/`, with application classes embedded in `lib/modules`. Merely pointing plugins at the updater's Java cannot
+   work: that module image lacks their application modules. Proposed replacement: one JDK-only linked runtime plus
+   external modular application JAR sets, with protected updater/provider JARs separate from plugin JARs. Keep plugin
+   application modules outside `client/lib/`, which runtime identity currently classifies as generated JVM bytes.
+2. Preserve the existing launcher surfaces, including `client/bin/java`, through wrappers using an install-written,
+   absolute runtime binding. Do not select installed authority from HOME, XDG, PATH or JAVA_HOME. Resolve required
+   service providers explicitly, including activation providers and SLF4J. `UpdaterMain` currently uses `java.home` to
+   locate its application image; that assumption must change when Java home names the shared runtime.
+3. Bootstrap currently installs the plugin before the updater and only prints exemptions. Reverse the dependency:
+   install/verify shared runtime and trusted app first, then perform trusted plugin installation and install narrow
+   permissions idempotently. Merge only CAT-owned entries, preserving unrelated settings; malformed/redirected
+   authority configuration must fail before authority changes. Validate actual harness consumption of permissions.
+4. `Arguments` supports only UPDATE/STATUS/ROLLBACK/SETUP. `UpdateEngine.operateLocked` and both activation providers
+   require an existing installation. Add actual fixed-grammar trusted install and uninstall operations, including
+   explicit complete self-removal. Exact CLI spelling and the shared layout remain implementation decisions to settle
+   before dependent edits; no user confirmation is required.
+5. Activation journals require valid previous/new versions and reconstruct update plans. Do not fake an installed
+   version to represent absence. Model installation/removal states and interrupted recovery explicitly. Harness
+   registration changes durable configuration beyond directory renames; record and reconcile those handoffs using
+   trusted provider code and native harness APIs, never a mutable plugin installer as an exempt executor.
+6. Full removal on Windows must finish after the JVM releases locked files. Settle a trusted host-launcher cleanup
+   protocol with actual completion/error evidence; scheduling deletion alone is not completed uninstall. Plugin-only
+   removal was an earlier proposal, superseded by the latest complete-uninstall requirement above. Runtime migration
+   or replacement must retire obsolete persistent JVM copies without breaking another installed application's needs.
+7. Authenticate runtime requirements through signed release content and reject incompatibility before activation.
+   `RunnerRuntimeManifest`/`HarnessArtifact` must include the actual shared runtime in execution identity, so changing
+   Java cannot silently reuse optimizer acceptance. Installation-specific bindings must be represented deliberately
+   in artifact validation instead of accidentally breaking immutable packaged-byte comparisons.
+
+### Pending execution and acceptance
+
+1. Read the applicable project/plugin routes, the invocation design and the relevant source. Reconcile this proposed
+   design with the existing lifecycle contract, recording one authoritative declaration of runtime layout, plugin
+   requirements/binding, updater application identity, service resolution and post-JVM self-removal. Compare bootstrap,
+   reinstall-from-absence, coexistence, update/rollback and complete-removal paths before dependent edits.
+2. Implement in verification-closed clusters. Suggested ownership: distribution assembly/launchers and focused tests;
+   common plus both harness updater modules, bootstrap scripts, permission installation and focused lifecycle tests;
+   then parent-owned runner identity, skills, docs and integration. Use isolated clones for parallel writers and
+   communicate through the same settled contract. Preserve the dirty parent through validated patch replay.
+3. Establish focused behavioral red tests before production changes, then run affected compilation/static checks and
+   focused tests. Test small supported units first and keep valid caches. Integrate accepted results sequentially;
+   run the complete documented project verification after integration, without weakening checks.
+4. Prove one-command setup, effective agent permissions, real install/update/uninstall/reinstall, shared actual Java
+   home across applications, complete uninstall with retained data by default and deleted data on request, effective
+   data-removal prompting, full self-uninstall, environment-bound authority, signature/runtime refusal and interruption
+   recovery. Exercise both actual harness boundaries where
+   supported, including the sandbox/exemption boundary. Verify all five native platforms, particularly Windows locked
+   file cleanup. Earlier native acceptance covers the prior design, not these changes.
+5. Update README, installation instructions, release notes, setup output, update/uninstall skills and every caller of
+   the retired contract. Remove obsolete manual-exemption and separate-JVM instructions from maintained surfaces.
+   Preserve historical records only as history. Do not edit installed caches directly or refresh an active campaign.
+6. Commit only the revised work after its checks; preserve unrelated changes. Produce release artifacts from the exact
+   committed source, verify signatures and every archive, check packaged rule delivery and publish revised v1.0. The
+   previous publisher assumes the previous tag was `65d9c1e5a8...`; it must be adapted to the now-published source above,
+   new artifact contract and new exact source. Do not rerun an old publisher unchanged.
+7. Clean up consumed release resources after their last consumers and acceptance, update this handoff with actual
+   results and remaining optimizer obligations, then stop as requested. Do not resume optimizer campaigns implicitly.
+
+### Pending cleanup and preserved optimizer work
+
+No final release cleanup has run. `release-workload-cache-GbtOXa/cleanup.py` is prepared and reviewed, but the newest
+user request redirected to handoff first. It removes 42 Actions artifacts and six validation branches, checking exact
+identities, then owned clones/downloads/previous backups. Preserve needed rollback assets and small receipts until the
+receiving agent has accepted their last consumers. Do not run any older cleanup or handoff script blindly. The
+prepared `update-handoff.py` describes the previous release as the terminal result and is obsolete for this scope.
+The six native validation run/suffix/commit records are:
+
+| Run | Suffix | Validation commit |
+|---|---|---|
+| 41738784965 | Q8UPg6 | 10611bc705fc4625fba724a6d50019c66f0d065a |
+| 41740870550 | JDcocJ | c2fb85f5108cf6750bddb222215fb443b64e2e73 |
+| 41741797579 | 4QuKdT | fc03c1d28034933864ac657ef0072c048de0cb60 |
+| 41745993367 | NPkRnh | e6688ea98a1e56f7400b992b9e3752787ab780a0 |
+| 41748960981 | Abj28l | f28d0c52a48a4cef47ef3fc7ac40fddb7d221b61 |
+| 41750867148 | GbtOXa | 34483e64bee793028e750b25b1a9f3adfbfd728d |
+
+Preserve unrelated uncommitted changes: `ClaudeRunner.java`, `ClaudeRunnerTest.java`, optimizer `CommitTest.java`,
+`TransitionsTest.java`, `OptimizerCoreTest.java`, `DriverTest.java`, and `design.md`. This plan already contained
+uncommitted historical updater work before this handoff; it is preserved. Untracked home/configuration files and
+`goal.md` remain untouched. Do not stage them or discard them.
+
+The runner long-path repair still needs native R-I1/E1 acceptance and integration. Its 26 focused checks and parent
+full build passed; evidence/isolated patch are in the separate session
+`.cat/sessions/01a1a3a5-0316-70e0-879b-f49ca711abe3/temp/runner-long-path-92VasA/`
+(`receipt.json`, `runner-long-path-only.patch`). Claude Code 2.1.317 maps non-ASCII-alphanumeric UTF-16 units, including
+underscore, to hyphens. Beyond 200 units it keeps the first 200 and appends a hyphen plus the absolute signed Java
+String hash in base 36; widen before abs of the minimum integer. The mapping uses the existing qualified test export,
+without another export/facade. Recorded source/test postimages are respectively
+`91ae2e8ff1d2e0003d333bd17ba88e6e902ea71802348f4c17cc589557bf424d` and
+`df450787f56bbbea4b67da0b85dd2d8147cb7b36c835912f15ab10dc9ec531e8`.
+
+Claude E1 is parked at `temp/current-claude-e1-nnz7i1ez/`, campaign `20261103T210547Z-4335de`, host
+`mw16ejub-4fdedfyp8e`, terminal exit 0; the host closed when work was redirected to the updater. This is separate from
+the explicitly stopped Claude E5 campaign. Its `next-proof.md` predates the run: later turn-2 events show the long path
+at line 126 and filename-too-long failure at line 269. Reconcile those events before using identity; do not reset or
+replay recorded outcomes. Keep one model-spending campaign/probe per harness and never refresh its active cache.
+
+Optimizer final gates 2, 4, 5, 6 and 7 remain open, then gate 8; G1, G2, G4, G6, G7 and G9 remain open. R-I1 native
+evidence and E1–E8 in both harnesses are not supplied by updater builds. Claude E5 stays explicitly stopped; E8 timing
+awaits the user's decision, with no waived gate. The retained audit is `temp/final-gates-lLlQqp/` (`gates.md`,
+`reconcile.py`, `method-traceability.json`, `requirement-inventory.txt`, `gate2-reconciliation/`, G4 maps and
+`combined-full-reports/`). Its old build had 3,644 tests/302 reports and trace audit 2,203 comments/136 of 137
+requirements. The newer release build replaces only its build result. Refresh traceability against the eventual
+final source; reconcile §8 with the current testing rules and existing `TestabilityAuditTest` before gate 6. Do not
+remove requirement tags before gates 1–7 pass. Small release/rule/optimizer evidence belongs to the receiving agent
+until the relevant handoff and acceptance obligations finish.
+
+## Historical state (2026-11-01)
+
+Historical optimizer instructions follow; the current handoff above controls resumption. This section replaced the
 2026-10-24 handoff to Claude Code. Its evidence paths and results are in §2 and the
 [interim design acceptance mapping](#interim-design-acceptance-mapping); `goal.md` stays untracked.
 
@@ -100,7 +398,7 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 	`c58febb58c` and `60a567b889` (session `.gitignore` decisions from given Git answers; one real-Git check remains).
 	Each boundary keeps one end-to-end check. Clean builds end at 3,585 tests, 0 failures, 17 skipped; 63 Bats tests
 	pass. Tests of 1 s or more varied between builds with machine load; none was a changed test.
-- **Trusted updater (user request, 2026-11-03; handoff, in progress):** projects may request routine plugin updates
+- **Trusted updater (user request, 2026-11-03; implementation and validation complete):** projects may request routine plugin updates
 	without gaining permission to edit harness configuration or replace the updater. The request's nine requirements
 	and its test list are in the 2026-11-03 conversation; the governing design, including decisions 12.1–12.14, is
 	`/home/gili/cat/worktrees/v1.0/.cat/sessions/3184ae68-7dad-45b6-b48f-c68707926440/temp/fixes/briefs/u-design.md`, untracked. The shared implementer terms are `briefs/u-common.md` (clone per task, never
@@ -114,23 +412,85 @@ Resume the goal through every [§9 final gate](#9-final-gates); it remains incom
 		(u2a: the `client/common/updater` module, with `trust` verifying the Ed25519 manifest signature against the
 		protected policy before parsing and approving releases, and the `activation` SPI). Clean build 3,643 tests, 0
 		failures, 17 skipped; 61 Bats tests pass.
-	- **Next, interrupted by API 503s and to be relaunched from fresh clones of `0d48668540` or later:** u3a (engine),
-		u4c (Claude provider) and u4x (Codex provider) in parallel. Their briefs already name `0d48668540`; recreate
-		each clone, because u4c left a partial `client/claude/updater` and u3a and u4x left nothing. u5b (PowerShell
-		`cat.ps1`, `install-codex.ps1` limited to `-Source` and `-Uninstall`, `bootstrap-codex.ps1` retired) left partial
-		changes in `fix-u5b` at `3f3113683d`. Relaunch it from a fresh clone; its brief names that commit.
-	- **Then:** u6 (the `UpdaterMain` CLI, `setup`, the launchers, the updater jlink image and release asset) after
-		u3a, u4c and u4x; then a docs brief for `docs/installation.md` and `README.md` (the permission boundary,
-		locations, platforms, update command, approval policy, migration with `--updater-only`, rollback, one-time
-		exemption entries versus what projects can then do, the limitations), which also removes the remaining
-		`CAT_RELEASE_BASE_URL` and HEAD URLs in `ReleaseBundles`, `CodexArtifact`, `ClaudeArtifact` and the docs; then a
-		full build and the report to the user.
-	- **Limitations to report:** the Windows PowerShell path is unverified on Windows; restart Codex after an update,
+	- **Resumed after API 503s (2026-11-03):** engine, Claude provider, Codex provider, PowerShell entry,
+		CLI/setup/launchers, distribution, documentation and source-pinning owners work in separate fresh shared clones
+		of `5c489cf43a`, under session `01a1a29f-4190-7b12-9d92-89ba8febdcdb/temp/updater-resume-clm8x9rp/`.
+		The interrupted clones remain untouched. The original nine-requirement request was recovered through Claude's
+		`get-history` launcher and agrees with the retained design. Routine updates must use the installed policy anchor
+		even if HOME or XDG variables change, as explicitly approved by the user.
+	- **Integrated and verified on Linux:** engine, both activation providers, PowerShell entry,
+		CLI/setup/launchers, distribution, documentation and source pinning are integrated. The parent clean reactor
+		verification passed 3,821 tests with no failures or errors and 20 skips. The absent HOME/user.home fixture
+		remained nonexistent. All 61 parent Bats checks pass. The merged release workflow counts 15 archives and
+		20 published files; actionlint passes. The real-provider signed update/rollback acceptance tests pass for
+		both harnesses and preserve protected configuration content and modification times. Recovery reconstructs
+		canonical paths even when an interrupted rename leaves the live directory absent. Claude command quoting
+		and matcher escaping are reconciled with the printed exemption entries.
+	- **Packaged runtime evidence:** the actual updater jlink image verifies Ed25519 signatures and refuses tampered
+		bytes. Its shipped empty-key development policy refuses setup. An isolated image copy with a generated fixture
+		public key passes setup and status for both providers; stable launchers retain installation-bound policy paths
+		under hostile HOME/XDG/LOCALAPPDATA and JVM environment settings. All three Linux archives have verified sums,
+		correct top directories and no retired bootstrap entries. No active harness installer was run.
+	- **Expanded isolation audit verified:** the fixed four-module inventory is replaced by discovery of every Java
+		module. All seven modules and 70 updater sources are covered. Eleven temporary-directory calls and synthetic
+		absolute fixture paths now use the build-supplied fixture directory. The expanded audit exposed a direct lock
+		sleep; it now uses existing Waiting/Pause injection from main, with deterministic deadline and interruption
+		coverage. The final full reactor passes 3,821 tests with no failures/errors and 20 skips across 316 reports;
+		the nonexistent HOME/user.home remains absent. Refreshed actual packaged-runtime and all three Linux archive
+		checks pass. Source hashes, reports and runtime receipts are retained under this session's
+		`temp/updater-resume-clm8x9rp/` directory. Existing 61-pass Bats evidence still applies to unchanged scripts.
+	- **Offline release publish verified:** actual workflow shell blocks pass with five synthetic platform fragments,
+		15 archives and a disposable signing key, producing exactly 20 files. Entry generation and fingerprint
+		substitution pass; tampered metadata and a wrong signer are rejected. The actual artifact builder embeds that
+		public key, and the actual updater verifier accepts the workflow signature. This proves the local publish
+		steps; GitHub artifact transfer, hosted execution and actual release publication remain unrun.
+	- **Native Windows verified:** hosted run `41720500015` passed on Windows 2025, with 3,820 Java tests,
+		zero failures/errors and one skip. The 45 shell checks have no failures and three skips. The real Windows
+		archives exposed CRLF checksum records that the Linux release consumer rejected; checksum generation now
+		writes LF, and the release workflow checks native checksum files before publication. The corrected Windows
+		producer passes all three archive checks, and the complete Linux reactor passes 3,821 tests with zero
+		failures/errors and 20 skips, with the nonexistent HOME/user.home still absent. Receipts, the source patch,
+		original failures and final reports are under this session's `temp/updater-native-validation-Jn3BRz/`.
+		All three Windows archives were uploaded through GitHub Actions, downloaded on Linux and checked successfully
+		with the generated checksum file. The hosted job and remote-session cleanup both completed successfully.
+	- **Release signing configured:** the repository Actions secret `CAT_RELEASE_SIGNING_KEY` is set from a newly
+		generated Ed25519 private key retained by the user. Its contents were neither displayed nor inspected.
+	- **Hosted signing verified:** run `41727929261` passed the full Linux build (3,821 tests, zero failures/errors,
+		20 skips) and all 61 shell checks. The actual release shell blocks derived the configured secret's public key,
+		embedded it in the updater, signed the manifest and generated the entry scripts and fingerprint-bearing notes.
+		The packaged updater accepted the signature and rejected a changed manifest. The downloaded artifacts also
+		passed local signature verification and all 15 checksum checks. Assembly used three real Linux archives and
+		12 explicit fixtures for the other platforms; this does not establish native builds for those platforms.
+		The initial hosted check exposed a build variable leaking into the hooks' environment. The public key now
+		passes through a step output and is available only in the Maven step; paired same-runner checks reproduce
+		all four hook failures with that variable and pass without it. Receipts and original failures are retained
+		under this session's `temp/updater-signing-validation-Gu4Psk/`. No release was published.
+	- **Native release verification passed:** run `41729519047` built all five platforms from snapshot
+		`09e616484d6ccaaf1ac11a2909b73bd492d11bac`, with corrected same-worker macOS retries. Each Unix platform
+		reported 3,821 Java tests, zero failures/errors, 20 skips and 61 passing shell checks; Windows reported
+		3,820 Java tests, zero failures/errors, one skip and 45 shell checks without failures. All 15 downloaded
+		archives pass strict checksum verification, and all five updater archives embed the configured public key.
+		All native SSH sessions exited successfully and their automatic cleanup passed; original macOS failures
+		remain visible alongside the accepted retries in `temp/updater-native-matrix-Bm8L1Q/accepted-native.json`.
+	- The activation test expected a usable temporary installation, but macOS returned a path beneath the `/var`
+		symlink, which the updater correctly refused. The fixture now resolves its temporary root with `toRealPath()`;
+		focused and full verification passed on both retained Mac workers with their original temporary-directory
+		settings, preserving the updater's rejection of symbolic-link ancestors.
+	- **Hosted assembly passed:** run `41733606418` reused those five native artifact sets, assembled all 15 real
+		archives, signed the manifest with the configured secret and generated exactly 20 release files. The packaged
+		updater accepted the signature and rejected tampering; all hosted checksum checks passed, and the assembly
+		SSH session and job cleanup completed successfully. The downloaded release set also passes all 15 checksums,
+		and the local updater accepts its signature and rejects tampering; its notes contain the expected key
+		fingerprint without unresolved placeholders. All 19 temporary Actions artifacts, the validation branch and
+		eight temporary SSH key files were removed after their last consumers completed. The user-owned signing key
+		remains untouched. Final evidence is `temp/updater-native-matrix-Bm8L1Q/updater-acceptance.json`.
+		No release was published.
+	- **Limitations to report:** restart Codex after an update,
 		since whether a shared app-server notices the swap is unknown; Codex asks for hook-trust review of a new or
 		changed hook; Claude's `excludedCommands` is not a security boundary; `LD_PRELOAD` and other environment
 		injected through harness configuration; Claude's `installed_plugins.json` goes stale; the first download's
-		trust rests on HTTPS and the published key fingerprint. The release workflow's signing and jq steps were
-		linted only (actionlint), never run.
+		trust rests on HTTPS and the published key fingerprint. Hosted signing and release assembly passed; actual
+		release publication and a complete five-platform production release run remain unrun.
 - **Prompt-prerequisites audit (user request, 2026-11-01):** the tree was audited against the new bundled rule
 	`prompt-prerequisites.md`, and the user ruled on each confirmed finding. Integrated: `cc7fd21219`, `8a3debeda1`,
 	`35c4790223`, `2a5b2653f6`, `a5b5b1b478`, `980a4599fb` (native Windows Claude sessions refused, pointing to WSL2),
@@ -221,9 +581,9 @@ subagent's model and reasoning effort come from its agent definition, not from t
 | Agent | Claude `model`, `effort` | Codex `model`, `model_reasoning_effort` | Use |
 |---|---|---|---|
 | `optimize-xhigh` | `opus`, `high` | `gpt-6.1-sol`, `high` | Correctness depends on subtle reasoning: statistics, interacting policies, concurrency, prompts. |
-| `optimize-high` | `opus`, `medium` | `gpt-6.1-sol`, `medium` | Logic or I/O whose failure and recovery paths must be exact. |
-| `optimize-medium` | `sonnet`, `high` | `gpt-6-luna`, `high` | Well-specified code against existing APIs. |
-| `optimize-low` | `sonnet`, `medium` | `gpt-6-luna`, `medium` | Mechanical code: wiring, rendering, parsing. |
+| `optimize-high` | `sonnet`, `high` | `gpt-6-luna`, `high` | Logic or I/O whose failure and recovery paths must be exact. |
+| `optimize-medium` | `sonnet`, `medium` | `gpt-6-luna`, `medium` | Well-specified code against existing APIs. |
+| `optimize-low` | `haiku`, `low` | `gpt-6-luna`, `low` | Mechanical code: wiring, rendering, parsing. |
 
 **Setup, before WI-0:** the orchestrator adds the tier agents beside CAT's other agents, in the same layout:
 
@@ -434,6 +794,7 @@ Rows marked done keep only their first sentence here. Their full records, unchan
 
 | Work item | State |
 |---|---|
+| Current-tree acceptance follow-up (2026-11-03) | Fresh absent-home clean verify on `5c489cf43a` plus the combined acceptance and runtime changes passes: 3,644 tests, zero failures/errors, 17 skipped. All 302 reports record the requested nonexistent `HOME`/test-JVM `user.home` and temporary directory; the home remains absent. Added retry acceptance preserves a queued completed formal outcome and adopts both outcomes after retry. The certification-freeze check now asserts nonempty development evidence remains intact while formal counts start empty. Four verifier tests avoid unnecessary key generation while retaining their decisions and signatures where needed; all seven focused runtime checks pass. Two different Driver cases exceed one second in the combined build; focused checks pass at 0.507/1.045 s, and their necessary integration work is recorded. The refreshed Java-AST audit maps all 2,203 requirement comments to passing observed cases, with no unknown IDs; 136 of 137 requirements have passing tagged methods, while R-I1 and live-receipt reconciliation keep gate 2 open. Eleven additional G4 assertion reviews bind to source hashes and fresh report snapshots. Raw Codex E3 events confirm successful cancel with a clean base and later explicit `accept_without_certification` delivery labelled `not certified`; the trial base remains `03ed995`, only `AGENTS.md` is modified, and the index is unchanged. G4 wording matches the confirmed isolation contract; current native applicability remains open. Evidence: session `01a1a29f-4190-7b12-9d92-89ba8febdcdb`, `temp/final-gates-lLlQqp/`; delegated runtime evidence: session `01a1a2a6-961e-7b13-9374-6785d553d868`, `temp/runtime-review-W6GA2g/` and `temp/runtime-followup-ArrrNJ/`. Gate 1 and the absent-home execution subcheck of gate 6 pass locally; gates 2–8 still need their remaining evidence. |
 | Setup (§1.1) | Done (commit `bd37b5b3d`). Record: [history](plan-history.md). |
 | WI-0 | Done 2026-10-01. Record: [history](plan-history.md). |
 | WI-5 | Done (commit `b3abb8863`). Record: [history](plan-history.md). |
@@ -1234,7 +1595,7 @@ The riskiest pure code, built first.
 		(the `design.md` §2.8 actions), `KeepImprovement`, `Applicability` and `Comparability`;
 	- `Scheduler`, a pure admission plan: given the state, the clock reading, the throttle state and free capacity, it
 		returns the next admissions, each with a category, purpose and snapshot;
-	- `ConcurrencyPolicy`, `Throttle` and the dependence check (`AssumptionCheck`);
+	- `ConcurrencyPolicy`, `Throttle` and descriptive pass rates by concurrency (`AssumptionCheck`);
 	- `CampaignRegistry`, which decides campaign uniqueness and harness binding over a list of campaign headers;
 	- the port interfaces `SessionPort`, `WorkspacePort` and `HostInterruptSignal` (`design.md` §9), with their fakes in
 		test sources. WI-7 and WI-8 implement them, and WI-9 drives the fakes.
