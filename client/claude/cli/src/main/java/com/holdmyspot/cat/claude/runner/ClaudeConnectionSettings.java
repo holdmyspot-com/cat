@@ -3,19 +3,33 @@ package com.holdmyspot.cat.claude.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.RealPaths;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.IOException;
+import java.net.URI;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -28,6 +42,31 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeConnectionSettings
 {
 	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
+	/**
+	 * The variable that names the base URL of the model provider that Claude Code connects to.
+	 */
+	private static final String BASE_URL_VARIABLE = "ANTHROPIC_BASE_URL";
+	/**
+	 * The host that Claude Code connects to when {@link #BASE_URL_VARIABLE} is not set.
+	 */
+	private static final String DEFAULT_MODEL_HOST = "api.anthropic.com";
+	/**
+	 * The folder of Claude Code's managed settings on Linux.
+	 */
+	private static final Path LINUX_MANAGED_SETTINGS = Path.of("/etc/claude-code");
+	/**
+	 * The folder of Claude Code's managed settings on macOS.
+	 */
+	private static final Path MACOS_MANAGED_SETTINGS = Path.of("/Library/Application Support/ClaudeCode");
+	/**
+	 * The folder of Claude Code's managed settings on Windows.
+	 */
+	private static final Path WINDOWS_MANAGED_SETTINGS = Path.of("C:\\Program Files\\ClaudeCode");
+	/**
+	 * The folder of the Windows managed settings, as WSL reaches it. Claude Code also reads it on WSL when an
+	 * administrator source asks it to, so CAT checks it on Linux too; it does not exist elsewhere.
+	 */
+	private static final Path WSL_WINDOWS_MANAGED_SETTINGS = Path.of("/mnt/c/Program Files/ClaudeCode");
 	/**
 	 * The instruction files that Claude Code loads from each directory above its working directory, relative to that
 	 * directory, as glob patterns. They include the {@code AGENTS.md} files that Claude Code loads when the project has
@@ -125,21 +164,18 @@ public final class ClaudeConnectionSettings
 	 * Writes settings for an isolated Claude instance.
 	 *
 	 * <p>
-	 * The resulting file retains the parent sandbox network and filesystem policies, except the paths that the parent
-	 * allows writing, the parent's permission rules that deny a tool or ask before using it, and CAT-owned environment
-	 * values. The instance may write only to {@code claudeHome} and {@code dependencyCaches}, not to the parent's
-	 * writable paths, such as its Claude and CAT directories. It does not retain the parent's permission grants, such
-	 * as its allow rules, added directories and default permission mode, so the isolated instance cannot use them to
-	 * reach the parent's directories. It allows the {@code Skill} tool instead, which the isolated instance has no
-	 * user to approve.
-	 * It requires a sandbox and forbids commands outside it, whatever the parent's settings say, and lets the instance
-	 * run its commands, which that sandbox confines, without approval.
+	 * The resulting file retains none of the parent's {@code sandbox} settings. It retains the parent's permission
+	 * rules that deny a tool or ask before using it, and CAT-owned environment values. Its commands reach only
+	 * Anthropic's API host. The instance may write only to {@code claudeHome} and {@code dependencyCaches}, not to
+	 * the parent's writable paths, such as its Claude and CAT directories. It does not retain the parent's permission
+	 * grants, such as its allow rules, added directories and default permission mode, so the isolated instance cannot
+	 * use them to reach the parent's directories. It allows the {@code Skill} tool instead, which the isolated
+	 * instance has no user to approve. It requires a sandbox and forbids commands outside it, whatever the parent's
+	 * settings say, and lets the instance run its commands, which that sandbox confines, without approval.
 	 * <p>
 	 * Host settings must not control other isolated-instance behavior. It also denies the instance reading
 	 * each of {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
-	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine. When
-	 * {@code deniedReads} is not empty, the host's {@code sandbox.filesystem.allowRead} is not retained, because it
-	 * would re-allow the reads that the sandbox denies.
+	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine.
 	 * <p>
 	 * Claude Code loads the instruction files of every directory above its working directory. A run directory can lie
 	 * inside another project, such as the project whose prompts CAT measures, so the settings exclude every
@@ -225,7 +261,74 @@ public final class ClaudeConnectionSettings
 		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project)
 		throws IOException
 	{
+		writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
+			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, null, DEFAULT_MODEL_HOST);
+	}
+
+	/**
+	 * Writes settings for an isolated Claude instance, as
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
+	 * SessionRequestAccess, Path)} does, except that the instance's sandbox policy is its needs bounded by
+	 * {@code bound}, and its commands reach {@code modelHost} if {@code bound} lets them.
+	 * <p>
+	 * The instance needs to write {@code claudeHome}, which is always writable, the dependency caches, the requests
+	 * directory and the worktree registrations; a cache or directory that {@code bound} does not let it write is not
+	 * writable. Claude Code lets the instance's commands write the project and {@code claudeTemporaryDirectory}
+	 * without a setting, so the session is refused unless {@code bound} lets them write those and
+	 * {@code claudeHome}. The sandbox settings carry exactly the resulting policy: its writable paths, the paths
+	 * inside them that are not writable, the paths that are not readable (also as {@code Read} rules in
+	 * {@code permissions.deny}, since the sandbox does not confine the file tools), the paths inside those that are
+	 * readable nonetheless, and the network hosts. They require the sandbox, forbid every command outside it and
+	 * exclude no command from it.
+	 *
+	 * @param scope                    services shared for the runner process lifetime
+	 * @param source                   the host Claude settings file
+	 * @param destination              the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome               the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches         the parent's shared dependency caches that the isolated instance may write
+	 * @param isolationRoot            the directory above which the isolated instance loads no instruction file
+	 * @param deniedReads              the existing files and directories that the isolated instance must not read
+	 * @param instructionFilesMode     the choice of which instruction files load, such as {@code claude-md}, or an
+	 *                                 empty string to keep the parent's choice
+	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
+	 *                                 none
+	 * @param project                  the instance's Git repository, whose {@code .git} is a directory, or
+	 *                                 {@code null} if the instance may register no linked worktree
+	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param modelHost                the host of the instance's model provider
+	 * @return the instance's sandbox policy
+	 * @throws NullPointerException     if {@code instructionFilesMode} or {@code modelHost} are null
+	 * @throws IllegalArgumentException if {@code modelHost} is blank
+	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write {@code claudeHome},
+	 *                                  {@code claudeTemporaryDirectory} or {@code project}
+	 * @throws IOException              if settings I/O fails
+	 */
+	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
+		ChildPolicy bound, String modelHost)
+		throws IOException
+	{
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
+		requireThat(modelHost, "modelHost").isNotBlank();
+		Path worktreeRegistrations = null;
+		if (project != null)
+		{
+			// Git registers each linked worktree below this directory; the sandbox grants only a path that exists
+			worktreeRegistrations = project.toAbsolutePath().normalize().resolve(".git").resolve("worktrees");
+		}
+		List<Path> sessionWrites = new ArrayList<>(dependencyCaches);
+		if (requestAccess != null)
+			sessionWrites.add(requestAccess.requests());
+		if (worktreeRegistrations != null)
+			sessionWrites.add(worktreeRegistrations);
+		List<Path> implicitWrites = new ArrayList<>();
+		implicitWrites.add(claudeTemporaryDirectory);
+		if (project != null)
+			implicitWrites.add(project);
+		ChildPolicy policy = childPolicy(bound, claudeHome, sessionWrites, implicitWrites, deniedReads, modelHost);
+
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
 		ObjectNode environment = settings.putObject("env");
@@ -237,7 +340,7 @@ public final class ClaudeConnectionSettings
 			parentSettings = mapper.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
 				"Claude settings"));
 		}
-		ObjectNode filesystem = putSandbox(settings, parentSettings.path("sandbox"));
+		putSandbox(settings, policy, implicitWrites);
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		if (instructionFilesMode.isEmpty())
 			copyInstructionFilesMode(parentSettings, settings);
@@ -254,21 +357,7 @@ public final class ClaudeConnectionSettings
 			grants.add("Read(/" + rulePath(requestAccess.responses()) + "/**)");
 		}
 		grants.add(SANDBOXED_COMMAND_GRANT);
-		List<String> writablePaths = new ArrayList<>();
-		writablePaths.add(claudeHome.toString());
-		for (Path cache : dependencyCaches)
-			writablePaths.add(cache.toString());
-		if (requestAccess != null)
-			writablePaths.add(requestAccess.requests().toString());
-		Path worktreeRegistrations = null;
-		if (project != null)
-		{
-			// Git registers each linked worktree below this directory; the sandbox grants only a path that exists
-			worktreeRegistrations = project.toAbsolutePath().normalize().resolve(".git").resolve("worktrees");
-			writablePaths.add(worktreeRegistrations.toString());
-		}
-		filesystem.set("allowWrite", mapper.valueToTree(writablePaths));
-		denyReads(settings, filesystem, deniedReads);
+		denyReadRules(settings, policy.readDenials());
 		excludeInstructionsAbove(settings, isolationRoot);
 
 		Files.createDirectories(claudeTemporaryDirectory);
@@ -277,35 +366,552 @@ public final class ClaudeConnectionSettings
 			Files.createDirectories(worktreeRegistrations);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
+		return policy;
+	}
+
+	/**
+	 * Returns an isolated instance's sandbox policy: its needs, bounded by the policy that bounds it.
+	 *
+	 * @param bound          the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param claudeHome     the instance's home directory, which it always writes
+	 * @param sessionWrites  the other paths that the instance's commands may write if {@code bound} lets them
+	 * @param implicitWrites the paths that Claude Code lets the commands write without a setting
+	 * @param deniedReads    the paths that the instance must not read
+	 * @param modelHost      the host of the instance's model provider
+	 * @return the policy
+	 * @throws SessionRefusedException if {@code bound} does not let the commands write {@code claudeHome} or one of
+	 *                                 {@code implicitWrites}
+	 * @throws IOException             if a symbolic link in a path cannot be read
+	 */
+	private static ChildPolicy childPolicy(ChildPolicy bound, Path claudeHome, List<Path> sessionWrites,
+		List<Path> implicitWrites, List<Path> deniedReads, String modelHost) throws IOException
+	{
+		ParentPolicy parent = ParentPolicy.UNSANDBOXED;
+		if (bound != null)
+		{
+			List<Path> required = new ArrayList<>();
+			required.add(claudeHome);
+			required.addAll(implicitWrites);
+			for (Path path : required)
+			{
+				Path absolute = path.toAbsolutePath().normalize();
+				if (!writes(bound, absolute))
+				{
+					throw new SessionRefusedException("The session's sandbox policy does not let its " +
+						"commands write " + absolute + ", which Claude Code writes, so CAT does not start the session");
+				}
+			}
+			parent = bounding(bound);
+		}
+		List<Path> extraWrites = new ArrayList<>();
+		for (Path path : sessionWrites)
+			extraWrites.add(path.toAbsolutePath());
+		for (Path path : implicitWrites)
+			extraWrites.add(path.toAbsolutePath());
+		List<Path> reads = new ArrayList<>();
+		for (Path path : deniedReads)
+			reads.add(path.toAbsolutePath());
+		return ChildPolicy.intersect(parent, new ChildNeeds(claudeHome.toAbsolutePath(), extraWrites, reads,
+			Set.of(modelHost.strip().toLowerCase(Locale.ROOT))));
+	}
+
+	/**
+	 * Returns the parent policy that gives a child exactly the accesses of a bound, so that intersecting a child's
+	 * needs with it bounds the child by that bound.
+	 *
+	 * @param bound the bound
+	 * @return the policy
+	 */
+	static ParentPolicy bounding(ChildPolicy bound)
+	{
+		return new ParentPolicy(true, bound.writeRoots(), bound.writeDenials(), bound.readDenials(),
+			bound.readReallowances(), hostAccess(bound.hosts()), bound.allowLocalBinding(), List.of());
+	}
+
+	/**
+	 * Returns the network access that lets commands reach exactly some hosts.
+	 *
+	 * @param hosts the hosts
+	 * @return the access
+	 */
+	private static HostAccess hostAccess(Set<String> hosts)
+	{
+		if (hosts.isEmpty())
+			return HostAccess.NONE;
+		return HostAccess.listed(hosts);
 	}
 
 	/**
 	 * Adds the sandbox settings of a session whose commands the sandbox confines: it requires the sandbox, forbids
-	 * commands outside it, and retains the parent's network and filesystem policies.
+	 * commands outside it, and confines the commands to a policy.
 	 *
-	 * @param settings      the isolated settings
-	 * @param parentSandbox the parent's {@code sandbox} settings, or a missing node if it has none
-	 * @return the isolated sandbox's filesystem settings
+	 * @param settings       the isolated settings
+	 * @param policy         the session's sandbox policy
+	 * @param implicitWrites the paths that Claude Code lets the commands write without a setting, which the settings
+	 *                       therefore do not list
+	 * @throws IOException if a symbolic link in a path cannot be read
 	 */
-	private static ObjectNode putSandbox(ObjectNode settings, JsonNode parentSandbox)
+	private static void putSandbox(ObjectNode settings, ChildPolicy policy, List<Path> implicitWrites)
+		throws IOException
 	{
 		assert settings != null;
-		assert parentSandbox != null;
+		assert policy != null;
 		ObjectNode sandbox = settings.putObject("sandbox");
 		sandbox.put("enabled", true);
 		sandbox.put("failIfUnavailable", true);
 		sandbox.put("allowUnsandboxedCommands", false);
 		ObjectNode filesystem = sandbox.putObject("filesystem");
-		JsonNode network = parentSandbox.path("network");
-		JsonNode parentFilesystem = parentSandbox.path("filesystem");
-		if (network.isObject())
-			sandbox.set("network", network.deepCopy());
-		if (parentFilesystem.isObject())
+		Set<Path> implicit = new HashSet<>();
+		for (Path path : implicitWrites)
+			implicit.add(RealPaths.resolve(path.toAbsolutePath()));
+		ArrayNode allowWrite = filesystem.putArray("allowWrite");
+		for (Path root : policy.writeRoots())
 		{
-			filesystem = (ObjectNode) parentFilesystem.deepCopy();
-			sandbox.set("filesystem", filesystem);
+			if (!implicit.contains(root))
+				allowWrite.add(root.toString());
 		}
-		return filesystem;
+		putPaths(filesystem, "denyWrite", policy.writeDenials());
+		putPaths(filesystem, "denyRead", policy.readDenials());
+		putPaths(filesystem, "allowRead", policy.readReallowances());
+		ObjectNode network = sandbox.putObject("network");
+		ArrayNode domains = network.putArray("allowedDomains");
+		for (String host : new TreeSet<>(policy.hosts()))
+			domains.add(host);
+		if (policy.allowLocalBinding())
+			network.put("allowLocalBinding", true);
+	}
+
+	/**
+	 * Adds a list of paths to settings, unless the list is empty.
+	 *
+	 * @param parent the settings object
+	 * @param name   the name of the list
+	 * @param paths  the paths
+	 */
+	private static void putPaths(ObjectNode parent, String name, List<Path> paths)
+	{
+		if (paths.isEmpty())
+			return;
+		ArrayNode array = parent.putArray(name);
+		for (Path path : paths)
+			array.add(path.toString());
+	}
+
+	/**
+	 * Returns the host of the model provider that an isolated instance connects to: the host of
+	 * {@code ANTHROPIC_BASE_URL} when the environment sets it, and Anthropic's API host otherwise.
+	 *
+	 * @param environment the instance's environment
+	 * @return the host, in lower case
+	 * @throws NullPointerException     if {@code environment} is null
+	 * @throws IllegalArgumentException if {@code ANTHROPIC_BASE_URL} is not a URL with a host
+	 */
+	public static String modelHost(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		String baseUrl = environment.get(BASE_URL_VARIABLE);
+		if (baseUrl == null || baseUrl.isBlank())
+			return DEFAULT_MODEL_HOST;
+		String host = URI.create(baseUrl.strip()).getHost();
+		if (host == null)
+			throw new IllegalArgumentException(BASE_URL_VARIABLE + " names no host: " + baseUrl);
+		return host.toLowerCase(Locale.ROOT);
+	}
+
+	/**
+	 * Returns the managed settings files that Claude Code may load on a platform and that exist. On Linux these
+	 * include the Windows managed settings that WSL reaches.
+	 *
+	 * @param platform the platform
+	 * @return the files of each folder, in the order that {@link #managedSettings(Path)} describes
+	 * @throws NullPointerException if {@code platform} is null
+	 * @throws IOException          if a managed settings folder cannot be listed
+	 */
+	public static List<Path> managedSettings(Platform platform) throws IOException
+	{
+		requireThat(platform, "platform").isNotNull();
+		if (platform.isLinux())
+		{
+			List<Path> files = new ArrayList<>(managedSettings(LINUX_MANAGED_SETTINGS));
+			files.addAll(managedSettings(WSL_WINDOWS_MANAGED_SETTINGS));
+			return files;
+		}
+		if (platform.isWindows())
+			return managedSettings(WINDOWS_MANAGED_SETTINGS);
+		return managedSettings(MACOS_MANAGED_SETTINGS);
+	}
+
+	/**
+	 * Returns the managed settings files that Claude Code loads from a folder and that exist: its
+	 * {@code managed-settings.json}, followed by the JSON files of its {@code managed-settings.d} folder in name
+	 * order.
+	 *
+	 * @param directory the folder
+	 * @return the files
+	 * @throws NullPointerException if {@code directory} is null
+	 * @throws IOException          if {@code managed-settings.d} cannot be listed
+	 */
+	public static List<Path> managedSettings(Path directory) throws IOException
+	{
+		requireThat(directory, "directory").isNotNull();
+		List<Path> files = new ArrayList<>();
+		Path main = directory.resolve("managed-settings.json");
+		if (Files.isRegularFile(main))
+			files.add(main);
+		Path drops = directory.resolve("managed-settings.d");
+		if (!Files.isDirectory(drops))
+			return files;
+		List<Path> dropFiles = new ArrayList<>();
+		try (DirectoryStream<Path> entries = Files.newDirectoryStream(drops, "*.json"))
+		{
+			for (Path entry : entries)
+			{
+				if (Files.isRegularFile(entry))
+					dropFiles.add(entry);
+			}
+		}
+		dropFiles.sort(Comparator.comparing(entry -> entry.getFileName().toString()));
+		files.addAll(dropFiles);
+		return files;
+	}
+
+	/**
+	 * Looks for a setting that would give an isolated instance's commands an access that its sandbox policy does not
+	 * give, in a settings file that Claude Code loads beside the isolated settings, such as a managed settings file
+	 * or the project's settings. Claude Code combines the lists of every settings file and lets a later file turn a
+	 * safeguard off, so one such setting widens the session.
+	 * <p>
+	 * A widening setting turns the sandbox off or lets the session start without it, lets commands run outside it,
+	 * excludes commands from it or weakens it; lets commands write a path outside the policy's writable paths, or
+	 * read a path that the policy denies; lets commands reach a host outside the policy's, listen on local addresses
+	 * when the policy does not, use local sockets, or use a proxy of its own; adds a directory that the policy does
+	 * not let commands write; or lets the file tools edit outside the policy's writable paths.
+	 *
+	 * @param json   the JSON mapper
+	 * @param files  the settings files; a path that is not a regular file is skipped
+	 * @param policy the instance's sandbox policy
+	 * @param home   the instance's home directory, which {@code ~} in a path names
+	 * @return why the first widening setting is refused, naming its file and setting, or an empty value if no file
+	 *   widens the session
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a settings file cannot be read
+	 */
+	public static Optional<String> findWidening(JsonMapper json, List<Path> files, ChildPolicy policy, Path home)
+		throws IOException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(files, "files").isNotNull();
+		requireThat(policy, "policy").isNotNull();
+		requireThat(home, "home").isNotNull();
+		for (Path file : files)
+		{
+			if (!Files.isRegularFile(file))
+				continue;
+			JsonNode settings;
+			try
+			{
+				settings = json.readTree(BoundedInput.readUtf8(file, MAXIMUM_SETTINGS_BYTES, "Claude settings"));
+			}
+			catch (JacksonException _)
+			{
+				return Optional.of(refusal(file, "its content", "cannot be parsed, so CAT cannot tell what it allows"));
+			}
+			if (!settings.isObject())
+				return Optional.of(refusal(file, "its content", "is not a JSON object, so CAT cannot tell what it allows"));
+			Optional<String> widening = new WideningSettings(file, settings, policy, home.toAbsolutePath()).find();
+			if (widening.isPresent())
+				return widening;
+		}
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns why a setting is refused.
+	 *
+	 * @param file    the settings file
+	 * @param setting the setting
+	 * @param why     what the setting does, as a clause
+	 * @return the reason, as sentences without the last one's final period
+	 */
+	private static String refusal(Path file, String setting, String why)
+	{
+		return "Claude Code would load the settings file " + file + ", whose " + setting + " " + why +
+			", beyond the session's sandbox policy, so CAT does not start the session. Remove the setting from that " +
+			"file";
+	}
+
+	/**
+	 * Indicates whether a policy lets commands write a path.
+	 *
+	 * @param policy the policy
+	 * @param path   an absolute path
+	 * @return {@code true} if {@code path} lies inside one of the policy's writable paths and inside none of the paths
+	 *   inside them that are not writable
+	 * @throws IOException if a symbolic link in a path cannot be read
+	 */
+	private static boolean writes(ChildPolicy policy, Path path) throws IOException
+	{
+		Path resolved = RealPaths.resolve(path);
+		return isInsideAny(resolved, policy.writeRoots()) && !isInsideAny(resolved, policy.writeDenials());
+	}
+
+	/**
+	 * Indicates whether a resolved path lies inside, or is, one of some paths.
+	 *
+	 * @param resolved a resolved path
+	 * @param paths    absolute paths
+	 * @return {@code true} if {@code resolved} lies inside one of {@code paths}
+	 * @throws IOException if a symbolic link in a path cannot be read
+	 */
+	private static boolean isInsideAny(Path resolved, List<Path> paths) throws IOException
+	{
+		return RealPaths.isInsideAny(resolved, RealPaths.resolveAll(paths));
+	}
+
+	/**
+	 * The settings of one file that Claude Code loads beside the isolated settings, checked against a policy.
+	 */
+	private static final class WideningSettings
+	{
+		/**
+		 * The tools whose allow rules let the file tools change files.
+		 */
+		private static final Set<String> EDITING_TOOLS = Set.of("Edit", "Write", "MultiEdit", "NotebookEdit");
+		private final Path file;
+		private final JsonNode settings;
+		private final ChildPolicy policy;
+		private final Path home;
+
+		/**
+		 * Creates the settings.
+		 *
+		 * @param file     the settings file
+		 * @param settings its settings
+		 * @param policy   the session's sandbox policy
+		 * @param home     the session's home directory
+		 */
+		WideningSettings(Path file, JsonNode settings, ChildPolicy policy, Path home)
+		{
+			this.file = file;
+			this.settings = settings;
+			this.policy = policy;
+			this.home = home;
+		}
+
+		/**
+		 * Looks for the first setting that widens the session.
+		 *
+		 * @return why it is refused, or an empty value if none does
+		 * @throws IOException if a symbolic link in a path cannot be read
+		 */
+		Optional<String> find() throws IOException
+		{
+			JsonNode sandbox = settings.path("sandbox");
+			if (isFalse(sandbox.path("enabled")))
+				return refuse("sandbox.enabled", "turns the sandbox off");
+			if (isFalse(sandbox.path("failIfUnavailable")))
+				return refuse("sandbox.failIfUnavailable", "lets the session start without its sandbox");
+			if (sandbox.path("allowUnsandboxedCommands").asBoolean(false))
+				return refuse("sandbox.allowUnsandboxedCommands", "lets commands run outside the sandbox");
+			if (!sandbox.path("excludedCommands").isEmpty())
+				return refuse("sandbox.excludedCommands", "runs commands outside the sandbox");
+			if (sandbox.path("enableWeakerNestedSandbox").asBoolean(false))
+				return refuse("sandbox.enableWeakerNestedSandbox", "weakens the sandbox");
+			JsonNode filesystem = sandbox.path("filesystem");
+			for (JsonNode entry : filesystem.path("allowWrite"))
+			{
+				if (!writesAll(entry.asString(), false))
+					return refuse("sandbox.filesystem.allowWrite", "lets commands write " + entry.asString());
+			}
+			for (JsonNode entry : filesystem.path("allowRead"))
+			{
+				if (reopensDenial(entry.asString()))
+					return refuse("sandbox.filesystem.allowRead", "lets commands read " + entry.asString());
+			}
+			Optional<String> network = findNetworkWidening(sandbox.path("network"));
+			if (network.isPresent())
+				return network;
+			JsonNode permissions = settings.path("permissions");
+			for (JsonNode entry : permissions.path("additionalDirectories"))
+			{
+				if (!writesAll(entry.asString(), false))
+				{
+					return refuse("permissions.additionalDirectories", "lets the session work in " +
+						entry.asString());
+				}
+			}
+			for (JsonNode entry : permissions.path("allow"))
+			{
+				if (editsOutsidePolicy(entry.asString()))
+					return refuse("permissions.allow", "lets the file tools change files through " + entry.asString());
+			}
+			return Optional.empty();
+		}
+
+		/**
+		 * Looks for the first network setting that widens the session.
+		 *
+		 * @param network the {@code sandbox.network} settings
+		 * @return why it is refused, or an empty value if none does
+		 */
+		private Optional<String> findNetworkWidening(JsonNode network)
+		{
+			HostAccess hosts = hostAccess(policy.hosts());
+			for (JsonNode entry : network.path("allowedDomains"))
+			{
+				String domain = entry.asString();
+				if (domain.isBlank() || !hosts.covers(domain))
+					return refuse("sandbox.network.allowedDomains", "lets commands reach " + domain);
+			}
+			if (network.path("allowLocalBinding").asBoolean(false) && !policy.allowLocalBinding())
+				return refuse("sandbox.network.allowLocalBinding", "lets commands listen on local addresses");
+			if (!network.path("allowUnixSockets").isEmpty())
+				return refuse("sandbox.network.allowUnixSockets", "lets commands use local sockets");
+			if (network.path("allowAllUnixSockets").asBoolean(false))
+				return refuse("sandbox.network.allowAllUnixSockets", "lets commands use every local socket");
+			for (String port : List.of("httpProxyPort", "socksProxyPort"))
+			{
+				if (network.has(port))
+				{
+					return refuse("sandbox.network." + port, "routes commands through a proxy whose hosts CAT " +
+						"cannot check");
+				}
+			}
+			return Optional.empty();
+		}
+
+		/**
+		 * Returns why a setting is refused.
+		 *
+		 * @param setting the setting
+		 * @param why     what the setting does, as a clause
+		 * @return the reason
+		 */
+		private Optional<String> refuse(String setting, String why)
+		{
+			return Optional.of(refusal(file, setting, why));
+		}
+
+		/**
+		 * Indicates whether a setting is {@code false}.
+		 *
+		 * @param value the setting, or a missing node
+		 * @return {@code true} if the setting is the boolean {@code false}
+		 */
+		private static boolean isFalse(JsonNode value)
+		{
+			return value.isBoolean() && !value.booleanValue();
+		}
+
+		/**
+		 * Indicates whether the policy lets commands write every path that a path setting may name.
+		 *
+		 * @param entry      the path setting
+		 * @param ruleSyntax {@code true} if {@code entry} is the path of a permission rule
+		 * @return {@code true} if the policy lets commands write each path that {@code entry} may name
+		 * @throws IOException if a symbolic link in a path cannot be read
+		 */
+		private boolean writesAll(String entry, boolean ruleSyntax) throws IOException
+		{
+			for (Path candidate : candidates(entry, ruleSyntax))
+			{
+				if (!writes(policy, candidate))
+					return false;
+			}
+			return true;
+		}
+
+		/**
+		 * Indicates whether a path setting re-opens a path that the policy does not let commands read.
+		 *
+		 * @param entry the path setting
+		 * @return {@code true} if a path that {@code entry} may name lies inside or around a read denial, outside the
+		 *   policy's re-allowances
+		 * @throws IOException if a symbolic link in a path cannot be read
+		 */
+		private boolean reopensDenial(String entry) throws IOException
+		{
+			for (Path candidate : candidates(entry, false))
+			{
+				Path resolved = RealPaths.resolve(candidate);
+				if (isInsideAny(resolved, policy.readReallowances()))
+					continue;
+				for (Path denial : policy.readDenials())
+				{
+					Path resolvedDenial = RealPaths.resolve(denial);
+					if (resolvedDenial.startsWith(resolved) || resolved.startsWith(resolvedDenial))
+						return true;
+				}
+			}
+			return false;
+		}
+
+		/**
+		 * Indicates whether an allow rule lets the file tools change a file outside the policy's writable paths.
+		 *
+		 * @param rule the rule, such as {@code Edit(//p/**)}
+		 * @return {@code true} if the rule is for a tool that changes files and may match a path that the policy does
+		 *   not let commands write
+		 * @throws IOException if a symbolic link in a path cannot be read
+		 */
+		private boolean editsOutsidePolicy(String rule) throws IOException
+		{
+			String tool = rule;
+			String specifier = "";
+			int open = rule.indexOf('(');
+			if (open >= 0 && rule.endsWith(")"))
+			{
+				tool = rule.substring(0, open);
+				specifier = rule.substring(open + 1, rule.length() - 1);
+			}
+			if (!EDITING_TOOLS.contains(tool.strip()))
+				return false;
+			return specifier.isBlank() || !writesAll(specifier, true);
+		}
+
+		/**
+		 * Returns the absolute paths that a path setting may name. Claude Code reads {@code //} as the start of an
+		 * absolute path and {@code ~/} as the home directory. A sandbox path that starts with one {@code /} is
+		 * absolute, and a permission rule's is relative to the settings file's folder. Any other path may be relative
+		 * to that folder or to the project that holds it, so each reading counts. The part from the first glob
+		 * character on is dropped, so that the folder that holds every match remains.
+		 *
+		 * @param entry      the path setting
+		 * @param ruleSyntax {@code true} if {@code entry} is the path of a permission rule
+		 * @return the paths
+		 */
+		private List<Path> candidates(String entry, boolean ruleSyntax)
+		{
+			String path = entry.strip();
+			for (int index = 0; index < path.length(); ++index)
+			{
+				if (GLOB_SYNTAX.indexOf(path.charAt(index)) >= 0)
+				{
+					path = path.substring(0, index);
+					break;
+				}
+			}
+			Path folder = file.toAbsolutePath().getParent();
+			List<Path> result = new ArrayList<>();
+			if (path.startsWith("//"))
+				result.add(Path.of(path.substring(1)));
+			else if (path.equals("~") || path.startsWith("~/"))
+				result.add(home.resolve(path.substring(1).replaceFirst("^/+", "")));
+			else if (path.startsWith("/") && ruleSyntax)
+				result.add(folder.resolve(path.substring(1)));
+			else if (path.startsWith("/"))
+				result.add(Path.of(path));
+			else
+			{
+				result.add(folder.resolve(path));
+				if (folder.getParent() != null)
+					result.add(folder.getParent().resolve(path));
+			}
+			List<Path> normalized = new ArrayList<>();
+			for (Path candidate : result)
+				normalized.add(candidate.toAbsolutePath().normalize());
+			return normalized;
+		}
 	}
 
 	/**
@@ -409,29 +1015,6 @@ public final class ClaudeConnectionSettings
 		if (settings.path("permissions").isObject())
 			return (ObjectNode) settings.get("permissions");
 		return settings.putObject("permissions");
-	}
-
-	/**
-	 * Denies the isolated instance reading files and directories, in addition to any reads that the parent denies,
-	 * and removes {@code allowRead} from the sandbox filesystem settings so that it cannot re-allow them. Does
-	 * nothing if {@code deniedReads} is empty.
-	 *
-	 * @param settings the isolated settings
-	 * @param filesystem the isolated sandbox filesystem settings
-	 * @param deniedReads the existing files and directories to deny
-	 */
-	private static void denyReads(ObjectNode settings, ObjectNode filesystem, List<Path> deniedReads)
-	{
-		assert settings != null;
-		assert filesystem != null;
-		assert deniedReads != null;
-		if (deniedReads.isEmpty())
-			return;
-		filesystem.remove("allowRead");
-		ArrayNode sandboxDenials = array(filesystem, "denyRead");
-		for (Path deniedRead : deniedReads)
-			sandboxDenials.add(deniedRead.toString());
-		denyReadRules(settings, deniedReads);
 	}
 
 	/**

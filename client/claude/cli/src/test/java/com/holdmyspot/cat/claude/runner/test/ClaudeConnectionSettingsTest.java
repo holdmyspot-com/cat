@@ -3,10 +3,12 @@ package com.holdmyspot.cat.claude.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +17,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
@@ -171,14 +175,14 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies isolated settings enforce runner-owned safety flags, retain the parent's sandbox policy and the rules
-	 * that deny or ask for the parent's permission, and set CAT-owned Claude environment values. They do not retain the
-	 * parent's grants: its allow rules, its added directories and its default permission mode, which would let the
-	 * isolated instance read and write the parent's directories, such as the project whose prompts CAT measures. They
-	 * allow the {@code Skill} tool, which a nested instance has no user to approve, and edits inside the project, which
-	 * they grant by a rule that does not depend on the permission mode, and the commands that the sandbox confines.
-	 * They do not retain the parent's writable paths, such as its Claude and CAT directories, and allow writes only to
-	 * the instance's home and the shared dependency caches.
+	 * Verifies isolated settings enforce runner-owned safety flags, retain the rules that deny or ask for the parent's
+	 * permission but none of the parent's sandbox settings, and set CAT-owned Claude environment values. They do not
+	 * retain the parent's grants: its allow rules, its added directories and its default permission mode, which would
+	 * let the isolated instance read and write the parent's directories, such as the project whose prompts CAT
+	 * measures. They allow the {@code Skill} tool, which a nested instance has no user to approve, and edits inside the
+	 * project, which they grant by a rule that does not depend on the permission mode, and the commands that the
+	 * sandbox confines. They do not retain the parent's writable paths, such as its Claude and CAT directories, and
+	 * allow writes only to the instance's home and the shared dependency caches.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -226,14 +230,12 @@ public final class ClaudeConnectionSettingsTest
 				claudeHome, List.of(npmCache, mavenCache), claudeTemporaryDirectory, List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
-			requireThat(result.path("sandbox").path("network").path("allowedDomains").path(0).asString(),
-				"allowedDomain").isEqualTo("registry.npmjs.org");
-			requireThat(result.path("sandbox").path("network").path("deniedDomains").path(0).asString(),
-				"deniedDomain").isEqualTo("blocked.example");
+			requireThat(strings(result.path("sandbox").path("network").path("allowedDomains")), "allowedDomains").
+				isEqualTo(List.of("api.anthropic.com"));
+			requireThat(result.path("sandbox").path("network").has("deniedDomains"), "deniedDomains").isFalse();
 			requireThat(strings(result.path("sandbox").path("filesystem").path("allowWrite")), "allowWrite").
 				isEqualTo(List.of(claudeHome.toString(), npmCache.toString(), mavenCache.toString()));
-			requireThat(result.path("sandbox").path("filesystem").path("denyRead").path(0).asString(),
-				"secretRead").isEqualTo("/secrets");
+			requireThat(result.path("sandbox").path("filesystem").has("denyRead"), "denyRead").isFalse();
 			requireThat(strings(result.path("permissions").path("deny")), "deny").
 				isEqualTo(List.of("Read(//secrets/**)"));
 			requireThat(strings(result.path("permissions").path("ask")), "ask").isEqualTo(List.of("Bash(rm *)"));
@@ -253,13 +255,13 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies isolated settings omit an undeclared parent sandbox policy while retaining runner-owned safeguards and
-	 * required environment values.
+	 * Verifies that isolated settings let the session's commands reach only the session's model host, Anthropic's API
+	 * host by default, while retaining runner-owned safeguards and required environment values.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void omitsUndeclaredSandboxNetworkPolicy() throws IOException
+	public void limitsNetworkToModelHost() throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -283,7 +285,8 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(result.path("sandbox").path("failIfUnavailable").asBoolean(), "failIfUnavailable").isTrue();
 			requireThat(result.path("sandbox").path("allowUnsandboxedCommands").asBoolean(), "unsandboxedCommands").
 			isFalse();
-			requireThat(result.path("sandbox").has("network"), "networkPolicy").isFalse();
+			requireThat(strings(result.path("sandbox").path("network").path("allowedDomains")), "allowedDomains").
+				isEqualTo(List.of("api.anthropic.com"));
 		}
 	}
 
@@ -367,7 +370,7 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(strings(result.path("permissions").path("deny")), "deny").isEqualTo(List.of("Bash(curl *)",
 				"Read(//secrets/**)", "Read(/" + ClaudeConnectionSettings.rulePath(snapshot) + ")"));
 			requireThat(strings(sandbox.path("filesystem").path("denyRead")), "denyRead").
-				isEqualTo(List.of("/secrets", snapshot.toString()));
+				isEqualTo(List.of(snapshot.toString()));
 			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").
 				isEqualTo(List.of(claudeHome.toString()));
 		}
@@ -432,7 +435,7 @@ public final class ClaudeConnectionSettingsTest
 	/**
 	 * Verifies that isolated settings deny the session reading each listed file and directory, both through the
 	 * sandbox that confines its commands and through the permission rules that govern its file tools, while keeping
-	 * the parent's own read denials.
+	 * the parent's rules that deny reads.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -461,7 +464,7 @@ public final class ClaudeConnectionSettingsTest
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
-				isEqualTo(List.of("/secrets", snapshot.toString(), trials.toString()));
+				isEqualTo(List.of(snapshot.toString(), trials.toString()));
 			requireThat(strings(result.path("permissions").path("deny")), "deny").isEqualTo(List.of(
 				"Read(//secrets/**)", "Read(/" + ClaudeConnectionSettings.rulePath(snapshot) + ")",
 				"Read(/" + ClaudeConnectionSettings.rulePath(trials) + "/**)"));
@@ -526,13 +529,13 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that isolated settings drop the host's {@code sandbox.filesystem.allowRead} when reads are denied,
-	 * because it would re-allow the denied reads, and keep it when no read is denied.
+	 * Verifies that isolated settings never retain the host's {@code sandbox.filesystem.allowRead}, which would
+	 * re-allow reads beyond the session's policy, whether or not reads are denied.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void dropsHostAllowReadOnlyWhenReadsAreDenied() throws IOException
+	public void omitsHostAllowRead() throws IOException
 	{
 		// Requirement: R-E24
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
@@ -555,10 +558,10 @@ public final class ClaudeConnectionSettingsTest
 
 			JsonNode denied = scope.json().readTree(Files.readString(denying)).path("sandbox").path("filesystem");
 			requireThat(denied.has("allowRead"), "deniedHasAllowRead").isFalse();
-			requireThat(strings(denied.path("denyRead")), "deniedDenyRead").
-				isEqualTo(List.of("/secrets", snapshot.toString()));
-			JsonNode kept = scope.json().readTree(Files.readString(allowing)).path("sandbox").path("filesystem");
-			requireThat(strings(kept.path("allowRead")), "keptAllowRead").isEqualTo(List.of("/shared"));
+			requireThat(strings(denied.path("denyRead")), "deniedDenyRead").isEqualTo(List.of(snapshot.toString()));
+			JsonNode allowed = scope.json().readTree(Files.readString(allowing)).path("sandbox").path("filesystem");
+			requireThat(allowed.has("allowRead"), "allowedHasAllowRead").isFalse();
+			requireThat(allowed.has("denyRead"), "allowedHasDenyRead").isFalse();
 		}
 	}
 
@@ -775,6 +778,235 @@ public final class ClaudeConnectionSettingsTest
 
 			requireThat(ClaudeConnectionSettings.instructionFilesMode(scope.json(), source), "mode").isEmpty();
 		}
+	}
+
+	/**
+	 * Verifies that the isolated settings confine the session's commands to exactly its sandbox policy: its needs
+	 * bounded by the policy that the session's runner received. The sandbox is required, no command runs outside it,
+	 * and none of the host's {@code sandbox} settings carry over, neither its writable paths, its read rules, its
+	 * excluded commands, its weaker nested sandbox nor its network hosts. A dependency cache outside the bound is not
+	 * writable, and the network reaches only the session's model host.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void rendersChildPolicy() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-child-policy-")).toRealPath();
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path outsideCache = Files.createDirectories(root.resolve("outside-cache"));
+			Path locked = Files.createDirectories(run.resolve("home/locked"));
+			Path secrets = Files.createDirectories(root.resolve("secrets"));
+			Path shared = Files.createDirectories(secrets.resolve("shared"));
+			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
+			Path source = Files.writeString(root.resolve("settings.json"), """
+				{
+				  "sandbox": {
+				    "excludedCommands": ["docker *"],
+				    "enableWeakerNestedSandbox": true,
+				    "network": {"allowedDomains": ["registry.npmjs.org"], "deniedDomains": ["blocked.example"]},
+				    "filesystem": {"allowWrite": ["/workspace"], "allowRead": ["/host-shared"], "denyRead": ["/host"]}
+				  }
+				}
+				""");
+			Path destination = root.resolve("isolated/settings.json");
+			Path claudeTemporaryDirectory = run.resolve("claude");
+			Path claudeHome = run.resolve("home");
+			ChildPolicy bound = new ChildPolicy(List.of(run, cache), List.of(locked), List.of(secrets),
+				List.of(shared), Set.of("api.example", "other.example"), false);
+
+			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
+				claudeTemporaryDirectory, claudeHome, List.of(cache, outsideCache), run, List.of(snapshot), "", null,
+				null, bound, "api.example");
+
+			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
+			requireThat(sandbox.path("enabled").asBoolean(), "enabled").isTrue();
+			requireThat(sandbox.path("failIfUnavailable").asBoolean(), "failIfUnavailable").isTrue();
+			requireThat(sandbox.path("allowUnsandboxedCommands").asBoolean(true), "unsandboxedCommands").isFalse();
+			requireThat(sandbox.has("excludedCommands"), "excludedCommands").isFalse();
+			requireThat(sandbox.has("enableWeakerNestedSandbox"), "weakerNestedSandbox").isFalse();
+			JsonNode network = sandbox.path("network");
+			requireThat(strings(network.path("allowedDomains")), "allowedDomains").isEqualTo(List.of("api.example"));
+			requireThat(network.has("deniedDomains"), "deniedDomains").isFalse();
+			requireThat(network.path("allowLocalBinding").asBoolean(), "allowLocalBinding").isFalse();
+			JsonNode filesystem = sandbox.path("filesystem");
+			requireThat(strings(filesystem.path("allowWrite")), "allowWrite").isEqualTo(List.of(claudeHome.toString(),
+				cache.toString()));
+			requireThat(strings(filesystem.path("denyWrite")), "denyWrite").isEqualTo(List.of(locked.toString()));
+			requireThat(strings(filesystem.path("denyRead")), "denyRead").isEqualTo(List.of(secrets.toString(),
+				snapshot.toString()));
+			requireThat(strings(filesystem.path("allowRead")), "allowRead").isEqualTo(List.of(shared.toString()));
+			requireThat(effective.hosts(), "hosts").isEqualTo(Set.of("api.example"));
+			requireThat(effective.writeRoots(), "writeRoots").doesNotContain(outsideCache);
+		}
+	}
+
+	/**
+	 * Verifies that a session whose home, project or temporary directory its policy bound does not let it write is
+	 * refused, naming the directory, before any settings are written.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesSessionOutsideBound() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-outside-bound-")).toRealPath();
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path elsewhere = Files.createDirectories(root.resolve("elsewhere"));
+			Path destination = root.resolve("isolated/settings.json");
+			ChildPolicy bound = new ChildPolicy(List.of(elsewhere), List.of(), List.of(), List.of(), Set.of(), false);
+			try
+			{
+				ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+					run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(), "", null, null, bound,
+					"api.example");
+				throw new AssertionError("The session was not refused");
+			}
+			catch (SessionRefusedException e)
+			{
+				requireThat(e.getMessage(), "message").contains(run.resolve("home").toString());
+			}
+			requireThat(Files.exists(destination), "settingsWritten").isFalse();
+		}
+	}
+
+	/**
+	 * Returns settings that would widen a session's sandbox beyond its policy, each with the setting that the refusal
+	 * must name.
+	 *
+	 * @return the settings file's content and the setting
+	 */
+	@DataProvider
+	public Object[][] wideningSettings()
+	{
+		return new Object[][]{
+			{"{\"sandbox\": {\"enabled\": false}}", "sandbox.enabled"},
+			{"{\"sandbox\": {\"failIfUnavailable\": false}}", "sandbox.failIfUnavailable"},
+			{"{\"sandbox\": {\"allowUnsandboxedCommands\": true}}", "sandbox.allowUnsandboxedCommands"},
+			{"{\"sandbox\": {\"excludedCommands\": [\"docker *\"]}}", "sandbox.excludedCommands"},
+			{"{\"sandbox\": {\"enableWeakerNestedSandbox\": true}}", "sandbox.enableWeakerNestedSandbox"},
+			{"{\"sandbox\": {\"filesystem\": {\"allowWrite\": [\"/etc\"]}}}", "sandbox.filesystem.allowWrite"},
+			{"{\"sandbox\": {\"filesystem\": {\"allowRead\": [\"SECRETS\"]}}}", "sandbox.filesystem.allowRead"},
+			{"{\"sandbox\": {\"network\": {\"allowedDomains\": [\"*.example\"]}}}",
+				"sandbox.network.allowedDomains"},
+			{"{\"sandbox\": {\"network\": {\"allowLocalBinding\": true}}}", "sandbox.network.allowLocalBinding"},
+			{"{\"sandbox\": {\"network\": {\"allowUnixSockets\": [\"/run/docker.sock\"]}}}",
+				"sandbox.network.allowUnixSockets"},
+			{"{\"sandbox\": {\"network\": {\"allowAllUnixSockets\": true}}}",
+				"sandbox.network.allowAllUnixSockets"},
+			{"{\"sandbox\": {\"network\": {\"httpProxyPort\": 8080}}}", "sandbox.network.httpProxyPort"},
+			{"{\"permissions\": {\"additionalDirectories\": [\"/etc\"]}}", "permissions.additionalDirectories"},
+			{"{\"permissions\": {\"allow\": [\"Edit(//etc/**)\"]}}", "permissions.allow"},
+			{"{\"permissions\": {\"allow\": [\"Write\"]}}", "permissions.allow"}};
+	}
+
+	/**
+	 * Verifies that a settings file that the session also loads, such as a managed settings file or the copied
+	 * project's settings, is refused when it would widen the session's sandbox beyond its policy, naming the file
+	 * and the setting.
+	 *
+	 * @param content the settings file's content, in which {@code SECRETS} stands for a folder that the policy denies
+	 *                reading
+	 * @param setting the setting that the refusal must name
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "wideningSettings")
+	public void refusesWideningSettings(String content, String setting) throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-widening-")).toRealPath();
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path secrets = Files.createDirectories(root.resolve("secrets"));
+			ChildPolicy policy = new ChildPolicy(List.of(run), List.of(), List.of(secrets), List.of(),
+				Set.of("api.example"), false);
+			Path narrow = Files.writeString(root.resolve("narrow.json"), "{\"sandbox\": {\"enabled\": true}}");
+			Path widening = Files.writeString(root.resolve("widening.json"), content.replace("SECRETS",
+				secrets.toString()));
+
+			Optional<String> refusal = ClaudeConnectionSettings.findWidening(scope.json(), List.of(narrow, widening),
+				policy, run.resolve("home"));
+
+			requireThat(refusal.orElseThrow(), "refusal").contains(widening.toString()).contains(setting);
+		}
+	}
+
+	/**
+	 * Verifies that settings files that keep the session's sandbox within its policy, or that do not exist, are not
+	 * refused.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void acceptsSettingsWithinPolicy() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-within-policy-")).toRealPath();
+			Path run = Files.createDirectories(root.resolve("run"));
+			ChildPolicy policy = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(),
+				Set.of("api.example"), false);
+			Path settings = Files.writeString(root.resolve("settings.json"), """
+				{
+				  "sandbox": {
+				    "enabled": true,
+				    "failIfUnavailable": true,
+				    "filesystem": {"allowWrite": ["%s"], "denyRead": ["/elsewhere"]},
+				    "network": {"allowedDomains": ["API.example"]}
+				  },
+				  "permissions": {"allow": ["Bash(git status:*)", "Edit(//%s/**)"], "deny": ["Bash(curl *)"]}
+				}
+				""".formatted(run.resolve("work"), run.toString().substring(1)));
+
+			Optional<String> refusal = ClaudeConnectionSettings.findWidening(scope.json(), List.of(settings,
+				root.resolve("missing.json")), policy, run.resolve("home"));
+
+			requireThat(refusal, "refusal").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that the managed settings that Claude Code loads from a folder are its {@code managed-settings.json}
+	 * followed by the JSON files of its {@code managed-settings.d} folder in name order.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void listsManagedSettings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-managed-"));
+			Path main = Files.writeString(root.resolve("managed-settings.json"), "{}");
+			Path drops = Files.createDirectories(root.resolve("managed-settings.d"));
+			Path second = Files.writeString(drops.resolve("20-network.json"), "{}");
+			Path first = Files.writeString(drops.resolve("10-sandbox.json"), "{}");
+			Files.writeString(drops.resolve("notes.txt"), "");
+
+			requireThat(ClaudeConnectionSettings.managedSettings(root), "managedSettings").
+				isEqualTo(List.of(main, first, second));
+		}
+	}
+
+	/**
+	 * Verifies that the session's model host is the host of the connection's base URL, and Anthropic's API host
+	 * without one.
+	 */
+	@Test
+	public void modelHostFollowsBaseUrl()
+	{
+		requireThat(ClaudeConnectionSettings.modelHost(Map.of("ANTHROPIC_BASE_URL", "https://Proxy.example:8443/v1")),
+			"configured").isEqualTo("proxy.example");
+		requireThat(ClaudeConnectionSettings.modelHost(Map.of()), "default").isEqualTo("api.anthropic.com");
 	}
 
 	/**

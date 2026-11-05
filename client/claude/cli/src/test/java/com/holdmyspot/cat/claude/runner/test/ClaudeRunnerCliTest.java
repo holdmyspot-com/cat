@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
@@ -76,7 +77,7 @@ public final class ClaudeRunnerCliTest
 					root.resolve("locks"), 1, second, clock);
 				String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
 					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
-					"5", "--model", "sonnet", "--effort", "low"};
+					"5", "--model", "sonnet", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
 					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(),
@@ -165,7 +166,7 @@ public final class ClaudeRunnerCliTest
 	{
 		String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
 			root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
-			"--effort", "low"};
+			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
 			ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
@@ -499,6 +500,85 @@ public final class ClaudeRunnerCliTest
 
 			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
 		}
+	}
+
+	/**
+	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
+	 * run, since only the session launcher starts a session and it always bounds the session's policy.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesLaunchWithoutPolicyBound() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
+				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				"--effort", "low"};
+			try
+			{
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				{
+					throw new AssertionError("The launch took a capacity slot");
+				});
+				throw new AssertionError("The launch was not refused");
+			}
+			catch (SessionRefusedException e)
+			{
+				requireThat(e.getMessage(), "message").contains("--policy-bound");
+			}
+			requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a policy bound with a field that its format does not define is rejected rather than ignored.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void rejectsPolicyBoundWithUnknownField() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path bound = Files.writeString(root.resolve("bound.json"), Files.readString(policyBound(root)).
+				replace("\"format_version\"", "\"allow_everything\": true, \"format_version\""));
+			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
+				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				"--effort", "low", "--policy-bound", bound.toString()};
+			try
+			{
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				{
+					throw new AssertionError("The launch took a capacity slot");
+				});
+				throw new AssertionError("The bound was not rejected");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("allow_everything").contains(bound.toString());
+			}
+		}
+	}
+
+	/**
+	 * Writes a policy bound that lets a session's commands write the test's directory and reach Anthropic's API.
+	 *
+	 * @param root the test's directory
+	 * @return the bound's file
+	 * @throws IOException if the file cannot be written
+	 */
+	private static Path policyBound(Path root) throws IOException
+	{
+		return Files.writeString(root.resolve("policy-bound.json"), """
+			{"format_version": 1, "write_roots": ["%s"], "write_denials": [], "read_denials": [],
+			 "read_reallowances": [], "hosts": ["api.anthropic.com"], "allow_local_binding": false}
+			""".formatted(root.toAbsolutePath()));
 	}
 
 	/**

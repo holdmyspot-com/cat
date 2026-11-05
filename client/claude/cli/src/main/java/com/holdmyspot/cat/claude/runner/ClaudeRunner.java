@@ -33,18 +33,40 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.UserRuleTree;
+import com.holdmyspot.cat.common.runner.HarnessEventListener;
+import com.holdmyspot.cat.common.runner.HarnessProcess;
+import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
+import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Creates an isolated Claude configuration and starts one persistent Claude CLI process, optionally with CAT.
@@ -113,15 +135,22 @@ public final class ClaudeRunner
 	 *   subagents' included, into the run's session transcripts directory when the session closes
 	 * @param sessionRequests how many sessions the session may request; with any, the run gets its requests and
 	 *   responses directories, and the session is told how to request one
+	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
+	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
 	 * @return the live run session
+	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
+	 *   bound does not let it write what Claude Code writes, or a settings file that Claude Code also loads would
+	 *   widen it
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
-		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests)
+		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
+		ChildPolicy bound, Consumer<ChildPolicy> policyListener)
 		throws IOException
 	{
+		requireThat(policyListener, "policyListener").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(trialPlugins, "trialPlugins").isNotNull();
@@ -167,11 +196,15 @@ public final class ClaudeRunner
 			{
 				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(LOGIN));
 			}
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, hostConfiguration.resolve("settings.json"),
-				isolatedConfiguration.resolve("settings.json"), claudeTemporaryDirectory, isolatedProcessHome,
-				caches.directories(), run.directory(), sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads,
-					environment, requestAccess), instructionFilesMode, requestAccess, run.directory().resolve("project"));
 			Path worktree = run.directory().resolve("project");
+			ChildPolicy policy = ClaudeConnectionSettings.writeIsolatedSettings(scope,
+				hostConfiguration.resolve("settings.json"), isolatedConfiguration.resolve("settings.json"),
+				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), run.directory(),
+				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, requestAccess),
+				instructionFilesMode, requestAccess, worktree, bound,
+				ClaudeConnectionSettings.modelHost(isolatedEnvironment));
+			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
+			policyListener.accept(policy);
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
@@ -204,12 +237,13 @@ public final class ClaudeRunner
 				transcripts = new HarnessSessionTranscripts(hookResults, run.sessionTranscripts(),
 					name -> name.endsWith(".jsonl"));
 			}
-			ClaudeProcess process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree,
-				isolatedEnvironment, executables), projectDirectory, transcripts);
+			SandboxWatch watch = new SandboxWatch(HarnessProcessStarter.start(command, worktree, isolatedEnvironment,
+				executables), scope.json());
+			ClaudeProcess process = new ClaudeProcess(scope, watch.process(), projectDirectory, transcripts);
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
-				return new HarnessRunSession(run, process, scope, lock);
+				return new HarnessRunSession(run, watch.guard(process), scope, lock);
 			}
 			catch (IOException e)
 			{
@@ -236,6 +270,29 @@ public final class ClaudeRunner
 			manager.fail(run, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Refuses a session if a settings file that Claude Code loads beside the session's own would widen the session's
+	 * sandbox beyond its policy: a managed settings file, or the project's shared or local settings.
+	 *
+	 * @param scope    services owned for the run
+	 * @param platform the platform that the session runs on
+	 * @param project  the session's project
+	 * @param policy   the session's sandbox policy
+	 * @param home     the session's home directory
+	 * @throws SessionRefusedException if a settings file would widen the session
+	 * @throws IOException             if a settings file cannot be read
+	 */
+	private static void requireNoWidening(AbstractHarnessRunnerScope scope, Platform platform, Path project,
+		ChildPolicy policy, Path home) throws IOException
+	{
+		List<Path> files = new ArrayList<>(ClaudeConnectionSettings.managedSettings(platform));
+		files.add(project.resolve(".claude/settings.json"));
+		files.add(project.resolve(".claude/settings.local.json"));
+		Optional<String> widening = ClaudeConnectionSettings.findWidening(scope.json(), files, policy, home);
+		if (widening.isPresent())
+			throw new SessionRefusedException(widening.get());
 	}
 
 	/**
@@ -726,5 +783,521 @@ public final class ClaudeRunner
 			directories.add(directory);
 		}
 		return List.copyOf(directories);
+	}
+
+	/**
+	 * Watches a Claude Code process for the signs that its sandbox is not confining the session, in its
+	 * {@code stream-json} output and its standard error, so that CAT refuses the session rather than letting its
+	 * commands run unconfined.
+	 * <p>
+	 * When the sandbox that the settings require cannot start, Claude Code makes no model request, writes one
+	 * {@code result} event whose {@code startup_failure_reason} is {@code sandbox_required_unavailable} and whose
+	 * {@code errors} give the reason, and exits. When it runs the session without its sandbox, it writes a
+	 * {@code Sandbox disabled:} notice to its standard error, or, if the sandbox is turned off, asks to approve a
+	 * command that writes outside the session's working directories, which a {@code system} event of subtype
+	 * {@code permission_denied} reports; a sandboxed command is never asked about. Either of the latter means that the
+	 * requirement stopped working, so the watch stops the process tree at once. Either way, the session's next turn
+	 * is refused with Claude Code's reason.
+	 * <p>
+	 * The process that {@link #process()} returns is the watched process, which the session reads its output and
+	 * standard error from, and the harness process that {@link #guard(HarnessProcess)} returns refuses the session's
+	 * turns.
+	 */
+	public static final class SandboxWatch
+	{
+		/**
+		 * The {@code startup_failure_reason} of the {@code result} event that Claude Code writes when its required
+		 * sandbox cannot start.
+		 */
+		private static final String SANDBOX_UNAVAILABLE = "sandbox_required_unavailable";
+		/**
+		 * The text that starts Claude Code's reason, in that event's {@code errors}, when its required sandbox cannot
+		 * start.
+		 */
+		private static final String UNAVAILABLE_PREFIX = "Sandbox required but unavailable: ";
+		/**
+		 * The text that starts Claude Code's advice, at the end of that reason, to let commands run without the
+		 * sandbox, which CAT never does.
+		 */
+		private static final String UNSANDBOXED_ADVICE = " Set sandbox.failIfUnavailable=false";
+		/**
+		 * The subtype of the {@code system} event that reports a tool use that Claude Code denied.
+		 */
+		private static final String PERMISSION_DENIED = "permission_denied";
+		/**
+		 * The text of a denied command's message when Claude Code asked to approve a command because it writes
+		 * outside the session's working directories, which it asks only about a command that no sandbox confines.
+		 */
+		private static final String UNCONFINED_COMMAND = "is outside the working directories for this session";
+		/**
+		 * The text that starts Claude Code's standard error notice when it runs the session without its sandbox.
+		 */
+		private static final String DISABLED_NOTICE = "Sandbox disabled: ";
+		/**
+		 * Where a refused session's user learns what Claude Code's sandbox needs.
+		 */
+		private static final String SANDBOX_GUIDE = "See the Claude Code sandbox requirements in CAT's installation " +
+			"guide";
+		/**
+		 * The longest line that is checked; the rest of a longer line is ignored.
+		 */
+		private static final int MAXIMUM_LINE_BYTES = 65_536;
+		/**
+		 * How long a session whose process ended waits for the rest of the process's output and standard error.
+		 */
+		private static final Duration OUTPUT_WAIT = Duration.ofSeconds(5);
+		private final Process process;
+		private final JsonMapper json;
+		private final Process watched;
+		private final CountDownLatch streamsEnded = new CountDownLatch(2);
+		private volatile String refusal;
+
+		/**
+		 * Creates a watch.
+		 *
+		 * @param process a Claude Code process whose output and standard error nothing has read yet
+		 * @param json    the JSON mapper
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public SandboxWatch(Process process, JsonMapper json)
+		{
+			requireThat(process, "process").isNotNull();
+			requireThat(json, "json").isNotNull();
+			this.process = process;
+			this.json = json;
+			this.watched = new WatchedProcess(process, new ScanningStream(process.getInputStream(), this::checkEvent),
+				new ScanningStream(process.getErrorStream(), this::checkError));
+		}
+
+		/**
+		 * Returns the watched process, which reads the process's output and standard error through the watch.
+		 *
+		 * @return the process
+		 */
+		public Process process()
+		{
+			return watched;
+		}
+
+		/**
+		 * Returns a harness process that refuses a session once the watch has seen a sign.
+		 *
+		 * @param session the session's harness process, which reads {@link #process()}
+		 * @return the harness process
+		 * @throws NullPointerException if {@code session} is null
+		 */
+		public HarnessProcess guard(HarnessProcess session)
+		{
+			requireThat(session, "session").isNotNull();
+			return new GuardedProcess(session);
+		}
+
+		/**
+		 * Checks one line of the process's {@code stream-json} output for an event that shows that the sandbox is not
+		 * confining the session.
+		 *
+		 * @param line the line, without its line terminator
+		 */
+		private void checkEvent(String line)
+		{
+			if (refusal != null || !line.contains(SANDBOX_UNAVAILABLE) && !line.contains(PERMISSION_DENIED))
+				return;
+			JsonNode event;
+			try
+			{
+				event = json.readTree(line);
+			}
+			catch (JacksonException _)
+			{
+				// The session's reader reports output that is not an event
+				return;
+			}
+			String type = event.path("type").asString("");
+			if (type.equals("result") && event.path("startup_failure_reason").asString("").equals(SANDBOX_UNAVAILABLE))
+			{
+				String reason = event.path("errors").path(0).asString("");
+				if (reason.startsWith(UNAVAILABLE_PREFIX))
+					reason = reason.substring(UNAVAILABLE_PREFIX.length());
+				int advice = reason.indexOf(UNSANDBOXED_ADVICE);
+				if (advice >= 0)
+					reason = reason.substring(0, advice);
+				refusal = "Claude Code cannot start the session's sandbox, which the session requires: " +
+					reason.strip() + " " + SANDBOX_GUIDE + ".";
+				return;
+			}
+			String message = event.path("message").asString("");
+			if (type.equals("system") && event.path("subtype").asString("").equals(PERMISSION_DENIED) &&
+				event.path("tool_name").asString("").equals("Bash") && message.contains(UNCONFINED_COMMAND))
+			{
+				stop("Claude Code asked to approve a command that its sandbox would confine, so the session's commands " +
+					"run without the sandbox, which the session's settings forbid, and CAT stopped it: " + message.strip() +
+					" " + SANDBOX_GUIDE + ".");
+			}
+		}
+
+		/**
+		 * Checks one line of the process's standard error for the notice that the session runs without its sandbox.
+		 *
+		 * @param line the line, without its line terminator
+		 */
+		private void checkError(String line)
+		{
+			if (refusal != null)
+				return;
+			int disabled = line.indexOf(DISABLED_NOTICE);
+			if (disabled >= 0)
+			{
+				stop("Claude Code ran the session without its sandbox, which the session's settings forbid, so CAT " +
+					"stopped it: " + line.substring(disabled + DISABLED_NOTICE.length()).strip() + " " + SANDBOX_GUIDE +
+					".");
+			}
+		}
+
+		/**
+		 * Records a refusal and stops the process tree.
+		 *
+		 * @param reason the refusal
+		 */
+		private void stop(String reason)
+		{
+			refusal = reason;
+			process.descendants().forEach(ProcessHandle::destroyForcibly);
+			process.destroyForcibly();
+		}
+
+		/**
+		 * Returns the refusal that the watch has seen.
+		 *
+		 * @param processAlive {@code true} if the session's process is still running; otherwise this method first waits
+		 *                     a bounded time for the rest of its output and standard error
+		 * @return the refusal, or {@code null} if the watch has seen none
+		 */
+		private String refusal(boolean processAlive)
+		{
+			if (!processAlive && refusal == null)
+			{
+				try
+				{
+					if (!streamsEnded.await(OUTPUT_WAIT.toMillis(), TimeUnit.MILLISECONDS))
+						return refusal;
+				}
+				catch (InterruptedException _)
+				{
+					Thread.currentThread().interrupt();
+				}
+			}
+			return refusal;
+		}
+
+		/**
+		 * One stream of the watched process, which checks each line as it is read.
+		 */
+		private final class ScanningStream extends FilterInputStream
+		{
+			private final ByteArrayOutputStream line = new ByteArrayOutputStream();
+			private final Consumer<String> checker;
+			private final AtomicBoolean ended = new AtomicBoolean();
+
+			/**
+			 * Creates a stream.
+			 *
+			 * @param input   the process's stream
+			 * @param checker checks each line of the stream
+			 */
+			ScanningStream(InputStream input, Consumer<String> checker)
+			{
+				super(input);
+				this.checker = checker;
+			}
+
+			@Override
+			public int read() throws IOException
+			{
+				int value = super.read();
+				if (value < 0)
+					ended();
+				else
+					accept((byte) value);
+				return value;
+			}
+
+			@Override
+			public int read(byte[] buffer, int offset, int length) throws IOException
+			{
+				int count = super.read(buffer, offset, length);
+				if (count < 0)
+					ended();
+				for (int index = 0; index < count; ++index)
+					accept(buffer[offset + index]);
+				return count;
+			}
+
+			@Override
+			public void close() throws IOException
+			{
+				try
+				{
+					super.close();
+				}
+				finally
+				{
+					ended();
+				}
+			}
+
+			/**
+			 * Adds a byte to the current line, and checks the line when the byte ends it.
+			 *
+			 * @param value the byte
+			 */
+			private void accept(byte value)
+			{
+				if (value == '\n')
+				{
+					checkLine();
+					return;
+				}
+				if (line.size() < MAXIMUM_LINE_BYTES)
+					line.write(value);
+			}
+
+			/**
+			 * Checks the current line and starts the next one.
+			 */
+			private void checkLine()
+			{
+				checker.accept(line.toString(UTF_8));
+				line.reset();
+			}
+
+			/**
+			 * Checks the last line and records that the stream ended.
+			 */
+			private void ended()
+			{
+				if (!ended.compareAndSet(false, true))
+					return;
+				if (line.size() > 0)
+					checkLine();
+				streamsEnded.countDown();
+			}
+		}
+
+		/**
+		 * A harness process that refuses the session once the watch has seen a sign.
+		 */
+		private final class GuardedProcess implements HarnessProcess
+		{
+			private final HarnessProcess session;
+
+			/**
+			 * Creates a harness process.
+			 *
+			 * @param session the session's harness process
+			 */
+			GuardedProcess(HarnessProcess session)
+			{
+				this.session = session;
+			}
+
+			@Override
+			public HarnessProcessResult sendTurn(String request) throws IOException
+			{
+				return sendTurn(request, _ ->
+				{
+				});
+			}
+
+			@Override
+			public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
+			{
+				requireNoRefusal();
+				HarnessProcessResult result;
+				try
+				{
+					result = session.sendTurn(request, listener);
+				}
+				catch (IOException e)
+				{
+					String seen = refusal(session.isAlive());
+					if (seen == null)
+						throw e;
+					SessionRefusedException refused = new SessionRefusedException(seen);
+					refused.addSuppressed(e);
+					throw refused;
+				}
+				requireNoRefusal();
+				return result;
+			}
+
+			/**
+			 * Refuses the session if the watch has seen a sign.
+			 *
+			 * @throws SessionRefusedException if the watch has seen a sign
+			 */
+			private void requireNoRefusal() throws SessionRefusedException
+			{
+				String seen = refusal(session.isAlive());
+				if (seen != null)
+					throw new SessionRefusedException(seen);
+			}
+
+			@Override
+			public void steer(String request) throws IOException
+			{
+				session.steer(request);
+			}
+
+			@Override
+			public void interrupt() throws IOException
+			{
+				session.interrupt();
+			}
+
+			@Override
+			public Optional<Path> sessionTranscript()
+			{
+				return session.sessionTranscript();
+			}
+
+			/**
+			 * {@inheritDoc}
+			 * <p>
+			 * A session whose process ended after a sign counts as alive, so that its next turn reports the refusal
+			 * rather than the ended process.
+			 */
+			@Override
+			public boolean isAlive()
+			{
+				return session.isAlive() || refusal(false) != null;
+			}
+
+			@Override
+			public void close() throws IOException
+			{
+				session.close();
+			}
+		}
+	}
+
+	/**
+	 * A process whose output and standard error are read through streams other than its own.
+	 */
+	private static final class WatchedProcess extends Process
+	{
+		private final Process process;
+		private final InputStream output;
+		private final InputStream standardError;
+
+		/**
+		 * Creates a process.
+		 *
+		 * @param process       the process
+		 * @param output        the stream that its output is read through
+		 * @param standardError the stream that its standard error is read through
+		 */
+		WatchedProcess(Process process, InputStream output, InputStream standardError)
+		{
+			this.process = process;
+			this.output = output;
+			this.standardError = standardError;
+		}
+
+		@Override
+		public OutputStream getOutputStream()
+		{
+			return process.getOutputStream();
+		}
+
+		@Override
+		public InputStream getInputStream()
+		{
+			return output;
+		}
+
+		@Override
+		public InputStream getErrorStream()
+		{
+			return standardError;
+		}
+
+		@Override
+		public int waitFor() throws InterruptedException
+		{
+			return process.waitFor();
+		}
+
+		@Override
+		public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException
+		{
+			return process.waitFor(timeout, unit);
+		}
+
+		@Override
+		public int exitValue()
+		{
+			return process.exitValue();
+		}
+
+		@Override
+		public void destroy()
+		{
+			process.destroy();
+		}
+
+		@Override
+		public Process destroyForcibly()
+		{
+			process.destroyForcibly();
+			return this;
+		}
+
+		@Override
+		public boolean supportsNormalTermination()
+		{
+			return process.supportsNormalTermination();
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return process.isAlive();
+		}
+
+		@Override
+		public long pid()
+		{
+			return process.pid();
+		}
+
+		@Override
+		public CompletableFuture<Process> onExit()
+		{
+			return process.onExit().thenApply(_ -> this);
+		}
+
+		@Override
+		public ProcessHandle toHandle()
+		{
+			return process.toHandle();
+		}
+
+		@Override
+		public ProcessHandle.Info info()
+		{
+			return process.info();
+		}
+
+		@Override
+		public Stream<ProcessHandle> children()
+		{
+			return process.children();
+		}
+
+		@Override
+		public Stream<ProcessHandle> descendants()
+		{
+			return process.descendants();
+		}
 	}
 }
