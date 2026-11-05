@@ -152,6 +152,57 @@ public final class OldVersionFoldersTest
 	}
 
 	/**
+	 * When the harness runs the version folder with the greatest name, a move back to an earlier version deletes the
+	 * folder of the version that it replaced, whose greater name would make the harness run it instead.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void downgradeDeletesGreaterFolder() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-downgrade-")), catalog());
+			fixture.integration.runningGreatestName();
+			Path later = fixture.installActive("1.2");
+
+			UpdateResult result = fixture.install("v1.0");
+
+			requireUpdated(result);
+			requireThat(Files.exists(later, NOFOLLOW_LINKS), "later").isFalse();
+			requireThat(fixture.versionFolder("1.0"), "active").isDirectory();
+			requireThat(result.exitDeletions(), "exitDeletions").isEmpty();
+		}
+	}
+
+	/**
+	 * When the harness runs the version folder with the greatest name, a move back to an earlier version by the
+	 * installer of a later version leaves that installer's folder in place while it runs and names it for deletion
+	 * once the installer no longer needs its own files.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void downgradeLeavesRunningFolderForExit() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-downgrade-running-")),
+				catalog());
+			fixture.integration.runningGreatestName();
+			Path running = fixture.installActive("1.2");
+
+			UpdateResult result = fixture.install("v1.0", running);
+
+			requireUpdated(result);
+			requireThat(running, "running").isDirectory();
+			requireThat(result.exitDeletions(), "exitDeletions").isEqualTo(List.of(running.toRealPath()));
+		}
+	}
+
+	/**
 	 * A version folder that cannot be deleted, as on Windows while a process has one of its files open, is left in
 	 * place, the install still succeeds and says which folder it left, and the next install deletes the folder.
 	 *

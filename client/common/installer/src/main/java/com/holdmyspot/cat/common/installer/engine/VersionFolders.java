@@ -6,6 +6,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
+import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
@@ -23,8 +24,11 @@ import java.util.Optional;
  * harness keeps elsewhere, in every folder that the installation's layout declares. A harness session that started
  * before an install keeps running hooks and skills from its version folder until it restarts, so the folders of the
  * active version, of the version that the active one replaced, and the folder that the running installer belongs to
- * stay; every other version folder and copy is deleted without following links. A folder that cannot be deleted,
- * such as one whose file a process still has open on Windows, is left for a later install.
+ * stay; every other version folder and copy is deleted without following links. A harness that selects the folder
+ * it runs by the folder's name would run the replaced version's folder or the running installer's folder instead of
+ * the active one's when the name selects it, so neither stays then: the running installer's folder is left for
+ * deletion once the installer no longer needs its own files, and the other is deleted. A folder that cannot be
+ * deleted, such as one whose file a process still has open on Windows, is left for a later install.
  * <p>
  * The installer's state records the active version and the version that it replaced, so that a later install of the
  * same version keeps the replaced version's folder.
@@ -38,27 +42,32 @@ final class VersionFolders
 	 * The largest record of the active and replaced versions that is read.
 	 */
 	private static final int MAXIMUM_RECORD_BYTES = 1024;
+	private final HarnessIntegration integration;
 	private final HarnessInstallation installation;
 	private final InstallerState state;
 
 	/**
 	 * Creates the version folders of a harness installation.
 	 *
+	 * @param integration  the harness's integration, which tells which version folder the harness runs
 	 * @param installation the harness installation, whose home bounds every deletion
 	 * @param state        the installer's state of the harness, which holds the record of the versions
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	VersionFolders(HarnessInstallation installation, InstallerState state)
+	VersionFolders(HarnessIntegration integration, HarnessInstallation installation, InstallerState state)
 	{
+		requireThat(integration, "integration").isNotNull();
 		requireThat(installation, "installation").isNotNull();
 		requireThat(state, "state").isNotNull();
+		this.integration = integration;
 		this.installation = installation;
 		this.state = state;
 	}
 
 	/**
 	 * Records the version that the harness runs after an install, and deletes every version folder other than the
-	 * active version's, the replaced version's and the running installer's. The replaced version is the one that the
+	 * active version's, the replaced version's and the running installer's, and also those two when the harness would
+	 * run them instead of the active one's. The replaced version is the one that the
 	 * harness ran before the install when that differs from the active one; when the install left the harness's
 	 * version unchanged it is the version that the record names as replaced, and when the harness ran no version
 	 * there is none.
@@ -66,11 +75,10 @@ final class VersionFolders
 	 * @param active  the version that the harness runs after the install
 	 * @param before  the version that the harness ran before the install, or null when it ran no plugin version
 	 * @param running the plugin folder that the running installer belongs to
-	 * @return a sentence for each folder that was left and for a record that could not be read or written; empty
-	 * 	when every unneeded folder was deleted
+	 * @return the folders that were left and the running installer's folder when it is to be deleted
 	 * @throws NullPointerException if {@code active} or {@code running} are null
 	 */
-	List<String> retain(PluginVersion active, PluginVersion before, Path running)
+	Retention retain(PluginVersion active, PluginVersion before, Path running)
 	{
 		requireThat(active, "active").isNotNull();
 		requireThat(running, "running").isNotNull();
@@ -81,10 +89,11 @@ final class VersionFolders
 		}
 		catch (IOException e)
 		{
-			return List.of("The record of CAT's versions " + record() + " could not be updated (" + describe(e) +
-				"), so no old version folder was deleted; the next install tries again.");
+			return new Retention(List.of("The record of CAT's versions " + record() + " could not be updated (" +
+				describe(e) + "), so no old version folder was deleted; the next install tries again."), List.of());
 		}
 		List<String> notices = new ArrayList<>();
+		List<Path> exitDeletions = new ArrayList<>();
 		Path runningFolder = real(running);
 		for (Path folder : installation.versionCopyFolders())
 		{
@@ -94,7 +103,11 @@ final class VersionFolders
 			{
 				for (Path child : children)
 				{
-					if (isUnneeded(folder, child, active, replaced, runningFolder))
+					if (!isUnneeded(folder, child, active, replaced, runningFolder))
+						continue;
+					if (child.equals(runningFolder))
+						exitDeletions.add(child);
+					else
 						delete(child, notices);
 				}
 			}
@@ -104,7 +117,7 @@ final class VersionFolders
 					"next install tries again.");
 			}
 		}
-		return notices;
+		return new Retention(notices, exitDeletions);
 	}
 
 	/**
@@ -214,7 +227,11 @@ final class VersionFolders
 		Optional<PluginVersion> version = installation.copiedVersion(folder, child.getFileName().toString());
 		if (version.isEmpty())
 			return false;
-		return !version.get().equals(active) && !version.get().equals(replaced) && !child.equals(runningFolder);
+		if (version.get().equals(active))
+			return false;
+		// The replaced version's folder and the running installer's folder stay unless the harness would run them
+		boolean kept = version.get().equals(replaced) || child.equals(runningFolder);
+		return !kept || integration.runsInstead(version.get(), active);
 	}
 
 	/**
@@ -266,6 +283,42 @@ final class VersionFolders
 		catch (IOException _)
 		{
 			return path.toAbsolutePath().normalize();
+		}
+	}
+
+	/**
+	 * What {@link #retain} left.
+	 *
+	 * @param notices       a sentence for each folder that was left and for a record that could not be read or
+	 *                      written; empty when every unneeded folder was deleted
+	 * @param exitDeletions the running installer's folder when the harness would run it instead of the active
+	 *                      version's, which is deleted once the installer no longer needs its own files
+	 */
+	record Retention(List<String> notices, List<Path> exitDeletions)
+	{
+		/**
+		 * Creates what was left.
+		 *
+		 * @param notices       the sentences about folders that were left
+		 * @param exitDeletions the folders to delete once the installer no longer needs its own files
+		 */
+		Retention
+		{
+			notices = List.copyOf(notices);
+			exitDeletions = List.copyOf(exitDeletions);
+		}
+
+		/**
+		 * Appends the notices to an install's message.
+		 *
+		 * @param message the install's message
+		 * @return the message, followed by any sentences about folders that were left
+		 */
+		String append(String message)
+		{
+			if (notices.isEmpty())
+				return message;
+			return message + " " + String.join(" ", notices);
 		}
 	}
 }

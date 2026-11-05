@@ -65,6 +65,25 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Codex runs the version folder with the greatest name, so a version folder whose name is greater than the
+	 * registered version's would run instead of it, and one whose name is smaller would not.
+	 */
+	@Test
+	public void greaterVersionFolderRunsInstead()
+	{
+		HarnessIntegration provider = provider();
+		// The names are not semantic versions, so Codex compares them character by character
+		PluginVersion smaller = PluginVersion.parse("1.0+b0123456789ab");
+		PluginVersion greater = PluginVersion.parse("1.0+bfedcba987654");
+		PluginVersion later = PluginVersion.parse("1.1+b000000000001");
+
+		requireThat(provider.runsInstead(greater, smaller), "greaterBuild").isTrue();
+		requireThat(provider.runsInstead(smaller, greater), "smallerBuild").isFalse();
+		requireThat(provider.runsInstead(later, greater), "laterRelease").isTrue();
+		requireThat(provider.runsInstead(greater, later), "earlierRelease").isFalse();
+	}
+
+	/**
 	 * The recorded environment holds the user's home variable as given and names a home other than Codex's default
 	 * in {@code CODEX_HOME}.
 	 *

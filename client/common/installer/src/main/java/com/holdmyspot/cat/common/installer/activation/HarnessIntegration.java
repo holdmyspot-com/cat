@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.installer.activation;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
@@ -57,6 +59,23 @@ public interface HarnessIntegration
 	 * @throws IllegalArgumentException if {@code home} is relative
 	 */
 	Path marketplaceFolder(Path home, PluginVersion version);
+
+	/**
+	 * Returns whether the harness would run the plugin from the version folder of one version instead of the folder
+	 * of the version that it registered, if both folders existed. A harness that runs the version that its
+	 * registration names never does; a harness that selects a version folder by its name may.
+	 *
+	 * @param candidate the version of a folder that could be left beside the registered version's folder
+	 * @param active    the version that the harness registered
+	 * @return true if the harness would run {@code candidate}
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	default boolean runsInstead(PluginVersion candidate, PluginVersion active)
+	{
+		requireThat(candidate, "candidate").isNotNull();
+		requireThat(active, "active").isNotNull();
+		return false;
+	}
 
 	/**
 	 * Returns the name of the harness's command-line program, which install looks up on the user's search path, adding

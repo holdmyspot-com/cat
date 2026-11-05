@@ -145,6 +145,18 @@ public final class CodexIntegration implements HarnessIntegration
 		return new CodexInstallation(home).marketplacePlugin();
 	}
 
+	/**
+	 * Codex runs the version folder with the greatest name, so a folder whose name is greater than the registered
+	 * version's runs instead of it.
+	 */
+	@Override
+	public boolean runsInstead(PluginVersion candidate, PluginVersion active)
+	{
+		requireThat(candidate, "candidate").isNotNull();
+		requireThat(active, "active").isNotNull();
+		return CodexVersions.ORDER.compare(candidate.toString(), active.toString()) > 0;
+	}
+
 	@Override
 	public String programName()
 	{

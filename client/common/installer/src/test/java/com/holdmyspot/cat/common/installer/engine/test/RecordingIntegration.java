@@ -103,6 +103,11 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * null when it deletes none.
 	 */
 	private Path deletedData;
+	/**
+	 * Whether the harness runs the plugin from the version folder with the greatest name, as Codex does, instead of
+	 * the version that it registered.
+	 */
+	private boolean greatestName;
 
 	/**
 	 * Creates an integration of {@code harness-a} whose calls all succeed.
@@ -256,6 +261,18 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration deletingData(Path data)
 	{
 		this.deletedData = data;
+		return this;
+	}
+
+	/**
+	 * Makes the harness run the plugin from the version folder with the greatest name, as Codex does, instead of the
+	 * version that it registered.
+	 *
+	 * @return this integration
+	 */
+	public RecordingIntegration runningGreatestName()
+	{
+		this.greatestName = true;
 		return this;
 	}
 
@@ -454,6 +471,12 @@ public final class RecordingIntegration implements HarnessIntegration
 		keptData.add(keepData);
 		if (!keepData && deletedData != null)
 			LinkSafeDeletion.delete(deletedData, home);
+	}
+
+	@Override
+	public boolean runsInstead(PluginVersion candidate, PluginVersion active)
+	{
+		return greatestName && candidate.toString().compareTo(active.toString()) > 0;
 	}
 
 	@Override
