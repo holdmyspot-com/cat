@@ -36,6 +36,7 @@ import com.holdmyspot.cat.common.runner.UserRuleTree;
 import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
@@ -348,6 +349,38 @@ public final class ClaudeRunner
 		if (requestAccess != null)
 			isolatedEnvironment.putAll(requestAccess.environment());
 		return isolatedEnvironment;
+	}
+
+	/**
+	 * Returns what a Claude child session needs beyond its run folder, as a session launcher asks for it before it
+	 * starts the child: the shared dependency caches, which the child writes; the host of the model provider that the
+	 * child's Claude Code connects to, which its commands reach; and the caller's login file when the child's isolated
+	 * home copies it, which happens when the caller's environment holds no Claude authentication variable and the
+	 * file exists.
+	 *
+	 * @param scope       services shared for the runner process lifetime
+	 * @param environment the caller's environment
+	 * @return the needs
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if the model provider's base URL names no host
+	 * @throws IOException              if a cache cannot be used or the caller's settings file cannot be read
+	 */
+	public static ChildNeedsReport childNeeds(HarnessRunnerScope scope, Map<String, String> environment)
+		throws IOException
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
+		Path hostConfiguration = claudeConfigDirectory(environment);
+		// The isolated home only gives the environment's home variables a value here; nothing is written to it
+		Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
+			hostConfiguration.resolve("settings.json"), hostConfiguration.toAbsolutePath(), null);
+		List<Path> logins = new ArrayList<>();
+		Path login = hostConfiguration.resolve(LOGIN).toAbsolutePath();
+		if (requiresCredentialFiles(isolatedEnvironment) && Files.isRegularFile(login))
+			logins.add(login);
+		return new ChildNeedsReport(caches.directories(),
+			Set.of(ClaudeConnectionSettings.modelHost(isolatedEnvironment)), logins);
 	}
 
 	/**

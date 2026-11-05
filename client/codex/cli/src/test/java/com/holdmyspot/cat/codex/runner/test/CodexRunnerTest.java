@@ -18,6 +18,7 @@ import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.File;
 import java.io.IOException;
@@ -326,6 +327,55 @@ public final class CodexRunnerTest
 
 			requireThat(shellTemporaryDirectory, "shellTemporaryDirectory").isEqualTo(temporaryDirectory.toString());
 			requireThat(appServer.get("TMPDIR"), "appServerTemporaryDirectory").isEqualTo(shellTemporaryDirectory);
+		}
+	}
+
+	/**
+	 * Verifies that a Codex child needs the model host that the caller's Codex configuration names, the shared caches,
+	 * and the caller's login file, which its isolated home copies.
+	 *
+	 * @throws IOException if the fixture or the report cannot be built
+	 */
+	@Test
+	public void childNeedsModelHostCachesAndLogin() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-codex-child-needs-")).toRealPath();
+			Path codexHome = Files.createDirectory(home.resolve(".codex"));
+			Files.writeString(codexHome.resolve("config.toml"), "openai_base_url = \"https://Gateway.Example/v1\"\n");
+			Path login = Files.writeString(codexHome.resolve("auth.json"), "{}");
+			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString(), "CODEX_HOME",
+				codexHome.toString());
+
+			ChildNeedsReport needs = CodexRunner.childNeeds(environment);
+
+			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("gateway.example"));
+			requireThat(needs.writes(), "writes").isEqualTo(List.of(home.resolve(".npm"), home.resolve(".m2")));
+			requireThat(needs.logins(), "logins").isEqualTo(List.of(login));
+		}
+	}
+
+	/**
+	 * Verifies that a Codex child of a caller without a login file needs none, and reaches the API host when the
+	 * caller's environment holds an API key.
+	 *
+	 * @throws IOException if the fixture or the report cannot be built
+	 */
+	@Test
+	public void childWithoutLoginFileNeedsNone() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-codex-child-needs-")).toRealPath();
+			Path codexHome = Files.createDirectory(home.resolve(".codex"));
+			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString(), "CODEX_HOME",
+				codexHome.toString(), "OPENAI_API_KEY", "credential");
+
+			ChildNeedsReport needs = CodexRunner.childNeeds(environment);
+
+			requireThat(needs.logins(), "logins").isEmpty();
+			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("api.openai.com"));
 		}
 	}
 

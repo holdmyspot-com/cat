@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -311,6 +312,31 @@ public final class CodexRunner
 			isolatedEnvironment.put("TMPDIR", temporaryDirectory.toString());
 		}
 		return isolatedEnvironment;
+	}
+
+	/**
+	 * Returns what a Codex child session needs beyond its run folder, as a session launcher asks for it before it
+	 * starts the child: the shared dependency caches, which the child writes; the host that the child's Codex sends
+	 * its model requests to, which its commands reach; and the caller's login file, which the child's isolated home
+	 * copies when it exists.
+	 *
+	 * @param environment the caller's environment
+	 * @return the needs
+	 * @throws NullPointerException if {@code environment} is null
+	 * @throws IOException          if a cache cannot be used, Codex's home cannot be found, or its configuration or
+	 *                              login cannot be read
+	 */
+	public static ChildNeedsReport childNeeds(Map<String, String> environment) throws IOException
+	{
+		requireThat(environment, "environment").isNotNull();
+		HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
+		Path hostHome = CodexInstallation.resolveHome(environment);
+		Path login = hostHome.resolve(LOGIN).toAbsolutePath();
+		String modelHost = CodexConnectionConfiguration.modelHost(configuration(hostHome), environment, login);
+		List<Path> logins = new ArrayList<>();
+		if (Files.isRegularFile(login))
+			logins.add(login);
+		return new ChildNeedsReport(caches.directories(), Set.of(modelHost), logins);
 	}
 
 	/**

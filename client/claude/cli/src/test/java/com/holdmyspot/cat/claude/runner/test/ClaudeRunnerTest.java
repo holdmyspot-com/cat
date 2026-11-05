@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
@@ -114,6 +115,60 @@ public final class ClaudeRunnerTest
 				HarnessDependencyCaches.NONE, settings, home, null);
 
 			requireThat(result.get(HarnessEnvironment.RUN_VARIABLE), "marker").isEqualTo("1");
+		}
+	}
+
+	/**
+	 * Verifies that a Claude child needs the model host that the caller's settings name, the shared caches, and the
+	 * caller's login file, which its isolated home copies when the caller's environment holds no Claude
+	 * authentication variable.
+	 *
+	 * @throws IOException if the fixture or the report cannot be built
+	 */
+	@Test
+	public void childNeedsModelHostCachesAndLogin() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-child-needs-")).toRealPath();
+			Path configuration = Files.createDirectory(home.resolve(".claude"));
+			Files.writeString(configuration.resolve("settings.json"), """
+				{"env": {"ANTHROPIC_BASE_URL": "https://Gateway.Example:8443/v1"}}
+				""");
+			Path login = Files.writeString(configuration.resolve(".credentials.json"), "{}");
+			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString());
+
+			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
+
+			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("gateway.example"));
+			requireThat(needs.writes(), "writes").isEqualTo(List.of(home.resolve(".npm"), home.resolve(".m2")));
+			requireThat(needs.logins(), "logins").isEqualTo(List.of(login));
+		}
+	}
+
+	/**
+	 * Verifies that a Claude child whose caller's environment holds an authentication variable needs no login file,
+	 * since its isolated home copies none.
+	 *
+	 * @throws IOException if the fixture or the report cannot be built
+	 */
+	@Test
+	public void childWithApiKeyNeedsNoLogin() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-child-needs-")).toRealPath();
+			Path configuration = Files.createDirectory(home.resolve(".claude"));
+			Files.writeString(configuration.resolve(".credentials.json"), "{}");
+			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString(), "ANTHROPIC_API_KEY",
+				"credential");
+
+			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
+
+			requireThat(needs.logins(), "logins").isEmpty();
+			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("api.anthropic.com"));
 		}
 	}
 

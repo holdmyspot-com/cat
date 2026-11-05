@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
@@ -83,6 +84,10 @@ public final class CodexRunnerCli
 	 * the command, which starts the session outside the command's sandbox, unless a session launcher started the
 	 * launch itself: that launch names {@value SessionLauncherClient#POLICY_BOUND_OPTION} and serves the session in
 	 * place.
+	 * <p>
+	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, it writes what a Codex child session needs to
+	 * that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the session launcher that asks before it
+	 * starts the child, and starts nothing.
 	 *
 	 * @param args the command and its options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -101,6 +106,11 @@ public final class CodexRunnerCli
 		if (args.length == 2 && args[0].equals("--verify-artifact"))
 		{
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
+			return;
+		}
+		if (args.length == 3 && args[0].equals("serve") && args[1].equals(ChildNeedsReport.OPTION))
+		{
+			CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(args[2]));
 			return;
 		}
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
