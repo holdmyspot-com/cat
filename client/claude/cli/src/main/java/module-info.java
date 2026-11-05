@@ -8,6 +8,7 @@ module com.holdmyspot.cat.claude.cli
 
 	exports com.holdmyspot.cat.claude to com.holdmyspot.cat.claude.cli.test;
 	exports com.holdmyspot.cat.claude.optimizer;
+	exports com.holdmyspot.cat.claude.policy to com.holdmyspot.cat.claude.cli.test;
 	exports com.holdmyspot.cat.claude.runner to com.holdmyspot.cat.claude.cli.test;
 	exports com.holdmyspot.cat.claude.secrets to com.holdmyspot.cat.claude.cli.test;
 

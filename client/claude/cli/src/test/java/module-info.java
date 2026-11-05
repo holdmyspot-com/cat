@@ -8,6 +8,7 @@ module com.holdmyspot.cat.claude.cli.test
 	requires org.testng;
 
 	exports com.holdmyspot.cat.claude.optimizer.test to org.testng;
+	exports com.holdmyspot.cat.claude.policy.test to org.testng;
 	exports com.holdmyspot.cat.claude.runner.test to org.testng;
 	exports com.holdmyspot.cat.claude.test to org.testng;
 }
