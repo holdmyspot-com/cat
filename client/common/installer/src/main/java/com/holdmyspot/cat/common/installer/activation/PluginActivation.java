@@ -5,12 +5,13 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Describes where one harness loads CAT from.
+ * Describes where one harness loads CAT from, and installs the files that CAT places beside the plugin.
  * <p>
  * Each harness module provides one implementation as a {@link java.util.ServiceLoader} service. The installer selects
  * the provider whose {@link #harness()} equals the {@code --harness} option, and passes it the harness's home
  * directory from the user's trust policy, never from the environment. The harness installs the plugin itself; the
- * provider reads which version it loads and lists what uninstall deletes. It never runs code from the release.
+ * provider reads which version it loads, installs CAT's companion files once the harness has installed a version, and
+ * lists what uninstall deletes. It never runs code from the release.
  * <p>
  * A provider changes only files that CAT owns, never the harness's configuration files.
  */
@@ -42,6 +43,18 @@ public interface PluginActivation
 	 * @throws IOException          if the harness's files cannot be read
 	 */
 	InstalledState installed(Path home) throws IOException;
+
+	/**
+	 * Installs the files that CAT places beside a version that the harness installed, such as custom agents that the
+	 * harness reads from its own directory. Repeated installs replace the files that CAT placed earlier and remove those
+	 * that the version no longer ships; a file that CAT does not own is never replaced.
+	 *
+	 * @param home          the harness's absolute home directory, from the trust policy
+	 * @param versionFolder the version folder into which the harness installed the plugin
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a file cannot be read or written, or a file that CAT would write is not CAT's
+	 */
+	void installCompanions(Path home, Path versionFolder) throws IOException;
 
 	/**
 	 * Returns the file that records the version of the last data migration applied to CAT's data in this harness. After

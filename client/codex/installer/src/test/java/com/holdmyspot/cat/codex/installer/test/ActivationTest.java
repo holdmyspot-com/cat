@@ -23,6 +23,11 @@ import org.testng.annotations.Test;
 public final class ActivationTest
 {
 	/**
+	 * The record of CAT's custom agents, relative to the home.
+	 */
+	private static final String OWNERSHIP = "plugins/data/cat-cat/codex-agent-files";
+
+	/**
 	 * Service discovery selects the Codex provider and its plugin manifest.
 	 */
 	@Test
@@ -326,6 +331,164 @@ public final class ActivationTest
 	{
 		return new Object[][]{{"plugins/cat-marketplace/.agents/plugins/marketplace.json"},
 			{"plugins/cache/cat/cat/not a version/file"}, {"plugins/cache/cat/cat/1.0"}};
+	}
+
+	/**
+	 * Installing a version's companions copies each of its custom agents into Codex's agents directory under CAT's
+	 * prefix and records them as CAT's, leaving the user's agents as they are.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void installsAgents() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path folder = home.resolve("plugins/cache/cat/cat/1.1");
+			write(folder.resolve("agents/codex/a.toml"), "agent a");
+			write(folder.resolve("agents/codex/b.toml"), "agent b");
+			write(home.resolve("agents/user.toml"), "user agent");
+
+			provider().installCompanions(home, folder);
+
+			requireThat(Files.readString(home.resolve("agents/cat-a.toml")), "agentA").isEqualTo("agent a");
+			requireThat(Files.readString(home.resolve("agents/cat-b.toml")), "agentB").isEqualTo("agent b");
+			requireThat(Files.readString(home.resolve("agents/user.toml")), "userAgent").isEqualTo("user agent");
+			requireThat(Files.readAllLines(home.resolve(OWNERSHIP)), "owned").
+				isEqualTo(List.of("cat-a.toml", "cat-b.toml"));
+		}
+	}
+
+	/**
+	 * A later version's companions replace CAT's agents and remove the ones that the version no longer ships, and the
+	 * record lists only the version's agents.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void replacesAndRetiresAgents() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, "1.0", "1.0", "1.0");
+			write(home.resolve("agents/cat-retired.toml"), "retired agent");
+			write(home.resolve(OWNERSHIP), "cat-a.toml\ncat-retired.toml\n");
+			Path folder = home.resolve("plugins/cache/cat/cat/1.1");
+			write(folder.resolve("agents/codex/a.toml"), "new agent a");
+			write(folder.resolve("agents/codex/b.toml"), "new agent b");
+			String user = Files.readString(home.resolve("agents/user.toml"));
+
+			provider().installCompanions(home, folder);
+
+			requireThat(Files.readString(home.resolve("agents/cat-a.toml")), "agentA").isEqualTo("new agent a");
+			requireThat(Files.readString(home.resolve("agents/cat-b.toml")), "agentB").isEqualTo("new agent b");
+			requireThat(Files.exists(home.resolve("agents/cat-retired.toml")), "retiredAgent").isFalse();
+			requireThat(Files.readString(home.resolve("agents/user.toml")), "userAgent").isEqualTo(user);
+			requireThat(Files.readAllLines(home.resolve(OWNERSHIP)), "owned").
+				isEqualTo(List.of("cat-a.toml", "cat-b.toml"));
+		}
+	}
+
+	/**
+	 * A version without custom agents removes the agents that CAT placed earlier.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void removesAgentsThatVersionDoesNotShip() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, "1.0", "1.0", "1.0");
+			Path folder = home.resolve("plugins/cache/cat/cat/1.1");
+			manifest(folder, "1.1");
+
+			provider().installCompanions(home, folder);
+
+			requireThat(Files.exists(home.resolve("agents/cat-a.toml")), "agentA").isFalse();
+			requireThat(Files.readAllLines(home.resolve(OWNERSHIP)), "owned").isEmpty();
+		}
+	}
+
+	/**
+	 * An agent with CAT's name that CAT did not place is the user's: installing refuses to replace it and changes
+	 * nothing.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void refusesUnownedAgent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			write(home.resolve("agents/cat-a.toml"), "the user's agent");
+			Path folder = home.resolve("plugins/cache/cat/cat/1.1");
+			write(folder.resolve("agents/codex/a.toml"), "agent a");
+			write(folder.resolve("agents/codex/b.toml"), "agent b");
+
+			try
+			{
+				provider().installCompanions(home, folder);
+				throw new AssertionError("The user's agent was replaced");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains(home.resolve("agents/cat-a.toml").toString());
+			}
+			requireThat(Files.readString(home.resolve("agents/cat-a.toml")), "userAgent").isEqualTo("the user's agent");
+			requireThat(Files.exists(home.resolve("agents/cat-b.toml")), "agentB").isFalse();
+			requireThat(Files.exists(home.resolve(OWNERSHIP)), "ownership").isFalse();
+		}
+	}
+
+	/**
+	 * Installing refuses a symbolic link on the way to an agent or to the record of CAT's agents, and writes nothing
+	 * where the link points.
+	 *
+	 * @param component the path, relative to the home, that is a symbolic link
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "linkedAgentPaths")
+	public void refusesLinkedAgentPath(String component) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			install(home, "1.0", "1.0", "1.0");
+			Path folder = home.resolve("plugins/cache/cat/cat/1.1");
+			write(folder.resolve("agents/codex/a.toml"), "new agent a");
+			Path redirected = home.resolve(component);
+			Path outside = Files.createDirectories(home.resolve("outside")).resolve(redirected.getFileName());
+			Files.move(redirected, outside);
+			Files.createSymbolicLink(redirected, outside);
+			String before = Files.readString(redirected);
+
+			try
+			{
+				provider().installCompanions(home, folder);
+				throw new AssertionError("The link was followed");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("symbolic link");
+			}
+			requireThat(Files.readString(outside), "outside").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Supplies the paths that installing an agent writes through.
+	 *
+	 * @return paths relative to the home
+	 */
+	@DataProvider
+	public Object[][] linkedAgentPaths()
+	{
+		return new Object[][]{{"agents/cat-a.toml"}, {OWNERSHIP}};
 	}
 
 	/**

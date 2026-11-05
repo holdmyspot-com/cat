@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.claude.installer;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
@@ -78,6 +80,20 @@ public final class Activation implements PluginActivation
 		if (Files.notExists(folder.resolve(manifestPath), LinkOption.NOFOLLOW_LINKS))
 			return new InstalledState(recorded, false);
 		return new InstalledState(recorded, PluginManifest.version(folder, manifestPath).equals(recorded));
+	}
+
+	/**
+	 * Installs nothing, because Claude Code loads everything of CAT's from the version folder.
+	 *
+	 * @param home          the absolute Claude Code configuration directory recorded in policy
+	 * @param versionFolder the version folder into which Claude Code installed the plugin
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	@Override
+	public void installCompanions(Path home, Path versionFolder)
+	{
+		requireThat(home, "home").isNotNull();
+		requireThat(versionFolder, "versionFolder").isNotNull();
 	}
 
 	/**

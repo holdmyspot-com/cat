@@ -134,6 +134,31 @@ public final class EngineTest
 	}
 
 	/**
+	 * Each time the harness installs a release into its version folder, install has the provider place CAT's
+	 * companion files from that folder.
+	 *
+	 * @throws IOException    if fixture creation or inspection fails
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void installsCompanionsFromVersionFolder() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-companions-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
+			fixture.installActive("1.0");
+
+			UpdateResult result = fixture.install("v1.1");
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UPDATED);
+			requireThat(fixture.provider.companions(), "companions").
+				isEqualTo(List.of(fixture.versionFolder("1.0"), fixture.versionFolder("1.1")));
+		}
+	}
+
+	/**
 	 * Supplies defects in authenticated metadata, archive structure and staged plugin metadata.
 	 *
 	 * @return archive defect names

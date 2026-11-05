@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -86,6 +87,46 @@ public final class ActivationTest
 			requireThat(provider().migrationVersionFile(home), "migrationMarker").
 				isEqualTo(home.resolve("plugins/data/cat-cat/migration-version"));
 		}
+	}
+
+	/**
+	 * Claude Code loads everything of CAT's from the version folder, so installing companions changes no file.
+	 *
+	 * @throws IOException if the fake configuration cannot be created or read
+	 */
+	@Test
+	public void installsNoCompanions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			install(home, VERSION);
+			Path folder = home.resolve(VERSION_FOLDERS).resolve(VERSION);
+			Files.writeString(Files.createDirectories(folder.resolve("agents/codex")).resolve("a.toml"), "agent");
+			Map<Path, FileTime> before = modificationTimes(home);
+
+			provider().installCompanions(home, folder);
+
+			requireThat(modificationTimes(home), "files").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Returns the modification time of every file and directory below a directory.
+	 *
+	 * @param directory the directory
+	 * @return the modification times by path
+	 * @throws IOException if the tree cannot be read
+	 */
+	private static Map<Path, FileTime> modificationTimes(Path directory) throws IOException
+	{
+		Map<Path, FileTime> times = new HashMap<>();
+		try (Stream<Path> paths = Files.walk(directory))
+		{
+			for (Path path : paths.toList())
+				times.put(path, Files.getLastModifiedTime(path));
+		}
+		return times;
 	}
 
 	/**

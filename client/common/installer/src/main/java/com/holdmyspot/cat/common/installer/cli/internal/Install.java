@@ -37,10 +37,10 @@ import java.util.function.Predicate;
 /**
  * Installs CAT's plugin into one harness from the extracted plugin archive that the running installer belongs to. The
  * installer writes the plugin into CAT's marketplace in the harness home and asks the harness to install it, which
- * puts it in its version folder; it then trains the plugin's startup cache there, writes the policy into the plugin's
- * data folder and adds the permission entries that name the installer in the version folder. Every check runs before
- * the first change, and every step can be repeated, so running install again repairs an installation that an earlier
- * install left incomplete.
+ * puts it in its version folder; it then installs the provider's companion files from that folder, trains the
+ * plugin's startup cache there, writes the policy into the plugin's data folder and adds the permission entries that
+ * name the installer in the version folder. Every check runs before the first change, and every step can be repeated,
+ * so running install again repairs an installation that an earlier install left incomplete.
  */
 public final class Install
 {
@@ -152,6 +152,7 @@ public final class Install
 
 		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer);
 		Path versionFolder = steps.deliver(home, plugin, version);
+		activation.installCompanions(home, versionFolder);
 		Path scratch = InstallerState.of(installation.dataDirectory(), harness).directory().resolve("startup-cache");
 		boolean startupCache = new StartupCacheTrainer(scratch, TRAINING_LIMIT, () -> elevation.test(scratch)).
 			train(versionFolder);

@@ -8,12 +8,19 @@ import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -112,6 +119,129 @@ public final class CodexActivation implements PluginActivation
 		boolean copiesAgree = active.equals(sourceVersion) && active.equals(cacheVersion) &&
 			Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS);
 		return new InstalledState(Optional.of(active), copiesAgree);
+	}
+
+	/**
+	 * Installs the version's custom agents, each {@code agents/codex/<name>.toml} of the version folder, as
+	 * {@code cat-<name>.toml} in Codex's agents directory, and records them as CAT's. Agents that CAT installed earlier
+	 * are replaced, and those that the version no longer ships are deleted. The record lists every agent that this call
+	 * may write before it writes any, so that an install that stops part way leaves no agent of CAT's unrecorded.
+	 *
+	 * @throws IOException if the record of CAT's agents is invalid, the version's agent is not a regular file, an agent
+	 *                     with CAT's name is not recorded as CAT's, a path that this call writes is a symbolic link, or a
+	 *                     file cannot be read or written
+	 */
+	@Override
+	public void installCompanions(Path home, Path versionFolder) throws IOException
+	{
+		requireThat(versionFolder, "versionFolder").isNotNull();
+		CodexInstallation layout = installation(home);
+		Path agents = linkFree(home, layout.agents());
+		Path ownership = linkFree(home, layout.dataDirectory().resolve(AGENT_OWNERSHIP));
+		Set<String> owned = new LinkedHashSet<>();
+		if (Files.exists(ownership, LinkOption.NOFOLLOW_LINKS))
+			owned.addAll(readOwnedNames(ownership));
+		Map<String, Path> shipped = shippedAgents(versionFolder);
+		for (String name : shipped.keySet())
+		{
+			Path agent = linkFree(home, agents.resolve(name));
+			if (Files.exists(agent, LinkOption.NOFOLLOW_LINKS) &&
+				(!owned.contains(name) || !Files.isRegularFile(agent, LinkOption.NOFOLLOW_LINKS)))
+			{
+				throw new IOException("Codex's custom agent " + agent + " is not CAT's, so install does not replace " +
+					"it; rename or remove it, then run install again.");
+			}
+		}
+		for (String name : owned)
+			linkFree(home, agents.resolve(name));
+
+		Set<String> recorded = new LinkedHashSet<>(owned);
+		recorded.addAll(shipped.keySet());
+		Files.createDirectories(ownership.getParent());
+		replace(ownership, lines(recorded));
+		Files.createDirectories(agents);
+		for (Map.Entry<String, Path> agent : shipped.entrySet())
+			replace(agents.resolve(agent.getKey()), Files.readAllBytes(agent.getValue()));
+		for (String name : owned)
+		{
+			if (!shipped.containsKey(name))
+				Files.deleteIfExists(agents.resolve(name));
+		}
+		replace(ownership, lines(shipped.keySet()));
+	}
+
+	/**
+	 * Returns the custom agents that a version folder ships.
+	 *
+	 * @param versionFolder the version folder
+	 * @return each agent's installed name, in name order, with its file in the version folder
+	 * @throws IOException if an agent is not a regular file or the folder cannot be listed
+	 */
+	private static Map<String, Path> shippedAgents(Path versionFolder) throws IOException
+	{
+		Map<String, Path> shipped = new TreeMap<>();
+		Path sources = versionFolder.resolve(AGENT_SOURCES);
+		if (!Files.isDirectory(sources, LinkOption.NOFOLLOW_LINKS))
+			return shipped;
+		try (DirectoryStream<Path> files = Files.newDirectoryStream(sources, "*.toml"))
+		{
+			for (Path source : files)
+			{
+				if (!Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS))
+					throw new IOException("The release's custom agent is not a regular file: " + source);
+				shipped.put(AGENT_PREFIX + source.getFileName(), source);
+			}
+		}
+		return shipped;
+	}
+
+	/**
+	 * Returns names as the lines of the record of CAT's agents.
+	 *
+	 * @param names the names
+	 * @return the record's bytes
+	 */
+	private static byte[] lines(Set<String> names)
+	{
+		StringBuilder text = new StringBuilder();
+		for (String name : names)
+			text.append(name).append('\n');
+		return text.toString().getBytes(StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * Replaces a file's content in one step, through a file written beside it.
+	 *
+	 * @param file    the file
+	 * @param content its new content
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void replace(Path file, byte[] content) throws IOException
+	{
+		Path staged = file.resolveSibling("." + file.getFileName() + ".new");
+		Files.deleteIfExists(staged);
+		Files.write(staged, content, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+		Files.move(staged, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+	}
+
+	/**
+	 * Refuses links from the recorded home through a path that this provider writes.
+	 *
+	 * @param home   the absolute harness home
+	 * @param target the absolute path within that home
+	 * @return the normalized path
+	 * @throws IOException if a component of the path is a symbolic link
+	 */
+	private static Path linkFree(Path home, Path target) throws IOException
+	{
+		try
+		{
+			return target(home, target);
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw new IOException(e.getMessage(), e);
+		}
 	}
 
 	/**

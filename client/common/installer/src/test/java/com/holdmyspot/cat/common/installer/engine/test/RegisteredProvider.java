@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,11 +20,36 @@ import java.util.Optional;
  */
 public class RegisteredProvider implements PluginActivation
 {
+	private final List<Path> companions = new ArrayList<>();
+
 	/**
 	 * Creates the provider.
 	 */
 	public RegisteredProvider()
 	{
+	}
+
+	/**
+	 * Returns the version folders whose companion files the installer asked this provider to install, in order.
+	 *
+	 * @return the version folders
+	 */
+	public List<Path> companions()
+	{
+		return List.copyOf(companions);
+	}
+
+	/**
+	 * Records the version folder, which must exist because the harness installed it.
+	 *
+	 * @throws IOException if the version folder does not exist
+	 */
+	@Override
+	public void installCompanions(Path home, Path versionFolder) throws IOException
+	{
+		if (!Files.isDirectory(versionFolder))
+			throw new IOException("The version folder does not exist: " + versionFolder);
+		companions.add(versionFolder);
 	}
 
 	@Override

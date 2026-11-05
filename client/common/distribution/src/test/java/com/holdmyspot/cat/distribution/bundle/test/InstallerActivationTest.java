@@ -156,6 +156,11 @@ public final class InstallerActivationTest
 			requireThat(snapshot(activeFolder), "activeFolder").isEqualTo(activeBefore);
 			requireThat(Files.readString(provider.migrationVersionFile(home)), "updatedMigrationVersion").
 				isEqualTo("1.1\n");
+			if (harness.equals("codex"))
+			{
+				requireThat(Files.exists(home.resolve("agents/cat-a.toml"), NOFOLLOW_LINKS), "retiredAgentExists").isFalse();
+				requireThat(Files.readString(home.resolve("agents/cat-b.toml")), "newAgent").isEqualTo("new agent");
+			}
 			unchanged(contents, times);
 			requireThat(Files.exists(root.resolve("executed"), NOFOLLOW_LINKS), "downloadedCodeExecuted").isFalse();
 		}
@@ -182,6 +187,8 @@ public final class InstallerActivationTest
 		{
 			write(home.resolve("plugins/cat-marketplace/plugins/cat").resolve(provider.pluginManifest()), manifest);
 			write(home.resolve("plugins/cache/cat/cat/" + ACTIVE_VERSION).resolve(provider.pluginManifest()), manifest);
+			write(home.resolve("agents/cat-a.toml"), "old agent");
+			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-a.toml\n");
 		}
 	}
 

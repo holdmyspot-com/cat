@@ -394,8 +394,9 @@ public final class UpdateEngine
 	/**
 	 * Installs a validated plugin tree into the harness: refuses a pending data migration and a version folder that
 	 * the running installer belongs to, and a change that needs the user's permission when the user withholds it, then
-	 * writes the marketplace, asks the harness to install the version, trains its startup cache, rewrites the
-	 * permission entries and records the data migration version.
+	 * writes the marketplace, asks the harness to install the version, installs the provider's companion files from
+	 * the version folder, trains its startup cache, rewrites the permission entries and records the data migration
+	 * version.
 	 *
 	 * @param tree    the validated plugin tree, which this method does not change
 	 * @param plugin  the plugin version that the tree states
@@ -444,6 +445,7 @@ public final class UpdateEngine
 		try
 		{
 			steps.deliver(home, tree, plugin);
+			activation.installCompanions(home, versionFolder);
 			startupCache = trainer.train(versionFolder);
 			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
 				request.others(), request.catLocks(), consentRequest.isPresent());

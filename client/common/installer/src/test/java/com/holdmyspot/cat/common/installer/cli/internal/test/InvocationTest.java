@@ -1124,6 +1124,12 @@ public final class InvocationTest
 		}
 
 		@Override
+		public void installCompanions(Path home, Path versionFolder)
+		{
+			throw new UnsupportedOperationException("The status-only provider does not install releases");
+		}
+
+		@Override
 		public Path migrationVersionFile(Path home)
 		{
 			return home.resolve("migration-version");

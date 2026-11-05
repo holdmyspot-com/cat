@@ -85,6 +85,26 @@ public final class InstallCommandTest
 	}
 
 	/**
+	 * Once the harness has installed the archive's plugin into its version folder, install has the provider place
+	 * CAT's companion files from that folder.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void installsCompanionsFromVersionFolder() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-companions-")));
+
+			fixture.install();
+
+			requireThat(fixture.provider.companions(), "companions").isEqualTo(List.of(fixture.versionFolder()));
+		}
+	}
+
+	/**
 	 * The permission entries that install adds name the installer launcher in the version folder that the harness loads,
 	 * and install records them in the plugin data folder.
 	 *
@@ -303,6 +323,7 @@ public final class InstallCommandTest
 		private final Path cwd;
 		private final Map<String, String> environment = new HashMap<>();
 		private final RecordingIntegration integration = new RecordingIntegration();
+		private final LiveProvider provider = new LiveProvider();
 		private final List<HarnessIntegration> others = new ArrayList<>();
 		private final HarnessCommand command;
 		private Path requestedHome;
@@ -354,7 +375,7 @@ public final class InstallCommandTest
 		{
 			Install install = new Install(archive, Platform.LINUX_X64, replacer(),
 				(recorded, recordedHome) -> RecordingIntegration.cli(), _ -> false);
-			return install.install("harness-a", requestedHome, cwd, environment, user, new LiveProvider(),
+			return install.install("harness-a", requestedHome, cwd, environment, user, provider,
 				integration, others, _ -> false);
 		}
 	}
