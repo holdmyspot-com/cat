@@ -28,7 +28,10 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
 import java.io.BufferedReader;
@@ -47,7 +50,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntFunction;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Parses Codex runner commands to serve JSON requests.
@@ -131,6 +136,11 @@ public final class CodexRunnerCli
 			{
 				System.err.println(e.getMessage());
 				System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
+			}
+			catch (SessionRefusedException e)
+			{
+				System.err.println(e.getMessage());
+				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			}
 		}
 	}
@@ -234,9 +244,13 @@ public final class CodexRunnerCli
 	 * @param output the bridge output
 	 * @param environment the host environment
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
-	 *   command selected. The bridge waits for a permit before it starts Codex.
-	 * @throws NullPointerException if any argument is null
-	 * @throws IOException if runner startup, the harness, or bridge I/O fails
+	 *   command selected. The bridge waits for a permit before it starts Codex, unless the command names
+	 *   {@code --capacity-held}.
+	 * @throws NullPointerException    if any argument is null
+	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, or the session's sandbox would
+	 *                                 not confine it as its policy requires
+	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
+	 *                                 I/O fails
 	 */
 	public static void serve(JvmScope process, Path workingDirectory, String[] args, Reader input, Writer output,
 		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
@@ -252,23 +266,30 @@ public final class CodexRunnerCli
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
-			CodexAgentDefinition agent = loadAgent(options.artifact(), agentName);
+			Path cat = options.catArtifact(CodexRunner.MANIFEST);
+			CodexAgentDefinition agent = loadAgent(cat, agentName);
+			ParentPolicy bound = policyBound(scope.json(), options);
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
-			HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
-			HarnessCapacity.Permit permit;
-			if (options.capacityWait() == null)
-				permit = capacity.acquire();
-			else
-				permit = capacity.acquire(options.capacityWait());
+			HarnessCapacity.Permit permit = null;
+			if (!options.capacityHeld())
+			{
+				HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
+				if (options.capacityWait() == null)
+					permit = capacity.acquire();
+				else
+					permit = capacity.acquire(options.capacityWait());
+			}
 			try (HarnessCapacity.Permit _ = permit)
 			{
-				HarnessRunnerBridge.serve(() -> new CodexRunner(process.waiting()).start(options.artifact(), options.project(),
-					options.workspace(), options.plugins(), manager, "codex", environment, options.model(),
+				AtomicReference<ChildPolicy> policy = new AtomicReference<>();
+				List<Path> trialPlugins = options.trialPlugins(CodexRunner.MANIFEST);
+				HarnessRunnerBridge.serve(() -> new CodexRunner(process.waiting()).start(cat, options.project(),
+					options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
 					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
-					toolOutputTokenLimit,
-					options.sessionTranscripts(), options.sessionRequests(), ParentPolicy.UNSANDBOXED),
+					toolOutputTokenLimit, options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
+					options.gitName(), options.gitEmail()),
 					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 			{
 				RequestedRunner runner;
@@ -284,10 +305,32 @@ public final class CodexRunnerCli
 					runner = RequestedRunner.resolved(scope, ClaudeArtifact.execute(environment), List.of());
 				else
 					throw new IllegalArgumentException("Unsupported requested harness: " + harness);
-				return runner.start(arguments, directory, environment);
+				return runner.start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()),
+					directory, environment);
 			});
 			}
 		}
+	}
+
+	/**
+	 * Reads the policy that bounds the session's sandbox policy, as the policy of the session's parent.
+	 *
+	 * @param json    the JSON mapper
+	 * @param options the launch's options
+	 * @return the bound
+	 * @throws SessionRefusedException if the launch names no bound
+	 * @throws IOException             if the bound's file cannot be read or is not a bound
+	 */
+	private static ParentPolicy policyBound(JsonMapper json, HarnessRunnerOptions options) throws IOException
+	{
+		if (options.policyBound() == null)
+		{
+			throw new SessionRefusedException("codex-runner starts a session only through CAT's session launcher, " +
+				"which names the policy that bounds the session's sandbox with " + PolicyBoundFile.OPTION + ", and " +
+				"this launch names none, so CAT does not start the session. Start the session from a Claude Code or " +
+				"Codex session in which CAT is installed");
+		}
+		return PolicyBoundFile.read(json, options.policyBound().toAbsolutePath()).asParentPolicy();
 	}
 
 	/**
@@ -400,7 +443,7 @@ public final class CodexRunnerCli
 		if (agentName.isBlank())
 			return runnerArgs;
 		HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
-		Path artifact = HarnessRunnerOptions.artifactOption(runnerArgs);
+		Path artifact = HarnessRunnerOptions.catArtifact(runnerArgs, CodexRunner.MANIFEST);
 		if (artifact == null)
 			return runnerArgs;
 		CodexAgentDefinition agent = CodexAgentDefinition.load(artifact, agentName);

@@ -206,15 +206,18 @@ public final class ClaudeRunnerCli
 			process.waiting()))
 		{
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
-			ClaudeAgentDefinition agent = loadAgent(options.artifact(), agentName(args));
+			ClaudeAgentDefinition agent = loadAgent(options.catArtifact(ClaudeRunner.MANIFEST), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
-			ChildPolicy bound = policyBound(scope.json(), args);
+			ChildPolicy bound = policyBound(scope.json(), options);
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
+			HarnessCapacity capacity = null;
+			if (!options.capacityHeld())
+				capacity = capacityForMaximum.apply(options.maximumConcurrency());
 			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, bound, manager, input, output,
-				environment, replacer, capacityForMaximum.apply(options.maximumConcurrency()));
+				environment, replacer, capacity);
 		}
 	}
 
@@ -233,7 +236,7 @@ public final class ClaudeRunnerCli
 	 * @param output bridge output when no durable destination was requested
 	 * @param environment host environment
 	 * @param replacer replaces the receipt
-	 * @param capacity the shared harness capacity
+	 * @param capacity the shared harness capacity, or {@code null} if the requester holds the session's slot
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
 	private static void serve(ToolScope scope, HarnessRunnerOptions options, ClaudeAgentDefinition agent,
@@ -251,17 +254,16 @@ public final class ClaudeRunnerCli
 		assert environment != null;
 		assert scope != null;
 		assert replacer != null;
-		assert capacity != null;
 		try (HarnessCapacity.Permit _ = acquire(capacity, options))
 		{
 			AtomicReference<ChildPolicy> policy = new AtomicReference<>();
-			HarnessRunStarter starter = () -> new ClaudeRunner(scope.waiting()).start(
-				options.artifact(), options.project(), options.workspace(), options.plugins(), manager, "claude",
-				environment,
-				options.model(),
-				options.effort(), agent, options.installCat(), readOnlyEvidence,
-				options.deniedReads(), instructionFilesMode, options.sessionTranscripts(), options.sessionRequests(),
-				bound, policy::set);
+			Path cat = options.catArtifact(ClaudeRunner.MANIFEST);
+			List<Path> trialPlugins = options.trialPlugins(ClaudeRunner.MANIFEST);
+			HarnessRunStarter starter = () -> new ClaudeRunner(scope.waiting()).start(cat, options.project(),
+				options.workspace(), trialPlugins, manager, "claude", environment, options.model(), options.effort(),
+				agent, options.installCat(), readOnlyEvidence, options.deniedReads(), instructionFilesMode,
+				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),
+				options.gitEmail());
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) ->
 			{
@@ -284,15 +286,17 @@ public final class ClaudeRunnerCli
 	/**
 	 * Takes a capacity permit, waiting no longer than the command's {@code --capacity-wait} if it named one.
 	 *
-	 * @param capacity the shared harness capacity
+	 * @param capacity the shared harness capacity, or {@code null} if the requester holds the session's slot
 	 * @param options the parsed bridge options
-	 * @return the permit
+	 * @return the permit, or {@code null} if {@code capacity} is null
 	 * @throws HarnessCapacityWaitExpiredException if the wait passed without a free permit
 	 * @throws IOException if a slot cannot be locked or the wait fails
 	 */
 	private static HarnessCapacity.Permit acquire(HarnessCapacity capacity, HarnessRunnerOptions options)
 		throws IOException
 	{
+		if (capacity == null)
+			return null;
 		if (options.capacityWait() == null)
 			return capacity.acquire();
 		return capacity.acquire(options.capacityWait());
@@ -330,7 +334,7 @@ public final class ClaudeRunnerCli
 		if (!agentName.isBlank())
 		{
 			HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
-			Path artifact = HarnessRunnerOptions.artifactOption(runnerArgs);
+			Path artifact = HarnessRunnerOptions.catArtifact(runnerArgs, ClaudeRunner.MANIFEST);
 			if (artifact != null)
 			{
 				ClaudeAgentDefinition agent = ClaudeAgentDefinition.load(artifact, agentName);
@@ -431,7 +435,7 @@ public final class ClaudeRunnerCli
 		for (int index = 0; index < args.length; ++index)
 		{
 			if (args[index].equals("--read-only-evidence") || args[index].equals("--agent") ||
-				args[index].equals("--instruction-files") || args[index].equals(PolicyBoundFile.OPTION))
+				args[index].equals("--instruction-files"))
 			{
 				index += 1;
 				continue;
@@ -444,30 +448,21 @@ public final class ClaudeRunnerCli
 	/**
 	 * Reads the policy that bounds the session's sandbox policy.
 	 *
-	 * @param json the JSON mapper
-	 * @param args the command-line arguments
+	 * @param json    the JSON mapper
+	 * @param options the launch's options
 	 * @return the bound
 	 * @throws SessionRefusedException if the launch names no bound
 	 * @throws IOException             if the bound's file cannot be read or is not a bound
 	 */
-	private static ChildPolicy policyBound(JsonMapper json, String[] args) throws IOException
+	private static ChildPolicy policyBound(JsonMapper json, HarnessRunnerOptions options) throws IOException
 	{
-		String value = null;
-		for (int index = 0; index < args.length; ++index)
-		{
-			if (!args[index].equals(PolicyBoundFile.OPTION))
-				continue;
-			if (index + 1 == args.length || args[index + 1].startsWith("--"))
-				throw new IllegalArgumentException("Missing path after " + PolicyBoundFile.OPTION);
-			value = args[index + 1];
-		}
-		if (value == null)
+		if (options.policyBound() == null)
 		{
 			throw new SessionRefusedException("claude-runner starts a session only " +
 				"through CAT's session launcher, which names the policy that bounds the session's sandbox with " +
 				PolicyBoundFile.OPTION + ", and this launch names none, so CAT does not start the session. Start the " +
 				"session from a Claude Code or Codex session in which CAT is installed");
 		}
-		return PolicyBoundFile.read(json, Path.of(value).toAbsolutePath());
+		return PolicyBoundFile.read(json, options.policyBound().toAbsolutePath());
 	}
 }

@@ -51,6 +51,7 @@ import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 
 /**
  * Creates an isolated Codex configuration and starts one persistent Codex CLI process, optionally with CAT.
@@ -73,7 +74,7 @@ public final class CodexRunner
 	/**
 	 * The path of a Codex plugin's manifest, relative to the plugin directory.
 	 */
-	private static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
+	static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
 	/**
 	 * The system's shared temporary directory, which the app-server replaces with a private one.
 	 */
@@ -101,7 +102,8 @@ public final class CodexRunner
 	/**
 	 * Starts a runner whose validator may read, but not modify, completed executor evidence.
 	 *
-	 * @param artifact the complete Codex artifact
+	 * @param artifact the complete Codex artifact that the session installs as CAT and whose launcher the session
+	 *   requests sessions through
 	 * @param project the validator project
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param trialPlugins the trial plugins, each installed into the isolated home from the marketplace that bears its
@@ -126,6 +128,9 @@ public final class CodexRunner
 	 *   none
 	 * @param bound the policy that bounds the session's sandbox: the session gets its run directory, the dependency
 	 *   caches and its model host only within it
+	 * @param policyListener receives the session's sandbox policy before its Codex process starts
+	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
+	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @return the live owned Codex run session
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
 	 * @throws IOException             if validation, copying, or process startup fails
@@ -133,8 +138,8 @@ public final class CodexRunner
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
-		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound)
-		throws IOException
+		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
+		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -147,6 +152,7 @@ public final class CodexRunner
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(bound, "bound").isNotNull();
+		requireThat(policyListener, "policyListener").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -161,7 +167,7 @@ public final class CodexRunner
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
-				executables);
+				executables, gitName, gitEmail);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = CodexInstallation.resolveHome(environment);
@@ -189,6 +195,7 @@ public final class CodexRunner
 				CodexConnectionConfiguration.requireNarrowingLayers(CodexConnectionConfiguration.SYSTEM_LAYER,
 					CodexConnectionConfiguration.MANAGED_LAYER, policy);
 			}
+			policyListener.accept(policy);
 			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
 			List<String> appServer = appServerCommand(executable, pluginsInstalled);
 			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, run, readOnlyEvidence, deniedReads,

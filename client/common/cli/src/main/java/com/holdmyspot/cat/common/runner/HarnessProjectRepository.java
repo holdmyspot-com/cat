@@ -34,8 +34,8 @@ public final class HarnessProjectRepository
 
 	/**
 	 * Makes a copied project a clean repository whose baseline is exactly the copied fixture and that never starts
-	 * background maintenance. Its baseline and later commits use the source project's Git user name and email,
-	 * resolved with the parent environment. If either value is missing, both use
+	 * background maintenance. Its baseline and later commits use the Git user name and email that the launch names,
+	 * and otherwise the source project's, resolved with the parent environment. If either value is missing, both use
 	 * {@code CAT fixture <cat-fixture@example.invalid>}.
 	 *
 	 * @param sourceProject     the source project whose Git identity is inherited
@@ -43,11 +43,16 @@ public final class HarnessProjectRepository
 	 * @param runDirectory      the owned run directory that may hold setup-only state
 	 * @param parentEnvironment the environment resolved by the production entry point
 	 * @param executables       runs Git
-	 * @throws NullPointerException if any of the arguments are null
+	 * @param gitName           the Git user name that the launch names, or {@code null} to read the source
+	 *                          project's
+	 * @param gitEmail          the Git user email that the launch names, or {@code null} to read the source
+	 *                          project's
+	 * @throws NullPointerException if any of the arguments are null, other than {@code gitName} and {@code gitEmail}
 	 * @throws IOException         if Git cannot resolve the identity or create the independent baseline
 	 */
 	public static void initialize(Path sourceProject, Path project, Path runDirectory,
-		Map<String, String> parentEnvironment, ExecutableFiles executables) throws IOException
+		Map<String, String> parentEnvironment, ExecutableFiles executables, String gitName, String gitEmail)
+		throws IOException
 	{
 		requireThat(sourceProject, "sourceProject").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -55,8 +60,12 @@ public final class HarnessProjectRepository
 		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
 
-		String name = readIdentity(sourceProject, parentEnvironment, executables, "user.name");
-		String email = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
+		String name = gitName;
+		if (name == null)
+			name = readIdentity(sourceProject, parentEnvironment, executables, "user.name");
+		String email = gitEmail;
+		if (email == null)
+			email = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
 		boolean incompleteIdentity = name == null || email == null;
 		if (incompleteIdentity)
 		{

@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -37,11 +38,18 @@ import java.util.Set;
  * @param requestDepth how many levels of requested sessions below the session may request sessions in turn, each
  *   with the session's own {@code sessionRequests}; {@code 0} lets the session's requested sessions request none
  * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
+ * @param policyBound the file of the policy that bounds the session's sandbox policy, which the session launcher
+ *   writes, or {@code null} if the launch names none
+ * @param capacityHeld indicates whether the requester holds the session's capacity slot itself, so that the runner
+ *   takes none
+ * @param gitName the Git user name of the copied project, or {@code null} to read the source project's
+ * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
-	Duration capacityWait, int requestDepth, Path input)
+	Duration capacityWait, int requestDepth, Path input, Path policyBound, boolean capacityHeld, String gitName,
+	String gitEmail)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -62,7 +70,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--run-root", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
-		"--session-requests", "--request-depth", "--capacity-wait");
+		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email");
+	/**
+	 * The name that a candidate CAT's manifest gives it.
+	 */
+	private static final String CAT_NAME = "cat";
 
 	/**
 	 * Parses the legacy {@code serve} bridge command while runners migrate to unprefixed bridge options.
@@ -123,6 +135,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			if (option.equals("--install-cat"))
 			{
 				options.installCat = true;
+				index += 1;
+				continue;
+			}
+			if (option.equals("--capacity-held"))
+			{
+				options.capacityHeld = true;
 				index += 1;
 				continue;
 			}
@@ -193,6 +211,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.workspace = Path.of(value);
 			else if (option.equals("--plugin"))
 				options.plugins.add(Path.of(value));
+			else if (option.equals("--policy-bound"))
+				options.policyBound = Path.of(value);
+			else if (option.equals("--git-name"))
+				options.gitName = value;
+			else if (option.equals("--git-email"))
+				options.gitEmail = value;
 			else
 				options.input = Path.of(value);
 			index += 2;
@@ -210,7 +234,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, model, effort, options.output,
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
-			options.capacityWait, options.requestDepth, options.input);
+			options.capacityWait, options.requestDepth, options.input, options.policyBound, options.capacityHeld,
+			options.gitName, options.gitEmail);
 	}
 
 	/**
@@ -399,8 +424,14 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
 	 * @param requestDepth how many levels of requested sessions below the session may request sessions in turn
 	 * @param input the file that holds the run's JSON Lines records, or {@code null} to read standard input
+	 * @param policyBound the file of the policy that bounds the session's sandbox policy, or {@code null} if the
+	 *   launch names none
+	 * @param capacityHeld whether the requester holds the session's capacity slot itself
+	 * @param gitName the Git user name of the copied project, or {@code null} to read the source project's
+	 * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
-	 *   {@code workspace}, {@code capacityWait} and {@code input}
+	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code policyBound}, {@code gitName} and
+	 *   {@code gitEmail}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
 	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
@@ -439,6 +470,80 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
+	 * Returns the artifact that the session installs as CAT. A launch that installs CAT and whose first plugin's
+	 * manifest names it {@value #CAT_NAME} trials that plugin as a candidate CAT, which the session installs in place
+	 * of {@link #artifact()}, and whose agent definitions it runs. The runner itself always runs {@link #artifact()}.
+	 *
+	 * @param manifest the path of a plugin's manifest, relative to the plugin directory
+	 * @return the first plugin if it is a candidate CAT; otherwise {@link #artifact()}
+	 * @throws NullPointerException if {@code manifest} is null
+	 * @throws IOException          if the first plugin's manifest cannot be read or names no valid plugin
+	 */
+	public Path catArtifact(Path manifest) throws IOException
+	{
+		if (isCandidateCat(installCat, plugins, manifest))
+			return plugins.getFirst();
+		return artifact;
+	}
+
+	/**
+	 * Returns the artifact that a launch's session installs as CAT, as {@link #catArtifact(Path)} does, before the
+	 * launch's options are parsed.
+	 *
+	 * @param args     the launch's options
+	 * @param manifest the path of a plugin's manifest, relative to the plugin directory
+	 * @return the launch's first plugin if it is a candidate CAT; otherwise the path after {@code --artifact}, or
+	 *         {@code null} if the launch names none
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the first plugin's manifest cannot be read or names no valid plugin
+	 */
+	public static Path catArtifact(String[] args, Path manifest) throws IOException
+	{
+		requireThat(args, "args").isNotNull();
+		List<String> arguments = Arrays.asList(args);
+		List<Path> plugins = new ArrayList<>();
+		int plugin = arguments.indexOf("--plugin");
+		if (plugin >= 0 && plugin + 1 < args.length)
+			plugins.add(Path.of(args[plugin + 1]));
+		if (isCandidateCat(arguments.contains("--install-cat"), plugins, manifest))
+			return plugins.getFirst();
+		return artifactOption(args);
+	}
+
+	/**
+	 * Returns the trial plugins that the session installs beside CAT: the plugins other than a candidate CAT, in
+	 * order.
+	 *
+	 * @param manifest the path of a plugin's manifest, relative to the plugin directory
+	 * @return the plugins after the first if it is a candidate CAT; otherwise every plugin
+	 * @throws NullPointerException if {@code manifest} is null
+	 * @throws IOException          if the first plugin's manifest cannot be read or names no valid plugin
+	 * @see #catArtifact(Path)
+	 */
+	public List<Path> trialPlugins(Path manifest) throws IOException
+	{
+		if (isCandidateCat(installCat, plugins, manifest))
+			return plugins.subList(1, plugins.size());
+		return plugins;
+	}
+
+	/**
+	 * Indicates whether a launch trials its first plugin as a candidate CAT.
+	 *
+	 * @param installCat {@code true} if the launch installs CAT
+	 * @param plugins    the launch's plugins, in order
+	 * @param manifest   the path of a plugin's manifest, relative to the plugin directory
+	 * @return {@code true} if the launch installs CAT and its first plugin's manifest names it {@value #CAT_NAME}
+	 * @throws NullPointerException if {@code manifest} is null
+	 * @throws IOException          if the first plugin's manifest cannot be read or names no valid plugin
+	 */
+	private static boolean isCandidateCat(boolean installCat, List<Path> plugins, Path manifest) throws IOException
+	{
+		requireThat(manifest, "manifest").isNotNull();
+		return installCat && !plugins.isEmpty() && PluginManifest.name(plugins.getFirst(), manifest).equals(CAT_NAME);
+	}
+
+	/**
 	 * Holds the mutable values accumulated while parsing one bridge command.
 	 */
 	private static final class ParsedOptions
@@ -458,5 +563,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Duration capacityWait;
 		private int requestDepth;
 		private Path input;
+		private Path policyBound;
+		private boolean capacityHeld;
+		private String gitName;
+		private String gitEmail;
 	}
 }

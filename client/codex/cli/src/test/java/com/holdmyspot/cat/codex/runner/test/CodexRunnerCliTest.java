@@ -20,6 +20,9 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
@@ -32,9 +35,11 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
@@ -240,7 +245,7 @@ public final class CodexRunnerCliTest
 					root.resolve("locks"), 1, second, clock);
 				String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
 					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
-					"5", "--model", "gpt-6-luna", "--effort", "low"};
+					"5", "--model", "gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
 					CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
@@ -328,7 +333,7 @@ public final class CodexRunnerCliTest
 	{
 		String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
 			root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "gpt-6-luna",
-			"--effort", "low"};
+			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
 			CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
@@ -768,6 +773,119 @@ public final class CodexRunnerCliTest
 
 			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
 		}
+	}
+
+	/**
+	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
+	 * run, since only the session launcher starts a session and it always bounds the session's policy.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesLaunchWithoutPolicyBound() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
+				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model",
+				"gpt-6-luna", "--effort", "low"};
+			try
+			{
+				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				{
+					throw new AssertionError("The launch took a capacity slot");
+				});
+				throw new AssertionError("The launch was not refused");
+			}
+			catch (SessionRefusedException e)
+			{
+				requireThat(e.getMessage(), "message").contains("--policy-bound");
+			}
+			requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a Codex session that a bounded session of another harness requests starts within the bound that
+	 * the requesting session's runner gives it.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void startsSessionThatBoundedSessionRequests() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			ChildPolicy requesting = new ChildPolicy(List.of(root.toRealPath()), List.of(), List.of(), List.of(),
+				Set.of("api.openai.com"), false);
+			List<String> requested = PolicyBoundFile.boundArguments(JsonMapper.builder().build(), List.of("serve",
+				"--artifact", root.resolve("artifact").toString(), "--project", root.resolve("project").toString(),
+				"--run-root", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort", "low"),
+				root.resolve("request"), requesting);
+			try
+			{
+				CodexRunnerCli.serve(jvm, root, requested.toArray(String[]::new), new StringReader(""),
+					new StringWriter(), Map.of(), _ ->
+				{
+					throw new IllegalStateException("Capacity requested");
+				});
+				throw new AssertionError("The launch did not ask for capacity");
+			}
+			catch (IllegalStateException e)
+			{
+				requireThat(e.getMessage(), "message").isEqualTo("Capacity requested");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose requester holds the session's capacity slot takes none, so that it starts even
+	 * while every slot is taken.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void heldCapacityTakesNoSlot() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
+				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model",
+				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
+			try
+			{
+				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				{
+					throw new AssertionError("The launch took a capacity slot");
+				});
+				throw new AssertionError("The launch started a session without a CAT artifact");
+			}
+			catch (IOException _)
+			{
+				// The session starts without a slot, and fails only because the test runs no CAT artifact
+			}
+		}
+	}
+
+	/**
+	 * Writes a policy bound that lets a session's commands write the test's directory and reach OpenAI's API.
+	 *
+	 * @param root the test's directory
+	 * @return the bound's file
+	 * @throws IOException if the file cannot be written
+	 */
+	private static Path policyBound(Path root) throws IOException
+	{
+		return Files.writeString(root.resolve("policy-bound.json"), """
+			{"format_version": 1, "write_roots": ["%s"], "write_denials": [], "read_denials": [],
+			 "read_reallowances": [], "hosts": ["api.openai.com"], "allow_local_binding": false}
+			""".formatted(root.toAbsolutePath()));
 	}
 
 	/**

@@ -62,6 +62,22 @@ public final class HarnessProjectRepositoryTest
 	}
 
 	/**
+	 * Verifies that an identity that the launch names configures the copy instead of the source project's, so that a
+	 * copy made from a private copy of the project commits as the requester's project does, and that a named value
+	 * replaces only its own lookup.
+	 *
+	 * @throws IOException if the fixture cannot be created or initialization fails
+	 */
+	@Test
+	public void configuresNamedIdentity() throws IOException
+	{
+		Map<String, GitResult> host = Map.of("user.name", new GitResult(0, "Host User\n"),
+			"user.email", new GitResult(0, "host@example.test\n"));
+		verifyIdentity(host, "A User", "user@example.test", "A User", "user@example.test");
+		verifyIdentity(host, "A User", null, "A User", "host@example.test");
+	}
+
+	/**
 	 * Verifies a missing email discards the host name and selects the complete fixture identity.
 	 *
 	 * @throws IOException if the fixture cannot be created or initialization fails
@@ -140,6 +156,23 @@ public final class HarnessProjectRepositoryTest
 	private static void verifyIdentity(Map<String, GitResult> identity, String expectedName, String expectedEmail)
 		throws IOException
 	{
+		verifyIdentity(identity, null, null, expectedName, expectedEmail);
+	}
+
+	/**
+	 * Runs initialization with a named identity against completed Git results, checking command order, identity and
+	 * environment boundaries.
+	 *
+	 * @param identity      the host configuration lookup results; absent keys model Git status one with no output
+	 * @param name          the user name that the launch names, or {@code null} to look it up
+	 * @param email         the user email that the launch names, or {@code null} to look it up
+	 * @param expectedName  the user name that must be configured before the baseline commit
+	 * @param expectedEmail the user email that must be configured before the baseline commit
+	 * @throws IOException if the fixture cannot be created or initialization fails
+	 */
+	private static void verifyIdentity(Map<String, GitResult> identity, String name, String email,
+		String expectedName, String expectedEmail) throws IOException
+	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -174,11 +207,14 @@ public final class HarnessProjectRepositoryTest
 					return new GitResult(0, "");
 				});
 
-			HarnessProjectRepository.initialize(sourceProject, project, root, parent, executables);
+			HarnessProjectRepository.initialize(sourceProject, project, root, parent, executables, name, email);
 
-			requireThat(commands, "commands").isEqualTo(List.of(
-				List.of("git", "config", "--get", "user.name"),
-				List.of("git", "config", "--get", "user.email"),
+			List<List<String>> expected = new ArrayList<>();
+			if (name == null)
+				expected.add(List.of("git", "config", "--get", "user.name"));
+			if (email == null)
+				expected.add(List.of("git", "config", "--get", "user.email"));
+			expected.addAll(List.of(
 				List.of("git", "init", "--quiet"),
 				List.of("git", "config", "maintenance.auto", "false"),
 				List.of("git", "config", "gc.auto", "0"),
@@ -187,6 +223,7 @@ public final class HarnessProjectRepositoryTest
 				List.of("git", "add", "--all"),
 				List.of("git", "-c", "commit.gpgSign=false", "commit", "--quiet", "--allow-empty", "--no-verify", "-m",
 					"CAT fixture baseline")));
+			requireThat(commands, "commands").isEqualTo(expected);
 		}
 	}
 

@@ -78,7 +78,7 @@ public final class ClaudeRunner
 	/**
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
-	private static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
+	static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
 	/**
 	 * The name of the file in Claude's configuration directory that holds Claude's login.
 	 */
@@ -115,7 +115,8 @@ public final class ClaudeRunner
 	/**
 	 * Starts a validator with completed executor evidence mounted outside its writable workspace.
 	 *
-	 * @param artifact the complete Claude artifact
+	 * @param artifact the complete Claude artifact that the session installs as CAT and whose launcher the session
+	 *   requests sessions through
 	 * @param project the validator project
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param trialPlugins the trial plugins, each installed into the isolated home from the marketplace that bears its
@@ -137,6 +138,8 @@ public final class ClaudeRunner
 	 *   responses directories, and the session is told how to request one
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
+	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
+	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes, or a settings file that Claude Code also loads would
@@ -147,7 +150,7 @@ public final class ClaudeRunner
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
-		ChildPolicy bound, Consumer<ChildPolicy> policyListener)
+		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail)
 		throws IOException
 	{
 		requireThat(policyListener, "policyListener").isNotNull();
@@ -175,7 +178,7 @@ public final class ClaudeRunner
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
-				executables);
+				executables, gitName, gitEmail);
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
 			ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));

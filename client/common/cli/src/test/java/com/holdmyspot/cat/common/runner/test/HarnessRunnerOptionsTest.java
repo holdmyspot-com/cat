@@ -562,6 +562,97 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
+	 * Verifies that a session launcher's options reach the runner: the file of the session's policy bound, that the
+	 * requester holds the session's capacity slot, and the Git identity of the copied project; and that a launch
+	 * without them has no bound, takes its own slot and reads the identity from the source project.
+	 */
+	@Test
+	public void parsesLauncherOptions()
+	{
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--policy-bound",
+			absolute("requests/r1/policy-bound.json"), "--capacity-held", "--git-name", "A User", "--git-email",
+			"user@example.test"), "harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(), "harness", SESSION);
+
+		requireThat(result.policyBound(), "policyBound").isEqualTo(path("requests/r1/policy-bound.json"));
+		requireThat(result.capacityHeld(), "capacityHeld").isTrue();
+		requireThat(result.gitName(), "gitName").isEqualTo("A User");
+		requireThat(result.gitEmail(), "gitEmail").isEqualTo("user@example.test");
+		requireThat(without.policyBound(), "withoutPolicyBound").isNull();
+		requireThat(without.capacityHeld(), "withoutCapacityHeld").isFalse();
+		requireThat(without.gitName(), "withoutGitName").isNull();
+		requireThat(without.gitEmail(), "withoutGitEmail").isNull();
+	}
+
+	/**
+	 * Verifies that a launch that installs CAT and names, as its first plugin, a plugin whose manifest names it
+	 * {@code cat} installs that plugin as CAT, a candidate CAT under trial, and the other plugins beside it; and that
+	 * otherwise the artifact is CAT and every plugin is a trial plugin.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void installsCandidateCat() throws IOException
+	{
+		Path manifest = Path.of(".harness-plugin/plugin.json");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-options-"));
+			Path candidate = plugin(root.resolve("candidate"), manifest, "cat");
+			Path tools = plugin(root.resolve("tools"), manifest, "tools");
+			String[] withCandidate = {"--plugin", candidate.toString(), "--plugin", tools.toString()};
+
+			HarnessRunnerOptions trial = HarnessRunnerOptions.parse(launch(concat(withCandidate, "--install-cat")),
+				"harness", SESSION);
+			HarnessRunnerOptions withoutCat = HarnessRunnerOptions.parse(launch(withCandidate), "harness", SESSION);
+			HarnessRunnerOptions toolsFirst = HarnessRunnerOptions.parse(launch("--install-cat", "--plugin",
+				tools.toString(), "--plugin", candidate.toString()), "harness", SESSION);
+
+			requireThat(trial.catArtifact(manifest), "trialCat").isEqualTo(candidate);
+			requireThat(trial.trialPlugins(manifest), "trialPlugins").isEqualTo(List.of(tools));
+			requireThat(withoutCat.catArtifact(manifest), "withoutCat").isEqualTo(path("artifact"));
+			requireThat(withoutCat.trialPlugins(manifest), "withoutCatPlugins").isEqualTo(List.of(candidate, tools));
+			requireThat(toolsFirst.catArtifact(manifest), "toolsFirstCat").isEqualTo(path("artifact"));
+			requireThat(toolsFirst.trialPlugins(manifest), "toolsFirstPlugins").isEqualTo(List.of(tools, candidate));
+			requireThat(HarnessRunnerOptions.catArtifact(launch(concat(withCandidate, "--install-cat")), manifest),
+				"unparsedTrialCat").isEqualTo(candidate);
+			requireThat(HarnessRunnerOptions.catArtifact(launch(withCandidate), manifest), "unparsedWithoutCat").
+				isEqualTo(path("artifact"));
+		}
+	}
+
+	/**
+	 * Creates a plugin directory whose manifest names the plugin.
+	 *
+	 * @param directory the new directory
+	 * @param manifest  the manifest's path relative to the directory
+	 * @param name      the plugin's name
+	 * @return {@code directory}
+	 * @throws IOException if the directory cannot be created
+	 */
+	private static Path plugin(Path directory, Path manifest, String name) throws IOException
+	{
+		Path file = directory.resolve(manifest);
+		Files.createDirectories(file.getParent());
+		Files.writeString(file, "{\"name\":\"" + name + "\"}");
+		return directory;
+	}
+
+	/**
+	 * Returns options followed by more options.
+	 *
+	 * @param first the first options
+	 * @param more  the options that follow
+	 * @return the options
+	 */
+	private static String[] concat(String[] first, String... more)
+	{
+		List<String> result = new ArrayList<>(List.of(first));
+		result.addAll(List.of(more));
+		return result.toArray(String[]::new);
+	}
+
+	/**
 	 * Returns an absolute path below the file system root.
 	 *
 	 * @param relative the path relative to the root, using {@code /} as the separator
