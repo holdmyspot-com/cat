@@ -96,7 +96,7 @@ public final class ExecutableDiscoveryTest
 	 * @throws IOException if the fixture cannot be created or discovery fails
 	 */
 	@Test(dataProvider = "excludedDirectories", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*resolves into a directory that setup never records.*")
+		expectedExceptionsMessageRegExp = ".*resolves into a directory that install never records.*")
 	public void refusesLinkIntoExcludedDirectory(String excluded) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())

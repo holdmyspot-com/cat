@@ -120,7 +120,10 @@ public final class Uninstaller
 	{
 		Path recorded = policy.harnesses().get(activation.harness());
 		if (recorded == null)
-			return failure(Result.REFUSED, "Run the explicit CAT setup command for this harness.", List.of());
+		{
+			return failure(Result.REFUSED, "CAT's install has not recorded this harness, so there is nothing to " +
+				"uninstall.", List.of());
+		}
 		String step = STEPS.getFirst();
 		boolean unregistered;
 		try

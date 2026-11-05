@@ -203,14 +203,14 @@ public final class ExecutableDiscovery
 		{
 			throw new IOException("The program \"" + program + "\" is not on PATH (" + searchPath + "), outside the " +
 				"working directory, the temporary directories, the harness home, <user home>/.cat and the installer's " +
-				"data. Install the harness, or add its directory to PATH, and rerun setup.");
+				"data. Install the harness, or add its directory to PATH, and run CAT's install again.");
 		}
 		Path path = Path.of(found).toAbsolutePath().normalize();
 		if (isExcluded(path, excluded))
 		{
-			throw new IOException("The program " + path + " resolves into a directory that setup never records, " +
+			throw new IOException("The program " + path + " resolves into a directory that install never records, " +
 				"because a project, a download or the installer could replace it there: " + resolved(path) + ". " +
-				"Install the harness elsewhere and rerun setup.");
+				"Install the harness elsewhere and run CAT's install again.");
 		}
 		return path;
 	}

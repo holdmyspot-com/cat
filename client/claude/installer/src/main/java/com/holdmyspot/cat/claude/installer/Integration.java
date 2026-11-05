@@ -186,7 +186,7 @@ public final class Integration implements HarnessIntegration
 		String homeVariable = platform.homeVariable();
 		String userHome = environment.get(homeVariable);
 		if (userHome == null || userHome.isBlank())
-			throw new IOException(homeVariable + " is not set, so setup cannot find Claude Code's default directory");
+			throw new IOException(homeVariable + " is not set, so install cannot find Claude Code's default directory");
 		Map<String, String> variables = new HashMap<>();
 		variables.put(homeVariable, userHome);
 		if (!home.normalize().equals(Path.of(userHome).toAbsolutePath().normalize().resolve(".claude")))
@@ -209,7 +209,7 @@ public final class Integration implements HarnessIntegration
 		{
 			throw new IOException("claude --version did not identify Claude Code (exit status " + version.exitCode() +
 				"): " + version.output().strip() + ". Install Claude Code, or put its directory first on PATH, and " +
-				"rerun setup.");
+				"run CAT's install again.");
 		}
 	}
 
