@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -18,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -920,6 +922,11 @@ public final class ClaudeConnectionSettingsTest
 	@Test(dataProvider = "wideningSettings")
 	public void refusesWideningSettings(String content, String setting) throws IOException
 	{
+		if (content.contains("SECRETS") && Platform.current().isWindows())
+		{
+			throw new SkipException("The settings name a folder in Claude Code's POSIX path form, and Claude Code " +
+				"has no sandbox on native Windows, so CAT checks no session's settings there");
+		}
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -948,6 +955,11 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void acceptsSettingsWithinPolicy() throws IOException
 	{
+		if (Platform.current().isWindows())
+		{
+			throw new SkipException("The settings name the run's folder in Claude Code's POSIX rule form, and " +
+				"Claude Code has no sandbox on native Windows, so CAT checks no session's settings there");
+		}
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{

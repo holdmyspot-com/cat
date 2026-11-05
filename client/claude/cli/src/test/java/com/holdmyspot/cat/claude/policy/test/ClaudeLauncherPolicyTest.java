@@ -4,12 +4,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.runner.ClaudeSessionLauncherCli;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import java.io.IOException;
 import java.time.Instant;
+import org.testng.SkipException;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 /**
@@ -23,6 +26,20 @@ public final class ClaudeLauncherPolicyTest
 	 */
 	public ClaudeLauncherPolicyTest()
 	{
+	}
+
+	/**
+	 * Skips the tests on native Windows, where Claude Code has no sandbox and CAT starts no session launcher, so that
+	 * no Claude Code session's sandbox policy is read there.
+	 */
+	@BeforeClass
+	public void requireSandboxPlatform()
+	{
+		if (Platform.current().isWindows())
+		{
+			throw new SkipException("Claude Code has no sandbox on native Windows, so CAT reads no session's " +
+				"policy there");
+		}
 	}
 
 	/**

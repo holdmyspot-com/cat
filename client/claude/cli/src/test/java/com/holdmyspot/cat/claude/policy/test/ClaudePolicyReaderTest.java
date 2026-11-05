@@ -3,6 +3,7 @@ package com.holdmyspot.cat.claude.policy.test;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
@@ -10,6 +11,8 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import org.testng.SkipException;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.write;
@@ -37,6 +40,20 @@ public final class ClaudePolicyReaderTest
 	 */
 	public ClaudePolicyReaderTest()
 	{
+	}
+
+	/**
+	 * Skips the tests on native Windows, where Claude Code has no sandbox and CAT starts no session launcher, so that
+	 * no Claude Code session's sandbox policy is read there.
+	 */
+	@BeforeClass
+	public void requireSandboxPlatform()
+	{
+		if (Platform.current().isWindows())
+		{
+			throw new SkipException("Claude Code has no sandbox on native Windows, so CAT reads no session's " +
+				"policy there");
+		}
 	}
 
 	/**
