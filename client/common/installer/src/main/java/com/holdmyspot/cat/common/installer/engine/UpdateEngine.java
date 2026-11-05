@@ -41,8 +41,10 @@ import java.util.function.Predicate;
  * harness has a CAT version, the install updates it under the release and downgrade rules. The installer writes the
  * plugin into CAT's marketplace in the harness home and asks the harness to install it into the version's own
  * version folder; it then trains the plugin's startup cache there and rewrites the permission entries to name the
- * installer in that folder. Nothing in the version folder that the running installer belongs to is moved or replaced,
- * and the policy is never written.
+ * installer in that folder. Every install that succeeds, including one that finds the harness up to date, then deletes
+ * the version folders other than the active version's, the one that it replaced and the running installer's. Nothing
+ * in the version folder that the running installer belongs to is moved, replaced or deleted, and the policy is never
+ * written.
  */
 public final class UpdateEngine
 {
@@ -428,8 +430,9 @@ public final class UpdateEngine
 		{
 			return stopped(plugin, active, e, versionFolder);
 		}
-		return result(Result.UP_TO_DATE, active.version(), null, entries.withNotices("CAT is up to date."),
-			List.of());
+		String message = withOldFolders(entries.withNotices("CAT is up to date."), installation, plugin, active,
+			request.image());
+		return result(Result.UP_TO_DATE, active.version(), null, message, List.of());
 	}
 
 	/**
@@ -514,11 +517,35 @@ public final class UpdateEngine
 		}
 		if (active.version() == null)
 		{
-			return result(Result.INSTALLED, plugin.toString(), null, entries.withNotices("CAT was installed."),
-				List.of()).withAotCache(startupCache);
+			String message = withOldFolders(entries.withNotices("CAT was installed."), installation, plugin, active,
+				request.image());
+			return result(Result.INSTALLED, plugin.toString(), null, message, List.of()).withAotCache(startupCache);
 		}
-		return result(Result.UPDATED, plugin.toString(), active.version(), entries.withNotices("CAT was updated."),
-			List.of()).withAotCache(startupCache);
+		String message = withOldFolders(entries.withNotices("CAT was updated."), installation, plugin, active,
+			request.image());
+		return result(Result.UPDATED, plugin.toString(), active.version(), message, List.of()).
+			withAotCache(startupCache);
+	}
+
+	/**
+	 * Deletes the version folders that the harness no longer needs after an install that succeeded, keeping the
+	 * installed version's, the replaced version's and the running installer's, and adds a sentence to the install's
+	 * message for each folder that it left for a later install.
+	 *
+	 * @param message      the install's message
+	 * @param installation the harness installation
+	 * @param installed    the version that the harness runs after the install
+	 * @param active       the harness's CAT version before the install
+	 * @param image        the plugin folder that the running installer belongs to
+	 * @return the message, followed by any sentences about folders that were left
+	 */
+	private String withOldFolders(String message, HarnessInstallation installation, PluginVersion installed,
+		Active active, Path image)
+	{
+		List<String> notices = new VersionFolders(installation, state).retain(installed, active.plugin(), image);
+		if (notices.isEmpty())
+			return message;
+		return message + " " + String.join(" ", notices);
 	}
 
 	/**
