@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
@@ -41,6 +42,14 @@ public final class RunnerRelayTest
 	};
 
 	/**
+	 * A session launcher that no launch may reach.
+	 */
+	private static final RunnerRelay.SessionLaunch NO_REQUEST = (_, _, _, _, _) ->
+	{
+		throw new AssertionError("No request is sent to the session launcher");
+	};
+
+	/**
 	 * Creates the test.
 	 */
 	public RunnerRelayTest()
@@ -48,13 +57,14 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that outside a run the launcher runs the selected artifact's runner, which runs its own artifact, with
-	 * only the caller's options, and exits with the runner's status.
+	 * Verifies that on native Windows, which has no session launcher, the launcher sends no request but runs the
+	 * selected artifact's runner, which runs its own artifact, with only the caller's options, and exits with the
+	 * runner's status.
 	 *
 	 * @throws IOException if the relay fails
 	 */
 	@Test
-	public void runsSelectedArtifactRunner() throws IOException
+	public void runsSelectedArtifactRunnerOnWindows() throws IOException
 	{
 		// Requirement: R-I9, R-I11
 		Path artifact = Path.of("/other-artifact").toAbsolutePath();
@@ -62,7 +72,8 @@ public final class RunnerRelayTest
 		List<List<String>> commands = new ArrayList<>();
 
 		int status = RunnerRelay.relay("harness-b", new String[]{"--project", "project", "--input", "turns.jsonl"},
-			Map.of("PATH", "programs"), () -> "artifact=" + artifact + "\nrunner=" + runner + "\nsource=installed\n",
+			Map.of("PATH", "programs"), Platform.WINDOWS_X64, NO_REQUEST,
+			() -> "artifact=" + artifact + "\nrunner=" + runner + "\nsource=installed\n",
 			(command, environment) ->
 			{
 				commands.add(command);
@@ -100,7 +111,7 @@ public final class RunnerRelayTest
 		StringWriter errors = new StringWriter();
 
 		int status = RunnerRelay.relay("harness-b", new String[]{"--project", "project", option, "elsewhere"},
-			Map.of(), () ->
+			Map.of(), Platform.LINUX_X64, NO_REQUEST, () ->
 			{
 				throw new AssertionError("No artifact is selected");
 			}, (_, _) ->
@@ -128,7 +139,7 @@ public final class RunnerRelayTest
 		StringWriter errors = new StringWriter();
 
 		int status = RunnerRelay.relay("harness-b", new String[]{"--project", "project"},
-			Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1"), () ->
+			Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1"), Platform.LINUX_X64, NO_REQUEST, () ->
 			{
 				throw new AssertionError("No artifact is selected");
 			}, (_, _) ->
@@ -140,6 +151,63 @@ public final class RunnerRelayTest
 		requireThat(errors.toString(), "errors").contains("harness-b-runner").
 			contains("sandbox_workspace_write.network_access = true");
 		requireThat(output.size(), "outputBytes").isEqualTo(0);
+	}
+
+	/**
+	 * Verifies that outside a run, except on native Windows, the launcher selects no artifact and starts no runner,
+	 * but sends the launch to the session launcher and exits with its status.
+	 *
+	 * @throws IOException if the relay fails
+	 */
+	@Test
+	public void sendsLaunchToSessionLauncher() throws IOException
+	{
+		List<List<String>> launches = new ArrayList<>();
+
+		int status = RunnerRelay.relay("harness-b", new String[]{"--project", "project"}, Map.of(),
+			Platform.LINUX_X64, (harness, args, _, _, _) ->
+			{
+				List<String> launch = new ArrayList<>(List.of(harness));
+				launch.addAll(List.of(args));
+				launches.add(launch);
+				return 75;
+			}, () ->
+			{
+				throw new AssertionError("No artifact is selected");
+			}, (_, _) ->
+			{
+				throw new AssertionError("No runner starts");
+			}, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
+
+		requireThat(status, "status").isEqualTo(75);
+		requireThat(launches, "launches").isEqualTo(List.of(List.of("harness-b", "--project", "project")));
+	}
+
+	/**
+	 * Verifies that a launch that a session launcher started runs the selected artifact's runner in place, without
+	 * sending another request.
+	 *
+	 * @throws IOException if the relay fails
+	 */
+	@Test
+	public void runsLauncherChildInPlace() throws IOException
+	{
+		Path artifact = Path.of("/other-artifact").toAbsolutePath();
+		Path runner = artifact.resolve("bin/harness-b-runner");
+		List<List<String>> commands = new ArrayList<>();
+
+		int status = RunnerRelay.relay("harness-b", new String[]{"--policy-bound", "policy.json"}, Map.of(),
+			Platform.LINUX_X64, NO_REQUEST,
+			() -> "artifact=" + artifact + "\nrunner=" + runner + "\nsource=installed\n",
+			(command, _) ->
+			{
+				commands.add(command);
+				return 0;
+			}, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
+
+		requireThat(status, "status").isEqualTo(0);
+		requireThat(commands, "commands").isEqualTo(List.of(List.of(runner.toString(), "--policy-bound",
+			"policy.json")));
 	}
 
 	/**
@@ -161,7 +229,7 @@ public final class RunnerRelayTest
 
 			int status = RunnerRelay.relay("harness-b", new String[]{"--project", project.toString(), "--model",
 				"model-b", "--effort", "effort-b"},
-				Map.of(RunnerRelay.REQUESTS_VARIABLE, requests.toString()), () ->
+				Map.of(RunnerRelay.REQUESTS_VARIABLE, requests.toString()), Platform.LINUX_X64, NO_REQUEST, () ->
 				{
 					throw new AssertionError("No artifact is selected");
 				}, (_, _) ->

@@ -29,6 +29,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -92,7 +93,10 @@ public final class ClaudeRunnerCli
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
-	 * receipt.
+	 * receipt. Outside a run, the launch becomes a request to the session launcher of the harness process that runs
+	 * the command, which starts the session outside the command's sandbox, unless a session launcher started the
+	 * launch itself: that launch names {@value SessionLauncherClient#POLICY_BOUND_OPTION} and serves the session in
+	 * place.
 	 *
 	 * @param args the command's options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -119,6 +123,12 @@ public final class ClaudeRunnerCli
 			System.exit(SessionRequestForwarder.forward(HARNESS_ID, args,
 				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
 				System.out, new PrintWriter(System.err, true, UTF_8)));
+		}
+		if (SessionLauncherClient.serves(Platform.current(), args))
+		{
+			System.exit(SessionLauncherClient.launchFromMain(HARNESS_ID, args, environment, Pause::sleeping,
+				new InputStreamReader(System.in, UTF_8), System.out,
+				new PrintWriter(System.err, true, UTF_8)));
 		}
 		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(ClaudeRunnerCli.class));
 		Path home = Platform.current().homeDirectory(environment);

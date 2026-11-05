@@ -15,7 +15,8 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.RuleVariableResolver;
-import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 
@@ -722,7 +723,9 @@ public final class ClaudeSessions extends RunnerSessions
 	}
 
 	/**
-	 * Creates the bridge that runs the real runner.
+	 * Creates the bridge that runs the real runner: each session is a request to the session launcher of the harness
+	 * process that runs the optimizer, which starts the runner of this plugin's CAT artifact outside the optimizer's
+	 * sandbox.
 	 *
 	 * @param settings how the runner is configured
 	 * @return the bridge
@@ -730,8 +733,8 @@ public final class ClaudeSessions extends RunnerSessions
 	private static Bridge productionBridge(Settings settings)
 	{
 		requireThat(settings, "settings").isNotNull();
-		return (arguments, input, output) -> ClaudeRunnerCli.serve(settings.scope(), Path.of(""),
-			arguments.toArray(String[]::new), input, output,
-			settings.environment(), _ -> HarnessCapacity.unlimited());
+		return (arguments, input, output) -> SessionLauncherClient.production(settings.environment(),
+			settings.scope().waiting()).bridge(HARNESS_ID,
+			PluginDirectory.of(ClaudeRunnerCli.class)).serve(arguments, input, output);
 	}
 }

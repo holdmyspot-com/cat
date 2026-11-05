@@ -29,6 +29,7 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -73,7 +74,10 @@ public final class CodexRunnerCli
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
-	 * receipt.
+	 * receipt. Outside a run, the launch becomes a request to the session launcher of the harness process that runs
+	 * the command, which starts the session outside the command's sandbox, unless a session launcher started the
+	 * launch itself: that launch names {@value SessionLauncherClient#POLICY_BOUND_OPTION} and serves the session in
+	 * place.
 	 *
 	 * @param args the command and its options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -103,6 +107,15 @@ public final class CodexRunnerCli
 			System.exit(SessionRequestForwarder.forward(HARNESS_ID, launch,
 				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
 				System.out, new PrintWriter(System.err, true, UTF_8)));
+		}
+		if (SessionLauncherClient.serves(Platform.current(), args))
+		{
+			String[] launch = args;
+			if (launch.length > 0 && launch[0].equals("serve"))
+				launch = Arrays.copyOfRange(launch, 1, launch.length);
+			System.exit(SessionLauncherClient.launchFromMain(HARNESS_ID, launch, environment, Pause::sleeping,
+				new InputStreamReader(System.in, UTF_8), System.out,
+				new PrintWriter(System.err, true, UTF_8)));
 		}
 		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(CodexRunnerCli.class));
 		Path home = Platform.current().homeDirectory(environment);
