@@ -2418,8 +2418,7 @@ public final class DriverTest
 		Builder start = new Builder().confirmed().working(1).readyBaseline();
 		for (String cell : contract.cellIds())
 			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
-			Boundaries.PAIRED_MINIMUM_PASS_RATE);
+		DecisionBoundaries boundaries = Boundaries.paired(contract.cellIds().size());
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : contract.cellIds())
 			oneControlPairShort(running, boundaries, contract, cell);
@@ -2468,9 +2467,8 @@ public final class DriverTest
 	 * The fixture seeds all earlier evidence instead of replaying the trials that produced it. Both cells must remain:
 	 * the incumbent-cell assertion checks that neither is omitted, and the delivered record must contain passing
 	 * incumbent comparisons for each assertion. The driver therefore processes the last formal, control and incumbent
-	 * trials of each cell and persists their results before delivery. This remaining trial and store work can take one
-	 * second or longer during a parallel build; removing a cell or pre-certifying its incumbent comparisons would lose
-	 * those assertions' coverage.
+	 * trials of each cell and persists their results before delivery; removing a cell or pre-certifying its incumbent
+	 * comparisons would lose those assertions' coverage.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -2483,8 +2481,7 @@ public final class DriverTest
 		Builder start = new Builder().confirmed().working(1).readyBaseline();
 		for (String cell : contract.cellIds())
 			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
-			Boundaries.PAIRED_MINIMUM_PASS_RATE);
+		DecisionBoundaries boundaries = Boundaries.paired(contract.cellIds().size());
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : contract.cellIds())
 			oneReferencePairShort(running, boundaries, contract, cell);
@@ -2730,7 +2727,7 @@ public final class DriverTest
 	private static Pairing onePairShort(DecisionBoundaries boundaries, Contract contract, String cell)
 	{
 		int pairs = PairedComparison.fewestEvenPairsToPass(PairTally.EMPTY, boundaries.level(),
-			Boundaries.STANDARD_CAP) - 1;
+			boundaries.cap()) - 1;
 		Map<String, PairCounts> comparisons = new LinkedHashMap<>();
 		for (Assertion assertion : contract.testOf(contract.findCell(cell).orElseThrow()).allAssertions())
 			comparisons.put(assertion.id(), new PairCounts(pairs, 0, 0, 0));
@@ -4031,8 +4028,7 @@ public final class DriverTest
 		Builder start = twoProfileStart();
 		Contract contract = ContractFixtures.twoCellContract();
 		// The failing cells stay within reach until their fifth failure makes them clearly below
-		DecisionBoundaries boundaries = Boundaries.reachableAtFourFailures(Boundaries.standard(
-			contract.cellIds().size(), Boundaries.PAIRED_MINIMUM_PASS_RATE), 5);
+		DecisionBoundaries boundaries = Boundaries.pairedReachableAtFourFailures(contract.cellIds().size(), 5);
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : List.of(ContractFixtures.SMALL_CELL, ContractFixtures.PLAIN_SMALL_CELL, "safety"))
 			oneControlPairShort(running, boundaries, contract, cell);
@@ -4264,8 +4260,7 @@ public final class DriverTest
 		Builder start = new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).readyBaseline();
 		for (String cell : contract.cellIds())
 			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
-		DecisionBoundaries boundaries = Boundaries.standard(contract.cellIds().size(),
-			Boundaries.PAIRED_MINIMUM_PASS_RATE);
+		DecisionBoundaries boundaries = Boundaries.paired(contract.cellIds().size());
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : contract.cellIds())
 			oneControlPairShort(running, boundaries, contract, cell);
@@ -4575,8 +4570,7 @@ public final class DriverTest
 		for (String cell : contract.cellIds())
 			start.baseline(cell, Baseline.TARGET - 1, 0);
 		Contract scoped = start.build().contract();
-		DecisionBoundaries boundaries = Boundaries.standard(CellTier.scopeCellIds(scoped).size(),
-			Boundaries.PAIRED_MINIMUM_PASS_RATE);
+		DecisionBoundaries boundaries = Boundaries.paired(CellTier.scopeCellIds(scoped).size());
 		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
 		for (String cell : List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY))
 			running.cell(cell, certifyingPasses(boundaries), 0);

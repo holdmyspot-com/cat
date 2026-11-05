@@ -5,8 +5,10 @@ import com.holdmyspot.cat.common.optimizer.statistics.Comparison;
 import com.holdmyspot.cat.common.optimizer.statistics.ComparisonBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.ErrorBudget;
+import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,6 +31,15 @@ public final class Boundaries
 	 * with control and incumbent trials.
 	 */
 	public static final BigDecimal PAIRED_MINIMUM_PASS_RATE = new BigDecimal("0.90");
+	/**
+	 * The cap of {@link #paired(int)}.
+	 */
+	public static final int PAIRED_CAP = 60;
+	/**
+	 * The certification level of {@link #paired(int)}: an error probability of {@code 1 / 2}, at which a paired
+	 * comparison passes after 22 pairs in which both trials pass.
+	 */
+	private static final SignificanceLevel PAIRED_LEVEL = new SignificanceLevel(BigInteger.TWO);
 
 	/**
 	 * Prevents instantiation.
@@ -66,6 +77,60 @@ public final class Boundaries
 		for (int i = 0; i < cells; ++i)
 			comparisons.add(comparison(STANDARD_CAP, 60, 40, 4, minimumPassRate));
 		return decision(STANDARD_CAP, 100, 50, 5, comparisons, minimumPassRate);
+	}
+
+	/**
+	 * Returns boundaries at the minimum pass rate {@link #PAIRED_MINIMUM_PASS_RATE}, at which certification compares
+	 * each assertion with control and incumbent trials, scaled down so that the paired comparisons need few pairs.
+	 * <p>
+	 * A paired comparison's e-value is exact integer arithmetic whose cost grows with its pairs and with the pairs
+	 * that the cap still permits, and the driver evaluates it for every comparison at every step. These boundaries
+	 * keep both small for tests whose claim is how the driver acts on comparisons rather than how many pairs they
+	 * need: the certification level is {@code 1 / 2} rather than an attempt's, and the cap is {@value #PAIRED_CAP}
+	 * outcomes. A cell certifies at {@code 20 + 10 * failures} passes when that count is reachable within the cap and
+	 * is clearly below once it has 5 failures. It is proven better at {@code 12 + 8 * failures} passes when reachable,
+	 * and proven worse at 4 or more failures only if its pass count is below the proven-better minimum.
+	 *
+	 * @param cells the number of cells requiring comparison boundaries
+	 * @return the boundaries
+	 */
+	public static DecisionBoundaries paired(int cells)
+	{
+		return pairedDecision(20, 10, 5, cells);
+	}
+
+	/**
+	 * Returns the boundaries of {@link #paired(int)} that certify at {@code 20 + 9 * failures} passes when reachable
+	 * within the cap of {@value #PAIRED_CAP}. Unlike {@link #paired(int)}, 4 failures still leave certification
+	 * within reach, at 56 passes, and a fifth failure puts it out of reach.
+	 *
+	 * @param cells the number of cells requiring comparison boundaries
+	 * @param belowFailures the minimum failures for a clearly-below decision when passes are below the certifying
+	 *   minimum
+	 * @return the boundaries
+	 */
+	public static DecisionBoundaries pairedReachableAtFourFailures(int cells, int belowFailures)
+	{
+		return pairedDecision(20, 9, belowFailures, cells);
+	}
+
+	/**
+	 * Returns boundaries at the cap and certification level of {@link #paired(int)}.
+	 *
+	 * @param base the passes that certify with no failures
+	 * @param step the additional passes that each failure requires
+	 * @param belowFailures the minimum failures for a clearly-below decision when passes are below the certifying minimum
+	 * @param cells the number of cells requiring comparison boundaries
+	 * @return the boundaries
+	 */
+	private static DecisionBoundaries pairedDecision(int base, int step, int belowFailures, int cells)
+	{
+		List<ComparisonBoundaries> comparisons = new ArrayList<>();
+		for (int i = 0; i < cells; ++i)
+			comparisons.add(comparison(PAIRED_CAP, 12, 8, 4, PAIRED_MINIMUM_PASS_RATE));
+		List<Integer> minimums = minimums(PAIRED_CAP, base, step);
+		return new DecisionBoundaries(PAIRED_LEVEL, PAIRED_MINIMUM_PASS_RATE, PAIRED_CAP, minimums,
+			maximums(PAIRED_CAP, minimums, belowFailures), comparisons);
 	}
 
 	/**
