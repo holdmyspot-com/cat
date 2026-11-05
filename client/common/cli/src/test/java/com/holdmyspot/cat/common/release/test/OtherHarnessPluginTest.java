@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -41,6 +42,8 @@ public final class OtherHarnessPluginTest
 	@Test
 	public void namesPlainPosixCommandUnquoted() throws IOException
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException("A POSIX shell treats the backslashes of a Windows path specially");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-plain-")), "plugin");
@@ -93,7 +96,7 @@ public final class OtherHarnessPluginTest
 
 	/**
 	 * Verifies that when the other harness has a CAT plugin of another release, the command is that installation's own
-	 * installer, which updates it to this plugin's release.
+	 * installer for the platform that runs the test, which updates it to this plugin's release.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -107,10 +110,15 @@ public final class OtherHarnessPluginTest
 			String installed = "0.9+b0123456789ab";
 			Path folder = Files.createDirectories(other.versionFolders().resolve(installed));
 
-			String message = refusal(plugin, other, List.of(installed), Platform.LINUX_X64);
+			Platform platform = Platform.current();
 
-			requireThat(message, "message").endsWith(": " + folder.resolve("bin/installer") +
-				" install --harness harness-b v1.0");
+			String message = refusal(plugin, other, List.of(installed), platform);
+
+			// The "+" of the installed version's folder is not a PowerShell word character
+			String installer = folder.resolve("bin/installer").toString();
+			if (platform.isWindows())
+				installer = "& '" + folder.resolve("bin/installer.ps1").toString().replace("'", "''") + "'";
+			requireThat(message, "message").endsWith(": " + installer + " install --harness harness-b v1.0");
 		}
 	}
 

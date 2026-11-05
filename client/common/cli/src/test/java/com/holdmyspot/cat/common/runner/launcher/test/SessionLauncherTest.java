@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.launcher.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
@@ -37,6 +38,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -430,8 +432,8 @@ public final class SessionLauncherTest
 	}
 
 	/**
-	 * Verifies that an inbox entry that is a symbolic link, or that is not a regular file, is deleted without being
-	 * read, even when a holder in the served tree names the digest of the link's target.
+	 * Verifies that an inbox entry that is a symbolic link is deleted without being read, even when a holder in the
+	 * served tree names the digest of the link's target.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -448,17 +450,42 @@ public final class SessionLauncherTest
 			byte[] targetBytes = Files.readAllBytes(target);
 			Path link = Files.createSymbolicLink(fixture.requestFile(linkedId), target);
 			fixture.hold(linkedId, 0, target, fixture.sandbox);
+
+			requireThat(launcher.poll(), "poll").isTrue();
+
+			requireThat(Files.exists(link, LinkOption.NOFOLLOW_LINKS), "link").isFalse();
+			requireThat(Files.readAllBytes(target), "target").isEqualTo(targetBytes);
+			requireThat(fixture.starter.runners(), "runners").isEmpty();
+			requireThat(Files.exists(fixture.channel.requestDirectory(linkedId)), "requestDirectory").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that an inbox entry that is a folder rather than a regular file is deleted with its contents without
+	 * being read.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void deletesInboxFoldersUnread() throws IOException
+	{
+		if (Platform.current().isWindows())
+		{
+			throw new SkipException("Native Windows opens no folder without following links, so the launcher " +
+				"leaves an inbox folder, and CAT starts no session launcher there");
+		}
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			requireThat(launcher.start(), "start").isTrue();
 			String directoryId = SessionLauncherChannel.newId();
 			Path directory = Files.createDirectory(fixture.requestFile(directoryId));
 			Files.writeString(directory.resolve("inner"), "inner bytes");
 
 			requireThat(launcher.poll(), "poll").isTrue();
 
-			requireThat(Files.exists(link, LinkOption.NOFOLLOW_LINKS), "link").isFalse();
 			requireThat(Files.exists(directory, LinkOption.NOFOLLOW_LINKS), "directory").isFalse();
-			requireThat(Files.readAllBytes(target), "target").isEqualTo(targetBytes);
 			requireThat(fixture.starter.runners(), "runners").isEmpty();
-			requireThat(Files.exists(fixture.channel.requestDirectory(linkedId)), "requestDirectory").isFalse();
 		}
 	}
 

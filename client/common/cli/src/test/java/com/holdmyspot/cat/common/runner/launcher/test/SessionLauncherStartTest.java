@@ -29,6 +29,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -114,6 +115,11 @@ public final class SessionLauncherStartTest
 	@Test
 	public void startsUnderSetsidWhenOnPath() throws IOException
 	{
+		if (Platform.current().isWindows())
+		{
+			throw new SkipException("A POSIX PATH cannot name a Windows folder, and native Windows has no session " +
+				"launcher");
+		}
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();

@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Stream;
+import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -49,6 +50,11 @@ public final class SessionLauncherClientTest
 	 * The instant at which each test's clock starts.
 	 */
 	private static final Instant START = Instant.parse("2026-11-05T12:00:00Z");
+	/**
+	 * Why a test that models a refusal with POSIX permissions does not run on native Windows.
+	 */
+	private static final String NO_POSIX_PERMISSIONS = "POSIX permissions model the refusal, and native Windows " +
+		"has neither them nor a session launcher";
 	/**
 	 * The product name of the harness that runs the tests' sessions.
 	 */
@@ -187,6 +193,8 @@ public final class SessionLauncherClientTest
 	@Test
 	public void exitsWhenStateIsUnreadable() throws IOException
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException(NO_POSIX_PERMISSIONS);
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -420,6 +428,8 @@ public final class SessionLauncherClientTest
 	@Test
 	public void refusedFileIsSkippedSilently() throws IOException
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException(NO_POSIX_PERMISSIONS);
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -461,6 +471,8 @@ public final class SessionLauncherClientTest
 	@Test
 	public void refusedFolderIsSkippedWithItsSubtree() throws IOException
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException(NO_POSIX_PERMISSIONS);
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -502,6 +514,8 @@ public final class SessionLauncherClientTest
 	@Test
 	public void otherFailureReportsIncompleteRun() throws IOException
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException(NO_POSIX_PERMISSIONS);
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
