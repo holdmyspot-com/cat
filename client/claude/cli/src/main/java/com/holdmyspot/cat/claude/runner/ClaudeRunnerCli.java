@@ -133,6 +133,11 @@ public final class ClaudeRunnerCli
 			System.err.println(e.getMessage());
 			System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
 		}
+		catch (SessionRefusedException e)
+		{
+			System.err.println(e.getMessage());
+			System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		}
 	}
 
 	/**
