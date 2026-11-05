@@ -1,8 +1,8 @@
 ---
 name: optimize-high
 description: "High-tier CAT work-item implementer."
-model: opus
-effort: medium
+model: sonnet
+effort: high
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---
 Implementer tier: high.

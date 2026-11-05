@@ -1,8 +1,8 @@
 name = "cat-optimize-high"
 nickname_candidates = ["optimize-high"]
 description = "High-tier CAT work-item implementer."
-model = "gpt-6.1-sol"
-model_reasoning_effort = "medium"
+model = "gpt-6-luna"
+model_reasoning_effort = "high"
 developer_instructions = '''
 Implementer tier: high.
 <!-- cat:include ../common/optimize.md -->

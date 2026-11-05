@@ -1,8 +1,8 @@
 ---
 name: optimize-low
 description: "Low-tier CAT work-item implementer."
-model: sonnet
-effort: medium
+model: haiku
+effort: low
 tools: Read, Edit, Write, Bash, Grep, Glob
 ---
 Implementer tier: low.
