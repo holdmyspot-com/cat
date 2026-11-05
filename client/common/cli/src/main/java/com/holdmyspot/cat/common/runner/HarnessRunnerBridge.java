@@ -238,11 +238,10 @@ public final class HarnessRunnerBridge
 							throw new IOException("Unsupported bridge message type: " + type);
 						line = lines.readLine();
 					}
+					// Input that ends without complete means that the requester has gone away, so no one reads the rest of
+					// the turn: the failure below stops it instead of waiting for it
 					if (!completed)
-					{
-						awaitActiveTurn(activeTurn);
 						throw new IOException("Bridge input ended without a complete message");
-					}
 				}
 				catch (IOException | RuntimeException e)
 				{
