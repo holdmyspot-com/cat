@@ -16,7 +16,8 @@ import org.testng.annotations.Test;
 public final class ConsentCommandTest
 {
 	/**
-	 * The command runs the same install with the version folder's installer launcher and gives the permission, and the
+	 * The command runs the same install with the version folder's installer launcher and gives the permission before
+	 * the operation, so that it does not start like the install that permission entries allow without asking, and the
 	 * installer accepts it.
 	 */
 	@Test
@@ -25,13 +26,13 @@ public final class ConsentCommandTest
 		Path root = Path.of(System.getProperty("cat.installer.test.directory")).toAbsolutePath();
 		Path plugin = root.resolve("home/plugins/cache/cat/cat/1.0+b0123456789ab");
 		Path home = root.resolve("home");
-		Arguments asked = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home", home.toString(),
+		Arguments asked = Arguments.parse(new String[]{"--home", home.toString(), "install", "--harness", "harness-a",
 			"v1.2"}, Set.of("harness-a"));
 
 		String command = ConsentCommand.of(plugin, Platform.LINUX_X64, asked);
 
 		String launcher = plugin.resolve("bin/installer").toString();
-		requireThat(command, "command").startsWith(launcher + " install ");
+		requireThat(command, "command").startsWith(launcher + " --home ").doesNotStartWith(launcher + " install");
 		String[] words = command.substring(launcher.length() + 1).split(" ");
 		Arguments allowed = Arguments.parse(words, Set.of("harness-a"));
 		requireThat(allowed.createProfile(), "createProfile").isTrue();
@@ -48,11 +49,11 @@ public final class ConsentCommandTest
 	public void quotesHomeWithSpace()
 	{
 		Path plugin = Path.of("/data/plugins/cache/cat/cat/1.0+b0123456789ab");
-		Arguments asked = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home",
-			"/data/my home"}, Set.of("harness-a"));
+		Arguments asked = Arguments.parse(new String[]{"--home", "/data/my home", "install", "--harness",
+			"harness-a"}, Set.of("harness-a"));
 
 		requireThat(ConsentCommand.of(plugin, Platform.LINUX_X64, asked), "command").
-			endsWith(" install --harness harness-a --home '/data/my home' --create-profile");
+			endsWith(" --home '/data/my home' --create-profile install --harness harness-a");
 	}
 
 	/**
@@ -67,6 +68,6 @@ public final class ConsentCommandTest
 
 		requireThat(ConsentCommand.of(plugin, Platform.WINDOWS_X64, asked), "command").
 			isEqualTo("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" +
-				plugin.resolve("bin/installer.ps1") + "\" install --harness harness-a --create-profile");
+				plugin.resolve("bin/installer.ps1") + "\" --create-profile install --harness harness-a");
 	}
 }

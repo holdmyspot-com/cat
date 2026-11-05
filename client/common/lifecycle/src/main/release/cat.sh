@@ -210,7 +210,7 @@ cat_run_install()
 		echo "CAT's $2 plugin ${CAT_RELEASE_TAG} has no installer for $1 at ${cat_launcher}." >&2
 		exit 1
 	fi
-	"${cat_launcher}" install --harness "$2" --home "$(cat_native_path "$1" "$3")"
+	"${cat_launcher}" --home "$(cat_native_path "$1" "$3")" install --harness "$2"
 }
 
 CAT_HARNESS=""

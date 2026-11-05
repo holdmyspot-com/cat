@@ -235,11 +235,11 @@ simulate_posix_platform()
 #   temporary directory parent.
 expect_install_ran_for()
 {
-	[ "$(cat "${INSTALL_ARGUMENTS}")" = "install
+	[ "$(cat "${INSTALL_ARGUMENTS}")" = "--home
+$(native_path "$2")
+install
 --harness
-$1
---home
-$(native_path "$2")" ]
+$1" ]
 	launcher="$(sed -n '1p' "${INSTALL_LOCATION}")"
 	[[ "${launcher}" == "${TMPDIR}/"*"/$(plugin_name "$1")/bin/installer" ]]
 	[ "$(sed -n '2p' "${INSTALL_LOCATION}")" = "release runtime" ]

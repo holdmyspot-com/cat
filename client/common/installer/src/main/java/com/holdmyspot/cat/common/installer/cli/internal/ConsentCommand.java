@@ -10,7 +10,9 @@ import java.util.regex.Pattern;
 
 /**
  * The install command with which the user allows the change that an install asked for: the same install, run by the
- * installer launcher of the version folder, with {@code --create-profile}.
+ * installer launcher of the version folder, with {@code --create-profile} before the operation. The command does not
+ * start like the install that the harness's permission entries allow without asking, so the harness asks the user
+ * before it runs.
  */
 public final class ConsentCommand
 {
@@ -46,13 +48,13 @@ public final class ConsentCommand
 		StringJoiner command = new StringJoiner(" ");
 		if (windows)
 			command.add("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File");
-		command.add(quote(PluginInstall.installer(plugin, windows).toString(), windows)).add("install").
-			add("--harness").add(arguments.harness());
+		command.add(quote(PluginInstall.installer(plugin, windows).toString(), windows));
 		if (arguments.home() != null)
 			command.add("--home").add(quote(arguments.home().toString(), windows));
+		command.add("--create-profile").add("install").add("--harness").add(arguments.harness());
 		if (arguments.tag() != null)
 			command.add(arguments.tag());
-		return command.add("--create-profile").toString();
+		return command.toString();
 	}
 
 	/**

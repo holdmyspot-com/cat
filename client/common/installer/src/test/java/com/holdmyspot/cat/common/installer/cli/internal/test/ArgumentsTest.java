@@ -22,8 +22,8 @@ public final class ArgumentsTest
 	}
 
 	/**
-	 * Install accepts a selected provider, an optional harness home and an optional approved release selector, in that
-	 * order.
+	 * Install accepts a selected provider and an optional approved release selector, after an optional harness home
+	 * that comes before the operation.
 	 */
 	@Test
 	public void parsesInstallRelease()
@@ -31,8 +31,8 @@ public final class ArgumentsTest
 		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
 		Arguments tagged = Arguments.parse(new String[]{"install", "--harness", "harness-a", "v1.2.3"},
 			Set.of("harness-a"));
-		Arguments homed = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home",
-			home.toString(), "v1.2"}, Set.of("harness-a"));
+		Arguments homed = Arguments.parse(new String[]{"--home", home.toString(), "install", "--harness", "harness-a",
+			"v1.2"}, Set.of("harness-a"));
 		requireThat(tagged.operation(), "operation").isEqualTo(Operation.INSTALL);
 		requireThat(tagged.harness(), "harness").isEqualTo("harness-a");
 		requireThat(tagged.tag(), "tag").isEqualTo("v1.2.3");
@@ -65,15 +65,15 @@ public final class ArgumentsTest
 	}
 
 	/**
-	 * Install names the harness and optionally its home; without a home it installs at the home that the user's
-	 * environment selects.
+	 * Install names the harness, and optionally its home before the operation; without a home it installs at the home
+	 * that the user's environment selects.
 	 */
 	@Test
 	public void parsesInstall()
 	{
 		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
-		Arguments homed = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home",
-			home.toString()}, Set.of("harness-a"));
+		Arguments homed = Arguments.parse(new String[]{"--home", home.toString(), "install", "--harness",
+			"harness-a"}, Set.of("harness-a"));
 		Arguments unhomed = Arguments.parse(new String[]{"install", "--harness", "harness-a"}, Set.of("harness-a"));
 		requireThat(homed.operation(), "operation").isEqualTo(Operation.INSTALL);
 		requireThat(homed.harness(), "harness").isEqualTo("harness-a");
@@ -106,25 +106,75 @@ public final class ArgumentsTest
 	}
 
 	/**
-	 * Install accepts the user's permission to create a permission profile last, after the optional harness home and
-	 * release; without it, install has no such permission.
+	 * Install accepts the user's permission to create a permission profile before the operation, in either order with
+	 * the harness home; without it, install has no such permission.
 	 */
 	@Test
 	public void parsesProfilePermission()
 	{
 		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
-		Arguments bare = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--create-profile"},
+		Arguments bare = Arguments.parse(new String[]{"--create-profile", "install", "--harness", "harness-a"},
 			Set.of("harness-a"));
-		Arguments full = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home", home.toString(),
-			"v1.2", "--create-profile"}, Set.of("harness-a"));
-		Arguments without = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--home",
-			home.toString(), "v1.2"}, Set.of("harness-a"));
+		Arguments full = Arguments.parse(new String[]{"--home", home.toString(), "--create-profile", "install",
+			"--harness", "harness-a", "v1.2"}, Set.of("harness-a"));
+		Arguments swapped = Arguments.parse(new String[]{"--create-profile", "--home", home.toString(), "install",
+			"--harness", "harness-a"}, Set.of("harness-a"));
+		Arguments without = Arguments.parse(new String[]{"--home", home.toString(), "install", "--harness",
+			"harness-a", "v1.2"}, Set.of("harness-a"));
 		requireThat(bare.createProfile(), "bare").isTrue();
 		requireThat(bare.tag(), "bareTag").isNull();
 		requireThat(full.createProfile(), "full").isTrue();
 		requireThat(full.home(), "fullHome").isEqualTo(home);
 		requireThat(full.tag(), "fullTag").isEqualTo("v1.2");
+		requireThat(swapped.createProfile(), "swapped").isTrue();
+		requireThat(swapped.home(), "swappedHome").isEqualTo(home);
 		requireThat(without.createProfile(), "without").isFalse();
+	}
+
+	/**
+	 * Supplies install commands that give the profile permission or the harness home after the operation, with the
+	 * form that the installer accepts.
+	 *
+	 * @return the refused command and the accepted form, which the refusal names
+	 */
+	@DataProvider
+	public Object[][] lateOptions()
+	{
+		return new Object[][]
+		{
+			{new String[]{"install", "--harness", "harness-a", "--create-profile"},
+				"installer --create-profile install --harness harness-a"},
+			{new String[]{"install", "--harness", "harness-a", "v1.2", "--create-profile"},
+				"installer --create-profile install --harness harness-a v1.2"},
+			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a"},
+				"installer --home /home/a install --harness harness-a"},
+			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "v1.2", "--create-profile"},
+				"installer --home /home/a --create-profile install --harness harness-a v1.2"}
+		};
+	}
+
+	/**
+	 * An install that gives the profile permission or the harness home after the operation is refused, and the
+	 * refusal names the form that the installer accepts, with the option before the operation. A command that starts
+	 * with the operation is the one that harness permission entries allow without asking, so the option that gives
+	 * the user's permission or redirects the installation must not follow it.
+	 *
+	 * @param args     the refused command
+	 * @param accepted the accepted form
+	 */
+	@Test(dataProvider = "lateOptions")
+	public void lateOptionNamesAcceptedForm(String[] args, String accepted)
+	{
+		try
+		{
+			Arguments.parse(args, Set.of("harness-a"));
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").startsWith("Usage:").contains(accepted);
+			return;
+		}
+		throw new AssertionError("The installer accepted an option after the operation: " + String.join(" ", args));
 	}
 
 	/**
@@ -151,6 +201,17 @@ public final class ArgumentsTest
 			{new String[]{"install", "--harness", "harness-a", "../v1.0"}},
 			{new String[]{"install", "--harness", "harness-a", "v1.0?source=other"}},
 			{new String[]{"install", "--harness", "harness-a", "v1.0", "--home", "/home/a"}},
+			{new String[]{"--home", "/home/a", "v1.0", "install", "--harness", "harness-a"}},
+			{new String[]{"--home"}},
+			{new String[]{"--home", "/home/a"}},
+			{new String[]{"--home", "/home/a", "--home", "/home/b", "install", "--harness", "harness-a"}},
+			{new String[]{"--home", "/home/a", "status"}},
+			{new String[]{"--home", "/home/a", "uninstall", "--harness", "harness-a"}},
+			{new String[]{"--create-profile"}},
+			{new String[]{"--create-profile", "--create-profile", "install", "--harness", "harness-a"}},
+			{new String[]{"--create-profile", "status"}},
+			{new String[]{"--create-profile", "uninstall", "--harness", "harness-a"}},
+			{new String[]{"--delete-data", "uninstall", "--harness", "harness-a"}},
 			{new String[]{"rollback", "--harness", "harness-a"}},
 			{new String[]{"rollback", "--harness", "harness-a", "v1.0"}},
 			{new String[]{"status", "extra"}},
@@ -158,19 +219,22 @@ public final class ArgumentsTest
 			{new String[]{"install"}},
 			{new String[]{"install", "--harness", "other"}},
 			{new String[]{"install", "--harness", "harness-a", "--home"}},
-			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "extra"}},
-			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "--plugin", "/plugin"}},
+			{new String[]{"--home", "/home/a", "install", "--harness", "harness-a", "extra"}},
+			{new String[]{"--home", "/home/a", "install", "--harness", "harness-a", "--plugin", "/plugin"}},
 			{new String[]{"install", "--harness", "harness-a", "--plugin", "/plugin"}},
-			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "--delete-data"}},
+			{new String[]{"--home", "/home/a", "install", "--harness", "harness-a", "--delete-data"}},
 			{new String[]{"uninstall", "--harness", "other"}},
 			{new String[]{"uninstall", "--delete-data", "--harness", "harness-a"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "--delete-data", "--delete-data"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "extra"}},
 			{new String[]{"install", "--harness", "harness-a", "--delete-data"}},
 			{new String[]{"status", "--delete-data"}},
+			{new String[]{"install", "--harness", "harness-a", "--create-profile"}},
 			{new String[]{"install", "--harness", "harness-a", "--create-profile", "v1.0"}},
 			{new String[]{"install", "--harness", "harness-a", "--create-profile", "--home", "/home/a"}},
 			{new String[]{"install", "--harness", "harness-a", "--create-profile", "--create-profile"}},
+			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a"}},
+			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "v1.0"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "--create-profile"}},
 			{new String[]{"status", "--create-profile"}}
 		};
@@ -200,7 +264,8 @@ public final class ArgumentsTest
 		}
 		catch (IllegalArgumentException e)
 		{
-			requireThat(e.getMessage(), "message").startsWith("Usage: installer install").doesNotContain("rollback").
+			requireThat(e.getMessage(), "message").startsWith("Usage: installer ").contains(" install --harness").
+				contains("installer status").contains("installer uninstall").doesNotContain("rollback").
 				doesNotContain("setup").doesNotContain("update");
 			return;
 		}

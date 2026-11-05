@@ -97,7 +97,7 @@ public final class CatPs1Test
 			requireThat(result.output(), "output").contains("{\"result\":\"installed\"}");
 			requireThat(fixture.downloads(), "downloads").isEqualTo(List.of(RELEASE_URL + "/" + CLAUDE_PLUGIN + ".tar.gz"));
 			requireThat(fixture.installArguments(), "installArguments").
-				isEqualTo(List.of("install", "--harness", "claude", "--home", fixture.claudeHome.toString()));
+				isEqualTo(List.of("--home", fixture.claudeHome.toString(), "install", "--harness", "claude"));
 			List<String> location = Files.readAllLines(fixture.installLocation, UTF_8);
 			requireThat(location.getFirst(), "launcher").
 				endsWith("\\" + CLAUDE_PLUGIN + "\\bin\\installer.ps1");
@@ -126,7 +126,7 @@ public final class CatPs1Test
 			requireThat(result.status(), "status").withContext(result.output(), "output").isEqualTo(5);
 			requireThat(result.output(), "output").contains("installer install exited with status 5");
 			requireThat(fixture.installArguments(), "installArguments").
-				isEqualTo(List.of("install", "--harness", "codex", "--home", fixture.codexHome.toString()));
+				isEqualTo(List.of("--home", fixture.codexHome.toString(), "install", "--harness", "codex"));
 			requireThat(fixture.temporaryEntries(), "temporaryEntries").isEmpty();
 		}
 	}
@@ -150,7 +150,7 @@ public final class CatPs1Test
 
 			requireThat(claude.status(), "status").withContext(claude.output(), "output").isEqualTo(0);
 			requireThat(fixture.installArguments(), "installArguments").
-				isEqualTo(List.of("install", "--harness", "claude", "--home", fixture.claudeHome.toString()));
+				isEqualTo(List.of("--home", fixture.claudeHome.toString(), "install", "--harness", "claude"));
 			Files.delete(fixture.installArguments);
 
 			for (String shell : List.of("", "$env:CLAUDECODE = '1'\n$env:CODEX_THREAD_ID = 'thread'\n"))

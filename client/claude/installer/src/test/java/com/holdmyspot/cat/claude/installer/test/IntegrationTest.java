@@ -628,6 +628,43 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * No permission entry lets an agent run, without asking, an install that gives the user's permission to create a
+	 * permission profile or names another harness home, because those options come before the operation.
+	 *
+	 * @param platform the platform, whose launcher form differs
+	 * @throws IOException if the launcher path cannot be named in an entry
+	 */
+	@Test(dataProvider = "platforms")
+	public void consentOptionsPrompt(Platform platform) throws IOException
+	{
+		Path home = absoluteTestPath("claude");
+		Path launcher = launcher(home);
+		String prefix = ShellQuoting.posix(launcher.toString());
+		if (platform.isWindows())
+		{
+			launcher = launcher.resolveSibling("installer.ps1");
+			prefix = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher + "\"";
+		}
+		String other = ShellQuoting.posix(home.resolveSibling("other-home").toString());
+
+		Map<String, List<String>> maintained = new Integration(platform).permissions(launcher);
+
+		for (String options : List.of("--create-profile", "--home " + other, "--home " + other + " --create-profile"))
+		{
+			for (String release : List.of("", " v1.2"))
+			{
+				String command = prefix + " " + options + " install --harness claude" + release;
+				for (String entry : maintained.get(SETTINGS_KEY_ALLOW))
+				{
+					String rule = entry.substring("Bash(".length(), entry.length() - ")".length());
+					requireThat(matches(rule, command), "matches").withContext(entry, "entry").
+						withContext(command, "command").isFalse();
+				}
+			}
+		}
+	}
+
+	/**
 	 * Returns whether a permission or sandbox exclusion entry could match a command under exact, prefix or trailing
 	 * wildcard matching.
 	 *

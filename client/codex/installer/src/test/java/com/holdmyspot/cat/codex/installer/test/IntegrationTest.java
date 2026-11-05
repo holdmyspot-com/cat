@@ -490,6 +490,38 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * No rule lets an agent run, without asking, an install that gives the user's permission to create a permission
+	 * profile or names another harness home, because those options come before the operation.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void consentOptionsPrompt() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			String launcher = installer(home, VERSION).toString();
+			provider().installPermissions(home, installer(home, VERSION), replacer());
+			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
+			String other = home.resolveSibling("other-home").toString();
+
+			for (List<String> options : List.of(List.of("--create-profile"), List.of("--home", other),
+				List.of("--home", other, "--create-profile")))
+			{
+				for (List<String> release : List.of(List.<String>of(), List.of("v1.2")))
+				{
+					List<String> command = new ArrayList<>(List.of(launcher));
+					command.addAll(options);
+					command.addAll(List.of("install", "--harness", "codex"));
+					command.addAll(release);
+					requireThat(decisions(content, command), "decisions").withContext(command, "command").isEmpty();
+				}
+			}
+		}
+	}
+
+	/**
 	 * Install deletes the {@code rules/cat-updater.rules} file that an earlier CAT wrote before the installer was
 	 * renamed, because the launcher it names is gone.
 	 *

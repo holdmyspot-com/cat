@@ -523,8 +523,8 @@ public final class InvocationTest
 			RecordingIntegration integration = new RecordingIntegration();
 			Map<String, String> before = Releases.snapshot(installation.root);
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "install", "--harness",
-				"harness-a", "--home", other.toString());
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "--home",
+				other.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 			requireThat(run.result().path("message").stringValue(), "message").contains(other.toString()).
@@ -618,8 +618,8 @@ public final class InvocationTest
 			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
 			Map<String, String> environment = Map.of("HOME", user.toString(), "PATH", tools.toString());
 
-			Run run = run(archive, project, environment, List.of(new LiveProvider()), integration, "install",
-				"--harness", "harness-a", "--home", home.toString());
+			Run run = run(archive, project, environment, List.of(new LiveProvider()), integration, "--home",
+				home.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			JsonNode result = run.result();
@@ -662,7 +662,7 @@ public final class InvocationTest
 			RecordingIntegration integration = new RecordingIntegration();
 
 			Run run = run(archive, installation.root, Map.of(), List.of(new RegisteredProvider()), integration,
-				"install", "--harness", "harness-a", "--home", installation.home.toString());
+				"--home", installation.home.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("updated");
@@ -1049,14 +1049,14 @@ public final class InvocationTest
 		 *
 		 * @param integration the harness integration
 		 * @param terminal    the user's terminal
-		 * @param options     the options after the harness home
+		 * @param options     the options before the operation, after the harness home
 		 * @return the outcome
 		 */
 		private Run run(HarnessIntegration integration, Terminal terminal, String... options)
 		{
-			List<String> arguments = new ArrayList<>(List.of("install", "--harness", "harness-a", "--home",
-				home.toString()));
+			List<String> arguments = new ArrayList<>(List.of("--home", home.toString()));
 			arguments.addAll(List.of(options));
+			arguments.addAll(List.of("install", "--harness", "harness-a"));
 			return InvocationTest.run(plugin, project, environment, List.of(new LiveProvider()), integration,
 				terminal, arguments.toArray(String[]::new));
 		}

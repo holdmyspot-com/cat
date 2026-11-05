@@ -131,8 +131,8 @@ try
 	# Windows PowerShell treats native standard error as errors when it is redirected, so let it pass and keep the
 	# exit status
 	$ErrorActionPreference = 'Continue'
-	& $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $launcher install --harness $Harness `
-		--home $harnessHome
+	& $powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $launcher --home $harnessHome `
+		install --harness $Harness
 	$status = $LASTEXITCODE
 	$ErrorActionPreference = 'Stop'
 	if ($status -ne 0) { throw "CAT's installer install exited with status $status." }
