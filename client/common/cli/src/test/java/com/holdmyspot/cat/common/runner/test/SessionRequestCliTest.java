@@ -97,7 +97,7 @@ public final class SessionRequestCliTest
 					requireThat(entries.get("prompts/1"), "second").isEqualTo("second prompt");
 					requireThat(entries.get("plugins/0/plugin.txt"), "plugin").isEqualTo("plugin bytes");
 					JsonNode request = JsonMapper.builder().build().readTree(entries.get("request.json"));
-					requireThat(request.path("format_version").intValue(), "version").isEqualTo(2);
+					requireThat(request.path("format_version").intValue(), "version").isEqualTo(3);
 					requireThat(request.path("prompts").get(1).asString(), "promptEntry").isEqualTo("prompts/1");
 					requireThat(request.path("install_cat").asBoolean(false), "installCat").isTrue();
 					requireThat(request.path("model").asString(), "model").isEqualTo("model-a");
@@ -176,7 +176,7 @@ public final class SessionRequestCliTest
 				ManualClock time = new ManualClock(Instant.EPOCH);
 				SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
 					"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests, nullDevice,
-					RequestLimits.DEFAULT, time,
+					RequestLimits.IN_RUN, time,
 					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
 				Map<String, String> entries = new HashMap<>();
 				try (Stream<Path> files = Files.list(requests);
@@ -268,17 +268,17 @@ public final class SessionRequestCliTest
 						}
 					}
 				}
-				RequestLimits limits = RequestLimits.DEFAULT;
+				RequestLimits limits = RequestLimits.IN_RUN;
 				if (kind.equals("entry_count"))
 				{
-					limits = new RequestLimits(10, limits.totalBytes(), limits.archiveBytes());
+					limits = new RequestLimits(10, limits.entryBytes(), limits.totalBytes(), limits.archiveBytes());
 					// With the project directory itself, the tree holds one entry more than the bound
 					for (int index = 0; index < limits.entries(); ++index)
 						Files.createDirectory(project.resolve("empty" + index));
 				}
 				if (kind.equals("total_size"))
 				{
-					limits = new RequestLimits(limits.entries(), 1000, limits.archiveBytes());
+					limits = new RequestLimits(limits.entries(), limits.entryBytes(), 1000, limits.archiveBytes());
 					// Each file is within the per-file bound, but together they exceed the total
 					for (int index = 0; index < 2; ++index)
 						Files.write(project.resolve("large" + index), new byte[600]);

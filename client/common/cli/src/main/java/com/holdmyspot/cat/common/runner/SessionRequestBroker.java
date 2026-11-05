@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -18,7 +19,6 @@ import java.util.stream.Stream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -63,7 +63,7 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter)
 	{
-		this(run, options, starter, RequestLimits.DEFAULT);
+		this(run, options, starter, RequestLimits.IN_RUN);
 	}
 
 	/**
@@ -125,56 +125,42 @@ public final class SessionRequestBroker implements Closeable
 	{
 		synchronized (this)
 		{
-			try (DirectoryStream<Path> files = Files.newDirectoryStream(SessionRequestAccess.requestsDirectory(run)))
+			Path requests = SessionRequestAccess.requestsDirectory(run);
+			for (String id : RequestArchive.pendingIds(requests, ""))
 			{
-				for (Path file : files)
+				Path file = requests.resolve(id + RequestArchive.EXTENSION);
+				Path directory = SessionRequestAccess.responsesDirectory(run).resolve(id);
+				if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS))
+					continue;
+				Files.createDirectory(directory);
+				if (stopped)
 				{
-					String name = file.getFileName().toString();
-					if (name.startsWith(".") || !name.endsWith(RequestArchive.EXTENSION))
-						continue;
-					String id = name.substring(0, name.length() - RequestArchive.EXTENSION.length());
-					try
-					{
-						SessionRequestCli.validateId(id);
-					}
-					catch (IllegalArgumentException _)
-					{
-						// Invalid filenames cannot name response directories. The launcher never generates them.
-						continue;
-					}
-					Path directory = SessionRequestAccess.responsesDirectory(run).resolve(id);
-					if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS))
-						continue;
-					Files.createDirectory(directory);
-					if (stopped)
-					{
-						respond(id, "", "stopped", "The requesting run stopped", "", directory);
-						continue;
-					}
-					if (options.sessionRequests() == 0)
-					{
-						respond(id, "", "refused", SessionRequestAccess.NO_REQUESTS_REASON, "", directory);
-						continue;
-					}
-					if (accepted >= options.sessionRequests())
-					{
-						respond(id, "", "refused", "limit", "", directory);
-						continue;
-					}
-					try
-					{
-						Request request = read(file, directory);
-						accepted += 1;
-						harnesses.put(id, request.harness());
-						childRoots.put(id, SessionRequestAccess.requestedRunsDirectory(run).
-							resolve(String.valueOf(accepted)).resolve(request.harness()));
-						List<String> arguments = arguments(request, request.project(), request.plugins(), directory, accepted);
-						children.submit(() -> execute(id, request, arguments, directory));
-					}
-					catch (IOException | IllegalArgumentException | JacksonException e)
-					{
-						respond(id, "", "refused", e.getMessage(), "", directory);
-					}
+					respond(id, "", "stopped", "The requesting run stopped", "", directory);
+					continue;
+				}
+				if (options.sessionRequests() == 0)
+				{
+					respond(id, "", "refused", SessionRequestAccess.NO_REQUESTS_REASON, "", directory);
+					continue;
+				}
+				if (accepted >= options.sessionRequests())
+				{
+					respond(id, "", "refused", "limit", "", directory);
+					continue;
+				}
+				try
+				{
+					RunRequest request = read(file, directory);
+					accepted += 1;
+					harnesses.put(id, request.harness());
+					childRoots.put(id, SessionRequestAccess.requestedRunsDirectory(run).
+						resolve(String.valueOf(accepted)).resolve(request.harness()));
+					List<String> arguments = arguments(request, request.project(), request.plugins(), directory, accepted);
+					children.submit(() -> execute(id, request, arguments, directory));
+				}
+				catch (IOException | IllegalArgumentException | JacksonException e)
+				{
+					respond(id, "", "refused", e.getMessage(), "", directory);
 				}
 			}
 		}
@@ -189,7 +175,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @throws IOException              if the document or any input is invalid
 	 * @throws IllegalArgumentException if the request names no model or no effort
 	 */
-	private Request read(Path file, Path directory) throws IOException
+	private RunRequest read(Path file, Path directory) throws IOException
 	{
 		Path copy = directory.resolve("request.tar");
 		// The broker has the user's permissions while the requesting session keeps running. Walking its input
@@ -199,107 +185,14 @@ public final class SessionRequestBroker implements Closeable
 		Path inputs = Files.createDirectory(directory.resolve("inputs"));
 		try
 		{
-			ArchiveSource.copy(file, copy, limits.archiveBytes());
+			RequestArchive.copy(file, copy, limits);
 			RequestArchive.unpack(copy, inputs, limits);
 		}
 		finally
 		{
 			Files.deleteIfExists(copy);
 		}
-		JsonNode value = json.readTree(Files.readAllBytes(inputs.resolve(RequestArchive.MANIFEST)));
-		Set<String> allowed = Set.of("format_version", "harness", "project", "prompts", "plugins", "model", "effort",
-			"session_transcripts", "install_cat");
-		if (!value.isObject() || !allowed.containsAll(value.propertyNames()) ||
-			!value.path("format_version").isInt() || value.path("format_version").intValue() != RequestArchive.VERSION)
-			throw new IOException("Request must be a version 2 object with supported fields");
-		String harness = text(value, "harness");
-		if (!Set.of("claude", "codex").contains(harness))
-			throw new IOException("Unsupported requested harness: " + harness);
-		if (!text(value, "project").equals("project"))
-			throw new IOException("Request project must name the project archive entry");
-		Path project = inputs.resolve("project");
-		if (!Files.isDirectory(project))
-			throw new IOException("Request archive requires a project directory");
-		List<Path> plugins = paths(value, inputs, "plugins", false);
-		List<String> prompts = new ArrayList<>();
-		for (Path prompt : paths(value, inputs, "prompts", true))
-			prompts.add(Files.readString(prompt, StandardCharsets.UTF_8));
-		String model = profileText(value, "model");
-		String effort = profileText(value, "effort");
-		HarnessRunnerOptions.requireProfile(harness, model, effort);
-		for (String flag : List.of("session_transcripts", "install_cat"))
-		{
-			if (value.has(flag) && !value.path(flag).isBoolean())
-				throw new IOException(flag + " must be a boolean");
-		}
-		return new Request(harness, project, plugins, prompts, model, effort,
-			value.path("session_transcripts").asBoolean(false), value.path("install_cat").asBoolean(false));
-	}
-
-	/**
-	 * Reads one required text field.
-	 *
-	 * @param value the document
-	 * @param field the field name
-	 * @return the non-blank value
-	 * @throws IOException if the field is missing or malformed
-	 */
-	private static String text(JsonNode value, String field) throws IOException
-	{
-		if (!value.path(field).isString() || value.path(field).asString().isBlank())
-			throw new IOException("Request requires non-blank text: " + field);
-		return value.path(field).asString();
-	}
-
-	/**
-	 * Reads a runner profile field, which the caller refuses when it is absent or blank.
-	 *
-	 * @param value the document
-	 * @param field the field name
-	 * @return its text, or empty when absent
-	 * @throws IOException if present with the wrong type
-	 */
-	private static String profileText(JsonNode value, String field) throws IOException
-	{
-		if (!value.has(field))
-			return "";
-		if (!value.path(field).isString())
-			throw new IOException("Request field must be text: " + field);
-		return value.path(field).asString();
-	}
-
-	/**
-	 * Resolves an ordered list of canonical archive entries in the private extracted inputs.
-	 *
-	 * @param value the document
-	 * @param inputs the private extraction directory
-	 * @param field the array field
-	 * @param required indicates whether at least one entry is required
-	 * @return validated absolute paths
-	 * @throws IOException if the array or a path is invalid
-	 */
-	private List<Path> paths(JsonNode value, Path inputs, String field, boolean required) throws IOException
-	{
-		JsonNode array = value.path(field);
-		if (!array.isArray() || array.size() > 32 || (required && array.isEmpty()))
-			throw new IOException("Request requires an array of at most 32 paths: " + field);
-		List<Path> paths = new ArrayList<>();
-		for (JsonNode element : array)
-		{
-			if (!element.isString())
-				throw new IOException("Request paths must be text: " + field);
-			String expected = field + "/" + paths.size();
-			if (!element.asString().equals(expected))
-				throw new IOException("Request input must name its ordered archive entry: " + expected);
-			Path path = inputs.resolve(expected);
-			boolean correctType = Files.isDirectory(path);
-			if (field.equals("prompts"))
-				correctType = Files.isRegularFile(path);
-			if (!correctType)
-				throw new IOException("Request archive input is missing or has the wrong type: " + expected);
-			paths.add(path);
-		}
-		return paths;
+		return RequestArchive.readRun(json, inputs);
 	}
 
 	/**
@@ -314,7 +207,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param ordinal   the accepted request number
 	 * @return the runner options
 	 */
-	private List<String> arguments(Request request, Path project, List<Path> plugins, Path directory, int ordinal)
+	private List<String> arguments(RunRequest request, Path project, List<Path> plugins, Path directory, int ordinal)
 	{
 		List<String> arguments = new ArrayList<>(List.of("--project", project.toString(), "--run-root",
 			SessionRequestAccess.requestedRunsDirectory(run).resolve(String.valueOf(ordinal)).toString(),
@@ -349,7 +242,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param arguments the child runner options
 	 * @param directory the private response directory
 	 */
-	private void execute(String id, Request request, List<String> arguments, Path directory)
+	private void execute(String id, RunRequest request, List<String> arguments, Path directory)
 	{
 		Process process = null;
 		try
@@ -644,22 +537,5 @@ public final class SessionRequestBroker implements Closeable
 			failure = exception;
 		else
 			failure.addSuppressed(exception);
-	}
-
-	/**
-	 * Captured request inputs. Prompt text is private to the runner protocol rather than a response document.
-	 *
-	 * @param harness the selected harness
-	 * @param project the validated source project
-	 * @param plugins the validated source plugins
-	 * @param prompts the captured prompts in turn order
-	 * @param model the selected model
-	 * @param effort the selected effort
-	 * @param sessionTranscripts indicates whether native transcripts are requested
-	 * @param installCat indicates whether CAT is installed in the requested session's home
-	 */
-	private record Request(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
-		String effort, boolean sessionTranscripts, boolean installCat)
-	{
 	}
 }

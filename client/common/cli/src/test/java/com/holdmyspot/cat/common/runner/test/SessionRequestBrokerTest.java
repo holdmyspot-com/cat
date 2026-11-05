@@ -306,6 +306,45 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Supplies fields that only a session-level request may set, each with a value of the type that it takes there.
+	 *
+	 * @return the field name and its JSON value
+	 */
+	@DataProvider
+	public Object[][] sessionOnlyFields()
+	{
+		return new Object[][]{{"agent", "\"agent-a\""}, {"keep_run", "true"}, {"deny_read", "[\"/home/user\"]"},
+			{"turns", "\"turns\""}, {"capacity", "\"held\""}};
+	}
+
+	/**
+	 * Verifies that the runner refuses a request made inside its run that sets a field that only a session-level
+	 * request may set, naming the field, and starts no session for it.
+	 *
+	 * @param field the session-only field
+	 * @param value its JSON value
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(dataProvider = "sessionOnlyFields")
+	public void refusesSessionOnlyField(String field, String value) throws IOException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			{
+				throw new AssertionError("A request with a session-only field cannot start a session");
+			}))
+		{
+			ObjectNode request = fixture.document();
+			request.set(field, fixture.json.readTree(value));
+			fixture.writeRequest("session-only", request);
+			broker.scan();
+			JsonNode response = fixture.await("session-only");
+			requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+			requireThat(response.path("reason").asString(), "reason").contains(field);
+		}
+	}
+
+	/**
 	 * Returns request manifests that lack a model, an effort or both, each with the start of the refusal.
 	 *
 	 * @return the fields to remove and the refusal's expected start
@@ -355,12 +394,12 @@ public final class SessionRequestBrokerTest
 	 */
 	private static RequestLimits limits(String kind)
 	{
-		RequestLimits limits = RequestLimits.DEFAULT;
+		RequestLimits limits = RequestLimits.IN_RUN;
 		return switch (kind)
 		{
-			case "too_many" -> new RequestLimits(10, limits.totalBytes(), limits.archiveBytes());
-			case "total_size" -> new RequestLimits(limits.entries(), 1000, limits.archiveBytes());
-			case "oversized" -> new RequestLimits(limits.entries(), limits.totalBytes(), 100_000);
+			case "too_many" -> new RequestLimits(10, limits.entryBytes(), limits.totalBytes(), limits.archiveBytes());
+			case "total_size" -> new RequestLimits(limits.entries(), limits.entryBytes(), 1000, limits.archiveBytes());
+			case "oversized" -> new RequestLimits(limits.entries(), limits.entryBytes(), limits.totalBytes(), 100_000);
 			default -> limits;
 		};
 	}
@@ -727,7 +766,7 @@ public final class SessionRequestBrokerTest
 		 */
 		private ObjectNode document()
 		{
-			ObjectNode request = json.createObjectNode().put("format_version", 2).put("harness", "claude").
+			ObjectNode request = json.createObjectNode().put("format_version", 3).put("harness", "claude").
 				put("project", "project").put("model", "haiku").put("effort", "low").put("session_transcripts", true);
 			request.putArray("prompts").add("prompts/0").add("prompts/1");
 			request.putArray("plugins").add("plugins/0");
