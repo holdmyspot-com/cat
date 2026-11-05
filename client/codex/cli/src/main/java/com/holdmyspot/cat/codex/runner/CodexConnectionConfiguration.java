@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.ProtectedProjectFiles;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
@@ -924,7 +925,7 @@ public final class CodexConnectionConfiguration
 		// Configuration and hooks can make a later Git command execute session-written code. Give the session the
 		// refs, objects and index it needs for commits and worktrees, while leaving those execution settings read-only.
 		filesystem.put(toml(git), "write");
-		for (String protectedPath : List.of("config", "hooks"))
+		for (String protectedPath : ProtectedProjectFiles.gitNames())
 			filesystem.put(toml(git.resolve(protectedPath)), "read");
 	}
 
