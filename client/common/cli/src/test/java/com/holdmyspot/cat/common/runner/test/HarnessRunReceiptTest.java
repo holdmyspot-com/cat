@@ -146,6 +146,33 @@ public final class HarnessRunReceiptTest
 	}
 
 	/**
+	 * Verifies that a receipt that lists the paths which the copy of a kept run skipped is still read, and that the
+	 * list does not change the evidence that an evaluator receives.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readsReceiptThatListsSkippedCopyPaths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path response = Files.writeString(root.resolve("response.txt"), "completed response");
+			ObjectNode fields = scope.json().createObjectNode();
+			fields.put("retained_project", project.toString());
+			fields.put("raw_result", response.toString());
+			fields.putArray(HarnessRunReceipt.SKIPPED_COPY_PATHS).add("project/locked/a.txt");
+			Path receipt = Files.writeString(root.resolve("receipt.json"), scope.json().writeValueAsString(fields));
+
+			HarnessEvaluationResult result = HarnessRunReceipt.read(scope.json(), receipt);
+
+			requireThat(result.retainedProject(), "retainedProject").isEqualTo(project.toAbsolutePath().normalize());
+			requireThat(result.rawResult(), "rawResult").isEqualTo(response.toAbsolutePath().normalize());
+		}
+	}
+
+	/**
 	 * Verifies a receipt cannot add unrecognized data that an evaluator might otherwise ignore.
 	 *
 	 * @throws IOException if fixture I/O fails

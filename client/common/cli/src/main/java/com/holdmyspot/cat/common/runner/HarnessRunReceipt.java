@@ -21,6 +21,12 @@ import java.util.Set;
  */
 public final class HarnessRunReceipt
 {
+	/**
+	 * The optional receipt field that lists the files and folders of a kept run, relative to the run, that the
+	 * sender's sandbox refused to let it copy. The sender adds it to its copy of the receipt, and an evaluator ignores
+	 * it.
+	 */
+	public static final String SKIPPED_COPY_PATHS = "skipped_copy_paths";
 	private static final String SESSION_TRANSCRIPTS = "session_transcripts";
 	private static final String REQUESTED_SESSIONS = "requested_sessions";
 
@@ -131,6 +137,7 @@ public final class HarnessRunReceipt
 		unsupported.removeAll(required);
 		unsupported.remove(SESSION_TRANSCRIPTS);
 		unsupported.remove(REQUESTED_SESSIONS);
+		unsupported.remove(SKIPPED_COPY_PATHS);
 		if (!names.containsAll(required) || !unsupported.isEmpty())
 			throw new IOException("Harness receipt has unsupported fields: " + source);
 		validateRequestedSessions(receipt, source);

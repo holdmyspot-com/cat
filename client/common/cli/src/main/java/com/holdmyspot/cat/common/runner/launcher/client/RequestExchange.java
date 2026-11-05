@@ -6,6 +6,9 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
+import com.holdmyspot.cat.common.runner.ProtectedProjectFiles;
 import com.holdmyspot.cat.common.runner.RequestArchive;
 import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
@@ -31,11 +34,16 @@ import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Sends session-level requests to the session launcher of the harness process that runs the sender, and follows each
@@ -58,6 +66,10 @@ final class RequestExchange
 	 * The directory of a kept run that holds the child's isolated home, which is never copied.
 	 */
 	private static final String RUN_HOME = "home";
+	/**
+	 * The directory of a kept run that holds the copy of the project that the child worked in.
+	 */
+	private static final String RUN_PROJECT = "project";
 	/**
 	 * The channel to the launcher.
 	 */
@@ -254,9 +266,9 @@ final class RequestExchange
 				}
 			}
 			Response response = Response.read(json, responseFile);
-			copyReceipt(response, destinations, relocation);
-			Optional<String> incompleteRun = copyRun(response, destinations, request.harness());
-			return outcomeOf(response, incompleteRun);
+			RunCopy copy = copyRun(response, destinations, request.harness());
+			copyReceipt(response, destinations, relocation, copy.skipped());
+			return outcomeOf(response, copy.incomplete());
 		}
 	}
 
@@ -408,15 +420,17 @@ final class RequestExchange
 	}
 
 	/**
-	 * Copies the child's receipt, naming the sender's copy of the kept run in place of the launcher's.
+	 * Copies the child's receipt, naming the sender's copy of the kept run in place of the launcher's and listing the
+	 * paths that the copy of the kept run skipped.
 	 *
 	 * @param response     the request's response
 	 * @param destinations where the request's results go
 	 * @param relocation   maps the launcher's run root to the sender's
+	 * @param skipped      the paths of the kept run, relative to the run, that the copy skipped
 	 * @throws IOException if the receipt cannot be read or written
 	 */
-	private static void copyReceipt(Response response, Destinations destinations, Relocation relocation)
-		throws IOException
+	private void copyReceipt(Response response, Destinations destinations, Relocation relocation,
+		List<String> skipped) throws IOException
 	{
 		if (destinations.receipt().isEmpty() || response.receipt().isEmpty())
 			return;
@@ -424,26 +438,68 @@ final class RequestExchange
 		Path parent = receipt.toAbsolutePath().getParent();
 		if (parent != null)
 			Files.createDirectories(parent);
-		Files.writeString(receipt, relocation.apply(Files.readString(response.receipt().get(), UTF_8)), UTF_8);
+		String text = relocation.apply(Files.readString(response.receipt().get(), UTF_8));
+		if (!skipped.isEmpty())
+			text = withSkippedPaths(text, skipped);
+		Files.writeString(receipt, text, UTF_8);
+	}
+
+	/**
+	 * Adds the list of skipped paths to a receipt.
+	 *
+	 * @param text    the receipt
+	 * @param skipped the paths of the kept run, relative to the run, that the copy skipped
+	 * @return the receipt with the list
+	 * @throws IOException if the receipt is not a JSON object
+	 */
+	private String withSkippedPaths(String text, List<String> skipped) throws IOException
+	{
+		JsonNode document;
+		try
+		{
+			document = json.readTree(text);
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Malformed receipt", e);
+		}
+		if (!(document instanceof ObjectNode receipt))
+			throw new IOException("The receipt is not a JSON object");
+		ArrayNode paths = receipt.putArray(HarnessRunReceipt.SKIPPED_COPY_PATHS);
+		for (String path : skipped)
+			paths.add(path);
+		return json.writeValueAsString(receipt);
+	}
+
+	/**
+	 * How the copy of a kept run ended.
+	 *
+	 * @param incomplete the message that names the file that could not be copied and says that the kept run is
+	 *                   incomplete, or empty if the run was copied in full, apart from what the sender's sandbox
+	 *                   protects, or is not kept
+	 * @param skipped    the paths, relative to the run, that the sender's sandbox refused to let the copy write
+	 */
+	private record RunCopy(Optional<String> incomplete, List<String> skipped)
+	{
 	}
 
 	/**
 	 * Copies the child's kept run into the sender's run root, as {@code <run root>/<harness>/<run id>}, leaving out
-	 * links and the child's isolated home. A file that the sender cannot write ends the copy and is reported, not
-	 * thrown, so that it does not hide the session's outcome.
+	 * links, the child's isolated home and the project files that the child's sandbox kept it from changing. A file
+	 * or folder that the sender's sandbox refuses to write is skipped without a message and listed in the result.
+	 * Any other file that the sender cannot write ends the copy and is reported, not thrown, so that it does not hide
+	 * the session's outcome.
 	 *
 	 * @param response     the request's response
 	 * @param destinations where the request's results go
 	 * @param harness      the child's harness
-	 * @return the message that names the file that could not be copied and says that the kept run is incomplete, or
-	 *   empty if the run was copied in full or is not kept
+	 * @return how the copy ended
 	 * @throws IOException if the response names a kept run but no run identifier
 	 */
-	private static Optional<String> copyRun(Response response, Destinations destinations, String harness)
-		throws IOException
+	private static RunCopy copyRun(Response response, Destinations destinations, String harness) throws IOException
 	{
 		if (destinations.runRoot().isEmpty() || response.run().isEmpty())
-			return Optional.empty();
+			return new RunCopy(Optional.empty(), List.of());
 		if (response.childRunId().isEmpty())
 			throw new IOException("The response names a kept run but no run identifier");
 		Path source = response.run().get();
@@ -458,13 +514,26 @@ final class RequestExchange
 			String reason = e.getReason();
 			if (reason == null)
 				reason = e.getClass().getSimpleName();
-			return Optional.of(incompleteRun(copier.attempted, reason, target));
+			return new RunCopy(Optional.of(incompleteRun(copier.attempted, reason, target)), copier.skipped);
 		}
 		catch (IOException e)
 		{
-			return Optional.of(incompleteRun(copier.attempted, e.getClass().getSimpleName(), target));
+			return new RunCopy(Optional.of(incompleteRun(copier.attempted, e.getClass().getSimpleName(), target)),
+				copier.skipped);
 		}
-		return Optional.empty();
+		return new RunCopy(Optional.empty(), copier.skipped);
+	}
+
+	/**
+	 * Indicates whether a failure is the sandbox of the process that runs the sender refusing to let it write.
+	 *
+	 * @param failure the failure
+	 * @return {@code true} if the operating system refused the operation for lack of permission
+	 */
+	private static boolean isPermissionRefusal(IOException failure)
+	{
+		return failure instanceof AccessDeniedException ||
+			failure instanceof FileSystemException e && "Operation not permitted".equals(e.getReason());
 	}
 
 	/**
@@ -482,12 +551,23 @@ final class RequestExchange
 	}
 
 	/**
-	 * Copies a kept run's directories and regular files, and remembers which copy it attempted last.
+	 * Copies a kept run's directories and regular files, skips what the sender's sandbox refuses to write, and
+	 * remembers which copy it attempted last.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
 	private static final class RunCopier extends SimpleFileVisitor<Path>
 	{
+		/**
+		 * The files and folders of the run, relative to it, that the child's sandbox kept it from changing, so that
+		 * they equal the initial project's and nothing reads them from a kept run. The copy leaves them out because
+		 * the sender's own sandbox can refuse to write them, as Claude Code's does for its settings and a project's
+		 * Git configuration and hooks, and a child is never allowed more than its parent: it would otherwise
+		 * change a file that the parent cannot. The launcher must not write them into the sender's run root in the
+		 * sender's place either, which would let the child write where the sender's sandbox forbids it.
+		 */
+		private static final Set<Path> UNCHANGED = ProtectedProjectFiles.paths().stream().
+			map(path -> Path.of(RUN_PROJECT).resolve(path)).collect(Collectors.toUnmodifiableSet());
 		/**
 		 * The kept run in the launcher's run root.
 		 */
@@ -496,6 +576,10 @@ final class RequestExchange
 		 * The sender's copy of the kept run.
 		 */
 		private final Path target;
+		/**
+		 * The paths, relative to the run, that the sender's sandbox refused to let the copy write.
+		 */
+		private final List<String> skipped = new ArrayList<>();
 		/**
 		 * The file or directory of the sender's copy that the visitor last tried to write.
 		 */
@@ -525,23 +609,57 @@ final class RequestExchange
 			return target.resolve(source.relativize(file).toString());
 		}
 
+		/**
+		 * Indicates whether a failure to write a file or folder of the sender's copy is the sender's sandbox refusing
+		 * it, and if so, remembers that the copy skips it. A refusal to read the launcher's file is not one.
+		 *
+		 * @param file    the file or folder in the launcher's run root
+		 * @param failure the failure
+		 * @return {@code true} if the copy skips the file or folder
+		 */
+		private boolean skips(Path file, IOException failure)
+		{
+			if (!isPermissionRefusal(failure) || !Files.isReadable(file))
+				return false;
+			skipped.add(PortablePaths.text(source.relativize(file)));
+			return true;
+		}
+
 		@Override
 		public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
 		{
-			if (source.relativize(directory).equals(Path.of(RUN_HOME)))
+			Path relative = source.relativize(directory);
+			if (relative.equals(Path.of(RUN_HOME)) || UNCHANGED.contains(relative))
 				return FileVisitResult.SKIP_SUBTREE;
 			attempted = copyOf(directory);
-			Files.createDirectories(attempted);
+			try
+			{
+				Files.createDirectories(attempted);
+			}
+			catch (IOException e)
+			{
+				if (relative.toString().isEmpty() || !skips(directory, e))
+					throw e;
+				return FileVisitResult.SKIP_SUBTREE;
+			}
 			return FileVisitResult.CONTINUE;
 		}
 
 		@Override
 		public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 		{
-			if (attributes.isRegularFile())
+			if (attributes.isRegularFile() && !UNCHANGED.contains(source.relativize(file)))
 			{
 				attempted = copyOf(file);
-				Files.copy(file, attempted, NOFOLLOW_LINKS);
+				try
+				{
+					Files.copy(file, attempted, NOFOLLOW_LINKS);
+				}
+				catch (IOException e)
+				{
+					if (!skips(file, e))
+						throw e;
+				}
 			}
 			return FileVisitResult.CONTINUE;
 		}

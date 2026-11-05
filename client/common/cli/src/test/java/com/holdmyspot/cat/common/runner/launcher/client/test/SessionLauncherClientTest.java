@@ -36,6 +36,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests that a runner launch inside a sandboxed session becomes a request to the session launcher of its harness
@@ -360,6 +362,208 @@ public final class SessionLauncherClientTest
 				contains("The kept run at " + runRoot.resolve("claude").resolve(FakeLauncher.RUN_ID) +
 					" is incomplete");
 		}
+	}
+
+	/**
+	 * The files of a kept run's project that the child's sandbox kept it from changing, and the files beside them.
+	 */
+	private static final List<String> PROJECT_FILES = List.of("project/.git/config", "project/.git/hooks/pre-commit",
+		"project/.git/HEAD", "project/.claude/settings.json", "project/.claude/rules.md", "project/.gitconfig",
+		"project/README.md");
+
+	/**
+	 * Verifies that a kept run's copy leaves out the project's Git configuration and hooks and its harness settings
+	 * files, which the child could not change, and copies every other file, including the rest of {@code .git}. The
+	 * launch prints nothing and a completed session exits with status 0, and the receipt lists no skipped path.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void keptRunOmitsUnchangedFiles() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			fixture.launcher().runFiles = PROJECT_FILES;
+			Path receipt = fixture.root().resolve("out/receipt.json");
+			Path runRoot = fixture.root().resolve("runs");
+			StringWriter errors = new StringWriter();
+
+			int status = launchKept(fixture, Status.COMPLETED, errors, receipt, runRoot);
+
+			requireThat(errors.toString(), "errors").isEmpty();
+			requireThat(status, "status").isEqualTo(0);
+			Path run = runRoot.resolve("claude").resolve(FakeLauncher.RUN_ID);
+			for (String name : List.of("project/.git/config", "project/.git/hooks/pre-commit",
+				"project/.claude/settings.json", "project/.gitconfig"))
+				requireThat(Files.exists(run.resolve(name)), name).isFalse();
+			requireThat(Files.exists(run.resolve("project/.git/hooks")), "hooks").isFalse();
+			for (String name : List.of("project/.git/HEAD", "project/.claude/rules.md", "project/README.md",
+				"artifacts/result.txt"))
+				requireThat(Files.isRegularFile(run.resolve(name)), name).isTrue();
+			requireThat(Files.readString(receipt, UTF_8), "receipt").doesNotContain("skipped");
+		}
+	}
+
+	/**
+	 * Verifies that when the sender's sandbox refuses to write one file of a kept run, the copy skips that file and
+	 * copies every other file, the launch prints nothing, a completed session exits with status 0, and the receipt
+	 * lists the skipped path relative to the run.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusedFileIsSkippedSilently() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			fixture.launcher().runFiles = List.of("project/README.md", "project/locked/a.txt");
+			Path receipt = fixture.root().resolve("out/receipt.json");
+			Path runRoot = fixture.root().resolve("runs");
+			Path run = runRoot.resolve("claude").resolve(FakeLauncher.RUN_ID);
+			Path locked = Files.createDirectories(run.resolve("project/locked"));
+			Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("r-x------"));
+			StringWriter errors = new StringWriter();
+			int status;
+			try
+			{
+				status = launchKept(fixture, Status.COMPLETED, errors, receipt, runRoot);
+			}
+			finally
+			{
+				Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"));
+			}
+
+			requireThat(errors.toString(), "errors").isEmpty();
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(Files.readString(run.resolve("project/README.md"), UTF_8), "readme").isEqualTo(
+				"project/README.md");
+			requireThat(Files.readString(run.resolve("artifacts/result.txt"), UTF_8), "result").isEqualTo("result");
+			requireThat(Files.exists(run.resolve("project/locked/a.txt")), "a").isFalse();
+			requireThat(skippedPaths(receipt), "skipped").isEqualTo(List.of("project/locked/a.txt"));
+		}
+	}
+
+	/**
+	 * Verifies that when the sender's sandbox refuses to create one folder of a kept run, the copy skips the folder's
+	 * subtree, copies its siblings, and lists only the folder in the receipt.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusedFolderIsSkippedWithItsSubtree() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			fixture.launcher().runFiles = List.of("project/data/sub/a.txt", "project/data/sub/deep/b.txt",
+				"project/open/c.txt");
+			Path receipt = fixture.root().resolve("out/receipt.json");
+			Path runRoot = fixture.root().resolve("runs");
+			Path run = runRoot.resolve("claude").resolve(FakeLauncher.RUN_ID);
+			Path data = Files.createDirectories(run.resolve("project/data"));
+			Files.setPosixFilePermissions(data, PosixFilePermissions.fromString("r-x------"));
+			StringWriter errors = new StringWriter();
+			int status;
+			try
+			{
+				status = launchKept(fixture, Status.COMPLETED, errors, receipt, runRoot);
+			}
+			finally
+			{
+				Files.setPosixFilePermissions(data, PosixFilePermissions.fromString("rwx------"));
+			}
+
+			requireThat(errors.toString(), "errors").isEmpty();
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(Files.exists(run.resolve("project/data/sub")), "sub").isFalse();
+			requireThat(Files.isRegularFile(run.resolve("project/open/c.txt")), "sibling").isTrue();
+			requireThat(Files.isRegularFile(run.resolve("artifacts/result.txt")), "result").isTrue();
+			requireThat(skippedPaths(receipt), "skipped").isEqualTo(List.of("project/data/sub"));
+		}
+	}
+
+	/**
+	 * Verifies that a failure that is not a permission refusal still ends the copy and yields the incomplete-copy
+	 * message and exit status 1, even when the copy also skipped a refused file.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void otherFailureReportsIncompleteRun() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			fixture.launcher().runFiles = List.of("project/locked/a.txt");
+			Path output = fixture.root().resolve("out/transcript.jsonl");
+			Path runRoot = fixture.root().resolve("runs");
+			Path locked = Files.createDirectories(runRoot.resolve("claude").resolve(FakeLauncher.RUN_ID).
+				resolve("project/locked"));
+			Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("r-x------"));
+			StringWriter errors = new StringWriter();
+			int status;
+			try
+			{
+				status = launchWithBlockedCopy(fixture, Status.COMPLETED, errors, output, runRoot);
+			}
+			finally
+			{
+				Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"));
+			}
+
+			requireThat(status, "status").isEqualTo(1);
+			requireThat(errors.toString(), "errors").
+				contains(blockedFile(runRoot).toString()).
+				contains("is incomplete").
+				doesNotContain("locked");
+		}
+	}
+
+	/**
+	 * Runs a launch that keeps the run and writes its receipt.
+	 *
+	 * @param fixture the test's fixture
+	 * @param answer  how the launcher answers the request
+	 * @param errors  receives why the launch did not complete
+	 * @param receipt the file that receives the child's receipt
+	 * @param runRoot the run root that receives the kept run
+	 * @return the launch's exit status
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static int launchKept(Fixture fixture, Status answer, StringWriter errors, Path receipt, Path runRoot)
+		throws IOException
+	{
+		fixture.launcher().register();
+		fixture.launcher().status = answer;
+		return fixture.launch(errors, "--project", fixture.project().toString(), "--model", "m", "--effort", "e",
+			"--input", fixture.records().toString(), "--output", fixture.root().resolve("out/transcript.jsonl").
+			toString(), "--receipt", receipt.toString(), "--keep-run", "--run-root", runRoot.toString());
+	}
+
+	/**
+	 * Returns the paths that a receipt lists as skipped by the copy of the kept run.
+	 *
+	 * @param receipt the receipt
+	 * @return the paths, empty if the receipt lists none
+	 * @throws IOException if the receipt cannot be read
+	 */
+	private static List<String> skippedPaths(Path receipt) throws IOException
+	{
+		JsonNode document = JsonMapper.builder().build().readTree(Files.readString(receipt, UTF_8));
+		List<String> paths = new ArrayList<>();
+		for (JsonNode path : document.path("skipped_copy_paths"))
+			paths.add(path.asString());
+		return paths;
 	}
 
 	/**

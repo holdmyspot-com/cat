@@ -89,6 +89,11 @@ final class FakeLauncher implements HolderStarter
 	{
 	};
 	/**
+	 * The files, relative to the child's run directory, that the child writes besides its own, each holding its own
+	 * path.
+	 */
+	List<String> runFiles = List.of();
+	/**
 	 * The request that the launcher accepted, or {@code null}.
 	 */
 	Request request;
@@ -238,6 +243,12 @@ final class FakeLauncher implements HolderStarter
 		Files.writeString(run.resolve("home/credentials"), "secret");
 		Files.writeString(run.resolve("run.json"), "{}");
 		Files.createSymbolicLink(run.resolve("link"), run.resolve("run.json"));
+		for (String relative : runFiles)
+		{
+			Path file = run.resolve(relative);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, relative);
+		}
 		record("{\"type\":\"started\",\"run_id\":\"" + RUN_ID + "\"}");
 		if (request.turns().isPresent())
 		{
