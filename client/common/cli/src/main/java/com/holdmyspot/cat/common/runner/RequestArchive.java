@@ -434,18 +434,26 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Rejects a symbolic link in any existing input path component.
+	 * Rejects a symbolic link in any existing input path component below the file system's root directory.
+	 * <p>
+	 * On a POSIX file system only the administrator may change the root directory's entries, so neither the session
+	 * nor its parent can plant or retarget a link there; the operating system's own links there, such as macOS's
+	 * {@code /var} and {@code /tmp}, are accepted. The root of a Windows drive lets every user add entries, so there
+	 * every link is rejected.
 	 *
 	 * @param source the input path
-	 * @throws IOException if a component is a symbolic link
+	 * @throws IOException if a component that the session or its parent may change is a symbolic link
 	 */
 	private static void checkAncestors(Path source) throws IOException
 	{
-		Path component = source.toAbsolutePath().getRoot();
-		for (Path name : source.toAbsolutePath())
+		Path absolute = source.toAbsolutePath();
+		boolean administratorOwnsRoot = absolute.getFileSystem().supportedFileAttributeViews().contains("posix");
+		Path component = absolute.getRoot();
+		for (Path name : absolute)
 		{
 			component = component.resolve(name);
-			if (Files.isSymbolicLink(component))
+			boolean rootEntry = component.getNameCount() == 1;
+			if (Files.isSymbolicLink(component) && !(rootEntry && administratorOwnsRoot))
 				throw new IOException("Input path contains a symbolic link: " + source);
 		}
 	}
