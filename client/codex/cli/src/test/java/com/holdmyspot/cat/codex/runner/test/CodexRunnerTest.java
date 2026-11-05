@@ -596,6 +596,41 @@ public final class CodexRunnerTest
 	}
 
 	/**
+	 * Verifies that on Linux a session that the caller denies nothing, started without bubblewrap on the caller's
+	 * {@code PATH}, still runs under a permission profile that denies a path: the run root. On stock ubuntu-24.04,
+	 * Codex 0.160.0 fails to start the thread of such a session with {@code bwrap: loopback: Failed RTM_NEWADDR}, which
+	 * the runner refuses, whereas a session without a denied path would start and fail every command with
+	 * {@code bwrap: setting up uid map: Permission denied}.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void deniesRunRootWithoutCallerDenials() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			manager.snapshotProject(run);
+			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
+			Path configuration = run.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
+				run.directory().resolve("project"));
+
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(),
+				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, CodexRunner.appServerCommand("codex", false));
+
+			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("permissions").path(sandbox.profile()).path("filesystem");
+			requireThat(denied.path(root.toRealPath().toString()).stringValue(""), "access").isEqualTo("deny");
+		}
+	}
+
+	/**
 	 * Verifies that on macOS and Windows a session that reads evidence under the run root starts without bubblewrap on
 	 * the caller's {@code PATH}, as before: its app-server command is not wrapped, and its permission profile lets it
 	 * read the evidence while it denies the whole run root.
