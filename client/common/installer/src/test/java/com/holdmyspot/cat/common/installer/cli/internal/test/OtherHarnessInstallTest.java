@@ -234,7 +234,6 @@ public final class OtherHarnessInstallTest
 		private final Path home;
 		private final Path otherHome;
 		private final Path user;
-		private final Path project;
 		private final HarnessCommand command;
 		private final Map<String, String> environment;
 		private final RecordingIntegration otherIntegration = new RecordingIntegration("harness-b");
@@ -254,7 +253,6 @@ public final class OtherHarnessInstallTest
 			this.image = Files.createDirectories(home.resolve("plugins/cache/cat/cat").resolve(RUNNING));
 			this.policyFile = home.resolve("plugins/data/cat-cat/policy.json");
 			this.user = Files.createDirectory(root.resolve("user"));
-			this.project = Files.createDirectory(root.resolve("project"));
 			this.otherHome = Files.createDirectory(user.resolve("harness-b-home"));
 			Path program = RecordingIntegration.program(root.resolve("tools"));
 			Map<String, String> environment = new HashMap<>(RecordingIntegration.windowsVariables());
@@ -323,7 +321,7 @@ public final class OtherHarnessInstallTest
 			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
-				Invocation invocation = new Invocation(image, project, user, Platform.current(), environment,
+				Invocation invocation = new Invocation(image, user, Platform.current(), environment,
 					List.of(new RegisteredProvider(), new RegisteredProvider("harness-b")),
 					List.of(new RecordingIntegration(), otherIntegration), (recorded, recordedHome) ->
 					RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {}, replacer(),

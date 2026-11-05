@@ -277,7 +277,6 @@ public final class InstallerActivationTest
 		private final String harness;
 		private final Platform platform;
 		private final Path home;
-		private final Path project;
 		private final Path user;
 		private final Map<String, String> environment = new HashMap<>();
 		/**
@@ -291,7 +290,7 @@ public final class InstallerActivationTest
 		private Path marketplace;
 
 		/**
-		 * Creates the harness's home, the user's home and project, and the fake program.
+		 * Creates the harness's home, the user's home and the fake program.
 		 *
 		 * @param harness  the harness
 		 * @param platform the platform that the installer runs on
@@ -304,7 +303,6 @@ public final class InstallerActivationTest
 			this.platform = platform;
 			this.home = Files.createDirectories(root.resolve("harness-home"));
 			this.user = Files.createDirectories(root.resolve("user"));
-			this.project = Files.createDirectories(root.resolve("project"));
 			Path tools = Files.createDirectories(root.resolve("tools"));
 			environment.put("PATH", tools.toString());
 			if (platform.isWindows())
@@ -341,7 +339,7 @@ public final class InstallerActivationTest
 				FileReplacer replacer = new FileReplacer(platform, () ->
 				{
 				}, Clock.systemUTC());
-				new Invocation(plugin, project, user, platform, environment,
+				new Invocation(plugin, user, platform, environment,
 					List.copyOf(ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).
 						toList()),
 					List.copyOf(ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).

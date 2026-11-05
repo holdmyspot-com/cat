@@ -36,7 +36,7 @@ public final class InstallerMain
 		{
 			Platform platform = Platform.current();
 			Invocation invocation = new Invocation(PluginDirectory.of(InstallerMain.class),
-				Path.of("").toAbsolutePath(), Path.of(System.getProperty("user.home")), platform, System.getenv(),
+				Path.of(System.getProperty("user.home")), platform, System.getenv(),
 				ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).toList(),
 				ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).toList(),
 				ProcessHarnessCli::new, Clock.systemUTC(), Pause::sleeping, FileReplacer.retrying(Pause::sleeping),

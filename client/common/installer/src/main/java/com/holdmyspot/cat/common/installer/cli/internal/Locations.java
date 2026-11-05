@@ -52,6 +52,24 @@ public record Locations(Path image, String harness, HarnessInstallation installa
 	}
 
 	/**
+	 * Returns the instruction to replace the harness program that a policy records with the one that the user's
+	 * {@code PATH} names: deleting the policy makes the next install a first install, which takes the program from
+	 * {@code PATH}, and the CAT entry command runs that install.
+	 *
+	 * @param harness    the harness
+	 * @param policyFile the policy that records the program
+	 * @return the instruction, a sentence fragment that starts with a verb
+	 * @throws NullPointerException     if {@code policyFile} is null
+	 * @throws IllegalArgumentException if {@code harness} is blank
+	 */
+	public static String startOver(String harness, Path policyFile)
+	{
+		requireThat(policyFile, "policyFile").isNotNull();
+		return "delete the policy " + policyFile + " and run the CAT entry command in a terminal, which then records " +
+			"the " + harness + " program that PATH names: " + entryCommand(harness);
+	}
+
+	/**
 	 * Returns the CAT entry command that installs a harness's plugin.
 	 *
 	 * @param harness the harness

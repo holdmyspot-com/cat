@@ -68,7 +68,6 @@ public final class Invocation
 	 */
 	private static final Duration REQUEST_LIMIT = Duration.ofMinutes(5);
 	private final Path image;
-	private final Path cwd;
 	private final Path userHome;
 	private final Platform platform;
 	private final Map<String, String> environment;
@@ -98,7 +97,6 @@ public final class Invocation
 	 *
 	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
 	 *                     install, otherwise the version folder of the installed plugin
-	 * @param cwd          the caller's working directory
 	 * @param userHome     the user's home directory, which holds the capacity locks and in which the harness homes lie
 	 *                     unless the environment names them
 	 * @param platform     the running platform
@@ -116,12 +114,12 @@ public final class Invocation
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Invocation(Path image, Path cwd, Path userHome, Platform platform, Map<String, String> environment,
+	public Invocation(Path image, Path userHome, Platform platform, Map<String, String> environment,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
 		PrintStream stdout, PrintStream stderr)
 	{
-		this(image, cwd, userHome, platform, environment, activations, integrations, cliFactory, clock, waiting,
+		this(image, userHome, platform, environment, activations, integrations, cliFactory, clock, waiting,
 			replacer, terminal, starter, releaseBaseUrl -> new HttpsReleaseSource(releaseBaseUrl, environment,
 				CONNECT_LIMIT, REQUEST_LIMIT), stdout, stderr);
 	}
@@ -131,7 +129,6 @@ public final class Invocation
 	 *
 	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
 	 *                     install, otherwise the version folder of the installed plugin
-	 * @param cwd          the caller's working directory
 	 * @param userHome     the user's home directory, which holds the capacity locks and in which the harness homes lie
 	 *                     unless the environment names them
 	 * @param platform     the running platform
@@ -150,13 +147,12 @@ public final class Invocation
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Invocation(Path image, Path cwd, Path userHome, Platform platform, Map<String, String> environment,
+	public Invocation(Path image, Path userHome, Platform platform, Map<String, String> environment,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
 		ReleaseSources sources, PrintStream stdout, PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
-		requireThat(cwd, "cwd").isNotNull();
 		requireThat(userHome, "userHome").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(cliFactory, "cliFactory").isNotNull();
@@ -169,7 +165,6 @@ public final class Invocation
 		requireThat(stdout, "stdout").isNotNull();
 		requireThat(stderr, "stderr").isNotNull();
 		this.image = image;
-		this.cwd = cwd;
 		this.userHome = userHome;
 		this.platform = platform;
 		this.environment = Map.copyOf(environment);
@@ -278,8 +273,7 @@ public final class Invocation
 		String own = locations.harness();
 		if (!arguments.harness().isEmpty() && !arguments.harness().equals(own))
 			return print(otherHarness(own, arguments.harness()), arguments, locations);
-		Managed managed = manage(own, locations.policy(), arguments.operation() == Operation.STATUS,
-			arguments.operation() != Operation.UNINSTALL);
+		Managed managed = manage(own, locations.policy(), arguments.operation() == Operation.STATUS);
 		if (managed.refusal() != null)
 			return print(managed.refusal(), arguments, locations);
 		if (arguments.operation() == Operation.STATUS)
@@ -323,12 +317,15 @@ public final class Invocation
 		String own = locations.harness();
 		if (!arguments.harness().equals(own))
 			return installOther(arguments, locations);
-		Managed managed = manage(own, locations.policy(), false, true);
+		Managed managed = manage(own, locations.policy(), false);
 		if (managed.refusal() != null)
 			return print(managed.refusal(), arguments, locations);
 		Optional<UpdateResult> otherHome = refuseOtherHome(own, arguments.home(), managed.home());
 		if (otherHome.isPresent())
 			return print(otherHome.get(), arguments, locations);
+		Optional<UpdateResult> unusable = refuseUnusableProgram(own, locations.policy(), managed);
+		if (unusable.isPresent())
+			return print(unusable.get(), arguments, locations);
 		try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 		{
 			UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
@@ -388,7 +385,7 @@ public final class Invocation
 				"from its own release " + release + ", not from release " + arguments.tag() + "; run install " +
 				"without a release.", List.of()), arguments, locations);
 		}
-		Managed managed = manage(locations.harness(), locations.policy(), true, false);
+		Managed managed = manage(locations.harness(), locations.policy(), true);
 		if (managed.refusal() != null)
 			return print(managed.refusal(), arguments, locations);
 		if (managed.policy().keys().isEmpty())
@@ -482,9 +479,12 @@ public final class Invocation
 			if (Files.isRegularFile(installation.policy(), NOFOLLOW_LINKS) &&
 				activation.installed(real).version().isPresent())
 			{
-				Managed managed = manage(harness, installation.policy(), false, true);
+				Managed managed = manage(harness, installation.policy(), false);
 				if (managed.refusal() == null && refuseOtherHome(harness, real, managed.home()).isEmpty())
 				{
+					Optional<UpdateResult> unusable = refuseUnusableProgram(harness, installation.policy(), managed);
+					if (unusable.isPresent())
+						return print(unusable.get(), arguments, null);
 					resolvedData = installation.dataDirectory();
 					resolvedHarness = harness;
 					try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
@@ -545,12 +545,11 @@ public final class Invocation
 	 * @param own           the harness
 	 * @param policyFile    the installation's policy
 	 * @param readOnly      true when the operation only reads the installation, and needs no harness integration
-	 * @param needsProgram  true when the operation runs the harness program that install recorded
 	 * @return the checked installation, or its refusal
 	 * @throws IOException    if the policy cannot be read
 	 * @throws TrustException if the policy is invalid
 	 */
-	private Managed manage(String own, Path policyFile, boolean readOnly, boolean needsProgram)
+	private Managed manage(String own, Path policyFile, boolean readOnly)
 		throws IOException, TrustException
 	{
 		if (!Files.isRegularFile(policyFile))
@@ -588,17 +587,36 @@ public final class Invocation
 			return Managed.refused(failure(Result.REFUSED, own, "This installer has no harness integration for " +
 				own + ".", List.of()));
 		}
-		// Uninstall needs the program only to unregister the plugin, and skips that step when the program is gone
-		Path program = Path.of(command.get().command().getFirst());
-		if (needsProgram && (!Files.isRegularFile(program) || !Files.isExecutable(program)))
-		{
-			return Managed.refused(failure(Result.REFUSED, own, "The " + own + " program " + program + " that install " +
-				"recorded no longer exists or is not executable; " + Locations.rerunEntryCommand(own) + ".",
-				List.of(program)));
-		}
 		HarnessSession session = new HarnessSession(integration.get(), cliFactory.create(command.get(), home),
 			replacer);
 		return new Managed(policy, activation.get(), home, session, null);
+	}
+
+	/**
+	 * Refuses an install whose recorded harness program can no longer be used. Install runs that program, and never
+	 * takes another one from the search path once the policy records one. Uninstall needs no such check: it runs the
+	 * program only to unregister the plugin, and skips that step when the program is gone.
+	 *
+	 * @param own        the harness
+	 * @param policyFile the installation's policy
+	 * @param managed    the checked installation, which records the program
+	 * @return the refusal, or empty when the program can be used
+	 */
+	private Optional<UpdateResult> refuseUnusableProgram(String own, Path policyFile, Managed managed)
+	{
+		HarnessCommand command = managed.policy().command(own).orElseThrow();
+		HarnessIntegration integration = integrations.stream().
+			filter(provider -> provider.harness().equals(own)).findFirst().orElseThrow();
+		try
+		{
+			HarnessProgram.requireRecorded(command, managed.home(), policyFile, integration, cliFactory);
+			return Optional.empty();
+		}
+		catch (TrustException e)
+		{
+			return Optional.of(failure(Result.REFUSED, own, e.getMessage(),
+				List.of(Path.of(command.command().getLast()), policyFile)));
+		}
 	}
 
 	/**
@@ -662,7 +680,7 @@ public final class Invocation
 		{
 			outcome = new Install(plugin, platform, replacer, cliFactory, ProcessElevation::isElevated,
 				new ProcessMigrationRunner()).
-				install(harness, arguments.home(), cwd, environment, userHome, activation, integration, others, consent);
+				install(harness, arguments.home(), environment, userHome, activation, integration, others, consent);
 		}
 		catch (TrustException e)
 		{

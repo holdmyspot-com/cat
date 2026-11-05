@@ -9,7 +9,6 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
-import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -46,6 +45,10 @@ import java.util.function.Predicate;
  * version folder. It refuses a release older than the data version that kept data records, because a migration of a
  * newer release has shaped that data. Every check runs before the first change, and every step can be repeated, so
  * running install again repairs an installation that an earlier install left incomplete.
+ * <p>
+ * Install takes the harness program from the user's {@code PATH} only when the harness home's policy records none for
+ * that home; otherwise it reuses the recorded program and its recorded environment, as {@link HarnessProgram}
+ * explains.
  */
 public final class Install
 {
@@ -103,9 +106,8 @@ public final class Install
 	 *
 	 * @param harness     the harness
 	 * @param home        the existing absolute harness home, or null for the home that the user's environment selects
-	 * @param cwd         the existing working directory from which the user ran install
-	 * @param environment the user's environment, which selects the harness homes and is searched for the harness
-	 *                    program
+	 * @param environment the user's environment, which selects the harness homes, and whose {@code PATH} a first
+	 *                    install searches for the harness program
 	 * @param userHome    the user's home directory, which holds the capacity locks
 	 * @param activation  the harness's activation provider
 	 * @param integration the harness's integration
@@ -114,18 +116,18 @@ public final class Install
 	 * @param consent     decides whether the user allows a change that needs their permission
 	 * @return the outcome
 	 * @throws NullPointerException if any argument other than {@code home} is null
-	 * @throws TrustException       if a check refuses install, or the user withholds a permission that install needs;
+	 * @throws TrustException       if a check refuses install, including when the policy records a harness program
+	 *                              that can no longer be used, or the user withholds a permission that install needs;
 	 *                              the message of the latter is the question that the integration asked
-	 * @throws IOException          if the harness program is not found, the harness configuration is invalid, the
-	 *                              harness does not install the plugin, a data migration fails, or a file cannot be
-	 *                              read, written or replaced
+	 * @throws IOException          if a first install does not find the harness program, the harness configuration is
+	 *                              invalid, the harness does not install the plugin, a data migration fails, or a file
+	 *                              cannot be read, written or replaced
 	 */
-	public Outcome install(String harness, Path home, Path cwd, Map<String, String> environment, Path userHome,
+	public Outcome install(String harness, Path home, Map<String, String> environment, Path userHome,
 		PluginActivation activation, HarnessIntegration integration, List<HarnessIntegration> others,
 		Consent consent) throws TrustException, IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
-		requireThat(cwd, "cwd").isDirectory();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(userHome, "userHome").isNotNull();
 		requireThat(activation.harness(), "activation.harness()").isEqualTo(harness, "harness");
@@ -151,7 +153,7 @@ public final class Install
 		}
 		HarnessInstallation installation = integration.installation(home);
 		Path policyFile = installation.policy();
-		requireOwnPolicy(policyFile, harness);
+		HarnessCommand recorded = recordedProgram(policyFile, harness, home);
 		requireWritable(policyFile);
 		Path migrationFile = activation.migrationVersionFile(home);
 		Optional<PluginVersion> before = activeVersion(activation, home);
@@ -167,7 +169,14 @@ public final class Install
 				"installing it would lose data; run install with release " + newerData.get() + " or a later one " +
 				"instead.");
 		}
-		HarnessCommand command = discoverProgram(integration, home, installation.dataDirectory(), cwd, environment);
+		HarnessCommand command;
+		if (recorded == null)
+			command = discoverProgram(integration, home, environment);
+		else
+		{
+			HarnessProgram.requireRecorded(recorded, home, policyFile, integration, cliFactory);
+			command = recorded;
+		}
 		integration.validateConfiguration(home);
 		Path catLocks = CapacityLocks.root(userHome);
 		Optional<String> consentRequest = integration.consentRequest(home, catLocks);
@@ -255,20 +264,25 @@ public final class Install
 	}
 
 	/**
-	 * Refuses an existing policy that is not a regular file or that records another harness.
+	 * Returns the harness program that the existing policy records for the harness home, after refusing a policy that
+	 * is not a regular file or that records another harness.
 	 *
 	 * @param policyFile the policy
 	 * @param harness    the installation's harness
+	 * @param home       the real harness home
+	 * @return the recorded command, or null when no policy exists, or it records no program or records another home
 	 * @throws TrustException if the policy is a link, is malformed or records another harness
 	 * @throws IOException    if the policy cannot be read
 	 */
-	private static void requireOwnPolicy(Path policyFile, String harness) throws TrustException, IOException
+	private static HarnessCommand recordedProgram(Path policyFile, String harness, Path home)
+		throws TrustException, IOException
 	{
 		if (!Files.exists(policyFile, NOFOLLOW_LINKS))
-			return;
+			return null;
 		if (!Files.isRegularFile(policyFile, NOFOLLOW_LINKS))
 			throw refusal("The policy " + policyFile + " must be a regular file, not a symbolic link.");
-		for (String recorded : TrustPolicy.read(policyFile).harnesses().keySet())
+		TrustPolicy policy = TrustPolicy.read(policyFile);
+		for (String recorded : policy.harnesses().keySet())
 		{
 			if (!recorded.equals(harness))
 			{
@@ -276,32 +290,30 @@ public final class Install
 					"installation is for " + harness + " only.");
 			}
 		}
+		// A record for another home runs the program with that home's variables, which would change the other home
+		if (!home.equals(policy.harnesses().get(harness)))
+			return null;
+		return policy.command(harness).orElse(null);
 	}
 
 	/**
-	 * Finds the harness program on the user's search path and confirms that it is the harness's program by running
-	 * {@code <program> --version} exactly as registration will run it.
+	 * Finds the harness program on the user's search path and confirms that it is the harness's program.
 	 *
 	 * @param integration the harness's integration
 	 * @param home        the real harness home
-	 * @param data        the plugin data folder, where the program may not lie
-	 * @param cwd         the working directory from which the user ran install
 	 * @param environment the user's environment
 	 * @return the command and environment to record
 	 * @throws IOException if the program is not found, cannot be run, or does not identify itself as the harness's
 	 *                     program
 	 */
-	private HarnessCommand discoverProgram(HarnessIntegration integration, Path home, Path data, Path cwd,
-		Map<String, String> environment) throws IOException
+	private HarnessCommand discoverProgram(HarnessIntegration integration, Path home, Map<String, String> environment)
+		throws IOException
 	{
-		ExecutableDiscovery discovery = new ExecutableDiscovery(platform, cwd.toRealPath(),
-			Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath());
-		HarnessCommand command = discovery.find(integration.programName(), home, data, environment,
+		HarnessCommand command = new ExecutableDiscovery(platform).find(integration.programName(), environment,
 			integration.programEnvironment(home, platform.environment(environment)));
-		CommandResult version = cliFactory.create(command, home).run(List.of("--version"));
 		try
 		{
-			integration.requireIdentity(version);
+			HarnessProgram.requireIdentity(command, home, integration, cliFactory);
 		}
 		catch (IOException e)
 		{

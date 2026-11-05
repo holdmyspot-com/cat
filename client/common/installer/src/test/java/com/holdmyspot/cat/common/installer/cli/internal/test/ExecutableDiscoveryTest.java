@@ -15,12 +15,10 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Tests how setup finds a harness's command-line program on the user's search path: which directories it never takes
- * the program from, and what it records.
+ * Tests how a first install finds a harness's command-line program on the user's search path, and what it records.
  */
 public final class ExecutableDiscoveryTest
 {
@@ -32,9 +30,9 @@ public final class ExecutableDiscoveryTest
 	}
 
 	/**
-	 * Setup records the path at which it found the first program on the search path, without resolving the link that
-	 * a harness re-points when it updates itself, a search path without relative, empty, repeated or excluded
-	 * entries, and the harness's own variables, but no other variable of the user's environment.
+	 * Install records the path at which it found the first program on the search path, without resolving the link that
+	 * a harness re-points when it updates itself, a search path without relative, empty or repeated entries, and the
+	 * harness's own variables, but no other variable of the user's environment.
 	 *
 	 * @throws IOException if the fixture cannot be created or discovery fails
 	 */
@@ -47,10 +45,9 @@ public final class ExecutableDiscoveryTest
 			Path real = layout.program(layout.root.resolve("versions/2.1"));
 			Path installed = Files.createDirectories(layout.root.resolve("installed"));
 			Path link = Files.createSymbolicLink(installed.resolve(real.getFileName()), real);
-			Path decoy = layout.program(layout.home.resolve("bin")).getParent();
 			Path other = Files.createDirectories(layout.root.resolve("other"));
-			layout.environment.put("PATH", String.join(File.pathSeparator, decoy.toString(), "relative-bin", "",
-				installed.toString(), other.toString(), installed.toString()));
+			layout.environment.put("PATH", String.join(File.pathSeparator, "relative-bin", "", installed.toString(),
+				other.toString(), installed.toString()));
 			layout.environment.put("UNRELATED", "value");
 			Map<String, String> expected = layout.platformVariables();
 			expected.put("HARNESS_A_HOME", layout.home.toString());
@@ -64,69 +61,7 @@ public final class ExecutableDiscoveryTest
 	}
 
 	/**
-	 * Setup never takes the program from a directory that a project, a download or the installer controls, so a
-	 * program there that comes first on the search path is skipped, and the search path that setup records leaves
-	 * the directory out.
-	 *
-	 * @param excluded the excluded directory's name in the fixture
-	 * @throws IOException if the fixture cannot be created or discovery fails
-	 */
-	@Test(dataProvider = "excludedDirectories")
-	public void skipsExcludedDirectory(String excluded) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Layout layout = new Layout(cleanup.add(testDirectory()), Platform.current());
-			Path inExcluded = layout.program(layout.directory(excluded).resolve("bin")).getParent();
-			Path allowed = layout.program(layout.root.resolve("allowed"));
-			layout.environment.put("PATH", inExcluded + File.pathSeparator + allowed.getParent());
-
-			HarnessCommand command = layout.find();
-
-			requireThat(command.command(), "command").isEqualTo(List.of(allowed.toString()));
-			requireThat(command.environment().get("PATH"), "PATH").isEqualTo(allowed.getParent().toString());
-		}
-	}
-
-	/**
-	 * Setup refuses a program on an allowed search directory whose link leads into an excluded directory, because a
-	 * project, a download or the installer could replace the program there.
-	 *
-	 * @param excluded the excluded directory's name in the fixture
-	 * @throws IOException if the fixture cannot be created or discovery fails
-	 */
-	@Test(dataProvider = "excludedDirectories", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*resolves into a directory that install never records.*")
-	public void refusesLinkIntoExcludedDirectory(String excluded) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Layout layout = new Layout(cleanup.add(testDirectory()), Platform.current());
-			Path target = layout.program(layout.directory(excluded).resolve("bin"));
-			Path installed = Files.createDirectories(layout.root.resolve("installed"));
-			Files.createSymbolicLink(installed.resolve(target.getFileName()), target);
-			layout.environment.put("PATH", installed.toString());
-
-			layout.find();
-		}
-	}
-
-	/**
-	 * Supplies the directories that setup never takes the harness program from.
-	 *
-	 * @return the working directory, the system temporary directory, the directories that {@code TMPDIR},
-	 * 	{@code TEMP} and {@code TMP} name, the harness home, {@code <user home>/.cat}, the directory that holds every
-	 * 	harness's installer installation and the installation's data directory
-	 */
-	@DataProvider
-	public static Object[][] excludedDirectories()
-	{
-		return new Object[][]{{"working"}, {"temporary"}, {"TMPDIR"}, {"TEMP"}, {"TMP"}, {"home"}, {"cat"},
-			{"base"}, {"data"}};
-	}
-
-	/**
-	 * Setup reports the program's name and the search path when no program is found.
+	 * Install reports the program's name and the search path when no program is found.
 	 *
 	 * @throws IOException if the fixture cannot be created or discovery fails
 	 */
@@ -144,26 +79,7 @@ public final class ExecutableDiscoveryTest
 	}
 
 	/**
-	 * Setup cannot keep {@code <user home>/.cat} off the search path without the user's home directory.
-	 *
-	 * @throws IOException if the fixture cannot be created or discovery fails
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*must name an absolute directory.*")
-	public void refusesUnknownUserHome() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Layout layout = new Layout(cleanup.add(testDirectory()), Platform.current());
-			layout.environment.put("PATH", layout.program(layout.root.resolve("allowed")).getParent().toString());
-			layout.environment.remove(Platform.current().homeVariable());
-
-			layout.find();
-		}
-	}
-
-	/**
-	 * On Windows, setup takes only an {@code .exe} or {@code .cmd} program, in the order that {@code PATHEXT} gives,
+	 * On Windows, install takes only an {@code .exe} or {@code .cmd} program, in the order that {@code PATHEXT} gives,
 	 * runs a {@code .cmd} program through {@code cmd.exe} and records the variables that Windows programs need.
 	 *
 	 * @throws IOException if the fixture cannot be created or discovery fails
@@ -196,7 +112,7 @@ public final class ExecutableDiscoveryTest
 	}
 
 	/**
-	 * On Windows, setup refuses to record a program that it could not run, because {@code SystemRoot} does not name
+	 * On Windows, install refuses to record a program that it could not run, because {@code SystemRoot} does not name
 	 * the Windows directory.
 	 *
 	 * @throws IOException if the fixture cannot be created or discovery fails
@@ -229,7 +145,7 @@ public final class ExecutableDiscoveryTest
 	}
 
 	/**
-	 * The directories of one setup run and the user's environment.
+	 * The directories of one install and the user's environment.
 	 */
 	private static final class Layout
 	{
@@ -250,45 +166,9 @@ public final class ExecutableDiscoveryTest
 			this.root = root;
 			this.platform = platform;
 			this.home = Files.createDirectories(root.resolve("harness-home"));
-			environment.put(platform.homeVariable(), Files.createDirectories(root.resolve("user")).toString());
-			for (String variable : List.of("TMPDIR", "TEMP", "TMP"))
-				environment.put(variable, Files.createDirectories(root.resolve(variable)).toString());
 			String systemRoot = System.getenv("SystemRoot");
 			if (platform.isWindows() && systemRoot != null)
 				environment.put("SystemRoot", systemRoot);
-		}
-
-		/**
-		 * Returns one of the directories that setup never takes the program from.
-		 *
-		 * @param name the directory's name in the fixture
-		 * @return the directory
-		 * @throws IOException if the directory cannot be created
-		 */
-		private Path directory(String name) throws IOException
-		{
-			Path directory = switch (name)
-			{
-				case "working" -> root.resolve("project");
-				case "temporary" -> root.resolve("java-temporary");
-				case "TMPDIR", "TEMP", "TMP" -> Path.of(environment.get(name));
-				case "home" -> home;
-				case "cat" -> root.resolve("user/.cat");
-				case "base" -> root.resolve("installers/harness-b");
-				case "data" -> data();
-				default -> throw new AssertionError(name);
-			};
-			return Files.createDirectories(directory);
-		}
-
-		/**
-		 * Returns the installation's data directory.
-		 *
-		 * @return the directory
-		 */
-		private Path data()
-		{
-			return root.resolve("installers/harness-a");
 		}
 
 		/**
@@ -328,13 +208,13 @@ public final class ExecutableDiscoveryTest
 		/**
 		 * Finds the {@code harness-a} program.
 		 *
-		 * @return the command that setup records
+		 * @return the command that install records
 		 * @throws IOException if discovery fails
 		 */
 		private HarnessCommand find() throws IOException
 		{
-			return new ExecutableDiscovery(platform, root.resolve("project"), root.resolve("java-temporary")).
-				find("harness-a", home, data(), environment, Map.of("HARNESS_A_HOME", home.toString()));
+			return new ExecutableDiscovery(platform).find("harness-a", environment,
+				Map.of("HARNESS_A_HOME", home.toString()));
 		}
 	}
 }

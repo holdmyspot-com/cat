@@ -324,6 +324,75 @@ public final class InvocationTest
 	}
 
 	/**
+	 * When the recorded harness program no longer identifies itself as the harness's program, install from the version
+	 * folder is refused before anything changes, telling the user how to start over.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void refusesHarnessProgramFailingIdentity() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-identity-")));
+			installation.writePolicy(installation.trustPolicy());
+			byte[] policy = Files.readAllBytes(installation.policyFile);
+			RecordingIntegration integration = new RecordingIntegration().fail("requireIdentity");
+
+			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "install", "--harness",
+				"harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").
+				contains(installation.policyFile.toString()).contains("cat.sh --harness harness-a");
+			requireThat(integration.calls(), "calls").isEqualTo(List.of("requireIdentity"));
+			requireThat(Files.exists(installation.data.resolve("state"), NOFOLLOW_LINKS), "state").isFalse();
+			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
+		}
+	}
+
+	/**
+	 * When the recorded harness program no longer exists, the CAT entry command's install from an extracted plugin
+	 * archive takes no other program from the search path: it is refused before anything changes, telling the user how
+	 * to start over.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void archiveInstallKeepsMissingProgram() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-archive-missing-")));
+			installation.writePolicy(installation.trustPolicy());
+			String active = installation.image.getFileName().toString();
+			Files.createDirectories(installation.image.resolve("bin"));
+			Files.writeString(installation.image.resolve("bin/VERSION"), active + "\n");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), active + "\n");
+			Files.delete(installation.program);
+			byte[] policy = Files.readAllBytes(installation.policyFile);
+			Path archive = PluginArchive.create(installation.root.resolve("download"),
+				List.of(trusted("release-key", keyPair())));
+			Path tools = RecordingIntegration.program(installation.root.resolve("other-tools")).getParent();
+			Path user = installation.root.resolve("user");
+			RecordingIntegration integration = new RecordingIntegration();
+
+			Run run = run(archive, installation.root, installEnvironment(user, tools), List.of(new RegisteredProvider()),
+				integration, "--home", installation.home.toString(), "install", "--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").
+				contains(installation.policyFile.toString()).contains("cat.sh --harness harness-a");
+			requireThat(integration.calls(), "calls").doesNotContain("register");
+			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
+		}
+	}
+
+	/**
 	 * A completed uninstall prints its one-line result itself and keeps CAT's plugin data with the policy.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
@@ -1009,24 +1078,24 @@ public final class InvocationTest
 	 * Runs one installer invocation whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param cwd          the caller's working directory
+	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
 	 * @param arguments    the command line
 	 * @return the outcome
 	 */
-	private static Run run(Path image, Path cwd, Map<String, String> environment,
+	private static Run run(Path image, Path defaultHome, Map<String, String> environment,
 		List<PluginActivation> activations, HarnessIntegration integration, String... arguments)
 	{
-		return run(image, cwd, environment, activations, integration, _ -> Optional.empty(), arguments);
+		return run(image, defaultHome, environment, activations, integration, _ -> Optional.empty(), arguments);
 	}
 
 	/**
 	 * Runs one installer invocation, with a terminal, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param cwd          the caller's working directory
+	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1034,10 +1103,10 @@ public final class InvocationTest
 	 * @param arguments    the command line
 	 * @return the outcome
 	 */
-	private static Run run(Path image, Path cwd, Map<String, String> environment,
+	private static Run run(Path image, Path defaultHome, Map<String, String> environment,
 		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, String... arguments)
 	{
-		return run(image, cwd, environment, activations, integration, terminal, Platform.LINUX_X64, command ->
+		return run(image, defaultHome, environment, activations, integration, terminal, Platform.LINUX_X64, command ->
 		{
 			throw new AssertionError("Started " + command);
 		}, arguments);
@@ -1047,7 +1116,7 @@ public final class InvocationTest
 	 * Runs one installer invocation on a platform, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param cwd          the caller's working directory
+	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1056,11 +1125,11 @@ public final class InvocationTest
 	 * @param arguments    the command line
 	 * @return the outcome
 	 */
-	private static Run run(Path image, Path cwd, Map<String, String> environment,
+	private static Run run(Path image, Path defaultHome, Map<String, String> environment,
 		List<PluginActivation> activations, HarnessIntegration integration, Platform platform, ProcessStarter starter,
 		String... arguments)
 	{
-		return run(image, cwd, environment, activations, integration, _ -> Optional.empty(), platform, starter,
+		return run(image, defaultHome, environment, activations, integration, _ -> Optional.empty(), platform, starter,
 			arguments);
 	}
 
@@ -1068,7 +1137,7 @@ public final class InvocationTest
 	 * Runs one installer invocation on a platform, with a terminal, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param cwd          the caller's working directory
+	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1078,7 +1147,7 @@ public final class InvocationTest
 	 * @param arguments    the command line
 	 * @return the outcome
 	 */
-	private static Run run(Path image, Path cwd, Map<String, String> environment,
+	private static Run run(Path image, Path defaultHome, Map<String, String> environment,
 		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, Platform platform,
 		ProcessStarter starter, String... arguments)
 	{
@@ -1089,8 +1158,8 @@ public final class InvocationTest
 			PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 		{
 			// The user's home is the one that the environment names, as the installer's process has it
-			Path userHome = Path.of(environment.getOrDefault("HOME", cwd.toString()));
-			Invocation invocation = new Invocation(image, cwd, userHome, platform, environment, activations,
+			Path userHome = Path.of(environment.getOrDefault("HOME", defaultHome.toString()));
+			Invocation invocation = new Invocation(image, userHome, platform, environment, activations,
 				List.of(integration), (command, home) -> RecordingIntegration.cli(), Clock.systemUTC(),
 				interval -> () -> {}, replacer(), terminal, starter, stdout, stderr);
 			status = invocation.run(arguments);

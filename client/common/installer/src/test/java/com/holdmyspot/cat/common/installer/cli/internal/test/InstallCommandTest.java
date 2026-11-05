@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.installer.engine.test.Releases;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -378,6 +380,108 @@ public final class InstallCommandTest
 	}
 
 	/**
+	 * A first install that the user runs from their home folder finds the harness program in a folder below that home,
+	 * such as {@code ~/.local/bin}, where Claude Code's native installer puts it, and records it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void firstInstallFindsProgramBelowUserHome() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-user-bin-")));
+			Path program = RecordingIntegration.program(fixture.user.resolve(".local/bin"));
+			fixture.environment.put("PATH", program.getParent().toString());
+
+			fixture.install();
+
+			requireThat(TrustPolicy.read(fixture.policyFile()).command("harness-a").orElseThrow().command(), "command").
+				isEqualTo(List.of(program.toString()));
+		}
+	}
+
+	/**
+	 * Once install has recorded the harness program, a later install runs that program with its recorded environment
+	 * and keeps it recorded, even when the search path now finds another program of the same name first.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void laterInstallReusesRecordedProgram() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-reuse-")));
+			fixture.recordProgram();
+			Path other = RecordingIntegration.program(fixture.root.resolve("other-tools")).getParent();
+			fixture.environment.put("PATH", other + File.pathSeparator + fixture.environment.get("PATH"));
+
+			fixture.install();
+
+			requireThat(TrustPolicy.read(fixture.policyFile()).command("harness-a").orElseThrow(), "recorded").
+				isEqualTo(fixture.command);
+			requireThat(Set.copyOf(fixture.started), "started").isEqualTo(Set.of(fixture.command));
+		}
+	}
+
+	/**
+	 * Returns the ways in which the harness program that install recorded can no longer be used.
+	 *
+	 * @return each condition's name
+	 */
+	@DataProvider
+	public static Object[][] unusableRecordedPrograms()
+	{
+		return new Object[][]{{"missing"}, {"identity"}};
+	}
+
+	/**
+	 * A later install refuses, before anything changes and without taking another program from the search path, when
+	 * the harness program that install recorded no longer exists or no longer identifies itself as the harness's
+	 * program; the refusal tells the user how to start over: delete the policy and run the CAT entry command.
+	 *
+	 * @param condition the way in which the recorded program can no longer be used
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the fixture's policy is invalid
+	 */
+	@Test(dataProvider = "unusableRecordedPrograms")
+	public void laterInstallRefusesUnusableProgram(String condition) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-unusable-")));
+			fixture.recordProgram();
+			Path other = RecordingIntegration.program(fixture.root.resolve("other-tools")).getParent();
+			fixture.environment.put("PATH", other + File.pathSeparator + fixture.environment.get("PATH"));
+			switch (condition)
+			{
+				case "missing" -> Files.delete(Path.of(fixture.command.command().getFirst()));
+				case "identity" -> fixture.integration.fail("requireIdentity");
+				default -> throw new AssertionError(condition);
+			}
+			String before = Files.readString(fixture.policyFile());
+			try
+			{
+				fixture.install();
+				throw new AssertionError("Install accepted a recorded program that is " + condition);
+			}
+			catch (TrustException | IOException e)
+			{
+				requireThat(e, "refusal").isInstanceOf(TrustException.class);
+				requireThat(e.getMessage(), "message").contains(fixture.policyFile().toString()).
+					contains("cat.sh --harness harness-a");
+			}
+			requireThat(Files.exists(fixture.home.resolve("plugins/cat-marketplace"), NOFOLLOW_LINKS),
+				"marketplace").isFalse();
+			requireThat(fixture.integration.calls(), "calls").doesNotContain("register");
+			requireThat(Files.readString(fixture.policyFile()), "policy").isEqualTo(before);
+		}
+	}
+
+	/**
 	 * Install without a harness home installs at the home that the user's environment selects.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
@@ -446,13 +550,13 @@ public final class InstallCommandTest
 		private final Path archive;
 		private final Path home;
 		private final Path user;
-		private final Path cwd;
 		private final Map<String, String> environment = new HashMap<>();
 		private final RecordingIntegration integration = new RecordingIntegration();
 		private final LiveProvider provider = new LiveProvider();
 		private final RecordingMigrations migrations = new RecordingMigrations();
 		private final List<HarnessIntegration> others = new ArrayList<>();
 		private final HarnessCommand command;
+		private final List<HarnessCommand> started = new ArrayList<>();
 		private Path requestedHome;
 
 		/**
@@ -469,7 +573,6 @@ public final class InstallCommandTest
 				keyPair())));
 			this.home = Files.createDirectories(root.resolve("harness-home"));
 			this.requestedHome = home;
-			this.cwd = Files.createDirectories(root.resolve("project"));
 			this.user = Files.createDirectories(root.resolve("user"));
 			environment.put("HOME", user.toString());
 			environment.put(Platform.current().homeVariable(), user.toString());
@@ -483,6 +586,29 @@ public final class InstallCommandTest
 			recorded.put("HARNESS_A_HOME", home.toString());
 			recorded.put("PATH", program.getParent().toString());
 			this.command = new HarnessCommand(List.of(program.toString()), recorded);
+		}
+
+		/**
+		 * Returns the installation's policy.
+		 *
+		 * @return the policy file in the harness's plugin data folder
+		 */
+		private Path policyFile()
+		{
+			return home.resolve("plugins/data/cat-cat/policy.json");
+		}
+
+		/**
+		 * Writes the policy of an earlier install, which recorded {@link #command} as the harness program.
+		 *
+		 * @throws IOException    if the policy cannot be written
+		 * @throws TrustException if the policy is invalid
+		 */
+		private void recordProgram() throws IOException, TrustException
+		{
+			Files.createDirectories(policyFile().getParent());
+			TrustPolicy.of(List.of(), URI.create("https://releases.example/cat"), ReleaseVersion.parse("1.0"), 1,
+				Map.of("harness-a", home), Map.of("harness-a", command)).write(policyFile(), replacer());
 		}
 
 		/**
@@ -523,8 +649,12 @@ public final class InstallCommandTest
 		private Install.Outcome install() throws IOException, TrustException
 		{
 			Install install = new Install(archive, Platform.current(), replacer(),
-				(recorded, recordedHome) -> RecordingIntegration.cli(), _ -> false, migrations);
-			return install.install("harness-a", requestedHome, cwd, environment, user, provider,
+				(recorded, recordedHome) ->
+				{
+					started.add(recorded);
+					return RecordingIntegration.cli();
+				}, _ -> false, migrations);
+			return install.install("harness-a", requestedHome, environment, user, provider,
 				integration, others, _ -> false);
 		}
 	}
