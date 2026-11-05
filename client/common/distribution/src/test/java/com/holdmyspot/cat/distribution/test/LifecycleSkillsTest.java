@@ -101,14 +101,18 @@ public final class LifecycleSkillsTest
 			requireThat(description(Files.readString(plugin.resolve("skills/update/SKILL.md"))), "updateDescription").
 				startsWith("Use when the user asks").contains("install").contains("update").contains("upgrade");
 			String updateBody = Files.readString(plugin.resolve("skills/update/first-use.md")).replaceAll("\\s+", " ");
-			requireThat(updateBody, "updateBody").contains("cat-updater/<h>/bin/cat-updater").
-				contains("cat-updater\\<h>\\bin\\cat-updater.ps1").contains("`<launcher> install --harness <h>`").
-				contains("`<launcher> update --harness <h>`").contains("`<launcher> update --harness <h> <tag>`").
+			requireThat(updateBody, "updateBody").contains("version folder of CAT's plugin that holds this skill").
+				contains("`bin/installer`").contains("`bin\\installer.ps1`").
+				contains("`<launcher> install --harness <h>`").contains("`<launcher> install --harness <h> <tag>`").
+				doesNotContain("cat-updater").doesNotContain("XDG_DATA_HOME").doesNotContain("LOCALAPPDATA").
+				doesNotContain("<launcher> update").doesNotContain("`setup`").
 				doesNotContain("rollback").doesNotContain("roll back").doesNotContain("rolled_back").
+				doesNotContain("pending_swap").doesNotContain("not_swapped").doesNotContain("not_restored").
+				doesNotContain("`restored`").
 				contains("When the user asks to go back to an earlier release, run " +
-					"`<launcher> update --harness <h> <tag>`").
-				contains("An update without a release never goes back to an earlier one.").
-				contains("report the message to the user as it is, and do not retry the update or go back in any " +
+					"`<launcher> install --harness <h> <tag>`").
+				contains("An install without a release never goes back to an earlier one.").
+				contains("report the message to the user as it is, and do not retry the install or go back in any " +
 					"other way.").
 				contains("`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`").
 				doesNotContain("cat-updater.cmd").
@@ -116,32 +120,27 @@ public final class LifecycleSkillsTest
 				contains("`installed`").contains("`up_to_date`").contains("`refused`").
 				contains("`refused` with a `consent_command` field").
 				contains("asks whether they allow the change. Only when the user answers yes, run the command that " +
-					"`consent_command` holds, character for character as printed. When they answer no, do not run it").
+					"`consent_command` holds, character for character as printed. The harness asks the user to " +
+					"approve that command before it runs").
 				contains("`failed`: an unexpected error stopped the operation").
-				contains("rerun the entry command of a newer release").contains("releases/latest/download/cat.sh").
+				contains("releases/latest/download/cat.sh").
 				contains("releases/download/<tag>/cat.sh").contains("cat.ps1").contains("`-Harness <h>`").
-				contains("with no release argument").
-				contains("run `<launcher> update --harness <h> <tag>` after `install` reports `installed`").
-				contains("`pending_swap`").contains("`aot_cache`").
-				contains("`not_swapped`: the Java runtime could not be put in place, so the operation did not finish. " +
-					"Run `<launcher> install --harness <h>` at once: it undoes the failed operation and puts back " +
-					"the previous release, so that CAT's hooks work again. Then tell the user that the operation " +
-					"could not complete, quoting the `not_swapped` result's `message`; when that install also fails, " +
-					"quote its `message` too.").
+				contains("`aot_cache`").
 				contains("Do not mention `aot_cache` to the user unless they ask about it").
-				contains("Never run the launcher's `setup` operation yourself").
 				contains("restart or resume the session").doesNotContain("--updater-only").
 				doesNotContain("upgrade-self").doesNotContain("install/cat.sh").doesNotContain("bootstrap");
 			requireThat(description(Files.readString(plugin.resolve("skills/uninstall/SKILL.md"))),
 				"uninstallDescription").startsWith("Use when the user asks").contains("uninstall").contains("remove");
 			String uninstallBody = Files.readString(plugin.resolve("skills/uninstall/first-use.md")).
 				replaceAll("\\s+", " ");
-			requireThat(uninstallBody, "uninstallBody").contains("cat-updater/<h>/bin/cat-updater").
-				contains("cat-updater\\<h>\\bin\\cat-updater.ps1").
+			requireThat(uninstallBody, "uninstallBody").
+				contains("version folder of CAT's plugin that holds this skill").contains("`bin/installer`").
+				contains("`bin\\installer.ps1`").doesNotContain("cat-updater").doesNotContain("XDG_DATA_HOME").
 				contains("Before you run anything, ask the user whether").
 				contains("the default is to keep it").contains("`<launcher> uninstall --harness <h>`").
 				contains("`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it").
-				contains("`uninstalled`").contains("`not_removed`").contains("needs the one manual entry command again").
+				contains("`uninstalled`").doesNotContain("not_removed").
+				contains("needs the one manual entry command again").
 				contains("`uninstall_incomplete`: the removal stopped at a step and kept its progress. Run the same " +
 					"command once more").
 				contains("When the result's `unregistered` field is false").
@@ -150,7 +149,7 @@ public final class LifecycleSkillsTest
 				contains("may ask the user to approve this command").doesNotContain("cat-updater.cmd").
 				doesNotContain("install/").doesNotContain("uninstall-").doesNotContain("-Uninstall").
 				doesNotContain("-DeleteData").doesNotContain("cat.sh").doesNotContain("XDG_CONFIG_HOME").
-				doesNotContain("rollback").doesNotContain("roll back");
+				doesNotContain("rollback").doesNotContain("roll back").doesNotContain("cached bundle");
 			for (String skill : SKILLS)
 			{
 				String manifest = Files.readString(plugin.resolve("skills/" + skill + "/SKILL.md"));
@@ -181,7 +180,7 @@ public final class LifecycleSkillsTest
 
 	/**
 	 * Verifies that every installer command that the {@code update} and {@code uninstall} skills tell an agent to run
-	 * matches a permission entry that setup installs for the harness, so that the harness lets the agent run it.
+	 * matches a permission entry that install adds for the harness, so that the harness lets the agent run it.
 	 *
 	 * @param harness the harness whose permission entries to install
 	 * @throws IOException if a skill cannot be read or the permission entries cannot be installed
@@ -192,7 +191,7 @@ public final class LifecycleSkillsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-lifecycle-permissions-"));
-			Path launcher = home.resolve("data/bin/cat-updater");
+			Path launcher = home.resolve("plugins/cat/1.0+b0123456789ab/bin/installer");
 			HarnessIntegration integration = ServiceLoader.load(HarnessIntegration.class).stream().
 				map(ServiceLoader.Provider::get).filter(provider -> provider.harness().equals(harness)).findFirst().
 				orElseThrow();

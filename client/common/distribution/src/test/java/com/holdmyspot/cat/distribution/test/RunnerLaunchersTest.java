@@ -121,6 +121,7 @@ public final class RunnerLaunchersTest
 	/**
 	 * Verifies that following any skill that a plugin holds can run every launcher that it names: each
 	 * {@code bin/<launcher>} named in the skill's manifest or in its shared body is in that plugin's {@code bin/}.
+	 * Besides the launchers of its modules, every plugin's {@code bin/} holds the {@code installer} launcher.
 	 *
 	 * @param harness        the harness whose plugin to check
 	 * @param imageLaunchers the launchers in the plugin's {@code bin/}
@@ -131,7 +132,8 @@ public final class RunnerLaunchersTest
 	public void pluginHoldsEveryLauncherItsSkillsName(String harness, List<Launcher> imageLaunchers)
 		throws IOException, URISyntaxException
 	{
-		Set<String> imageNames = names(imageLaunchers);
+		Set<String> imageNames = new TreeSet<>(names(imageLaunchers));
+		imageNames.add("installer");
 		List<String> missing = new ArrayList<>();
 		List<String> skills = new ArrayList<>();
 		forEachSkillTree(harness, harnessSkills ->

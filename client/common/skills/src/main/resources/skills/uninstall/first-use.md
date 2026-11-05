@@ -13,25 +13,25 @@
 
 ## Guidance
 
-1. Find the trusted installer's launcher, and write its absolute path in place of `<launcher>` below. This harness has
-	its own installation, so the path contains the harness identifier `<h>`:
-	- On Linux and macOS, it is `cat-updater/<h>/bin/cat-updater` in the directory that the environment variable
-		`XDG_DATA_HOME` names when that variable holds an absolute path, and otherwise in `.local/share` in the user's
-		home directory. `<launcher>` stands for that path.
-	- On Windows, in PowerShell or Git Bash, it is `cat-updater\<h>\bin\cat-updater.ps1` in the directory that the
-		environment variable `LOCALAPPDATA` names. `<launcher>` stands for the command `powershell.exe -NoProfile
-		-NonInteractive -ExecutionPolicy Bypass -File` followed by that path in double quotes.
+1. Find the trusted installer's launcher, and write its absolute path in place of `<launcher>` below. The launcher is
+	in the version folder of CAT's plugin that holds this skill: the folder that holds the `skills` folder in which this
+	skill's folder lies.
+	- On Linux and macOS, it is `bin/installer` in that version folder. `<launcher>` stands for that path.
+	- On Windows, in PowerShell or Git Bash, it is `bin\installer.ps1` in that version folder. `<launcher>` stands for
+		the command `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File` followed by that path in
+		double quotes.
 
-	Read the variable's value first, then write the launcher's absolute path literally in the command that runs it,
-	because the user's permission entries match that exact text. Write the command as the launcher followed by its
-	arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of commands.
+	Resolve the version folder to its absolute path first, then write the launcher's absolute path literally in the
+	command that runs it, because the user's permission entries match that exact text. Write the command as the
+	launcher followed by its arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of
+	commands.
 
 	When the launcher does not exist, there is no trusted installer to remove CAT with for this harness; the other
 	harness's installation does not count. End your turn with a reply that says so, and that the user can install CAT's
 	installer again with the entry command from the `update` skill and then ask you to uninstall. Run nothing else.
 2. Before you run anything, ask the user whether to also delete CAT's plugin data, and state that the default is to
-	keep it. Say that uninstalling removes this harness's whole CAT installation: its plugin and registration, the
-	installer, the Java runtime and the cached bundle of an earlier release that CAT kept for it, and the permission
+	keep it. Say that uninstalling removes this harness's whole CAT installation: its plugin and registration,
+	including the installer and the Java runtime in each version folder of the plugin that CAT kept, and the permission
 	entries that let you run the installer, and the runner artifacts in `~/.cat/bundles`, which the other harness's
 	installation downloads again when it next needs them, but not the other harness's CAT installation, and not the
 	user's own files or rules. End your turn with the question, and continue only when the user answers. Skip the
@@ -50,9 +50,6 @@
 		harness's own commands once the harness program works again: for `claude`, `claude plugin uninstall cat@cat`
 		and then `claude plugin marketplace remove cat`; for `codex`, `codex plugin remove cat@cat` and then
 		`codex plugin marketplace remove cat`. Run them yourself only when the user asks.
-	- `not_removed`: tell the user that CAT's files remain, name the directory that the launcher printed to standard
-		error, and ask them to delete that directory themselves, outside the sandbox, after they close every session
-		that uses CAT.
 	- `uninstall_incomplete`: the removal stopped at a step and kept its progress. Run the same command once more; it
 		continues with that step. When it prints `uninstall_incomplete` again, stop and report its `message`.
 	- `locked`: report that another operation on CAT is running, and that the user can ask again once it finishes.
