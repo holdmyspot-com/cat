@@ -3,10 +3,14 @@ package com.holdmyspot.cat.distribution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.ShellQuoting;
@@ -186,6 +190,53 @@ public final class BundledRuleAudienceTest
 				contains("When selecting a Java platform or available project API, lazy load " +
 					"`${CAT_PLUGIN_ROOT}/rules/include/java/standard-apis.md`.");
 			requireThat(plugin.resolve("rules/include/java/standard-apis.md"), "standardApis").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies the bundled delegation rule routes an agent choosing which implementer agent runs a delegated task to the
+	 * shipped companion that maps tasks onto CAT's implementer tiers, that every tier the companion names ships in both
+	 * harnesses' plugins, and that the companion names neither harness's models, so its text stays harness-neutral.
+	 *
+	 * @throws IOException if the bundled rules or agent definitions cannot be read, copied or routed
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void delegationRoutesToImplementerAgents() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path companion = plugin.resolve("rules/include/common/delegation/implementer-agents.md");
+
+			String delegation = Files.readString(plugin.resolve("rules/include/common/delegation.md")).
+				replaceAll("\\s+", " ");
+			requireThat(delegation, "delegation").
+				contains("When choosing which of CAT's implementer agents runs a delegated task, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/delegation/implementer-agents.md`.");
+			requireThat(companion, "companion").isRegularFile();
+			String guidance = Files.readString(companion);
+			requireThat(guidance, "guidance").startsWith("# Delegation: Implementer Agents\n");
+
+			ClassLoader loader = BundledRuleAudienceTest.class.getClassLoader();
+			Pattern model = Pattern.compile("(?m)^model\\s*[:=]\\s*\"?([^\"\\s]+)\"?\\s*$");
+			for (String tier : List.of("low", "medium", "high", "xhigh"))
+			{
+				requireThat(guidance, "guidance").contains("`optimize-" + tier + "`");
+				for (String definition : List.of("agents/claude/optimize-" + tier + ".md",
+					"agents/codex/optimize-" + tier + ".toml"))
+				{
+					try (InputStream in = loader.getResourceAsStream(definition))
+					{
+						requireThat(in, definition).isNotNull();
+						Matcher matcher = model.matcher(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+						requireThat(matcher.find(), definition + "HasModel").isTrue();
+						requireThat(guidance, "guidance").doesNotContain(matcher.group(1));
+					}
+				}
+			}
 		}
 	}
 

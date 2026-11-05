@@ -22,6 +22,12 @@
 	only the context and focused checks it needs and each large enough that its own work outweighs a subagent's fixed
 	cost, so independent work proceeds concurrently, no delegate spends its time on context or checks that belong to
 	other work, and the full build runs once, after integration.
+<!-- A coordinator briefed every unit of a multi-unit implementation to its most costly implementer, although several
+     units were mechanical, such as a configuration-path change, a rename and applying a ready patch, because each brief
+     mixed open design choices with the edits that follow from them. -->
+- Run each delegated implementation task on the least costly available agent whose result a build, test or diff check
+	can accept, by settling the choices a task leaves open before delegating the edits that follow from them, so that
+	mechanical edits neither wait for nor pay for judgment that they do not need.
 <!-- A parent spent most of a long assignment on readiness reviews, inventories, and approval stops between small
      already authorized steps, while the connected deliverable that its acceptance required stayed unbuilt. -->
 - Let a delegate carry an authorized assignment through implementation, focused verification, and routine repairs to
@@ -71,6 +77,14 @@ takes. Launch the subtasks that the conflict graph below shows as independent co
 another subtask's output waits for that output, and subtasks whose write sets overlap run in sequence through one
 exclusive writer or stay with the higher authority. Do not delegate work when accepting it would require the parent to
 rederive its decisions or review work as broadly as implementing it directly.
+
+Before briefing an implementation task, separate the choices it leaves open, such as an interface, a behavior, a
+placement or a wording, from the edits that follow once those choices are made. Settle the choices first, with the
+higher-level model or in a task contract that leaves nothing to decide, then delegate the edits as their own tasks;
+when those edits are too small to outweigh a subagent's fixed cost, whoever settles the choices makes them. Give each
+task to the least costly available agent whose result a build, a test or a check of its diff can accept, and keep with
+the higher-level model the high-judgment work listed near the end of this rule. When choosing which of CAT's implementer
+agents runs a delegated task, lazy load `delegation/implementer-agents.md`.
 
 Give each subtask its own task contract that carries only what that subtask needs, including a reading list limited to
 the files its decisions depend on. Do not send several subtasks one shared reading list. A subtask's gates are its
