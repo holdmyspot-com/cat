@@ -62,15 +62,18 @@ SCRIPT
 }
 
 # Asserts that the last run printed only one line, naming the binding, and exited with the status of an unusable
-# binding.
+# binding. The line names the binding in the launcher's real folder, which differs from BINDING where the test's
+# temporary folder lies under a link, as /var does on macOS.
 #
 # Arguments:
 #   $1 - the text that the line holds after the binding's path
 assert_unusable_binding()
 {
+	local binding
+	binding="$(cd -P "${BINDING%/*}" && pwd -P)/${BINDING##*/}"
 	[ "${status}" -eq 3 ]
 	[ "${#lines[@]}" -eq 1 ]
-	[[ "${output}" == "CAT cannot start: ${BINDING} $1; run the CAT entry command again to repair the installation." ]]
+	[[ "${output}" == "CAT cannot start: ${binding} $1; run the CAT entry command again to repair the installation." ]]
 }
 
 @test "a launcher passes its JVM options, the plugin's module path and its arguments to the bound java" {
