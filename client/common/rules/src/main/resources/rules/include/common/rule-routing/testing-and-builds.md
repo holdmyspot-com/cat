@@ -25,4 +25,7 @@ When running a build or selecting, configuring, or reusing a build or workflow c
 When creating, updating, or debugging a build script, pipeline, or multi-step build, or introducing or repairing an
 expensive many-unit workflow, lazy load `../build-workflow.md`.
 
+Before counting a conclusion drawn from two or more separate runs, such as a resumed run compared with the run it
+resumed, timings before and after a change, or the results of two variants, lazy load `../run-comparisons.md`.
+
 Before selecting or reporting a command as evidence that a project's build passes, lazy load `../build-verification.md`.

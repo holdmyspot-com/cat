@@ -190,6 +190,35 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that is about to rerun a failed operation that is expensive to run in full, or to count a
+	 * conclusion that compares separate runs, can reach the packaged rule for that decision: the failure area index
+	 * routes to the diagnostic-run rule and the testing and build area index routes to the run-comparison rule.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void expensiveRunRulesAreRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(Files.readString(include.resolve("rule-routing/failures.md")), "failureIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/diagnostic-runs.md`");
+			requireThat(Files.readString(include.resolve("diagnostic-runs.md")), "diagnosticRuns").
+				startsWith("# Diagnostic Runs\n");
+			requireThat(Files.readString(include.resolve("rule-routing/testing-and-builds.md")), "testingIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/run-comparisons.md`");
+			requireThat(Files.readString(include.resolve("run-comparisons.md")), "runComparisons").
+				startsWith("# Run Comparisons\n");
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 */
 	@Test

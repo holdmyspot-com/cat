@@ -29,6 +29,9 @@ When a compiler, linter, or static-analysis check reports a warning or finding, 
 before choosing how to resolve it, including before searching the project for how it handled the same finding. Also lazy
 load it before suppressing any other diagnostic, or before disabling, excluding, or relaxing a check.
 
+Before starting another run of an operation that failed and that is expensive to run in full, such as a hosted build,
+a long local build, or a long probe, lazy load `../diagnostic-runs.md`.
+
 When assessing an apparently absent condition, a helper's apparent limitation, or a proposed workaround, lazy load
 `../limitations-and-workarounds.md`.
 
