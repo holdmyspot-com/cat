@@ -19,8 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The Java runtime that one application needs: a minimum Java feature release and the system modules that its module
- * graph resolves to. A plugin declares it in {@code bin/runtime-requirement.json}, the updater application in
- * {@code <version>/runtime-requirement.json}.
+ * graph resolves to. A plugin declares it in {@code bin/runtime-requirement.json}.
  *
  * @param javaFeature the minimum Java feature release, such as 27
  * @param modules     the system modules that the runtime must contain
