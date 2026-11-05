@@ -6,7 +6,6 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
-import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -211,35 +210,18 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that on native Windows, where no sandbox confines a session's commands, the session runs in the
-	 * {@code dontAsk} permission mode, so that a command that needs approval is refused, while Linux and macOS keep
-	 * {@code acceptEdits}.
-	 *
-	 * @param platform       the platform that the session runs on
-	 * @param permissionMode the permission mode that the command selects
+	 * Verifies that the session runs in the {@code acceptEdits} permission mode, in which the sandbox confines its
+	 * commands and its edits stay inside the project.
 	 */
-	@Test(dataProvider = "permissionModes")
-	public void selectsPermissionModeByPlatform(Platform platform, String permissionMode)
+	@Test
+	public void selectsAcceptEditsPermissionMode()
 	{
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, null, 0, platform);
+			List.of(), false, null, 0);
 
 		int option = command.indexOf("--permission-mode");
 		requireThat(option, "option").isGreaterThan(-1);
-		requireThat(command.get(option + 1), "permissionMode").isEqualTo(permissionMode);
-	}
-
-	/**
-	 * Returns each platform family with the permission mode of its sessions.
-	 *
-	 * @return the platform and its permission mode
-	 */
-	@DataProvider
-	public Object[][] permissionModes()
-	{
-		return new Object[][]{{Platform.WINDOWS_X64, "dontAsk"}, {Platform.WINDOWS_ARM64, "dontAsk"},
-			{Platform.LINUX_X64, "acceptEdits"}, {Platform.LINUX_ARM64, "acceptEdits"},
-			{Platform.MACOS_ARM64, "acceptEdits"}, {Platform.MACOS_X64, "acceptEdits"}};
+		requireThat(command.get(option + 1), "permissionMode").isEqualTo("acceptEdits");
 	}
 
 	/**

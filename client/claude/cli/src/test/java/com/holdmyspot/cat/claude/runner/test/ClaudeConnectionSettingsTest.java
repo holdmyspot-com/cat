@@ -3,7 +3,6 @@ package com.holdmyspot.cat.claude.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
-import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -16,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
@@ -45,8 +43,7 @@ public final class ClaudeConnectionSettingsTest
 				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null,
-				Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null);
 			JsonNode allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
 			requireThat(allow.size(), "grantCount").isEqualTo(7);
 			requireThat(allow.path(2).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
@@ -56,8 +53,7 @@ public final class ClaudeConnectionSettingsTest
 				launcher.resolveSibling("codex-runner") + ":*)");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null,
-				Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
 			allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
 			requireThat(allow.size(), "defaultGrantCount").isEqualTo(3);
 			requireThat(allow.path(0).asString(), "skillGrant").isEqualTo("Skill");
@@ -84,13 +80,11 @@ public final class ClaudeConnectionSettingsTest
 			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), responses,
 				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null,
-				Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
 			String defaultSettings = Files.readString(destination);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null,
-				Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null);
 			JsonNode settings = scope.json().readTree(Files.readString(destination));
 			List<String> grants = new ArrayList<>();
 			for (JsonNode grant : settings.path("permissions").path("allow"))
@@ -110,8 +104,7 @@ public final class ClaudeConnectionSettingsTest
 				access.requests().toString()));
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null,
-				Platform.LINUX_X64);
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
 			requireThat(Files.readString(destination), "defaultSettings").isEqualTo(defaultSettings);
 		}
 	}
@@ -230,7 +223,7 @@ public final class ClaudeConnectionSettingsTest
 			Path mavenCache = root.resolve("host-home/.m2");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeHome, List.of(npmCache, mavenCache), claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
+				claudeHome, List.of(npmCache, mavenCache), claudeTemporaryDirectory, List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("sandbox").path("network").path("allowedDomains").path(0).asString(),
@@ -280,7 +273,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");
@@ -295,128 +288,12 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Returns the native Windows platforms, where Claude Code has no command sandbox.
-	 *
-	 * @return the platforms
-	 */
-	@DataProvider
-	public Object[][] windowsPlatforms()
-	{
-		return new Object[][]{{Platform.WINDOWS_X64}, {Platform.WINDOWS_ARM64}};
-	}
-
-	/**
-	 * Verifies that on native Windows the isolated settings carry the user's own allow, ask and deny rules beside the
-	 * grants that CAT adds on every platform, and nothing else from the user's settings: not its default mode, added
-	 * directories or sandbox. The ask rules stay so that a call they match, which a broader allow rule would otherwise
-	 * permit, needs approval, and the {@code dontAsk} permission mode refuses a call that needs approval. The settings
-	 * hold no blanket grant of commands, because no sandbox confines them there, and no sandbox requirement, which the
-	 * session could not meet.
-	 *
-	 * @param platform the platform that the session runs on
-	 * @throws IOException if fixture I/O fails
-	 */
-	@Test(dataProvider = "windowsPlatforms")
-	public void copiesUserRulesOnWindows(Platform platform) throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-rules-"));
-			Path source = Files.writeString(root.resolve("settings.json"), """
-				{
-				  "sandbox": {"enabled": true, "filesystem": {"allowWrite": ["/host-home"]}},
-				  "permissions": {
-				    "additionalDirectories": ["/workspace"],
-				    "allow": ["Bash(git:*)", "Read(//docs/**)"],
-				    "ask": ["Bash(git push:*)"],
-				    "defaultMode": "bypassPermissions",
-				    "deny": ["Bash(rm *)"]
-				  }
-				}
-				""");
-			Path destination = root.resolve("isolated/settings.json");
-			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
-
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), platform);
-
-			JsonNode result = scope.json().readTree(Files.readString(destination));
-			requireThat(strings(result.path("permissions").path("allow")), "allow").
-				isEqualTo(List.of("Skill", "Edit(./**)", "Bash(git:*)", "Read(//docs/**)"));
-			requireThat(strings(result.path("permissions").path("deny")), "deny").
-				isEqualTo(List.of("Bash(rm *)"));
-			requireThat(strings(result.path("permissions").path("ask")), "ask").
-				isEqualTo(List.of("Bash(git push:*)"));
-			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
-			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
-			requireThat(result.has("sandbox"), "sandbox").isFalse();
-			requireThat(result.path("env").path("CLAUDE_CODE_TMPDIR").asString(), "temporaryDirectory").
-				isEqualTo(claudeTemporaryDirectory.toString());
-		}
-	}
-
-	/**
-	 * Verifies that on native Windows with no settings file, the isolated settings carry no user rules: only CAT's own
-	 * grants, and no deny or ask rule.
+	 * Verifies that the user's allow rules are not copied, and the sandbox is required.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void copiesNoRulesWithoutSettingsOnWindows() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-no-rules-"));
-			Path destination = root.resolve("isolated/settings.json");
-
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), Platform.WINDOWS_X64);
-
-			JsonNode result = scope.json().readTree(Files.readString(destination));
-			requireThat(strings(result.path("permissions").path("allow")), "allow").
-				isEqualTo(List.of("Skill", "Edit(./**)"));
-			requireThat(result.path("permissions").has("deny"), "deny").isFalse();
-			requireThat(result.path("permissions").has("ask"), "ask").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies that on native Windows the files that the session must not read are still denied to its file tools.
-	 *
-	 * @throws IOException if fixture I/O fails
-	 */
-	@Test
-	public void deniesReadsOnWindows() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-windows-denied-reads-"));
-			Path source = Files.writeString(root.resolve("settings.json"), """
-				{"permissions": {"deny": ["Bash(git push:*)"]}}
-				""");
-			Path secret = Files.writeString(root.resolve("secret.txt"), "secret");
-			Path destination = root.resolve("isolated/settings.json");
-
-			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, root.resolve("tmp"),
-				root.resolve("home"), List.of(), root, List.of(secret), Platform.WINDOWS_X64);
-
-			JsonNode result = scope.json().readTree(Files.readString(destination));
-			requireThat(strings(result.path("permissions").path("deny")), "deny").
-				isEqualTo(List.of("Bash(git push:*)", "Read(/" + ClaudeConnectionSettings.rulePath(secret) + ")"));
-			requireThat(result.has("sandbox"), "sandbox").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies that on Linux, the user's allow rules are not copied, and the sandbox is required.
-	 *
-	 * @throws IOException if fixture I/O fails
-	 */
-	@Test
-	public void copiesNoUserAllowRulesOnLinux() throws IOException
+	public void copiesNoUserAllowRules() throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -428,7 +305,7 @@ public final class ClaudeConnectionSettingsTest
 			Path destination = root.resolve("isolated/settings.json");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, root.resolve("tmp"),
-				root.resolve("home"), List.of(), root, List.of(), Platform.LINUX_X64);
+				root.resolve("home"), List.of(), root, List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("permissions").path("allow")), "allow").
@@ -475,7 +352,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeHome, List.of(), claudeTemporaryDirectory, List.of(snapshot), Platform.LINUX_X64);
+				claudeHome, List.of(), claudeTemporaryDirectory, List.of(snapshot));
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			JsonNode sandbox = result.path("sandbox");
@@ -513,7 +390,7 @@ public final class ClaudeConnectionSettingsTest
 			Path claudeHome = claudeTemporaryDirectory.resolve("home");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeHome, List.of(), claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory, claudeHome, List.of(), claudeTemporaryDirectory, List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			JsonNode writablePaths = result.path("sandbox").path("filesystem").path("allowWrite");
@@ -542,8 +419,7 @@ public final class ClaudeConnectionSettingsTest
 			Path registrations = project.resolve(".git/worktrees");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeHome, List.of(), root.resolve("run"), List.of(), "", null, project,
-				Platform.LINUX_X64);
+				claudeTemporaryDirectory, claudeHome, List.of(), root.resolve("run"), List.of(), "", null, project);
 
 			List<String> writablePaths = strings(scope.json().readTree(Files.readString(destination)).
 				path("sandbox").path("filesystem").path("allowWrite"));
@@ -581,8 +457,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(snapshot, trials),
-				Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(snapshot, trials));
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
@@ -640,7 +515,7 @@ public final class ClaudeConnectionSettingsTest
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory,
-				List.of(snapshot), Platform.LINUX_X64);
+				List.of(snapshot));
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
@@ -674,10 +549,9 @@ public final class ClaudeConnectionSettingsTest
 			Path allowing = root.resolve("allowing/settings.json");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, denying, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(snapshot),
-				Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(snapshot));
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, allowing, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of());
 
 			JsonNode denied = scope.json().readTree(Files.readString(denying)).path("sandbox").path("filesystem");
 			requireThat(denied.has("allowRead"), "deniedHasAllowRead").isFalse();
@@ -709,7 +583,7 @@ public final class ClaudeConnectionSettingsTest
 			Path claudeTemporaryDirectory = run.resolve("claude");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, run.resolve("home"), List.of(), run, List.of(), Platform.LINUX_X64);
+				claudeTemporaryDirectory, run.resolve("home"), List.of(), run, List.of());
 
 			List<String> excludes = strings(scope.json().readTree(Files.readString(destination)).
 				path("claudeMdExcludes"));
@@ -769,8 +643,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(),
-				Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of());
 
 			JsonNode pluginConfigs = scope.json().readTree(Files.readString(destination)).path("pluginConfigs");
 			requireThat(pluginConfigs, "pluginConfigs").isEqualTo(scope.json().readTree("""
@@ -800,8 +673,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), "claude-md",
-				Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(), "claude-md");
 
 			JsonNode pluginConfigs = scope.json().readTree(Files.readString(destination)).path("pluginConfigs");
 			requireThat(pluginConfigs, "pluginConfigs").isEqualTo(scope.json().readTree("""
@@ -828,7 +700,7 @@ public final class ClaudeConnectionSettingsTest
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("settings.json"), destination,
 				claudeTemporaryDirectory, claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory,
-				List.of(), "claude-md", Platform.LINUX_X64);
+				List.of(), "claude-md");
 
 			JsonNode pluginConfigs = scope.json().readTree(Files.readString(destination)).path("pluginConfigs");
 			requireThat(pluginConfigs, "pluginConfigs").isEqualTo(scope.json().readTree("""
@@ -858,8 +730,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of(),
-				Platform.LINUX_X64);
+				claudeTemporaryDirectory.resolve("home"), List.of(), claudeTemporaryDirectory, List.of());
 
 			requireThat(scope.json().readTree(Files.readString(destination)).has("pluginConfigs"), "pluginConfigs").
 				isFalse();

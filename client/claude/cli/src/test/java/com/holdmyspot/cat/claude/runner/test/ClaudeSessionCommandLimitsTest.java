@@ -50,27 +50,11 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 				fixture.run().directory().resolve("claude"), runHome, List.of(), fixture.run().directory(),
 				ClaudeRunner.sessionDeniedReads(fixture.manager(), fixture.run(), List.of(), fixture.deniedReads(),
 					fixture.userEnvironment(), requestAccess), "", requestAccess,
-				fixture.run().directory().resolve("project"), settingsPlatform());
+				fixture.run().directory().resolve("project"));
 			JsonNode filesystem = scope.json().readTree(Files.readString(settings)).path("sandbox").path("filesystem");
 			return new Limits(processEnvironment, paths(filesystem.path("denyRead")),
 				paths(filesystem.path("allowWrite")), paths(filesystem.path("allowRead")));
 		}
-	}
-
-	/**
-	 * Returns the platform whose Claude session settings the test describes. The test describes the settings of a
-	 * session whose commands a sandbox confines, which Claude Code lacks on native Windows, so on a Windows host the
-	 * settings are written for Linux; the rest of the contract still follows the host's paths, environment variables
-	 * and launcher names.
-	 *
-	 * @return the host's platform, or Linux if the host is native Windows
-	 */
-	private static Platform settingsPlatform()
-	{
-		Platform platform = Platform.current();
-		if (platform.isWindows())
-			return Platform.LINUX_X64;
-		return platform;
 	}
 
 	@Override

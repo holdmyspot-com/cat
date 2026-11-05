@@ -101,11 +101,11 @@ public final class ClaudeSessionEnvironmentVersionTest
 			Path project = run.directory().resolve("project");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "", requestAccess,
-				project, Platform.LINUX_X64);
+				project);
 			Path controlDestination = root.resolve("isolated/control-settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, controlDestination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "claude-md",
-				requestAccess, project, Platform.LINUX_X64);
+				requestAccess, project);
 
 			String settings = normalize(scope.json(), destination, root, run) + "\n" +
 				normalize(scope.json(), controlDestination, root, run);
