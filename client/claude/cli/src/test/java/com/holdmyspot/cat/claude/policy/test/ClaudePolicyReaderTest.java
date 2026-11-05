@@ -308,6 +308,27 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
+	 * Verifies that an empty settings file, such as the one that Claude Code's Linux sandbox leaves in the project
+	 * while it hides a local settings file that does not exist, holds no settings rather than being refused.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void emptyFileHoldsNoSettings() throws IOException, PolicyRefusal
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["api.example.com"]}}}""");
+			fixture.localSettings("");
+			ParentPolicy policy = fixture.policy();
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+			requireThat(policy.hosts().allows("api.example.com"), "userHost").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies that a proxy port, which sends the commands' traffic through a proxy that CAT cannot read, is refused.
 	 *
 	 * @throws IOException if the fixture cannot be created

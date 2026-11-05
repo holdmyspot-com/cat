@@ -324,20 +324,26 @@ public final class ClaudePolicyReader
 	}
 
 	/**
-	 * Returns the settings of a file.
+	 * Returns the settings of a file. An empty file holds no settings: Claude Code's Linux sandbox leaves one in the
+	 * project for each settings file that it hides from the commands while the file does not exist.
 	 *
 	 * @param scope the scope of the file
 	 * @param file  the file
 	 * @param root  the folder that relative sandbox paths of the file are relative to
 	 * @return the settings
 	 * @throws IOException   if the file cannot be read
-	 * @throws PolicyRefusal if the file cannot be parsed
+	 * @throws PolicyRefusal if the file is not empty and cannot be parsed
 	 */
 	private SettingsLayer fileLayer(SettingsScope scope, Path file, Path root) throws IOException, PolicyRefusal
 	{
 		String source = "the settings file " + file;
 		String text = BoundedInput.readUtf8(file, MAXIMUM_SETTINGS_BYTES, "Claude Code settings");
-		return new SettingsLayer(scope, source, Optional.of(file), parse(text, source, FILE_FIX), root);
+		JsonNode settings;
+		if (text.isEmpty())
+			settings = json.createObjectNode();
+		else
+			settings = parse(text, source, FILE_FIX);
+		return new SettingsLayer(scope, source, Optional.of(file), settings, root);
 	}
 
 	/**
