@@ -3,7 +3,7 @@ package com.holdmyspot.cat.claude.policy.test;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
-import com.holdmyspot.cat.claude.policy.HarnessProcess;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;

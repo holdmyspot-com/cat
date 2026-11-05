@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -125,14 +126,15 @@ public final class CodexPolicyReader
 	 */
 	private static List<String> codexArguments(CodexSession session) throws PolicyRefusal
 	{
-		for (CodexProcess process : session.ancestors())
+		for (HarnessProcess process : session.ancestors())
 		{
-			if (!isCodex(process.executable()))
+			String executable = process.command().orElse("");
+			if (!isCodex(executable))
 				continue;
 			if (process.arguments().isEmpty())
 			{
 				throw new PolicyRefusal("CAT cannot read the command line of the Codex process " +
-					process.executable(), "Run Codex as the same user as CAT, then start a new Codex session");
+					executable, "Run Codex as the same user as CAT, then start a new Codex session");
 			}
 			return process.arguments().get();
 		}

@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.claude.policy;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;

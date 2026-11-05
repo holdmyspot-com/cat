@@ -1,4 +1,4 @@
-package com.holdmyspot.cat.claude.policy;
+package com.holdmyspot.cat.common.runner.policy;
 
 import java.time.Instant;
 import java.util.List;

@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.policy;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -18,7 +19,7 @@ import java.util.Optional;
  * @param transcript  the session's rollout file, from the hook's input, or empty if the hook's input names none
  * @param sessionId   the session's identifier, from the hook's input
  */
-public record CodexSession(List<CodexProcess> ancestors, Map<String, String> environment, Path accountHome, Path cwd,
+public record CodexSession(List<HarnessProcess> ancestors, Map<String, String> environment, Path accountHome, Path cwd,
 	Optional<Path> transcript, String sessionId)
 {
 	/**
