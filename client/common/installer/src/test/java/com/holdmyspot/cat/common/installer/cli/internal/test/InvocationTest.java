@@ -11,7 +11,6 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
@@ -1125,21 +1124,9 @@ public final class InvocationTest
 		}
 
 		@Override
-		public List<ActivationStep> plan(Path home, String newVersion)
-		{
-			throw new UnsupportedOperationException("The status-only provider does not activate releases");
-		}
-
-		@Override
 		public Path migrationVersionFile(Path home)
 		{
 			return home.resolve("migration-version");
-		}
-
-		@Override
-		public List<ActivationStep> installPlan(Path home, String newVersion)
-		{
-			throw new UnsupportedOperationException("The status-only provider does not activate releases");
 		}
 
 		@Override

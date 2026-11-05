@@ -1,10 +1,7 @@
 package com.holdmyspot.cat.common.installer.engine.test;
 
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
-import com.holdmyspot.cat.common.installer.activation.AddDirectory;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
-import com.holdmyspot.cat.common.installer.activation.ReplaceDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,21 +42,9 @@ public class LiveProvider implements PluginActivation
 	}
 
 	@Override
-	public List<ActivationStep> plan(Path home, String newVersion)
-	{
-		return List.of(new ReplaceDirectory(home.resolve("live"), home));
-	}
-
-	@Override
 	public Path migrationVersionFile(Path home)
 	{
 		return home.resolve("migration-version");
-	}
-
-	@Override
-	public List<ActivationStep> installPlan(Path home, String newVersion)
-	{
-		return List.of(new AddDirectory(home.resolve("live"), home));
 	}
 
 	@Override

@@ -8,7 +8,6 @@ module com.holdmyspot.cat.common.installer.test
 	requires org.apache.commons.compress;
 	requires tools.jackson.databind;
 
-	exports com.holdmyspot.cat.common.installer.activation.test to org.testng;
 	exports com.holdmyspot.cat.common.installer.engine.test to org.testng;
 	exports com.holdmyspot.cat.common.installer.cli.internal.test to org.testng;
 	exports com.holdmyspot.cat.common.installer.trust.test to org.testng;

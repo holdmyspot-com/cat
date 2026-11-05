@@ -3,12 +3,8 @@ package com.holdmyspot.cat.codex.installer.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
-import com.holdmyspot.cat.common.installer.activation.AddDirectory;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
-import com.holdmyspot.cat.common.installer.activation.ReplaceDirectory;
-import com.holdmyspot.cat.common.installer.activation.ReplaceOwnedFiles;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,13 +32,12 @@ public final class ActivationTest
 	}
 
 	/**
-	 * The provider plans agents, marketplace source, then a new cache version outside the scanned staging tree.
-	 * Reading and planning keep protected files' bytes and modification times unchanged.
+	 * Reading the installation keeps protected files' bytes and modification times unchanged.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void plansWithoutChangingConfiguration() throws IOException
+	public void readsWithoutChangingConfiguration() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -63,14 +58,6 @@ public final class ActivationTest
 			PluginActivation provider = provider();
 			requireThat(provider.installed(home), "installed").
 				isEqualTo(new InstalledState(Optional.of("1.0"), true));
-			List<ActivationStep> steps = provider.plan(home, "1.1");
-			requireThat(steps, "steps").isEqualTo(List.of(
-				new ReplaceOwnedFiles(home.resolve("agents"), home.resolve("plugins/data/cat-cat/codex-agent-files"),
-					"cat-", "agents/codex", "*.toml"),
-				new ReplaceDirectory(home.resolve("plugins/cat-marketplace/plugins/cat"),
-					home.resolve("plugins/cat-marketplace/plugins")),
-				new AddDirectory(home.resolve("plugins/cache/cat/cat/1.1"), home.resolve("plugins/cache/cat"))));
-			requireThat(provider.recoveryPlan(home, "1.0", "1.1"), "recoverySteps").isEqualTo(steps);
 			requireThat(provider.migrationVersionFile(home), "migrationVersionFile").
 				isEqualTo(home.resolve("plugins/data/cat-cat/migration-version"));
 			for (Path file : protectedFiles)
@@ -160,29 +147,6 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Activating another build plans the folder of the build that the plan names, in routine planning and in
-	 * recovery, whichever of the two builds is installed.
-	 *
-	 * @param installed the installed build
-	 * @param named     the build to activate
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test(dataProvider = "buildPairs")
-	public void plansNamedBuildFolder(String installed, String named) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, installed, installed, installed);
-
-			AddDirectory expected = new AddDirectory(home.resolve("plugins/cache/cat/cat").resolve(named),
-				home.resolve("plugins/cache/cat"));
-			requireThat(provider().plan(home, named).getLast(), "cacheStep").isEqualTo(expected);
-			requireThat(provider().recoveryPlan(home, installed, named).getLast(), "recoveryStep").isEqualTo(expected);
-		}
-	}
-
-	/**
 	 * Of a bare release's folder and a build's folder of that release, Codex loads the build's folder, whose name
 	 * extends the release's, whichever folder sorts first in the directory.
 	 *
@@ -221,29 +185,12 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Installation plans the cache folder named by the full plugin version.
+	 * A developer's local directory wins over numeric releases and makes the installation inconsistent.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void plansPluginVersionFolder() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			requireThat(provider().installPlan(home, "1.1+b0123456789ab").getLast(), "cacheStep").
-				isEqualTo(new AddDirectory(home.resolve("plugins/cache/cat/cat/1.1+b0123456789ab"),
-					home.resolve("plugins/cache/cat")));
-		}
-	}
-
-	/**
-	 * A developer's local directory wins over numeric releases and prevents routine activation.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*local.*")
-	public void refusesLocalInstallation() throws IOException
+	public void reportsLocalInstallation() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -253,7 +200,6 @@ public final class ActivationTest
 
 			requireThat(provider().installed(home), "installed").
 				isEqualTo(new InstalledState(Optional.of("local"), false));
-			provider().plan(home, "1.1");
 		}
 	}
 
@@ -278,12 +224,12 @@ public final class ActivationTest
 	}
 
 	/**
-	 * The same version repairs a mismatched marketplace manifest by replacing both source and cache.
+	 * A marketplace manifest that names another version makes the installation inconsistent.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void repairsMismatchedMarketplace() throws IOException
+	public void detectsMismatchedMarketplace() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -292,9 +238,6 @@ public final class ActivationTest
 
 			requireThat(provider().installed(home), "installed").
 				isEqualTo(new InstalledState(Optional.of("1.0"), false));
-			requireThat(provider().plan(home, "1.0").getLast(), "cacheStep").
-				isEqualTo(new ReplaceDirectory(home.resolve("plugins/cache/cat/cat/1.0"),
-					home.resolve("plugins/cache/cat")));
 		}
 	}
 
@@ -317,20 +260,18 @@ public final class ActivationTest
 	}
 
 	/**
-	 * A home without any CAT plugin location reports a consistent absence and cannot be activated by a routine
-	 * update.
+	 * A home without any CAT plugin location reports a consistent absence.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*not installed.*")
-	public void refusesMissingInstallation() throws IOException
+	@Test
+	public void reportsMissingInstallation() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			requireThat(provider().installed(home), "installed").
 				isEqualTo(new InstalledState(Optional.empty(), true));
-			provider().plan(home, "1.1");
 		}
 	}
 
@@ -385,62 +326,6 @@ public final class ActivationTest
 	{
 		return new Object[][]{{"plugins/cat-marketplace/.agents/plugins/marketplace.json"},
 			{"plugins/cache/cat/cat/not a version/file"}, {"plugins/cache/cat/cat/1.0"}};
-	}
-
-	/**
-	 * Installation from absence replaces the owned agents and adds the marketplace source and the cache version,
-	 * whatever the live state, so recovery of an interrupted installation reconstructs the same steps.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void plansInstallationFromAbsence() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			List<ActivationStep> expected = List.of(
-				new ReplaceOwnedFiles(home.resolve("agents"), home.resolve("plugins/data/cat-cat/codex-agent-files"),
-					"cat-", "agents/codex", "*.toml"),
-				new AddDirectory(home.resolve("plugins/cat-marketplace/plugins/cat"),
-					home.resolve("plugins/cat-marketplace/plugins")),
-				new AddDirectory(home.resolve("plugins/cache/cat/cat/1.1"), home.resolve("plugins/cache/cat")));
-			requireThat(provider().installPlan(home, "1.1"), "absentPlan").isEqualTo(expected);
-
-			install(home, "1.1", "1.1", "1.1");
-			requireThat(provider().installPlan(home, "1.1"), "installedPlan").isEqualTo(expected);
-		}
-	}
-
-	/**
-	 * Installation refuses a version that could escape the cache through path syntax.
-	 *
-	 * @throws IOException if the provider unexpectedly attempts a read
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class)
-	public void refusesInstallVersionPathTraversal() throws IOException
-	{
-		provider().installPlan(Path.of(System.getProperty("cat.installer.test.directory")).resolve("fake-home"),
-			"../outside");
-	}
-
-	/**
-	 * Installation refuses a symbolic link in any of its destinations.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = ".*symbolic link.*")
-	public void refusesInstallSymlink() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path other = Files.createDirectories(home.resolve("other"));
-			Files.createDirectories(home.resolve("plugins"));
-			Files.createSymbolicLink(home.resolve("plugins/cache"), other);
-
-			provider().installPlan(home, "1.1");
-		}
 	}
 
 	/**
@@ -538,29 +423,28 @@ public final class ActivationTest
 	}
 
 	/**
-	 * A marketplace source alone cannot supply an active cache version or a routine activation target.
+	 * A marketplace source alone supplies no installed version.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*not installed.*")
-	public void refusesMissingCache() throws IOException
+	@Test
+	public void reportsMissingCache() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			manifest(home.resolve("plugins/cat-marketplace/plugins/cat"), "1.0");
 			requireThat(provider().installed(home).version(), "version").isEqualTo(Optional.empty());
-			provider().plan(home, "1.1");
 		}
 	}
 
 	/**
-	 * A cache without its marketplace source cannot be activated without an explicit installation.
+	 * A cache without its marketplace source is an inconsistent installation.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*not installed.*")
-	public void refusesMissingMarketplace() throws IOException
+	@Test
+	public void reportsMissingMarketplace() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -568,7 +452,6 @@ public final class ActivationTest
 			cache(home, "1.0", "1.0");
 			requireThat(provider().installed(home), "installed").
 				isEqualTo(new InstalledState(Optional.of("1.0"), false));
-			provider().plan(home, "1.1");
 		}
 	}
 
@@ -581,17 +464,6 @@ public final class ActivationTest
 	public void refusesRelativeHome() throws IOException
 	{
 		provider().installed(Path.of("fake-home"));
-	}
-
-	/**
-	 * A requested version cannot escape the cache through path syntax.
-	 *
-	 * @throws IOException if the provider unexpectedly attempts a read
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class)
-	public void refusesVersionPathTraversal() throws IOException
-	{
-		provider().plan(Path.of(System.getProperty("cat.installer.test.directory")).resolve("fake-home"), "../outside");
 	}
 
 	/**
@@ -613,176 +485,6 @@ public final class ActivationTest
 	}
 
 	/**
-	 * A symlink in a mutable installation path is refused instead of redirecting the installer.
-	 *
-	 * @param component  the component replaced with a symlink
-	 * @param newVersion the version whose activation uses that component
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test(dataProvider = "symlinkComponents", expectedExceptions = IllegalArgumentException.class,
-		expectedExceptionsMessageRegExp = ".*symbolic link.*")
-	public void refusesSymlinkComponents(String component, String newVersion) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.0", "1.0", "1.0");
-			Path redirected = home.resolve(component);
-			Path original = redirected.resolveSibling("original");
-			Files.move(redirected, original);
-			Files.createSymbolicLink(redirected, original);
-
-			provider().plan(home, newVersion);
-		}
-	}
-
-	/**
-	 * Supplies components used by directory and owned-agent activation steps.
-	 *
-	 * @return mutable path components whose symlinks must be refused
-	 */
-	@DataProvider
-	public Object[][] symlinkComponents()
-	{
-		return new Object[][]{{"plugins/cache", "1.1"}, {"plugins/cat-marketplace", "1.1"}, {"agents", "1.1"},
-			{"plugins/data/cat-cat/codex-agent-files", "1.1"}, {"plugins/cache/cat/cat/1.0", "1.0"},
-			{"plugins/cat-marketplace/plugins/cat/.codex-plugin/plugin.json", "1.1"}};
-	}
-
-	/**
-	 * Recovery reconstructs the original new-version plan while the marketplace source is in its previous slot.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void recoversWithoutMarketplaceLive() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.0", "1.0", "1.0");
-			PluginActivation provider = provider();
-			List<ActivationStep> original = provider.plan(home, "1.1");
-			Path source = home.resolve("plugins/cat-marketplace/plugins/cat");
-			// Models interruption after the executor moves the live source to its previous-installation slot.
-			Files.move(source, source.resolveSibling(".cat-previous-cat"));
-
-			requireThat(provider.recoveryPlan(home, "1.0", "1.1"), "recoveryPlan").isEqualTo(original);
-		}
-	}
-
-	/**
-	 * Recovery retains the original AddDirectory step after the new version becomes active, even though a fresh
-	 * same-version update would plan ReplaceDirectory.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void recoversOriginalAddAfterActivation() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.0", "1.0", "1.0");
-			PluginActivation provider = provider();
-			List<ActivationStep> original = provider.plan(home, "1.1");
-			// Models the executor's completed marketplace replacement and cache addition.
-			manifest(home.resolve("plugins/cat-marketplace/plugins/cat"), "1.1");
-			cache(home, "1.1", "1.1");
-
-			requireThat(provider.installed(home), "installed").
-				isEqualTo(new InstalledState(Optional.of("1.1"), true));
-			requireThat(provider.plan(home, "1.1").getLast(), "freshCacheStep").
-				isEqualTo(new ReplaceDirectory(home.resolve("plugins/cache/cat/cat/1.1"),
-					home.resolve("plugins/cache/cat")));
-			requireThat(provider.recoveryPlan(home, "1.0", "1.1"), "recoveryPlan").isEqualTo(original);
-		}
-	}
-
-	/**
-	 * Same-version recovery reconstructs ReplaceDirectory while the live cache is in its previous slot.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void recoversWithoutCacheLive() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.0", "1.0", "1.0");
-			PluginActivation provider = provider();
-			List<ActivationStep> original = provider.plan(home, "1.0");
-			Path cache = home.resolve("plugins/cache/cat/cat/1.0");
-			// Models interruption between the executor's cache-directory renames.
-			Files.move(cache, home.resolve("plugins/cache/cat/.cat-previous-1.0"));
-
-			requireThat(provider.recoveryPlan(home, "1.0", "1.0"), "recoveryPlan").isEqualTo(original);
-		}
-	}
-
-	/**
-	 * Recovery refuses a journal version that could redirect a canonical cache path.
-	 *
-	 * @param previousVersion the recorded prior version
-	 * @param newVersion      the recorded activated version
-	 * @throws IOException if the provider unexpectedly attempts to read the installation
-	 */
-	@Test(dataProvider = "invalidRecoveryVersions", expectedExceptions = IllegalArgumentException.class)
-	public void refusesInvalidRecoveryVersions(String previousVersion, String newVersion) throws IOException
-	{
-		provider().recoveryPlan(Path.of(System.getProperty("cat.installer.test.directory")).resolve("fake-home"),
-			previousVersion, newVersion);
-	}
-
-	/**
-	 * Supplies invalid version inputs for each journal version's validation boundary.
-	 *
-	 * @return prior and activated version pairs that cannot authorize recovery
-	 */
-	@DataProvider
-	public Object[][] invalidRecoveryVersions()
-	{
-		return new Object[][]{{"../outside", "1.1"}, {"1.0", "../outside"}, {"local", "1.1"}};
-	}
-
-	/**
-	 * Recovery retains symbolic-link refusals for every canonical activation target.
-	 *
-	 * @param component  the component replaced with a symlink
-	 * @param newVersion the version whose activation uses that component
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test(dataProvider = "symlinkComponents", expectedExceptions = IllegalArgumentException.class,
-		expectedExceptionsMessageRegExp = ".*symbolic link.*")
-	public void refusesRecoverySymlinkComponents(String component, String newVersion) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.0", "1.0", "1.0");
-			Path redirected = home.resolve(component);
-			Path original = redirected.resolveSibling("original");
-			Files.move(redirected, original);
-			Files.createSymbolicLink(redirected, original);
-
-			provider().recoveryPlan(home, "1.0", newVersion);
-		}
-	}
-
-	/**
-	 * Recovery requires the protected policy's normalized absolute home.
-	 *
-	 * @throws IOException if the provider unexpectedly attempts to read the installation
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class)
-	public void refusesUnnormalizedRecoveryHome() throws IOException
-	{
-		provider().recoveryPlan(Path.of(System.getProperty("cat.installer.test.directory")).
-			resolve("fake-home/../fake-home"), "1.0", "1.1");
-	}
-
-	/**
 	 * Locates build-owned fixture storage passed explicitly by Maven.
 	 *
 	 * @return a directory beneath this module's target directory
@@ -794,7 +496,7 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Creates an installed plugin and the configuration and agents that planning must not modify.
+	 * Creates an installed plugin and the configuration and agents that reading must not modify.
 	 *
 	 * @param home               fake harness home
 	 * @param cacheVersion       active cache directory name

@@ -10,22 +10,18 @@ import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
-import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.engine.Consent;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
-import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall.InstalledEntries;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
-import com.holdmyspot.cat.common.installer.engine.TreeCopy;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
-import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -154,16 +150,8 @@ public final class Install
 		if (consentRequest.isPresent() && !consent.grants(consentRequest.get()))
 			throw refusal(consentRequest.get());
 
-		Path marketplace = integration.marketplaceFolder(home, version);
-		Path versionFolder = installation.versionFolder(version);
-		writeMarketplace(plugin, marketplace, versionFolder, home);
-		HarnessCli cli = cliFactory.create(command, home);
-		integration.register(home, version, cli, replacer);
-		if (!Files.isDirectory(versionFolder, NOFOLLOW_LINKS))
-		{
-			throw new IOException(harness + " did not install CAT " + version + " into its version folder " +
-				versionFolder + ".");
-		}
+		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer);
+		Path versionFolder = steps.deliver(home, plugin, version);
 		Path scratch = InstallerState.of(installation.dataDirectory(), harness).directory().resolve("startup-cache");
 		boolean startupCache = new StartupCacheTrainer(scratch, TRAINING_LIMIT, () -> elevation.test(scratch)).
 			train(versionFolder);
@@ -174,26 +162,12 @@ public final class Install
 		policy.write(policyFile, replacer);
 		setPermissions(policyFile);
 
-		Path installer = installer(versionFolder);
+		Path installer = PluginInstall.installer(versionFolder, platform.isWindows());
 		List<HarnessInstallation> otherInstallations = others.stream().
 			map(other -> other.installation(environment, userHome)).toList();
-		InstalledEntries entries = new PluginInstall(integration, cli, replacer).installEntries(home, installer,
-			installation, otherInstallations, catLocks, consentRequest.isPresent());
+		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
+			consentRequest.isPresent());
 		return new Outcome(version, versionFolder, installer, startupCache, entries, policy);
-	}
-
-	/**
-	 * Returns the installer launcher of a plugin folder for the current platform.
-	 *
-	 * @param plugin the plugin folder
-	 * @return the launcher
-	 */
-	private Path installer(Path plugin)
-	{
-		Path launcher = plugin.resolve(PluginDirectory.INSTALLER);
-		if (platform.isWindows())
-			return launcher.resolveSibling(launcher.getFileName() + ".ps1");
-		return launcher;
 	}
 
 	/**
@@ -216,30 +190,6 @@ public final class Install
 		{
 			throw refusal("The archive " + plugin + " does not name its plugin version: " + e.getMessage());
 		}
-	}
-
-	/**
-	 * Writes the archive's plugin into CAT's marketplace in the harness home, bound to the Java runtime that the
-	 * plugin will have in its version folder. The copy is staged beside its destination and then replaces it.
-	 *
-	 * @param plugin        the archive's plugin folder
-	 * @param marketplace   the marketplace folder that the harness installs the plugin from
-	 * @param versionFolder the version folder into which the harness installs the plugin
-	 * @param home          the harness home
-	 * @throws IOException if the folder cannot be written
-	 */
-	private static void writeMarketplace(Path plugin, Path marketplace, Path versionFolder, Path home)
-		throws IOException
-	{
-		if (marketplace.equals(plugin))
-			throw new IOException("Install must run from an extracted plugin archive, not from " + plugin + ".");
-		Path parent = Files.createDirectories(marketplace.getParent());
-		Path staged = parent.resolve("." + marketplace.getFileName() + "-staged");
-		LinkSafeDeletion.delete(staged, home);
-		TreeCopy.copy(plugin, staged);
-		RuntimeBinding.write(staged, versionFolder.resolve(PluginDirectory.RUNTIME));
-		LinkSafeDeletion.delete(marketplace, home);
-		Files.move(staged, marketplace);
 	}
 
 	/**

@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.installer.engine.test;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.installation.PluginVersion;
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
@@ -63,28 +62,10 @@ public class RegisteredProvider implements PluginActivation
 		return new InstalledState(Optional.of(version), consistent);
 	}
 
-	/**
-	 * Refuses, because the harness installs each version itself.
-	 */
-	@Override
-	public List<ActivationStep> plan(Path home, String newVersion)
-	{
-		throw new UnsupportedOperationException("The harness installs each version itself");
-	}
-
 	@Override
 	public Path migrationVersionFile(Path home)
 	{
 		return new RecordingIntegration.Layout(home).dataDirectory().resolve("migration-version");
-	}
-
-	/**
-	 * Refuses, because the harness installs each version itself.
-	 */
-	@Override
-	public List<ActivationStep> installPlan(Path home, String newVersion)
-	{
-		throw new UnsupportedOperationException("The harness installs each version itself");
 	}
 
 	@Override

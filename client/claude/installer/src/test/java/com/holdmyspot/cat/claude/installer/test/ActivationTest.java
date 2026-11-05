@@ -3,11 +3,8 @@ package com.holdmyspot.cat.claude.installer.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
-import com.holdmyspot.cat.common.installer.activation.AddDirectory;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
-import com.holdmyspot.cat.common.installer.activation.ReplaceDirectory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,13 +52,12 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Planning a new version changes no protected configuration and adds only the new version's folder, staged
-	 * outside the folder that holds the version folders.
+	 * Reading the installation changes no protected configuration.
 	 *
 	 * @throws IOException if the fake configuration cannot be created or read
 	 */
 	@Test
-	public void planningPreservesConfiguration() throws IOException
+	public void readingPreservesConfiguration() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -79,11 +75,9 @@ public final class ActivationTest
 				modificationTimes.put(file, Files.getLastModifiedTime(file));
 			}
 
-			List<ActivationStep> steps = provider().plan(home, NEW_VERSION);
+			requireThat(provider().installed(home), "installed").
+				isEqualTo(new InstalledState(Optional.of(VERSION), true));
 
-			Path folders = home.resolve(VERSION_FOLDERS);
-			requireThat(steps, "steps").isEqualTo(List.of(new AddDirectory(folders.resolve(NEW_VERSION),
-				folders.getParent())));
 			for (Path file : configuration)
 			{
 				requireThat(Files.readString(file), "configurationBytes").isEqualTo(contents.get(file));
@@ -215,100 +209,6 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Installing from absence adds the version's folder inside the marketplace plugin, staged outside the folder that
-	 * holds the version folders, and changes nothing while planning.
-	 *
-	 * @throws IOException if the fake configuration cannot be created or read
-	 */
-	@Test
-	public void installPlanAddsPlugin() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			Path folders = home.resolve(VERSION_FOLDERS);
-
-			List<ActivationStep> steps = provider().installPlan(home, VERSION);
-
-			requireThat(steps, "steps").isEqualTo(List.of(new AddDirectory(folders.resolve(VERSION),
-				folders.getParent())));
-			requireThat(Files.exists(home.resolve("plugins")), "pluginsCreated").isFalse();
-		}
-	}
-
-	/**
-	 * Install planning refuses a link at each directory boundary, so that an install cannot be redirected.
-	 *
-	 * @param component the linked directory relative to the fake home
-	 * @throws IOException if the fake configuration cannot be created or the refusal is returned
-	 */
-	@Test(dataProvider = "linkedComponents", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*symbolic link.*")
-	public void installPlanRefusesSymlink(String component) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path home = Files.createDirectory(root.resolve("home"));
-			Path link = home.resolve(component);
-			Files.createDirectories(link.getParent());
-			Files.createSymbolicLink(link, root.resolve("outside"));
-
-			provider().installPlan(home, VERSION);
-		}
-	}
-
-	/**
-	 * Activating the installed version again replaces its version folder, in routine planning and in recovery.
-	 *
-	 * @throws IOException if the fake configuration cannot be created or read
-	 */
-	@Test
-	public void sameVersionPlanReplaces() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			install(home, VERSION);
-			writeVersionFolder(home, NEW_VERSION, NEW_VERSION);
-
-			List<ActivationStep> steps = provider().plan(home, VERSION);
-			List<ActivationStep> recovery = provider().recoveryPlan(home, VERSION, VERSION);
-
-			Path folders = home.resolve(VERSION_FOLDERS);
-			List<ActivationStep> expected = List.of(new ReplaceDirectory(folders.resolve(VERSION), folders.getParent()));
-			requireThat(steps, "steps").isEqualTo(expected);
-			requireThat(recovery, "recovery").isEqualTo(expected);
-		}
-	}
-
-	/**
-	 * Activating another build adds the folder of the build that the plan names, in routine planning and in recovery,
-	 * whichever of the two builds is installed.
-	 *
-	 * @param installed the installed version
-	 * @param named     the version to activate
-	 * @throws IOException if the fake configuration cannot be created or read
-	 */
-	@Test(dataProvider = "buildPairs")
-	public void otherBuildPlanAddsNamedFolder(String installed, String named) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			install(home, installed);
-
-			List<ActivationStep> steps = provider().plan(home, named);
-			List<ActivationStep> recovery = provider().recoveryPlan(home, installed, named);
-
-			Path folders = home.resolve(VERSION_FOLDERS);
-			List<ActivationStep> expected = List.of(new AddDirectory(folders.resolve(named), folders.getParent()));
-			requireThat(steps, "steps").isEqualTo(expected);
-			requireThat(recovery, "recovery").isEqualTo(expected);
-		}
-	}
-
-	/**
 	 * Uninstall deletes the marketplace and Claude Code's cached copy of CAT, and keeps CAT's data and every other
 	 * plugin's files.
 	 *
@@ -367,125 +267,14 @@ public final class ActivationTest
 	}
 
 	/**
-	 * Planning refuses an absent installation and directs the user to initial setup.
+	 * Relative homes cannot redirect the installation beneath the current project.
 	 *
-	 * @throws IOException if the fake configuration cannot be created or the refusal is returned
-	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*initial setup.*")
-	public void missingInstallationRefused() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			provider().plan(cleanup.add(testDirectory()), VERSION);
-		}
-	}
-
-	/**
-	 * Recovery reconstructs the replacement of a version folder when a crash has moved that folder to its previous
-	 * slot.
-	 *
-	 * @throws IOException if the fake configuration cannot be created or read
-	 */
-	@Test
-	public void recoveryAllowsMissingLive() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			Path folders = home.resolve(VERSION_FOLDERS);
-			Path live = folders.resolve(VERSION);
-			Path previous = Files.createDirectories(folders.getParent().resolve(".cat-previous-" + VERSION));
-			Path marker = Files.writeString(previous.resolve("previous-marker"), "previous release");
-			FileTime modificationTime = Files.getLastModifiedTime(marker);
-
-			List<ActivationStep> steps = provider().recoveryPlan(home, VERSION, VERSION);
-
-			requireThat(steps, "steps").isEqualTo(List.of(new ReplaceDirectory(live, folders.getParent())));
-			requireThat(Files.notExists(live), "liveStillAbsent").isTrue();
-			requireThat(Files.readString(marker), "previousContent").isEqualTo("previous release");
-			requireThat(Files.getLastModifiedTime(marker), "modificationTime").isEqualTo(modificationTime);
-		}
-	}
-
-	/**
-	 * Recovery refuses the same redirected directory components as routine planning, even with no live directory.
-	 *
-	 * @param component the linked directory relative to the fake home
-	 * @throws IOException if the fake configuration cannot be created or the refusal is returned
-	 */
-	@Test(dataProvider = "linkedComponents", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*symbolic link.*")
-	public void recoveryRefusesSymlink(String component) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path home = Files.createDirectory(root.resolve("home"));
-			Path link = home.resolve(component);
-			Files.createDirectories(link.getParent());
-			Files.createSymbolicLink(link, root.resolve("outside"));
-
-			provider().recoveryPlan(home, VERSION, NEW_VERSION);
-		}
-	}
-
-	/**
-	 * Relative homes cannot redirect activation beneath the current project.
-	 *
-	 * @throws IOException if planning reads an activation path
+	 * @throws IOException if reading the installation fails for another reason
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void relativeHomeRefused() throws IOException
 	{
-		provider().plan(Path.of("project-home"), VERSION);
-	}
-
-	/**
-	 * Supplies links at each directory boundary that a project could redirect.
-	 *
-	 * @return the paths relative to the policy home
-	 */
-	@DataProvider
-	public Object[][] linkedComponents()
-	{
-		return new Object[][] {{"plugins"}, {"plugins/cat-marketplace"},
-			{"plugins/cat-marketplace/plugins"}, {"plugins/cat-marketplace/plugins/cat"}};
-	}
-
-	/**
-	 * Planning refuses an existing or dangling link before it can describe a replacement outside the policy home.
-	 *
-	 * @param component the linked directory relative to the fake home
-	 * @throws IOException if the fake configuration cannot be created or the refusal is returned
-	 */
-	@Test(dataProvider = "linkedComponents", expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*symbolic link.*")
-	public void symlinkedComponentRefused(String component) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(testDirectory());
-			Path home = Files.createDirectory(root.resolve("home"));
-			Path link = home.resolve(component);
-			Files.createDirectories(link.getParent());
-			Files.createSymbolicLink(link, root.resolve("outside"));
-
-			provider().plan(home, VERSION);
-		}
-	}
-
-	/**
-	 * Planning refuses a version that names neither a plugin version nor a release, before it resolves a folder.
-	 *
-	 * @throws IOException if planning reads an activation path
-	 */
-	@Test(expectedExceptions = IllegalArgumentException.class)
-	public void refusesVersionPathTraversal() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			provider().installPlan(cleanup.add(testDirectory()), "../escape");
-		}
+		provider().installed(Path.of("project-home"));
 	}
 
 	/**

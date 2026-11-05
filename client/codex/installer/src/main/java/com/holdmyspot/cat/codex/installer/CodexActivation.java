@@ -3,15 +3,8 @@ package com.holdmyspot.cat.codex.installer;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
-import com.holdmyspot.cat.common.installation.PluginVersion;
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
-import com.holdmyspot.cat.common.installer.activation.AddDirectory;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
-import com.holdmyspot.cat.common.installer.activation.ReplaceDirectory;
-import com.holdmyspot.cat.common.installer.activation.ReplaceOwnedFiles;
-import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
-import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -20,7 +13,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
@@ -32,11 +24,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * Codex loads the cache folder that {@link CodexVersions} chooses: a developer's {@code local} folder, otherwise the
  * greatest version folder name. Its session-start refresh compares that directory name with the marketplace source's
- * manifest version. Updating the source before the cache makes a refresh after an interrupted activation converge on
- * the new release.
+ * manifest version.
  * <p>
- * The returned steps must be executed by the installer core, which journals and reverses them on failure. This provider
- * only reads files; its observations do not prevent another process from changing those paths afterward.
+ * This provider's observations do not prevent another process from changing those paths afterward.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -122,72 +112,6 @@ public final class CodexActivation implements PluginActivation
 		boolean copiesAgree = active.equals(sourceVersion) && active.equals(cacheVersion) &&
 			Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS);
 		return new InstalledState(Optional.of(active), copiesAgree);
-	}
-
-	/**
-	 * Plans owned-agent replacement, marketplace replacement, then cache activation. A same-version activation replaces
-	 * the existing cache directory; a new version adds a real directory and keeps the previous cache version in place.
-	 *
-	 * @throws IllegalArgumentException if {@code home} is relative, {@code newVersion} is not a CAT release version,
-	 *                                  or an activation path is a symbolic link
-	 * @throws IOException              if CAT's marketplace or active cache is absent, a developer's {@code local}
-	 *                                  directory is active, or the installation cannot be read
-	 */
-	@Override
-	public List<ActivationStep> plan(Path home, String newVersion) throws IOException
-	{
-		CodexInstallation layout = installation(home);
-		validateVersion(newVersion, "newVersion");
-		List<ActivationStep> addition = activationSteps(home, newVersion, false);
-		InstalledState state = installed(home);
-		String active = state.version().orElse(null);
-		if (Objects.equals(active, CodexVersions.LOCAL))
-			throw new IOException("A local developer installation is active; use explicit setup to replace it: " +
-				target(home, layout.versionFolders()));
-		Path source = target(home, layout.marketplacePlugin());
-		if (active == null || !Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
-			throw new IOException("CAT is not installed in both the cache and marketplace; run explicit setup: " + home);
-
-		if (newVersion.equals(active))
-			return activationSteps(home, newVersion, true);
-		return addition;
-	}
-
-	/**
-	 * Reconstructs the original steps from the recorded versions, including while live directories are absent.
-	 *
-	 * @throws IllegalArgumentException if the home is relative or unnormalized, either version is not a CAT release,
-	 *                                  or an activation path is a symbolic link
-	 */
-	@Override
-	public List<ActivationStep> recoveryPlan(Path home, String previousVersion, String newVersion)
-	{
-		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
-		CodexInstallation layout = installation(home);
-		validateVersion(previousVersion, "previousVersion");
-		validateVersion(newVersion, "newVersion");
-		target(home, layout.marketplacePlugin().resolve(PLUGIN_MANIFEST));
-		target(home, layout.versionFolders().resolve(previousVersion).resolve(PLUGIN_MANIFEST));
-		return activationSteps(home, newVersion, previousVersion.equals(newVersion));
-	}
-
-	/**
-	 * Plans owned-agent installation, then adds the marketplace source and the cache version. The plan does not depend
-	 * on the live installation, so recovery of an interrupted installation reconstructs the same steps.
-	 *
-	 * @throws IllegalArgumentException if {@code home} is relative, {@code newVersion} is not a CAT release version,
-	 *                                  or an activation path is a symbolic link
-	 */
-	@Override
-	public List<ActivationStep> installPlan(Path home, String newVersion)
-	{
-		CodexInstallation layout = installation(home);
-		validateVersion(newVersion, "newVersion");
-		Path source = target(home, layout.marketplacePlugin());
-		Path newCache = target(home, layout.versionFolders().resolve(newVersion));
-		target(home, layout.dataDirectory().resolve(MIGRATION_VERSION));
-		return List.of(ownedAgents(home), new AddDirectory(source, source.getParent()),
-			new AddDirectory(newCache, newCache.getParent().getParent()));
 	}
 
 	/**
@@ -331,89 +255,6 @@ public final class CodexActivation implements PluginActivation
 			}
 		}
 		return names;
-	}
-
-	/**
-	 * Validates a plugin version, or a bare release version, before resolving paths derived from it.
-	 *
-	 * @param version the plugin version {@code <release>+b<commit>}, or a bare release version
-	 * @param name    the parameter name used in validation diagnostics
-	 * @throws IllegalArgumentException if the version is blank or names no CAT release
-	 */
-	private static void validateVersion(String version, String name)
-	{
-		requireThat(version, name).isNotBlank();
-		if (release(version) == null)
-			throw new IllegalArgumentException("Invalid CAT release version: " + version);
-	}
-
-	/**
-	 * Reads the release of a version folder's name.
-	 *
-	 * @param name a plugin version {@code <release>+b<commit>}, or a bare release version
-	 * @return the release, or null when the name is neither
-	 */
-	private static ReleaseVersion release(String name)
-	{
-		String release = name;
-		if (name.contains(PluginVersion.BUILD_SEPARATOR))
-		{
-			try
-			{
-				release = PluginVersion.parse(name).release();
-			}
-			catch (IllegalArgumentException _)
-			{
-				return null;
-			}
-		}
-		try
-		{
-			return ReleaseVersion.parse(release);
-		}
-		catch (TrustException _)
-		{
-			return null;
-		}
-	}
-
-	/**
-	 * Resolves the fixed activation destinations without requiring their live contents to exist.
-	 *
-	 * @param home         the absolute harness home
-	 * @param newVersion   the validated release version to activate
-	 * @param replaceCache whether the original activation replaces an existing version
-	 * @return the immutable ordered activation steps
-	 * @throws IllegalArgumentException if the home is relative or an activation path is a symbolic link
-	 */
-	private static List<ActivationStep> activationSteps(Path home, String newVersion, boolean replaceCache)
-	{
-		CodexInstallation layout = installation(home);
-		Path source = target(home, layout.marketplacePlugin());
-		Path cache = target(home, layout.versionFolders());
-		Path newCache = target(home, layout.versionFolders().resolve(newVersion));
-		target(home, layout.dataDirectory().resolve(MIGRATION_VERSION));
-		ActivationStep cacheStep;
-		if (replaceCache)
-			cacheStep = new ReplaceDirectory(newCache, cache.getParent());
-		else
-			cacheStep = new AddDirectory(newCache, cache.getParent());
-		return List.of(ownedAgents(home), new ReplaceDirectory(source, source.getParent()), cacheStep);
-	}
-
-	/**
-	 * Plans replacing CAT's custom agents with the release's agents.
-	 *
-	 * @param home the absolute harness home
-	 * @return the step
-	 * @throws IllegalArgumentException if the home is relative or an agent path is a symbolic link
-	 */
-	private static ReplaceOwnedFiles ownedAgents(Path home)
-	{
-		CodexInstallation layout = installation(home);
-		return new ReplaceOwnedFiles(target(home, layout.agents()),
-			target(home, layout.dataDirectory().resolve(AGENT_OWNERSHIP)), AGENT_PREFIX,
-			AGENT_SOURCES, "*.toml");
 	}
 
 	/**

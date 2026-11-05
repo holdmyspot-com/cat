@@ -1,14 +1,9 @@
 package com.holdmyspot.cat.claude.installer;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
-import com.holdmyspot.cat.common.installer.activation.ActivationStep;
-import com.holdmyspot.cat.common.installer.activation.AddDirectory;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
-import com.holdmyspot.cat.common.installer.activation.ReplaceDirectory;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.runner.PluginManifest;
@@ -21,11 +16,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Plans installation and updates of CAT's version folders in the directory marketplace that Claude Code loads in
- * place. Each version lives in its own folder, named after the version, inside the marketplace plugin.
+ * Describes CAT's version folders in the directory marketplace that Claude Code loads in place. Each version lives in
+ * its own folder, named after the version, inside the marketplace plugin.
  * <p>
  * Existing symbolic links from the policy's home through a version folder are refused. This guards against
- * redirection by a project that can write those directories. Planning never changes Claude Code's configuration.
+ * redirection by a project that can write those directories. The provider never changes Claude Code's
+ * configuration.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -85,54 +81,6 @@ public final class Activation implements PluginActivation
 	}
 
 	/**
-	 * Plans activation of a version's folder without creating or registering a marketplace. Activating the installed
-	 * version again replaces its folder; any other version adds its own folder and leaves the installed one in place.
-	 *
-	 * @param home       the absolute Claude Code configuration directory recorded in policy
-	 * @param newVersion the plugin version or release version to activate
-	 * @return one replacement or addition of the version's folder, staged outside the folder that holds the version
-	 * 	folders
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or {@code newVersion} is neither a plugin version
-	 *                                  nor a release version
-	 * @throws IOException              if a path component is a symlink or CAT is not installed; run initial setup
-	 *                                  when CAT is absent
-	 */
-	@Override
-	public List<ActivationStep> plan(Path home, String newVersion) throws IOException
-	{
-		Path folder = versionFolder(home, newVersion);
-		Optional<String> active = installed(home).version();
-		if (active.isEmpty())
-		{
-			throw new IOException("CAT is not installed at " + new ClaudeInstallation(home).versionFolders() +
-				". Run the initial setup before updating.");
-		}
-		return steps(folder, active.get().equals(newVersion));
-	}
-
-	/**
-	 * Reconstructs the original plan even when a stopped activation moved a version folder away.
-	 *
-	 * @param home            the absolute normalized configuration directory recorded in protected policy
-	 * @param previousVersion the non-blank version active before the recorded activation
-	 * @param newVersion      the version installed by the recorded activation
-	 * @return the plan that {@link #plan(Path, String)} returned while {@code previousVersion} was active
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or not normalized, {@code previousVersion} is blank,
-	 *                                  or {@code newVersion} is neither a plugin version nor a release version
-	 * @throws IOException              if a path component is a symlink
-	 */
-	@Override
-	public List<ActivationStep> recoveryPlan(Path home, String previousVersion, String newVersion) throws IOException
-	{
-		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
-		requireThat(previousVersion, "previousVersion").isNotBlank();
-		Path folder = versionFolder(home, newVersion);
-		return steps(folder, previousVersion.equals(newVersion));
-	}
-
-	/**
 	 * Returns the migration marker in CAT's existing data directory.
 	 *
 	 * @param home the absolute Claude Code configuration directory recorded in policy
@@ -144,25 +92,6 @@ public final class Activation implements PluginActivation
 	public Path migrationVersionFile(Path home)
 	{
 		return dataDirectory(home).resolve("migration-version");
-	}
-
-	/**
-	 * Plans adding the version's folder inside CAT's marketplace plugin, staged outside the folder that holds the
-	 * version folders. Claude Code loads only the folder that the marketplace manifest names; registration later
-	 * writes that manifest.
-	 *
-	 * @param home       the absolute Claude Code configuration directory recorded in policy
-	 * @param newVersion the plugin version or release version to install
-	 * @return one addition of the version's folder
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or {@code newVersion} is neither a plugin version
-	 *                                  nor a release version
-	 * @throws IOException              if a path component is a symlink
-	 */
-	@Override
-	public List<ActivationStep> installPlan(Path home, String newVersion) throws IOException
-	{
-		return steps(versionFolder(home, newVersion), false);
 	}
 
 	/**
@@ -205,31 +134,6 @@ public final class Activation implements PluginActivation
 	}
 
 	/**
-	 * Locates a version's folder and refuses links that could redirect its activation.
-	 *
-	 * @param home    the absolute Claude Code configuration directory recorded in policy
-	 * @param version the plugin version or release version
-	 * @return the normalized version folder
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or {@code version} is neither a plugin version nor a
-	 *                                  release version
-	 * @throws IOException              if a path component is a symlink
-	 */
-	private static Path versionFolder(Path home, String version) throws IOException
-	{
-		requireThat(version, "version").isNotNull();
-		ClaudeInstallation installation = new ClaudeInstallation(home);
-		if (!isVersion(version))
-		{
-			throw new IllegalArgumentException("version must be a plugin version, such as 1.0" +
-				PluginVersion.BUILD_SEPARATOR + "0123456789ab, or a release version, such as 1.0: \"" + version + "\"");
-		}
-		Path folder = installation.versionFolders().resolve(version);
-		Locations.checkLinks(home, folder);
-		return folder;
-	}
-
-	/**
 	 * Returns whether a text names a version folder: a plugin version, or a release version that an installation
 	 * from before plugin versions recorded.
 	 *
@@ -255,21 +159,5 @@ public final class Activation implements PluginActivation
 				return false;
 			}
 		}
-	}
-
-	/**
-	 * Returns the single step that activates a version folder, staged outside the folder that holds the version
-	 * folders.
-	 *
-	 * @param folder  the version folder
-	 * @param replace true to replace the folder, false to add it
-	 * @return the step
-	 */
-	private static List<ActivationStep> steps(Path folder, boolean replace)
-	{
-		Path staging = folder.getParent().getParent();
-		if (replace)
-			return List.of(new ReplaceDirectory(folder, staging));
-		return List.of(new AddDirectory(folder, staging));
 	}
 }
