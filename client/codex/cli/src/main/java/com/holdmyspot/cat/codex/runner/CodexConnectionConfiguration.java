@@ -2,7 +2,6 @@ package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.codex.runner.CodexRunner.SessionRefusedException;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
@@ -11,6 +10,8 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.RealPaths;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.IOException;
 import java.net.URI;
@@ -351,7 +352,8 @@ public final class CodexConnectionConfiguration
 				case "read" ->
 				{
 					if (!entry.getKey().startsWith(":") &&
-						isInsideAny(realPath(Path.of(entry.getKey())), policy.readDenials()))
+						RealPaths.isInsideAny(RealPaths.resolve(Path.of(entry.getKey()).toAbsolutePath()),
+							policy.readDenials()))
 					{
 						throw wideningLayer(layer, name, entry.getValue());
 					}
@@ -362,9 +364,10 @@ public final class CodexConnectionConfiguration
 						continue;
 					if (entry.getKey().startsWith(":"))
 						throw wideningLayer(layer, name, entry.getValue());
-					Path path = realPath(Path.of(entry.getKey()));
-					if (!isInsideAny(path, policy.writeRoots()) || isInsideAny(path, policy.writeDenials()) ||
-						isInsideAny(path, policy.readDenials()))
+					Path path = RealPaths.resolve(Path.of(entry.getKey()).toAbsolutePath());
+					if (!RealPaths.isInsideAny(path, policy.writeRoots()) ||
+						RealPaths.isInsideAny(path, policy.writeDenials()) ||
+						RealPaths.isInsideAny(path, policy.readDenials()))
 					{
 						throw wideningLayer(layer, name, entry.getValue());
 					}
@@ -435,42 +438,6 @@ public final class CodexConnectionConfiguration
 			"layer " + layer + " sets " + setting + " = " + value + ", which Codex merges into the session's " +
 			"configuration and which would give the session more access than its sandbox policy allows. Remove the " +
 			"setting from " + layer + ", then start the session again.");
-	}
-
-	/**
-	 * Returns the real form of a path that may not exist: the real path of its nearest existing ancestor, followed by
-	 * the names below it.
-	 *
-	 * @param path the path
-	 * @return the real form
-	 * @throws IOException if the real path of the ancestor cannot be read
-	 */
-	private static Path realPath(Path path) throws IOException
-	{
-		Path absolute = path.toAbsolutePath().normalize();
-		Path existing = absolute;
-		while (existing != null && !Files.exists(existing))
-			existing = existing.getParent();
-		if (existing == null)
-			return absolute;
-		return existing.toRealPath().resolve(existing.relativize(absolute));
-	}
-
-	/**
-	 * Indicates whether a path is one of some folders or lies inside one.
-	 *
-	 * @param path    a real path
-	 * @param folders real paths
-	 * @return {@code true} if {@code path} lies in one of {@code folders}
-	 */
-	private static boolean isInsideAny(Path path, List<Path> folders)
-	{
-		for (Path folder : folders)
-		{
-			if (path.startsWith(folder))
-				return true;
-		}
-		return false;
 	}
 
 	/**
@@ -668,7 +635,7 @@ public final class CodexConnectionConfiguration
 		List<Path> keptCaches = new ArrayList<>();
 		for (Path cache : caches.directories())
 		{
-			if (policy.writeRoots().contains(realPath(cache)))
+			if (policy.writeRoots().contains(RealPaths.resolve(cache.toAbsolutePath())))
 				keptCaches.add(cache);
 		}
 		if (!keptCaches.isEmpty())

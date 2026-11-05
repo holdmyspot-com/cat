@@ -33,6 +33,7 @@ import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.File;
 import java.io.IOException;
@@ -1192,35 +1193,5 @@ public final class CodexRunner
 		 * @throws IOException if Codex fails
 		 */
 		String read(List<String> arguments) throws IOException;
-	}
-
-	/**
-	 * Signals that the runner refuses to start a session because the session's sandbox would be wider than its
-	 * policy or could not confine it. The session's commands never run.
-	 */
-	public static final class SessionRefusedException extends IOException
-	{
-		private static final long serialVersionUID = 1L;
-
-		/**
-		 * Creates a refusal.
-		 *
-		 * @param message the reason and how to fix it
-		 */
-		public SessionRefusedException(String message)
-		{
-			super(message);
-		}
-
-		/**
-		 * Creates a refusal.
-		 *
-		 * @param message the reason and how to fix it
-		 * @param cause   the failure that shows the reason
-		 */
-		public SessionRefusedException(String message, Throwable cause)
-		{
-			super(message, cause);
-		}
 	}
 }

@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -997,7 +998,7 @@ public final class CodexRunnerTest
 			requireThat(commands, "commands").isEqualTo(List.of(List.of("features", "list", "--enable", "hooks")));
 			return;
 		}
-		CodexRunner.SessionRefusedException refusal = expectThrows(CodexRunner.SessionRefusedException.class,
+		SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 			() -> CodexRunner.requireNetworkProxy(codex, List.of("--enable", "hooks"),
 				Set.of("chatgpt.com", "api.openai.com")));
 		requireThat(refusal.getMessage(), "message").isEqualTo("Codex 0.161.0 no longer limits the session's " +
@@ -1034,7 +1035,7 @@ public final class CodexRunnerTest
 		IOException other = new IOException("Codex app-server did not start the thread: model not found");
 
 		IOException refusal = CodexRunner.refusalOf(loopback);
-		requireThat(refusal, "refusal").isInstanceOf(CodexRunner.SessionRefusedException.class);
+		requireThat(refusal, "refusal").isInstanceOf(SessionRefusedException.class);
 		requireThat(refusal.getMessage(), "message").contains("bwrap: loopback: Failed RTM_NEWADDR: Operation not " +
 			"permitted");
 		requireThat(refusal.getCause(), "cause").isReferenceEqualTo(loopback, "loopback");

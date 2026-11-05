@@ -10,11 +10,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 /**
  * Resolves the paths of a sandbox policy to the files that the operating system would reach through them, so that two
  * paths that name the same file through a symbolic link or a {@code ..} name compare equal.
  */
-final class RealPaths
+public final class RealPaths
 {
 	/**
 	 * The most symbolic links that one resolution follows, the limit at which Linux reports a link loop.
@@ -28,11 +30,14 @@ final class RealPaths
 	 *
 	 * @param path an absolute path
 	 * @return the resolved path, absolute and normalized
-	 * @throws IOException if a symbolic link cannot be read, or more than 40 links are followed
+	 * @throws NullPointerException     if {@code path} is null
+	 * @throws IllegalArgumentException if {@code path} is relative
+	 * @throws IOException              if a symbolic link cannot be read, or more than 40 links are followed
 	 */
-	static Path resolve(Path path) throws IOException
+	public static Path resolve(Path path) throws IOException
 	{
-		assert path.isAbsolute() : path;
+		requireThat(path, "path").isNotNull();
+		requireThat(path.isAbsolute(), "path.isAbsolute()").isTrue();
 		return resolve(path, path, 0);
 	}
 
@@ -71,10 +76,13 @@ final class RealPaths
 	 *
 	 * @param paths absolute paths
 	 * @return the resolved paths, each once, in their order
-	 * @throws IOException if a symbolic link cannot be read, or more than 40 links are followed
+	 * @throws NullPointerException     if {@code paths} or any of its elements are null
+	 * @throws IllegalArgumentException if any of {@code paths} is relative
+	 * @throws IOException              if a symbolic link cannot be read, or more than 40 links are followed
 	 */
-	static List<Path> resolveAll(Collection<Path> paths) throws IOException
+	public static List<Path> resolveAll(Collection<Path> paths) throws IOException
 	{
+		requireThat(paths, "paths").isNotNull();
 		Set<Path> resolved = new LinkedHashSet<>();
 		for (Path path : paths)
 			resolved.add(resolve(path));
@@ -87,9 +95,12 @@ final class RealPaths
 	 * @param path    a resolved path
 	 * @param folders resolved folders
 	 * @return {@code true} if {@code path} is one of {@code folders} or lies below one of them
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	static boolean isInsideAny(Path path, Collection<Path> folders)
+	public static boolean isInsideAny(Path path, Collection<Path> folders)
 	{
+		requireThat(path, "path").isNotNull();
+		requireThat(folders, "folders").isNotNull();
 		for (Path folder : folders)
 		{
 			if (path.startsWith(folder))

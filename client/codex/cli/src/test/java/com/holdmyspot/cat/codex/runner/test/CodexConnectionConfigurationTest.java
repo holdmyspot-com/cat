@@ -5,7 +5,6 @@ import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
-import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
@@ -13,6 +12,7 @@ import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -756,7 +756,7 @@ public final class CodexConnectionConfigurationTest
 			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("run"),
 				List.of(), List.of(), Set.of()));
 
-			CodexRunner.SessionRefusedException refusal = expectThrows(CodexRunner.SessionRefusedException.class,
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> CodexConnectionConfiguration.requireNarrowingLayers(system, managedLayer, policy));
 
 			requireThat(refusal.getMessage(), "message").contains(file.toString()).contains(setting);
