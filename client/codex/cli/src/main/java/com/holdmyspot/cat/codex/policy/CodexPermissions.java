@@ -413,8 +413,9 @@ public final class CodexPermissions
 			if (!overlaps)
 				kept.add(pattern);
 		}
-		return new CodexSandbox(true, entries, CodexAssumptions.managedProxyHosts(kept),
-			network.path("allow_local_binding").asBoolean(false));
+		boolean allowLocalBinding = network.path("allow_local_binding").asBoolean(false);
+		return new CodexSandbox(true, entries, CodexAssumptions.managedProxyHosts(kept, allowLocalBinding),
+			allowLocalBinding);
 	}
 
 	/**

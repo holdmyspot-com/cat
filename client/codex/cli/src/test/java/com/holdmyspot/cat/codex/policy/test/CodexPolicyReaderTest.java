@@ -89,6 +89,66 @@ public final class CodexPolicyReaderTest
 	}
 
 	/**
+	 * Returns whether a proxied profile lets its commands bind local addresses, and whether they then reach a local
+	 * host that the profile allows.
+	 *
+	 * @return the profile's local binding and whether a local host is reachable
+	 */
+	@DataProvider
+	public Object[][] proxiedLocalHosts()
+	{
+		return new Object[][]
+		{
+			{true, true},
+			{false, false}
+		};
+	}
+
+	/**
+	 * Verifies that Codex's managed network proxy lets the commands reach the profile's allowed public hosts, and its
+	 * allowed local hosts only when the profile lets them bind local addresses: otherwise the proxy blocks every local
+	 * or private address.
+	 *
+	 * @param binds      {@code true} if the profile lets the commands bind local addresses
+	 * @param reachLocal {@code true} if the commands reach the allowed local hosts
+	 */
+	@Test(dataProvider = "proxiedLocalHosts")
+	public void proxyBlocksLocalHostsWithoutBinding(boolean binds, boolean reachLocal) throws IOException,
+		PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			// Loopback, private, IPv6 loopback and IPv6 unique local addresses
+			String localHosts = """
+				"localhost" = "allow", "127.0.0.1" = "allow", "10.1.2.3" = "allow", "[::1]" = "allow", \
+				"fd00::1" = "allow"\
+				""";
+			session.write("home/.codex/config.toml", """
+				default_permissions = "p"
+				[features]
+				network_proxy = true
+				[permissions.p]
+				extends = ":workspace"
+				[permissions.p.network]
+				enabled = true
+				allow_local_binding = %s
+				domains = { "api.example.com" = "allow", %s }
+				""".formatted(binds, localHosts));
+
+			ParentPolicy policy = session.read("exec", "summarize");
+
+			requireThat(policy.hosts().allows("api.example.com"), "public").isTrue();
+			for (String entry : localHosts.split(", "))
+			{
+				String local = entry.substring(1, entry.indexOf('"', 1));
+				requireThat(policy.hosts().allows(local), local).isEqualTo(reachLocal);
+			}
+			requireThat(policy.allowLocalBinding(), "allowLocalBinding").isEqualTo(binds);
+		}
+	}
+
+	/**
 	 * Verifies that {@code -c} overrides whose values are inline tables select and define the permissions profile,
 	 * in the form that CAT's runners start Codex with.
 	 */
