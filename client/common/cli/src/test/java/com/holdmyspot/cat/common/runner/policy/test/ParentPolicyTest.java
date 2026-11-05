@@ -142,4 +142,31 @@ public final class ParentPolicyTest
 			requireThat(combined.hosts().allows("packages.test"), "allowsPackages").isFalse();
 		}
 	}
+
+	/**
+	 * Verifies that the parent's commands may read a file outside its read denials or inside a re-allowance, and not a
+	 * file inside a denial, also through a link, and that an unsandboxed parent may read every file.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void readsOutsideDenials() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path home = Files.createDirectory(root.resolve("home"));
+			Path reallowed = Files.createDirectory(home.resolve("reallowed"));
+			Path login = Files.writeString(home.resolve("login.json"), "{}");
+			Path link = Files.createSymbolicLink(root.resolve("link.json"), login);
+			ParentPolicy parent = new ParentPolicy(true, List.of(), List.of(), List.of(home), List.of(reallowed),
+				HostAccess.NONE, false, List.of());
+
+			requireThat(parent.mayRead(root.resolve("other.json")), "readsOutside").isTrue();
+			requireThat(parent.mayRead(reallowed.resolve("login.json")), "readsReallowed").isTrue();
+			requireThat(parent.mayRead(login), "readsDenied").isFalse();
+			requireThat(parent.mayRead(link), "readsDeniedThroughLink").isFalse();
+			requireThat(ParentPolicy.UNSANDBOXED.mayRead(login), "unsandboxedReadsDenied").isTrue();
+		}
+	}
 }

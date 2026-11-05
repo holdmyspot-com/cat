@@ -222,6 +222,25 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	}
 
 	/**
+	 * Indicates whether the parent's commands may read a file: it lies outside every read denial, or inside a
+	 * re-allowance. Every file is readable when the parent is not sandboxed.
+	 *
+	 * @param file the absolute path of the file
+	 * @return {@code true} if the parent's commands may read {@code file}
+	 * @throws NullPointerException     if {@code file} is null
+	 * @throws IllegalArgumentException if {@code file} is not absolute
+	 * @throws IOException              if a symbolic link in a path cannot be read, or a path follows more than 40 links
+	 */
+	public boolean mayRead(Path file) throws IOException
+	{
+		requireThat(file, "file").isNotNull();
+		if (!file.isAbsolute())
+			throw new IllegalArgumentException("file must be absolute: " + file);
+		return !sandboxed || readsWhole(RealPaths.resolve(file), RealPaths.resolveAll(readDenials),
+			RealPaths.resolveAll(readReallowances));
+	}
+
+	/**
 	 * Checks that the parent's commands cannot have changed a file that CAT reads to establish the parent's policy or
 	 * to exchange data with it, such as a settings file or a state folder. The file is trusted when it lies outside the
 	 * parent's writable paths, or inside one of {@link #protectedSources()}; every file is trusted when the parent is
