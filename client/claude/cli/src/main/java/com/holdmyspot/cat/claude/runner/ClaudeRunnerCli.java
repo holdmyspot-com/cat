@@ -280,22 +280,39 @@ public final class ClaudeRunnerCli
 				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),
 				options.gitEmail());
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
-				(harness, arguments, directory) ->
-			{
-				RequestedRunner runner;
-				if (harness.equals("claude"))
-				{
-					runner = new RequestedRunner(scope,
-						options.artifact().toAbsolutePath().resolve("bin/claude-runner"), List.of());
-				}
-				else if (harness.equals("codex"))
-					runner = RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
-				else
-					throw new IllegalArgumentException("Unsupported requested harness: " + harness);
-				return runner.start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()),
-					directory, environment);
-			});
+				(harness, arguments, directory) -> requestedRunner(scope, options.artifact(), harness, environment).
+					start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()), directory,
+						environment));
 		}
+	}
+
+	/**
+	 * Returns the runner of a harness that a Claude Code session requests: the {@code claude-runner} of this plugin,
+	 * or the {@code codex-runner} of the Codex artifact that the {@code codex-artifact} launcher finds.
+	 *
+	 * @param scope       the borrowed process scope
+	 * @param artifact    this plugin's folder
+	 * @param harness     the requested harness's identifier
+	 * @param environment the host environment
+	 * @return the runner
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if CAT has no runner for {@code harness}
+	 * @throws IOException              if the Codex artifact cannot be found
+	 */
+	public static RequestedRunner requestedRunner(JvmScope scope, Path artifact, String harness,
+		Map<String, String> environment) throws IOException
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(artifact, "artifact").isNotNull();
+		requireThat(harness, "harness").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		return switch (harness)
+		{
+			case HARNESS_ID -> new RequestedRunner(scope, artifact.toAbsolutePath().resolve("bin/claude-runner"),
+				List.of());
+			case "codex" -> RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
+			default -> throw new IllegalArgumentException("Unsupported requested harness: " + harness);
+		};
 	}
 
 	/**
