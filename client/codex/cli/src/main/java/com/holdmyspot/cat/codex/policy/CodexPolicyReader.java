@@ -126,37 +126,20 @@ public final class CodexPolicyReader
 	 */
 	private static List<String> codexArguments(CodexSession session) throws PolicyRefusal
 	{
-		Optional<ProcessDescription> codex = nearestCodex(session.ancestors());
-		if (codex.isEmpty())
+		for (ProcessDescription process : session.ancestors())
 		{
-			throw new PolicyRefusal("CAT cannot find the Codex process that runs this session among the hook's " +
-				"parent processes", "Start the session with the codex command, then start a new Codex session");
+			String executable = process.command().orElse("");
+			if (!isCodex(executable))
+				continue;
+			if (process.arguments().isEmpty())
+			{
+				throw new PolicyRefusal("CAT cannot read the command line of the Codex process " +
+					executable, "Run Codex as the same user as CAT, then start a new Codex session");
+			}
+			return process.arguments().get();
 		}
-		ProcessDescription process = codex.get();
-		if (process.arguments().isEmpty())
-		{
-			throw new PolicyRefusal("CAT cannot read the command line of the Codex process " +
-				process.command().orElse(""), "Run Codex as the same user as CAT, then start a new Codex session");
-		}
-		return process.arguments().get();
-	}
-
-	/**
-	 * Returns the nearest Codex process among a hook's ancestors, which is the Codex process that runs the hook.
-	 *
-	 * @param ancestors the hook's ancestor processes, nearest first
-	 * @return the first process whose executable is named {@code codex} or {@code codex.exe}, or empty if none is
-	 * @throws NullPointerException if {@code ancestors} is null
-	 */
-	public static Optional<ProcessDescription> nearestCodex(List<ProcessDescription> ancestors)
-	{
-		requireThat(ancestors, "ancestors").isNotNull();
-		for (ProcessDescription process : ancestors)
-		{
-			if (isCodex(process.command().orElse("")))
-				return Optional.of(process);
-		}
-		return Optional.empty();
+		throw new PolicyRefusal("CAT cannot find the Codex process that runs this session among the hook's " +
+			"parent processes", "Start the session with the codex command, then start a new Codex session");
 	}
 
 	/**

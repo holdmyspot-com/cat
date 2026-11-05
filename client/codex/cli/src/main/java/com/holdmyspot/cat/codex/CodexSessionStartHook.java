@@ -3,7 +3,6 @@ package com.holdmyspot.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
-import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
 import com.holdmyspot.cat.common.AbstractHookScope;
 import com.holdmyspot.cat.common.FileLocks;
@@ -169,7 +168,7 @@ public final class CodexSessionStartHook
 		}
 		try
 		{
-			Optional<ProcessDescription> codex = CodexPolicyReader.nearestCodex(ancestry.get());
+			Optional<ProcessDescription> codex = nearestCodex(ancestry.get());
 			if (codex.isEmpty())
 				return;
 			Path codexHome = CodexInstallation.resolveHome(environment, platform.homeDirectory(environment),
@@ -182,6 +181,24 @@ public final class CodexSessionStartHook
 		{
 			error.println("CAT could not start its session launcher: " + e.getMessage());
 		}
+	}
+
+	/**
+	 * Returns the Codex process that runs the hook: the nearest of the hook's ancestors whose executable is Codex's
+	 * native binary, as Codex's policy reader also finds it.
+	 *
+	 * @param ancestors the hook's ancestor processes, nearest first
+	 * @return the first process whose executable is named {@code codex} or {@code codex.exe}, or empty if none is
+	 */
+	private static Optional<ProcessDescription> nearestCodex(List<ProcessDescription> ancestors)
+	{
+		for (ProcessDescription process : ancestors)
+		{
+			String name = process.command().orElse("").replaceAll("^.*[/\\\\]", "");
+			if (name.equals("codex") || name.equals("codex.exe"))
+				return Optional.of(process);
+		}
+		return Optional.empty();
 	}
 
 	/**
