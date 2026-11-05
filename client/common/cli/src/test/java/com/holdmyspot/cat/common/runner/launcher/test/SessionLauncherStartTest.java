@@ -84,6 +84,28 @@ public final class SessionLauncherStartTest
 	}
 
 	/**
+	 * Verifies that the hook creates the inbox before it returns, so that a sandbox that lets a session write only
+	 * folders that exist when a command starts lets the session's first command send a request.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void createsInboxBeforeSessionCommands() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();
+			SessionLauncherChannel channel = new SessionLauncherChannel(root.resolve("home"));
+
+			boolean started = SessionLauncherStart.start(channel, record(root), root.resolve("plugin"),
+				Platform.LINUX_X64, Map.of("PATH", ""), new FileLocks(), new RecordingStarter());
+
+			requireThat(started, "started").isTrue();
+			requireThat(channel.inbox(), "inbox").isDirectory();
+		}
+	}
+
+	/**
 	 * Verifies that the launcher starts in a session of its own when {@code setsid} is on the hook's {@code PATH}, so
 	 * that the harness's terminal signals do not reach it.
 	 *

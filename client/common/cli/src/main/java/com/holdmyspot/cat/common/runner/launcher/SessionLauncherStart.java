@@ -201,7 +201,10 @@ public final class SessionLauncherStart
 	/**
 	 * Starts the launcher of a harness process, unless the platform is native Windows, {@code environment} marks a
 	 * session that CAT's runner started, or a live launcher holds the folder's lock. The hook's data replaces the
-	 * folder's {@link SessionLauncherChannel#LAUNCHER_FILE} before the launcher starts.
+	 * folder's {@link SessionLauncherChannel#LAUNCHER_FILE} before the launcher starts. The
+	 * {@link SessionLauncherChannel#inbox() inbox} exists when this method returns, since a sandbox that can let a
+	 * command write only folders that exist when the command starts would leave the session's commands unable to
+	 * create it.
 	 *
 	 * @param channel     the locations that the launcher shares with its senders
 	 * @param record      the hook's data, which names the harness process
@@ -212,7 +215,8 @@ public final class SessionLauncherStart
 	 * @param starter     starts the launcher
 	 * @return {@code true} if a launcher was started; {@code false} if none was needed
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the launcher's folder cannot be written, or the launcher cannot start
+	 * @throws IOException          if the launcher's folder or the inbox cannot be written, or the launcher cannot
+	 *                              start
 	 */
 	public static boolean start(SessionLauncherChannel channel, LauncherRecord record, Path pluginRoot,
 		Platform platform, Map<String, String> environment, FileLocks fileLocks, DetachedStarter starter)
@@ -235,6 +239,7 @@ public final class SessionLauncherStart
 		if (free.isEmpty())
 			return false;
 		free.get().close();
+		Files.createDirectories(channel.inbox());
 		record.write(JsonMapper.builder().build(), directory.resolve(SessionLauncherChannel.LAUNCHER_FILE));
 		List<String> command = new ArrayList<>();
 		String setsid = platform.findProgram(SETSID, environment);
