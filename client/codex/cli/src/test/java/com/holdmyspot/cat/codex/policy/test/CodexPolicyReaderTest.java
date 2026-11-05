@@ -410,4 +410,23 @@ public final class CodexPolicyReaderTest
 			session.read("exec", "summarize");
 		}
 	}
+
+	/**
+	 * Verifies that a configuration file below the machine's {@code /tmp}, which the {@code workspace-write} mode lets
+	 * the session's commands write, is refused.
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*lets its commands write.*" +
+		"config\\.toml.*")
+	public void configurationBelowSlashTmpRefused() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			// The folder that holds the session's files, as the machine's temporary folder holds a test's files
+			session.slashTmp(session.project().getParent());
+
+			session.read("exec", "summarize");
+		}
+	}
 }

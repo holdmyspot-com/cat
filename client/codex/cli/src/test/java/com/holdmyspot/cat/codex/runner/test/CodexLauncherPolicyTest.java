@@ -94,13 +94,14 @@ public final class CodexLauncherPolicyTest
 
 	/**
 	 * The files of a Codex session whose configuration lets its commands write the working directory and reach every
-	 * host.
+	 * host, and the folder that stands for the machine's {@code /tmp}.
 	 */
 	private static final class Fixture
 	{
 		private final Path home;
 		private final Path project;
 		private final Path system;
+		private final Path slashTmp;
 
 		/**
 		 * Creates the files.
@@ -121,6 +122,7 @@ public final class CodexLauncherPolicyTest
 			project = Files.createDirectories(root.resolve("project"));
 			Files.createDirectories(project.resolve(".git"));
 			system = Files.createDirectories(root.resolve("etc-codex"));
+			slashTmp = Files.createDirectories(root.resolve("slash-tmp"));
 		}
 
 		/**
@@ -142,7 +144,7 @@ public final class CodexLauncherPolicyTest
 				"01a1a8eb-3d83-7d73-b243-c636c2041ee1", project, Optional.empty(), "startup", home.resolve(".codex"),
 				PluginInfo.CAT_VERSION);
 			CodexPolicyReader reader = new CodexPolicyReader(new CodexSystemFiles(system,
-				List.of(system.resolve("managed.plist")), Path.of("/tmp")));
+				List.of(system.resolve("managed.plist")), slashTmp));
 			return CodexSessionLauncherCli.policySource(reader, processes, record, Map.of("HOME", home.toString()),
 				home);
 		}

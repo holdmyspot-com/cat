@@ -17,7 +17,8 @@ import java.util.Optional;
  * The files and processes of a Codex session whose hook asks {@link CodexPolicyReader} for the session's policy.
  * <p>
  * The session runs in {@code project}, a Git checkout, with its home in {@code home} and Codex's home in
- * {@code home/.codex}. Its temporary folder, {@code tmp}, and the folder {@code other} exist beside them.
+ * {@code home/.codex}. Its temporary folder, {@code tmp}, the folder {@code other} and the folder {@code slash-tmp},
+ * which stands for the machine's {@code /tmp}, exist beside them.
  */
 public final class CodexParentSession
 {
@@ -30,6 +31,7 @@ public final class CodexParentSession
 	private final Path codexHome;
 	private final Path project;
 	private final Path system;
+	private Path slashTmp;
 	private Optional<Path> transcript = Optional.empty();
 
 	/**
@@ -48,6 +50,7 @@ public final class CodexParentSession
 		this.system = Files.createDirectories(root.resolve("etc-codex"));
 		Files.createDirectories(root.resolve("tmp"));
 		Files.createDirectories(root.resolve("other"));
+		this.slashTmp = Files.createDirectories(root.resolve("slash-tmp"));
 	}
 
 	/**
@@ -110,6 +113,16 @@ public final class CodexParentSession
 	}
 
 	/**
+	 * Names the folder that stands for the machine's {@code /tmp}.
+	 *
+	 * @param folder the folder
+	 */
+	public void slashTmp(Path folder)
+	{
+		this.slashTmp = folder;
+	}
+
+	/**
 	 * Names the rollout file that the hook's input names.
 	 *
 	 * @param file the rollout file
@@ -163,8 +176,7 @@ public final class CodexParentSession
 				Optional.of(List.of("/opt/codex/bin/codex.js"))));
 		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
 		CodexSession session = new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);
-		CodexSystemFiles systemFiles = new CodexSystemFiles(system, List.of(root.resolve("managed.plist")),
-			Path.of("/tmp"));
+		CodexSystemFiles systemFiles = new CodexSystemFiles(system, List.of(root.resolve("managed.plist")), slashTmp);
 		return new CodexPolicyReader(systemFiles).read(session, threadId);
 	}
 }
