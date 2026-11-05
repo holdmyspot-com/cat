@@ -342,15 +342,14 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Verifies SessionStart moves every CAT session directory below {@code .cat/work} that holds a marker, the session's
-	 * own and another session's, to {@code .cat/sessions} with its campaign files, keeps the own directory's marker, and
-	 * leaves a directory without a marker and {@code .cat/work/temp} in place.
+	 * Verifies SessionStart leaves a folder below {@code .cat/work} as it is, including one that a session ID names and
+	 * that holds a marker, and does not move it to {@code .cat/sessions}.
 	 *
 	 * @param source the SessionStart source
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test(dataProvider = "sources")
-	public void movesFormerSessionDirectories(String source) throws IOException
+	public void leavesWorkFolderAlone(String source) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -359,63 +358,18 @@ public final class CodexSessionStartHookTest
 			Path configuration = project.resolve("codex-home");
 			writeReadingGuidance(plugin);
 			String other = "33333333-3333-4333-8333-333333333333";
-			String unmarked = "44444444-4444-4444-8444-444444444444";
-			String ownMarker = writeFormerDirectory(project, sessionId(), configuration);
-			writeFormerDirectory(project, other, configuration);
-			Path unmarkedDirectory = Files.createDirectories(project.resolve(".cat/work/" + unmarked + "/temp"));
-			Path shared = Files.createDirectories(project.resolve(".cat/work/temp"));
+			Path folder = Files.createDirectories(project.resolve(".cat/work/" + other + "/temp")).getParent();
+			Files.writeString(folder.resolve("session.json"), "{\"harness\":\"codex\"}", UTF_8);
 
 			HookResult result = invoke("{\"session_id\":\"" + sessionId() + "\",\"cwd\":" + jsonString(project) +
 				",\"source\":\"" + source + "\"}", Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
 				configuration.toString()), project);
 
 			requireThat(result.error(), "error").isEmpty();
-			Path sessions = project.resolve(".cat/sessions");
-			requireThat(Files.readString(sessions.resolve(sessionId() + "/session.json"), UTF_8), "ownMarker").
-				isEqualTo(ownMarker);
-			for (String sessionId : new String[] {sessionId(), other})
-			{
-				requireThat(Files.readString(sessions.resolve(sessionId + "/optimizer/c1/campaign.json"), UTF_8),
-					"campaign").isEqualTo("{}");
-				requireThat(Files.exists(project.resolve(".cat/work/" + sessionId)), "formerExists").isFalse();
-			}
-			requireThat(unmarkedDirectory, "unmarkedDirectory").isDirectory();
-			requireThat(shared, "shared").isDirectory();
-			requireThat(Files.exists(sessions.resolve(unmarked)), "unmarkedMoved").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies SessionStart leaves a CAT session directory below {@code .cat/work} in place, and the directory at its new
-	 * path unchanged, when the new path exists, reports both paths on standard error, and still delivers the rules.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void keepsFormerDirectoryWhenNewPathExists() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
-			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
-			Path configuration = project.resolve("codex-home");
-			writeReadingGuidance(plugin);
-			String other = "33333333-3333-4333-8333-333333333333";
-			writeFormerDirectory(project, other, configuration);
-			Path current = Files.createDirectories(project.resolve(".cat/sessions/" + other));
-			Files.writeString(current.resolve("rules.md"), "current rules", UTF_8);
-
-			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", plugin.toString(), "CODEX_HOME",
-				configuration.toString()), project);
-
-			Path former = project.resolve(".cat/work/" + other);
-			requireThat(former.resolve("optimizer/c1/campaign.json"), "formerCampaign").isRegularFile();
-			requireThat(Files.readString(current.resolve("rules.md"), UTF_8), "currentRules").isEqualTo("current rules");
-			requireThat(Files.exists(current.resolve("session.json")), "currentMarkerExists").isFalse();
-			requireThat(result.error().lines().toList(), "errorLines").size().isEqualTo(1);
-			requireThat(result.error(), "error").contains(former.toString()).contains(current.toString());
-			requireThat(context(result), "context").
-				contains(project.resolve(".cat/sessions/" + sessionId() + "/rules.md").toString());
+			requireThat(Files.readString(folder.resolve("session.json"), UTF_8), "marker").
+				isEqualTo("{\"harness\":\"codex\"}");
+			requireThat(folder.resolve("temp"), "temp").isDirectory();
+			requireThat(Files.exists(project.resolve(".cat/sessions/" + other)), "moved").isFalse();
 		}
 	}
 
@@ -1031,29 +985,6 @@ public final class CodexSessionStartHookTest
 			"\",\"transcripts\":[\"sessions/**/rollout-*-" + sessionId + ".jsonl\",\"archived_sessions/rollout-*-" +
 			sessionId + ".jsonl\"]}", UTF_8);
 		return directory;
-	}
-
-	/**
-	 * Creates a CAT session directory below {@code .cat/work}, as earlier versions of CAT wrote it, with a Codex marker
-	 * that is one hour old and a campaign file.
-	 *
-	 * @param project the project
-	 * @param sessionId the session's ID
-	 * @param configuration the configuration directory that the marker names
-	 * @return the marker's content
-	 * @throws IOException if the directory cannot be created
-	 */
-	private static String writeFormerDirectory(Path project, String sessionId, Path configuration) throws IOException
-	{
-		Path directory = project.resolve(".cat/work").resolve(sessionId);
-		Files.createDirectories(directory.resolve("temp"));
-		Path campaign = Files.createDirectories(directory.resolve("optimizer/c1")).resolve("campaign.json");
-		Files.writeString(campaign, "{}", UTF_8);
-		String marker = "{\"harness\":\"codex\",\"configuration_directory\":" + jsonString(configuration) +
-			",\"created_at\":\"" + Instant.now().minus(Duration.ofHours(1)) + "\",\"transcripts\":[\"sessions/**/rollout-*-" +
-			sessionId + ".jsonl\"]}";
-		Files.writeString(directory.resolve("session.json"), marker, UTF_8);
-		return marker;
 	}
 
 	/**

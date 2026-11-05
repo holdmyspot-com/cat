@@ -65,8 +65,7 @@ final class CodexRuleInjectionHook
 	 * <p>
 	 * The response holds only the guidance on reading a file whole and a pointer to the rules file of the agent's CAT
 	 * session directory, which holds the agent's other rules; a plugin without that guidance sends every rule in the
-	 * response, because the agent would have no instruction on how to read the file whole. SessionStart first moves the
-	 * CAT session directories that earlier versions of CAT wrote to their current location, and then removes the CAT
+	 * response, because the agent would have no instruction on how to read the file whole. SessionStart removes the CAT
 	 * session directories of sessions that their harness no longer keeps. Its response's {@code systemMessage}, which
 	 * Codex shows the user as a warning rather than giving it to the agent, warns about each project or user rule
 	 * reference that names a file relative to the rule's own directory and tells the user how to fix it, and the
@@ -114,8 +113,6 @@ final class CodexRuleInjectionHook
 				SessionDirectory directory;
 				if (!eventName.equals("SubagentStart"))
 				{
-					// Moving before opening its own directory lets a resumed session keep the directory that it wrote
-					SessionDirectory.moveFromFormerRoot(projectDir, error);
 					directory = scope.sessionDirectory(projectDir, event, "session_id");
 					directory.sweep(Instant.now(), error);
 					SessionRules session = loader.loadSessionForMainAgent(pluginRoot, userRulesRoot, projectDir,

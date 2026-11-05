@@ -13,10 +13,9 @@ import org.testng.annotations.Test;
 
 /**
  * Verifies that {@link SessionDirectory} is the only main source file of the {@code common}, {@code claude} and
- * {@code codex} command-line modules that spells the directory that holds the CAT session directories, or the directory
- * {@code .cat/work} that held them in earlier versions of CAT, so that every other file takes the CAT session
- * directories and the paths inside them from that class. The build passes the {@code client} directory in the
- * {@code cat.client.directory} system property.
+ * {@code codex} command-line modules that spells the directory that holds the CAT session directories, so that every
+ * other file takes the CAT session directories and the paths inside them from that class. The build passes the
+ * {@code client} directory in the {@code cat.client.directory} system property.
  */
 public final class SessionDirectoryAuditTest
 {
@@ -25,11 +24,7 @@ public final class SessionDirectoryAuditTest
 	 */
 	private static final List<String> MODULES = List.of("common/cli", "claude/cli", "codex/cli");
 	/**
-	 * The directory, relative to a project, that held the CAT session directories in earlier versions of CAT.
-	 */
-	private static final String FORMER_ROOT = ".cat/work";
-	/**
-	 * The only main source file that may spell either directory, relative to the {@code client} directory.
+	 * The only main source file that may spell the directory, relative to the {@code client} directory.
 	 */
 	private static final Path OWNER = Path.of("common/cli/src/main/java/com/holdmyspot/cat/common/" +
 		"SessionDirectory.java");
@@ -43,12 +38,12 @@ public final class SessionDirectoryAuditTest
 
 	/**
 	 * Verifies that no main source file other than {@link SessionDirectory} spells the directory that holds the CAT
-	 * session directories or {@code .cat/work}, and that the scan reads that file and finds both in it.
+	 * session directories, and that the scan reads that file and finds it there.
 	 *
 	 * @throws IOException if a source file cannot be read
 	 */
 	@Test
-	public void onlySessionDirectorySpellsRoots() throws IOException
+	public void onlySessionDirectorySpellsRoot() throws IOException
 	{
 		// Requirement: R-W13
 		Path client = clientDirectory();
@@ -64,13 +59,13 @@ public final class SessionDirectoryAuditTest
 				else
 				{
 					String content = Files.readString(file);
-					if (content.contains(SessionDirectory.ROOT) || content.contains(FORMER_ROOT))
+					if (content.contains(SessionDirectory.ROOT))
 						spelling.add(client.relativize(file));
 				}
 			}
 		}
 		requireThat(ownerScanned, "ownerScanned").isTrue();
-		requireThat(Files.readString(owner), "owner").contains(SessionDirectory.ROOT).contains(FORMER_ROOT);
+		requireThat(Files.readString(owner), "owner").contains(SessionDirectory.ROOT);
 		requireThat(spelling, "spelling").isEmpty();
 	}
 
