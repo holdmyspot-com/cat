@@ -147,12 +147,14 @@ ${RELEASE_DOWNLOAD_URL}/$(plugin_name claude).tar.gz" ]
 
 @test "entry script names the plugin asset of each supported operating system and processor" {
 	create_fake_release
+	# Read before the first case replaces uname with a fake, which would then name the previous case's platform
+	host_platform="$(current_platform)"
 	export PATH="${FAKE_BIN}:${PATH}"
 	for case in "Linux x86_64 linux-x64" "Linux amd64 linux-x64" "Linux aarch64 linux-arm64" "Linux arm64 linux-arm64" \
 		"Darwin x86_64 macos-x64" "Darwin arm64 macos-arm64" "Darwin aarch64 macos-arm64" \
 		"MINGW64_NT-10.0-26100 x86_64 windows-x64" "MSYS_NT-10.0-26100 x86_64 windows-x64"; do
 		read -r system processor platform <<< "${case}"
-		[ "${platform}" != "$(current_platform)" ] || continue
+		[ "${platform}" != "${host_platform}" ] || continue
 		create_fake_uname "${system}" "${processor}"
 
 		run single_command --harness claude
