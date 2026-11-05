@@ -8,7 +8,9 @@ import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
@@ -79,6 +81,29 @@ public final class ClaudeInstallationTest
 			requireThat(moved.installedPlugins(), "movedRecord").isEqualTo(home.resolve("plugins/installed_plugins.json"));
 			requireThat(unmoved.home(), "unmoved").isEqualTo(user.resolve(".claude"));
 		}
+	}
+
+	/**
+	 * CAT's plugin versions are held by the version folders and by Claude Code's cache copies, which Claude Code names
+	 * after the version with {@code +} replaced by {@code -}; any other name names no version.
+	 */
+	@Test
+	public void cacheCopiesHoldVersions()
+	{
+		Path home = Path.of("/claude-home").toAbsolutePath();
+		ClaudeInstallation installation = new ClaudeInstallation(home);
+		Path versionFolders = home.resolve("plugins/cat-marketplace/plugins/cat");
+		Path cacheCopies = home.resolve("plugins/cache/cat/cat");
+
+		requireThat(installation.versionCopyFolders(), "versionCopyFolders").
+			isEqualTo(List.of(versionFolders, cacheCopies));
+		requireThat(installation.copiedVersion(versionFolders, "1.0+b0123456789ab"), "versionFolder").
+			isEqualTo(Optional.of(VERSION));
+		requireThat(installation.copiedVersion(cacheCopies, "1.0-b0123456789ab"), "cacheCopy").
+			isEqualTo(Optional.of(VERSION));
+		requireThat(installation.copiedVersion(cacheCopies, "1.0+b0123456789ab"), "plusInCache").isEmpty();
+		requireThat(installation.copiedVersion(versionFolders, "1.0-b0123456789ab"), "dashInVersionFolders").isEmpty();
+		requireThat(installation.copiedVersion(cacheCopies, "1.0-b0123456789ab-old"), "otherCacheEntry").isEmpty();
 	}
 
 	/**

@@ -16,13 +16,15 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
- * Deletes the version folders of CAT's plugin that a harness no longer needs. A harness session that started before
- * an install keeps running hooks and skills from its version folder until it restarts, so the folder of the active
- * version, the folder of the version that the active one replaced, and the folder that the running installer belongs
- * to stay; every other version folder is deleted without following links. A folder that cannot be deleted, such as one
- * whose file a process still has open on Windows, is left for a later install.
+ * Deletes the version folders of CAT's plugin that a harness no longer needs, and the copies of them that the
+ * harness keeps elsewhere, in every folder that the installation's layout declares. A harness session that started
+ * before an install keeps running hooks and skills from its version folder until it restarts, so the folders of the
+ * active version, of the version that the active one replaced, and the folder that the running installer belongs to
+ * stay; every other version folder and copy is deleted without following links. A folder that cannot be deleted,
+ * such as one whose file a process still has open on Windows, is left for a later install.
  * <p>
  * The installer's state records the active version and the version that it replaced, so that a later install of the
  * same version keeps the replaced version's folder.
@@ -83,22 +85,24 @@ final class VersionFolders
 				"), so no old version folder was deleted; the next install tries again.");
 		}
 		List<String> notices = new ArrayList<>();
-		Path holder = installation.versionFolders();
-		if (!Files.isDirectory(holder, NOFOLLOW_LINKS))
-			return notices;
 		Path runningFolder = real(running);
-		try (DirectoryStream<Path> children = Files.newDirectoryStream(holder))
+		for (Path folder : installation.versionCopyFolders())
 		{
-			for (Path child : children)
+			if (!Files.isDirectory(folder, NOFOLLOW_LINKS))
+				continue;
+			try (DirectoryStream<Path> children = Files.newDirectoryStream(folder))
 			{
-				if (isUnneeded(child, active, replaced, runningFolder))
-					delete(child, notices);
+				for (Path child : children)
+				{
+					if (isUnneeded(folder, child, active, replaced, runningFolder))
+						delete(child, notices);
+				}
 			}
-		}
-		catch (IOException e)
-		{
-			notices.add("The version folders in " + holder + " could not be listed (" + describe(e) + "); the next " +
-				"install tries again.");
+			catch (IOException e)
+			{
+				notices.add("The version folders in " + folder + " could not be listed (" + describe(e) + "); the " +
+					"next install tries again.");
+			}
 		}
 		return notices;
 	}
@@ -188,10 +192,11 @@ final class VersionFolders
 	}
 
 	/**
-	 * Indicates whether an entry beside the version folders is the version folder of a version that the harness no
-	 * longer needs. An entry that is not a real directory, or whose name is not a plugin version, is not one of CAT's
-	 * version folders.
+	 * Indicates whether an entry of a folder that holds copies of the plugin versions is the copy of a version that
+	 * the harness no longer needs. An entry that is not a real directory, or whose name names no plugin version in
+	 * that folder, is not one of CAT's copies.
 	 *
+	 * @param folder        the folder, one that the installation's layout declares
 	 * @param child         the entry
 	 * @param active        the version that the harness runs
 	 * @param replaced      the version that the active one replaced, or null when there is none
@@ -199,23 +204,17 @@ final class VersionFolders
 	 * @return true if the entry is to be deleted
 	 * @throws IOException if the entry's attributes cannot be read
 	 */
-	private static boolean isUnneeded(Path child, PluginVersion active, PluginVersion replaced, Path runningFolder)
-		throws IOException
+	private boolean isUnneeded(Path folder, Path child, PluginVersion active, PluginVersion replaced,
+		Path runningFolder) throws IOException
 	{
 		BasicFileAttributes attributes = Files.readAttributes(child, BasicFileAttributes.class, NOFOLLOW_LINKS);
 		// Windows reports a junction as both a directory and "other"
 		if (!attributes.isDirectory() || attributes.isOther())
 			return false;
-		PluginVersion version;
-		try
-		{
-			version = PluginVersion.parse(child.getFileName().toString());
-		}
-		catch (IllegalArgumentException _)
-		{
+		Optional<PluginVersion> version = installation.copiedVersion(folder, child.getFileName().toString());
+		if (version.isEmpty())
 			return false;
-		}
-		return !version.equals(active) && !version.equals(replaced) && !child.equals(runningFolder);
+		return !version.get().equals(active) && !version.get().equals(replaced) && !child.equals(runningFolder);
 	}
 
 	/**

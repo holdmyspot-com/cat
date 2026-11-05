@@ -521,12 +521,19 @@ public final class RecordingIntegration implements HarnessIntegration
 	/**
 	 * Where the generic harness keeps CAT's installation: its marketplace in {@code plugins/cat-marketplace}, with the
 	 * plugin in {@code plugins/cat}, the version folders in {@code plugins/cache/cat/cat} and the plugin data in
-	 * {@code plugins/data/cat-cat}.
+	 * {@code plugins/data/cat-cat}. The harness also keeps a copy of each version in {@code plugins/copies}, named
+	 * {@code copy-} and then the version, which stands for a harness, such as Claude Code, that keeps its own copies
+	 * under other names.
 	 *
 	 * @param home the absolute harness home
 	 */
 	public record Layout(Path home) implements HarnessInstallation
 	{
+		/**
+		 * The text before the version in the name of the harness's copy of a plugin version.
+		 */
+		private static final String COPY_PREFIX = "copy-";
+
 		/**
 		 * Creates the layout.
 		 *
@@ -564,9 +571,46 @@ public final class RecordingIntegration implements HarnessIntegration
 		}
 
 		@Override
+		public List<Path> versionCopyFolders()
+		{
+			return List.of(versionFolders(), copies());
+		}
+
+		@Override
+		public Optional<PluginVersion> copiedVersion(Path folder, String name)
+		{
+			if (!folder.equals(copies()))
+				return HarnessInstallation.super.copiedVersion(folder, name);
+			if (!name.startsWith(COPY_PREFIX))
+				return Optional.empty();
+			return HarnessInstallation.super.copiedVersion(folder, name.substring(COPY_PREFIX.length()));
+		}
+
+		@Override
 		public Path dataDirectory()
 		{
 			return home.resolve("plugins/data/cat-cat");
+		}
+
+		/**
+		 * Returns the harness's copy of a plugin version.
+		 *
+		 * @param version the plugin version
+		 * @return the copy's folder
+		 */
+		public Path copy(PluginVersion version)
+		{
+			return copies().resolve(COPY_PREFIX + version);
+		}
+
+		/**
+		 * Returns the folder of the harness's own copies of the plugin versions.
+		 *
+		 * @return the folder
+		 */
+		private Path copies()
+		{
+			return home.resolve("plugins/copies");
 		}
 	}
 }

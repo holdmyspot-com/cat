@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
@@ -14,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import org.testng.annotations.Test;
 
 /**
@@ -219,6 +222,39 @@ public final class OldVersionFoldersTest
 			requireThat(Files.exists(leftBehind, NOFOLLOW_LINKS), "leftBehind").isFalse();
 			requireThat(Files.isSymbolicLink(linkedVersion), "linkedVersion").isTrue();
 			requireThat(Files.readString(outside.resolve("keep")), "outside").isEqualTo("user file");
+		}
+	}
+
+	/**
+	 * The copies that the harness keeps of the plugin versions in another folder, under other names, are deleted
+	 * along with the version folders, except for the active version's and the replaced version's.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void deletesHarnessCopies() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-copies-")), catalog());
+			fixture.installActive("1.0");
+			requireUpdated(fixture.install("v1.1"));
+			RecordingIntegration.Layout layout = new RecordingIntegration.Layout(fixture.home);
+			List<Path> copies = new ArrayList<>();
+			for (String release : List.of("1.0", "1.1", "1.2"))
+			{
+				// Stands for the copy that the harness made when it installed the version
+				Path copy = layout.copy(PluginVersion.parse(Releases.pluginVersion(release)));
+				Files.writeString(Files.createDirectories(copy).resolve("VERSION"), release);
+				copies.add(copy);
+			}
+
+			requireUpdated(fixture.install("v1.2"));
+
+			requireThat(Files.exists(copies.get(0), NOFOLLOW_LINKS), "firstCopy").isFalse();
+			requireThat(copies.get(1), "previousCopy").isDirectory();
+			requireThat(copies.get(2), "activeCopy").isDirectory();
 		}
 	}
 

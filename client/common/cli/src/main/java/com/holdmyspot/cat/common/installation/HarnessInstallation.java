@@ -3,7 +3,9 @@ package com.holdmyspot.cat.common.installation;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The folders of CAT's installation in one harness: the marketplace folder that the installer writes, the version
@@ -88,6 +90,40 @@ public interface HarnessInstallation
 	{
 		requireThat(version, "version").isNotNull();
 		return versionFolders().resolve(version.toString());
+	}
+
+	/**
+	 * Returns the folders whose children each hold one plugin version of CAT: the folder of the version folders, then
+	 * any folder in which the harness keeps its own copies of them.
+	 *
+	 * @return the folders, {@link #versionFolders()} first
+	 */
+	default List<Path> versionCopyFolders()
+	{
+		return List.of(versionFolders());
+	}
+
+	/**
+	 * Returns the plugin version that a child of one of the {@link #versionCopyFolders() version copy folders} holds.
+	 * In the folder of the version folders, a child is named after its version.
+	 *
+	 * @param folder one of the folders that {@link #versionCopyFolders()} returns
+	 * @param name   the child's name
+	 * @return the plugin version, or empty when the name names no plugin version in that folder
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	default Optional<PluginVersion> copiedVersion(Path folder, String name)
+	{
+		requireThat(folder, "folder").isNotNull();
+		requireThat(name, "name").isNotNull();
+		try
+		{
+			return Optional.of(PluginVersion.parse(name));
+		}
+		catch (IllegalArgumentException _)
+		{
+			return Optional.empty();
+		}
 	}
 
 	/**

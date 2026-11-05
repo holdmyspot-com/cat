@@ -3,12 +3,16 @@ package com.holdmyspot.cat.claude.layout;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.PluginVersion;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Where Claude Code keeps CAT's installation. Claude Code runs a directory-source plugin in place, so each plugin
- * version lives in its own folder inside the marketplace plugin.
+ * version lives in its own folder inside the marketplace plugin. Claude Code also copies each version that it installs
+ * into its plugin cache, which it does not run.
  *
  * @param home Claude Code's absolute configuration directory
  */
@@ -68,6 +72,44 @@ public record ClaudeInstallation(Path home) implements HarnessInstallation
 		return marketplacePlugin();
 	}
 
+	/**
+	 * Returns the version folders, then Claude Code's cache copies of them.
+	 *
+	 * @return the folders
+	 */
+	@Override
+	public List<Path> versionCopyFolders()
+	{
+		return List.of(versionFolders(), pluginCache());
+	}
+
+	/**
+	 * Returns the plugin version that a version folder or a cache copy holds. Claude Code names a cache copy after
+	 * its version with {@code +} replaced by {@code -}, such as {@code 1.0-b0123456789ab}.
+	 *
+	 * @param folder one of the folders that {@link #versionCopyFolders()} returns
+	 * @param name   the child's name
+	 * @return the plugin version, or empty when the name names no plugin version in that folder
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	@Override
+	public Optional<PluginVersion> copiedVersion(Path folder, String name)
+	{
+		requireThat(folder, "folder").isNotNull();
+		requireThat(name, "name").isNotNull();
+		if (!folder.equals(pluginCache()))
+			return HarnessInstallation.super.copiedVersion(folder, name);
+		// A release version holds no "-", so the first one is the build separator's "+"
+		int separator = name.indexOf('-');
+		if (separator == -1)
+			return Optional.empty();
+		Optional<PluginVersion> version = HarnessInstallation.super.copiedVersion(folder,
+			name.substring(0, separator) + "+" + name.substring(separator + 1));
+		if (version.isEmpty() || !cacheName(version.get()).equals(name))
+			return Optional.empty();
+		return version;
+	}
+
 	@Override
 	public Path dataDirectory()
 	{
@@ -102,5 +144,26 @@ public record ClaudeInstallation(Path home) implements HarnessInstallation
 	public Path installedPlugins()
 	{
 		return home.resolve("plugins/installed_plugins.json");
+	}
+
+	/**
+	 * Returns the folder of Claude Code's plugin cache that holds its copies of CAT's plugin versions.
+	 *
+	 * @return {@code cat} in the {@link #marketplaceCache() marketplace's cache}
+	 */
+	private Path pluginCache()
+	{
+		return marketplaceCache().resolve("cat");
+	}
+
+	/**
+	 * Returns the name of Claude Code's cache copy of a plugin version.
+	 *
+	 * @param version the plugin version
+	 * @return the version with {@code +} replaced by {@code -}
+	 */
+	private static String cacheName(PluginVersion version)
+	{
+		return version.toString().replace('+', '-');
 	}
 }
