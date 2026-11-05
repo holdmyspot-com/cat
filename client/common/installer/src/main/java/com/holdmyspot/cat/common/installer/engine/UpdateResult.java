@@ -20,9 +20,12 @@ import java.util.Optional;
  * @param keyIds          the policy's trusted key identifiers
  * @param aotCache        indicates whether the operation wrote the startup cache of every plugin directory that it
  *                        activated, or empty when the operation activated no plugin directory
+ * @param exitDeletions   the folders to delete once the installer no longer needs its own files: the folders that
+ *                        the running installer belongs to and that the operation left for deletion
  */
 public record UpdateResult(Result result, String harness, Optional<String> version, Optional<String> previousVersion,
-	String message, List<Path> paths, boolean consistent, List<String> keyIds, Optional<Boolean> aotCache)
+	String message, List<Path> paths, boolean consistent, List<String> keyIds, Optional<Boolean> aotCache,
+	List<Path> exitDeletions)
 {
 	/**
 	 * Creates an outcome of an operation that activated no plugin directory, copying the path and key lists.
@@ -41,7 +44,8 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 	public UpdateResult(Result result, String harness, Optional<String> version, Optional<String> previousVersion,
 		String message, List<Path> paths, boolean consistent, List<String> keyIds)
 	{
-		this(result, harness, version, previousVersion, message, paths, consistent, keyIds, Optional.empty());
+		this(result, harness, version, previousVersion, message, paths, consistent, keyIds, Optional.empty(),
+			List.of());
 	}
 
 	/**
@@ -56,6 +60,7 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 	 * @param consistent      indicates whether installation copies agree
 	 * @param keyIds          trusted key identifiers
 	 * @param aotCache        indicates whether every activated plugin directory got its startup cache, or empty
+	 * @param exitDeletions   the folders to delete once the installer no longer needs its own files
 	 * @throws NullPointerException if any argument or list element is null
 	 * @throws IllegalArgumentException if {@code harness} or {@code message} are blank
 	 */
@@ -69,6 +74,7 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		paths = List.copyOf(paths);
 		keyIds = List.copyOf(keyIds);
 		requireThat(aotCache, "aotCache").isNotNull();
+		exitDeletions = List.copyOf(exitDeletions);
 	}
 
 	/**
@@ -80,7 +86,20 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 	public UpdateResult withAotCache(boolean written)
 	{
 		return new UpdateResult(result, harness, version, previousVersion, message, paths, consistent, keyIds,
-			Optional.of(written));
+			Optional.of(written), exitDeletions);
+	}
+
+	/**
+	 * Returns this outcome with the folders to delete once the installer no longer needs its own files.
+	 *
+	 * @param folders the folders
+	 * @return the outcome
+	 * @throws NullPointerException if {@code folders} or any of its elements are null
+	 */
+	public UpdateResult withExitDeletions(List<Path> folders)
+	{
+		return new UpdateResult(result, harness, version, previousVersion, message, paths, consistent, keyIds,
+			aotCache, folders);
 	}
 
 	/**

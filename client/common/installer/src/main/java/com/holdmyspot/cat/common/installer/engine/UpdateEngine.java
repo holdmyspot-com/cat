@@ -600,7 +600,7 @@ public final class UpdateEngine
 			}
 			return new UpdateResult(outcome.result(), outcome.harness(), outcome.version(), outcome.previousVersion(),
 				outcome.message() + " The release could not be kept for reuse: " + e.getMessage(), outcome.paths(),
-				outcome.consistent(), outcome.keyIds(), outcome.aotCache());
+				outcome.consistent(), outcome.keyIds(), outcome.aotCache(), outcome.exitDeletions());
 		}
 	}
 

@@ -72,6 +72,7 @@ public final class Invocation
 	private final Waiting waiting;
 	private final FileReplacer replacer;
 	private final Terminal terminal;
+	private final ProcessStarter starter;
 	private final PrintStream stdout;
 	private final PrintStream stderr;
 	private final JsonMapper mapper = JsonMapper.builder().build();
@@ -101,14 +102,16 @@ public final class Invocation
 	 * @param waiting      creates pauses between installer lock attempts
 	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
 	 * @param terminal     asks the user whether they allow a change that needs their permission
+	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
+	 *                     it cannot delete while it runs
 	 * @param stdout       receives exactly one JSON result
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Invocation(Path image, Path cwd, Path userHome, Platform platform, Map<String, String> environment,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
-		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, PrintStream stdout,
-		PrintStream stderr)
+		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
+		PrintStream stdout, PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(cwd, "cwd").isNotNull();
@@ -119,6 +122,7 @@ public final class Invocation
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(terminal, "terminal").isNotNull();
+		requireThat(starter, "starter").isNotNull();
 		requireThat(stdout, "stdout").isNotNull();
 		requireThat(stderr, "stderr").isNotNull();
 		this.image = image;
@@ -133,6 +137,7 @@ public final class Invocation
 		this.waiting = waiting;
 		this.replacer = replacer;
 		this.terminal = terminal;
+		this.starter = starter;
 		this.stdout = stdout;
 		this.stderr = stderr;
 	}
@@ -229,12 +234,6 @@ public final class Invocation
 		String own = locations.harness();
 		if (!arguments.harness().isEmpty() && !arguments.harness().equals(own))
 			return print(otherHarness(own, arguments.harness()), arguments, locations);
-		if (!Files.isRegularFile(locations.policy()) && arguments.operation() == Operation.UNINSTALL)
-		{
-			Optional<UninstallResult> completed = Uninstaller.completed(locations.data(), own);
-			if (completed.isPresent())
-				return printUninstall(completed.get(), arguments, locations);
-		}
 		Managed managed = manage(own, locations.policy(), arguments.operation() == Operation.STATUS,
 			arguments.operation() != Operation.UNINSTALL);
 		if (managed.refusal() != null)
@@ -250,8 +249,8 @@ public final class Invocation
 			}
 		}
 		HarnessSession session = managed.session();
-		UninstallResult result = new Uninstaller(locations.data(), locations.policy(), managed.policy(),
-			managed.activation(), session, clock, waiting).uninstall(arguments.deleteData());
+		UninstallResult result = new Uninstaller(locations.data(), managed.policy(), managed.activation(), session,
+			locations.image(), clock, waiting).uninstall(arguments.deleteData());
 		return printUninstall(result, arguments, locations);
 	}
 
@@ -590,7 +589,8 @@ public final class Invocation
 	}
 
 	/**
-	 * Writes exactly one encoded result object.
+	 * Writes exactly one encoded result object, then deletes the folders that the outcome leaves for deletion once the
+	 * installer no longer needs its own files.
 	 *
 	 * @param result    the operation outcome
 	 * @param object    the outcome's encoding
@@ -606,6 +606,8 @@ public final class Invocation
 			appendDiagnostic(arguments, locations, result.message());
 		}
 		stdout.println(mapper.writeValueAsString(object));
+		stdout.flush();
+		new ExitDeletion(platform, environment, starter, stderr).delete(result.exitDeletions());
 		return result.result().exitStatus();
 	}
 

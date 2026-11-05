@@ -94,6 +94,15 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * The sentences that {@code describeRetained} returns.
 	 */
 	private List<String> retained = List.of();
+	/**
+	 * The {@code keepData} argument of each {@code unregister} call, in call order.
+	 */
+	private final List<Boolean> keptData = new ArrayList<>();
+	/**
+	 * The plugin data directory that {@code unregister} deletes unless it is asked to keep it, as Claude Code does, or
+	 * null when it deletes none.
+	 */
+	private Path deletedData;
 
 	/**
 	 * Creates an integration of {@code harness-a} whose calls all succeed.
@@ -235,6 +244,29 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		this.retained = List.copyOf(sentences);
 		return this;
+	}
+
+	/**
+	 * Makes {@code unregister} delete a plugin data directory unless it is asked to keep it, as Claude Code's plugin
+	 * uninstall does.
+	 *
+	 * @param data the plugin data directory
+	 * @return this integration
+	 */
+	public RecordingIntegration deletingData(Path data)
+	{
+		this.deletedData = data;
+		return this;
+	}
+
+	/**
+	 * Returns the {@code keepData} argument of each unregistration.
+	 *
+	 * @return the arguments, in call order
+	 */
+	public List<Boolean> keptData()
+	{
+		return List.copyOf(keptData);
 	}
 
 	/**
@@ -419,6 +451,9 @@ public final class RecordingIntegration implements HarnessIntegration
 	public void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException
 	{
 		record("unregister", home);
+		keptData.add(keepData);
+		if (!keepData && deletedData != null)
+			LinkSafeDeletion.delete(deletedData, home);
 	}
 
 	@Override

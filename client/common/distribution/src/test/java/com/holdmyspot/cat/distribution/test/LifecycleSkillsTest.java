@@ -138,7 +138,10 @@ public final class LifecycleSkillsTest
 				contains("`bin\\installer.ps1`").doesNotContain("cat-updater").doesNotContain("XDG_DATA_HOME").
 				contains("Before you run anything, ask the user whether").
 				contains("the default is to keep it").contains("`<launcher> uninstall --harness <h>`").
-				contains("`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it").
+				contains("`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it " +
+					"with an explicit yes").
+				contains("Treat any answer other than an explicit yes to deleting the data, including no answer to " +
+					"that part, as keeping it").doesNotContain(".cat/bundles").
 				contains("`uninstalled`").doesNotContain("not_removed").
 				contains("needs the one manual entry command again").
 				contains("`uninstall_incomplete`: the removal stopped at a step and kept its progress. Run the same " +

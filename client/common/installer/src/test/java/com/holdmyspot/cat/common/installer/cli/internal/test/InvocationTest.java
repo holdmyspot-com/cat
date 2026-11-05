@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.pol
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.testDirectory;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.trusted;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_16LE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
@@ -16,6 +17,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
+import com.holdmyspot.cat.common.installer.cli.internal.ProcessStarter;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
@@ -30,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -318,7 +321,7 @@ public final class InvocationTest
 	}
 
 	/**
-	 * A completed uninstall prints its one-line result itself.
+	 * A completed uninstall prints its one-line result itself and keeps CAT's plugin data with the policy.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -342,14 +345,13 @@ public final class InvocationTest
 			requireThat(run.result().path("unregistered").booleanValue(), "unregistered").isTrue();
 			requireThat(integration.calls(), "calls").contains("unregister");
 			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
-			requireThat(Files.exists(installation.policyFile, NOFOLLOW_LINKS), "policy").isFalse();
+			requireThat(installation.policyFile, "policy").isRegularFile();
 		}
 	}
 
 	/**
-	 * Running the same uninstall again after an uninstall that removed every part of CAT, including the policy,
-	 * reports the completed uninstall again instead of refusing for the missing policy, and calls the harness no
-	 * more.
+	 * Running the same uninstall again after an uninstall that kept CAT's plugin data runs every step again and
+	 * reports the uninstall again.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -371,7 +373,8 @@ public final class InvocationTest
 			requireThat(again.status, "status").withContext(again.output, "output").isEqualTo(0);
 			requireThat(again.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
 			requireThat(again.result().path("unregistered").booleanValue(), "unregistered").isTrue();
-			requireThat(integration.calls().size(), "calls").isEqualTo(calls);
+			requireThat(integration.calls().subList(calls, integration.calls().size()), "calls").
+				isEqualTo(List.of("unregister"));
 		}
 	}
 
@@ -562,7 +565,7 @@ public final class InvocationTest
 			requireThat(result.path("unregistered").booleanValue(), "unregistered").isFalse();
 			requireThat(integration.calls(), "calls").doesNotContain("unregister");
 			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
-			requireThat(Files.exists(installation.policyFile, NOFOLLOW_LINKS), "policy").isFalse();
+			requireThat(installation.policyFile, "policy").isRegularFile();
 		}
 	}
 
@@ -873,6 +876,70 @@ public final class InvocationTest
 	}
 
 	/**
+	 * On Linux and macOS, uninstall deletes the folder of plugin files that holds the running installer's version
+	 * folder itself once it has printed its result, and starts no other program.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void uninstallDeletesRunningFolderAfterResult() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-self-removal-")));
+			installation.writePolicy(installation.trustPolicy());
+			List<List<String>> started = new ArrayList<>();
+
+			Run run = run(installation.image, installation.root, Map.of(),
+				List.of(new RegisteredProvider()), new RecordingIntegration(), Platform.LINUX_X64, started::add,
+				"uninstall");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
+			requireThat(Files.exists(installation.home.resolve("plugins/cache/cat"), NOFOLLOW_LINKS), "cache").
+				isFalse();
+			requireThat(started, "started").isEmpty();
+		}
+	}
+
+	/**
+	 * On Windows, which refuses to delete the files of a running program, uninstall leaves the folder of plugin files
+	 * that holds the running installer's version folder and starts the system's Windows PowerShell, which waits for
+	 * the installer's process to exit and then deletes the folder, retrying for at most 60 seconds, without a script
+	 * file.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void windowsUninstallLeavesFolderToWaiter() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-windows-removal-")));
+			installation.writePolicy(installation.trustPolicy());
+			List<List<String>> started = new ArrayList<>();
+
+			Run run = run(installation.image, installation.root, Map.of("SystemRoot", "C:\\Windows"),
+				List.of(new RegisteredProvider()), new RecordingIntegration(), Platform.WINDOWS_X64, started::add,
+				"uninstall");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			Path cache = installation.home.resolve("plugins/cache/cat");
+			requireThat(cache, "cache").isDirectory();
+			requireThat(started.size(), "started").isEqualTo(1);
+			List<String> command = started.getFirst();
+			requireThat(command.getFirst(), "program").
+				isEqualTo("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+			requireThat(command, "command").contains("-EncodedCommand");
+			String script = new String(Base64.getDecoder().decode(command.getLast()), UTF_16LE);
+			requireThat(script, "script").contains("Wait-Process -Id " + ProcessHandle.current().pid() + "\n").
+				contains("'" + cache + "'").contains("AddSeconds(60)");
+		}
+	}
+
+	/**
 	 * Runs one installer invocation whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
@@ -904,6 +971,51 @@ public final class InvocationTest
 	private static Run run(Path image, Path cwd, Map<String, String> environment,
 		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, String... arguments)
 	{
+		return run(image, cwd, environment, activations, integration, terminal, Platform.LINUX_X64, command ->
+		{
+			throw new AssertionError("Started " + command);
+		}, arguments);
+	}
+
+	/**
+	 * Runs one installer invocation on a platform, whose harness program never starts.
+	 *
+	 * @param image        the plugin folder of the running installer
+	 * @param cwd          the caller's working directory
+	 * @param environment  the caller's environment
+	 * @param activations  the installed activation providers
+	 * @param integration  the harness integration
+	 * @param platform     the platform that the installer runs on
+	 * @param starter      starts the programs that outlive the installer's process
+	 * @param arguments    the command line
+	 * @return the outcome
+	 */
+	private static Run run(Path image, Path cwd, Map<String, String> environment,
+		List<PluginActivation> activations, HarnessIntegration integration, Platform platform, ProcessStarter starter,
+		String... arguments)
+	{
+		return run(image, cwd, environment, activations, integration, _ -> Optional.empty(), platform, starter,
+			arguments);
+	}
+
+	/**
+	 * Runs one installer invocation on a platform, with a terminal, whose harness program never starts.
+	 *
+	 * @param image        the plugin folder of the running installer
+	 * @param cwd          the caller's working directory
+	 * @param environment  the caller's environment
+	 * @param activations  the installed activation providers
+	 * @param integration  the harness integration
+	 * @param terminal     the user's terminal
+	 * @param platform     the platform that the installer runs on
+	 * @param starter      starts the programs that outlive the installer's process
+	 * @param arguments    the command line
+	 * @return the outcome
+	 */
+	private static Run run(Path image, Path cwd, Map<String, String> environment,
+		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, Platform platform,
+		ProcessStarter starter, String... arguments)
+	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 		int status;
@@ -912,9 +1024,9 @@ public final class InvocationTest
 		{
 			// The user's home is the one that the environment names, as the installer's process has it
 			Path userHome = Path.of(environment.getOrDefault("HOME", cwd.toString()));
-			Invocation invocation = new Invocation(image, cwd, userHome, Platform.LINUX_X64, environment, activations,
+			Invocation invocation = new Invocation(image, cwd, userHome, platform, environment, activations,
 				List.of(integration), (command, home) -> RecordingIntegration.cli(), Clock.systemUTC(),
-				interval -> () -> {}, replacer(), terminal, stdout, stderr);
+				interval -> () -> {}, replacer(), terminal, starter, stdout, stderr);
 			status = invocation.run(arguments);
 		}
 		return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));
