@@ -103,7 +103,7 @@ public final class EngineTest
 
 	/**
 	 * A first install of a verified release asks the harness to install it into its version folder, bound to the Java
-	 * runtime in that folder, and records the release as the harness's data migration version.
+	 * runtime in that folder; its release registers no data migration, so no data version is recorded.
 	 *
 	 * @throws IOException    if fixture creation or inspection fails
 	 * @throws TrustException if the test policy is invalid
@@ -129,7 +129,7 @@ public final class EngineTest
 				isEqualTo(Releases.pluginVersion("1.1"));
 			requireThat(Files.readString(folder.resolve("bin/runtime-binding")), "binding").
 				isEqualTo(folder.resolve("bin/runtime") + "\n");
-			requireThat(Files.readString(fixture.migrationVersion()), "migrationVersion").isEqualTo("1.1\n");
+			requireThat(fixture.dataVersion(), "migrationVersion").isEmpty();
 		}
 	}
 
@@ -186,7 +186,7 @@ public final class EngineTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-refusal-")),
 				new ReleaseCatalog("1.0", NO_MIGRATION));
 			fixture.installActive("1.0");
-			String migrationVersion = Files.readString(fixture.migrationVersion());
+			Optional<String> migrationVersion = fixture.dataVersion();
 			fixture.catalog.addDefective("1.1", defect);
 
 			UpdateResult result = fixture.install("v1.1");
@@ -197,7 +197,7 @@ public final class EngineTest
 			requireThat(installed.version(), "installed").isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
 			requireThat(fixture.integration.registered(), "registered").
 				isEqualTo(List.of(PluginVersion.parse(Releases.pluginVersion("1.0"))));
-			requireThat(Files.readString(fixture.migrationVersion()), "migrationVersion").isEqualTo(migrationVersion);
+			requireThat(fixture.dataVersion(), "migrationVersion").isEqualTo(migrationVersion);
 		}
 	}
 

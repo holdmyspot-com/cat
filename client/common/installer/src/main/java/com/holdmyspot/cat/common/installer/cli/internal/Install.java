@@ -43,8 +43,9 @@ import java.util.function.Predicate;
  * puts it in its version folder; it then installs the provider's companion files from that folder, runs the data
  * migrations that the release registers after the recorded data version, trains the plugin's startup cache there,
  * writes the policy into the plugin's data folder and adds the permission entries that name the installer in the
- * version folder. Every check runs before the first change, and every step can be repeated, so running install again
- * repairs an installation that an earlier install left incomplete.
+ * version folder. It refuses a release older than the data version that kept data records, because a migration of a
+ * newer release has shaped that data. Every check runs before the first change, and every step can be repeated, so
+ * running install again repairs an installation that an earlier install left incomplete.
  */
 public final class Install
 {
@@ -152,18 +153,26 @@ public final class Install
 		Path policyFile = installation.policy();
 		requireOwnPolicy(policyFile, harness);
 		requireWritable(policyFile);
-		HarnessCommand command = discoverProgram(integration, home, installation.dataDirectory(), cwd, environment);
-		integration.validateConfiguration(home);
-		Path catLocks = CapacityLocks.root(userHome);
-		Optional<String> consentRequest = integration.consentRequest(home, catLocks);
-		if (consentRequest.isPresent() && !consent.grants(consentRequest.get()))
-			throw refusal(consentRequest.get());
 		Path migrationFile = activation.migrationVersionFile(home);
 		Optional<PluginVersion> before = activeVersion(activation, home);
 		Optional<ReleaseVersion> beforeRelease = Optional.empty();
 		if (before.isPresent())
 			beforeRelease = Optional.of(release(before.get()));
 		DataMigration migration = DataMigration.plan(plugin, migrationFile, release(version), beforeRelease);
+		Optional<ReleaseVersion> newerData = migration.newerData();
+		if (newerData.isPresent())
+		{
+			throw refusal("CAT's kept data in " + home + " has data version " + newerData.get() + ", which a " +
+				"migration of a newer release produced, so release " + version.release() + " cannot read it and " +
+				"installing it would lose data; run install with release " + newerData.get() + " or a later one " +
+				"instead.");
+		}
+		HarnessCommand command = discoverProgram(integration, home, installation.dataDirectory(), cwd, environment);
+		integration.validateConfiguration(home);
+		Path catLocks = CapacityLocks.root(userHome);
+		Optional<String> consentRequest = integration.consentRequest(home, catLocks);
+		if (consentRequest.isPresent() && !consent.grants(consentRequest.get()))
+			throw refusal(consentRequest.get());
 
 		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer);
 		Path versionFolder = steps.deliver(home, plugin, version);

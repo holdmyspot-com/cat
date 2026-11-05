@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.installer.cli.internal.Install;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingMigrations;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
+import com.holdmyspot.cat.common.installer.engine.test.Releases;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -83,14 +84,100 @@ public final class InstallCommandTest
 			// The fixture plugin does not describe how to train its startup cache
 			requireThat(outcome.startupCache(), "startupCache").isFalse();
 			requireThat(fixture.migrations.runs(), "migrations").isEmpty();
+			// The archive's release registers no migration, so no migration has shaped the new data
+			requireThat(Files.exists(fixture.provider.migrationVersionFile(fixture.home), NOFOLLOW_LINKS),
+				"dataVersion").isFalse();
+		}
+	}
+
+	/**
+	 * A first install without earlier data records the newest migration that the archive's release registers, which
+	 * the new data already has, and runs no script.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void newDataRecordsNewestMigration() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-new-data-")));
+			fixture.register("1.1\tsplit.sh\n");
+
+			fixture.install();
+
+			requireThat(fixture.migrations.runs(), "migrations").isEmpty();
 			requireThat(Files.readString(fixture.provider.migrationVersionFile(fixture.home)), "dataVersion").
-				isEqualTo("1.2\n");
+				isEqualTo("1.1\n");
+		}
+	}
+
+	/**
+	 * A first install refuses, changing no file, an archive whose release is older than the data version that kept
+	 * data records, because a migration of a newer release has shaped that data; the refusal names both versions and
+	 * install with a release at least as new as the data.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the fixture's versions are invalid
+	 */
+	@Test
+	public void refusesOlderReleaseThanKeptData() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-newer-data-")));
+			fixture.register("1.1\tsplit.sh\n");
+			Files.writeString(fixture.provider.migrationVersionFile(fixture.home), "1.3\n");
+			Map<String, String> before = Releases.snapshot(fixture.root);
+
+			try
+			{
+				fixture.install();
+				throw new AssertionError("Install accepted an older release than the kept data");
+			}
+			catch (TrustException e)
+			{
+				requireThat(e.getMessage(), "message").contains("1.3").contains("1.2").contains("install");
+			}
+			requireThat(Releases.snapshot(fixture.root), "after").isEqualTo(before);
+			requireThat(Files.exists(fixture.home.resolve("plugins/cat-marketplace"), NOFOLLOW_LINKS),
+				"marketplace").isFalse();
+			requireThat(fixture.migrations.runs(), "migrations").isEmpty();
+			requireThat(fixture.integration.calls(), "calls").doesNotContain("register");
+		}
+	}
+
+	/**
+	 * Kept data that a newer release left, which registered no migration after the archive's release, records a data
+	 * version no newer than the archive's release, so a first install installs and, running no migration, leaves the
+	 * recorded data version unchanged.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void installsOverDataWithoutLaterMigration() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-kept-data-")));
+			fixture.register("1.1\tsplit.sh\n");
+			Path dataVersion = fixture.provider.migrationVersionFile(fixture.home);
+			Files.writeString(dataVersion, "1.1\n");
+
+			fixture.install();
+
+			requireThat(fixture.integration.registered(), "registered").
+				isEqualTo(List.of(PluginVersion.parse(PluginArchive.VERSION)));
+			requireThat(fixture.migrations.runs(), "migrations").isEmpty();
+			requireThat(Files.readString(dataVersion), "dataVersion").isEqualTo("1.1\n");
 		}
 	}
 
 	/**
 	 * Data that an uninstall kept records its data version, so install runs, from the version folder, the migrations
-	 * that the archive's release registers after that version, and then records the release as the data version.
+	 * that the archive's release registers after that version, recording each migration's target version.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if install refuses
@@ -395,6 +482,24 @@ public final class InstallCommandTest
 		private Path versionFolder()
 		{
 			return home.resolve("plugins/cache/cat/cat").resolve(PluginArchive.VERSION);
+		}
+
+		/**
+		 * Replaces the migration registry of the archive's release, giving each registered script an empty body.
+		 *
+		 * @param registry the registry's lines
+		 * @throws IOException if the registry or a script cannot be written
+		 */
+		private void register(String registry) throws IOException
+		{
+			Path scripts = archive.resolve("install/migrations");
+			Files.writeString(scripts.resolve("registry.tsv"), registry);
+			for (String line : registry.split("\n"))
+			{
+				String script = line.substring(line.indexOf('\t') + 1);
+				Files.writeString(scripts.resolve(script), "exit 0\n");
+				Files.writeString(scripts.resolve(script.replace(".sh", ".ps1")), "exit 0\n");
+			}
 		}
 
 		/**

@@ -10,12 +10,24 @@ Register each script by its `.sh` name, and put a PowerShell script with the sam
 it. The `.ps1` script reads the same variables from `$env:`, must stay compatible with Windows PowerShell 5.1, and must
 throw when it cannot finish safely.
 
-When install installs a release, it runs the migrations that the release registers after the plugin data's recorded
+The plugin data's `migration-version` file records the data's schema version: the target version of the newest
+migration that has shaped the data. It does not record a release.
+
+When install installs a release, it runs the migrations that the release registers after the recorded
 `migration-version`, up to the release's version, in registry order and from the release's installed plugin folder.
 After each script succeeds, install records that script's target version in `migration-version`; the first script
-that fails stops install, which names the script, and running the same install again resumes from it. A first install
-with no earlier data runs no script. Install refuses an older release when the active release registers a migration
-after that older release.
+that fails stops install, which names the script, and running the same install again resumes from it. An install that
+runs no script leaves `migration-version` unchanged.
+
+A first install with no earlier data runs no script. It records the newest target version that the release registers
+up to its own version, because new data already has those data structures. When the release registers no migration,
+install writes no `migration-version` file; an absent file means that no migration has shaped the data.
+
+Because `migration-version` names a migration's target, a recorded version newer than a release means that a
+migration registered after that release has shaped the data. An install from a plugin archive refuses such a release
+before it changes anything, and names the recorded version, the release and installing a release at least as new as
+the recorded version. An install of an older release from an installed version folder is refused when the active
+release registers a migration after that older release.
 
 When a release does not change persisted data, leave the registry unchanged.
 

@@ -12,10 +12,12 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * A harness home whose harness installs each CAT version into its own version folder, with an engine over a catalog
@@ -203,6 +205,20 @@ final class EngineFixture
 	Path migrationVersion()
 	{
 		return provider.migrationVersionFile(home);
+	}
+
+	/**
+	 * Returns the harness's recorded data migration version.
+	 *
+	 * @return the content of the data version file, or empty when the file is absent
+	 * @throws IOException if the file exists but cannot be read
+	 */
+	Optional<String> dataVersion() throws IOException
+	{
+		Path file = migrationVersion();
+		if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		return Optional.of(Files.readString(file));
 	}
 
 	/**

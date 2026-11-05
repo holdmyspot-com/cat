@@ -178,6 +178,29 @@ public final class StagedRelease
 	}
 
 	/**
+	 * Returns the data migrations that a release registers up to and including a version.
+	 *
+	 * @param tree    a validated plugin tree
+	 * @param version the version
+	 * @return the migrations, in registry order
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws TrustException       if the registry is absent or malformed
+	 * @throws IOException          if the registry cannot be read
+	 */
+	static List<Migration> migrationsUpTo(Path tree, ReleaseVersion version) throws IOException, TrustException
+	{
+		requireThat(tree, "tree").isNotNull();
+		requireThat(version, "version").isNotNull();
+		List<Migration> registered = new ArrayList<>();
+		for (Migration migration : migrations(tree))
+		{
+			if (migration.version().compareTo(version) <= 0)
+				registered.add(migration);
+		}
+		return registered;
+	}
+
+	/**
 	 * Returns the data migrations that a release registers after an older release, up to and including a newer one.
 	 *
 	 * @param tree  a validated plugin tree

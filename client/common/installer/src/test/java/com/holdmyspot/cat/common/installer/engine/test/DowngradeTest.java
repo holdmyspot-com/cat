@@ -9,7 +9,6 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.DataProvider;
@@ -47,7 +46,7 @@ public final class DowngradeTest
 
 	/**
 	 * An install of an older release whose data structures the active release did not change installs that release
-	 * like a newer one, and records the older release's data version.
+	 * like a newer one, and, running no migration, leaves the recorded data version unchanged.
 	 *
 	 * @param registry the active release's migration registry
 	 * @throws IOException    if the fixture cannot be created or inspected
@@ -61,6 +60,7 @@ public final class DowngradeTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("downgrade-allowed-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION).add("1.2", registry));
 			fixture.installActive("1.2");
+			Optional<String> dataVersion = fixture.dataVersion();
 
 			UpdateResult result = fixture.install("v1.1");
 
@@ -71,7 +71,7 @@ public final class DowngradeTest
 				isEqualTo(Optional.of(Releases.pluginVersion("1.2")));
 			requireThat(fixture.provider.installed(fixture.home), "installed").
 				isEqualTo(new InstalledState(Optional.of(Releases.pluginVersion("1.1")), true));
-			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.1\n");
+			requireThat(fixture.dataVersion(), "dataVersion").isEqualTo(dataVersion);
 		}
 	}
 

@@ -43,7 +43,7 @@ public final class MigrationTest
 	/**
 	 * An install of a newer release runs, in registry order and from the newer release's version folder, the
 	 * migrations after the recorded data version up to the newer release, telling each script the data directory and
-	 * the versions it migrates between, and then records the newer release as the data version.
+	 * the versions it migrates between, recording each migration's target version as the data version.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -72,13 +72,13 @@ public final class MigrationTest
 				requireThat(run.variables().get("CAT_MIGRATION_DATA_DIR"), "dataDirectory").
 					isEqualTo(dataDirectory.toString());
 			}
-			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.3\n");
+			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.2\n");
 		}
 	}
 
 	/**
-	 * A first install has no earlier data to migrate, so it runs no migration and records its release as the data
-	 * version.
+	 * A first install has no earlier data to migrate, so it runs no migration and records the newest migration that
+	 * its release registers, whose data structures the new data already has.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -94,7 +94,7 @@ public final class MigrationTest
 			fixture.installActive("1.3");
 
 			requireThat(fixture.migrations.runs(), "runs").isEmpty();
-			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.3\n");
+			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.2\n");
 		}
 	}
 
@@ -121,7 +121,7 @@ public final class MigrationTest
 				isEqualTo(Result.INSTALLED);
 			requireThat(fixture.migrations.runs().stream().map(RecordingMigrations.Run::summary).toList(), "runs").
 				isEqualTo(List.of("merge.sh 1.1 1.2"));
-			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.3\n");
+			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.2\n");
 		}
 	}
 
@@ -157,7 +157,7 @@ public final class MigrationTest
 				isEqualTo(0);
 			requireThat(fixture.migrations.runs().stream().map(RecordingMigrations.Run::summary).toList(), "runs").
 				isEqualTo(List.of("split.sh 1.0 1.1", "merge.sh 1.1 1.2", "merge.sh 1.1 1.2"));
-			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.3\n");
+			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.2\n");
 		}
 	}
 
@@ -183,7 +183,37 @@ public final class MigrationTest
 			requireThat(result.result(), "result").withContext(result.message(), "message").isEqualTo(Result.FAILED);
 			requireThat(result.message(), "message").contains("migrate.sh");
 			requireThat(fixture.migrations.runs(), "runs").isEmpty();
-			requireThat(Files.readString(fixture.migrationVersion()), "dataVersion").isEqualTo("1.0\n");
+			requireThat(fixture.dataVersion(), "dataVersion").isEmpty();
+		}
+	}
+
+	/**
+	 * An install whose release registers no migration after the recorded data version runs no script and leaves the
+	 * recorded data version unchanged, so that it keeps naming the newest migration that shaped the data.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if a version is malformed
+	 */
+	@Test
+	public void keepsDataVersionWithoutMigration() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("migration-none-")).toRealPath();
+			Path folder = root.resolve("plugin");
+			Path scripts = Files.createDirectories(folder.resolve("install/migrations"));
+			Files.writeString(scripts.resolve("registry.tsv"), "1.1\tsplit.sh\n");
+			Files.writeString(scripts.resolve("split.sh"), "exit 0\n");
+			Path data = Files.createDirectories(root.resolve("data"));
+			Path versionFile = data.resolve("migration-version");
+			Files.writeString(versionFile, "1.1\n");
+			RecordingMigrations runner = new RecordingMigrations();
+
+			DataMigration.plan(folder, versionFile, ReleaseVersion.parse("1.2"),
+				Optional.of(ReleaseVersion.parse("1.1"))).apply(folder, data, runner, false);
+
+			requireThat(runner.runs(), "runs").isEmpty();
+			requireThat(Files.readString(versionFile), "dataVersion").isEqualTo("1.1\n");
 		}
 	}
 
