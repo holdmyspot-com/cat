@@ -792,7 +792,7 @@ public final class CodexConnectionConfiguration
 	 * <p>
 	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, so the profile carries the session's
 	 * whole sandbox policy: the policy's write denials stay readable only, its read denials that exist are denied,
-	 * and its network rules apply, as {@link #appendNetwork(StringBuilder, ChildPolicy)} renders them.
+	 * and its network rules apply, as {@link #appendNetwork(StringBuilder, Platform, ChildPolicy)} renders them.
 	 *
 	 * @param configuration      the isolated configuration being assembled
 	 * @param isolatedHome       the fresh runtime home that the runner owns
@@ -803,7 +803,8 @@ public final class CodexConnectionConfiguration
 	 * @param project            the copied project that the isolated session runs in
 	 * @param platform           the platform that the session runs on
 	 * @param policy             the session's policy
-	 * @throws IOException if the real path of a policy denial cannot be read
+	 * @throws SessionRefusedException if the session must bind local addresses on macOS
+	 * @throws IOException             if the real path of a policy denial cannot be read
 	 */
 	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, List<Path> writable,
 		Path temporaryDirectory, Path project, Platform platform, ChildPolicy policy) throws IOException
@@ -837,7 +838,7 @@ public final class CodexConnectionConfiguration
 			configuration.append('"').append(entry.getKey()).append("\" = \"").append(entry.getValue()).append('"').
 				append(System.lineSeparator());
 		}
-		appendNetwork(configuration, policy);
+		appendNetwork(configuration, platform, policy);
 	}
 
 	/**
@@ -845,11 +846,17 @@ public final class CodexConnectionConfiguration
 	 * hosts, which Codex enforces only while its {@code network_proxy} feature is on, and may bind local addresses
 	 * only if the policy allows it; Codex's proxy refuses a host that resolves to a loopback address without that
 	 * permission. Without hosts, their network is off.
+	 * <p>
+	 * On macOS, Codex's sandbox lets a session that may bind local addresses connect directly to every loopback port,
+	 * bypassing the proxy's host list, so the runner refuses such a session rather than widen it.
 	 *
 	 * @param configuration the isolated configuration being assembled
+	 * @param platform      the platform that the session runs on
 	 * @param policy        the session's policy
+	 * @throws SessionRefusedException if the session must bind local addresses on macOS
 	 */
-	private static void appendNetwork(StringBuilder configuration, ChildPolicy policy)
+	private static void appendNetwork(StringBuilder configuration, Platform platform, ChildPolicy policy)
+		throws SessionRefusedException
 	{
 		configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").
 			append(System.lineSeparator());
@@ -860,7 +867,16 @@ public final class CodexConnectionConfiguration
 		}
 		configuration.append("enabled = true").append(System.lineSeparator());
 		if (policy.allowLocalBinding())
+		{
+			if (platform == Platform.MACOS_X64 || platform == Platform.MACOS_ARM64)
+			{
+				throw new SessionRefusedException("CAT does not start the session: its hosts " +
+					new TreeSet<>(policy.hosts()) + " include a loopback address, which Codex reaches only if the " +
+					"session may bind local addresses, and on macOS that would let the session's commands reach " +
+					"every loopback port. Use hosts that are not loopback addresses.");
+			}
 			configuration.append("allow_local_binding = true").append(System.lineSeparator());
+		}
 		StringJoiner domains = new StringJoiner(", ", "domains = { ", " }");
 		for (String host : new TreeSet<>(policy.hosts()))
 			domains.add('"' + toml(host) + "\" = \"allow\"");

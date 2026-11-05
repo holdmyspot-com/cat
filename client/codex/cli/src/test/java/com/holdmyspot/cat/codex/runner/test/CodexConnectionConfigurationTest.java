@@ -470,6 +470,34 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies that the runner refuses a macOS session that must bind local addresses to reach its loopback model host,
+	 * since on macOS that permission lets the session's commands reach every loopback port, not only that host.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesLocalBindingOnMacos() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-macos-binding-"));
+			Path destination = root.resolve("isolated/config.toml");
+			ParentPolicy parent = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
+				HostAccess.ALL, true, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(),
+				Set.of("localhost")));
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination,
+					root.resolve("project"), HarnessDependencyCaches.NONE, root.resolve("tmp"), 0, null,
+					Platform.MACOS_ARM64, CodexParentMultiAgentState.NONE, policy));
+
+			requireThat(refusal.getMessage(), "message").contains("localhost").contains("macOS");
+			requireThat(Files.exists(destination), "configured").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a session whose policy names no host has network off and does not enable Codex's network proxy,
 	 * even when the host's workspace-write sandbox has network on.
 	 *
