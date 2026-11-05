@@ -53,11 +53,12 @@ ${RELEASE_DOWNLOAD_URL}/$(plugin_name claude).tar.gz" ]
 	create_fake_release
 	export PATH="${FAKE_BIN}:${PATH}" FAKE_INSTALL_STATUS=5
 
-	run single_command --harness codex
+	# Claude Code, because the entry script refuses Codex on Windows and gives the PowerShell command instead
+	run single_command --harness claude
 
 	[ "${status}" -eq 5 ]
 	[ "${output}" = '{"result":"installed"}' ]
-	expect_install_ran_for codex "${CODEX_HOME}"
+	expect_install_ran_for claude "${CLAUDE_CONFIG_DIR}"
 }
 
 @test "entry script refuses a version argument before downloading or running anything" {
