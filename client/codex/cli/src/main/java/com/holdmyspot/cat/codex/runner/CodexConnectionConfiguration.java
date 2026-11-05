@@ -21,6 +21,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -830,7 +831,11 @@ public final class CodexConnectionConfiguration
 		addProjectGitPermissions(filesystem, project, platform);
 		for (Path denial : policy.writeDenials())
 			filesystem.put(toml(denial), "read");
-		for (Path denial : outermostExisting(policy.readDenials()))
+		// The project is the working directory, which the built-in workspace profile lets the session write
+		List<Path> grants = new ArrayList<>(List.of(isolatedHome, temporaryDirectory, project));
+		grants.addAll(writable);
+		grants.addAll(policy.writeDenials());
+		for (Path denial : outermostExisting(policy.readDenials(), grants))
 			filesystem.put(toml(denial), "deny");
 		for (Entry<String, String> entry : filesystem.entrySet())
 		{
@@ -961,7 +966,7 @@ public final class CodexConnectionConfiguration
 	 * @param deniedReads the existing files and directories that the session must not read
 	 * @return the profile that the thread names, or an empty string if the thread uses the workspace-write sandbox
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the isolated configuration cannot be updated
+	 * @throws IOException if the isolated configuration cannot be read, parsed or updated
 	 */
 	public static String addSessionProfile(Path destination, List<Path> readOnlyEvidence, List<Path> deniedReads)
 		throws IOException
@@ -989,7 +994,7 @@ public final class CodexConnectionConfiguration
 	 * @param destination the isolated Codex configuration
 	 * @param parentProfile the profile whose permissions the session otherwise has
 	 * @param deniedReads the files and directories to deny; a path that no longer exists is skipped
-	 * @throws IOException if the isolated configuration cannot be updated
+	 * @throws IOException if the isolated configuration cannot be read, parsed or updated
 	 */
 	private static void addDeniedReadsProfile(Path destination, String parentProfile, List<Path> deniedReads)
 		throws IOException
@@ -1001,24 +1006,71 @@ public final class CodexConnectionConfiguration
 		StringBuilder profile = new StringBuilder(configuration).append(System.lineSeparator()).append(section).
 			append(']').append(System.lineSeparator()).append("extends = \"").append(parentProfile).append('"').
 			append(System.lineSeparator()).append(section).append(".filesystem]").append(System.lineSeparator());
-		for (Path deniedRead : outermostExisting(deniedReads))
+		JsonNode permissions;
+		try
+		{
+			permissions = TomlMapper.builder().build().readTree(configuration).path("permissions");
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Cannot parse the permission profiles of " + destination, e);
+		}
+		for (Path deniedRead : outermostExisting(deniedReads, profileGrants(permissions, parentProfile)))
 			profile.append('"').append(toml(deniedRead)).append("\" = \"deny\"").append(System.lineSeparator());
 		Files.writeString(destination, profile.toString());
+	}
+
+	/**
+	 * Returns the paths that a permission profile and the profiles that it extends let the session read or write. The
+	 * built-in profiles, whose names start with {@code :}, and the special paths, whose names do the same, add none.
+	 *
+	 * @param permissions the configuration's {@code permissions} table
+	 * @param profile     the profile
+	 * @return the paths, each resolved to the file that it reaches
+	 * @throws IOException if a symbolic link in a path cannot be read
+	 */
+	private static List<Path> profileGrants(JsonNode permissions, String profile) throws IOException
+	{
+		List<Path> grants = new ArrayList<>();
+		Set<String> visited = new HashSet<>();
+		String name = profile;
+		while (!name.startsWith(":") && visited.add(name))
+		{
+			JsonNode entries = permissions.path(name).path("filesystem");
+			for (Entry<String, JsonNode> entry : entries.properties())
+			{
+				if (entry.getKey().startsWith(":") || !entry.getValue().isString() ||
+					entry.getValue().asString().equals("deny"))
+				{
+					continue;
+				}
+				Path path = Path.of(entry.getKey());
+				if (path.isAbsolute())
+					grants.add(RealPaths.resolve(path));
+			}
+			name = permissions.path(name).path("extends").asString(":");
+		}
+		return grants;
 	}
 
 	/**
 	 * Returns the read denials that Codex's sandbox can apply. Codex's Linux sandbox creates an empty placeholder at a
 	 * missing denied path while the session runs, which would block CAT or the parent from creating that path, so a
 	 * missing path is left out. It cannot hide a file inside a folder that it already hides, so a denial inside
-	 * another one is left to the outer one. Each denial is named by its real path, which also covers every
-	 * symbolic-link alias.
+	 * another one is left to the outer one, unless the profile grants a folder between them or the denied path
+	 * itself: Codex applies the most specific entry, so that grant would let the session read the inner path, and the
+	 * Linux sandbox hides a path inside a writable folder after it exposes that folder. Each denial is named by its
+	 * real path, which also covers every symbolic-link alias.
 	 *
 	 * @param denials the files and directories that the session must not read
-	 * @return the real paths of the existing denials that lie inside no other one, each once, in their order
-	 * @throws IOException if the real path of a denial cannot be read
+	 * @param grants  the absolute paths that the profile lets the session read or write
+	 * @return the real paths of the existing denials that lie inside no other one, or inside a grant inside it, each
+	 *   once, in their order
+	 * @throws IOException if the real path of a denial or a grant cannot be read
 	 */
-	private static List<Path> outermostExisting(List<Path> denials) throws IOException
+	private static List<Path> outermostExisting(List<Path> denials, List<Path> grants) throws IOException
 	{
+		List<Path> resolvedGrants = RealPaths.resolveAll(grants);
 		List<Path> existing = new ArrayList<>();
 		for (Path denial : denials)
 		{
@@ -1035,7 +1087,9 @@ public final class CodexConnectionConfiguration
 			boolean nested = false;
 			for (Path other : existing)
 			{
-				if (!other.equals(denial) && denial.startsWith(other))
+				if (!other.equals(denial) && denial.startsWith(other) &&
+					resolvedGrants.stream().noneMatch(grant -> !grant.equals(other) && grant.startsWith(other) &&
+						denial.startsWith(grant)))
 				{
 					nested = true;
 					break;

@@ -802,6 +802,71 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
+	 * Verifies that a read denial inside another read denial stays denied when the session may write a folder between
+	 * them, since that grant, being the more specific entry, would otherwise let the session read it.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void regrantedNestedDenialStays() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-regranted-denial-")).toRealPath();
+			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path secret = Files.createDirectories(root.resolve("secret"));
+			Path home = Files.createDirectories(secret.resolve("home"));
+			Path login = Files.writeString(Files.createDirectories(home.resolve(".claude")).
+				resolve(".credentials.json"), "{}");
+			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder), List.of(), List.of(secret, login),
+				List.of(), HostAccess.NONE, false, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
+				Set.of()));
+			Path destination = home.resolve("config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy);
+
+			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("filesystem");
+			requireThat(filesystem.path(home.toString()).asString(), "home").isEqualTo("write");
+			requireThat(filesystem.path(secret.toString()).asString(), "secret").isEqualTo("deny");
+			requireThat(filesystem.path(login.toString()).asString(), "login").isEqualTo("deny");
+		}
+	}
+
+	/**
+	 * Verifies that a session's read denial inside another of its read denials stays denied when its runner profile
+	 * lets it write a folder between them, as the run's home lies inside the denied run root.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void regrantedSessionDenialStays() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-regranted-denial-")).toRealPath();
+			Path runs = Files.createDirectories(root.resolve("runs"));
+			Path home = Files.createDirectories(runs.resolve("run/home"));
+			Path login = Files.writeString(Files.createDirectories(home.resolve(".claude")).
+				resolve(".credentials.json"), "{}");
+			Path trials = Files.createDirectories(runs.resolve("trials"));
+			Path destination = home.resolve("config.toml");
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runs.resolve("run/project"));
+
+			CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of(runs, trials, login));
+
+			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-denied-reads").path("filesystem");
+			requireThat(filesystem.path(runs.toString()).asString(), "runs").isEqualTo("deny");
+			requireThat(filesystem.path(login.toString()).asString(), "login").isEqualTo("deny");
+			requireThat(filesystem.has(trials.toString()), "trials").isFalse();
+		}
+	}
+
+	/**
 	 * Returns Codex configuration layers that would give a session more than its policy allows, and the setting that
 	 * each names.
 	 *
