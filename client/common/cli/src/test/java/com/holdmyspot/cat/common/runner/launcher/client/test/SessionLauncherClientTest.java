@@ -277,9 +277,12 @@ public final class SessionLauncherClientTest
 			requireThat(Files.readString(output, UTF_8), "output").
 				contains("\"type\":\"started\"").
 				contains("reply 1").
-				contains(run.resolve("artifacts/turn.events").toString()).
 				contains("\"type\":\"completed\"");
-			requireThat(Files.readString(receipt, UTF_8), "receipt").contains(run.resolve("project").toString());
+			requireThat(recordPaths(output), "recordPaths").
+				isEqualTo(List.of(run.resolve("artifacts/turn.events").toString()));
+			JsonNode receiptDocument = JsonMapper.builder().build().readTree(Files.readString(receipt, UTF_8));
+			requireThat(receiptDocument.path("retained_project").asString(), "retainedProject").
+				isEqualTo(run.resolve("project").toString());
 			requireThat(Files.readString(run.resolve("artifacts/result.txt"), UTF_8), "result").isEqualTo("result");
 			requireThat(Files.exists(run.resolve("run.json")), "runManifest").isTrue();
 			requireThat(Files.exists(run.resolve("home")), "home").isFalse();
@@ -551,6 +554,26 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
+	 * Returns the {@code path} fields of the records that a launch wrote to {@code --output}.
+	 *
+	 * @param output the records
+	 * @return the paths, in the records' order
+	 * @throws IOException if the records cannot be read
+	 */
+	private static List<String> recordPaths(Path output) throws IOException
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		List<String> paths = new ArrayList<>();
+		for (String line : Files.readAllLines(output, UTF_8))
+		{
+			JsonNode path = json.readTree(line).path("path");
+			if (path.isString())
+				paths.add(path.asString());
+		}
+		return paths;
+	}
+
+		/**
 	 * Returns the paths that a receipt lists as skipped by the copy of the kept run.
 	 *
 	 * @param receipt the receipt

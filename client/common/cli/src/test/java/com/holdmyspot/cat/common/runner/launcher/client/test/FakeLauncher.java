@@ -22,6 +22,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Plays a session launcher on the channel's files, one poll at a time: the client's pause runs {@link #step()}, which
@@ -302,8 +303,11 @@ final class FakeLauncher implements HolderStarter
 		String type = json.readTree(record).path("type").asString();
 		if (type.equals("turn"))
 		{
-			record("{\"type\":\"turn_completed\",\"assistant_messages\":[\"reply " + consumed.size() + "\"]," +
-				"\"path\":\"" + runDirectory().resolve("artifacts/turn.events") + "\"}");
+			ObjectNode completed = json.createObjectNode();
+			completed.put("type", "turn_completed");
+			completed.putArray("assistant_messages").add("reply " + consumed.size());
+			completed.put("path", runDirectory().resolve("artifacts/turn.events").toString());
+			record(json.writeValueAsString(completed));
 		}
 		else if (type.equals("complete"))
 		{
@@ -311,7 +315,9 @@ final class FakeLauncher implements HolderStarter
 			Path artifacts = runDirectory().resolve("artifacts");
 			Files.writeString(artifacts.resolve("result.txt"), "result");
 			Path receipt = channel.requestDirectory(id).resolve("receipt.json");
-			Files.writeString(receipt, "{\"retained_project\":\"" + runDirectory().resolve("project") + "\"}");
+			ObjectNode retained = json.createObjectNode();
+			retained.put("retained_project", runDirectory().resolve("project").toString());
+			Files.writeString(receipt, json.writeValueAsString(retained));
 			String reason = "";
 			if (status != Status.COMPLETED)
 				reason = "the child's " + status.value() + " reason";
