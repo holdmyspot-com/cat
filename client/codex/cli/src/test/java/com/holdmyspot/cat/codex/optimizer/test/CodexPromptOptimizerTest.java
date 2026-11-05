@@ -6,6 +6,7 @@ import com.holdmyspot.cat.codex.optimizer.CodexOptimizerCommandScope;
 import com.holdmyspot.cat.codex.optimizer.CodexPromptOptimizer;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
@@ -73,7 +74,7 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Runs the launcher.
+	 * Runs the launcher on Linux.
 	 *
 	 * @param setup the project and home
 	 * @param environment the environment
@@ -85,6 +86,24 @@ public final class CodexPromptOptimizerTest
 	private static int run(Setup setup, Map<String, String> environment, List<String> args, StringBuilder output)
 		throws IOException
 	{
+		return run(setup, environment, Platform.LINUX_X64, args, output);
+	}
+
+	/**
+	 * Runs the launcher.
+	 *
+	 * @param setup the project and home
+	 * @param environment the environment
+	 * @param platform the platform that runs the launcher
+	 * @param args the arguments
+	 * @param output receives the output
+	 * @return the exit code
+	 * @throws IOException if the scope cannot be created
+	 */
+	private static int run(Setup setup, Map<String, String> environment, Platform platform, List<String> args,
+		StringBuilder output)
+		throws IOException
+	{
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
@@ -93,11 +112,34 @@ public final class CodexPromptOptimizerTest
 				newCodexOptimizerCommandScope(environment, setup.home(), setup.root(), setup.home().resolve("artifact"),
 					Yielding.waiting()))
 			{
-				exit = PromptOptimizerCli.run(scope, args, ZoneOffset.UTC, out);
+				exit = PromptOptimizerCli.run(scope, args, ZoneOffset.UTC, platform, out);
 			}
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));
 		return exit;
+	}
+
+	/**
+	 * Verifies that on native Windows, where CAT does not start Codex trials, {@code start} is refused with the reason,
+	 * which names what is missing and directs the user to WSL2.
+	 *
+	 * @throws IOException if a file cannot be written
+	 */
+	@Test
+	public void startRefusedOnNativeWindows() throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			StringBuilder output = new StringBuilder();
+			int exit = run(setup, Map.of("CODEX_THREAD_ID", SESSION_ID), Platform.WINDOWS_X64,
+				List.of("start", "prompts/a.md"), output);
+			requireThat(exit, "exit").isEqualTo(1);
+			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(json.get("message").asString(), "message").
+				contains("CAT has not yet verified that Codex's sandbox on native Windows").contains("WSL2");
+		}
 	}
 
 	/**

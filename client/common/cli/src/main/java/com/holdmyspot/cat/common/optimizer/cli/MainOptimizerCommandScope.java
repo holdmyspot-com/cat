@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
@@ -36,6 +37,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 */
 	private static final String LAUNCHER = "prompt-optimizer";
 	private final Harness harness;
+	private final HarnessSandbox trialSandbox;
 	private final SessionHarness sessionHarness;
 	private final Map<String, String> environment;
 	private final Path configurationDirectory;
@@ -49,6 +51,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * Creates an open scope.
 	 *
 	 * @param harness                the harness that runs the launcher
+	 * @param trialSandbox           decides whether {@code harness} sandboxes the campaign's trials on a platform
 	 * @param sessionHarness         the parts of the harness's CAT session directories
 	 * @param environment            the process environment, whose session variable names the host session
 	 * @param configurationDirectory the host harness's configuration directory
@@ -58,7 +61,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @param waiting                how the process waits between the attempts of a retried operation
 	 * @throws NullPointerException     if any argument is null
 	 */
-	protected MainOptimizerCommandScope(Harness harness, SessionHarness sessionHarness,
+	protected MainOptimizerCommandScope(Harness harness, HarnessSandbox trialSandbox, SessionHarness sessionHarness,
 		Map<String, String> environment, Path configurationDirectory, Path directory, List<Path> loaderConfiguration,
 		Waiting waiting)
 	{
@@ -66,12 +69,14 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		this.fileReplacer = LazyReference.create(() -> FileReplacer.retrying(waiting));
 		this.forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue()));
 		requireThat(harness, "harness").isNotNull();
+		requireThat(trialSandbox, "trialSandbox").isNotNull();
 		requireThat(sessionHarness, "sessionHarness").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 		requireThat(directory, "directory").isNotNull();
 		requireThat(loaderConfiguration, "loaderConfiguration").isNotNull();
 		this.harness = harness;
+		this.trialSandbox = trialSandbox;
 		this.sessionHarness = sessionHarness;
 		this.environment = Map.copyOf(environment);
 		this.configurationDirectory = configurationDirectory;
@@ -140,6 +145,13 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		ensureOpen();
 		return harness;
+	}
+
+	@Override
+	protected final HarnessSandbox trialSandbox()
+	{
+		ensureOpen();
+		return trialSandbox;
 	}
 
 	@Override

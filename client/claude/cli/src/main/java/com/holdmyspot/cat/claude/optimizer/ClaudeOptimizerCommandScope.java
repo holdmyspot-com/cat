@@ -25,6 +25,7 @@ import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.secrets.ClaudeOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.claude.runner.ClaudeSessionSandbox;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -103,8 +104,8 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 		requireThat(artifact, "artifact").isNotNull();
 		Path configurationDirectory = ClaudeConfiguration.resolveDirectory(home,
 			environment.get("CLAUDE_CONFIG_DIR"));
-		super(Harness.CLAUDE, ClaudeSessionHarness.HARNESS, environment, configurationDirectory, directory,
-			LOADER_CONFIGURATION, waiting);
+		super(Harness.CLAUDE, ClaudeSessionSandbox::refusal, ClaudeSessionHarness.HARNESS, environment,
+			configurationDirectory, directory, LOADER_CONFIGURATION, waiting);
 		this.environment = Map.copyOf(environment);
 		this.artifact = artifact;
 		this.configurationDirectory = configurationDirectory;

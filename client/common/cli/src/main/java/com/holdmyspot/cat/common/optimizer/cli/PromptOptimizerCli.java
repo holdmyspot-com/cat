@@ -79,7 +79,7 @@ public final class PromptOptimizerCli
 			return Commands.executeContractTool(JsonMapper.builder().build(), arguments, out);
 		try (AbstractOptimizerCommandScope scope = factory.open())
 		{
-			return run(scope, arguments, zone, out);
+			return run(scope, arguments, zone, Platform.current(), out);
 		}
 		catch (IOException e)
 		{
@@ -91,20 +91,24 @@ public final class PromptOptimizerCli
 	/**
 	 * Runs one command.
 	 *
-	 * @param scope the command's scope
-	 * @param args the launcher's arguments
-	 * @param zone the user's time zone, in which the human summary shows times
-	 * @param out where the JSON goes
+	 * @param scope    the command's scope
+	 * @param args     the launcher's arguments
+	 * @param zone     the user's time zone, in which the human summary shows times
+	 * @param platform the platform that runs the command
+	 * @param out      where the JSON goes
 	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input
 	 * @throws NullPointerException if any argument is null
 	 */
-	public static int run(AbstractOptimizerCommandScope scope, List<String> args, ZoneId zone, PrintStream out)
+	public static int run(AbstractOptimizerCommandScope scope, List<String> args, ZoneId zone, Platform platform,
+		PrintStream out)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(args, "args").isNotNull();
 		requireThat(zone, "zone").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		requireThat(out, "out").isNotNull();
-		return new Commands(new OptimizerCore(scope), scope.json(), zone, Platform.current()).execute(args, out);
+		return new Commands(new OptimizerCore(scope), scope.json(), zone, scope.trialSandbox(), platform).
+			execute(args, out);
 	}
 
 	/**

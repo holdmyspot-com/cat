@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.IntFunction;
 
@@ -66,7 +67,8 @@ public final class CodexRunnerCli
 	 * the arguments select. The launcher always runs the artifact that holds it and the {@code codex} command that the
 	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
 	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request. It also
-	 * refuses, with the same status, any launch that starts a session from a Codex sandbox that has network off.
+	 * refuses, with the same status, any launch that starts a session on a platform where CAT does not let Codex
+	 * sandbox the session, or from a Codex sandbox that has network off.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -79,7 +81,7 @@ public final class CodexRunnerCli
 	{
 		args = CommandLineArguments.recover(args);
 		Map<String, String> environment = Platform.current().environment(System.getenv());
-		if (refusesLaunch(args, environment, new PrintWriter(System.err, true, UTF_8)))
+		if (refusesLaunch(args, environment, Platform.current(), new PrintWriter(System.err, true, UTF_8)))
 			System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 		if (args.length == 1 && args[0].equals("--help"))
 		{
@@ -140,27 +142,39 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Refuses a launch that would start a session, but cannot. That is a launch that names {@code --artifact}, as
-	 * {@link #refusesOverride} refuses it, and any launch from a Codex sandbox that has network off, whose session
-	 * could not reach its model. Printing the usage and verifying an artifact start no session, so they are never
-	 * refused for the sandbox.
+	 * Refuses a launch that would start a session, but must not or cannot. That is a launch that names
+	 * {@code --artifact}, as {@link #refusesOverride} refuses it, any launch on a platform where CAT does not let Codex
+	 * confine the session in a sandbox, as {@link CodexSessionSandbox} decides, and any launch from a Codex sandbox
+	 * that has network off, whose session could not reach its model. Printing the usage and verifying an artifact
+	 * start no session, so they are never refused for the platform or the sandbox.
 	 *
 	 * @param args        the command and its options
 	 * @param environment the launcher's environment
+	 * @param platform    the platform that the launcher runs on
 	 * @param errors      receives the reason for a refusal
 	 * @return {@code true} if the launch is refused
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static boolean refusesLaunch(String[] args, Map<String, String> environment, PrintWriter errors)
+	public static boolean refusesLaunch(String[] args, Map<String, String> environment, Platform platform,
+		PrintWriter errors)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		requireThat(errors, "errors").isNotNull();
 		if (refusesOverride(args, environment, errors))
 			return true;
 		boolean startsNothing = args.length == 1 && args[0].equals("--help") ||
 			args.length == 2 && args[0].equals("--verify-artifact");
-		return !startsNothing && ParentSandbox.refusesNetworkOff(HARNESS_ID, environment, errors);
+		if (startsNothing)
+			return false;
+		Optional<String> refusal = CodexSessionSandbox.refusal(platform);
+		if (refusal.isPresent())
+		{
+			errors.println(refusal.get());
+			return true;
+		}
+		return ParentSandbox.refusesNetworkOff(HARNESS_ID, environment, errors);
 	}
 
 	/**

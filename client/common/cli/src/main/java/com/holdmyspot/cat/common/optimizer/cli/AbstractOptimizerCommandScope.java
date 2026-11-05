@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
+import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeAccess;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
 
@@ -141,6 +142,15 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	protected abstract Harness harness();
+
+	/**
+	 * Returns the decision whether the harness that runs the launcher, which runs the campaign's trials, sandboxes
+	 * them on a platform.
+	 *
+	 * @return the decision
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract HarnessSandbox trialSandbox();
 
 	/**
 	 * Returns the source of campaign identifiers and draw seeds.

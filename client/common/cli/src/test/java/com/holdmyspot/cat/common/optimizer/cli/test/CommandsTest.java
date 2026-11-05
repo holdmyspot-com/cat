@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
@@ -48,6 +49,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Map;
 import java.util.Set;
 
@@ -57,6 +59,19 @@ import java.util.Set;
 public final class CommandsTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * The reason that {@link #WINDOWS_REFUSAL} gives.
+	 */
+	private static final String WINDOWS_REFUSAL_REASON = "harness-a has no sandbox on native Windows";
+	/**
+	 * A trial harness that sandboxes its trials everywhere except on native Windows.
+	 */
+	private static final HarnessSandbox WINDOWS_REFUSAL = platform ->
+	{
+		if (platform.isWindows())
+			return Optional.of(WINDOWS_REFUSAL_REASON);
+		return Optional.empty();
+	};
 
 	/**
 	 * Creates the test.
@@ -160,25 +175,27 @@ public final class CommandsTest
 	 */
 	private static int run(FakeCore core, List<String> args, StringBuilder output)
 	{
-		return run(core, Platform.LINUX_X64, args, output);
+		return run(core, _ -> Optional.empty(), Platform.LINUX_X64, args, output);
 	}
 
 	/**
 	 * Runs a command on a platform.
 	 *
-	 * @param core     the core
-	 * @param platform the platform that runs the command
-	 * @param args     the arguments
-	 * @param output   receives the printed JSON
+	 * @param core         the core
+	 * @param trialSandbox decides whether the harness of the campaign's trials sandboxes them on {@code platform}
+	 * @param platform     the platform that runs the command
+	 * @param args         the arguments
+	 * @param output       receives the printed JSON
 	 * @return the exit code
 	 */
-	private static int run(FakeCore core, Platform platform, List<String> args, StringBuilder output)
+	private static int run(FakeCore core, HarnessSandbox trialSandbox, Platform platform, List<String> args,
+		StringBuilder output)
 	{
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			exit = new Commands(core, JSON, ZoneOffset.UTC, platform).execute(args, out);
+			exit = new Commands(core, JSON, ZoneOffset.UTC, trialSandbox, platform).execute(args, out);
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));
 		return exit;
@@ -245,34 +262,55 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that on native Windows a command that starts or continues a campaign is refused before it reaches the
-	 * core, and that the refusal directs the user to WSL2.
+	 * Verifies that where the harness that runs a campaign's trials cannot sandbox them, a command that starts or
+	 * continues a campaign is refused with that harness's reason, before it reaches the core.
 	 *
 	 * @param args the arguments
 	 */
 	@Test(dataProvider = "campaignCommands")
-	public void nativeWindowsRefusesCampaignCommand(List<String> args)
+	public void refusesCampaignWithoutTrialSandbox(List<String> args)
 	{
 		FakeCore core = new FakeCore();
 		StringBuilder output = new StringBuilder();
-		requireThat(run(core, Platform.WINDOWS_X64, args, output), "exit").isEqualTo(1);
+		requireThat(run(core, WINDOWS_REFUSAL, Platform.WINDOWS_X64, args, output), "exit").isEqualTo(1);
 		requireThat(core.calls, "calls").isEmpty();
 		JsonNode result = JSON.readTree(output.toString());
 		requireThat(result.get("status").asString(), "status").isEqualTo("refused");
-		requireThat(result.get("message").asString(), "message").contains("not available on native Windows").
-			contains("WSL2").contains("wsl --install");
+		requireThat(result.get("message").asString(), "message").isEqualTo(WINDOWS_REFUSAL_REASON);
 	}
 
 	/**
-	 * Verifies that on native Windows {@code status} and {@code cancel}, which start no trial, still reach the core.
+	 * Verifies that where the harness that runs a campaign's trials sandboxes them, native Windows included, a
+	 * command that starts or continues a campaign reaches the core.
+	 *
+	 * @param args the arguments
+	 */
+	@Test(dataProvider = "campaignCommands")
+	public void runsCampaignCommandWithTrialSandbox(List<String> args)
+	{
+		for (Platform platform : List.of(Platform.WINDOWS_X64, Platform.LINUX_X64, Platform.MACOS_ARM64))
+		{
+			FakeCore core = new FakeCore();
+			StringBuilder output = new StringBuilder();
+			requireThat(run(core, _ -> Optional.empty(), platform, args, output), "exit").
+				withContext(platform, "platform").isEqualTo(0);
+			requireThat(core.calls, "calls").withContext(platform, "platform").size().isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that {@code status} and {@code cancel}, which start no trial, reach the core even where the harness
+	 * that runs the campaign's trials cannot sandbox them.
 	 */
 	@Test
-	public void nativeWindowsRunsStatusAndCancel()
+	public void runsStatusAndCancelWithoutTrialSandbox()
 	{
 		FakeCore core = new FakeCore();
 		StringBuilder output = new StringBuilder();
-		requireThat(run(core, Platform.WINDOWS_ARM64, List.of("status", "c1"), output), "statusExit").isEqualTo(0);
-		requireThat(run(core, Platform.WINDOWS_ARM64, List.of("cancel", "c1"), output), "cancelExit").isEqualTo(0);
+		requireThat(run(core, WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("status", "c1"), output),
+			"statusExit").isEqualTo(0);
+		requireThat(run(core, WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("cancel", "c1"), output),
+			"cancelExit").isEqualTo(0);
 		requireThat(core.calls, "calls").isEqualTo(List.of("status c1", "cancel c1"));
 	}
 
@@ -523,7 +561,7 @@ public final class CommandsTest
 		int exit;
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
-			exit = new Commands(core, JSON, ZoneId.of("America/Toronto"), Platform.LINUX_X64).
+			exit = new Commands(core, JSON, ZoneId.of("America/Toronto"), _ -> Optional.empty(), Platform.LINUX_X64).
 				execute(List.of("status", "c1"), out);
 		}
 
@@ -898,7 +936,8 @@ public final class CommandsTest
 	public void parsesContractTools()
 	{
 		// Requirement: R-C27
-		Commands commands = new Commands(new FakeCore(), JSON, ZoneOffset.UTC, Platform.LINUX_X64);
+		Commands commands = new Commands(new FakeCore(), JSON, ZoneOffset.UTC, _ -> Optional.empty(),
+			Platform.LINUX_X64);
 		requireThat(commands.parse(List.of("contract", "check", "cat-contract.json")), "check").
 			isEqualTo(new Command.ContractCheck(Path.of("cat-contract.json")));
 		requireThat(commands.parse(List.of("contract", "workspace", "cat-contract.json", ".cat/tests/CLAUDE/notes", "2",

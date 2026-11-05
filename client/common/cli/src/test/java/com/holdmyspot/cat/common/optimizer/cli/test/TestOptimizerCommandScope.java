@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
+import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
@@ -310,6 +311,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 		ensureOpen();
 		return harness;
+	}
+
+	@Override
+	protected HarnessSandbox trialSandbox()
+	{
+		ensureOpen();
+		return _ -> Optional.empty();
 	}
 
 	@Override

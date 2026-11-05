@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
+import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -34,8 +35,9 @@ import java.util.regex.Pattern;
  * author session reads as text. The exit codes are 0 for a result, 1 for a refusal or a failure, and 2 for invalid
  * input.
  * <p>
- * On native Windows, every command that starts or continues a campaign is refused before it reaches the core, so it
- * changes nothing; {@code status} and {@code cancel} still run.
+ * On a platform where the harness that runs the campaign's trials cannot sandbox them, every command that starts or
+ * continues a campaign is refused before it reaches the core, so it changes nothing; {@code status} and
+ * {@code cancel} still run.
  */
 public final class Commands
 {
@@ -65,6 +67,7 @@ public final class Commands
 	private final Core core;
 	private final JsonMapper json;
 	private final ZoneId zone;
+	private final HarnessSandbox trialSandbox;
 	private final Platform platform;
 
 	/**
@@ -72,19 +75,22 @@ public final class Commands
 	 *
 	 * @param core     what the commands call
 	 * @param json     the mapper that renders the output
-	 * @param zone     the user's time zone, in which the human summary shows times
-	 * @param platform the platform that runs the commands
+	 * @param zone         the user's time zone, in which the human summary shows times
+	 * @param trialSandbox decides whether the harness of the campaign's trials sandboxes them on {@code platform}
+	 * @param platform     the platform that runs the commands
 	 * @throws NullPointerException if any argument is null
 	 */
-	public Commands(Core core, JsonMapper json, ZoneId zone, Platform platform)
+	public Commands(Core core, JsonMapper json, ZoneId zone, HarnessSandbox trialSandbox, Platform platform)
 	{
 		requireThat(core, "core").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(zone, "zone").isNotNull();
+		requireThat(trialSandbox, "trialSandbox").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		this.core = core;
 		this.json = json;
 		this.zone = zone;
+		this.trialSandbox = trialSandbox;
 		this.platform = platform;
 	}
 
@@ -563,22 +569,18 @@ public final class Commands
 	 *
 	 * @param command the command
 	 * @return the core's result
-	 * @throws CommandRefusedException if the platform is native Windows and the command can start a trial, or if the
-	 *                                 core refuses the command
+	 * @throws CommandRefusedException if the command can start a trial and the harness that runs the campaign's trials
+	 *                                 cannot sandbox them on the platform, or if the core refuses the command
 	 * @throws IOException             if the core fails
 	 * @throws InterruptedException    if the thread is interrupted
 	 */
 	private CommandResult dispatch(Command command) throws CommandRefusedException, IOException, InterruptedException
 	{
-		// A trial's session could read the files that the trial hides from it, because native Windows cannot reliably
-		// give that session a sandbox of its own.
-		if (platform.isWindows() && canStartTrial(command))
+		if (canStartTrial(command))
 		{
-			throw new CommandRefusedException("Prompt optimization is not available on native Windows, because its " +
-				"trials need a sandbox that keeps each trial from reading the files that it must not see, and native " +
-				"Windows cannot reliably provide one. Install Claude Code or Codex, with CAT, inside WSL2 and run prompt " +
-				"optimization there. To install WSL2, run `wsl --install` in PowerShell as an administrator; see " +
-				"https://learn.microsoft.com/windows/wsl/install.");
+			Optional<String> refusal = trialSandbox.refusal(platform);
+			if (refusal.isPresent())
+				throw new CommandRefusedException(refusal.get());
 		}
 		return switch (command)
 		{

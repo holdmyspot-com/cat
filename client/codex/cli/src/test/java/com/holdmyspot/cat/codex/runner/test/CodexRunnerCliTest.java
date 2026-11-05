@@ -8,6 +8,7 @@ import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliAccess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitAnswers;
@@ -597,7 +598,7 @@ public final class CodexRunnerCliTest
 		StringWriter errors = new StringWriter();
 
 		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new),
-			Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1"), new PrintWriter(errors, true));
+			Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1"), Platform.LINUX_X64, new PrintWriter(errors, true));
 
 		requireThat(refused, "refused").isTrue();
 		requireThat(errors.toString(), "errors").contains("codex-runner").
@@ -614,10 +615,10 @@ public final class CodexRunnerCliTest
 		StringWriter errors = new StringWriter();
 		Map<String, String> environment = Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1");
 
-		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, environment,
+		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, environment, Platform.LINUX_X64,
 			new PrintWriter(errors, true));
 		boolean verifyRefused = CodexRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"}, environment,
-			new PrintWriter(errors, true));
+			Platform.LINUX_X64, new PrintWriter(errors, true));
 
 		requireThat(helpRefused, "helpRefused").isFalse();
 		requireThat(verifyRefused, "verifyRefused").isFalse();
@@ -634,11 +635,88 @@ public final class CodexRunnerCliTest
 	{
 		StringWriter errors = new StringWriter();
 
-		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new), Map.of(),
+		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new), Map.of(), Platform.LINUX_X64,
 			new PrintWriter(errors, true));
 
 		requireThat(refused, "refused").isFalse();
 		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Returns each native Windows platform.
+	 *
+	 * @return the platform
+	 */
+	@DataProvider
+	public Object[][] nativeWindows()
+	{
+		return new Object[][]{{Platform.WINDOWS_X64}, {Platform.WINDOWS_ARM64}};
+	}
+
+	/**
+	 * Verifies that on native Windows, where CAT has not verified that Codex's sandbox confines a session, the
+	 * launcher refuses every launch that starts a Codex session, forwarded or not, with a reason that names what is
+	 * missing and directs the user to WSL2.
+	 *
+	 * @param platform the native Windows platform
+	 */
+	@Test(dataProvider = "nativeWindows")
+	public void refusesSessionOnNativeWindows(Platform platform)
+	{
+		for (Map<String, String> environment : List.of(Map.<String, String>of(),
+			Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "requests")))
+		{
+			StringWriter errors = new StringWriter();
+
+			boolean refused = CodexRunnerCli.refusesLaunch(new String[]{"serve", "--project", "project", "--model",
+				"gpt-6-luna", "--effort", "low"}, environment, platform, new PrintWriter(errors, true));
+
+			requireThat(refused, "refused").isTrue();
+			requireThat(errors.toString(), "errors").contains("Codex").
+				contains("CAT has not yet verified that Codex's sandbox on native Windows").contains("WSL2").
+				contains("wsl --install");
+		}
+	}
+
+	/**
+	 * Verifies that on native Windows the launcher still answers {@code --help} and verifies an artifact, since
+	 * neither starts a session.
+	 *
+	 * @param platform the native Windows platform
+	 */
+	@Test(dataProvider = "nativeWindows")
+	public void answersHelpOnNativeWindows(Platform platform)
+	{
+		StringWriter errors = new StringWriter();
+
+		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, Map.of(), platform,
+			new PrintWriter(errors, true));
+		boolean verifyRefused = CodexRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"}, Map.of(),
+			platform, new PrintWriter(errors, true));
+
+		requireThat(helpRefused, "helpRefused").isFalse();
+		requireThat(verifyRefused, "verifyRefused").isFalse();
+		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Verifies that on Linux and macOS, where Codex sandboxes a session, the launcher does not refuse a launch that
+	 * starts one.
+	 */
+	@Test
+	public void startsSessionOnLinuxAndMacOs()
+	{
+		for (Platform platform : List.of(Platform.LINUX_X64, Platform.LINUX_ARM64, Platform.MACOS_X64,
+			Platform.MACOS_ARM64))
+		{
+			StringWriter errors = new StringWriter();
+
+			boolean refused = CodexRunnerCli.refusesLaunch(new String[]{"serve", "--project", "project", "--model",
+				"gpt-6-luna", "--effort", "low"}, Map.of(), platform, new PrintWriter(errors, true));
+
+			requireThat(refused, "refused").withContext(platform, "platform").isFalse();
+			requireThat(errors.toString(), "errors").withContext(platform, "platform").isEmpty();
+		}
 	}
 
 	/**
