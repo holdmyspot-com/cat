@@ -5,7 +5,6 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
@@ -27,8 +26,8 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
-import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
 import java.io.BufferedReader;
@@ -38,51 +37,22 @@ import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntFunction;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Runs the Claude JSONL bridge.
  */
 public final class ClaudeRunnerCli
 {
-	/**
-	 * The option that names the file of the policy that bounds the session's sandbox policy.
-	 */
-	private static final String POLICY_BOUND_OPTION = "--policy-bound";
-	/**
-	 * The name of the file, in a requested session's response directory, that holds the requested session's bound.
-	 */
-	private static final String POLICY_BOUND_FILE = "policy-bound.json";
-	/**
-	 * The version of the format of a policy bound's file.
-	 */
-	private static final int POLICY_BOUND_FORMAT = 1;
-	/**
-	 * The fields of a policy bound's file.
-	 */
-	private static final Set<String> POLICY_BOUND_FIELDS = Set.of("format_version", "write_roots", "write_denials",
-		"read_denials", "read_reallowances", "hosts", "allow_local_binding");
-	/**
-	 * The longest policy bound's file that is read.
-	 */
-	private static final int MAXIMUM_POLICY_BOUND_BYTES = 1_048_576;
 	/**
 	 * Prints the usage, verifies an artifact, or serves JSONL turns through one persistent isolated Claude process, as
 	 * the arguments select. The launcher always runs the artifact that holds it and the {@code claude} command that the
@@ -305,8 +275,8 @@ public final class ClaudeRunnerCli
 					runner = RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
 				else
 					throw new IllegalArgumentException("Unsupported requested harness: " + harness);
-				return runner.start(boundArguments(scope.json(), arguments, directory, policy.get()), directory,
-					environment);
+				return runner.start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()),
+					directory, environment);
 			});
 		}
 	}
@@ -461,7 +431,7 @@ public final class ClaudeRunnerCli
 		for (int index = 0; index < args.length; ++index)
 		{
 			if (args[index].equals("--read-only-evidence") || args[index].equals("--agent") ||
-				args[index].equals("--instruction-files") || args[index].equals(POLICY_BOUND_OPTION))
+				args[index].equals("--instruction-files") || args[index].equals(PolicyBoundFile.OPTION))
 			{
 				index += 1;
 				continue;
@@ -485,166 +455,19 @@ public final class ClaudeRunnerCli
 		String value = null;
 		for (int index = 0; index < args.length; ++index)
 		{
-			if (!args[index].equals(POLICY_BOUND_OPTION))
+			if (!args[index].equals(PolicyBoundFile.OPTION))
 				continue;
 			if (index + 1 == args.length || args[index + 1].startsWith("--"))
-				throw new IllegalArgumentException("Missing path after " + POLICY_BOUND_OPTION);
+				throw new IllegalArgumentException("Missing path after " + PolicyBoundFile.OPTION);
 			value = args[index + 1];
 		}
 		if (value == null)
 		{
 			throw new SessionRefusedException("claude-runner starts a session only " +
 				"through CAT's session launcher, which names the policy that bounds the session's sandbox with " +
-				POLICY_BOUND_OPTION + ", and this launch names none, so CAT does not start the session. Start the " +
+				PolicyBoundFile.OPTION + ", and this launch names none, so CAT does not start the session. Start the " +
 				"session from a Claude Code or Codex session in which CAT is installed");
 		}
-		return readPolicyBound(json, Path.of(value).toAbsolutePath());
-	}
-
-	/**
-	 * Reads a policy bound's file: a JSON object whose {@code format_version} is {@value #POLICY_BOUND_FORMAT}, whose
-	 * {@code write_roots}, {@code write_denials}, {@code read_denials} and {@code read_reallowances} are arrays of
-	 * absolute paths, whose {@code hosts} is an array of host names, and whose {@code allow_local_binding} is a
-	 * boolean, and that has no other field.
-	 *
-	 * @param json the JSON mapper
-	 * @param file the file
-	 * @return the bound
-	 * @throws IOException if the file cannot be read or is not a bound
-	 */
-	private static ChildPolicy readPolicyBound(JsonMapper json, Path file) throws IOException
-	{
-		JsonNode bound;
-		try
-		{
-			bound = json.readTree(BoundedInput.readUtf8(file, MAXIMUM_POLICY_BOUND_BYTES, "policy bound"));
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("The policy bound " + file + " is not valid JSON", e);
-		}
-		if (!bound.isObject())
-			throw new IOException("The policy bound " + file + " is not a JSON object");
-		for (String field : bound.propertyNames())
-		{
-			if (!POLICY_BOUND_FIELDS.contains(field))
-				throw new IOException("The policy bound " + file + " has an unknown field: " + field);
-		}
-		for (String field : POLICY_BOUND_FIELDS)
-		{
-			if (!bound.has(field))
-				throw new IOException("The policy bound " + file + " lacks the field " + field);
-		}
-		if (!bound.path("format_version").isInt() || bound.path("format_version").intValue() != POLICY_BOUND_FORMAT)
-		{
-			throw new IOException("The policy bound " + file + " has an unsupported format_version: " +
-				bound.path("format_version"));
-		}
-		if (!bound.path("allow_local_binding").isBoolean())
-			throw new IOException("The policy bound " + file + " has a non-boolean allow_local_binding");
-		try
-		{
-			return new ChildPolicy(paths(bound, "write_roots", file), paths(bound, "write_denials", file),
-				paths(bound, "read_denials", file), paths(bound, "read_reallowances", file),
-				new LinkedHashSet<>(strings(bound, "hosts", file)), bound.path("allow_local_binding").booleanValue());
-		}
-		catch (IllegalArgumentException e)
-		{
-			throw new IOException("The policy bound " + file + " is not a valid policy: " + e.getMessage(), e);
-		}
-	}
-
-	/**
-	 * Reads an array of paths from a policy bound.
-	 *
-	 * @param bound the bound
-	 * @param field the array's field
-	 * @param file  the bound's file
-	 * @return the paths
-	 * @throws IOException if the field is not an array of text
-	 */
-	private static List<Path> paths(JsonNode bound, String field, Path file) throws IOException
-	{
-		List<Path> result = new ArrayList<>();
-		for (String value : strings(bound, field, file))
-			result.add(Path.of(value));
-		return result;
-	}
-
-	/**
-	 * Reads an array of text from a policy bound.
-	 *
-	 * @param bound the bound
-	 * @param field the array's field
-	 * @param file  the bound's file
-	 * @return the text
-	 * @throws IOException if the field is not an array of text
-	 */
-	private static List<String> strings(JsonNode bound, String field, Path file) throws IOException
-	{
-		JsonNode array = bound.path(field);
-		if (!array.isArray())
-			throw new IOException("The policy bound " + file + " has a non-array " + field);
-		List<String> result = new ArrayList<>();
-		for (JsonNode element : array)
-		{
-			if (!element.isString())
-				throw new IOException("The policy bound " + file + " has a non-text element in " + field);
-			result.add(element.stringValue());
-		}
-		return result;
-	}
-
-	/**
-	 * Returns the arguments of a requested session's runner, with the policy that bounds the requested session: the
-	 * requesting session's policy, widened only by the requested session's run root, which its runner writes in.
-	 *
-	 * @param json      the JSON mapper
-	 * @param arguments the runner's arguments, which name its {@code --run-root}
-	 * @param directory the requested session's response directory, which receives the bound's file
-	 * @param policy    the requesting session's sandbox policy, or {@code null} if it has none yet
-	 * @return the arguments, followed by {@code --policy-bound} and the bound's file when {@code policy} is not null
-	 * @throws IOException if the arguments name no run root, or the bound's file cannot be written
-	 */
-	private static List<String> boundArguments(JsonMapper json, List<String> arguments, Path directory,
-		ChildPolicy policy) throws IOException
-	{
-		if (policy == null)
-			return arguments;
-		int runRoot = arguments.indexOf("--run-root");
-		if (runRoot < 0 || runRoot + 1 == arguments.size())
-			throw new IOException("A requested session's runner arguments name no --run-root: " + arguments);
-		ChildPolicy bound = ChildPolicy.intersect(ClaudeConnectionSettings.bounding(policy),
-			new ChildNeeds(Path.of(arguments.get(runRoot + 1)).toAbsolutePath(), List.of(), List.of(), policy.hosts()));
-		ObjectNode file = json.createObjectNode();
-		file.put("format_version", POLICY_BOUND_FORMAT);
-		putPaths(file, "write_roots", bound.writeRoots());
-		putPaths(file, "write_denials", bound.writeDenials());
-		putPaths(file, "read_denials", bound.readDenials());
-		putPaths(file, "read_reallowances", bound.readReallowances());
-		ArrayNode hosts = file.putArray("hosts");
-		for (String host : new TreeSet<>(bound.hosts()))
-			hosts.add(host);
-		file.put("allow_local_binding", bound.allowLocalBinding());
-		Path destination = Files.createDirectories(directory).resolve(POLICY_BOUND_FILE);
-		Files.writeString(destination, json.writeValueAsString(file));
-		List<String> result = new ArrayList<>(arguments);
-		result.add(POLICY_BOUND_OPTION);
-		result.add(destination.toString());
-		return result;
-	}
-
-	/**
-	 * Adds an array of paths to a policy bound.
-	 *
-	 * @param bound the bound
-	 * @param field the array's field
-	 * @param paths the paths
-	 */
-	private static void putPaths(ObjectNode bound, String field, List<Path> paths)
-	{
-		ArrayNode array = bound.putArray(field);
-		for (Path path : paths)
-			array.add(path.toString());
+		return PolicyBoundFile.read(json, Path.of(value).toAbsolutePath());
 	}
 }

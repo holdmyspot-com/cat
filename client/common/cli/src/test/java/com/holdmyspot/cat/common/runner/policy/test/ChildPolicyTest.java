@@ -339,4 +339,55 @@ public final class ChildPolicyTest
 			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run));
 		}
 	}
+
+	/**
+	 * Verifies that a session that a bounded session requests gets nothing beyond the bound: bounded by the bound as a
+	 * parent policy, it keeps the writes inside the bound's write roots, the bound's read denials and the hosts of the
+	 * bound that it needs, and loses every other write and host.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void boundLimitsRequestedSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path run = Files.createDirectory(root.resolve("run"));
+			Path work = Files.createDirectory(run.resolve("work"));
+			Path requested = Files.createDirectory(run.resolve("requested"));
+			Path cache = Files.createDirectory(root.resolve("cache"));
+			Path secret = Files.createDirectory(root.resolve("secret"));
+			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(secret), List.of(),
+				Set.of("model.example"), false);
+
+			ChildPolicy child = ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(requested,
+				List.of(work, cache), List.of(), Set.of("model.example", "other.example")));
+
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(requested, work));
+			requireThat(child.readDenials(), "readDenials").isEqualTo(List.of(secret));
+			requireThat(child.hosts(), "hosts").isEqualTo(Set.of("model.example"));
+		}
+	}
+
+	/**
+	 * Verifies that a session that a bounded session without hosts requests reaches no host.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void boundWithoutHostsReachesNone() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path run = Files.createDirectory(root.resolve("run"));
+			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of(), false);
+
+			ChildPolicy child = ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(run, List.of(),
+				List.of(), Set.of("model.example")));
+
+			requireThat(child.hosts(), "hosts").isEmpty();
+		}
+	}
 }

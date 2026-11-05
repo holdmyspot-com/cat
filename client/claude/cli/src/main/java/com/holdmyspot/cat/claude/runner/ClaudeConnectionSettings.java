@@ -401,7 +401,7 @@ public final class ClaudeConnectionSettings
 						"commands write " + absolute + ", which Claude Code writes, so CAT does not start the session");
 				}
 			}
-			parent = bounding(bound);
+			parent = bound.asParentPolicy();
 		}
 		List<Path> extraWrites = new ArrayList<>();
 		for (Path path : sessionWrites)
@@ -413,32 +413,6 @@ public final class ClaudeConnectionSettings
 			reads.add(path.toAbsolutePath());
 		return ChildPolicy.intersect(parent, new ChildNeeds(claudeHome.toAbsolutePath(), extraWrites, reads,
 			Set.of(modelHost.strip().toLowerCase(Locale.ROOT))));
-	}
-
-	/**
-	 * Returns the parent policy that gives a child exactly the accesses of a bound, so that intersecting a child's
-	 * needs with it bounds the child by that bound.
-	 *
-	 * @param bound the bound
-	 * @return the policy
-	 */
-	static ParentPolicy bounding(ChildPolicy bound)
-	{
-		return new ParentPolicy(true, bound.writeRoots(), bound.writeDenials(), bound.readDenials(),
-			bound.readReallowances(), hostAccess(bound.hosts()), bound.allowLocalBinding(), List.of());
-	}
-
-	/**
-	 * Returns the network access that lets commands reach exactly some hosts.
-	 *
-	 * @param hosts the hosts
-	 * @return the access
-	 */
-	private static HostAccess hostAccess(Set<String> hosts)
-	{
-		if (hosts.isEmpty())
-			return HostAccess.NONE;
-		return HostAccess.listed(hosts);
 	}
 
 	/**
@@ -756,7 +730,7 @@ public final class ClaudeConnectionSettings
 		 */
 		private Optional<String> findNetworkWidening(JsonNode network)
 		{
-			HostAccess hosts = hostAccess(policy.hosts());
+			HostAccess hosts = policy.asParentPolicy().hosts();
 			for (JsonNode entry : network.path("allowedDomains"))
 			{
 				String domain = entry.asString();

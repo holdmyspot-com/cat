@@ -105,4 +105,56 @@ public final class PolicyBoundFileTest
 			}
 		}
 	}
+
+	/**
+	 * Verifies that the runner of a bounded session gives each session that the bounded session requests a bound of
+	 * its own: the bounded session's policy, widened only by the requested session's run root, in a file that the
+	 * requested session's runner is told about.
+	 *
+	 * @throws IOException if the files cannot be written or read
+	 */
+	@Test
+	public void requestedSessionGetsOwnBound() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope jvm = new TestJvmScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "policy-bound-")).toRealPath();
+			Path run = Files.createDirectory(root.resolve("run"));
+			Path secret = Files.createDirectory(root.resolve("secret"));
+			Path requestedRoot = Files.createDirectories(root.resolve("requested/run-root"));
+			Path directory = Files.createDirectories(root.resolve("requested/response"));
+			ChildPolicy policy = new ChildPolicy(List.of(run), List.of(), List.of(secret), List.of(),
+				Set.of("model.example"), false);
+			List<String> arguments = List.of("--run-root", requestedRoot.toString(), "--model", "model-a");
+
+			List<String> bounded = PolicyBoundFile.boundArguments(json, arguments, directory, policy);
+
+			requireThat(bounded, "bounded").isEqualTo(List.of("--run-root", requestedRoot.toString(), "--model",
+				"model-a", PolicyBoundFile.OPTION, directory.resolve(PolicyBoundFile.FILE_NAME).toString()));
+			ChildPolicy bound = PolicyBoundFile.read(json, directory.resolve(PolicyBoundFile.FILE_NAME));
+			requireThat(bound.writeRoots(), "writeRoots").isEqualTo(List.of(requestedRoot));
+			requireThat(bound.readDenials(), "readDenials").isEqualTo(List.of(secret));
+			requireThat(bound.hosts(), "hosts").isEqualTo(Set.of("model.example"));
+		}
+	}
+
+	/**
+	 * Verifies that the runner of a bounded session refuses to start a requested session whose arguments name no run
+	 * root, since the requested session's bound could not include it.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*--run-root.*")
+	public void refusesRequestedSessionWithoutRunRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope jvm = new TestJvmScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "policy-bound-")).toRealPath();
+			ChildPolicy policy = new ChildPolicy(List.of(root), List.of(), List.of(), List.of(), Set.of(), false);
+
+			PolicyBoundFile.boundArguments(json, List.of("--model", "model-a"), root, policy);
+		}
+	}
 }

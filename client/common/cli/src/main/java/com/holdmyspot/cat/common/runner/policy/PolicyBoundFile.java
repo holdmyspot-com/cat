@@ -135,6 +135,43 @@ public final class PolicyBoundFile
 	}
 
 	/**
+	 * Returns the arguments of a runner that a bounded session's runner starts for a session that the bounded session
+	 * requests, with the requested session's bound: the bounded session's policy, widened only by the requested
+	 * session's run root, which its runner writes in. The bound is written to {@value #FILE_NAME} in the requested
+	 * session's directory.
+	 *
+	 * @param json      the document mapper
+	 * @param arguments the runner's arguments, which name its {@code --run-root}
+	 * @param directory the requested session's directory, which receives the bound's file
+	 * @param policy    the bounded session's policy, or {@code null} if the bounded session has not started yet
+	 * @return {@code arguments} followed by {@value #OPTION} and the bound's file, or {@code arguments} unchanged if
+	 *         {@code policy} is null
+	 * @throws NullPointerException if {@code json}, {@code arguments} or {@code directory} is null
+	 * @throws IOException          if {@code arguments} name no run root, a symbolic link in a path cannot be read, or
+	 *                              the bound's file cannot be written
+	 */
+	public static List<String> boundArguments(JsonMapper json, List<String> arguments, Path directory,
+		ChildPolicy policy) throws IOException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(arguments, "arguments").isNotNull();
+		requireThat(directory, "directory").isNotNull();
+		if (policy == null)
+			return arguments;
+		int runRoot = arguments.indexOf("--run-root");
+		if (runRoot < 0 || runRoot + 1 == arguments.size())
+			throw new IOException("A requested session's runner arguments name no --run-root: " + arguments);
+		ChildPolicy bound = ChildPolicy.intersect(policy.asParentPolicy(),
+			new ChildNeeds(Path.of(arguments.get(runRoot + 1)).toAbsolutePath(), List.of(), List.of(), policy.hosts()));
+		Path destination = Files.createDirectories(directory).resolve(FILE_NAME);
+		write(json, destination, bound);
+		List<String> result = new ArrayList<>(arguments);
+		result.add(OPTION);
+		result.add(destination.toString());
+		return result;
+	}
+
+	/**
 	 * Reads an array of paths from a document.
 	 *
 	 * @param document the document

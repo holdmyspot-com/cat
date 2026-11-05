@@ -110,6 +110,24 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	}
 
 	/**
+	 * Returns this policy as the policy of a parent, so that a session that the child requests in turn is bounded by
+	 * it: {@link #intersect(ParentPolicy, ChildNeeds) intersecting} the requested session's needs with it gives the
+	 * requested session nothing that this policy does not give.
+	 *
+	 * @return a sandboxed parent policy with exactly this policy's accesses, which protects no source of its own
+	 */
+	public ParentPolicy asParentPolicy()
+	{
+		HostAccess access;
+		if (hosts.isEmpty())
+			access = HostAccess.NONE;
+		else
+			access = HostAccess.listed(hosts);
+		return new ParentPolicy(true, writeRoots, writeDenials, readDenials, readReallowances, access,
+			allowLocalBinding, List.of());
+	}
+
+	/**
 	 * Indicates whether one of some hosts is a loopback address, so that a command reaching it reaches a server on the
 	 * same machine. No host is looked up: only {@code localhost} and literal loopback addresses count.
 	 *
