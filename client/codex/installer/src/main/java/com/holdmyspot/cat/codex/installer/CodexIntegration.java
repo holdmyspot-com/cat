@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -164,8 +165,9 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns {@code HOME} and {@code USERPROFILE} as given, and {@code CODEX_HOME} unless {@code home} is Codex's
-	 * default, {@code <user home>/.codex}.
+	 * Returns {@code HOME} and {@code USERPROFILE} as given, and {@code CODEX_HOME} unless Codex finds {@code home}
+	 * from them alone. Codex cannot find it from a relative user home, which depends on the working directory that
+	 * Codex later runs in.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 */
@@ -181,11 +183,7 @@ public final class CodexIntegration implements HarnessIntegration
 			if (value != null)
 				variables.put(variable, value);
 		}
-		String userHomeName = "HOME";
-		if (isWindows())
-			userHomeName = "USERPROFILE";
-		Path userHome = absolute(environment.get(userHomeName));
-		if (userHome == null || !home.equals(userHome.resolve(".codex")))
+		if (!home.equals(defaultHome(variables)))
 			variables.put("CODEX_HOME", home.toString());
 		return variables;
 	}
@@ -814,23 +812,21 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Parses an absolute path from an environment value.
+	 * Returns the home that Codex finds when the environment holds no {@code CODEX_HOME}.
 	 *
-	 * @param value the value, or null
-	 * @return the normalized absolute path, or null when the value is absent, empty, relative or invalid
+	 * @param variables the user's home variables
+	 * @return the home, or null when Codex cannot find one, or finds one that depends on its working directory
 	 */
-	private static Path absolute(String value)
+	private static Path defaultHome(Map<String, String> variables)
 	{
-		if (value == null || value.isEmpty())
-			return null;
+		String userHome = variables.get(Platform.current().homeVariable());
 		try
 		{
-			Path path = Path.of(value);
-			if (!path.isAbsolute())
+			if (userHome != null && !userHome.isEmpty() && !Path.of(userHome).isAbsolute())
 				return null;
-			return path.normalize();
+			return CodexInstallation.resolveHome(variables);
 		}
-		catch (InvalidPathException _)
+		catch (IOException | InvalidPathException _)
 		{
 			return null;
 		}

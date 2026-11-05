@@ -361,31 +361,19 @@ public final class CodexReadPart
 	 * Returns the {@code tool_output_token_limit} of Codex's {@code config.toml}.
 	 *
 	 * @param environment the environment
-	 * @return the limit, or {@link Long#MAX_VALUE} if the file does not set a positive one
+	 * @return the limit, or {@link Long#MAX_VALUE} if Codex's home cannot be located, the file cannot be read, or the
+	 *   file does not set a positive one
 	 */
 	private static long configuredTokens(Map<String, String> environment)
 	{
-		String codexHome = environment.get("CODEX_HOME");
-		Path home;
+		byte[] bytes;
 		try
 		{
-			if (codexHome != null && !codexHome.isEmpty())
-				home = Path.of(codexHome);
-			else
+			Path configuration = new CodexInstallation(CodexInstallation.resolveHome(environment)).configuration();
+			try (InputStream in = Files.newInputStream(configuration))
 			{
-				String userHome = environment.getOrDefault(Platform.current().homeVariable(), "");
-				home = Path.of(userHome).resolve(CodexInstallation.defaultHome());
+				bytes = in.readNBytes(MAXIMUM_CONFIGURATION_BYTES);
 			}
-		}
-		catch (InvalidPathException _)
-		{
-			return Long.MAX_VALUE;
-		}
-		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
-		byte[] bytes;
-		try (InputStream in = Files.newInputStream(configuration))
-		{
-			bytes = in.readNBytes(MAXIMUM_CONFIGURATION_BYTES);
 		}
 		catch (IOException _)
 		{

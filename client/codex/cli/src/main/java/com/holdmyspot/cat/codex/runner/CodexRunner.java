@@ -147,7 +147,7 @@ public final class CodexRunner
 				executables);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
-			Path hostHome = codexHome(environment);
+			Path hostHome = CodexInstallation.resolveHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of(LOGIN));
 			Path isolatedConfiguration = configuration(isolatedHome);
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
@@ -978,24 +978,6 @@ public final class CodexRunner
 	private static Path configuration(Path home)
 	{
 		return new CodexInstallation(home.toAbsolutePath()).configuration();
-	}
-
-	/**
-	 * Resolves the host Codex configuration directory without copying arbitrary home state.
-	 *
-	 * @param environment the caller environment
-	 * @return the host Codex configuration directory
-	 */
-	private static Path codexHome(Map<String, String> environment)
-	{
-		assert environment != null;
-		String configured = environment.get(CODEX_HOME);
-		if (configured != null && !configured.isBlank())
-			return Path.of(configured);
-		String home = environment.get(Platform.current().homeVariable());
-		if (home == null || home.isBlank())
-			return CodexInstallation.defaultHome().toAbsolutePath();
-		return Path.of(home).resolve(CodexInstallation.defaultHome());
 	}
 
 	/**

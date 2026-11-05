@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.codex;
 
-import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
@@ -127,15 +127,17 @@ public final class CodexGetHistory
 	/**
 	 * Resolves the one rollout transcript matching a requested Codex thread identifier.
 	 *
-	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts, or {@code HOME},
-	 *   whose {@code .codex} subdirectory is used when {@code CODEX_HOME} is unset or blank
+	 * @param environment supplies the variables that locate the Codex home that contains the rollouts, as Codex reads
+	 *   them: {@code CODEX_HOME}, or the user's home directory, whose {@code .codex} subdirectory is used when
+	 *   {@code CODEX_HOME} is unset or empty
 	 * @param threadId the requested Codex thread identifier
 	 * @return the normalized transcript path
-	 * @throws IOException if the required Codex home or one unique transcript is unavailable
+	 * @throws IOException if Codex's home cannot be located as Codex locates it, or one unique transcript is
+	 *   unavailable
 	 */
 	static Path transcript(Map<String, String> environment, UUID threadId) throws IOException
 	{
-		Path sessions = codexHome(environment).toAbsolutePath().normalize().resolve("sessions");
+		Path sessions = CodexInstallation.resolveHome(environment).resolve("sessions");
 		if (!Files.isDirectory(sessions))
 			throw new IOException("Codex transcript directory does not exist: " + sessions);
 		List<Path> matches = new ArrayList<>();
@@ -167,29 +169,6 @@ public final class CodexGetHistory
 		{
 			throw new IllegalArgumentException("Thread ID must be a UUID: " + value, e);
 		}
-	}
-
-	/**
-	 * Returns the Codex home that holds the rollouts.
-	 *
-	 * @param environment the caller's environment
-	 * @return {@code CODEX_HOME} when it is set and non-blank, otherwise {@code .codex} below the user's home directory
-	 *   ({@code HOME}, or {@code USERPROFILE} on Windows)
-	 * @throws IOException if {@code CODEX_HOME} and the user's home directory are both unset or blank
-	 */
-	private static Path codexHome(Map<String, String> environment) throws IOException
-	{
-		String configured = environment.get("CODEX_HOME");
-		String homeVariable = Platform.current().homeVariable();
-		String home = environment.get(homeVariable);
-		if (home != null && !home.isBlank())
-			return RolloutInterruptSignal.codexHome(Path.of(home.strip()), configured);
-		if (configured == null || configured.isBlank())
-		{
-			throw new IOException("Neither CODEX_HOME nor " + homeVariable + " is set, so the Codex home that holds " +
-				"the rollouts cannot be located. Set " + homeVariable + ", or set CODEX_HOME to the Codex home.");
-		}
-		return Path.of(configured.strip());
 	}
 
 	/**

@@ -47,8 +47,75 @@ public final class CodexGetHistoryTest
 				execute(scope, Map.of("CODEX_HOME", codexHome.toString()),
 				new String[]{threadId, "analyze"}, InputStream.nullInputStream());
 
-			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
+			requireThat(result, "result").contains("transcript=" + transcript.toRealPath()).
 				contains("records=1");
+		}
+	}
+
+	/**
+	 * Verifies that a {@code CODEX_HOME} that is a symbolic link finds the rollouts in the folder that it links to, as
+	 * Codex does, and names that folder in the result.
+	 */
+	@Test
+	public void followsCodexHomeLink() throws IOException
+	{
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
+			Path codexHome = Files.createDirectory(directory.resolve("target"));
+			Path link = Files.createSymbolicLink(directory.resolve("link"), codexHome);
+			String threadId = UUID.randomUUID().toString();
+			Path transcript = Files.createDirectories(codexHome.resolve("sessions/2026/08/14")).resolve(
+				"rollout-2026-08-14T01-00-00-" + threadId + ".jsonl");
+			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
+
+			String result = CodexGetHistorySecrets.getCodexGetHistoryAccess().
+				execute(scope, Map.of("CODEX_HOME", link.toString()),
+				new String[]{threadId, "analyze"}, InputStream.nullInputStream());
+
+			requireThat(result, "result").contains("transcript=" + transcript.toRealPath());
+		}
+	}
+
+	/**
+	 * Verifies that a blank {@code CODEX_HOME} is not replaced by the default home, because Codex reads a value that
+	 * is not empty as the name of its home, and that the refusal names the variable.
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*CODEX_HOME.*")
+	public void rejectsBlankCodexHome() throws IOException
+	{
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
+			String threadId = UUID.randomUUID().toString();
+			Path transcript = Files.createDirectories(home.resolve(".codex/sessions/2026/08/14")).resolve(
+				"rollout-2026-08-14T01-00-00-" + threadId + ".jsonl");
+			Files.writeString(transcript, "{\"type\":\"session_meta\"}\n");
+
+			CodexGetHistorySecrets.getCodexGetHistoryAccess().
+				execute(scope, Map.of("CODEX_HOME", "  ", Platform.current().homeVariable(), home.toString()),
+				new String[]{threadId, "analyze"}, InputStream.nullInputStream());
+		}
+	}
+
+	/**
+	 * Verifies that a {@code CODEX_HOME} naming a folder that does not exist is refused with the reason that Codex
+	 * gives, rather than reporting a missing transcript directory inside it.
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*CODEX_HOME names a folder that does not exist")
+	public void rejectsMissingCodexHome() throws IOException
+	{
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
+
+			CodexGetHistorySecrets.getCodexGetHistoryAccess().
+				execute(scope, Map.of("CODEX_HOME", directory.resolve("missing").toString()),
+				new String[]{UUID.randomUUID().toString(), "analyze"}, InputStream.nullInputStream());
 		}
 	}
 
@@ -75,22 +142,6 @@ public final class CodexGetHistoryTest
 
 			requireThat(result, "result").contains("transcript=" + transcript.toAbsolutePath().normalize()).
 				contains("records=1");
-		}
-	}
-
-	/**
-	 * Verifies the command names both variables when neither {@code CODEX_HOME} nor {@code HOME} locates the Codex home.
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*CODEX_HOME.*HOME.*")
-	public void rejectsMissingCodexHomeAndHome() throws IOException
-	{
-		// Requirement: R-I5
-		try (TestJvmScope scope = new TestJvmScope())
-		{
-			CodexGetHistorySecrets.getCodexGetHistoryAccess().
-				execute(scope, Map.of(), new String[]{UUID.randomUUID().toString(), "analyze"},
-				InputStream.nullInputStream());
 		}
 	}
 

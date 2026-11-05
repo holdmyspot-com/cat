@@ -176,8 +176,7 @@ public final class RolloutInterruptSignalTest
 	}
 
 	/**
-	 * Verifies that the rollout is found as {@code sessions/**}{@code /rollout-*-<thread>.jsonl} below the Codex home,
-	 * and that the Codex home defaults to {@code .codex} below the home directory.
+	 * Verifies that the rollout is found as {@code sessions/**}{@code /rollout-*-<thread>.jsonl} below the Codex home.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -188,11 +187,7 @@ public final class RolloutInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
-			Path codexHome = RolloutInterruptSignal.codexHome(home, null);
-			requireThat(codexHome, "default").isEqualTo(home.resolve(".codex"));
-			requireThat(RolloutInterruptSignal.codexHome(home, ""), "blank").isEqualTo(codexHome);
-			Path custom = Path.of("/custom").toAbsolutePath();
-			requireThat(RolloutInterruptSignal.codexHome(home, custom.toString()), "configured").isEqualTo(custom);
+			Path codexHome = home.resolve(".codex");
 
 			Path day = Files.createDirectories(codexHome.resolve("sessions").resolve("2026").resolve("10").
 				resolve("01"));

@@ -2,7 +2,6 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.optimizer.adapter.LogInterruptSignal;
 
 import java.io.IOException;
@@ -41,26 +40,9 @@ public final class RolloutInterruptSignal extends LogInterruptSignal
 	}
 
 	/**
-	 * Returns the directory that holds Codex's configuration and rollouts.
-	 *
-	 * @param home the user's home directory
-	 * @param configured the value of {@code CODEX_HOME}, or {@code null} or blank if it is not set. It defaults to
-	 *   {@code .codex} below {@code home}.
-	 * @return the Codex home directory
-	 * @throws NullPointerException if {@code home} is null
-	 */
-	public static Path codexHome(Path home, String configured)
-	{
-		requireThat(home, "home").isNotNull();
-		if (configured == null || configured.isBlank())
-			return home.resolve(CodexInstallation.defaultHome());
-		return Path.of(configured);
-	}
-
-	/**
 	 * Finds the rollout of a thread.
 	 *
-	 * @param codexHome the directory that {@link #codexHome(Path, String)} returned
+	 * @param codexHome Codex's home directory
 	 * @param threadId the host thread's identifier, from {@code CODEX_THREAD_ID}
 	 * @return the rollout, or empty if none exists for the thread. If several do, the one whose name sorts last,
 	 *   which is the most recently started.

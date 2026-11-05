@@ -4,6 +4,7 @@ import com.holdmyspot.cat.codex.optimizer.CodexOptimizerCommandScope;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Map;
@@ -23,9 +24,10 @@ public interface CodexOptimizerCommandScopeAccess
 	 * @param waiting how the process waits between the attempts of a retried operation
 	 * @return the scope
 	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if Codex's home cannot be located as Codex locates it
 	 */
 	CodexOptimizerCommandScope newCodexOptimizerCommandScope(Map<String, String> environment, Path home,
-		Path directory, Path artifact, Waiting waiting);
+		Path directory, Path artifact, Waiting waiting) throws IOException;
 
 	/**
 	 * Returns the signal that reports the host user's interrupts. The host session's rollout is located when the

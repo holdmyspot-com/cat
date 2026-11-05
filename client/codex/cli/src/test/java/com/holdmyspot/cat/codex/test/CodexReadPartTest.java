@@ -270,6 +270,31 @@ public final class CodexReadPartTest
 	}
 
 	/**
+	 * Verifies that a Codex thread whose {@code CODEX_HOME} names no folder has no configured limit, because Codex
+	 * finds no home there, so a long file is printed in the default budget's parts.
+	 *
+	 * @throws IOException if the file cannot be written
+	 */
+	@Test
+	public void missingCodexHomeLeavesDefaultBudget() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("read-part-"));
+			Path file = savedOutput(directory, "x".repeat(60_000) + "\n");
+			Map<String, String> missing = Map.of("CODEX_THREAD_ID", "thread", "CODEX_HOME",
+				directory.resolve("missing").toString(), "TMPDIR", directory.toString());
+			Path codexHome = Files.createDirectory(directory.resolve("codex"));
+			Files.writeString(codexHome.resolve("config.toml"), "tool_output_token_limit = 300\n");
+			Map<String, String> configured = Map.of("CODEX_THREAD_ID", "thread", "CODEX_HOME", codexHome.toString(),
+				"TMPDIR", directory.toString());
+
+			requireThat(readPart(missing, file.toString()).output().length(), "missingHome").isGreaterThan(
+				readPart(configured, file.toString()).output().length());
+		}
+	}
+
+	/**
 	 * Verifies that outside a Codex thread there is no budget, so a long file is printed in one part.
 	 *
 	 * @throws IOException if the file cannot be written

@@ -46,7 +46,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		{
 			@Override
 			public CodexOptimizerCommandScope newCodexOptimizerCommandScope(Map<String, String> environment, Path home,
-				Path directory, Path artifact, Waiting waiting)
+				Path directory, Path artifact, Waiting waiting) throws IOException
 			{
 				return new CodexOptimizerCommandScope(environment, home, directory, artifact, waiting);
 			}
@@ -94,14 +94,15 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param artifact    the complete Codex artifact that nested sessions install
 	 * @param waiting     how the process waits between the attempts of a retried operation
 	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if Codex's home cannot be located as Codex locates it
 	 */
 	CodexOptimizerCommandScope(Map<String, String> environment, Path home, Path directory, Path artifact, Waiting waiting)
+		throws IOException
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
-		Path configurationDirectory = RolloutInterruptSignal.codexHome(home,
-			environment.get("CODEX_HOME"));
+		Path configurationDirectory = CodexInstallation.resolveHome(environment, home, directory.toAbsolutePath());
 		super(Harness.CODEX, CodexSessionHarness.HARNESS, environment, configurationDirectory, directory,
 			LOADER_CONFIGURATION, waiting);
 		this.environment = Map.copyOf(environment);

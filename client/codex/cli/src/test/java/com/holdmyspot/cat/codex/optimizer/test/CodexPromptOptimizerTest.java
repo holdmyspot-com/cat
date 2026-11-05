@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.optimizer.CodexOptimizerCommandScope;
 import com.holdmyspot.cat.codex.optimizer.CodexPromptOptimizer;
+import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
@@ -79,8 +80,10 @@ public final class CodexPromptOptimizerTest
 	 * @param args the arguments
 	 * @param output receives the output
 	 * @return the exit code
+	 * @throws IOException if the scope cannot be created
 	 */
 	private static int run(Setup setup, Map<String, String> environment, List<String> args, StringBuilder output)
+		throws IOException
 	{
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		int exit;
@@ -182,6 +185,35 @@ public final class CodexPromptOptimizerTest
 			HostInterruptSignal signal = CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().interrupts(
 				Map.of("CODEX_THREAD_ID", "session-1"), configuration, Clock.systemUTC());
 			requireThat(signal.isInterruptedAfter(Instant.EPOCH), "interrupted").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a {@code CODEX_HOME} that names no folder is refused, as is a blank one, which Codex reads as the
+	 * name of a folder rather than as the default home.
+	 *
+	 * @throws IOException if a file cannot be written
+	 */
+	@Test
+	public void refusesHostCodexHomeThatCodexRefuses() throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			CodexOptimizerCommandScopeAccess access = CodexOptimizerCommandScopeSecrets.
+				getCodexOptimizerCommandScopeAccess();
+			for (String value : List.of("  ", setup.home().resolve("missing").toString()))
+			{
+				try (CodexOptimizerCommandScope _ = access.newCodexOptimizerCommandScope(Map.of("CODEX_HOME", value),
+					setup.home(), setup.root(), setup.home().resolve("artifact"), Yielding.waiting()))
+				{
+					throw new AssertionError("A scope was created for CODEX_HOME \"" + value + "\"");
+				}
+				catch (IOException e)
+				{
+					requireThat(e.getMessage(), "message").contains("CODEX_HOME");
+				}
+			}
 		}
 	}
 
