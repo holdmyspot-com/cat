@@ -492,18 +492,18 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			String launcher = installer(home, VERSION).toString();
+			List<String> launcher = launcherCommand(installer(home, VERSION));
 			provider().installPermissions(home, installer(home, VERSION), replacer());
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 
-			requireThat(decisions(content, List.of(launcher, "install", "--harness", "claude")), "otherHarness").
+			requireThat(decisions(content, command(launcher, "install", "--harness", "claude")), "otherHarness").
 				isEmpty();
-			requireThat(decisions(content, List.of(launcher, "install", "--harness", "codex")), "ownHarness").
+			requireThat(decisions(content, command(launcher, "install", "--harness", "codex")), "ownHarness").
 				isEqualTo(List.of("allow"));
-			requireThat(decisions(content, List.of(launcher, "install", "--harness", "codex", "v1.2")),
+			requireThat(decisions(content, command(launcher, "install", "--harness", "codex", "v1.2")),
 				"namedRelease").isEqualTo(List.of("allow"));
-			requireThat(decisions(content, List.of(launcher, "update", "--harness", "codex")), "update").isEmpty();
-			requireThat(decisions(content, List.of(launcher, "uninstall", "--harness", "codex")), "uninstall").
+			requireThat(decisions(content, command(launcher, "update", "--harness", "codex")), "update").isEmpty();
+			requireThat(decisions(content, command(launcher, "uninstall", "--harness", "codex")), "uninstall").
 				isEqualTo(List.of("prompt"));
 		}
 	}
@@ -520,7 +520,7 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			String launcher = installer(home, VERSION).toString();
+			List<String> launcher = launcherCommand(installer(home, VERSION));
 			provider().installPermissions(home, installer(home, VERSION), replacer());
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 			String other = home.resolveSibling("other-home").toString();
@@ -530,7 +530,7 @@ public final class IntegrationTest
 			{
 				for (List<String> release : List.of(List.<String>of(), List.of("v1.2")))
 				{
-					List<String> command = new ArrayList<>(List.of(launcher));
+					List<String> command = new ArrayList<>(launcher);
 					command.addAll(options);
 					command.addAll(List.of("install", "--harness", "codex"));
 					command.addAll(release);
@@ -771,7 +771,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path file = home.resolve("rules/cat.rules");
-			write(file, template.formatted(home.resolve("plugins/cache/cat/cat")));
+			write(file, template.formatted(literal(home.resolve("plugins/cache/cat/cat"))));
 
 			List<String> notices = provider().removeRunnerExceptions(home, replacer());
 
@@ -869,7 +869,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path file = home.resolve("rules/cat.rules");
-			String content = template.formatted(home.resolve("plugins/cache/cat/cat"));
+			String content = template.formatted(literal(home.resolve("plugins/cache/cat/cat")));
 			write(file, content);
 
 			List<String> notices = provider().removeRunnerExceptions(home, replacer());
@@ -953,14 +953,14 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Returns the rules file that CAT writes for a POSIX launcher.
+	 * Returns the rules file that CAT writes for a launcher on the platform that runs the test.
 	 *
 	 * @param launcher the installer launcher in the version folder
 	 * @return the file content
 	 */
 	private static String rules(Path launcher)
 	{
-		String quoted = MAPPER.writeValueAsString(launcher.toString());
+		String quoted = quotedCommand(launcher);
 		return """
 			# Written by CAT's installer, which replaces or deletes this file. Do not edit it.
 			prefix_rule(pattern=[%1$s, "install", "--harness", "codex"], decision="allow")
@@ -970,15 +970,15 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Returns the {@code rules/cat-updater.rules} file that CAT wrote for a POSIX launcher before the installer was
-	 * renamed.
+	 * Returns the {@code rules/cat-updater.rules} file that CAT wrote for a launcher on the platform that runs the test
+	 * before the installer was renamed.
 	 *
 	 * @param launcher the launcher of the earlier layout
 	 * @return the file content
 	 */
 	private static String updaterRules(Path launcher)
 	{
-		String quoted = MAPPER.writeValueAsString(launcher.toString());
+		String quoted = quotedCommand(launcher);
 		String status = "prefix_rule(pattern=[" + quoted + ", \"status\"]";
 		return rules(launcher).replace("CAT's installer", "CAT's updater").replace(status, "prefix_rule(pattern=[" +
 			quoted + ", \"update\", \"--harness\", \"codex\"], decision=\"allow\")\n" + status);
@@ -993,10 +993,24 @@ public final class IntegrationTest
 	 */
 	private static String withRollback(String rules, Path launcher)
 	{
-		String quoted = MAPPER.writeValueAsString(launcher.toString());
+		String quoted = quotedCommand(launcher);
 		String uninstall = "prefix_rule(pattern=[" + quoted + ", \"uninstall\"";
 		return rules.replace(uninstall, "prefix_rule(pattern=[" + quoted +
 			", \"rollback\", \"--harness\", \"codex\"], decision=\"prompt\")\n" + uninstall);
+	}
+
+	/**
+	 * Returns a command that runs a launcher with arguments.
+	 *
+	 * @param launcher  the tokens that run the launcher
+	 * @param arguments the arguments
+	 * @return the command's tokens
+	 */
+	private static List<String> command(List<String> launcher, String... arguments)
+	{
+		List<String> command = new ArrayList<>(launcher);
+		command.addAll(List.of(arguments));
+		return command;
 	}
 
 	/**
@@ -1022,7 +1036,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Returns the installer launcher of a version folder.
+	 * Returns the installer launcher of a version folder, as the platform that runs the test names it:
+	 * {@code bin/installer.ps1} on Windows and {@code bin/installer} elsewhere.
 	 *
 	 * @param home    the Codex home
 	 * @param version the plugin version
@@ -1030,7 +1045,54 @@ public final class IntegrationTest
 	 */
 	private static Path installer(Path home, String version)
 	{
-		return home.resolve("plugins/cache/cat/cat").resolve(version).resolve("bin/installer");
+		String name = "bin/installer";
+		if (Platform.current().isWindows())
+			name += ".ps1";
+		return home.resolve("plugins/cache/cat/cat").resolve(version).resolve(name);
+	}
+
+	/**
+	 * Returns the tokens of the command that runs a launcher on the platform that runs the test.
+	 *
+	 * @param launcher the launcher
+	 * @return on Windows, PowerShell's fixed non-interactive form for the launcher script; elsewhere, the launcher
+	 */
+	private static List<String> launcherCommand(Path launcher)
+	{
+		List<String> command = new ArrayList<>();
+		if (Platform.current().isWindows())
+		{
+			command.addAll(List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+				"-File"));
+		}
+		command.add(launcher.toString());
+		return command;
+	}
+
+	/**
+	 * Returns the tokens of the command that runs a launcher, as a rule's pattern lists them.
+	 *
+	 * @param launcher the launcher
+	 * @return the string literals of {@link #launcherCommand(Path)}, separated by {@code ", "}
+	 */
+	private static String quotedCommand(Path launcher)
+	{
+		List<String> quoted = new ArrayList<>();
+		for (String token : launcherCommand(launcher))
+			quoted.add(MAPPER.writeValueAsString(token));
+		return String.join(", ", quoted);
+	}
+
+	/**
+	 * Returns a folder's path as the content of a rule's string literal, whose backslashes are escaped.
+	 *
+	 * @param folder the folder
+	 * @return the escaped path
+	 */
+	private static String literal(Path folder)
+	{
+		String quoted = MAPPER.writeValueAsString(folder.toString());
+		return quoted.substring(1, quoted.length() - 1);
 	}
 
 	/**

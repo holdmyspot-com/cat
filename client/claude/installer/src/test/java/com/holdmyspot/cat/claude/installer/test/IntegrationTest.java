@@ -343,7 +343,7 @@ public final class IntegrationTest
 			Map<String, List<String>> added = integration().installPermissions(home, launcher,
 				adding.replacer());
 
-			requireThat(added, "added").isEqualTo(posixEntries(launcher));
+			requireThat(added, "added").isEqualTo(platformEntries(launcher));
 			requireThat(Files.readString(settings), "settings").contains("excludedCommands");
 			requireThat(adding.pauses(), "addingPauses").isEqualTo(1);
 			TransientRefusal removing = new TransientRefusal(settings);
@@ -475,7 +475,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 			Path launcher = launcher(home);
-			Map<String, List<String>> expected = posixEntries(launcher);
+			Map<String, List<String>> expected = platformEntries(launcher);
 
 			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
@@ -515,7 +515,7 @@ public final class IntegrationTest
 
 			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
-			String quoted = ShellQuoting.posix(launcher.toString());
+			String quoted = launcherCommand(launcher);
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
 			requireThat(allowed, "allowed").isEqualTo(List.of(
 				"Bash(" + quoted + " install --harness claude)",
@@ -551,7 +551,7 @@ public final class IntegrationTest
 
 			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
 
-			String quoted = ShellQuoting.posix(launcher.toString());
+			String quoted = launcherCommand(launcher);
 			String installWildcard = pattern(quoted + " install --harness claude");
 			List<String> excluded = added.get(SETTINGS_KEY_EXCLUDED);
 			List<String> wildcards = excluded.stream().filter(entry -> entry.contains("*")).toList();
@@ -577,14 +577,14 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 			Path earlier = launcher(home);
-			Path next = new ClaudeInstallation(home).versionFolder(NEW_VERSION).resolve("bin/installer");
+			Path next = launcher(home, NEW_VERSION);
 			Integration integration = integration();
 			Map<String, List<String>> recorded = integration.installPermissions(home, earlier, replacer());
 
 			integration.removePermissions(home, recorded, replacer());
 			Map<String, List<String>> added = integration.installPermissions(home, next, replacer());
 
-			requireThat(added, "added").isEqualTo(posixEntries(next));
+			requireThat(added, "added").isEqualTo(platformEntries(next));
 			String settings = Files.readString(home.resolve("settings.json"));
 			requireThat(settings, "settings").doesNotContain(earlier.toString());
 			for (List<String> entries : added.values())
@@ -850,7 +850,7 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 			Path launcher = launcher(home);
-			Map<String, List<String>> expected = posixEntries(launcher);
+			Map<String, List<String>> expected = platformEntries(launcher);
 			String existing = expected.get(SETTINGS_KEY_ALLOW).getFirst();
 			Path settings = Files.writeString(home.resolve("settings.json"), "{\"model\":\"opus\"," +
 				"\"permissions\":{\"allow\":[\"Bash(ls)\"," + json(existing) + "],\"deny\":[\"Read(.env)\"]}," +
@@ -1215,15 +1215,60 @@ public final class IntegrationTest
 	 */
 	private static Map<String, List<String>> posixEntries(Path launcher)
 	{
-		// Claude's wildcard classification ignores shell quotes, so a literal star outside the quoted path is escaped.
-		String quoted = ShellQuoting.posix(launcher.toString()).replace("*", "'\\*'");
-		String install = quoted + " install --harness claude";
-		List<String> excluded = List.of(install, install + " latest", pattern(install), quoted + " status",
-			quoted + " status --harness claude", quoted + " uninstall --harness claude",
-			quoted + " uninstall --harness claude --delete-data");
+		return entries(posixCommand(launcher));
+	}
+
+	/**
+	 * Returns the entries that the launcher of the platform that runs the test receives.
+	 *
+	 * @param launcher the launcher's absolute path
+	 * @return the entries keyed as {@link HarnessIntegration#installPermissions} returns them
+	 */
+	private static Map<String, List<String>> platformEntries(Path launcher)
+	{
+		return entries(launcherCommand(launcher));
+	}
+
+	/**
+	 * Returns the entries for a launcher command.
+	 *
+	 * @param command the shell text that runs the launcher
+	 * @return the entries keyed as {@link HarnessIntegration#installPermissions} returns them
+	 */
+	private static Map<String, List<String>> entries(String command)
+	{
+		String install = command + " install --harness claude";
+		List<String> excluded = List.of(install, install + " latest", pattern(install), command + " status",
+			command + " status --harness claude", command + " uninstall --harness claude",
+			command + " uninstall --harness claude --delete-data");
 		List<String> allowed = List.of("Bash(" + install + ")", "Bash(" + pattern(install) + ")",
-			"Bash(" + quoted + " status)", "Bash(" + quoted + " status --harness claude)");
+			"Bash(" + command + " status)", "Bash(" + command + " status --harness claude)");
 		return Map.of(SETTINGS_KEY_EXCLUDED, excluded, SETTINGS_KEY_ALLOW, allowed);
+	}
+
+	/**
+	 * Returns the shell text that runs a POSIX launcher.
+	 *
+	 * @param launcher the launcher's absolute path
+	 * @return the quoted path
+	 */
+	private static String posixCommand(Path launcher)
+	{
+		// Claude's wildcard classification ignores shell quotes, so a literal star outside the quoted path is escaped.
+		return ShellQuoting.posix(launcher.toString()).replace("*", "'\\*'");
+	}
+
+	/**
+	 * Returns the shell text that runs a launcher on the platform that runs the test.
+	 *
+	 * @param launcher the launcher's absolute path
+	 * @return on Windows, PowerShell's fixed non-interactive form for the launcher script; elsewhere, the quoted path
+	 */
+	private static String launcherCommand(Path launcher)
+	{
+		if (Platform.current().isWindows())
+			return "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher + "\"";
+		return posixCommand(launcher);
 	}
 
 	/**
@@ -1292,14 +1337,31 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Returns the POSIX installer launcher in a configuration directory's version folder of {@link #VERSION}.
+	 * Returns the installer launcher in a configuration directory's version folder of {@link #VERSION}, as the
+	 * platform that runs the test names it.
 	 *
 	 * @param home the configuration directory
 	 * @return the launcher's absolute path
 	 */
 	private static Path launcher(Path home)
 	{
-		return new ClaudeInstallation(home).versionFolder(VERSION).resolve("bin/installer");
+		return launcher(home, VERSION);
+	}
+
+	/**
+	 * Returns the installer launcher in a configuration directory's version folder, as the platform that runs the
+	 * test names it: {@code bin/installer.ps1} on Windows and {@code bin/installer} elsewhere.
+	 *
+	 * @param home    the configuration directory
+	 * @param version the plugin version
+	 * @return the launcher's absolute path
+	 */
+	private static Path launcher(Path home, PluginVersion version)
+	{
+		String name = "bin/installer";
+		if (Platform.current().isWindows())
+			name += ".ps1";
+		return new ClaudeInstallation(home).versionFolder(version).resolve(name);
 	}
 
 	/**

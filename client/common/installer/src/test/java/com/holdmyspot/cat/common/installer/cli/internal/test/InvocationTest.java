@@ -638,8 +638,11 @@ public final class InvocationTest
 			// The fixture plugin does not describe how to train its startup cache
 			requireThat(result.path("aot_cache").isBoolean(), "aotCacheReported").isTrue();
 			requireThat(result.path("aot_cache").booleanValue(), "aotCache").isFalse();
-			requireThat(result.path("launcher").stringValue(), "launcher").
-				isEqualTo(versionFolder.resolve("bin/installer").toString());
+			// Windows runs the launcher's PowerShell script
+			Path launcher = versionFolder.resolve("bin/installer");
+			if (Platform.current().isWindows())
+				launcher = launcher.resolveSibling("installer.ps1");
+			requireThat(result.path("launcher").stringValue(), "launcher").isEqualTo(launcher.toString());
 			requireThat(result.path("permissions").path("settings.json").get(0).stringValue(), "permission").
 				isEqualTo("entry");
 		}

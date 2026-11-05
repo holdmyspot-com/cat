@@ -22,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -194,7 +193,15 @@ public final class LifecycleSkillsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-lifecycle-permissions-"));
+			// The skills name the launcher as the platform that runs the test does
 			Path launcher = home.resolve("plugins/cat/1.0+b0123456789ab/bin/installer");
+			String launcherCommand = launcher.toString();
+			if (Platform.current().isWindows())
+			{
+				launcher = launcher.resolveSibling("installer.ps1");
+				launcherCommand = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" +
+					launcher + "\"";
+			}
 			HarnessIntegration integration = ServiceLoader.load(HarnessIntegration.class).stream().
 				map(ServiceLoader.Provider::get).filter(provider -> provider.harness().equals(harness)).findFirst().
 				orElseThrow();
@@ -209,7 +216,7 @@ public final class LifecycleSkillsTest
 				Matcher matcher = LAUNCHER_COMMAND.matcher(skillBody(skill));
 				while (matcher.find())
 				{
-					commands.add(launcher + " " + matcher.group(1).replace("<h>", harness).
+					commands.add(launcherCommand + " " + matcher.group(1).replace("<h>", harness).
 						replace("<tag>", "v1.1"));
 				}
 			}
@@ -273,7 +280,8 @@ public final class LifecycleSkillsTest
 	/**
 	 * Returns whether a Claude Code command pattern matches a command.
 	 *
-	 * @param pattern the pattern, a command or {@code <prefix> *}
+	 * @param pattern the pattern, a command or {@code <prefix> *}, in whose prefix a backslash makes the character
+	 *                that follows it literal
 	 * @param command the command
 	 * @return true if the pattern names the command or a prefix of it followed by more arguments
 	 */
@@ -281,7 +289,7 @@ public final class LifecycleSkillsTest
 	{
 		if (pattern.endsWith(" *"))
 		{
-			String prefix = pattern.substring(0, pattern.length() - 1);
+			String prefix = pattern.substring(0, pattern.length() - 1).replaceAll("\\\\(.)", "$1");
 			return command.startsWith(prefix) && command.length() > prefix.length();
 		}
 		return pattern.equals(command);
@@ -292,12 +300,20 @@ public final class LifecycleSkillsTest
 	 *
 	 * @param rules   the file's content
 	 * @param command the command
-	 * @return true if the tokens of a rule's pattern start the command's tokens
+	 * @return true if the tokens of a rule's pattern start the command's tokens, without the double quotes that the
+	 * 	shell removes
 	 * @throws IOException if a rule's pattern is malformed
 	 */
 	private static boolean hasPrefixRule(String rules, String command) throws IOException
 	{
-		List<String> tokens = Arrays.asList(command.split(" "));
+		List<String> tokens = new ArrayList<>();
+		for (String token : command.split(" "))
+		{
+			if (token.length() >= 2 && token.startsWith("\"") && token.endsWith("\""))
+				tokens.add(token.substring(1, token.length() - 1));
+			else
+				tokens.add(token);
+		}
 		Matcher matcher = PREFIX_RULE.matcher(rules);
 		while (matcher.find())
 		{
