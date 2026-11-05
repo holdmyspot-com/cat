@@ -1,7 +1,7 @@
 package com.holdmyspot.cat.common.runner.policy.test;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
 import java.io.IOException;
@@ -49,7 +49,7 @@ public final class HarnessProcessesTest
 			Files.write(commandLine, ("claude\0--settings\0" + settings + "\0-p\0").getBytes(StandardCharsets.UTF_8));
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(processFolder);
 
-			Optional<List<String>> arguments = processes.find(processId).flatMap(HarnessProcess::arguments);
+			Optional<List<String>> arguments = processes.find(processId).flatMap(ProcessDescription::arguments);
 
 			requireThat(arguments, "arguments").isEqualTo(Optional.of(List.of("--settings", settings, "-p")));
 		}
@@ -70,7 +70,7 @@ public final class HarnessProcessesTest
 			long processId = ProcessHandle.current().pid();
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(processFolder);
 
-			Optional<List<String>> arguments = processes.find(processId).flatMap(HarnessProcess::arguments);
+			Optional<List<String>> arguments = processes.find(processId).flatMap(ProcessDescription::arguments);
 
 			requireThat(arguments, "arguments").isEmpty();
 		}

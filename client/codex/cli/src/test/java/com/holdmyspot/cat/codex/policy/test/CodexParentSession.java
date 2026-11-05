@@ -3,7 +3,7 @@ package com.holdmyspot.cat.codex.policy.test;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSession;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
-import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
@@ -154,12 +154,12 @@ public final class CodexParentSession
 	 */
 	public ParentPolicy readThread(Optional<String> threadId, String... arguments) throws IOException, PolicyRefusal
 	{
-		List<HarnessProcess> ancestors = List.of(
-			new HarnessProcess(101, Optional.empty(), Optional.of("/bin/sh"),
+		List<ProcessDescription> ancestors = List.of(
+			new ProcessDescription(101, Optional.empty(), Optional.of("/bin/sh"),
 				Optional.of(List.of("-c", "hook"))),
-			new HarnessProcess(102, Optional.empty(), Optional.of("/opt/codex/vendor/bin/codex"),
+			new ProcessDescription(102, Optional.empty(), Optional.of("/opt/codex/vendor/bin/codex"),
 				Optional.of(List.of(arguments))),
-			new HarnessProcess(103, Optional.empty(), Optional.of("/usr/bin/node"),
+			new ProcessDescription(103, Optional.empty(), Optional.of("/usr/bin/node"),
 				Optional.of(List.of("/opt/codex/bin/codex.js"))));
 		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
 		CodexSession session = new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);

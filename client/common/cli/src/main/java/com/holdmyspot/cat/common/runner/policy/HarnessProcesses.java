@@ -29,7 +29,7 @@ public interface HarnessProcesses
 	 * @return the ancestors of {@code process}, starting with its parent
 	 * @throws NullPointerException if {@code process} is null
 	 */
-	static List<HarnessProcess> ancestorsOf(ProcessHandle process)
+	static List<ProcessDescription> ancestorsOf(ProcessHandle process)
 	{
 		requireThat(process, "process").isNotNull();
 		return SystemProcesses.current().ancestryOf(process);
@@ -41,5 +41,5 @@ public interface HarnessProcesses
 	 * @param processId the process ID
 	 * @return the process, or empty if no process with that ID is running
 	 */
-	Optional<HarnessProcess> find(long processId);
+	Optional<ProcessDescription> find(long processId);
 }

@@ -57,7 +57,7 @@ final class SystemProcesses implements HarnessProcesses
 	}
 
 	@Override
-	public Optional<HarnessProcess> find(long processId)
+	public Optional<ProcessDescription> find(long processId)
 	{
 		return ProcessHandle.of(processId).
 			filter(ProcessHandle::isAlive).
@@ -70,9 +70,9 @@ final class SystemProcesses implements HarnessProcesses
 	 * @param process the process
 	 * @return the ancestors of {@code process}, starting with its parent
 	 */
-	List<HarnessProcess> ancestryOf(ProcessHandle process)
+	List<ProcessDescription> ancestryOf(ProcessHandle process)
 	{
-		List<HarnessProcess> ancestors = new ArrayList<>();
+		List<ProcessDescription> ancestors = new ArrayList<>();
 		Optional<ProcessHandle> parent = process.parent();
 		while (parent.isPresent())
 		{
@@ -89,10 +89,10 @@ final class SystemProcesses implements HarnessProcesses
 	 * @param handle the process
 	 * @return the process's description
 	 */
-	private HarnessProcess describe(ProcessHandle handle)
+	private ProcessDescription describe(ProcessHandle handle)
 	{
 		ProcessHandle.Info info = handle.info();
-		return new HarnessProcess(handle.pid(), info.startInstant(), info.command(), arguments(handle, info));
+		return new ProcessDescription(handle.pid(), info.startInstant(), info.command(), arguments(handle, info));
 	}
 
 	/**

@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
-import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -126,7 +126,7 @@ public final class CodexPolicyReader
 	 */
 	private static List<String> codexArguments(CodexSession session) throws PolicyRefusal
 	{
-		for (HarnessProcess process : session.ancestors())
+		for (ProcessDescription process : session.ancestors())
 		{
 			String executable = process.command().orElse("");
 			if (!isCodex(executable))

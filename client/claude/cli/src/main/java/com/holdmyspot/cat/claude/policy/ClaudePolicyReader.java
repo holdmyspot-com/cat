@@ -1,7 +1,7 @@
 package com.holdmyspot.cat.claude.policy;
 
 import com.holdmyspot.cat.common.BoundedInput;
-import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -120,7 +120,7 @@ public final class ClaudePolicyReader
 		throws IOException, PolicyRefusal
 	{
 		long processId = session.processId();
-		HarnessProcess process = processes.find(processId).orElseThrow(() -> new PolicyRefusal("the Claude Code " +
+		ProcessDescription process = processes.find(processId).orElseThrow(() -> new PolicyRefusal("the Claude Code " +
 			"process " + processId + " that the hook environment's CLAUDE_PID names is not running", PROCESS_FIX));
 		Instant start = process.start().orElseThrow(() -> new PolicyRefusal("the operating system does not report " +
 			"when the Claude Code process " + processId + " started, so CAT cannot tell it from a later process " +

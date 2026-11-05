@@ -3,7 +3,7 @@ package com.holdmyspot.cat.claude.policy.test;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
-import com.holdmyspot.cat.common.runner.policy.HarnessProcess;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -159,7 +159,7 @@ final class ClaudeSessionFixture implements AutoCloseable
 		{
 			if (processId != PROCESS_ID || !running)
 				return Optional.empty();
-			return Optional.of(new HarnessProcess(processId, Optional.of(reportedStart),
+			return Optional.of(new ProcessDescription(processId, Optional.of(reportedStart),
 				Optional.of("/usr/local/bin/claude"), Optional.of(arguments)));
 		});
 	}
