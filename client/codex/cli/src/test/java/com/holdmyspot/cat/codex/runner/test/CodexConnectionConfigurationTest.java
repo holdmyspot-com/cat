@@ -290,7 +290,7 @@ public final class CodexConnectionConfigurationTest
 			requireThat(result, "connectionSettings").contains("default_permissions = \"cat-runner\"").
 				contains("openai_base_url").contains("forced_login_method").contains("model =").
 				contains("model_reasoning_effort").doesNotContain("default_permissions = \"cat.client\"").
-				doesNotContain("approval_policy").doesNotContain("plugins").doesNotContain("marketplaces").
+				doesNotContain("approval_policy").doesNotContain("[plugins.").doesNotContain("marketplaces").
 				doesNotContain("mcp_servers");
 		}
 	}
@@ -729,6 +729,43 @@ public final class CodexConnectionConfigurationTest
 			requireThat(filesystem.path(secret.toString()).asString(), "secret").isEqualTo("deny");
 			requireThat(configuration.path("sandbox_workspace_write").path("writable_roots").toString(),
 				"writableRoots").doesNotContain(toml(droppedCache));
+		}
+	}
+
+	/**
+	 * Verifies that the session's commands may write its isolated home, except the files its own Codex app server
+	 * executes or trusts: the configuration, the hooks file beside it, and the plugin cache that holds the hook
+	 * scripts. The session still writes the rest of its home and its temporary directory.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void codexChildCannotChangeItsHooks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trusted-files-")).toRealPath();
+			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path home = runFolder.resolve("home");
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(runFolder, List.of(),
+				List.of(), Set.of()));
+			Path destination = home.resolve("config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy);
+
+			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("filesystem");
+			requireThat(filesystem.path(home.toString()).asString(), "home").isEqualTo("write");
+			requireThat(filesystem.path(home.resolve("config.toml").toString()).asString(), "configuration").
+				isEqualTo("read");
+			requireThat(filesystem.path(home.resolve("hooks.json").toString()).asString(), "hooks").
+				isEqualTo("read");
+			requireThat(filesystem.path(home.resolve("plugins").toString()).asString(), "plugins").
+				isEqualTo("read");
+			requireThat(filesystem.path(":tmpdir").asString(), "temporaryDirectory").isEqualTo("write");
+			requireThat(filesystem.has(home.resolve("outputs").toString()), "runOutputs").isFalse();
 		}
 	}
 

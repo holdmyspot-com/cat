@@ -792,7 +792,9 @@ public final class CodexConnectionConfiguration
 	 * <p>
 	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, so the profile carries the session's
 	 * whole sandbox policy: the policy's write denials stay readable only, its read denials that exist are denied,
-	 * and its network rules apply, as {@link #appendNetwork(StringBuilder, Platform, ChildPolicy)} renders them.
+	 * and its network rules apply, as {@link #appendNetwork(StringBuilder, Platform, ChildPolicy)} renders them. The
+	 * files that the session's own Codex app server executes or trusts inside the home stay read-only to the commands,
+	 * as {@link #addIsolatedHomeProtections(Map, Path)} describes.
 	 *
 	 * @param configuration      the isolated configuration being assembled
 	 * @param isolatedHome       the fresh runtime home that the runner owns
@@ -823,6 +825,7 @@ public final class CodexConnectionConfiguration
 		filesystem.put(TEMPORARY_DIRECTORY, "write");
 		for (Path directory : writable)
 			filesystem.put(toml(directory), "write");
+		addIsolatedHomeProtections(filesystem, isolatedHome);
 		addProjectGitPermissions(filesystem, project, platform);
 		for (Path denial : policy.writeDenials())
 			filesystem.put(toml(denial), "read");
@@ -877,6 +880,27 @@ public final class CodexConnectionConfiguration
 		for (String host : new TreeSet<>(policy.hosts()))
 			domains.add('"' + toml(host) + "\" = \"allow\"");
 		configuration.append(domains).append(System.lineSeparator());
+	}
+
+	/**
+	 * Makes read-only the files that the session's own Codex app server executes or trusts inside its isolated home,
+	 * while leaving the rest of the home writable.
+	 * <p>
+	 * The session's commands may write the home so that the harness and its tools keep their scratch state, but they
+	 * may not rewrite the configuration, the hooks file beside it, or the plugin cache that holds the hook scripts.
+	 * The app server reads a hook's declaration and its approval but never its script, so a command that rewrote the
+	 * script would have the app server run the new program outside the command sandbox. The runner writes these files
+	 * before the session starts, from outside the command sandbox, so making them read-only to the commands leaves the
+	 * run's setup unaffected. A read entry also forbids creating the path, so a command cannot plant a user-level
+	 * {@code hooks.json} that Codex would trust without an approval.
+	 *
+	 * @param filesystem   the runner profile's filesystem entries, by TOML-escaped path
+	 * @param isolatedHome the fresh runtime home that the runner owns
+	 */
+	private static void addIsolatedHomeProtections(Map<String, String> filesystem, Path isolatedHome)
+	{
+		for (String trusted : List.of("config.toml", "hooks.json", "plugins"))
+			filesystem.put(toml(isolatedHome.resolve(trusted)), "read");
 	}
 
 	/**
