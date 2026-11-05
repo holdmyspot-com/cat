@@ -77,7 +77,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-response-permissions-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-response-permissions-")).toRealPath();
 			Path destination = root.resolve("isolated/settings.json");
 			Path launcher = root.resolve("artifact with spaces/bin/request-session");
 			Path responses = root.resolve("responses");
@@ -192,7 +192,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-network-policy-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-network-policy-")).toRealPath();
 			Path source = root.resolve("settings.json");
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
@@ -334,7 +334,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-sandboxed-commands-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-sandboxed-commands-")).toRealPath();
 			Path source = root.resolve("settings.json");
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
@@ -387,7 +387,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-home-policy-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-home-policy-")).toRealPath();
 			Path destination = root.resolve("isolated/.claude/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 			Path claudeHome = claudeTemporaryDirectory.resolve("home");
@@ -414,7 +414,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-worktree-policy-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-worktree-policy-")).toRealPath();
 			Path destination = root.resolve("isolated/.claude/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 			Path claudeHome = claudeTemporaryDirectory.resolve("home");
@@ -446,7 +446,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-denied-reads-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-denied-reads-")).toRealPath();
 			Path source = root.resolve("settings.json");
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
@@ -511,7 +511,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-denied-reads-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-denied-reads-")).toRealPath();
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
@@ -541,7 +541,7 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-allow-read-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-allow-read-")).toRealPath();
 			Path source = root.resolve("settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");

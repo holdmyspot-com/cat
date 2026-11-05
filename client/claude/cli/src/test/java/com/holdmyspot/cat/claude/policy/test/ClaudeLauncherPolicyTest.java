@@ -7,6 +7,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeSessionLauncherCli;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import java.io.IOException;
 import java.time.Instant;
 import org.testng.annotations.Test;
@@ -44,7 +45,13 @@ public final class ClaudeLauncherPolicyTest
 			requireThat(source.harnessName(), "harnessName").isEqualTo(ClaudePolicyReader.HARNESS_NAME);
 			requireThat(first.sandboxed(), "sandboxed").isTrue();
 			requireThat(first.hosts().allows("api.example.com"), "host").isTrue();
-			requireThat(source.read(), "second").isEqualTo(first);
+			// A later reading names each path by the file that it reaches, such as /private/tmp/claude for /tmp/claude
+			// on macOS
+			ParentPolicy resolvedFirst = new ParentPolicy(first.sandboxed(), RealPaths.resolveAll(first.writeRoots()),
+				RealPaths.resolveAll(first.writeDenials()), RealPaths.resolveAll(first.readDenials()),
+				RealPaths.resolveAll(first.readReallowances()), first.hosts(), first.allowLocalBinding(),
+				RealPaths.resolveAll(first.protectedSources()));
+			requireThat(source.read(), "second").isEqualTo(resolvedFirst);
 
 			fixture.reportedStart = Instant.parse("2026-11-05T13:00:00Z");
 			try

@@ -117,7 +117,7 @@ public final class CodexArtifactTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-installed-"));
+			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-installed-")).toRealPath();
 			Path codexHome = root.resolve("codex home");
 			Path installed = installCodex(root, codexHome, OWN_VERSION);
 
@@ -138,7 +138,7 @@ public final class CodexArtifactTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-build-"));
+			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-build-")).toRealPath();
 			Path codexHome = root.resolve("codex");
 			Path installed = installCodex(root, codexHome, "1.0+bfedcba987654");
 

@@ -63,7 +63,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-session-environment-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-session-environment-")).toRealPath();
 			Path source = root.resolve("settings.json");
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
