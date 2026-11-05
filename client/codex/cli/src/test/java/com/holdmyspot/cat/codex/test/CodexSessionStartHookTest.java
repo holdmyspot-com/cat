@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -897,7 +898,10 @@ public final class CodexSessionStartHookTest
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			harnessEnvironment, workingDirectory, Yielding.waiting(), git);
+			harnessEnvironment, workingDirectory, Yielding.waiting(), git, Platform.current(), List::of, (_, _) ->
+			{
+				throw new AssertionError("The hook started a session launcher");
+			});
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
