@@ -76,10 +76,6 @@ public final class CodexRunner
 	 */
 	static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
 	/**
-	 * The system's shared temporary directory, which the app-server replaces with a private one.
-	 */
-	private static final Path TMP = Path.of("/tmp");
-	/**
 	 * The text of Codex's failure to start a thread when bubblewrap cannot set up the sandbox's loopback interface.
 	 */
 	private static final String SANDBOX_LOOPBACK_FAILURE = "bwrap: loopback: Failed RTM_NEWADDR";
@@ -373,15 +369,15 @@ public final class CodexRunner
 	/**
 	 * Adds to a session's configuration the permission profile that its thread runs under, as
 	 * {@link #addSessionProfile(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess)}
-	 * does, and returns it with the command that starts the session's app-server: under bubblewrap with a private
-	 * {@code /tmp}, as {@link #withPrivateTmp(List, Path, Path)} describes, when the caller's {@code PATH} has
-	 * bubblewrap, or else the app-server command itself.
+	 * does, and returns it with the command that starts the session's app-server.
 	 * <p>
-	 * That bubblewrap also hides from the app-server each directory that
-	 * {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, and reopens inside it the
-	 * session's project and home and its requests directory, if any, for writing and the session's read-only evidence
-	 * for reading only. The permission profile then names neither those directories nor the paths under them, so its
-	 * size does not grow with the number of runs or files beside the evidence.
+	 * When the caller's {@code PATH} has bubblewrap, that command runs the app-server under bubblewrap, as
+	 * {@link #withHiddenDirectories(List, Path, List, List, List)} describes, which hides from the app-server each
+	 * directory that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, and reopens
+	 * inside it the session's project and home and its requests directory, if any, for writing and the session's
+	 * read-only evidence for reading only. The permission profile then names neither those directories nor the paths
+	 * under them, so its size does not grow with the number of runs or files beside the evidence. Otherwise, and when
+	 * it hides nothing, the command is the app-server command itself.
 	 * <p>
 	 * A Linux session whose {@code readOnlyEvidence} lies inside a directory that it is denied, such as the run root,
 	 * cannot start without that bubblewrap, so the method refuses it before it changes the configuration.
@@ -407,40 +403,7 @@ public final class CodexRunner
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess, List<String> appServer) throws IOException
 	{
-		return sessionSandbox(configuration, manager, run, readOnlyEvidence, deniedReads, platform, environment,
-			requestAccess, appServer, TMP);
-	}
-
-	/**
-	 * Returns a session's sandbox as
-	 * {@link #sessionSandbox(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess,
-	 * List)} does, except that the app-server's bubblewrap replaces {@code privateTmp} instead of {@code /tmp} with a
-	 * private, empty directory.
-	 *
-	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
-	 * @param manager          the run manager
-	 * @param run              the session's run
-	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
-	 * @param deniedReads      the files and directories that the caller denies the session reading
-	 * @param platform         the platform that the session runs on
-	 * @param environment      the caller's environment, which names the user's home, harness directories and
-	 *                         {@code PATH}
-	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
-	 * @param appServer        the command that starts the app-server
-	 * @param privateTmp       the existing shared temporary directory that the app-server gets a private copy of
-	 * @return the session's sandbox
-	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
-	 * @throws IOException          if the session runs on Linux, its {@code readOnlyEvidence} lies inside a directory
-	 *                              that it is denied and the caller's {@code PATH} has no bubblewrap; if an evidence
-	 *                              path does not exist, a denied directory cannot be listed, or the configuration
-	 *                              cannot be updated
-	 */
-	public static SessionSandbox sessionSandbox(Path configuration, HarnessRunManager manager, HarnessRun run,
-		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
-		SessionRequestAccess requestAccess, List<String> appServer, Path privateTmp) throws IOException
-	{
 		requireThat(appServer, "appServer").isNotEmpty();
-		requireThat(privateTmp, "privateTmp").isNotNull();
 		requireBubblewrapForEvidence(manager, readOnlyEvidence, deniedReads, platform, environment);
 		String profile = addSessionProfile(configuration, manager, run, readOnlyEvidence, deniedReads, platform,
 			environment, requestAccess);
@@ -451,9 +414,9 @@ public final class CodexRunner
 			run.directory().resolve("home")));
 		if (requestAccess != null)
 			writable.add(requestAccess.requests());
-		List<String> command = withPrivateTmp(appServer, bubblewrap.get(), run.directory(),
+		List<String> command = withHiddenDirectories(appServer, bubblewrap.get(),
 			hiddenDirectories(manager, sessionReadOnly(readOnlyEvidence, requestAccess), deniedReads, platform,
-				environment), writable, sessionReadOnly(readOnlyEvidence, requestAccess), privateTmp);
+				environment), writable, sessionReadOnly(readOnlyEvidence, requestAccess));
 		return new SessionSandbox(profile, command);
 	}
 
@@ -922,123 +885,40 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns a command that runs another command under bubblewrap with a private, empty {@code /tmp}. A Codex sandbox
-	 * hides the directory {@code /tmp/codex-daemon-<uid>} from the commands it runs, and the sandbox helper of an
-	 * app-server started there refuses to start without that directory. The app-server cannot then start a thread that
-	 * denies reads, so a runner started from a sandboxed Codex session could not start its session.
+	 * Returns a command that runs another command under bubblewrap, which replaces each of several directories with an
+	 * empty one and mounts back inside it each path that the command may write or read. The command then sees nothing
+	 * else of those directories, however many files they hold.
 	 *
-	 * @param command the command to run
+	 * @param command    the command to run
 	 * @param bubblewrap the bubblewrap executable
-	 * @param runDirectory the run's directory, which stays visible when it is below {@code /tmp}
-	 * @return the command that runs {@code command} with a private {@code /tmp}
+	 * @param hidden     the existing directories to replace with empty ones, none inside another
+	 * @param writable   the existing paths that the command may read and write; those outside every hidden directory
+	 *                   are left as they are
+	 * @param readOnly   the existing paths that the command may read but not change; those outside every hidden
+	 *                   directory are left as they are
+	 * @return the command that runs {@code command}, or {@code command} itself if {@code hidden} is empty
 	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the real path of a hidden directory or of a path inside one cannot be read
 	 */
-	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory)
-	{
-		return withPrivateTmp(command, bubblewrap, runDirectory, TMP);
-	}
-
-	/**
-	 * Returns a command that runs another command under bubblewrap as {@link #withPrivateTmp(List, Path, Path)} does,
-	 * except that it replaces {@code privateTmp} instead of {@code /tmp} with a private, empty directory.
-	 *
-	 * @param command      the command to run
-	 * @param bubblewrap   the bubblewrap executable
-	 * @param runDirectory the run's directory, which stays visible when it is below {@code privateTmp}
-	 * @param privateTmp   the shared temporary directory that the command gets a private copy of
-	 * @return the command that runs {@code command} with a private {@code privateTmp}
-	 * @throws NullPointerException if any of the arguments are null
-	 */
-	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory,
-		Path privateTmp)
+	public static List<String> withHiddenDirectories(List<String> command, Path bubblewrap, List<Path> hidden,
+		List<Path> writable, List<Path> readOnly) throws IOException
 	{
 		requireThat(command, "command").isNotEmpty();
 		requireThat(bubblewrap, "bubblewrap").isNotNull();
-		requireThat(runDirectory, "runDirectory").isNotNull();
-		requireThat(privateTmp, "privateTmp").isNotNull();
-		Path absoluteTmp = privateTmp.toAbsolutePath().normalize();
-		List<String> wrapped = new ArrayList<>(List.of(bubblewrap.toString(), "--dev-bind", "/", "/", "--tmpfs",
-			absoluteTmp.toString()));
-		Path absoluteRun = runDirectory.toAbsolutePath().normalize();
-		if (absoluteRun.startsWith(absoluteTmp))
-			wrapped.addAll(List.of("--bind", absoluteRun.toString(), absoluteRun.toString()));
-		// Codex dies when bubblewrap does, so stopping the recorded harness process also stops Codex
-		wrapped.addAll(List.of("--die-with-parent", "--"));
-		wrapped.addAll(command);
-		return wrapped;
-	}
-
-	/**
-	 * Returns a command that runs another command under bubblewrap with a private, empty {@code /tmp}, as
-	 * {@link #withPrivateTmp(List, Path, Path)} does, that also replaces each of several directories with an empty one
-	 * and mounts back inside it, and inside the private {@code /tmp}, each path that the command may write or read.
-	 * The command then sees nothing else of those directories, however many files they hold.
-	 *
-	 * @param command      the command to run
-	 * @param bubblewrap   the bubblewrap executable
-	 * @param runDirectory the run's directory, which stays visible when it is below {@code /tmp}
-	 * @param hidden       the existing directories to replace with empty ones, none inside another
-	 * @param writable     the existing paths that the command may read and write; those outside every hidden directory
-	 *                     and outside {@code /tmp}, or inside {@code runDirectory}, are left as they are
-	 * @param readOnly     the existing paths that the command may read but not change; those outside every hidden
-	 *                     directory and outside {@code /tmp}, or inside {@code runDirectory}, are left as they are
-	 * @return the command that runs {@code command}
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the real path of {@code runDirectory}, of a hidden directory or of a path inside
-	 *                              one cannot be read
-	 */
-	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory,
-		List<Path> hidden, List<Path> writable, List<Path> readOnly) throws IOException
-	{
-		return withPrivateTmp(command, bubblewrap, runDirectory, hidden, writable, readOnly, TMP);
-	}
-
-	/**
-	 * Returns a command that runs another command under bubblewrap as
-	 * {@link #withPrivateTmp(List, Path, Path, List, List, List)} does, except that it replaces {@code privateTmp}
-	 * instead of {@code /tmp} with a private, empty directory.
-	 *
-	 * @param command      the command to run
-	 * @param bubblewrap   the bubblewrap executable
-	 * @param runDirectory the run's directory, which stays visible when it is below {@code privateTmp}
-	 * @param hidden       the existing directories to replace with empty ones, none inside another
-	 * @param writable     the existing paths that the command may read and write; those outside every hidden directory
-	 *                     and outside {@code privateTmp}, or inside {@code runDirectory}, are left as they are
-	 * @param readOnly     the existing paths that the command may read but not change; those outside every hidden
-	 *                     directory and outside {@code privateTmp}, or inside {@code runDirectory}, are left as they
-	 *                     are
-	 * @param privateTmp   the shared temporary directory that the command gets a private copy of
-	 * @return the command that runs {@code command}
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the real path of {@code runDirectory}, of a hidden directory or of a path inside
-	 *                              one cannot be read
-	 */
-	public static List<String> withPrivateTmp(List<String> command, Path bubblewrap, Path runDirectory,
-		List<Path> hidden, List<Path> writable, List<Path> readOnly, Path privateTmp) throws IOException
-	{
 		requireThat(hidden, "hidden").isNotNull();
 		requireThat(writable, "writable").isNotNull();
 		requireThat(readOnly, "readOnly").isNotNull();
-		requireThat(runDirectory, "runDirectory").isNotNull();
-		requireThat(privateTmp, "privateTmp").isNotNull();
-
-		// The session's paths below are compared in their real form, so the run directory and the temporary
-		// directory are too. A run directory reached through a symbolic link, such as /var/folders/... on macOS,
-		// which leads to /private/var/folders/..., would otherwise not seem to lie in the real temporary directory
-		// nor to contain the session's real paths: it would stay hidden while its project and home were mounted
-		// back one by one. A temporary directory that does not exist, such as /tmp on Windows, holds no path.
-		Path realRun = runDirectory.toRealPath();
-		Path realTmp = privateTmp.toAbsolutePath().normalize();
-		if (Files.exists(realTmp))
-			realTmp = realTmp.toRealPath();
-		List<String> wrapped = new ArrayList<>(withPrivateTmp(command, bubblewrap, realRun, realTmp));
-		List<String> mounts = new ArrayList<>();
+		if (hidden.isEmpty())
+			return command;
+		List<String> wrapped = new ArrayList<>(List.of(bubblewrap.toString(), "--dev-bind", "/", "/"));
+		// The paths are compared in their real form, so that a directory reached through a symbolic link, such as
+		// /var/folders/... on macOS, which leads to /private/var/folders/..., still holds the session's real paths
 		List<Path> hiddenReal = new ArrayList<>();
 		for (Path directory : hidden)
 		{
 			Path real = directory.toRealPath();
 			hiddenReal.add(real);
-			mounts.addAll(List.of("--tmpfs", real.toString()));
+			wrapped.addAll(List.of("--tmpfs", real.toString()));
 		}
 		// A path is mounted after the paths that contain it, so that a read-only path inside a writable one stays
 		// read-only
@@ -1050,20 +930,17 @@ public final class CodexRunner
 			reopened.put(path.toRealPath(), "--ro-bind");
 		for (Entry<Path, String> path : reopened.entrySet())
 		{
-			// The private temporary directory would also hide a path of the session's that lies in the shared one
-			// outside the run directory, which stays visible, such as the evidence of a host project there
-			boolean inPrivateTmp = path.getKey().startsWith(realTmp) && !path.getKey().startsWith(realRun);
-			if (!inPrivateTmp && hiddenReal.stream().noneMatch(path.getKey()::startsWith))
+			if (hiddenReal.stream().noneMatch(path.getKey()::startsWith))
 				continue;
 			String name = path.getKey().toString();
-			mounts.addAll(List.of(path.getValue(), name, name));
+			wrapped.addAll(List.of(path.getValue(), name, name));
 		}
 		// The command would otherwise write files into the empty directories, which vanish when it ends
 		for (Path directory : hiddenReal)
-			mounts.addAll(List.of("--remount-ro", directory.toString()));
-		if (mounts.isEmpty())
-			return wrapped;
-		wrapped.addAll(wrapped.indexOf("--die-with-parent"), mounts);
+			wrapped.addAll(List.of("--remount-ro", directory.toString()));
+		// Codex dies when bubblewrap does, so stopping the recorded harness process also stops Codex
+		wrapped.addAll(List.of("--die-with-parent", "--"));
+		wrapped.addAll(command);
 		return wrapped;
 	}
 

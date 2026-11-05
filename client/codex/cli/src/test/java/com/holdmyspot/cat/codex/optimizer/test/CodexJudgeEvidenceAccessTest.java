@@ -181,8 +181,7 @@ public final class CodexJudgeEvidenceAccessTest
 	/**
 	 * Starts a judge session for a development trial inside a host project, through a bridge that builds the judge's
 	 * sandbox as the Codex runner does and then serves the judge's reply. The host project lies in the JVM's temporary
-	 * directory, which the sandbox makes private to the app-server as it does {@code /tmp}, so that the judge meets
-	 * the host project under its private temporary directory, as on a host whose temporary directory is {@code /tmp}.
+	 * directory.
 	 *
 	 * @param jvm        the JVM scope
 	 * @param cleanup    deletes the fixture's directories
@@ -239,7 +238,7 @@ public final class CodexJudgeEvidenceAccessTest
 				judge.directory().resolve("project"));
 			sandboxes.add(CodexRunner.sessionSandbox(configuration, judges, judge, options.readOnlyEvidence(),
 				options.deniedReads(), platform, Map.of("PATH", bin.toString()), null,
-				CodexRunner.appServerCommand("codex", false), jvm.temporaryDirectory().toRealPath()));
+				CodexRunner.appServerCommand("codex", false)));
 			configurations.add(configuration);
 			judgeRuns.add(judge.directory());
 			ScriptedHarness.serve(options.runRoot(), "codex", List.of(Turn.replies("{}")), input, output);

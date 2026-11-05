@@ -298,37 +298,6 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies the app-server runs under bubblewrap with a private, empty {@code /tmp}, so that a Codex sandbox around
-	 * the runner cannot hide the directory that the app-server's own sandbox needs there.
-	 */
-	@Test
-	public void startsAppServerWithPrivateTmp()
-	{
-		List<String> command = CodexRunner.appServerCommand("codex", false);
-		Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
-
-		requireThat(CodexRunner.withPrivateTmp(command, bwrap, Path.of("/work/run").toAbsolutePath()), "command").
-			isEqualTo(List.of(bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs",
-				Path.of("/tmp").toAbsolutePath().toString(), "--die-with-parent", "--", "codex", "app-server", "--stdio",
-				"--disable", "plugins"));
-	}
-
-	/**
-	 * Verifies a run directory below {@code /tmp} stays visible inside the private {@code /tmp}.
-	 */
-	@Test
-	public void keepsRunDirectoryInPrivateTmp()
-	{
-		List<String> command = CodexRunner.appServerCommand("codex", true);
-		Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
-		Path run = Path.of("/tmp/runs/run").toAbsolutePath();
-
-		requireThat(CodexRunner.withPrivateTmp(command, bwrap, run), "command").isEqualTo(List.of(bwrap.toString(),
-			"--dev-bind", "/", "/", "--tmpfs", Path.of("/tmp").toAbsolutePath().toString(), "--bind", run.toString(),
-			run.toString(), "--die-with-parent", "--", "codex", "app-server", "--stdio", "--enable", "hooks"));
-	}
-
-	/**
 	 * Verifies that on Linux a trial's app-server starts with the {@code TMPDIR} that the trial's configuration sets
 	 * for its shell commands, rather than the caller's, so that the filesystem helpers that the app-server starts and
 	 * the shell commands' sandboxes share Codex's record of the directories that they mount over.
@@ -395,9 +364,8 @@ public final class CodexRunnerTest
 	/**
 	 * Verifies that the app-server's bubblewrap replaces each hidden directory with an empty, read-only one and mounts
 	 * back inside it, after the paths that contain them, the paths that the session writes and then those that it
-	 * only reads, so that a read-only path inside a writable one stays read-only. A path that the private temporary
-	 * directory would hide, outside the run directory, is mounted back too, so that the session still reaches evidence
-	 * in the shared temporary directory. Here the test's own temporary directory stands in for {@code /tmp}.
+	 * only reads, so that a read-only path inside a writable one stays read-only. A path outside every hidden
+	 * directory needs no mount.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -413,17 +381,13 @@ public final class CodexRunnerTest
 			Path responses = Files.createDirectories(home.resolve("responses"));
 			Path evidence = Files.createDirectories(hidden.resolve("runs/trial/artifacts"));
 			Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-outside-")).toRealPath();
-			Path privateTmp = jvm.temporaryDirectory().toRealPath();
-			Path run = project.getParent();
 			Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
 			List<String> command = CodexRunner.appServerCommand("codex", false);
 
-			requireThat(CodexRunner.withPrivateTmp(command, bwrap, run, List.of(hidden), List.of(project, home),
-				List.of(responses, evidence, outside), privateTmp), "command").isEqualTo(List.of(
-				bwrap.toString(), "--dev-bind", "/", "/", "--tmpfs", privateTmp.toString(),
-				"--bind", run.toString(), run.toString(),
+			requireThat(CodexRunner.withHiddenDirectories(command, bwrap, List.of(hidden), List.of(project, home),
+				List.of(responses, evidence, outside)), "command").isEqualTo(List.of(
+				bwrap.toString(), "--dev-bind", "/", "/",
 				"--tmpfs", hidden.toString(),
-				"--ro-bind", outside.toString(), outside.toString(),
 				"--bind", home.toString(), home.toString(),
 				"--bind", project.toString(), project.toString(),
 				"--ro-bind", evidence.toString(), evidence.toString(),
@@ -435,8 +399,8 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that a trial session, which reads no evidence, keeps the sandbox that it had before judges could read
-	 * evidence, with bubblewrap on the {@code PATH}: its app-server runs under bubblewrap with only a private
-	 * {@code /tmp}, and its permission profile denies the whole run root and the paths that the caller denies.
+	 * evidence, with bubblewrap on the {@code PATH}: its app-server runs without bubblewrap, which would hide nothing,
+	 * and its permission profile denies the whole run root and the paths that the caller denies.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -463,15 +427,10 @@ public final class CodexRunnerTest
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
 			Map<String, String> environment = Map.of("PATH", bin.toString());
 
-			// The test's temporary directory, which holds the run root, stands in for /tmp. Its path can lead through a
-			// symbolic link or a short name, so the run directory is expected in its real form.
-			Path privateTmp = temporary.toRealPath();
-
 			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(heldOut),
-				Platform.LINUX_X64, environment, null, appServer, privateTmp);
+				Platform.LINUX_X64, environment, null, appServer);
 
-			requireThat(sandbox.command(), "command").isEqualTo(CodexRunner.withPrivateTmp(appServer, bwrap,
-				run.directory().toRealPath(), privateTmp));
+			requireThat(sandbox.command(), "command").isEqualTo(appServer);
 			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
 				path("permissions").path(sandbox.profile()).path("filesystem");
 			for (Path path : List.of(root, heldOut))
@@ -479,46 +438,6 @@ public final class CodexRunnerTest
 				requireThat(denied.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
 					isEqualTo("deny");
 			}
-		}
-	}
-
-	/**
-	 * Verifies that a trial session whose run root is reached through a symbolic link into the shared temporary
-	 * directory, as {@code /var} leads into {@code /private/var} on macOS, keeps its run directory visible inside the
-	 * private temporary directory and gets no other mount: its paths lie inside its run directory however they are
-	 * written. Here a directory of the test's own stands in for {@code /tmp}.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void trialSandboxFollowsLinkedRunRoot() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path fixture = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-linked-root-")).
-				toRealPath();
-			Path privateTmp = Files.createDirectory(fixture.resolve("tmp"));
-			Path link = Files.createSymbolicLink(fixture.resolve("link"), privateTmp);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), link.resolve("root"),
-				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
-			manager.snapshotProject(run);
-			Path bin = Files.createDirectory(fixture.resolve("bin"));
-			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
-			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
-			Path configuration = run.directory().resolve("home/config.toml");
-			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
-				run.directory().resolve("project"));
-			List<String> appServer = CodexRunner.appServerCommand("codex", false);
-			Path realRun = run.directory().toRealPath();
-
-			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(),
-				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, appServer, privateTmp);
-
-			requireThat(sandbox.command(), "command").isEqualTo(List.of(bwrap.toString(), "--dev-bind", "/", "/",
-				"--tmpfs", privateTmp.toString(), "--bind", realRun.toString(), realRun.toString(), "--die-with-parent",
-				"--", "codex", "app-server", "--stdio", "--disable", "plugins"));
 		}
 	}
 
@@ -551,29 +470,21 @@ public final class CodexRunnerTest
 
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
 			Map<String, String> environment = Map.of("PATH", bin.toString());
-			Path privateTmp = temporary.toRealPath();
-			List<SandboxStart> starts = List.of(
-				() -> CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence), List.of(),
-					Platform.LINUX_X64, environment, null, appServer),
-				() -> CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence), List.of(),
-					Platform.LINUX_X64, environment, null, appServer, privateTmp));
 
-			for (SandboxStart start : starts)
+			try
 			{
-				try
-				{
-					start.sandbox();
-					throw new AssertionError("The session started without bubblewrap");
-				}
-				catch (IOException e)
-				{
-					requireThat(e.getMessage(), "message").
-						startsWith("On Linux, a Codex session that reads evidence needs bubblewrap (bwrap)").
-						contains(evidence.toString()).contains(root.toAbsolutePath().normalize().toString()).
-						contains(bin.toString()).contains("bubblewrap package");
-				}
-				requireThat(Files.readString(configuration), "configuration").isEqualTo(before);
+				CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence), List.of(),
+					Platform.LINUX_X64, environment, null, appServer);
+				throw new AssertionError("The session started without bubblewrap");
 			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").
+					startsWith("On Linux, a Codex session that reads evidence needs bubblewrap (bwrap)").
+					contains(evidence.toString()).contains(root.toAbsolutePath().normalize().toString()).
+					contains(bin.toString()).contains("bubblewrap package");
+			}
+			requireThat(Files.readString(configuration), "configuration").isEqualTo(before);
 		}
 	}
 
@@ -930,21 +841,6 @@ public final class CodexRunnerTest
 					run.directory().resolve("home/sessions")));
 			}
 		}
-	}
-
-	/**
-	 * Builds a session's sandbox through one of the runner's entry points.
-	 */
-	@FunctionalInterface
-	private interface SandboxStart
-	{
-		/**
-		 * Builds the sandbox.
-		 *
-		 * @return the session's sandbox
-		 * @throws IOException if the runner refuses the session or the sandbox cannot be built
-		 */
-		SessionSandbox sandbox() throws IOException;
 	}
 
 	/**
