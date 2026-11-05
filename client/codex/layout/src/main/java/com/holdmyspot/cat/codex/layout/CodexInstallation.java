@@ -15,6 +15,15 @@ import java.util.Map;
 public record CodexInstallation(Path home) implements HarnessInstallation
 {
 	/**
+	 * The name of Codex's home directory, relative to the directory that holds it.
+	 */
+	private static final Path DEFAULT_HOME = Path.of(".codex");
+	/**
+	 * The name of Codex's configuration file, relative to Codex's home.
+	 */
+	private static final Path CONFIGURATION = Path.of("config.toml");
+
+	/**
 	 * Creates Codex's installation.
 	 *
 	 * @param home Codex's absolute home directory
@@ -41,7 +50,29 @@ public record CodexInstallation(Path home) implements HarnessInstallation
 	public static CodexInstallation fromEnvironment(Map<String, String> environment, Path userHome)
 	{
 		return new CodexInstallation(HarnessInstallation.resolveHome(environment, "CODEX_HOME", userHome,
-			Path.of(".codex")));
+			DEFAULT_HOME));
+	}
+
+	/**
+	 * Returns the name of Codex's home directory when {@code CODEX_HOME} does not move it.
+	 *
+	 * @return {@code .codex}, relative to the directory that holds Codex's home, such as the user's home directory
+	 */
+	public static Path defaultHome()
+	{
+		return DEFAULT_HOME;
+	}
+
+	/**
+	 * Returns where Codex's configuration file is, relative to the directory that holds {@link #defaultHome()}. A
+	 * project directory holds a {@code .codex} folder of the same layout, so this is also the project's Codex
+	 * configuration.
+	 *
+	 * @return {@code .codex/config.toml}
+	 */
+	public static Path defaultConfiguration()
+	{
+		return DEFAULT_HOME.resolve(CONFIGURATION);
 	}
 
 	@Override
@@ -111,6 +142,6 @@ public record CodexInstallation(Path home) implements HarnessInstallation
 	 */
 	public Path configuration()
 	{
-		return home.resolve("config.toml");
+		return home.resolve(CONFIGURATION);
 	}
 }

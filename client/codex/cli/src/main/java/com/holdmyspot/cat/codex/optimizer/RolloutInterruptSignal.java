@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.optimizer.adapter.LogInterruptSignal;
 
 import java.io.IOException;
@@ -52,7 +53,7 @@ public final class RolloutInterruptSignal extends LogInterruptSignal
 	{
 		requireThat(home, "home").isNotNull();
 		if (configured == null || configured.isBlank())
-			return home.resolve(".codex");
+			return home.resolve(CodexInstallation.defaultHome());
 		return Path.of(configured);
 	}
 

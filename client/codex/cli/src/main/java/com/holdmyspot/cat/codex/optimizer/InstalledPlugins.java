@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.BoundedInput;
 
 import java.io.IOException;
@@ -62,7 +63,7 @@ public final class InstalledPlugins
 	{
 		requireThat(home, "home").isNotNull();
 		requireThat(name, "name").matches("[^@/\\\\\"]+@[^@/\\\\\"]+");
-		Path configuration = home.resolve("config.toml");
+		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
 		if (!Files.isRegularFile(configuration))
 			return List.of();
 		String text = BoundedInput.readUtf8(configuration, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
@@ -99,7 +100,7 @@ public final class InstalledPlugins
 	public static List<String> names(Path home) throws IOException
 	{
 		requireThat(home, "home").isNotNull();
-		Path configuration = home.resolve("config.toml");
+		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
 		if (!Files.isRegularFile(configuration))
 			return List.of();
 		String text = BoundedInput.readUtf8(configuration, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");

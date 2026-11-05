@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.JvmScope;
 
 import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
@@ -60,7 +61,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 
 	private static final String EXECUTABLE = "codex";
 	private static final String SESSION_ID = "CODEX_THREAD_ID";
-	private static final List<Path> LOADER_CONFIGURATION = List.of(Path.of(".codex/config.toml"));
+	private static final List<Path> LOADER_CONFIGURATION = List.of(CodexInstallation.defaultConfiguration());
 	private final Map<String, String> environment;
 	private final Path artifact;
 	private final Path configurationDirectory;
@@ -160,7 +161,8 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	protected Optional<String> userLoaderSettings() throws IOException
 	{
 		ensureOpen();
-		return CodexConnectionConfiguration.instructionSettings(configurationDirectory.resolve("config.toml"));
+		return CodexConnectionConfiguration.instructionSettings(
+			new CodexInstallation(configurationDirectory.toAbsolutePath()).configuration());
 	}
 
 	/**

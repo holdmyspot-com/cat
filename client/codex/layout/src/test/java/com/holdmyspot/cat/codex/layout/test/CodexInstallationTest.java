@@ -97,4 +97,27 @@ public final class CodexInstallationTest
 			CodexInstallation.fromEnvironment(Map.of("CODEX_HOME", "relative"), user);
 		}
 	}
+
+	/**
+	 * The default home and the configuration file in it are named without a user home, and agree with an
+	 * installation located in a user home.
+	 *
+	 * @throws IOException if the temporary home cannot be created
+	 */
+	@Test
+	public void defaultNamesAgreeWithInstallation() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path user = cleanup.add(Files.createTempDirectory("cat-user-"));
+			CodexInstallation installation = CodexInstallation.fromEnvironment(Map.of(), user);
+
+			requireThat(CodexInstallation.defaultHome(), "defaultHome").isEqualTo(Path.of(".codex"));
+			requireThat(CodexInstallation.defaultConfiguration(), "defaultConfiguration").
+				isEqualTo(Path.of(".codex/config.toml"));
+			requireThat(user.resolve(CodexInstallation.defaultHome()), "home").isEqualTo(installation.home());
+			requireThat(user.resolve(CodexInstallation.defaultConfiguration()), "configuration").
+				isEqualTo(installation.configuration());
+		}
+	}
 }

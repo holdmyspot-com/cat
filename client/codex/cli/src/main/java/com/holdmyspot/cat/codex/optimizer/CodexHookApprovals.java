@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.PortablePaths;
@@ -66,7 +67,7 @@ public final class CodexHookApprovals
 		requireThat(json, "json").isNotNull();
 		String name = PluginManifest.name(plugin, MANIFEST);
 		Map<String, String> approvals = CodexConnectionConfiguration.pluginHookApprovals(
-			configuration.resolve("config.toml"), name);
+			new CodexInstallation(configuration.toAbsolutePath()).configuration(), name);
 
 		List<String> unapproved = new ArrayList<>();
 		for (HookSource source : sources(plugin::resolve, json))

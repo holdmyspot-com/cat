@@ -994,8 +994,8 @@ public final class CodexRunner
 			return Path.of(configured);
 		String home = environment.get(Platform.current().homeVariable());
 		if (home == null || home.isBlank())
-			return Path.of(".codex").toAbsolutePath();
-		return Path.of(home).resolve(".codex");
+			return CodexInstallation.defaultHome().toAbsolutePath();
+		return Path.of(home).resolve(CodexInstallation.defaultHome());
 	}
 
 	/**

@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.CommandShell;
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
@@ -218,7 +219,8 @@ public final class CodexSessions extends RunnerSessions
 	protected List<DerivedSource> instructionFiles(Path project) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
-		Path configuration = settings().configurationDirectory().resolve("config.toml");
+		Path configuration = new CodexInstallation(settings().configurationDirectory().toAbsolutePath()).
+			configuration();
 		JsonNode values;
 		try
 		{
@@ -261,7 +263,7 @@ public final class CodexSessions extends RunnerSessions
 	@Override
 	protected List<Path> projectHookFiles()
 	{
-		return List.of(Path.of(".codex/hooks.json"));
+		return List.of(CodexInstallation.defaultHome().resolve("hooks.json"));
 	}
 
 	/**
@@ -297,7 +299,7 @@ public final class CodexSessions extends RunnerSessions
 	protected Map<String, String> harnessHome(Path home)
 	{
 		requireThat(home, "home").isNotNull();
-		return Map.of("CODEX_HOME", home.resolve(".codex").toString());
+		return Map.of("CODEX_HOME", home.resolve(CodexInstallation.defaultHome()).toString());
 	}
 
 	/**
@@ -309,7 +311,7 @@ public final class CodexSessions extends RunnerSessions
 	protected List<McpServer> projectMcpServers(Path project) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
-		Path file = Path.of(".codex/config.toml");
+		Path file = CodexInstallation.defaultConfiguration();
 		Path configuration = project.resolve(file);
 		if (!Files.isRegularFile(configuration))
 			return List.of();
@@ -337,7 +339,7 @@ public final class CodexSessions extends RunnerSessions
 	protected UserConfiguration userConfiguration() throws IOException
 	{
 		Path home = settings().configurationDirectory();
-		Path configuration = home.resolve("config.toml");
+		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
 		JsonNode root = JsonMapper.builder().build().missingNode();
 		if (Files.isRegularFile(configuration))
 		{

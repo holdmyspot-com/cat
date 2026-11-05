@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
@@ -365,21 +366,22 @@ public final class CodexReadPart
 	private static long configuredTokens(Map<String, String> environment)
 	{
 		String codexHome = environment.get("CODEX_HOME");
-		Path configuration;
+		Path home;
 		try
 		{
 			if (codexHome != null && !codexHome.isEmpty())
-				configuration = Path.of(codexHome, "config.toml");
+				home = Path.of(codexHome);
 			else
 			{
-				String home = environment.getOrDefault(Platform.current().homeVariable(), "");
-				configuration = Path.of(home, ".codex", "config.toml");
+				String userHome = environment.getOrDefault(Platform.current().homeVariable(), "");
+				home = Path.of(userHome).resolve(CodexInstallation.defaultHome());
 			}
 		}
 		catch (InvalidPathException _)
 		{
 			return Long.MAX_VALUE;
 		}
+		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
 		byte[] bytes;
 		try (InputStream in = Files.newInputStream(configuration))
 		{
