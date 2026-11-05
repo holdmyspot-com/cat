@@ -16,6 +16,15 @@ tells them to run their harness and CAT inside WSL2 and how to install WSL2, and
 way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Linux, so prompt optimization is
 supported there.
 
+Trials also need CAT's session launcher: a process that CAT's SessionStart hook starts outside this session's sandbox
+when this session starts, and that starts every trial's session inside that harness's own sandbox. A session that
+started before CAT was installed or updated has no session launcher, and the session launcher starts no trial for a
+session whose sandbox policy CAT cannot read safely. When a result shows a reason that contains "No CAT session
+launcher serves this session" or "CAT cannot start the session: it cannot read this", show that reason to the user,
+which says what to do, such as starting a new session, and stop. Do not change sandbox settings yourself and do not
+start trials any other way. When the user continues in a new session, continue the campaign as the end of this skill
+describes for a session that is gone.
+
 ## Workflow
 
 Run the launcher that this skill's `SKILL.md` names. Each command prints one JSON object. Exit code 0 means its `status`

@@ -32,9 +32,11 @@ needs no isolated session; whether you delegate it to a subagent or do it yourse
 
 ### Supported environments
 
-Claude Code runner sessions require Linux or macOS. On native Windows, Claude Code has no command sandbox, so CAT cannot
-confine the session's commands and refuses to start it; report that and do not start the run. Inside WSL2, Java reports
-Linux, so Claude Code runner sessions are supported there.
+Runner sessions of both harnesses require Linux or macOS, because CAT starts each session only inside its own
+harness's sandbox. On native Windows, both runner launchers refuse to start a session, exit with status `2` and print
+the reason, which tells the user to run their harness and CAT inside WSL2. Report that reason and do not start the run
+any other way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Linux, so runner sessions are
+supported there.
 
 ### Launcher
 
@@ -139,9 +141,13 @@ writes. The runner tells it how. Add `--request-depth <levels>` when those sessi
 level below may request as many sessions, one level less deep. Without `--session-requests`, the session may start
 none. The receipt lists each requested session and its response path.
 
-Running the launcher outside a run is a command that your harness's sandbox must allow, since the runner starts the
-harness with the user's login. If the sandbox refuses it, report the refusal and the configuration that CAT's
-installation guide gives for it; do not change sandbox settings yourself.
+Outside a run, the launcher does not start the harness itself. It asks the session launcher that CAT's
+SessionStart hook started for this session, outside this session's sandbox, to start the session inside its harness's
+own sandbox, and waits until it ends. It exits with `0` when the session completed, `75` when no capacity was free, `2`
+when CAT refused to start the session, and `1` otherwise, and prints the reason for any status other than `0`. Report
+that reason to the user. When it asks the user to start a new session, as it does when no CAT session launcher serves
+this session, ask the user to start a new session and run the task there. Do not start the run any other way, and do
+not change sandbox settings yourself.
 
 ### Replies
 
@@ -163,9 +169,8 @@ source project with the parent's environment. If either value is missing, commit
 `CAT fixture <cat-fixture@example.invalid>` for both values.
 
 The session can stage changes, commit, create branches and child worktrees, and merge in its copied project. Keep
-child worktrees inside the copied project so they remain within the session's writable workspace. For Codex only,
-this holds on Linux and macOS, where the copied project's `.git/config` and `.git/hooks` stay read-only; Windows Codex
-sessions keep Codex's built-in Git metadata restrictions.
+child worktrees inside the copied project so they remain within the session's writable workspace. In a Codex
+session, the copied project's `.git/config` and `.git/hooks` stay read-only.
 
 ### Evidence
 
