@@ -21,6 +21,7 @@ import com.holdmyspot.cat.distribution.bundle.JlinkImageBuilder;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
+import com.holdmyspot.cat.distribution.bundle.PluginInstaller;
 import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import com.holdmyspot.cat.distribution.bundle.ReleaseAsset;
 import com.holdmyspot.cat.distribution.bundle.ReleaseAssetsFragment;
@@ -28,7 +29,6 @@ import com.holdmyspot.cat.distribution.bundle.ReleaseBuild;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import com.holdmyspot.cat.distribution.bundle.RuleReferences;
-import com.holdmyspot.cat.distribution.bundle.InstallerArtifactBuilder;
 import com.holdmyspot.cat.distribution.license.LegalMaterialsBuilder;
 import com.holdmyspot.cat.distribution.license.ThirdPartyComponent;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
@@ -49,7 +49,7 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
 
 /**
- * Builds the platform-specific CAT plugin and trusted installer archives from Maven module outputs.
+ * Builds the platform-specific CAT plugin archives, each of which carries its own installer, from Maven module outputs.
  */
 public final class DistributionMain
 {
@@ -147,7 +147,7 @@ public final class DistributionMain
 	}
 
 	/**
-	 * Builds plugin and installer distributions with the release key that setup installs into the user's policy.
+	 * Builds the plugin distributions with the release key that install writes into the user's policy.
 	 *
 	 * @param scope            the build's process scope
 	 * @param projectRoot      the repository root
@@ -170,8 +170,7 @@ public final class DistributionMain
 		requireThat(platform, "platform").isNotNull();
 		requireThat(publicKey, "publicKey").isNotNull();
 		requireThat(version.release(), "version.release()").isEqualTo(PluginInfo.CAT_VERSION);
-		InstallerArtifactBuilder installerArtifacts = new InstallerArtifactBuilder(scope, PluginInfo.CAT_VERSION,
-			publicKey);
+		PluginInstaller pluginInstaller = new PluginInstaller(scope, PluginInfo.CAT_VERSION, publicKey);
 		projectRoot = projectRoot.toAbsolutePath().normalize();
 		moduleDirectory = moduleDirectory.toAbsolutePath().normalize();
 		releaseDirectory = releaseDirectory.toAbsolutePath().normalize();
@@ -257,20 +256,17 @@ public final class DistributionMain
 			roots(withRoot(installerRoots, "com.holdmyspot.cat.claude.cli"), claudeLaunchers()));
 		ApplicationModules codexApplication = ApplicationModules.resolve(applicationModules,
 			roots(withRoot(installerRoots, "com.holdmyspot.cat.codex.cli"), codexLaunchers()));
-		ApplicationModules installerApplication = ApplicationModules.resolve(applicationModules, installerRoots);
-		Set<String> runtimeModules = new TreeSet<>(installerApplication.systemModules());
-		runtimeModules.addAll(claudeApplication.systemModules());
+		Set<String> runtimeModules = new TreeSet<>(claudeApplication.systemModules());
 		runtimeModules.addAll(codexApplication.systemModules());
-		Path installerDirectory = runtimeDirectory.resolve("installer");
-		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, installerDirectory.resolve("runtime"),
+		Path releaseRuntime = new JlinkImageBuilder().build(runtimeModules, runtimeDirectory.resolve("java"),
 			scope.json());
 		Path claudeBin = stageBin(claudeApplication, releaseRuntime, binDirectory.resolve("claude"), scope.json());
 		PluginLaunchers.write(claudeLaunchers(), platform, true, claudeBin);
-		installerArtifacts.writePluginInstaller(claudeBin, platform, true);
+		pluginInstaller.write(claudeBin, platform, true);
 		writeStartupCacheTraining(claudeBin, "claude", scope.json());
 		Path codexBin = stageBin(codexApplication, releaseRuntime, binDirectory.resolve("codex"), scope.json());
 		writeCodexLaunchers(codexBin, platform);
-		installerArtifacts.writePluginInstaller(codexBin, platform, !platform.isWindows());
+		pluginInstaller.write(codexBin, platform, !platform.isWindows());
 		writeStartupCacheTraining(codexBin, "codex", scope.json());
 
 		PluginArtifactBuilder artifactBuilder = new PluginArtifactBuilder(version);
@@ -353,21 +349,17 @@ public final class DistributionMain
 		RuleReferences.requireResolvable(claudeRoot);
 		RuleReferences.requireResolvable(codexRoot);
 
-		installerArtifacts.build(installerDirectory.resolve(PluginInfo.CAT_VERSION), commonInstaller, installerApplication,
-			legalMaterials);
 		writeRuntimeBinding(claudeRoot, releaseRuntime);
 		writeRuntimeBinding(codexRoot, releaseRuntime);
 
 		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
 		Path codexArchive = packager.packageArtifact("codex", platform, codexRoot, releaseDirectory);
-		Path installerArchive = packager.packageArtifact("updater", platform, installerDirectory, releaseDirectory);
-		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive, installerArchive),
+		packager.writeChecksumManifest(List.of(claudeArchive, codexArchive),
 			releaseDirectory.resolve("SHA256SUMS.txt"));
 		new ReleaseAssetsFragment(scope).write(version, platform,
 			List.of(ReleaseAsset.plugin("claude", platform, claudeArchive),
-			ReleaseAsset.plugin("codex", platform, codexArchive),
-			ReleaseAsset.installer(platform, installerArchive)), releaseDirectory);
+			ReleaseAsset.plugin("codex", platform, codexArchive)), releaseDirectory);
 	}
 
 	/**
@@ -628,7 +620,7 @@ public final class DistributionMain
 
 	/**
 	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote, so that the plugin
-	 * runs from the checkout without the trusted installer. The binding is written after the plugin's runtime manifest,
+	 * runs from the checkout without being installed. The binding is written after the plugin's runtime manifest,
 	 * because it names a path on the building machine, and release archives leave it out.
 	 *
 	 * @param plugin  the assembled plugin

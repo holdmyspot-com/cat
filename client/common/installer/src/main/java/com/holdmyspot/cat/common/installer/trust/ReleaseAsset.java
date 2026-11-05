@@ -1,13 +1,12 @@
 package com.holdmyspot.cat.common.installer.trust;
 
-import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
 /**
- * One archive of a release, as its verified manifest declares it. The installer downloads the archive by its name and
- * accepts it only when its size and SHA-256 digest match.
+ * One plugin archive of a release, as its verified manifest declares it. The installer downloads the archive by its
+ * name and accepts it only when its size and SHA-256 digest match.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -34,11 +33,12 @@ public final class ReleaseAsset
 	 * The suffix of every asset's name, which its {@code top_directory} lacks.
 	 */
 	private static final String ARCHIVE_SUFFIX = ".tar.gz";
-	private final String name;
-	private final AssetKind kind;
 	/**
-	 * The harness that a plugin asset is for, or {@code null} for the installer.
+	 * The only value of an asset's {@code kind} field: every archive of a release is a plugin, which ships its
+	 * installer.
 	 */
+	private static final String PLUGIN_KIND = "plugin";
+	private final String name;
 	private final String harness;
 	private final String platform;
 	private final long size;
@@ -62,8 +62,18 @@ public final class ReleaseAsset
 			throw json.refusal("The release manifest's " + path + " must be a JSON object");
 		json.requireOnly(entry, path, FIELDS);
 		String name = json.requiredString(entry, path, "name");
-		AssetKind kind = parseKind(json, path, json.requiredString(entry, path, "kind"));
-		String harness = parseHarness(entry, path, json, kind);
+		String kind = json.requiredString(entry, path, "kind");
+		if (!kind.equals(PLUGIN_KIND))
+		{
+			throw json.refusal(json.field(path, "kind") + " must be \"" + PLUGIN_KIND + "\": \"" +
+				TrustText.excerpt(kind) + "\"");
+		}
+		String harness = json.requiredString(entry, path, "harness");
+		if (!HarnessIdentifier.SYNTAX.matcher(harness).matches())
+		{
+			throw json.refusal(json.field(path, "harness") + " must be a lowercase letter followed by at most 31 " +
+				"lowercase letters, digits or hyphens: \"" + TrustText.excerpt(harness) + "\"");
+		}
 		String platform = json.requiredString(entry, path, "platform");
 		if (!PLATFORM.matcher(platform).matches())
 		{
@@ -79,11 +89,11 @@ public final class ReleaseAsset
 		}
 		String topDirectory = json.requiredString(entry, path, "top_directory");
 
-		String expectedName = expectedName(kind, harness, version, platform);
+		String expectedName = "cat-" + harness + "-" + platform + "-" + version.tag() + ARCHIVE_SUFFIX;
 		if (!name.equals(expectedName))
 		{
-			throw json.refusal(json.field(path, "name") + " must be \"" + expectedName + "\", which its kind, " +
-				"harness, platform and the release version determine: \"" + TrustText.excerpt(name) + "\"");
+			throw json.refusal(json.field(path, "name") + " must be \"" + expectedName + "\", which its harness, " +
+				"platform and the release version determine: \"" + TrustText.excerpt(name) + "\"");
 		}
 		String expectedTopDirectory = name.substring(0, name.length() - ARCHIVE_SUFFIX.length());
 		if (!topDirectory.equals(expectedTopDirectory))
@@ -91,90 +101,22 @@ public final class ReleaseAsset
 			throw json.refusal(json.field(path, "top_directory") + " must be \"" + expectedTopDirectory +
 				"\", the asset's name without " + ARCHIVE_SUFFIX + ": \"" + TrustText.excerpt(topDirectory) + "\"");
 		}
-		return new ReleaseAsset(name, kind, harness, platform, size, sha256, topDirectory);
-	}
-
-	/**
-	 * Reads an asset's kind.
-	 *
-	 * @param json  the manifest's field reader
-	 * @param path  the entry's location in the manifest
-	 * @param value the value of the {@code kind} field
-	 * @return the kind
-	 * @throws TrustException if the value is neither {@code plugin} nor {@code installer}
-	 */
-	private static AssetKind parseKind(TrustJson json, String path, String value) throws TrustException
-	{
-		return switch (value)
-		{
-			case "plugin" -> AssetKind.PLUGIN;
-			case "updater" -> AssetKind.INSTALLER;
-			default -> throw json.refusal(json.field(path, "kind") + " must be \"plugin\" or \"updater\": \"" +
-				TrustText.excerpt(value) + "\"");
-		};
-	}
-
-	/**
-	 * Reads the harness of an asset entry.
-	 *
-	 * @param entry the entry
-	 * @param path  the entry's location in the manifest
-	 * @param json  the manifest's field reader
-	 * @param kind  the asset's kind
-	 * @return the harness of a plugin, or {@code null} for the installer
-	 * @throws TrustException if a plugin lacks a harness identifier, or the installer has a {@code harness} field
-	 */
-	private static String parseHarness(JsonNode entry, String path, TrustJson json, AssetKind kind)
-		throws TrustException
-	{
-		if (kind == AssetKind.INSTALLER)
-		{
-			if (entry.has("harness"))
-				throw json.refusal(json.field(path, "harness") + " must be absent for the installer");
-			return null;
-		}
-		String harness = json.requiredString(entry, path, "harness");
-		if (!HarnessIdentifier.SYNTAX.matcher(harness).matches())
-		{
-			throw json.refusal(json.field(path, "harness") + " must be a lowercase letter followed by at most 31 " +
-				"lowercase letters, digits or hyphens: \"" + TrustText.excerpt(harness) + "\"");
-		}
-		return harness;
-	}
-
-	/**
-	 * Returns the only name that an asset may have: {@code cat-<harness>-<platform>-v<version>.tar.gz} for a plugin and
-	 * {@code cat-updater-v<version>-<platform>.tar.gz} for the installer.
-	 *
-	 * @param kind     the asset's kind
-	 * @param harness  the harness of a plugin, or {@code null} for the installer
-	 * @param version  the release's version
-	 * @param platform the asset's platform
-	 * @return the name
-	 */
-	private static String expectedName(AssetKind kind, String harness, ReleaseVersion version, String platform)
-	{
-		if (kind == AssetKind.PLUGIN)
-			return "cat-" + harness + "-" + platform + "-" + version.tag() + ARCHIVE_SUFFIX;
-		return "cat-updater-" + version.tag() + "-" + platform + ARCHIVE_SUFFIX;
+		return new ReleaseAsset(name, harness, platform, size, sha256, topDirectory);
 	}
 
 	/**
 	 * Creates an asset.
 	 *
 	 * @param name         the archive's file name
-	 * @param kind         what the archive installs
-	 * @param harness      the harness of a plugin, or {@code null} for the installer
+	 * @param harness      the harness that the plugin is for
 	 * @param platform     the platform that the archive runs on
 	 * @param size         the archive's size in bytes
 	 * @param sha256       the archive's SHA-256 digest in lowercase hexadecimal
 	 * @param topDirectory the one directory at the top of the archive
 	 */
-	private ReleaseAsset(String name, AssetKind kind, String harness, String platform, long size, String sha256,
-		String topDirectory)
+	private ReleaseAsset(String name, String harness, String platform, long size, String sha256, String topDirectory)
 	{
 		this.name = name;
-		this.kind = kind;
 		this.harness = harness;
 		this.platform = platform;
 		this.size = size;
@@ -193,23 +135,13 @@ public final class ReleaseAsset
 	}
 
 	/**
-	 * Returns what the archive installs.
+	 * Returns the harness that the plugin archive is for.
 	 *
-	 * @return the kind
+	 * @return the harness identifier
 	 */
-	public AssetKind kind()
+	public String harness()
 	{
-		return kind;
-	}
-
-	/**
-	 * Returns the harness that a plugin archive is for.
-	 *
-	 * @return the harness identifier, or empty for the installer
-	 */
-	public Optional<String> harness()
-	{
-		return Optional.ofNullable(harness);
+		return harness;
 	}
 
 	/**

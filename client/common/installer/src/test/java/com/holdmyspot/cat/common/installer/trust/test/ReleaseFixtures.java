@@ -216,19 +216,6 @@ public final class ReleaseFixtures
 	}
 
 	/**
-	 * Returns the JSON of an installer asset entry whose fields agree with each other.
-	 *
-	 * @param version  the release's version
-	 * @param platform the asset's platform
-	 * @return the entry's JSON
-	 */
-	public static String installerAsset(String version, String platform)
-	{
-		String top = "cat-updater-v" + version + "-" + platform;
-		return asset(top + ".tar.gz", "updater", "", platform, "456", SHA256, top);
-	}
-
-	/**
 	 * Returns the JSON of an asset entry.
 	 *
 	 * @param name         the value of its {@code name} field

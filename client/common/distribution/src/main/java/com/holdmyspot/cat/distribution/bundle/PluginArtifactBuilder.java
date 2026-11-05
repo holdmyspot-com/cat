@@ -80,8 +80,8 @@ public final class PluginArtifactBuilder
 	 *        {@code licenses/} copied to the top level of the assembled plugin directory
 	 * @param installerDirectories ordered directories of common and harness-specific installer resources, of which the
 	 *        data migrations in {@code migrations/} and the marketplace metadata {@code <harness>-marketplace.json} are
-	 *        copied to {@code install/}; the trusted installer, not the plugin, installs and removes CAT, so the
-	 *        directories' other files are left out
+	 *        copied to {@code install/}; the plugin's installer reads only these, so the directories' other files are
+	 *        left out
 	 * @param artifactDirectory the new directory that receives the assembled artifact; unlike
 	 *        {@code installerDirectories}, it is an output rather than an input
 	 * @return {@code artifactDirectory}

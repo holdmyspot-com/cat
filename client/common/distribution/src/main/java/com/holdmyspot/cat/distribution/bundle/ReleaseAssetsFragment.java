@@ -36,12 +36,12 @@ public final class ReleaseAssetsFragment
 	/**
 	 * Replaces the platform's list in a release directory with a JSON object whose field {@code build} holds the release
 	 * commit that the archives were built from and whose field {@code assets} holds one object per asset, in the given
-	 * order, with the fields {@code name}, {@code kind}, {@code harness} (only for a plugin), {@code platform},
+	 * order, with the fields {@code name}, {@code kind} (always {@code plugin}), {@code harness}, {@code platform},
 	 * {@code size}, {@code sha256} and {@code top_directory}.
 	 *
 	 * @param version          the plugin version of the archives, whose commit the list names
 	 * @param platform         the platform that every asset runs on
-	 * @param assets           the archives built for the platform
+	 * @param assets           the plugin archives built for the platform
 	 * @param releaseDirectory the directory that receives {@code cat-release-assets-<platform>.json}
 	 * @return the written file
 	 * @throws NullPointerException     if any argument is null
@@ -65,8 +65,8 @@ public final class ReleaseAssetsFragment
 		{
 			ObjectNode entry = entries.addObject();
 			entry.put("name", asset.name());
-			entry.put("kind", asset.kind().id());
-			asset.harness().ifPresent(harness -> entry.put("harness", harness));
+			entry.put("kind", "plugin");
+			entry.put("harness", asset.harness());
 			entry.put("platform", platform.id());
 			entry.put("size", asset.size());
 			entry.put("sha256", asset.sha256());

@@ -8,8 +8,8 @@ import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
-import com.holdmyspot.cat.distribution.bundle.InstallerArtifactBuilder;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
+import com.holdmyspot.cat.distribution.bundle.PluginInstaller;
 import com.holdmyspot.cat.distribution.bundle.ReleasePackager;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
@@ -69,8 +69,7 @@ public final class PluginArchiveTest
 			Path bin = access.stageBin(application, releaseRuntime.getParent(), directory.resolve("bin"),
 				scope.json());
 			access.writeCodexLaunchers(bin, Platform.LINUX_X64);
-			new InstallerArtifactBuilder(scope, PluginInfo.CAT_VERSION, "").writePluginInstaller(bin,
-				Platform.LINUX_X64, true);
+			new PluginInstaller(scope, PluginInfo.CAT_VERSION, "").write(bin, Platform.LINUX_X64, true);
 			Path plugin = new PluginArtifactBuilder(PluginVersion.parse("1.0+b0123456789ab")).build(List.of(), bin,
 				legal, List.of(), directory.resolve("plugin"));
 			Path runtime = directory.resolve("runtime");
@@ -115,11 +114,11 @@ public final class PluginArchiveTest
 			TestJvmScope scope = new TestJvmScope())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("plugin-archive-"));
-			InstallerArtifactBuilder builder = new InstallerArtifactBuilder(scope, PluginInfo.CAT_VERSION, "");
+			PluginInstaller builder = new PluginInstaller(scope, PluginInfo.CAT_VERSION, "");
 			Path batchOnly = Files.createDirectories(directory.resolve("batch-only"));
-			builder.writePluginInstaller(batchOnly, Platform.WINDOWS_X64, false);
+			builder.write(batchOnly, Platform.WINDOWS_X64, false);
 			Path both = Files.createDirectories(directory.resolve("both"));
-			builder.writePluginInstaller(both, Platform.WINDOWS_X64, true);
+			builder.write(both, Platform.WINDOWS_X64, true);
 
 			requireThat(Files.isRegularFile(batchOnly.resolve("installer.ps1")), "batchOnly.ps1").isTrue();
 			requireThat(Files.exists(batchOnly.resolve("installer")), "batchOnly.posix").isFalse();

@@ -74,31 +74,6 @@ public final class ReleaseAssetsFragmentTest
 	}
 
 	/**
-	 * Verifies that the installer's archive, which serves every harness, is listed with the kind {@code installer} and
-	 * without a harness.
-	 */
-	@Test
-	public void describesInstallerArchiveWithoutHarness() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			TestJvmScope scope = new TestJvmScope())
-		{
-			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-assets-"));
-			Path installer = Files.writeString(temporary.resolve("cat-updater-v1.0-macos-arm64.tar.gz"), "updater");
-
-			Path fragment = new ReleaseAssetsFragment(scope).write(VERSION, Platform.MACOS_ARM64,
-				List.of(ReleaseAsset.installer(Platform.MACOS_ARM64, installer)), temporary);
-
-			JsonNode entry = JsonMapper.builder().build().readTree(Files.readString(fragment)).get("assets").get(0);
-			requireThat(entry.propertyNames(), "propertyNames").containsExactly(List.of("name", "kind", "platform",
-				"size", "sha256", "top_directory"));
-			requireThat(entry.get("kind").asString(), "kind").isEqualTo("updater");
-			requireThat(entry.get("platform").asString(), "platform").isEqualTo("macos-arm64");
-			requireThat(entry.get("top_directory").asString(), "top_directory").isEqualTo("cat-updater-v1.0-macos-arm64");
-		}
-	}
-
-	/**
 	 * Verifies that an asset built for another platform is refused, so that no platform's list names another's
 	 * archive.
 	 */

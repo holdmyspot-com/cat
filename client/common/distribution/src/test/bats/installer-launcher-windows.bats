@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
-# Tests the installer's Windows launchers as Windows PowerShell runs them through -File from Git Bash: the versioned
-# launchers' start of their installation's java.exe, from PowerShell and from Git Bash, and their exit-status
-# pass-through, and the PowerShell installer launcher that the build writes into each Windows plugin: its argument
-# forwarding, its removal of environment-supplied JVM options, the caller's PATH and working directory that the
-# installer receives, its start of the plugin's own java.exe and its exit-status and output pass-through.
+# Tests the PowerShell installer launcher that the build writes into each Windows plugin, as Windows PowerShell runs it
+# through -File from Git Bash: its argument forwarding, its removal of environment-supplied JVM options, the caller's
+# PATH and working directory that the installer receives, its start of the plugin's own java.exe and its exit-status and
+# output pass-through. Also tests that the installer, run from the version folder of the plugin that the build
+# assembled, has the folder deleted once it exits, through the System32 Windows PowerShell process that waits for it.
 # Only the Windows build runs this file; the POSIX launchers' tests are in installer-launcher.bats.
 
 bats_require_minimum_version 1.5.0
@@ -21,39 +21,29 @@ setup_file()
 	export WINDOWS_DIRECTORY
 }
 
-# Creates a test-owned installer data directory, mirroring the installed Windows layout, beneath the build output.
-# Side effects: Creates TEST_ROOT, which teardown removes, holding the data directory DATA.
+# Creates a test-owned directory beneath the build output.
+# Side effects: Creates TEST_ROOT, which teardown removes.
 setup()
 {
 	mkdir -p "${BATS_TEST_DIRNAME}/../../../target"
 	TEST_ROOT="$(mktemp -d "${BATS_TEST_DIRNAME}/../../../target/installer-launcher-windows.XXXXXX")"
 	TEST_ROOT="$(cd -P "${TEST_ROOT}" && pwd -P)"
-	DATA="${TEST_ROOT}/installer with spaces"
-	RESOURCE_DIRECTORY="${BATS_TEST_DIRNAME}/../../../../installer/src/main/resources/com/holdmyspot/cat/common/installer/cli"
-	create_data_directory "${DATA}"
 }
 
-# Removes only the directory created for this test, including after failed setup or assertions.
+# Releases a file that a test still holds open, then removes only the directory created for this test, including after
+# failed setup or assertions.
 teardown()
 {
+	if [ -n "${RELEASE:-}" ]; then
+		: > "${RELEASE}"
+		wait
+	fi
 	if [ -n "${TEST_ROOT:-}" ]; then
 		rm -rf -- "${TEST_ROOT}"
 	fi
 }
 
-# Creates an installer data directory as an installation lays it out on Windows: version 1.0's PowerShell and POSIX
-# versioned launchers, and the installation's runtime.
-# Arguments: the absolute path of the data directory to create.
-# Side effects: Creates the directory with 1.0\bin\ and runtime\.
-create_data_directory()
-{
-	mkdir -p "$1/1.0/bin"
-	cp "${RESOURCE_DIRECTORY}/versioned-launcher.ps1" "$1/1.0/bin/cat-updater.ps1"
-	cp "${RESOURCE_DIRECTORY}/versioned-launcher.sh" "$1/1.0/bin/cat-updater"
-	write_runtime "$1/runtime" installed 0
-}
-
-# Writes a Java runtime whose java.exe is the fake, as an installation or a plugin holds it.
+# Writes a Java runtime whose java.exe is the fake, as a plugin holds it.
 # Arguments: the absolute path of the runtime directory, its marker text, and the status of its java -version.
 # Side effects: Creates the directory with bin\java.exe, version-status and a marker file that names the runtime.
 write_runtime()
@@ -64,16 +54,16 @@ write_runtime()
 	printf '%s\n' "$3" > "$1/version-status"
 }
 
-# Prints the arguments that the fake java.exe of a data directory's runtime last received, one [argument] per line.
-# Arguments: the data directory.
+# Prints the arguments that the fake java.exe of a folder's runtime last received, one [argument] per line.
+# Arguments: the folder that holds the fake's java-invocation.txt.
 # Output: the arguments.
 java_arguments()
 {
 	sed -n '/^\[/p' "$1/java-invocation.txt"
 }
 
-# Prints the value of an environment variable that the fake java.exe of a data directory's runtime last received.
-# Arguments: the data directory and the variable's name in upper case.
+# Prints the value of an environment variable that the fake java.exe of a folder's runtime last received.
+# Arguments: the folder that holds the fake's java-invocation.txt, and the variable's name in upper case.
 # Output: the value, or nothing when the variable was not set.
 java_variable()
 {
@@ -90,14 +80,6 @@ bracketed_java_options()
 	installer_java_options "$1" "$2" | while IFS= read -r option; do
 		printf '[%s]\n' "${option}"
 	done
-}
-
-# Prints the Java options that the Windows installer launchers pass to java.exe before the installer operation's own.
-# Arguments: the data directory in the form that names it to Java.
-# Output: the options, one [option] per line.
-fixed_java_arguments()
-{
-	bracketed_java_options "$1\\runtime\\conf\\logging.properties" "$1\\1.0\\app"
 }
 
 # Copies the PowerShell installer launcher of the Claude plugin that the build generated into a plugin directory whose
@@ -120,65 +102,6 @@ create_plugin_installer()
 plugin_java_arguments()
 {
 	bracketed_java_options "$1\\bin\\runtime\\conf\\logging.properties" "$1\\bin\\runtime\\modules"
-}
-
-@test "the Windows versioned launcher runs java.exe with the caller's PATH and directory and no injected JVM options" {
-	mkdir "${TEST_ROOT}/work" "${TEST_ROOT}/caller bin"
-	export PATH="${TEST_ROOT}/caller bin:${PATH}"
-	export JAVA_TOOL_OPTIONS=hostile JDK_JAVA_OPTIONS=hostile _JAVA_OPTIONS=hostile CLASSPATH=hostile \
-		JLINK_VM_OPTIONS=hostile
-	cd "${TEST_ROOT}/work"
-
-	run powershell_file "${DATA}/1.0/bin/cat-updater.ps1" setup --harness claude --home 'C:\a home' ''
-
-	[ "${status}" -eq 0 ]
-	expected="$(fixed_java_arguments "$(cygpath -w "${DATA}")"
-		printf '[%s]\n' setup --harness claude --home 'C:\a home' '')"
-	[ "$(java_arguments "${DATA}")" = "${expected}" ]
-	[ "$(sed -n 's/^cwd=//p' "${DATA}/java-invocation.txt")" = "$(cygpath -w "${TEST_ROOT}/work")" ]
-	[[ ";$(java_variable "${DATA}" PATH);" == *";$(cygpath -w "${TEST_ROOT}/caller bin");"* ]]
-	run ! grep -E '^env:(JAVA_TOOL_OPTIONS|JDK_JAVA_OPTIONS|_JAVA_OPTIONS|CLASSPATH|JLINK_VM_OPTIONS)=' \
-		"${DATA}/java-invocation.txt"
-}
-
-@test "the Windows versioned launcher passes the installer's status and output through unchanged" {
-	printf '%s\n' '{"result":"refused"}' > "${DATA}/java-output"
-	printf '5\n' > "${DATA}/java-status"
-
-	run --separate-stderr powershell_file "${DATA}/1.0/bin/cat-updater.ps1" install --harness claude
-
-	[ "${status}" -eq 5 ]
-	[ "${output}" = '{"result":"refused"}' ]
-	[ -z "${stderr}" ]
-}
-
-@test "the Windows versioned launcher reports a missing installation runtime with one diagnostic and status 3" {
-	rm -rf -- "${DATA}/runtime"
-
-	run --separate-stderr powershell_file "${DATA}/1.0/bin/cat-updater.ps1" status
-
-	[ "${status}" -eq 3 ]
-	[ -z "${output}" ]
-	java="$(cygpath -w "${DATA}/runtime/bin/java.exe")"
-	[ "${stderr}" = "CAT installer runtime is missing: ${java} is not a file; rerun the CAT installation command." ]
-}
-
-# The release's entry script cat.sh runs setup through the archive's POSIX versioned launcher under Git Bash, which
-# names the runtime and application by their POSIX paths; java.exe can open them only in their Windows form.
-@test "the POSIX versioned launcher that the entry script runs in Git Bash gives java.exe Windows paths" {
-	run "${DATA}/1.0/bin/cat-updater" setup --harness claude --home 'C:\a home'
-
-	[ "${status}" -eq 0 ]
-	arguments="$(java_arguments "${DATA}")"
-	logging="$(printf '%s\n' "${arguments}" | sed -n 's/^\[-Djava\.util\.logging\.config\.file=\(.*\)\]$/\1/p')"
-	modules="$(printf '%s\n' "${arguments}" | sed -n '/^\[--module-path\]$/{n;s/^\[\(.*\)\]$/\1/p;}')"
-	[[ "${logging}" == [A-Za-z]:* ]]
-	[[ "${modules}" == [A-Za-z]:* ]]
-	[ "$(cygpath -u "${logging}")" = "${DATA}/runtime/conf/logging.properties" ]
-	[ "$(cygpath -u "${modules}")" = "${DATA}/1.0/app" ]
-	expected="$(bracketed_java_options "${logging}" "${modules}"
-		printf '[%s]\n' setup --harness claude --home 'C:\a home')"
-	[ "${arguments}" = "${expected}" ]
 }
 
 @test "the plugin's PowerShell installer launcher runs java.exe of the plugin's own runtime with the plugin's modules" {
@@ -249,4 +172,78 @@ plugin_java_arguments()
 	[ -z "${output}" ]
 	java="$(cygpath -w "${PLUGIN}/bin/runtime/bin/java.exe")"
 	[ "${stderr}" = "CAT installer runtime is missing: ${java} is not a file; reinstall CAT." ]
+}
+
+# Prints a path in the form that JSON names it to the Windows installer: its Windows form, with each backslash doubled.
+# Arguments: the path.
+# Output: the JSON string's content.
+json_windows_path()
+{
+	cygpath -w "$1" | sed 's/\\/\\\\/g'
+}
+
+# Copies the Claude plugin that the build assembled into a Claude Code home, as the version folder of an installation
+# whose policy install wrote. The policy names a Claude Code program that no longer exists, which uninstall needs only
+# to unregister CAT, so uninstall skips that step.
+# Outputs:
+#   CLAUDE_HOME - the Claude Code home, whose path holds spaces
+#   VERSION_FOLDER - the plugin's version folder in that home
+create_installed_plugin()
+{
+	local plugin="${BATS_TEST_DIRNAME}/../../../target/runtime/claude"
+	local version data home program
+	version="$(tr -d '\r\n' < "${plugin}/bin/VERSION")"
+	CLAUDE_HOME="${TEST_ROOT}/claude home"
+	VERSION_FOLDER="${CLAUDE_HOME}/plugins/cat-marketplace/plugins/cat/${version}"
+	mkdir -p "${VERSION_FOLDER%/*}"
+	cp -R "${plugin}" "${VERSION_FOLDER}"
+	data="${CLAUDE_HOME}/plugins/data/cat-cat"
+	mkdir -p "${data}"
+	home="$(json_windows_path "${CLAUDE_HOME}")"
+	program="$(json_windows_path "${TEST_ROOT}/missing/claude.exe")"
+	printf '%s\n' "{\"format\":2,\"keys\":[],\"release_base_url\":\"https://github.com/holdmyspot-com/cat/releases/download\",\
+\"allowed_versions\":{\"minimum\":\"1.0\",\"maximum_major\":1},\"harnesses\":{\"claude\":{\"home\":\"${home}\",\
+\"command\":[\"${program}\"],\"environment\":{}}}}" > "${data}/policy.json"
+}
+
+# The installer cannot delete its own version folder while it runs, because Windows keeps the files of a running
+# program open, so it starts a System32 Windows PowerShell process that waits for it to exit and then retries the
+# deletion until no file in the folder is open any more.
+@test "the installer that uninstalls CAT from its own version folder has the folder deleted once it exits" {
+	create_installed_plugin
+	local held="${VERSION_FOLDER}/held file"
+	local ready="${TEST_ROOT}/held"
+	RELEASE="${TEST_ROOT}/release"
+	# Holds a file of the version folder open, without letting another process delete it, until two seconds after
+	# the installer exits
+	powershell_command '$file = [System.IO.File]::Open($env:HELD, "OpenOrCreate", "ReadWrite", "None")
+$null = New-Item -ItemType File -Path $env:READY
+while (-not (Test-Path -LiteralPath $env:RELEASE)) { Start-Sleep -Milliseconds 100 }
+Start-Sleep -Seconds 2
+$file.Close()' "HELD=$(cygpath -w "${held}")" "READY=$(cygpath -w "${ready}")" "RELEASE=$(cygpath -w "${RELEASE}")" \
+		< /dev/null > /dev/null 2>&1 3>&- &
+	local waited=0
+	while [ ! -e "${ready}" ] && [ "${waited}" -lt 300 ]; do
+		sleep 0.1
+		waited=$((waited + 1))
+	done
+	[ -e "${ready}" ]
+
+	mkdir "${TEST_ROOT}/user"
+	USERPROFILE="$(cygpath -w "${TEST_ROOT}/user")"
+	export USERPROFILE HOME="${TEST_ROOT}/user"
+	run --separate-stderr powershell_file "${VERSION_FOLDER}/bin/installer.ps1" uninstall
+	: > "${RELEASE}"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *'"result":"uninstalled"'* ]]
+	# The held file keeps the folder until the holder closes it
+	[ -e "${held}" ]
+	waited=0
+	while [ -e "${VERSION_FOLDER}" ] && [ "${waited}" -lt 60 ]; do
+		sleep 1
+		waited=$((waited + 1))
+	done
+	[ ! -e "${VERSION_FOLDER}" ]
+	[ -d "${CLAUDE_HOME}/plugins/data/cat-cat" ]
 }

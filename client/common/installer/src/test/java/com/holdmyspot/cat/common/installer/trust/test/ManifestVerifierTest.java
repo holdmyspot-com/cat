@@ -8,13 +8,11 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.pol
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.sign;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.signAndVerify;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.trusted;
-import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.installerAsset;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.verify;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.installation.PluginVersion;
-import com.holdmyspot.cat.common.installer.trust.AssetKind;
 import com.holdmyspot.cat.common.installer.trust.ManifestVerifier;
 import com.holdmyspot.cat.common.installer.trust.ReleaseAsset;
 import com.holdmyspot.cat.common.installer.trust.ReleaseManifest;
@@ -29,7 +27,6 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
@@ -91,9 +88,9 @@ public final class ManifestVerifierTest
 	 * verified it among the policy's keys.
 	 * <p>
 	 * Two keys are needed to check that verification identifies the signer rather than returning the first policy
-	 * key, and one plugin asset and one installer asset exercise both returned asset kinds. Generating the keys, signing
-	 * the manifest and verifying and parsing it can take one second or longer during a parallel build. A pre-verified
-	 * manifest would omit the signature verification that the key-identifier assertion checks.
+	 * key, and plugin assets of two harnesses show that the asset of the requested harness is returned. Generating the
+	 * keys, signing the manifest and verifying and parsing it can take one second or longer during a parallel build. A
+	 * pre-verified manifest would omit the signature verification that the key-identifier assertion checks.
 	 *
 	 * @throws TrustException if the manifest is refused
 	 * @throws IOException    if the bytes cannot be read
@@ -104,7 +101,7 @@ public final class ManifestVerifierTest
 		KeyPair other = keyPair();
 		KeyPair signer = keyPair();
 		byte[] manifest = manifest("1.0", "v1.0", pluginAsset("1.0", "harness-a", "linux-x64") + ", " +
-			installerAsset("1.0", "linux-x64")).getBytes(UTF_8);
+			pluginAsset("1.0", "harness-b", "linux-x64")).getBytes(UTF_8);
 		TrustPolicy policy = policy(List.of(trusted("other-key", other), trusted("release-key", signer)));
 
 		VerifiedManifest verified = verify(manifest, sign(manifest, signer), policy);
@@ -117,15 +114,13 @@ public final class ManifestVerifierTest
 		requireThat(release.published(), "published").isEqualTo(Instant.parse("2026-11-03T13:44:35Z"));
 		ReleaseAsset plugin = release.findPlugin("harness-a", "linux-x64").orElseThrow();
 		requireThat(plugin.name(), "plugin.name").isEqualTo("cat-harness-a-linux-x64-v1.0.tar.gz");
-		requireThat(plugin.kind(), "plugin.kind").isEqualTo(AssetKind.PLUGIN);
-		requireThat(plugin.harness(), "plugin.harness").isEqualTo(Optional.of("harness-a"));
+		requireThat(plugin.harness(), "plugin.harness").isEqualTo("harness-a");
 		requireThat(plugin.size(), "plugin.size").isEqualTo(123L);
 		requireThat(plugin.sha256(), "plugin.sha256").isEqualTo(ReleaseFixtures.SHA256);
 		requireThat(plugin.topDirectory(), "plugin.topDirectory").isEqualTo("cat-harness-a-linux-x64-v1.0");
-		ReleaseAsset installer = release.findInstaller("linux-x64").orElseThrow();
-		requireThat(installer.name(), "installer.name").isEqualTo("cat-updater-v1.0-linux-x64.tar.gz");
-		requireThat(installer.harness(), "installer.harness").isEmpty();
-		requireThat(release.findPlugin("harness-b", "linux-x64"), "otherHarness").isEmpty();
+		requireThat(release.findPlugin("harness-b", "linux-x64").orElseThrow().name(), "otherHarness").
+			isEqualTo("cat-harness-b-linux-x64-v1.0.tar.gz");
+		requireThat(release.findPlugin("harness-c", "linux-x64"), "absentHarness").isEmpty();
 		requireThat(release.findPlugin("harness-a", "macos-arm64"), "otherPlatform").isEmpty();
 	}
 
@@ -311,12 +306,12 @@ public final class ManifestVerifierTest
 	}
 
 	/**
-	 * A signed manifest whose asset name disagrees with the asset's harness, kind, platform or the release version, or
-	 * that names a plugin in the older order {@code cat-<harness>-v<version>-<platform>}, is refused.
+	 * A signed manifest whose asset name disagrees with the asset's harness, platform or the release version, or that
+	 * names a plugin in the older order {@code cat-<harness>-v<version>-<platform>}, is refused.
 	 * <p>
-	 * The six manifests independently exercise harness, version, platform, kind, path and name-order mismatches. They
-	 * share one test-local key and trust policy, but each needs its own signature: verification must accept those exact
-	 * manifest bytes before their asset fields are checked. Signing and verifying all six can take one second or longer
+	 * The five manifests independently exercise harness, version, platform, path and name-order mismatches. They share
+	 * one test-local key and trust policy, but each needs its own signature: verification must accept those exact
+	 * manifest bytes before their asset fields are checked. Signing and verifying all five can take one second or longer
 	 * during a parallel build; omitting one would leave its mismatch unchecked by this test.
 	 *
 	 * @throws TrustException if the policy is refused
@@ -334,8 +329,6 @@ public final class ManifestVerifierTest
 				"1", ReleaseFixtures.SHA256, "cat-harness-a-linux-x64-v1.1"),
 			asset("cat-harness-a-linux-arm64-v1.0.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
 				"1", ReleaseFixtures.SHA256, "cat-harness-a-linux-arm64-v1.0"),
-			asset("cat-harness-a-linux-x64-v1.0.tar.gz", "updater", "", "linux-x64", "1", ReleaseFixtures.SHA256,
-				"cat-harness-a-linux-x64-v1.0"),
 			asset("../cat-harness-a-linux-x64-v1.0.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
 				"1", ReleaseFixtures.SHA256, "../cat-harness-a-linux-x64-v1.0"),
 			asset("cat-harness-a-v1.0-linux-x64.tar.gz", "plugin", "\"harness\": \"harness-a\", ", "linux-x64",
@@ -442,8 +435,23 @@ public final class ManifestVerifierTest
 	}
 
 	/**
-	 * A signed manifest whose plugin lacks a harness, whose installer names one, or whose harness identifier is malformed
-	 * is refused.
+	 * A signed manifest that lists a separate installer archive is refused, because the installer ships inside each
+	 * plugin archive and every asset is a plugin.
+	 *
+	 * @throws IOException if the bytes cannot be read
+	 */
+	@Test
+	public void refusesInstallerAsset() throws IOException
+	{
+		String installer = asset("cat-updater-v1.0-linux-x64.tar.gz", "updater", "", "linux-x64", "456",
+			ReleaseFixtures.SHA256, "cat-updater-v1.0-linux-x64");
+		String manifest = manifest("1.0", "v1.0", pluginAsset("1.0", "harness-a", "linux-x64") + ", " + installer);
+
+		requireThat(refusal(manifest), "reason").isEqualTo(Reason.MALFORMED_MANIFEST);
+	}
+
+	/**
+	 * A signed manifest whose plugin lacks a harness or whose harness identifier is malformed is refused.
 	 *
 	 * @throws IOException if the bytes cannot be read
 	 */
@@ -452,11 +460,9 @@ public final class ManifestVerifierTest
 	{
 		String pluginWithoutHarness = asset("cat-harness-a-linux-x64-v1.0.tar.gz", "plugin", "", "linux-x64", "1",
 			ReleaseFixtures.SHA256, "cat-harness-a-linux-x64-v1.0");
-		String installerWithHarness = asset("cat-updater-v1.0-linux-x64.tar.gz", "updater",
-			"\"harness\": \"harness-a\", ", "linux-x64", "1", ReleaseFixtures.SHA256, "cat-updater-v1.0-linux-x64");
 		String malformedHarness = pluginAsset("1.0", "Harness_A", "linux-x64");
 
-		for (String asset : List.of(pluginWithoutHarness, installerWithHarness, malformedHarness))
+		for (String asset : List.of(pluginWithoutHarness, malformedHarness))
 			requireThat(refusal(manifest("1.0", "v1.0", asset)), "reason").isEqualTo(Reason.MALFORMED_MANIFEST);
 	}
 

@@ -2,74 +2,99 @@ package com.holdmyspot.cat.distribution.bundle.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
-import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
-import com.holdmyspot.cat.common.installer.engine.HarnessSession;
-import com.holdmyspot.cat.common.installer.engine.InstallRequest;
-import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
-import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
-import com.holdmyspot.cat.common.installer.engine.UpdateResult;
-import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
-import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
-import com.holdmyspot.cat.common.installer.trust.TrustException;
-import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
-import com.holdmyspot.cat.common.installer.trust.TrustedKey;
+import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
+import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
+import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
+import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
+import com.holdmyspot.cat.distribution.bundle.PluginInstaller;
+import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
+import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
+import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
-import java.security.GeneralSecurityException;
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.MessageDigest;
-import java.security.Signature;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
-import java.util.zip.GZIPOutputStream;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs an authenticated update through the engine and the packaged harness providers together.
+ * Runs the installer that each assembled plugin carries through a whole installation's life, with the packaged
+ * harness providers and a fake harness program: an install, an install of another build, a status, an uninstall that
+ * keeps CAT's plugin data and an uninstall that deletes it.
  */
 public final class InstallerActivationTest
 {
+	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	/**
-	 * The runtime requirement of the installer and the plugin.
+	 * The marketplace metadata of each harness, which names the plugin folder beneath the marketplace.
 	 */
-	private static final String REQUIREMENT = "{\"format\": 1, \"java_feature\": 25, \"modules\": [\"java.base\"]}";
+	private static final Map<String, String> MARKETPLACES = Map.of(
+		"claude", """
+			{
+				"name": "cat",
+				"owner": {
+					"name": "cowwoc"
+				},
+				"plugins": [
+					{
+						"name": "cat",
+						"source": "./plugins/cat"
+					}
+				]
+			}
+			""",
+		"codex", """
+			{
+				"name": "cat",
+				"plugins": [
+					{
+						"name": "cat",
+						"source": {
+							"source": "local",
+							"path": "./plugins/cat"
+						},
+						"policy": {
+							"installation": "INSTALLED_BY_DEFAULT",
+							"authentication": "ON_INSTALL"
+						}
+					}
+				]
+			}
+			""");
 	/**
-	 * The full plugin version that the signed release names.
+	 * The build that the harness runs first.
 	 */
-	private static final String PLUGIN_VERSION = "1.1+b0123456789ab";
+	private static final PluginVersion FIRST = PluginVersion.parse("1.0+b00000000000a");
 	/**
-	 * The full plugin version that the harness has before the update.
+	 * The build that replaces it.
 	 */
-	private static final String ACTIVE_VERSION = "1.0+b00000000000a";
+	private static final PluginVersion SECOND = PluginVersion.parse("1.0+b00000000000b");
 
 	/**
 	 * Creates the test.
@@ -79,7 +104,7 @@ public final class InstallerActivationTest
 	}
 
 	/**
-	 * Supplies each production activation service.
+	 * Supplies each packaged harness.
 	 *
 	 * @return the harness identifiers
 	 */
@@ -90,423 +115,354 @@ public final class InstallerActivationTest
 	}
 
 	/**
-	 * An authenticated release is installed into its own version folder by the harness, once, while the active version
-	 * folder, configuration, user files and the release's executable content remain untouched.
+	 * The installer of an assembled plugin installs CAT, a second build's installer replaces it, the installer in the
+	 * harness's version folder reports the installed build, uninstall unregisters CAT and keeps its plugin data, and
+	 * an uninstall with {@code --delete-data} also deletes that data. The installer's own version folder is deleted
+	 * once the uninstalling installer exits.
 	 *
-	 * @param harness the production provider to exercise
-	 * @throws IOException if fixture files cannot be written or read
-	 * @throws GeneralSecurityException if release signing is unavailable
-	 * @throws TrustException if the fixture policy cannot be created
+	 * @param harness the packaged harness to exercise
+	 * @throws IOException if a fixture file cannot be written or read
 	 */
 	@Test(dataProvider = "harnesses")
-	public void updatePreservesConfiguration(String harness)
-		throws IOException, GeneralSecurityException, TrustException
+	public void installUpdateStatusUninstall(String harness) throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("installer-activation-").toRealPath());
-			Path home = Files.createDirectory(root.resolve("harness-home"));
-			PluginActivation provider = ServiceLoader.load(PluginActivation.class).stream().
-				map(ServiceLoader.Provider::get).filter(service -> service.harness().equals(harness)).
-				findFirst().orElseThrow();
-			install(home, provider);
-			Map<Path, String> contents = new HashMap<>();
-			Map<Path, FileTime> times = new HashMap<>();
-			List<String> userFiles = new ArrayList<>(List.of("config.toml", "auth.json", "settings.json", ".mcp.json",
-				"plugins/cat-marketplace/.agents/plugins/marketplace.json", "agents/user.toml"));
-			// Claude Code's record of its installed plugins is Claude Code's, which its registration rewrites
-			if (harness.equals("codex"))
-				userFiles.add("plugins/installed_plugins.json");
-			for (String name : userFiles)
-			{
-				Path file = home.resolve(name);
-				write(file, "user-owned " + name);
-				contents.put(file, Files.readString(file));
-				times.put(file, Files.getLastModifiedTime(file));
-			}
-			SignedRelease release = release(provider, root.resolve("executed"));
-			TrustedKey key = TrustedKey.decode("fixture-key", Base64.getEncoder().
-				encodeToString(release.key().getPublic().getEncoded()));
-			TrustPolicy policy = TrustPolicy.of(List.of(key), URI.create("https://releases.example/cat/releases/download"),
-				ReleaseVersion.parse("1.0"), 1, Map.of(harness, home));
-			Path data = root.resolve("installer");
-			UpdateEngine engine = new UpdateEngine(data, policy, release, provider,
-				"linux-x64", Clock.systemUTC(), interval -> () -> {});
-			FixtureIntegration integration = new FixtureIntegration(harness, layout(harness), new ArrayList<>());
-			HarnessSession session = new HarnessSession(integration,
-				arguments -> new CommandResult(0, ""), new FileReplacer(Platform.current(), () ->
-			{
-			}, Clock.systemUTC()));
-			Path activeFolder = integration.installation(home).versionFolder(PluginVersion.parse(ACTIVE_VERSION));
-			Map<String, String> activeBefore = snapshot(activeFolder);
+			// Install looks for the harness program outside the temporary directory, so the fixture lies beside the
+			// test classes in the build directory
+			Path build = Path.of(URI.create(InstallerActivationTest.class.getProtectionDomain().getCodeSource().
+				getLocation().toString())).getParent();
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(build.resolve("test-files")),
+				"installer-activation-").toRealPath());
+			Platform platform = Platform.current();
+			PluginActivation activation = provider(PluginActivation.class, harness);
+			HarnessIntegration integration = provider(HarnessIntegration.class, harness);
+			FakeHarness fake = new FakeHarness(harness, platform, root);
+			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
+			Path second = assemble(scope, harness, platform, SECOND, root.resolve("second"));
+			Path home = fake.home;
+			Path data = activation.dataDirectory(home);
 
-			UpdateResult updated = engine.install("v1.1", new InstallRequest(session, root.resolve("download/plugin"),
-				List.of(), root.resolve("user/.cat/locks"), _ -> false));
+			JsonNode installed = fake.run(first, "--home", home.toString(), "install", "--harness", harness);
+			requireThat(installed.path("result").asString(), "installed").withContext(installed, "output").
+				isEqualTo("installed");
+			requireThat(activation.installed(home).version(), "firstVersion").isEqualTo(Optional.of(FIRST.toString()));
 
-			requireThat(updated.result(), "updateResult").withContext(updated.message(), "message").
-				isEqualTo(Result.UPDATED);
-			requireThat(updated.consistent(), "updatedConsistent").isTrue();
-			requireThat(updated.previousVersion(), "previousVersion").isEqualTo(Optional.of(ACTIVE_VERSION));
-			requireThat(integration.registered(), "registered").isEqualTo(List.of(PluginVersion.parse(PLUGIN_VERSION)));
-			requireThat(provider.installed(home), "updatedInstallation").
-				isEqualTo(new InstalledState(Optional.of(PLUGIN_VERSION), true));
-			Path newFolder = integration.installation(home).versionFolder(PluginVersion.parse(PLUGIN_VERSION));
-			requireThat(Files.readString(newFolder.resolve("bin/runtime-binding")).strip(), "runtimeBinding").
-				isEqualTo(newFolder.resolve("bin/runtime").toString());
-			requireThat(snapshot(activeFolder), "activeFolder").isEqualTo(activeBefore);
-			requireThat(Files.readString(provider.migrationVersionFile(home)), "updatedMigrationVersion").
-				isEqualTo("1.1\n");
-			if (harness.equals("codex"))
+			JsonNode updated = fake.run(second, "--home", home.toString(), "install", "--harness", harness);
+			requireThat(updated.path("result").asString(), "updated").withContext(updated, "output").
+				isEqualTo("updated");
+			requireThat(activation.installed(home).version(), "secondVersion").
+				isEqualTo(Optional.of(SECOND.toString()));
+
+			Path versionFolder = integration.installation(home).versionFolder(SECOND);
+			JsonNode status = fake.run(versionFolder, "status");
+			requireThat(status.path("result").asString(), "status").withContext(status, "output").isEqualTo("status");
+			requireThat(status.path("version").asString(), "statusVersion").isEqualTo(SECOND.toString());
+			requireThat(status.path("consistent").asBoolean(), "consistent").withContext(status, "output").isTrue();
+
+			JsonNode kept = fake.run(versionFolder, "uninstall");
+			requireThat(kept.path("result").asString(), "kept").withContext(kept, "output").isEqualTo("uninstalled");
+			fake.requireExitDeletion(versionFolder);
+			requireThat(activation.installed(home).version(), "uninstalledVersion").isEmpty();
+			requireThat(Files.isDirectory(data), "dataKept").isTrue();
+
+			JsonNode reinstalled = fake.run(second, "--home", home.toString(), "install", "--harness", harness);
+			requireThat(reinstalled.path("result").asString(), "reinstalled").withContext(reinstalled, "output").
+				isEqualTo("installed");
+			JsonNode deleted = fake.run(versionFolder, "uninstall", "--delete-data");
+			requireThat(deleted.path("result").asString(), "deleted").withContext(deleted, "output").
+				isEqualTo("uninstalled");
+			fake.requireExitDeletion(versionFolder);
+			requireThat(Files.exists(data), "dataDeleted").isFalse();
+			if (harness.equals("claude"))
 			{
-				requireThat(Files.exists(home.resolve("agents/cat-a.toml"), NOFOLLOW_LINKS), "retiredAgentExists").isFalse();
-				requireThat(Files.readString(home.resolve("agents/cat-b.toml")), "newAgent").isEqualTo("new agent");
+				requireThat(fake.unregistrations, "unregistrations").isEqualTo(List.of(
+					"plugin uninstall --keep-data cat@cat", "plugin uninstall cat@cat"));
 			}
-			unchanged(contents, times);
-			requireThat(Files.exists(root.resolve("executed"), NOFOLLOW_LINKS), "downloadedCodeExecuted").isFalse();
+			else
+			{
+				requireThat(fake.unregistrations, "unregistrations").
+					isEqualTo(List.of("plugin remove cat@cat", "plugin remove cat@cat"));
+			}
 		}
 	}
 
 	/**
-	 * Creates only the initial installation files that the real providers read.
+	 * Returns the packaged provider of a harness.
 	 *
-	 * @param home the isolated harness home
-	 * @param provider the service whose installation is created
-	 * @throws IOException if writing fails
+	 * @param <T>     the provider's service
+	 * @param service the provider's service
+	 * @param harness the harness
+	 * @return the provider
 	 */
-	private static void install(Path home, PluginActivation provider) throws IOException
+	private static <T> T provider(Class<T> service, String harness)
 	{
-		String manifest = "{\"name\":\"cat\",\"version\":\"" + ACTIVE_VERSION + "\"}";
-		write(provider.migrationVersionFile(home), "1.0\n");
-		if (provider.harness().equals("claude"))
+		for (T provider : ServiceLoader.load(service))
 		{
-			write(home.resolve("plugins/cat-marketplace/plugins/cat/" + ACTIVE_VERSION).
-				resolve(provider.pluginManifest()), manifest);
-			recordClaudeInstallation(home, ACTIVE_VERSION);
+			String identifier;
+			if (provider instanceof PluginActivation activation)
+				identifier = activation.harness();
+			else
+				identifier = ((HarnessIntegration) provider).harness();
+			if (identifier.equals(harness))
+				return provider;
+		}
+		throw new AssertionError("No packaged " + service.getSimpleName() + " for " + harness);
+	}
+
+	/**
+	 * Assembles a harness's extracted plugin archive with the build's assembly steps: a plugin manifest, the plugin's
+	 * modules beside a stand-in Java runtime, the harness's launchers, the installer's launchers and default policy,
+	 * and the harness's marketplace metadata with an empty migration registry.
+	 *
+	 * @param scope     the build's process scope
+	 * @param harness   the harness
+	 * @param platform  the platform that the plugin runs on
+	 * @param version   the plugin's build
+	 * @param directory the new directory that receives the inputs and the plugin
+	 * @return the plugin's folder
+	 * @throws IOException if the plugin cannot be assembled
+	 */
+	private static Path assemble(TestJvmScope scope, String harness, Platform platform, PluginVersion version,
+		Path directory) throws IOException
+	{
+		String manifest = "." + harness + "-plugin/plugin.json";
+		Path layer = Files.createDirectories(directory).resolve("plugin.jar");
+		try (JarOutputStream jar = new JarOutputStream(Files.newOutputStream(layer)))
+		{
+			jar.putNextEntry(new JarEntry(manifest));
+			jar.write("""
+				{
+					"name": "cat",
+					"version": "1.0"
+				}
+				""".getBytes(UTF_8));
+			jar.closeEntry();
+		}
+		Path install = Files.createDirectories(directory.resolve("install/migrations")).getParent();
+		Files.writeString(install.resolve("migrations/registry.tsv"), "# target-version<TAB>script\n");
+		Files.writeString(install.resolve(harness + "-marketplace.json"), MARKETPLACES.get(harness));
+		Path runtime = Files.createDirectories(directory.resolve("runtime/bin")).getParent();
+		Files.writeString(runtime.resolve("bin/java"), "java");
+		Path module = Files.writeString(directory.resolve("app.jar"), "module");
+		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
+		Path bin = access.stageBin(new ApplicationModules(List.of(module), new TreeSet<>(Set.of("java.base"))), runtime,
+			directory.resolve("bin"), scope.json());
+		PluginInstaller installer = new PluginInstaller(scope, version.release(), "");
+		if (harness.equals("claude"))
+		{
+			PluginLaunchers.write(access.claudeLaunchers(), platform, true, bin);
+			installer.write(bin, platform, true);
 		}
 		else
 		{
-			write(home.resolve("plugins/cat-marketplace/plugins/cat").resolve(provider.pluginManifest()), manifest);
-			write(home.resolve("plugins/cache/cat/cat/" + ACTIVE_VERSION).resolve(provider.pluginManifest()), manifest);
-			write(home.resolve("agents/cat-a.toml"), "old agent");
-			write(home.resolve("plugins/data/cat-cat/codex-agent-files"), "cat-a.toml\n");
+			access.writeCodexLaunchers(bin, platform);
+			installer.write(bin, platform, !platform.isWindows());
 		}
+		Path legal = Files.createDirectories(directory.resolve("legal/licenses"));
+		Files.writeString(legal.resolveSibling("LICENSE.txt"), "license");
+		Files.writeString(legal.resolveSibling("NOTICE.txt"), "notice");
+		return new PluginArtifactBuilder(version).build(List.of(new ArtifactLayer(harness + "-plugin", layer)), bin,
+			legal.getParent(), List.of(install),
+			directory.resolve("cat-" + harness + "-" + platform.id() + "-v" + version.release()));
 	}
 
 	/**
-	 * Records CAT's installation in Claude Code's record of its installed plugins, as Claude Code does when it
-	 * installs or updates CAT.
-	 *
-	 * @param home    the isolated harness home
-	 * @param version the installed plugin version
-	 * @throws IOException if writing fails
+	 * A harness home whose harness program is a fake: the program that install finds on PATH, and the commands that it
+	 * answers as the harness does.
 	 */
-	private static void recordClaudeInstallation(Path home, String version) throws IOException
+	private static final class FakeHarness implements HarnessCli
 	{
-		write(home.resolve("plugins/installed_plugins.json"), "{\"version\": 2, \"plugins\": {\"cat@cat\": " +
-			"[{\"scope\": \"user\", \"version\": \"" + version + "\"}]}}\n");
-	}
+		private final String harness;
+		private final Platform platform;
+		private final Path home;
+		private final Path project;
+		private final Path user;
+		private final Map<String, String> environment = new HashMap<>();
+		/**
+		 * The commands that unregistered CAT from the harness.
+		 */
+		private final List<String> unregistrations = new ArrayList<>();
+		/**
+		 * The commands that the installer started to delete folders once it exits.
+		 */
+		private final List<List<String>> started = new ArrayList<>();
+		private Path marketplace;
 
-	/**
-	 * Returns the harness's own layout of CAT's installation, which the fixture integration reports as the packaged
-	 * integration does.
-	 *
-	 * @param harness the harness identifier
-	 * @return the packaged integration
-	 */
-	private static HarnessIntegration layout(String harness)
-	{
-		return ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).
-			filter(service -> service.harness().equals(harness)).findFirst().orElseThrow();
-	}
-
-	/**
-	 * Returns the content of each regular file below a directory, by its relative path.
-	 *
-	 * @param directory the directory
-	 * @return the contents
-	 * @throws IOException if a file cannot be read
-	 */
-	private static Map<String, String> snapshot(Path directory) throws IOException
-	{
-		Map<String, String> contents = new HashMap<>();
-		try (Stream<Path> paths = Files.walk(directory))
+		/**
+		 * Creates the harness's home, the user's home and project, and the fake program.
+		 *
+		 * @param harness  the harness
+		 * @param platform the platform that the installer runs on
+		 * @param root     the test's directory
+		 * @throws IOException if a directory or the program cannot be created
+		 */
+		private FakeHarness(String harness, Platform platform, Path root) throws IOException
 		{
-			for (Path path : paths.filter(path -> Files.isRegularFile(path, NOFOLLOW_LINKS)).toList())
-				contents.put(directory.relativize(path).toString(), Files.readString(path));
-		}
-		return contents;
-	}
-
-	/**
-	 * Copies a directory tree, as a harness copies CAT's marketplace folder into a version folder.
-	 *
-	 * @param source      the tree
-	 * @param destination the new directory
-	 * @throws IOException if the tree cannot be copied
-	 */
-	private static void copyTree(Path source, Path destination) throws IOException
-	{
-		try (Stream<Path> paths = Files.walk(source))
-		{
-			for (Path path : paths.toList())
+			this.harness = harness;
+			this.platform = platform;
+			this.home = Files.createDirectories(root.resolve("harness-home"));
+			this.user = Files.createDirectories(root.resolve("user"));
+			this.project = Files.createDirectories(root.resolve("project"));
+			Path tools = Files.createDirectories(root.resolve("tools"));
+			environment.put("PATH", tools.toString());
+			if (platform.isWindows())
 			{
-				Path copy = destination.resolve(source.relativize(path).toString());
-				if (Files.isDirectory(path, NOFOLLOW_LINKS))
-					Files.createDirectories(copy);
-				else
-					Files.copy(path, copy);
+				Files.writeString(tools.resolve(harness + ".cmd"), "@exit /b 0\r\n");
+				environment.put("USERPROFILE", user.toString());
+				environment.put("PATHEXT", ".EXE;.CMD");
+				environment.put("SystemRoot", System.getenv("SystemRoot"));
+			}
+			else
+			{
+				Path program = Files.writeString(tools.resolve(harness), "#!/bin/sh\n");
+				if (!program.toFile().setExecutable(true))
+					throw new IOException("Cannot make " + program + " executable");
+				environment.put("HOME", user.toString());
 			}
 		}
-	}
 
-	/**
-	 * Checks both byte content and modification time after an operation that must preserve user files.
-	 *
-	 * @param contents the original content
-	 * @param times the original modification times
-	 * @throws IOException if a protected file cannot be read
-	 */
-	private static void unchanged(Map<Path, String> contents, Map<Path, FileTime> times) throws IOException
-	{
-		for (Map.Entry<Path, String> entry : contents.entrySet())
+		/**
+		 * Runs an installer command of a plugin folder, as its launcher starts the installer there.
+		 *
+		 * @param plugin    the plugin folder that the installer belongs to
+		 * @param arguments the command line
+		 * @return the printed result
+		 * @throws IOException if the output is not one JSON result
+		 */
+		private JsonNode run(Path plugin, String... arguments) throws IOException
 		{
-			requireThat(Files.readString(entry.getKey()), "protectedContent").isEqualTo(entry.getValue());
-			requireThat(Files.getLastModifiedTime(entry.getKey()), "protectedModificationTime").
-				isEqualTo(times.get(entry.getKey()));
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
+			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
+				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
+			{
+				FileReplacer replacer = new FileReplacer(platform, () ->
+				{
+				}, Clock.systemUTC());
+				new Invocation(plugin, project, user, platform, environment,
+					List.copyOf(ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).
+						toList()),
+					List.copyOf(ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).
+						toList()),
+					(command, _) -> this, Clock.systemUTC(), _ -> () ->
+				{
+				}, replacer, _ -> Optional.empty(), started::add, stdout, stderr).run(arguments);
+			}
+			String text = output.toString(UTF_8);
+			try
+			{
+				return MAPPER.readTree(text);
+			}
+			catch (RuntimeException e)
+			{
+				throw new IOException("The installer printed no JSON result: " + text + diagnostics.toString(UTF_8), e);
+			}
 		}
-	}
 
-	/**
-	 * Writes one fixture file below an isolated harness home.
-	 *
-	 * @param path the file
-	 * @param content its content
-	 * @throws IOException if writing fails
-	 */
-	private static void write(Path path, String content) throws IOException
-	{
-		Files.createDirectories(path.getParent());
-		Files.writeString(path, content);
-	}
-
-	/**
-	 * Signs an archive with real Ed25519 so production authentication and extraction participate in acceptance.
-	 *
-	 * @param provider the production provider
-	 * @param executionMarker the isolated marker a downloaded launcher would create if incorrectly executed
-	 * @return the authenticated release source
-	 * @throws IOException if archive creation fails
-	 * @throws GeneralSecurityException if signing fails
-	 */
-	private static SignedRelease release(PluginActivation provider, Path executionMarker)
-		throws IOException, GeneralSecurityException
-	{
-		String top = "cat-" + provider.harness() + "-linux-x64-v1.1";
-		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-		try (TarArchiveOutputStream tar = new TarArchiveOutputStream(new GZIPOutputStream(bytes)))
+		/**
+		 * Requires that the uninstalling installer's version folder is deleted once the installer exits. On Windows,
+		 * where the folder holds the running installer's files, the installer leaves it to a Windows PowerShell
+		 * process that waits for the installer to exit; this fake stands in for that process and deletes the folder.
+		 *
+		 * @param versionFolder the installer's version folder
+		 * @throws IOException if the folder cannot be deleted
+		 */
+		private void requireExitDeletion(Path versionFolder) throws IOException
 		{
-			entry(tar, top + "/" + provider.pluginManifest(), "{\"name\":\"cat\",\"version\":\"" + PLUGIN_VERSION +
-				"\"}", 0644);
-			entry(tar, top + "/bin/VERSION", PLUGIN_VERSION + "\n", 0644);
-			entry(tar, top + "/bin/runtime-requirement.json", REQUIREMENT, 0644);
-			entry(tar, top + "/bin/plugin-info", "#!/bin/sh\nprintf executed > " +
-				ShellQuoting.posix(executionMarker.toString()) + "\n", 0755);
-			entry(tar, top + "/install/migrations/registry.tsv", "# no migrations\n", 0644);
-			entry(tar, top + "/agents/codex/b.toml", "new agent", 0644);
-		}
-		byte[] archive = bytes.toByteArray();
-		Map<String, Object> asset = Map.of("name", top + ".tar.gz", "kind", "plugin", "harness", provider.harness(),
-			"platform", "linux-x64", "size", archive.length, "sha256",
-			HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(archive)), "top_directory", top);
-		byte[] manifest = JsonMapper.builder().build().writeValueAsBytes(Map.of("format", 1, "product", "cat",
-			"version", "1.1", "tag", "v1.1", "build", "0123456789ab", "published", "2026-11-03T13:44:35Z", "assets",
-			List.of(asset)));
-		KeyPair key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
-		Signature signer = Signature.getInstance("Ed25519");
-		signer.initSign(key.getPrivate());
-		signer.update(manifest);
-		byte[] signature = Base64.getEncoder().encode(signer.sign());
-		return new SignedRelease(key, Map.of(top + ".tar.gz", archive), manifest, signature);
-	}
-
-	/**
-	 * Writes one regular archive entry with the platform-relevant mode.
-	 *
-	 * @param tar the archive writer
-	 * @param name its complete relative name
-	 * @param content its content
-	 * @param mode its permissions
-	 * @throws IOException if archive writing fails
-	 */
-	private static void entry(TarArchiveOutputStream tar, String name, String content, int mode) throws IOException
-	{
-		byte[] bytes = content.getBytes(UTF_8);
-		TarArchiveEntry entry = new TarArchiveEntry(name);
-		entry.setSize(bytes.length);
-		entry.setMode(mode);
-		tar.putArchiveEntry(entry);
-		tar.write(bytes);
-		tar.closeArchiveEntry();
-	}
-
-	/**
-	 * Supplies bytes only; the production engine owns every trust and activation decision.
-	 *
-	 * @param key the fixture signing key
-	 * @param archives the plugin archives, by asset name
-	 * @param manifest the signed manifest bytes
-	 * @param signature the detached signature bytes
-	 */
-	private record SignedRelease(KeyPair key, Map<String, byte[]> archives, byte[] manifest, byte[] signature)
-		implements ReleaseSource
-	{
-		@Override
-		public String latestTag()
-		{
-			return "v1.1";
+			if (platform.isWindows())
+			{
+				requireThat(started, "started").size().isEqualTo(1);
+				requireThat(started.getFirst().getFirst(), "waiter").
+					endsWith("\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+				started.clear();
+				TemporaryDirectories.deleteRecursively(versionFolder);
+			}
+			requireThat(Files.exists(versionFolder), "versionFolderLeft").isFalse();
 		}
 
 		@Override
-		public byte[] manifest(String tag)
+		public CommandResult run(List<String> arguments) throws IOException
 		{
-			return manifest.clone();
+			String command = String.join(" ", arguments);
+			if (command.equals("--version"))
+			{
+				if (harness.equals("claude"))
+					return new CommandResult(0, "2.1.0 (Claude Code)\n");
+				return new CommandResult(0, "codex-cli 0.130.0\n");
+			}
+			if (arguments.size() == 4 && command.startsWith("plugin marketplace add "))
+			{
+				marketplace = Path.of(arguments.get(3));
+				return new CommandResult(0, "Added marketplace cat\n");
+			}
+			if (command.equals("plugin marketplace remove cat"))
+				return new CommandResult(0, "Removed marketplace cat\n");
+			return switch (command)
+			{
+				case "plugin install cat@cat", "plugin update cat@cat" -> loadClaude();
+				case "plugin add cat@cat" -> loadCodex();
+				case "plugin uninstall --keep-data cat@cat", "plugin uninstall cat@cat", "plugin remove cat@cat" ->
+				{
+					unregistrations.add(command);
+					Files.deleteIfExists(home.resolve("plugins/installed_plugins.json"));
+					yield new CommandResult(0, "Removed cat@cat\n");
+				}
+				default -> throw new AssertionError("Unexpected " + harness + " command: " + arguments);
+			};
 		}
 
-		@Override
-		public byte[] signature(String tag)
+		/**
+		 * Loads CAT from the marketplace as Claude Code does: it records the marketplace entry's version as the
+		 * installed version.
+		 *
+		 * @return the command's result
+		 * @throws IOException if the marketplace cannot be read or the record cannot be written
+		 */
+		private CommandResult loadClaude() throws IOException
 		{
-			return signature.clone();
+			String version = "";
+			for (JsonNode entry : MAPPER.readTree(Files.readString(marketplace.resolve(
+				".claude-plugin/marketplace.json"))).path("plugins"))
+			{
+				if (entry.path("name").asString().equals("cat"))
+					version = entry.path("version").asString();
+			}
+			Path record = home.resolve("plugins/installed_plugins.json");
+			Files.writeString(record, MAPPER.writeValueAsString(MAPPER.createObjectNode().put("version", 2).
+				set("plugins", MAPPER.createObjectNode().set("cat@cat", MAPPER.createArrayNode().
+					add(MAPPER.createObjectNode().put("scope", "user").put("version", version))))));
+			return new CommandResult(0, "Installed cat@cat\n");
 		}
 
-		@Override
-		public void download(String tag, String assetName, long expectedSize, Path destination) throws IOException
+		/**
+		 * Loads CAT from the marketplace as Codex does: it replaces its cache of CAT with a copy of the marketplace's
+		 * plugin, named after the plugin's version.
+		 *
+		 * @return the command's result
+		 * @throws IOException if the plugin cannot be copied
+		 */
+		private CommandResult loadCodex() throws IOException
 		{
-			Files.write(destination, archives.get(assetName));
-		}
-	}
-
-	/**
-	 * Stands in for the harness's registration, whose commands the providers' own tests cover, and reports CAT's
-	 * folders where the packaged integration does. It records each version that it registers and installs it as the
-	 * harness does: Claude Code installs from the version folder itself and records the version in its record of
-	 * installed plugins, while Codex copies CAT's marketplace folder into the version folder.
-	 *
-	 * @param harness    the harness identifier
-	 * @param packaged   the packaged integration of the harness
-	 * @param registered the version of each registration, in call order
-	 */
-	private record FixtureIntegration(String harness, HarnessIntegration packaged, List<PluginVersion> registered)
-		implements HarnessIntegration
-	{
-		@Override
-		public String programName()
-		{
-			throw new UnsupportedOperationException("Only install discovers the harness program");
-		}
-
-		@Override
-		public Map<String, String> programEnvironment(Path home, Map<String, String> environment)
-		{
-			throw new UnsupportedOperationException("Only install discovers the harness program");
-		}
-
-		@Override
-		public void requireIdentity(CommandResult version)
-		{
-			throw new UnsupportedOperationException("Only install discovers the harness program");
-		}
-
-		@Override
-		public void validateConfiguration(Path home)
-		{
-		}
-
-		@Override
-		public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer)
-			throws IOException
-		{
-			registered.add(version);
-			if (harness.equals("claude"))
-				recordClaudeInstallation(home, version.toString());
-			else
-				copyTree(packaged.marketplaceFolder(home, version), installation(home).versionFolder(version));
-		}
-
-		@Override
-		public void unregister(Path home, HarnessCli cli, boolean keepData)
-		{
-		}
-
-		@Override
-		public HarnessInstallation installation(Path home)
-		{
-			return packaged.installation(home);
-		}
-
-		@Override
-		public HarnessInstallation installation(Map<String, String> environment, Path userHome)
-		{
-			throw new UnsupportedOperationException("Only install locates the harness's installation");
-		}
-
-		@Override
-		public Path marketplaceFolder(Path home, PluginVersion version)
-		{
-			return packaged.marketplaceFolder(home, version);
-		}
-
-		@Override
-		public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-			FileReplacer replacer)
-		{
-			return Map.of();
-		}
-
-		@Override
-		public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
-		{
-			return Map.of();
-		}
-
-		@Override
-		public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
-		{
-			return Map.of();
-		}
-
-		@Override
-		public Map<String, List<String>> permissions(Path installer)
-		{
-			return Map.of();
-		}
-
-		@Override
-		public void removePermissions(Path home, Map<String, List<String>> added, FileReplacer replacer)
-		{
-		}
-
-		@Override
-		public Optional<String> consentRequest(Path home, Path catLocks)
-		{
-			return Optional.empty();
-		}
-
-		@Override
-		public Map<String, List<String>> installConsentedEntries(Path home, FileReplacer replacer)
-		{
-			return Map.of();
-		}
-
-		@Override
-		public List<String> describeAdded(Path home, Map<String, List<String>> added)
-		{
-			return List.of();
-		}
-
-		@Override
-		public List<String> describeRetained(Path home, Map<String, List<String>> added)
-		{
-			return List.of();
+			Path source = home.resolve("plugins/cat-marketplace/plugins/cat");
+			String version = MAPPER.readTree(Files.readString(source.resolve(".codex-plugin/plugin.json"))).
+				path("version").asString();
+			Path cache = home.resolve("plugins/cache/cat/cat");
+			TemporaryDirectories.deleteRecursively(cache);
+			Path copy = cache.resolve(version);
+			try (Stream<Path> files = Files.walk(source))
+			{
+				for (Path file : files.toList())
+				{
+					Path target = copy.resolve(source.relativize(file).toString());
+					if (Files.isDirectory(file))
+						Files.createDirectories(target);
+					else
+						Files.copy(file, target);
+				}
+			}
+			return new CommandResult(0, "Added cat@cat\n");
 		}
 	}
 }

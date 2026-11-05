@@ -55,13 +55,12 @@ public final class ReleasePackager
 	}
 
 	/**
-	 * Packages a plugin or installer artifact as a deterministic archive, replacing an existing archive at its generated
-	 * path: {@code cat-<harness>-<platform>-v<version>.tar.gz} for a plugin and
-	 * {@code cat-updater-v<version>-<platform>.tar.gz} for the installer. The archive leaves out the
+	 * Packages a plugin artifact as a deterministic archive, replacing an existing archive at its generated path
+	 * {@code cat-<harness>-<platform>-v<version>.tar.gz}. The archive leaves out the
 	 * {@link RuntimeBinding runtime binding}, which names a runtime on the building machine, and the
 	 * {@link StartupCache startup cache}, which Java accepts only at the location where it was written.
 	 *
-	 * @param component        the plugin harness identifier or {@code updater}, used in the generated archive filename
+	 * @param component        the plugin harness identifier, used in the generated archive filename
 	 * @param platform         distribution platform whose identifier is included in the generated archive filename
 	 * @param artifactRoot     assembled distribution directory whose contents are archived
 	 * @param releaseDirectory directory that receives the generated archive, creating it when needed
@@ -80,7 +79,7 @@ public final class ReleasePackager
 		requireThat(releaseDirectory, "releaseDirectory").isNotNull();
 		switch (component)
 		{
-			case "claude", "codex", "updater" ->
+			case "claude", "codex" ->
 			{
 			}
 			default -> throw new IllegalArgumentException("Unsupported distribution component: " + component);
@@ -89,11 +88,7 @@ public final class ReleasePackager
 			throw new IOException("Artifact root is not a directory: " + artifactRoot);
 
 		Files.createDirectories(releaseDirectory);
-		String baseName;
-		if (component.equals("updater"))
-			baseName = "cat-updater-v" + version + "-" + platform.id();
-		else
-			baseName = "cat-" + component + "-" + platform.id() + "-v" + version;
+		String baseName = "cat-" + component + "-" + platform.id() + "-v" + version;
 		Path archive = releaseDirectory.resolve(baseName + ".tar.gz");
 		GzipParameters gzipParameters = new GzipParameters();
 		gzipParameters.setModificationInstant(Instant.EPOCH);

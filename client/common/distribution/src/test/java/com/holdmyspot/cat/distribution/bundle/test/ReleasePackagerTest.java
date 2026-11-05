@@ -59,25 +59,36 @@ public final class ReleasePackagerTest
 	}
 
 	/**
-	 * Verifies that a plugin's archive is named after its harness, its platform and the release version, and that the
-	 * installer's archive keeps its name, in which the version precedes the platform.
+	 * Verifies that a plugin's archive is named after its harness, its platform and the release version.
 	 */
 	@Test
-	public void namesPluginAndInstallerArchives() throws IOException
+	public void namesPluginArchive() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-"));
 			Files.createDirectories(temporary.resolve("artifact"));
-			ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
-			Path plugin = packager.packageArtifact("claude", Platform.MACOS_ARM64, temporary.resolve("artifact"),
-				temporary.resolve("release"));
-			Path installer = packager.packageArtifact("updater", Platform.MACOS_ARM64, temporary.resolve("artifact"),
-				temporary.resolve("release"));
+			Path plugin = new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("claude", Platform.MACOS_ARM64,
+				temporary.resolve("artifact"), temporary.resolve("release"));
 
 			requireThat(plugin.getFileName().toString(), "plugin").isEqualTo("cat-claude-macos-arm64-v1.0.tar.gz");
 			requireThat(readEntries(plugin).getFirst().getName(), "pluginTop").isEqualTo("cat-claude-macos-arm64-v1.0/");
-			requireThat(installer.getFileName().toString(), "installer").isEqualTo("cat-updater-v1.0-macos-arm64.tar.gz");
+		}
+	}
+
+	/**
+	 * Verifies that no archive is packaged for the separate installer, which releases no longer publish because each
+	 * plugin carries its own installer.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void refusesInstallerArchive() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("cat-release-"));
+			Files.createDirectories(temporary.resolve("artifact"));
+			new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("updater", Platform.MACOS_ARM64,
+				temporary.resolve("artifact"), temporary.resolve("release"));
 		}
 	}
 

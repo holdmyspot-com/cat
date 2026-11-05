@@ -140,8 +140,8 @@ public final class ReleaseManifest
 		if (array.isEmpty())
 			throw json.refusal("The release manifest's field \"assets\" must list at least one asset");
 		List<ReleaseAsset> assets = new ArrayList<>();
-		// An asset's name is determined by its kind, harness and platform, so unique names also make those triples
-		// unique, which lets findPlugin() and findInstaller() return at most one asset.
+		// An asset's name is determined by its harness and platform, so unique names also make those pairs unique,
+		// which lets findPlugin() return at most one asset.
 		Set<String> names = new HashSet<>();
 		for (int index = 0; index < array.size(); ++index)
 		{
@@ -239,28 +239,7 @@ public final class ReleaseManifest
 		requireThat(platform, "platform").isNotNull();
 		for (ReleaseAsset asset : assets)
 		{
-			if (asset.kind() == AssetKind.PLUGIN && asset.harness().orElseThrow().equals(harness) &&
-				asset.platform().equals(platform))
-			{
-				return Optional.of(asset);
-			}
-		}
-		return Optional.empty();
-	}
-
-	/**
-	 * Finds the installer archive for a platform.
-	 *
-	 * @param platform the platform, such as {@code linux-x64}
-	 * @return the archive, or empty when the release publishes none for that platform
-	 * @throws NullPointerException if {@code platform} is null
-	 */
-	public Optional<ReleaseAsset> findInstaller(String platform)
-	{
-		requireThat(platform, "platform").isNotNull();
-		for (ReleaseAsset asset : assets)
-		{
-			if (asset.kind() == AssetKind.INSTALLER && asset.platform().equals(platform))
+			if (asset.harness().equals(harness) && asset.platform().equals(platform))
 				return Optional.of(asset);
 		}
 		return Optional.empty();

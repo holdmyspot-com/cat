@@ -157,8 +157,8 @@ jobs:
           mkdir release
           find native -type f -name 'cat-*-*.tar.gz' -exec cp '{}' release/ \;
           find native -type f -name SHA256SUMS.txt -exec cat '{}' \; | LC_ALL=C sort > release/SHA256SUMS.txt
-          test "$(find release -type f -name 'cat-*-*.tar.gz' | wc -l)" -eq 15
-          test "$(wc -l < release/SHA256SUMS.txt)" -eq 15
+          test "$(find release -type f -name 'cat-*-*.tar.gz' | wc -l)" -eq 10
+          test "$(wc -l < release/SHA256SUMS.txt)" -eq 10
           mkdir fragments
           find native -type f -name 'cat-release-assets-*.json' -exec cp '{}' fragments/ \;
           test "$(find fragments -type f | wc -l)" -eq 5
@@ -173,7 +173,7 @@ jobs:
                 published: $published, assets: (map(.assets) | add | sort_by(.name))}
             else error("A platform built its archives from another commit than " + $build) end' \
             fragments/*.json > release/cat-release-manifest.json
-          test "$(jq '.assets | length' release/cat-release-manifest.json)" -eq 15
+          test "$(jq '.assets | length' release/cat-release-manifest.json)" -eq 10
       - name: Sign release manifest
         env:
           CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
@@ -207,8 +207,8 @@ jobs:
             release/SHA256SUMS.txt release/cat.sh
           sh "${release_sources}/generate-cat-sh.sh" "${release_sources}/cat.ps1" "${GITHUB_REF_NAME}" \
             release/SHA256SUMS.txt release/cat.ps1
-          # 15 archives, SHA256SUMS.txt, the manifest, its signature, cat.sh and cat.ps1
-          test "$(find release -type f | wc -l)" -eq 20
+          # 10 archives, SHA256SUMS.txt, the manifest, its signature, cat.sh and cat.ps1
+          test "$(find release -type f | wc -l)" -eq 15
       # The notes start with the commands that install, update and uninstall this release, followed by the notes that
       # GitHub generates, which end with the link to the full changelog
       - name: Write release notes
