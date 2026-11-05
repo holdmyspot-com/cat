@@ -158,8 +158,7 @@ public final class CodexProcess implements HarnessProcess
 		synchronized (input)
 		{
 			readResponse(1, CodexAppServerProtocol.initialize());
-			input.write(CodexAppServerProtocol.initialized());
-			input.flush();
+			writeDuringStartup(CodexAppServerProtocol.initialized(), "after its response to request 1");
 			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(workingDirectory, model,
 				developerInstructions, permissionProfile, transcripts == null)));
 			if (verifyCatHookDelivery)
@@ -578,8 +577,7 @@ public final class CodexProcess implements HarnessProcess
 	{
 		assert requestId > 0;
 		assert request != null;
-		input.write(request);
-		input.flush();
+		writeDuringStartup(request, "before responding to request " + requestId);
 		String expected = "\"id\":" + requestId;
 		String line = output.readLine();
 		while (line != null)
@@ -589,11 +587,48 @@ public final class CodexProcess implements HarnessProcess
 			startupEvents.append(line).append('\n');
 			line = output.readLine();
 		}
-		String diagnostic = "Codex app-server ended before responding to request " + requestId;
+		throw ended("before responding to request " + requestId, null);
+	}
+
+	/**
+	 * Writes a line to the app-server while it starts.
+	 *
+	 * @param line  the line
+	 * @param stage when the app-server ended if the line cannot be written, such as
+	 *              {@code "before responding to request 1"}
+	 * @throws IOException if the line cannot be written
+	 */
+	private void writeDuringStartup(String line, String stage) throws IOException
+	{
+		try
+		{
+			input.write(line);
+			input.flush();
+		}
+		catch (IOException e)
+		{
+			// An app-server that ended before reading, such as one whose bubblewrap could not start, closed its input,
+			// and the broken pipe hides the cause that the app-server printed on its standard error
+			throw ended(stage, e);
+		}
+	}
+
+	/**
+	 * Returns the failure of an app-server that ended while it started, with what it printed on its standard error,
+	 * which names the cause, once that stream has ended.
+	 *
+	 * @param stage when the app-server ended, such as {@code "before responding to request 1"}
+	 * @param cause the failure to write to the app-server, or {@code null} if its output ended
+	 * @return the failure
+	 * @throws IOException if the standard error cannot be read
+	 */
+	private IOException ended(String stage, IOException cause) throws IOException
+	{
+		String diagnostic = "Codex app-server ended " + stage;
 		String error = standardError.await().strip();
 		if (!error.isEmpty())
 			diagnostic += ": " + error;
-		throw new IOException(diagnostic);
+		return new IOException(diagnostic, cause);
 	}
 
 	/**

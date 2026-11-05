@@ -2,16 +2,21 @@ package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.runner.CodexProcess;
+import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -327,6 +332,28 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies that when the app-server's process ends before it reads the first request, as the bubblewrap around
+	 * the app-server does where the system keeps it from mapping the user into a new user namespace, the start fails
+	 * with what the process printed on its standard error, so that the runner refuses the session. Writing the request
+	 * to the ended process fails with a broken pipe, which does not name the cause. The error text is the one that
+	 * bubblewrap 0.9.0 printed on stock ubuntu-24.04.
+	 *
+	 * @throws IOException if the ended process cannot be closed
+	 */
+	@Test(timeOut = 10_000)
+	public void reportsStandardErrorWhenInputIsClosed() throws IOException
+	{
+		try (CodexProcess process = new CodexProcess(new EndedChild("bwrap: setting up uid map: Permission denied\n"),
+			new TestHarnessRunnerScope(), false, null))
+		{
+			IOException failure = expectThrows(IOException.class, () -> process.initialize(PROJECT, "", "", ""));
+
+			requireThat(failure.getMessage(), "message").contains("bwrap: setting up uid map: Permission denied");
+			requireThat(CodexRunner.refusalOf(failure), "refusal").isInstanceOf(SessionRefusedException.class);
+		}
+	}
+
+	/**
 	 * Verifies that notifications Codex prints during start-up, such as {@code thread/started}, reach the first
 	 * turn's listener ahead of that turn's own lines, that the first turn's archived events are those same lines,
 	 * and that a later turn's listener does not receive the start-up notifications again.
@@ -587,6 +614,74 @@ public final class CodexProcessTest
 	{
 		return "{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"" + threadId + "\",\"turn\":{\"id\":\"" +
 			turnId + "\",\"items\":[],\"status\":\"" + status + "\",\"error\":null}}}";
+	}
+
+	/**
+	 * Stands in for a child process that has already ended: it printed some text on its standard error and exited
+	 * with status 1 without reading its standard input, whose pipe the operating system has therefore closed. A write
+	 * to that input fails as a write to a pipe without a reader does, and its standard output is at its end.
+	 */
+	private static final class EndedChild extends Process
+	{
+		private final byte[] standardError;
+
+		/**
+		 * Creates the child.
+		 *
+		 * @param standardError the text that the child printed on its standard error
+		 */
+		private EndedChild(String standardError)
+		{
+			this.standardError = standardError.getBytes(UTF_8);
+		}
+
+		@Override
+		public OutputStream getOutputStream()
+		{
+			return new OutputStream()
+			{
+				@Override
+				public void write(int value) throws IOException
+				{
+					throw new IOException("Broken pipe");
+				}
+			};
+		}
+
+		@Override
+		public InputStream getInputStream()
+		{
+			return InputStream.nullInputStream();
+		}
+
+		@Override
+		public InputStream getErrorStream()
+		{
+			return new ByteArrayInputStream(standardError);
+		}
+
+		@Override
+		public int waitFor()
+		{
+			return 1;
+		}
+
+		@Override
+		public int exitValue()
+		{
+			return 1;
+		}
+
+		@Override
+		public boolean isAlive()
+		{
+			return false;
+		}
+
+		@Override
+		public void destroy()
+		{
+		}
 	}
 
 	/**
