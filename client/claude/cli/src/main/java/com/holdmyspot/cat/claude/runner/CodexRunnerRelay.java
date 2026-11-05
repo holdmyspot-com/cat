@@ -11,7 +11,6 @@ import com.holdmyspot.cat.common.runner.RunnerRelay;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -52,7 +51,7 @@ public final class CodexRunnerRelay
 					Thread.currentThread().interrupt();
 					throw new IOException("Interrupted while waiting for the runner", e);
 				}
-			}, new InputStreamReader(System.in, UTF_8), Pause.sleeping(Duration.ofMillis(100)), System.out,
+			}, new InputStreamReader(System.in, UTF_8), Pause::sleeping, System.out,
 			new PrintWriter(System.err, true, UTF_8)));
 	}
 

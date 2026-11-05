@@ -2,12 +2,14 @@ package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -31,6 +33,10 @@ public final class RunnerRelay
 	 * The variable that names the run's requests directory inside a run that may request sessions.
 	 */
 	public static final String REQUESTS_VARIABLE = SessionRequestAccess.REQUESTS_VARIABLE;
+	/**
+	 * How often a launch inside a run checks the requested session's progress.
+	 */
+	private static final Duration REQUEST_POLL = Duration.ofMillis(100);
 
 	/**
 	 * Selects the other harness's CAT artifact.
@@ -94,25 +100,28 @@ public final class RunnerRelay
 	 * @param selector    selects the harness's CAT artifact for a launch that runs in place
 	 * @param starter     runs the artifact's runner for a launch that runs in place
 	 * @param input       the launch's records when {@code --input} is absent
-	 * @param pause       paces checks for the requested session's progress, inside a run or from the session
-	 *                    launcher
+	 * @param waiting     the process's waiting, which paces checks for the requested session's progress, inside a
+	 *                    run or from the session launcher
 	 * @param output      receives the session's transcript when {@code --output} is absent
 	 * @param errors      receives the reason when the launcher refuses the launch or a requested session does not
 	 *                    complete
 	 * @return the exit status, as {@link #relay(String, String[], Map, Platform, SessionLaunch, ArtifactSelector,
 	 *   RunnerStarter, Reader, Pause, OutputStream, PrintWriter)} returns it
+	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if the options are invalid
 	 * @throws IOException              if no artifact can be selected, the runner cannot be run, or the launch cannot
 	 *                                  be forwarded or sent
 	 */
 	public static int relay(String harness, String[] args, Map<String, String> environment, ArtifactSelector selector,
-		RunnerStarter starter, Reader input, Pause pause, OutputStream output, PrintWriter errors) throws IOException
+		RunnerStarter starter, Reader input, Waiting waiting, OutputStream output, PrintWriter errors)
+		throws IOException
 	{
 		requireThat(environment, "environment").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
 		return relay(harness, args, environment, Platform.current(), (launchHarness, launchArgs, launchInput,
 				launchOutput, launchErrors) -> SessionLauncherClient.launchFromMain(launchHarness, launchArgs,
-				environment, _ -> pause, launchInput, launchOutput, launchErrors), selector, starter, input, pause,
-			output, errors);
+				environment, waiting, launchInput, launchOutput, launchErrors), selector, starter, input,
+			waiting.every(REQUEST_POLL), output, errors);
 	}
 
 	/**
