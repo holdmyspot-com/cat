@@ -142,7 +142,7 @@ public final class CodexLauncherPolicyTest
 				"01a1a8eb-3d83-7d73-b243-c636c2041ee1", project, Optional.empty(), "startup", home.resolve(".codex"),
 				PluginInfo.CAT_VERSION);
 			CodexPolicyReader reader = new CodexPolicyReader(new CodexSystemFiles(system,
-				List.of(system.resolve("managed.plist"))));
+				List.of(system.resolve("managed.plist")), Path.of("/tmp")));
 			return CodexSessionLauncherCli.policySource(reader, processes, record, Map.of("HOME", home.toString()),
 				home);
 		}

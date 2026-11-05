@@ -75,7 +75,7 @@ public final class CodexPolicyReader
 		Path codexHome = CodexInstallation.resolveHome(session.environment(), session.accountHome(), session.cwd());
 		CodexConfiguration configuration = CodexConfiguration.load(systemFiles, codexHome, session.cwd(), launch);
 		CodexPermissions.Resolved resolved = CodexPermissions.resolve(configuration, launch, session.cwd(),
-			session.environment());
+			session.environment(), systemFiles.slashTmp());
 		ParentPolicy rebuilt = resolved.sandbox().toParentPolicy();
 
 		List<ParentPolicy> claims = new ArrayList<>();
@@ -86,7 +86,8 @@ public final class CodexPolicyReader
 		if (transcript.isPresent())
 		{
 			sources.add(transcript.get());
-			Optional<CodexSandbox> turn = CodexRollout.latestTurn(transcript.get(), session.environment());
+			Optional<CodexSandbox> turn = CodexRollout.latestTurn(transcript.get(), session.environment(),
+				systemFiles.slashTmp());
 			if (turn.isPresent())
 			{
 				ParentPolicy recorded = turn.get().toParentPolicy();
@@ -98,7 +99,8 @@ public final class CodexPolicyReader
 		if (threadRollout.isPresent())
 		{
 			sources.add(threadRollout.get());
-			Optional<CodexSandbox> turn = CodexRollout.latestTurn(threadRollout.get(), session.environment());
+			Optional<CodexSandbox> turn = CodexRollout.latestTurn(threadRollout.get(), session.environment(),
+				systemFiles.slashTmp());
 			if (turn.isPresent())
 			{
 				ParentPolicy recorded = turn.get().toParentPolicy();

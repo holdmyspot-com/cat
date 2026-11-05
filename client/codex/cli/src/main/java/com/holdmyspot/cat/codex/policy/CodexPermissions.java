@@ -44,6 +44,7 @@ public final class CodexPermissions
 	private final CodexLaunch launch;
 	private final Path cwd;
 	private final Map<String, String> environment;
+	private final Path slashTmp;
 	private final List<Path> workspaceRoots = new ArrayList<>();
 
 	/**
@@ -53,14 +54,16 @@ public final class CodexPermissions
 	 * @param launch        the session's command line
 	 * @param cwd           the session's working directory
 	 * @param environment   the environment of the session's Codex process
+	 * @param slashTmp      the folder that Codex's {@code :slash_tmp} names, or {@code null} if the machine has none
 	 */
 	private CodexPermissions(CodexConfiguration configuration, CodexLaunch launch, Path cwd,
-		Map<String, String> environment)
+		Map<String, String> environment, Path slashTmp)
 	{
 		this.configuration = configuration;
 		this.launch = launch;
 		this.cwd = cwd;
 		this.environment = environment;
+		this.slashTmp = slashTmp;
 	}
 
 	/**
@@ -70,15 +73,16 @@ public final class CodexPermissions
 	 * @param launch        the session's command line
 	 * @param cwd           the session's working directory
 	 * @param environment   the environment of the session's Codex process
+	 * @param slashTmp      the folder that Codex's {@code :slash_tmp} names, or {@code null} if the machine has none
 	 * @return the sandbox, and the name of the permissions profile that it comes from, or empty for the legacy syntax
 	 * @throws IOException   if a folder cannot be read
 	 * @throws PolicyRefusal if the configuration names a sandbox mode or profile that the reader does not know, or a
 	 *                       path that it cannot resolve
 	 */
 	public static Resolved resolve(CodexConfiguration configuration, CodexLaunch launch, Path cwd,
-		Map<String, String> environment) throws IOException, PolicyRefusal
+		Map<String, String> environment, Path slashTmp) throws IOException, PolicyRefusal
 	{
-		return new CodexPermissions(configuration, launch, cwd, environment).resolve();
+		return new CodexPermissions(configuration, launch, cwd, environment, slashTmp).resolve();
 	}
 
 	/**
@@ -539,15 +543,12 @@ public final class CodexPermissions
 	}
 
 	/**
-	 * Returns {@code /tmp}.
+	 * Returns the folder that {@code :slash_tmp} names.
 	 *
-	 * @return the folder, or empty on a platform without one
+	 * @return the folder, or empty on a machine without one
 	 */
-	private static Optional<Path> slashTmp()
+	private Optional<Path> slashTmp()
 	{
-		Path tmp = Path.of("/tmp");
-		if (tmp.isAbsolute())
-			return Optional.of(tmp);
-		return Optional.empty();
+		return Optional.ofNullable(slashTmp);
 	}
 }

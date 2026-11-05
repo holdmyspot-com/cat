@@ -163,7 +163,8 @@ public final class CodexParentSession
 				Optional.of(List.of("/opt/codex/bin/codex.js"))));
 		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
 		CodexSession session = new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);
-		CodexSystemFiles systemFiles = new CodexSystemFiles(system, List.of(root.resolve("managed.plist")));
+		CodexSystemFiles systemFiles = new CodexSystemFiles(system, List.of(root.resolve("managed.plist")),
+			Path.of("/tmp"));
 		return new CodexPolicyReader(systemFiles).read(session, threadId);
 	}
 }

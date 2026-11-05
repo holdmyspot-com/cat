@@ -71,12 +71,14 @@ public final class CodexRollout
 	 *
 	 * @param rollout     the rollout file
 	 * @param environment the environment of the session's Codex process
+	 * @param slashTmp    the folder that Codex's {@code slash_tmp} special path names, or {@code null} if the machine
+	 *                    has none
 	 * @return the sandbox, or empty if the rollout has no turn yet
 	 * @throws IOException   if the file cannot be read
 	 * @throws PolicyRefusal if the latest turn's record cannot be parsed or holds a value that the reader does not
 	 *                       know
 	 */
-	public static Optional<CodexSandbox> latestTurn(Path rollout, Map<String, String> environment)
+	public static Optional<CodexSandbox> latestTurn(Path rollout, Map<String, String> environment, Path slashTmp)
 		throws IOException, PolicyRefusal
 	{
 		String latest = "";
@@ -117,7 +119,7 @@ public final class CodexRollout
 		}
 		if (!record.path("type").asString("").equals("turn_context"))
 			return Optional.empty();
-		return Optional.of(sandbox(rollout, record.path("payload"), environment));
+		return Optional.of(sandbox(rollout, record.path("payload"), environment, slashTmp));
 	}
 
 	/**
@@ -126,11 +128,13 @@ public final class CodexRollout
 	 * @param rollout     the rollout file
 	 * @param payload     the record's payload
 	 * @param environment the environment of the session's Codex process
+	 * @param slashTmp    the folder that Codex's {@code slash_tmp} special path names, or {@code null} if the machine
+	 *                    has none
 	 * @return the sandbox
 	 * @throws PolicyRefusal if the payload holds a value that the reader does not know
 	 */
-	private static CodexSandbox sandbox(Path rollout, JsonNode payload, Map<String, String> environment)
-		throws PolicyRefusal
+	private static CodexSandbox sandbox(Path rollout, JsonNode payload, Map<String, String> environment,
+		Path slashTmp) throws PolicyRefusal
 	{
 		JsonNode profile = payload.path("permission_profile");
 		String type = profile.path("type").asString("");
@@ -168,7 +172,7 @@ public final class CodexRollout
 			case "restricted" ->
 			{
 				for (JsonNode entry : fileSystem.path("entries"))
-					addEntry(rollout, entry, workspaceRoots, environment, entries);
+					addEntry(rollout, entry, workspaceRoots, environment, slashTmp, entries);
 			}
 			default -> throw unknown(rollout, "the file_system type \"" + fileSystemType + "\"");
 		}
@@ -184,11 +188,13 @@ public final class CodexRollout
 	 * @param entry          the entry
 	 * @param workspaceRoots the turn's workspace roots
 	 * @param environment    the environment of the session's Codex process
+	 * @param slashTmp       the folder that Codex's {@code slash_tmp} special path names, or {@code null} if the
+	 *                       machine has none
 	 * @param entries        the entries to add to
 	 * @throws PolicyRefusal if the entry holds a value that the reader does not know
 	 */
 	private static void addEntry(Path rollout, JsonNode entry, List<Path> workspaceRoots,
-		Map<String, String> environment, List<PermissionEntry> entries) throws PolicyRefusal
+		Map<String, String> environment, Path slashTmp, List<PermissionEntry> entries) throws PolicyRefusal
 	{
 		String accessName = entry.path("access").asString("");
 		Access access = null;
@@ -213,7 +219,7 @@ public final class CodexRollout
 				for (String expanded : projectRootPatterns(pattern, workspaceRoots))
 					targets.addAll(globMatches(rollout, expanded));
 			}
-			default -> targets.addAll(specialPaths(rollout, path.path("value"), workspaceRoots, environment));
+			default -> targets.addAll(specialPaths(rollout, path.path("value"), workspaceRoots, environment, slashTmp));
 		}
 		for (Path target : targets)
 		{
@@ -230,11 +236,12 @@ public final class CodexRollout
 	 * @param value          the special path's {@code value}
 	 * @param workspaceRoots the turn's workspace roots
 	 * @param environment    the environment of the session's Codex process
+	 * @param slashTmp       the folder that the {@code slash_tmp} kind names, or {@code null} if the machine has none
 	 * @return the paths
 	 * @throws PolicyRefusal if the special path's kind is unknown
 	 */
 	private static List<Path> specialPaths(Path rollout, JsonNode value, List<Path> workspaceRoots,
-		Map<String, String> environment) throws PolicyRefusal
+		Map<String, String> environment, Path slashTmp) throws PolicyRefusal
 	{
 		String kind = value.path("kind").asString("");
 		if (!CodexAssumptions.ROLLOUT_SPECIAL_KINDS.contains(kind))
@@ -255,7 +262,11 @@ public final class CodexRollout
 				if (!tmpdir.isBlank() && Path.of(tmpdir).isAbsolute())
 					paths.add(Path.of(tmpdir).normalize());
 			}
-			case "slash_tmp" -> paths.add(Path.of("/tmp"));
+			case "slash_tmp" ->
+			{
+				if (slashTmp != null)
+					paths.add(slashTmp);
+			}
 			default ->
 			{
 				// minimal: leaving it out is narrower
