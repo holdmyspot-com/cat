@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
@@ -29,6 +30,9 @@ import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
+import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 
 import java.io.File;
 import java.io.IOException;
@@ -45,6 +49,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * Creates an isolated Codex configuration and starts one persistent Codex CLI process, optionally with CAT.
@@ -72,6 +77,11 @@ public final class CodexRunner
 	 * The system's shared temporary directory, which the app-server replaces with a private one.
 	 */
 	private static final Path TMP = Path.of("/tmp");
+	/**
+	 * The text of Codex's failure to start a thread when bubblewrap cannot set up the sandbox's loopback interface.
+	 */
+	private static final String SANDBOX_LOOPBACK_FAILURE = "bwrap: loopback: Failed RTM_NEWADDR";
+	private static final int MAXIMUM_COMMAND_OUTPUT_BYTES = 1_048_576;
 	private final Waiting waiting;
 
 	/**
@@ -112,13 +122,17 @@ public final class CodexRunner
 	 *   rollout
 	 * @param sessionRequests how many sessions the session may request over its run, or {@code 0} if it may request
 	 *   none
+	 * @param bound the policy that bounds the session's sandbox: the session gets its run directory, the dependency
+	 *   caches and its model host only within it
 	 * @return the live owned Codex run session
-	 * @throws IOException if validation, copying, or process startup fails
+	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
+	 * @throws IOException             if validation, copying, or process startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
-		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests) throws IOException
+		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound)
+		throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -130,6 +144,7 @@ public final class CodexRunner
 		requireThat(effort, "effort").isNotBlank();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
+		requireThat(bound, "bound").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -159,15 +174,28 @@ public final class CodexRunner
 			// A runner that a Codex thread starts gives the session the multi-agent state that the thread runs with
 			CodexParentMultiAgentState parentState = CodexParentMultiAgentState.read(scope.json(), hostHome,
 				environment.get(THREAD_ID));
+			// The session's commands may reach only the host that its own Codex sends model requests to
+			String modelHost = CodexConnectionConfiguration.modelHost(configuration(hostHome), environment,
+				isolatedHome.resolve(LOGIN));
+			ChildPolicy policy = ChildPolicy.intersect(bound, new ChildNeeds(run.directory().toAbsolutePath(),
+				caches.directories(), List.of(), Set.of(modelHost)));
 			CodexConnectionConfiguration.copy(configuration(hostHome), isolatedConfiguration,
 				run.directory().resolve("project"), caches,
-				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState);
-			List<String> appServer = appServerCommand(executable, installCat || !trialPlugins.isEmpty());
+				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState, policy);
+			if (!Platform.current().isWindows())
+			{
+				CodexConnectionConfiguration.requireNarrowingLayers(CodexConnectionConfiguration.SYSTEM_LAYER,
+					CodexConnectionConfiguration.MANAGED_LAYER, policy);
+			}
+			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
+			List<String> appServer = appServerCommand(executable, pluginsInstalled);
 			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, run, readOnlyEvidence, deniedReads,
 				Platform.current(), environment, requestAccess, appServer);
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
 				run.directory(), temporaryDirectory, Platform.current());
 			Path worktree = run.directory().resolve("project");
+			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
+				executables, manager, run), featureFlags(pluginsInstalled), policy.hosts());
 			installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome, isolatedEnvironment,
 				executables, (setup, step) -> HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables,
 					manager, run, step));
@@ -194,8 +222,16 @@ public final class CodexRunner
 				Path requestLauncher = null;
 				if (requestAccess != null)
 					requestLauncher = requestAccess.launcher();
-				process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(), worktree,
-					isolatedHome, agentInstructions, requestLauncher, sessionRequests), selectedEffort, sandbox.profile());
+				try
+				{
+					process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(),
+						worktree, isolatedHome, agentInstructions, requestLauncher, sessionRequests), selectedEffort,
+						sandbox.profile());
+				}
+				catch (IOException e)
+				{
+					throw refusalOf(e);
+				}
 				return new HarnessRunSession(run, process, scope, lock);
 			}
 			catch (IOException e)
@@ -765,9 +801,111 @@ public final class CodexRunner
 	public static List<String> appServerCommand(String executable, boolean pluginsInstalled)
 	{
 		requireThat(executable, "executable").isNotBlank();
+		List<String> command = new ArrayList<>(List.of(executable, "app-server", "--stdio"));
+		command.addAll(featureFlags(pluginsInstalled));
+		return List.copyOf(command);
+	}
+
+	/**
+	 * Returns the options that turn Codex features on or off for a session's app-server.
+	 *
+	 * @param pluginsInstalled {@code true} if CAT or a trial plugin is installed into the isolated home
+	 * @return the options
+	 */
+	private static List<String> featureFlags(boolean pluginsInstalled)
+	{
 		if (pluginsInstalled)
-			return List.of(executable, "app-server", "--stdio", "--enable", "hooks");
-		return List.of(executable, "app-server", "--stdio", "--disable", "plugins");
+			return List.of("--enable", "hooks");
+		return List.of("--disable", "plugins");
+	}
+
+	/**
+	 * Refuses a session whose commands may reach some hosts unless {@code codex features list}, run with the session's
+	 * Codex home and its app-server's feature options, shows Codex's network proxy on. Only that proxy limits the
+	 * commands to the profile's hosts, and Codex silently ignores a feature that it no longer knows, so without the
+	 * check a Codex release that renames or removes the feature would let the commands reach every host. A session
+	 * whose commands may reach no host needs no proxy: its network is off.
+	 *
+	 * @param codex        runs the session's Codex
+	 * @param featureFlags the app-server's feature options
+	 * @param hosts        the hosts that the session's commands may reach
+	 * @throws NullPointerException    if any of the arguments are null
+	 * @throws SessionRefusedException if Codex's network proxy is not on
+	 * @throws IOException             if Codex cannot be run
+	 */
+	public static void requireNetworkProxy(CodexOutput codex, List<String> featureFlags, Set<String> hosts)
+		throws IOException
+	{
+		requireThat(codex, "codex").isNotNull();
+		requireThat(featureFlags, "featureFlags").isNotNull();
+		requireThat(hosts, "hosts").isNotNull();
+		if (hosts.isEmpty())
+			return;
+		List<String> arguments = new ArrayList<>(List.of("features", "list"));
+		arguments.addAll(featureFlags);
+		for (String row : codex.read(arguments).lines().toList())
+		{
+			List<String> columns = List.of(row.strip().split("\\s+"));
+			if (columns.getFirst().equals(CodexConnectionConfiguration.NETWORK_PROXY_FEATURE) &&
+				columns.getLast().equals("true"))
+			{
+				return;
+			}
+		}
+		String version = codex.read(List.of("--version")).lines().findFirst().orElse("").strip();
+		if (version.startsWith("codex-cli "))
+			version = version.substring("codex-cli ".length());
+		throw new SessionRefusedException("Codex " + version + " no longer limits the session's network to " +
+			String.join(", ", new TreeSet<>(hosts)) + " (`features.network_proxy` is not available), so CAT does not " +
+			"start the trial.");
+	}
+
+	/**
+	 * Runs the session's Codex and returns what it prints, keeping its output among the run's artifacts.
+	 *
+	 * @param executable  the Codex executable
+	 * @param arguments   the arguments
+	 * @param worktree    the session's project, which Codex runs in
+	 * @param environment the session's environment
+	 * @param executables runs Codex
+	 * @param manager     the run manager
+	 * @param run         the session's run
+	 * @return the stdout
+	 * @throws IOException if Codex fails or its output cannot be kept or read
+	 */
+	private static String commandOutput(String executable, List<String> arguments, Path worktree,
+		Map<String, String> environment, ExecutableFiles executables, HarnessRunManager manager, HarnessRun run)
+		throws IOException
+	{
+		List<String> command = new ArrayList<>(List.of(executable));
+		command.addAll(arguments);
+		String name = ("codex-" + String.join("-", arguments)).replaceAll("[^a-z0-9]+", "-").
+			replaceAll("^-|-$", "");
+		HarnessCommand.execute(command, worktree, environment, executables, manager, run, name);
+		return BoundedInput.readUtf8(run.directory().resolve("artifacts").resolve(name + ".stdout"),
+			MAXIMUM_COMMAND_OUTPUT_BYTES, "Codex output");
+	}
+
+	/**
+	 * Returns the failure to start a session's thread as a refusal when Codex's Linux sandbox cannot start on the
+	 * system: bubblewrap could not set up the loopback interface of the sandbox's network namespace, as on stock
+	 * Ubuntu 24.04, whose AppArmor keeps unprivileged processes from creating that namespace. Codex would then confine
+	 * no command, so the session must not run.
+	 *
+	 * @param failure the failure to start the thread
+	 * @return the refusal, or {@code failure} itself if the sandbox did not cause it
+	 * @throws NullPointerException if {@code failure} is null
+	 */
+	public static IOException refusalOf(IOException failure)
+	{
+		requireThat(failure, "failure").isNotNull();
+		String message = failure.getMessage();
+		if (message == null || !message.contains(SANDBOX_LOOPBACK_FAILURE))
+			return failure;
+		return new SessionRefusedException("CAT does not start the session: Codex could not start its sandbox (" +
+			message + "). On Ubuntu 24.04 and later, AppArmor keeps bubblewrap from creating the network namespace " +
+			"that the sandbox needs; let bubblewrap create user namespaces, for example with an AppArmor profile for " +
+			"bwrap, then start the session again.", failure);
 	}
 
 	/**
@@ -1037,6 +1175,52 @@ public final class CodexRunner
 			requireThat(profile, "profile").isNotNull();
 			requireThat(command, "command").isNotEmpty();
 			command = List.copyOf(command);
+		}
+	}
+
+	/**
+	 * Runs a session's Codex.
+	 */
+	@FunctionalInterface
+	public interface CodexOutput
+	{
+		/**
+		 * Runs the session's Codex.
+		 *
+		 * @param arguments the arguments, without the executable
+		 * @return the stdout
+		 * @throws IOException if Codex fails
+		 */
+		String read(List<String> arguments) throws IOException;
+	}
+
+	/**
+	 * Signals that the runner refuses to start a session because the session's sandbox would be wider than its
+	 * policy or could not confine it. The session's commands never run.
+	 */
+	public static final class SessionRefusedException extends IOException
+	{
+		private static final long serialVersionUID = 1L;
+
+		/**
+		 * Creates a refusal.
+		 *
+		 * @param message the reason and how to fix it
+		 */
+		public SessionRefusedException(String message)
+		{
+			super(message);
+		}
+
+		/**
+		 * Creates a refusal.
+		 *
+		 * @param message the reason and how to fix it
+		 * @param cause   the failure that shows the reason
+		 */
+		public SessionRefusedException(String message, Throwable cause)
+		{
+			super(message, cause);
 		}
 	}
 }

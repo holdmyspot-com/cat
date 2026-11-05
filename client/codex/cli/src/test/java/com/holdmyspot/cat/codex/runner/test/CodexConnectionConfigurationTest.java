@@ -4,15 +4,22 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
+import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
+import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -385,51 +392,165 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies the isolated workspace-write sandbox retains the parent's explicit network-access policy.
+	 * Verifies that a session whose policy names hosts may reach exactly those hosts through Codex's network proxy,
+	 * and that the host's own workspace-write network setting does not widen it.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void copiesWorkspaceWriteNetworkAccess() throws IOException
+	public void limitsNetworkToPolicyHosts() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-network-access-"));
-			Path source = root.resolve("host.toml");
-			Path destination = root.resolve("isolated/config.toml");
-			Files.writeString(source, """
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-network-hosts-"));
+			Path source = Files.writeString(root.resolve("host.toml"), """
 				[sandbox_workspace_write]
 				network_access = true
 				""");
+			Path destination = root.resolve("isolated/config.toml");
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root, List.of(),
+				List.of(), Set.of("chatgpt.com")));
 
-			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
+			copy(source, destination, root.resolve("project"), policy);
 
-			requireThat(Files.readString(destination), "configuration").contains("[sandbox_workspace_write]").
-				contains("network_access = true");
+			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
+			requireThat(configuration.path("features").path("network_proxy").asBoolean(), "networkProxy").isTrue();
+			JsonNode network = configuration.path("permissions").path("cat-runner").path("network");
+			requireThat(network.path("enabled").asBoolean(), "enabled").isTrue();
+			requireThat(network.path("domains").propertyNames(), "domains").containsExactly(Set.of("chatgpt.com"));
+			requireThat(network.path("domains").path("chatgpt.com").asString(), "access").isEqualTo("allow");
+			requireThat(network.has("allow_local_binding"), "allowLocalBinding").isFalse();
+			requireThat(configuration.path("sandbox_workspace_write").has("network_access"), "networkAccess").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies the isolated workspace-write sandbox retains an explicit parent network denial.
+	 * Returns whether a parent allows local binding and whether its child's loopback model host may bind.
+	 *
+	 * @return the parent's local binding and the child's
+	 */
+	@DataProvider
+	public Object[][] localBinding()
+	{
+		return new Object[][]
+		{
+			{true, true},
+			{false, false}
+		};
+	}
+
+	/**
+	 * Verifies that a session whose model host is a loopback address may bind local addresses, which Codex's network
+	 * proxy needs to let it reach that host, only when its parent may.
+	 *
+	 * @param parentBinds {@code true} if the parent may bind local addresses
+	 * @param childBinds  {@code true} if the session must be allowed to bind local addresses
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "localBinding")
+	public void bindsLocallyOnlyWhenParentMay(boolean parentBinds, boolean childBinds) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-local-binding-"));
+			Path destination = root.resolve("isolated/config.toml");
+			ParentPolicy parent = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
+				HostAccess.ALL, parentBinds, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(),
+				Set.of("localhost")));
+
+			copy(root.resolve("missing.toml"), destination, root.resolve("project"), policy);
+
+			JsonNode network = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("network");
+			requireThat(network.path("domains").path("localhost").asString(), "access").isEqualTo("allow");
+			requireThat(network.path("allow_local_binding").asBoolean(false), "allowLocalBinding").
+				isEqualTo(childBinds);
+		}
+	}
+
+	/**
+	 * Verifies that a session whose policy names no host has network off and does not enable Codex's network proxy,
+	 * even when the host's workspace-write sandbox has network on.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void copiesWorkspaceWriteNetworkDenial() throws IOException
+	public void disablesNetworkWithoutHosts() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-network-denial-"));
-			Path source = root.resolve("host.toml");
-			Path destination = root.resolve("isolated/config.toml");
-			Files.writeString(source, """
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-network-off-"));
+			Path source = Files.writeString(root.resolve("host.toml"), """
 				[sandbox_workspace_write]
-				network_access = false
+				network_access = true
 				""");
+			Path destination = root.resolve("isolated/config.toml");
+			ParentPolicy parent = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
+				HostAccess.NONE, false, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(),
+				Set.of("chatgpt.com")));
 
-			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
+			copy(source, destination, root.resolve("project"), policy);
 
-			requireThat(Files.readString(destination), "configuration").contains("network_access = false");
+			String text = Files.readString(destination);
+			JsonNode configuration = TomlMapper.builder().build().readTree(text);
+			requireThat(configuration.path("features").has("network_proxy"), "networkProxy").isFalse();
+			JsonNode network = configuration.path("permissions").path("cat-runner").path("network");
+			requireThat(network.path("enabled").isBoolean(), "enabledSet").isTrue();
+			requireThat(network.path("enabled").asBoolean(), "enabled").isFalse();
+			requireThat(network.has("domains"), "domains").isFalse();
+			requireThat(text, "configuration").doesNotContain("network_access");
+		}
+	}
+
+	/**
+	 * Returns Codex settings of the user's and the login that each names as the session's model host.
+	 *
+	 * @return the configuration, the environment, the login file's content or {@code null} when there is none, and
+	 *   the model host
+	 */
+	@DataProvider
+	public Object[][] modelHosts()
+	{
+		return new Object[][]
+		{
+			{"openai_base_url = \"http://LocalHost:2455/backend-api/codex\"\n", Map.of(), null, "localhost"},
+			{"openai_base_url = \"https://proxy.example.com/v1\"\n", Map.of("OPENAI_API_KEY", "sk-test"), null,
+				"proxy.example.com"},
+			{"", Map.of("OPENAI_API_KEY", "sk-test"), null, "api.openai.com"},
+			{"", Map.of("CODEX_API_KEY", " "), null, "chatgpt.com"},
+			{"forced_login_method = \"api\"\n", Map.of(), null, "api.openai.com"},
+			{"", Map.of(), "{\"auth_mode\": \"apikey\", \"OPENAI_API_KEY\": \"sk-test\"}", "api.openai.com"},
+			{"", Map.of(), "{\"auth_mode\": \"chatgpt\", \"OPENAI_API_KEY\": null}", "chatgpt.com"},
+			{"", Map.of(), null, "chatgpt.com"}
+		};
+	}
+
+	/**
+	 * Verifies that a session's model host is the host of the model provider's base URL that the session copies,
+	 * otherwise the host that Codex reaches for the session's login.
+	 *
+	 * @param configuration the user's Codex configuration
+	 * @param environment   the runner's environment
+	 * @param login         the session's login file, or {@code null} if it has none
+	 * @param host          the expected model host
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "modelHosts")
+	public void findsModelHost(String configuration, Map<String, String> environment, String login, String host)
+		throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-model-host-"));
+			Path source = Files.writeString(root.resolve("host.toml"), configuration);
+			Path loginFile = root.resolve("auth.json");
+			if (login != null)
+				Files.writeString(loginFile, login);
+
+			requireThat(CodexConnectionConfiguration.modelHost(source, environment, loginFile), "modelHost").
+				isEqualTo(host);
 		}
 	}
 
@@ -544,28 +665,136 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies that the runner profile keeps the host's workspace-write network access, which a thread that names a
-	 * profile instead of the workspace-write sandbox would otherwise lose.
+	 * Verifies that a session may write a dependency cache only inside its parent's writes, may not write what its
+	 * parent may not write, and may not read what its parent may not read.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void runnerProfileKeepsNetworkAccess() throws IOException
+	public void filesystemFollowsPolicy() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-codex-permissions-"));
-			Path source = Files.writeString(root.resolve("host.toml"), """
-				[sandbox_workspace_write]
-				network_access = true
-				""");
-			Path destination = root.resolve("isolated/config.toml");
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-filesystem-policy-")).toRealPath();
+			Path parentWrites = Files.createDirectories(root.resolve("parent-writes"));
+			Path keptCache = Files.createDirectories(parentWrites.resolve("npm-cache"));
+			Path droppedCache = Files.createDirectories(root.resolve("maven-cache"));
+			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path protectedFolder = Files.createDirectories(runFolder.resolve("home/protected"));
+			Path secret = Files.createDirectories(root.resolve("secret"));
+			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(keptCache, droppedCache), Map.of());
+			ParentPolicy parent = new ParentPolicy(true, List.of(parentWrites, runFolder), List.of(protectedFolder),
+				List.of(secret), List.of(), HostAccess.NONE, false, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, caches.directories(),
+				List.of(), Set.of()));
+			Path destination = runFolder.resolve("home/config.toml");
 
-			CodexConnectionConfiguration.copy(source, destination, root.resolve("project"));
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				caches, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE,
+				policy);
 
-			requireThat(Files.readString(destination), "configuration").
-				contains("[permissions.cat-runner.network]" + System.lineSeparator() + "enabled = true" +
-					System.lineSeparator());
+			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
+			JsonNode filesystem = configuration.path("permissions").path("cat-runner").path("filesystem");
+			requireThat(filesystem.path(keptCache.toString()).asString(), "keptCache").isEqualTo("write");
+			requireThat(filesystem.has(droppedCache.toString()), "droppedCache").isFalse();
+			requireThat(filesystem.path(protectedFolder.toString()).asString(), "protectedFolder").isEqualTo("read");
+			requireThat(filesystem.path(secret.toString()).asString(), "secret").isEqualTo("deny");
+			requireThat(configuration.path("sandbox_workspace_write").path("writable_roots").toString(),
+				"writableRoots").doesNotContain(toml(droppedCache));
+		}
+	}
+
+	/**
+	 * Returns Codex configuration layers that would give a session more than its policy allows, and the setting that
+	 * each names.
+	 *
+	 * @return whether the layer is the managed one, its content and the setting that the refusal names
+	 */
+	@DataProvider
+	public Object[][] wideningLayers()
+	{
+		return new Object[][]
+		{
+			{false, "[permissions.cat-runner.filesystem]\n\"/\" = \"write\"\n",
+				"permissions.cat-runner.filesystem"},
+			{false, "[permissions.cat-runner.network.domains]\n\"example.com\" = \"allow\"\n",
+				"permissions.cat-runner.network.domains"},
+			{false, "[permissions.cat-runner.network]\nallow_local_binding = true\n",
+				"permissions.cat-runner.network.allow_local_binding"},
+			{true, "[permissions.cat-runner.network]\nenabled = true\n", "permissions.cat-runner.network.enabled"},
+			{true, "default_permissions = \":danger-no-sandbox\"\n", "default_permissions"},
+			{true, "sandbox_mode = \"danger-full-access\"\n", "sandbox_mode"},
+			{true, "[permissions.cat-runner]\nextends = \":danger-no-sandbox\"\n", "permissions.cat-runner.extends"},
+			{true, "[permissions.cat-denied-reads.filesystem]\n\":root\" = \"write\"\n",
+				"permissions.cat-denied-reads.filesystem"},
+			{true, "not toml", ""}
+		};
+	}
+
+	/**
+	 * Verifies that the runner refuses to start a session whose system or managed Codex configuration layer, which
+	 * Codex merges into the session's own configuration, would give it more than its policy allows, and names the
+	 * layer and the setting.
+	 *
+	 * @param managed {@code true} if the layer is the managed one
+	 * @param layer   the layer's content
+	 * @param setting the setting that the refusal names
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "wideningLayers")
+	public void refusesWideningLayer(boolean managed, String layer, String setting) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-widening-layer-"));
+			Path system = root.resolve("config.toml");
+			Path managedLayer = root.resolve("managed_config.toml");
+			Path file = system;
+			if (managed)
+				file = managedLayer;
+			Files.writeString(file, layer);
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("run"),
+				List.of(), List.of(), Set.of()));
+
+			CodexRunner.SessionRefusedException refusal = expectThrows(CodexRunner.SessionRefusedException.class,
+				() -> CodexConnectionConfiguration.requireNarrowingLayers(system, managedLayer, policy));
+
+			requireThat(refusal.getMessage(), "message").contains(file.toString()).contains(setting);
+		}
+	}
+
+	/**
+	 * Verifies that the runner starts a session whose system and managed Codex configuration layers only narrow it,
+	 * or that has none.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void acceptsNarrowingLayers() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-narrowing-layer-"));
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path system = Files.writeString(root.resolve("config.toml"), """
+				model = "gpt-6-sol"
+				sandbox_mode = "workspace-write"
+				[permissions.cat-runner.filesystem]
+				"%s" = "write"
+				"/secret" = "deny"
+				"/elsewhere" = "none"
+				[permissions.cat-runner.network.domains]
+				"chatgpt.com" = "allow"
+				"example.com" = "deny"
+				[features]
+				fast_mode = false
+				""".formatted(toml(run.resolve("home"))));
+			Path managed = root.resolve("managed_config.toml");
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(run, List.of(),
+				List.of(), Set.of("chatgpt.com")));
+
+			CodexConnectionConfiguration.requireNarrowingLayers(system, managed, policy);
+			CodexConnectionConfiguration.requireNarrowingLayers(root.resolve("missing.toml"), managed, policy);
 		}
 	}
 
@@ -757,6 +986,22 @@ public final class CodexConnectionConfigurationTest
 					"trusted_hash = \"sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
 				doesNotContain("release-docs-extra").doesNotContain("cat@cat").doesNotContain("enabled = true");
 		}
+	}
+
+	/**
+	 * Copies a host configuration into an isolated one under a session policy, as a Linux session without
+	 * dependency caches, requests or a starting Codex thread.
+	 *
+	 * @param source      the host configuration file
+	 * @param destination the isolated configuration file
+	 * @param project     the copied project
+	 * @param policy      the session's policy
+	 * @throws IOException if configuration I/O fails
+	 */
+	private static void copy(Path source, Path destination, Path project, ChildPolicy policy) throws IOException
+	{
+		CodexConnectionConfiguration.copy(source, destination, project, HarnessDependencyCaches.NONE,
+			destination.resolveSibling("tmp"), 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE, policy);
 	}
 
 	/**

@@ -2,13 +2,18 @@ package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.runner.CodexRunner.SessionRefusedException;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
@@ -16,6 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
@@ -29,6 +35,7 @@ import java.util.stream.Collectors;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.toml.TomlMapper;
 
@@ -43,6 +50,34 @@ public final class CodexConnectionConfiguration
 	private static final String VALIDATOR_PERMISSION_PROFILE = "cat-validator";
 	private static final String DENIED_READS_PERMISSION_PROFILE = "cat-denied-reads";
 	private static final String TEMPORARY_DIRECTORY = ":tmpdir";
+	/**
+	 * The {@code [features]} entry that makes Codex limit a profile's network to its {@code domains}.
+	 */
+	static final String NETWORK_PROXY_FEATURE = "network_proxy";
+	/**
+	 * The host that Codex sends model requests to under a ChatGPT login when no base URL is configured.
+	 */
+	private static final String CHATGPT_MODEL_HOST = "chatgpt.com";
+	/**
+	 * The host that Codex sends model requests to under an API key when no base URL is configured.
+	 */
+	private static final String API_MODEL_HOST = "api.openai.com";
+	/**
+	 * The Codex configuration layer that a system administrator installs on Linux and macOS. The session's own
+	 * configuration overrides its values, but Codex merges its tables, such as a permission profile's, into the
+	 * session's.
+	 */
+	public static final Path SYSTEM_LAYER = Path.of("/etc/codex/config.toml");
+	/**
+	 * The Codex configuration layer that an administrator manages on Linux and macOS. Its values override the
+	 * session's own configuration.
+	 */
+	public static final Path MANAGED_LAYER = Path.of("/etc/codex/managed_config.toml");
+	/**
+	 * The permission profiles that CAT gives a session's thread.
+	 */
+	private static final List<String> SESSION_PERMISSION_PROFILES = List.of("cat-runner", "cat-validator",
+		"cat-denied-reads");
 	private static final Set<String> CONNECTION_SETTINGS = Set.of("forced_login_method", "model",
 		"model_reasoning_effort", "openai_base_url");
 	/**
@@ -55,7 +90,6 @@ public final class CodexConnectionConfiguration
 	 */
 	private static final Set<String> AGENT_LIMITS = Set.of("enabled", "max_threads",
 		"max_concurrent_threads_per_session", "max_depth", "job_max_runtime_seconds", "interrupt_message");
-	private static final Pattern NETWORK_ACCESS = Pattern.compile("^network_access\\s*=\\s*(true|false)\\s*(?:#.*)?$");
 	static final List<String> CAT_HOOK_KEYS = List.of("cat@cat:hooks/hooks.json:session_start:0:0",
 		"cat@cat:hooks/hooks.json:subagent_start:0:0", "cat@cat:hooks/hooks.json:post_tool_use:0:0");
 	private static final Pattern TRUSTED_HASH = Pattern.compile(
@@ -120,6 +154,323 @@ public final class CodexConnectionConfiguration
 		if (selected.isEmpty())
 			return Optional.empty();
 		return Optional.of(mapper.writeValueAsString(selected));
+	}
+
+	/**
+	 * Returns the host that a session's Codex sends its model requests to: the host of the {@code openai_base_url}
+	 * that the session copies from the host configuration, otherwise the host that Codex reaches for the session's
+	 * login. That is the API host when the configuration forces an API login, the environment holds an API key or the
+	 * login file holds one, and the ChatGPT host otherwise.
+	 *
+	 * @param source      the host configuration file
+	 * @param environment the runner's environment
+	 * @param login       the session's login file, which may not exist
+	 * @return the host, in lower case
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the configuration or the login file cannot be read or parsed, or the base URL
+	 *                              names no host
+	 */
+	public static String modelHost(Path source, Map<String, String> environment, Path login) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(login, "login").isNotNull();
+		if (Files.isRegularFile(source))
+		{
+			JsonNode configuration = parse(source, BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES,
+				"Codex configuration"));
+			JsonNode baseUrl = configuration.path("openai_base_url");
+			if (baseUrl.isString())
+				return urlHost(source, baseUrl.asString());
+			if (configuration.path("forced_login_method").asString("").equals("api"))
+				return API_MODEL_HOST;
+		}
+		if (!CodexRunner.requiresCredentialFiles(environment))
+			return API_MODEL_HOST;
+		if (Files.isRegularFile(login))
+		{
+			String text = BoundedInput.readUtf8(login, MAXIMUM_CONFIGURATION_BYTES, "Codex login");
+			JsonNode apiKey;
+			try
+			{
+				apiKey = JsonMapper.builder().build().readTree(text).path("OPENAI_API_KEY");
+			}
+			catch (JacksonException e)
+			{
+				throw new IOException("Cannot parse the Codex login " + login, e);
+			}
+			if (apiKey.isString() && !apiKey.asString().isBlank())
+				return API_MODEL_HOST;
+		}
+		return CHATGPT_MODEL_HOST;
+	}
+
+	/**
+	 * Returns the host of a base URL.
+	 *
+	 * @param source  the configuration that names the URL
+	 * @param baseUrl the URL
+	 * @return the host, in lower case
+	 * @throws IOException if the URL is malformed or names no host
+	 */
+	private static String urlHost(Path source, String baseUrl) throws IOException
+	{
+		String host;
+		try
+		{
+			host = URI.create(baseUrl.strip()).getHost();
+		}
+		catch (IllegalArgumentException e)
+		{
+			throw new IOException(source + " sets openai_base_url to a malformed URL: " + baseUrl, e);
+		}
+		if (host == null || host.isBlank())
+			throw new IOException(source + " sets openai_base_url to a URL without a host: " + baseUrl);
+		return host.toLowerCase(Locale.ROOT);
+	}
+
+	/**
+	 * Refuses a session whose system or managed Codex configuration layer would give it more than its policy allows.
+	 * Codex merges each layer into the session's own configuration: the system layer under it and the managed layer
+	 * over it. A layer widens the session if it lets one of the session's permission profiles write outside the
+	 * policy's writes or inside its denials, read inside its read denials, reach a host outside its hosts, turn on its
+	 * network without hosts or bind local addresses without the policy's permission, or names a profile entry whose
+	 * effect CAT does not know. The managed layer also widens it if it replaces a profile's {@code extends}, names
+	 * another {@code default_permissions} or a configuration {@code profile}, or sets {@code sandbox_mode} to
+	 * {@code danger-full-access}.
+	 *
+	 * @param systemLayer  the system layer, which may not exist
+	 * @param managedLayer the managed layer, which may not exist
+	 * @param policy       the session's policy
+	 * @throws NullPointerException    if any of the arguments are null
+	 * @throws SessionRefusedException if a layer cannot be parsed or would widen the session
+	 * @throws IOException             if a layer cannot be read
+	 */
+	public static void requireNarrowingLayers(Path systemLayer, Path managedLayer, ChildPolicy policy)
+		throws IOException
+	{
+		requireThat(systemLayer, "systemLayer").isNotNull();
+		requireThat(managedLayer, "managedLayer").isNotNull();
+		requireThat(policy, "policy").isNotNull();
+		requireNarrowingLayer(systemLayer, false, policy);
+		requireNarrowingLayer(managedLayer, true, policy);
+	}
+
+	/**
+	 * Refuses a session whose Codex configuration layer would give it more than its policy allows.
+	 *
+	 * @param layer   the layer, which may not exist
+	 * @param managed {@code true} if the layer's values override the session's own configuration
+	 * @param policy  the session's policy
+	 * @throws SessionRefusedException if the layer cannot be parsed or would widen the session
+	 * @throws IOException             if the layer cannot be read
+	 */
+	private static void requireNarrowingLayer(Path layer, boolean managed, ChildPolicy policy) throws IOException
+	{
+		if (!Files.isRegularFile(layer))
+			return;
+		String text = BoundedInput.readUtf8(layer, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration layer");
+		JsonNode values;
+		try
+		{
+			values = TomlMapper.builder().build().readTree(text);
+		}
+		catch (JacksonException e)
+		{
+			throw new SessionRefusedException("CAT does not start the session: it cannot parse the Codex " +
+				"configuration layer " + layer + ", which Codex merges into the session's configuration, so it cannot " +
+				"tell whether the layer gives the session more access than its sandbox policy allows. Fix the file, " +
+				"then start the session again.", e);
+		}
+		if (managed)
+		{
+			if (values.path("sandbox_mode").asString("").equals("danger-full-access"))
+				throw wideningLayer(layer, "sandbox_mode", values.get("sandbox_mode"));
+			if (values.has("default_permissions") &&
+				!values.path("default_permissions").asString("").equals(RUNNER_PERMISSION_PROFILE))
+			{
+				throw wideningLayer(layer, "default_permissions", values.get("default_permissions"));
+			}
+			if (values.has("profile"))
+				throw wideningLayer(layer, "profile", values.get("profile"));
+		}
+		JsonNode permissions = values.path("permissions");
+		for (String profile : SESSION_PERMISSION_PROFILES)
+		{
+			JsonNode entries = permissions.path(profile);
+			String setting = "permissions." + profile;
+			if (entries.isMissingNode())
+				continue;
+			if (!entries.isObject())
+				throw wideningLayer(layer, setting, entries);
+			for (Entry<String, JsonNode> entry : entries.properties())
+			{
+				String name = setting + "." + entry.getKey();
+				switch (entry.getKey())
+				{
+					case "extends" ->
+					{
+						if (managed)
+							throw wideningLayer(layer, name, entry.getValue());
+					}
+					case "filesystem" -> requireNarrowingFilesystem(layer, name, entry.getValue(), policy);
+					case "network" -> requireNarrowingNetwork(layer, name, entry.getValue(), policy);
+					default -> throw wideningLayer(layer, name, entry.getValue());
+				}
+			}
+		}
+	}
+
+	/**
+	 * Refuses a layer's filesystem entries of a session permission profile that would widen the session.
+	 *
+	 * @param layer      the layer
+	 * @param setting    the name of the profile's filesystem table
+	 * @param filesystem the table
+	 * @param policy     the session's policy
+	 * @throws SessionRefusedException if an entry would widen the session
+	 * @throws IOException             if the real path of an entry cannot be read
+	 */
+	private static void requireNarrowingFilesystem(Path layer, String setting, JsonNode filesystem,
+		ChildPolicy policy) throws IOException
+	{
+		if (!filesystem.isObject())
+			throw wideningLayer(layer, setting, filesystem);
+		for (Entry<String, JsonNode> entry : filesystem.properties())
+		{
+			String name = setting + ".\"" + entry.getKey() + '"';
+			String access = entry.getValue().asString("");
+			if (!entry.getValue().isString())
+				throw wideningLayer(layer, name, entry.getValue());
+			switch (access)
+			{
+				case "deny", "none" ->
+				{
+					// Denying a path only narrows the session
+				}
+				case "read" ->
+				{
+					if (!entry.getKey().startsWith(":") &&
+						isInsideAny(realPath(Path.of(entry.getKey())), policy.readDenials()))
+					{
+						throw wideningLayer(layer, name, entry.getValue());
+					}
+				}
+				case "write" ->
+				{
+					if (entry.getKey().equals(TEMPORARY_DIRECTORY))
+						continue;
+					if (entry.getKey().startsWith(":"))
+						throw wideningLayer(layer, name, entry.getValue());
+					Path path = realPath(Path.of(entry.getKey()));
+					if (!isInsideAny(path, policy.writeRoots()) || isInsideAny(path, policy.writeDenials()) ||
+						isInsideAny(path, policy.readDenials()))
+					{
+						throw wideningLayer(layer, name, entry.getValue());
+					}
+				}
+				default -> throw wideningLayer(layer, name, entry.getValue());
+			}
+		}
+	}
+
+	/**
+	 * Refuses a layer's network entries of a session permission profile that would widen the session.
+	 *
+	 * @param layer   the layer
+	 * @param setting the name of the profile's network table
+	 * @param network the table
+	 * @param policy  the session's policy
+	 * @throws SessionRefusedException if an entry would widen the session
+	 */
+	private static void requireNarrowingNetwork(Path layer, String setting, JsonNode network, ChildPolicy policy)
+		throws SessionRefusedException
+	{
+		if (!network.isObject())
+			throw wideningLayer(layer, setting, network);
+		for (Entry<String, JsonNode> entry : network.properties())
+		{
+			String name = setting + "." + entry.getKey();
+			JsonNode value = entry.getValue();
+			switch (entry.getKey())
+			{
+				case "enabled" ->
+				{
+					if (!value.isBoolean() || value.asBoolean() && policy.hosts().isEmpty())
+						throw wideningLayer(layer, name, value);
+				}
+				case "allow_local_binding" ->
+				{
+					if (!value.isBoolean() || value.asBoolean() && !policy.allowLocalBinding())
+						throw wideningLayer(layer, name, value);
+				}
+				case "domains" ->
+				{
+					if (!value.isObject())
+						throw wideningLayer(layer, name, value);
+					for (Entry<String, JsonNode> domain : value.properties())
+					{
+						String access = domain.getValue().asString("");
+						boolean listed = policy.hosts().contains(domain.getKey().strip().toLowerCase(Locale.ROOT));
+						if (!access.equals("deny") && !(access.equals("allow") && listed))
+							throw wideningLayer(layer, name + ".\"" + domain.getKey() + '"', domain.getValue());
+					}
+				}
+				default -> throw wideningLayer(layer, name, value);
+			}
+		}
+	}
+
+	/**
+	 * Returns the refusal of a session whose Codex configuration layer would widen it.
+	 *
+	 * @param layer   the layer
+	 * @param setting the setting that would widen the session
+	 * @param value   the setting's value
+	 * @return the refusal
+	 */
+	private static SessionRefusedException wideningLayer(Path layer, String setting, JsonNode value)
+	{
+		return new SessionRefusedException("CAT does not start the session: the Codex configuration " +
+			"layer " + layer + " sets " + setting + " = " + value + ", which Codex merges into the session's " +
+			"configuration and which would give the session more access than its sandbox policy allows. Remove the " +
+			"setting from " + layer + ", then start the session again.");
+	}
+
+	/**
+	 * Returns the real form of a path that may not exist: the real path of its nearest existing ancestor, followed by
+	 * the names below it.
+	 *
+	 * @param path the path
+	 * @return the real form
+	 * @throws IOException if the real path of the ancestor cannot be read
+	 */
+	private static Path realPath(Path path) throws IOException
+	{
+		Path absolute = path.toAbsolutePath().normalize();
+		Path existing = absolute;
+		while (existing != null && !Files.exists(existing))
+			existing = existing.getParent();
+		if (existing == null)
+			return absolute;
+		return existing.toRealPath().resolve(existing.relativize(absolute));
+	}
+
+	/**
+	 * Indicates whether a path is one of some folders or lies inside one.
+	 *
+	 * @param path    a real path
+	 * @param folders real paths
+	 * @return {@code true} if {@code path} lies in one of {@code folders}
+	 */
+	private static boolean isInsideAny(Path path, List<Path> folders)
+	{
+		for (Path folder : folders)
+		{
+			if (path.startsWith(folder))
+				return true;
+		}
+		return false;
 	}
 
 	/**
@@ -241,12 +592,50 @@ public final class CodexConnectionConfiguration
 		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform,
 		CodexParentMultiAgentState parentState) throws IOException
 	{
+		requireThat(destination, "destination").isNotNull();
+		requireThat(caches, "caches").isNotNull();
+		copy(source, destination, project, caches, temporaryDirectory, toolOutputTokenLimit, requestAccess, platform,
+			parentState, ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(
+				destination.toAbsolutePath().getParent(), caches.directories(), List.of(), Set.of())));
+	}
+
+	/**
+	 * Copies the configuration as
+	 * {@link #copy(Path, Path, Path, HarnessDependencyCaches, Path, int, SessionRequestAccess, Platform,
+	 * CodexParentMultiAgentState)} does, within a session policy.
+	 * <p>
+	 * The session may write a dependency cache only if the policy keeps it among its writes, may only read each path
+	 * that the policy keeps it from writing, and may not read a path that the policy denies it reading. The session's
+	 * commands may reach exactly the policy's hosts, through Codex's network proxy, and bind local addresses only if
+	 * the policy allows it; a policy without hosts turns their network off. No network setting of the host
+	 * configuration applies to the session.
+	 *
+	 * @param source               the host configuration file
+	 * @param destination          the isolated configuration file
+	 * @param project              the copied project that the isolated session runs in
+	 * @param caches               the verified writable dependency caches
+	 * @param temporaryDirectory   the fresh temporary directory owned by the isolated runner
+	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
+	 *   Codex's default
+	 * @param requestAccess        the session's access to requested sessions, or {@code null} if it may request none
+	 * @param platform             the platform that the session runs on
+	 * @param parentState          the multi-agent state that the starting Codex thread recorded, or
+	 *   {@link CodexParentMultiAgentState#NONE} if no Codex thread starts the session
+	 * @param policy               the session's policy
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
+	 * @throws IOException          if configuration I/O fails
+	 */
+	public static void copy(Path source, Path destination, Path project, HarnessDependencyCaches caches,
+		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform,
+		CodexParentMultiAgentState parentState, ChildPolicy policy) throws IOException
+	{
 		requireThat(project, "project").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(parentState, "parentState").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
+		requireThat(policy, "policy").isNotNull();
 		// The session's working directory, the copied project, holds its own Git repository and is therefore its
 		// project root anyway. Looking for a root marker in each directory above it costs one sandboxed helper process
 		// per directory whenever a thread starts, and under concurrent sessions that delayed each thread's first
@@ -257,7 +646,6 @@ public final class CodexConnectionConfiguration
 		// A top-level key must precede every table
 		if (toolOutputTokenLimit > 0)
 			copied.append("tool_output_token_limit = ").append(toolOutputTokenLimit).append(System.lineSeparator());
-		String networkAccess = null;
 		JsonNode parentConfiguration = null;
 		if (Files.isRegularFile(source))
 		{
@@ -276,21 +664,20 @@ public final class CodexConnectionConfiguration
 				if (CONNECTION_SETTINGS.contains(name))
 					copied.append(line).append(System.lineSeparator());
 			}
-
-			networkAccess = workspaceWriteNetworkAccess(configuration);
 		}
-		if (networkAccess != null || !caches.directories().isEmpty())
+		List<Path> keptCaches = new ArrayList<>();
+		for (Path cache : caches.directories())
 		{
-			copied.append(System.lineSeparator()).append("[sandbox_workspace_write]").append(System.lineSeparator());
-			if (networkAccess != null)
-				copied.append("network_access = ").append(networkAccess).append(System.lineSeparator());
-			if (!caches.directories().isEmpty())
-			{
-				StringJoiner roots = new StringJoiner(", ", "[", "]");
-				for (Path cache : caches.directories())
-					roots.add('"' + toml(cache) + '"');
-				copied.append("writable_roots = ").append(roots).append(System.lineSeparator());
-			}
+			if (policy.writeRoots().contains(realPath(cache)))
+				keptCaches.add(cache);
+		}
+		if (!keptCaches.isEmpty())
+		{
+			StringJoiner roots = new StringJoiner(", ", "[", "]");
+			for (Path cache : keptCaches)
+				roots.add('"' + toml(cache) + '"');
+			copied.append(System.lineSeparator()).append("[sandbox_workspace_write]").append(System.lineSeparator()).
+				append("writable_roots = ").append(roots).append(System.lineSeparator());
 		}
 		// The commands that a session runs get the run's home as their home and no harness credential, so that a
 		// harness started from a command finds neither the user's login nor the user's configuration
@@ -302,7 +689,7 @@ public final class CodexConnectionConfiguration
 			append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
 		Map<String, String> commandEnvironment = new TreeMap<>(caches.environment());
 		commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(destination.getParent(), platform));
-		List<Path> writable = new ArrayList<>(caches.directories());
+		List<Path> writable = new ArrayList<>(keptCaches);
 		if (requestAccess != null)
 		{
 			commandEnvironment.putAll(requestAccess.environment());
@@ -326,10 +713,12 @@ public final class CodexConnectionConfiguration
 		if (parentConfiguration != null)
 			copyMultiAgentSettings(parentConfiguration, features, agents, destination.getParent(), project);
 		parentState.applyTo(features, agents);
+		// Without its network proxy, Codex ignores the profile's host list and lets the commands reach every host
+		if (!policy.hosts().isEmpty())
+			features.put(NETWORK_PROXY_FEATURE, true);
 		appendTable(copied, mapper, "features", features);
 		appendTable(copied, mapper, "agents", agents);
-		appendRunnerProfile(copied, destination.getParent(), writable, temporaryDirectory, networkAccess, project,
-			platform);
+		appendRunnerProfile(copied, destination.getParent(), writable, temporaryDirectory, project, platform, policy);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, copied.toString());
 	}
@@ -434,21 +823,23 @@ public final class CodexConnectionConfiguration
 	 * created inside the runner-owned home beneath CAT work storage, rather than granting global {@code /tmp}; the
 	 * harness sandbox uses it before the first shell command can run.
 	 * <p>
-	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, and the built-in workspace profile denies
-	 * network access, so the profile carries the parent's explicit workspace-write network policy.
+	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, so the profile carries the session's
+	 * whole sandbox policy: the policy's write denials stay readable only, its read denials that exist are denied,
+	 * and its network rules apply, as {@link #appendNetwork(StringBuilder, ChildPolicy)} renders them.
 	 *
 	 * @param configuration      the isolated configuration being assembled
 	 * @param isolatedHome       the fresh runtime home that the runner owns
-	 * @param writable           the other directories that the session may write: the verified shared dependency caches,
-	 *                           and the run's requests directory when the session may request sessions
+	 * @param writable           the other directories that the session may write: the verified shared dependency caches
+	 *                           that the policy keeps, and the run's requests directory when the session may request
+	 *                           sessions
 	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
-	 * @param networkAccess      {@code true} or {@code false} when the parent declares a workspace-write network policy,
-	 *                           or {@code null} when it does not
 	 * @param project            the copied project that the isolated session runs in
 	 * @param platform           the platform that the session runs on
+	 * @param policy             the session's policy
+	 * @throws IOException if the real path of a policy denial cannot be read
 	 */
 	private static void appendRunnerProfile(StringBuilder configuration, Path isolatedHome, List<Path> writable,
-		Path temporaryDirectory, String networkAccess, Path project, Platform platform)
+		Path temporaryDirectory, Path project, Platform platform, ChildPolicy policy) throws IOException
 	{
 		assert configuration != null;
 		assert isolatedHome != null;
@@ -457,28 +848,66 @@ public final class CodexConnectionConfiguration
 		configuration.append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
 			append(']').append(System.lineSeparator()).append("extends = \":workspace\"").
 			append(System.lineSeparator()).append("[permissions.").append(RUNNER_PERMISSION_PROFILE).
-			append(".filesystem]").append(System.lineSeparator()).append('"').append(toml(isolatedHome)).
-			append("\" = \"write\"").append(System.lineSeparator()).append('"').append(TEMPORARY_DIRECTORY).
-			append("\" = \"write\"").
-			append(System.lineSeparator());
+			append(".filesystem]").append(System.lineSeparator());
+		// A TOML table may not name a key twice, so an entry for a path that an earlier one names replaces it
+		Map<String, String> filesystem = new LinkedHashMap<>();
+		filesystem.put(toml(isolatedHome), "write");
+		filesystem.put(TEMPORARY_DIRECTORY, "write");
 		for (Path directory : writable)
-			configuration.append('"').append(toml(directory)).append("\" = \"write\"").append(System.lineSeparator());
-		appendProjectGitPermissions(configuration, project, platform);
-		if (networkAccess != null)
+			filesystem.put(toml(directory), "write");
+		addProjectGitPermissions(filesystem, project, platform);
+		for (Path denial : policy.writeDenials())
+			filesystem.put(toml(denial), "read");
+		for (Path denial : policy.readDenials())
 		{
-			configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").
-				append(System.lineSeparator()).append("enabled = ").append(networkAccess).append(System.lineSeparator());
+			// Codex's Linux sandbox creates an empty placeholder at a missing denied path while the session runs, which
+			// would block the parent from creating that path
+			if (Files.exists(denial))
+				filesystem.put(toml(denial.toRealPath()), "deny");
 		}
+		for (Entry<String, String> entry : filesystem.entrySet())
+		{
+			configuration.append('"').append(entry.getKey()).append("\" = \"").append(entry.getValue()).append('"').
+				append(System.lineSeparator());
+		}
+		appendNetwork(configuration, policy);
+	}
+
+	/**
+	 * Appends the runner profile's network rules. With hosts, the session's commands may reach exactly the policy's
+	 * hosts, which Codex enforces only while its {@code network_proxy} feature is on, and may bind local addresses
+	 * only if the policy allows it; Codex's proxy refuses a host that resolves to a loopback address without that
+	 * permission. Without hosts, their network is off.
+	 *
+	 * @param configuration the isolated configuration being assembled
+	 * @param policy        the session's policy
+	 */
+	private static void appendNetwork(StringBuilder configuration, ChildPolicy policy)
+	{
+		configuration.append("[permissions.").append(RUNNER_PERMISSION_PROFILE).append(".network]").
+			append(System.lineSeparator());
+		if (policy.hosts().isEmpty())
+		{
+			configuration.append("enabled = false").append(System.lineSeparator());
+			return;
+		}
+		configuration.append("enabled = true").append(System.lineSeparator());
+		if (policy.allowLocalBinding())
+			configuration.append("allow_local_binding = true").append(System.lineSeparator());
+		StringJoiner domains = new StringJoiner(", ", "domains = { ", " }");
+		for (String host : new TreeSet<>(policy.hosts()))
+			domains.add('"' + toml(host) + "\" = \"allow\"");
+		configuration.append(domains).append(System.lineSeparator());
 	}
 
 	/**
 	 * Grants the copied project's Git metadata write access while protecting configuration and hooks.
 	 *
-	 * @param configuration the isolated configuration, ending in the runner profile's filesystem table
-	 * @param project       the copied project that the isolated session runs in
-	 * @param platform      the platform that the session runs on
+	 * @param filesystem the runner profile's filesystem entries, by TOML-escaped path
+	 * @param project    the copied project that the isolated session runs in
+	 * @param platform   the platform that the session runs on
 	 */
-	private static void appendProjectGitPermissions(StringBuilder configuration, Path project, Platform platform)
+	private static void addProjectGitPermissions(Map<String, String> filesystem, Path project, Platform platform)
 	{
 		// Windows uses MXC or the native Windows sandbox rather than Linux's read-only mounts. Without verified
 		// protection for config and hooks there, keep Git metadata under the built-in workspace restrictions.
@@ -491,12 +920,9 @@ public final class CodexConnectionConfiguration
 
 		// Configuration and hooks can make a later Git command execute session-written code. Give the session the
 		// refs, objects and index it needs for commits and worktrees, while leaving those execution settings read-only.
-		configuration.append('"').append(toml(git)).append("\" = \"write\"").append(System.lineSeparator());
+		filesystem.put(toml(git), "write");
 		for (String protectedPath : List.of("config", "hooks"))
-		{
-			configuration.append('"').append(toml(git.resolve(protectedPath))).append("\" = \"read\"").
-				append(System.lineSeparator());
-		}
+			filesystem.put(toml(git.resolve(protectedPath)), "read");
 	}
 
 	/**
@@ -619,34 +1045,6 @@ public final class CodexConnectionConfiguration
 			result.append('"').append(quotedEvidenceRoot).append("\" = \"read\"").append(System.lineSeparator());
 		}
 		return result.toString();
-	}
-
-	/**
-	 * Extracts the parent workspace-write sandbox's explicit network-access policy.
-	 *
-	 * @param configuration the complete parent Codex configuration
-	 * @return {@code true} or {@code false} when the parent declares the policy, or {@code null} when it does not
-	 */
-	private static String workspaceWriteNetworkAccess(String configuration)
-	{
-		assert configuration != null;
-		boolean inWorkspaceWriteSandbox = false;
-		for (String line : configuration.lines().toList())
-		{
-			String trimmed = line.strip();
-			if (trimmed.startsWith("["))
-			{
-				inWorkspaceWriteSandbox = trimmed.equals("[sandbox_workspace_write]");
-				continue;
-			}
-
-			if (!inWorkspaceWriteSandbox)
-				continue;
-			Matcher networkAccess = NETWORK_ACCESS.matcher(trimmed);
-			if (networkAccess.matches())
-				return networkAccess.group(1);
-		}
-		return null;
 	}
 
 	/**

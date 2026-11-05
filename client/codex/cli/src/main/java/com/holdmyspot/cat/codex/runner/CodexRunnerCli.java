@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -254,7 +255,7 @@ public final class CodexRunnerCli
 					options.workspace(), options.plugins(), manager, "codex", environment, options.model(),
 					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 					toolOutputTokenLimit,
-					options.sessionTranscripts(), options.sessionRequests()),
+					options.sessionTranscripts(), options.sessionRequests(), ParentPolicy.UNSANDBOXED),
 					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 			{
 				RequestedRunner runner;

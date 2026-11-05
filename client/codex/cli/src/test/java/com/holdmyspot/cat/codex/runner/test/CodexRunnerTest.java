@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -942,5 +944,100 @@ public final class CodexRunnerTest
 		 * @throws IOException if the runner refuses the session or the sandbox cannot be built
 		 */
 		SessionSandbox sandbox() throws IOException;
+	}
+
+	/**
+	 * Returns the {@code network_proxy} rows that Codex 0.160.0 prints in {@code codex features list}, and whether the
+	 * runner starts a session with network hosts under each.
+	 *
+	 * @return the row, or an empty string when Codex prints none, and whether the session starts
+	 */
+	@DataProvider
+	public Object[][] networkProxyRows()
+	{
+		return new Object[][]
+		{
+			{"network_proxy                            experimental       true\n", true},
+			{"network_proxy                            experimental       false\n", false},
+			{"network_proxy                            removed            false\n", false},
+			{"", false}
+		};
+	}
+
+	/**
+	 * Verifies that the runner starts a session whose commands may reach some hosts only when {@code codex features
+	 * list}, with the session's Codex home, shows Codex's network proxy on, since Codex silently ignores a feature
+	 * that it no longer knows and would then let the commands reach every host. The rows around it are recorded from
+	 * Codex 0.160.0.
+	 *
+	 * @param row    the {@code network_proxy} row
+	 * @param starts {@code true} if the session starts
+	 * @throws IOException if the check fails for a reason other than the refusal
+	 */
+	@Test(dataProvider = "networkProxyRows")
+	public void startsOnlyWithNetworkProxy(String row, boolean starts) throws IOException
+	{
+		String features = """
+			multi_agent                              stable             true
+			multi_agent_v2                           stable             false
+			%snon_interactive_approvals               experimental       false
+			""".formatted(row);
+		List<List<String>> commands = new ArrayList<>();
+		CodexRunner.CodexOutput codex = arguments ->
+		{
+			commands.add(arguments);
+			if (arguments.equals(List.of("--version")))
+				return "codex-cli 0.161.0\n(See --build-info for more information)\n";
+			return features;
+		};
+
+		if (starts)
+		{
+			CodexRunner.requireNetworkProxy(codex, List.of("--enable", "hooks"), Set.of("chatgpt.com"));
+			requireThat(commands, "commands").isEqualTo(List.of(List.of("features", "list", "--enable", "hooks")));
+			return;
+		}
+		CodexRunner.SessionRefusedException refusal = expectThrows(CodexRunner.SessionRefusedException.class,
+			() -> CodexRunner.requireNetworkProxy(codex, List.of("--enable", "hooks"),
+				Set.of("chatgpt.com", "api.openai.com")));
+		requireThat(refusal.getMessage(), "message").isEqualTo("Codex 0.161.0 no longer limits the session's " +
+			"network to api.openai.com, chatgpt.com (`features.network_proxy` is not available), so CAT does not " +
+			"start the trial.");
+	}
+
+	/**
+	 * Verifies that a session whose commands may reach no host starts without asking Codex for its features, since its
+	 * network is off without the proxy.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void skipsNetworkProxyWithoutHosts() throws IOException
+	{
+		CodexRunner.requireNetworkProxy(arguments ->
+		{
+			throw new IOException("Codex was asked " + arguments);
+		}, List.of(), Set.of());
+	}
+
+	/**
+	 * Verifies that Codex's start failure when the system lets bubblewrap create no network namespace, as stock
+	 * Ubuntu 24.04 does, refuses the session with Codex's reason, while other start failures stay failures. The
+	 * failure text is recorded from Codex 0.160.0 on a hosted ubuntu-24.04 runner.
+	 */
+	@Test
+	public void refusesSandboxThatCannotStart()
+	{
+		IOException loopback = new IOException("Codex app-server did not start the thread: thread/start failed: " +
+			"error creating thread: failed to load AGENTS.md instructions for environment `local`: fs sandbox helper " +
+			"failed with status exit status: 1: bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted");
+		IOException other = new IOException("Codex app-server did not start the thread: model not found");
+
+		IOException refusal = CodexRunner.refusalOf(loopback);
+		requireThat(refusal, "refusal").isInstanceOf(CodexRunner.SessionRefusedException.class);
+		requireThat(refusal.getMessage(), "message").contains("bwrap: loopback: Failed RTM_NEWADDR: Operation not " +
+			"permitted");
+		requireThat(refusal.getCause(), "cause").isReferenceEqualTo(loopback, "loopback");
+		requireThat(CodexRunner.refusalOf(other), "failure").isReferenceEqualTo(other, "other");
 	}
 }
