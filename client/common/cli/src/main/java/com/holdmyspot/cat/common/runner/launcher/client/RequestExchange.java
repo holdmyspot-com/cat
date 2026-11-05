@@ -20,6 +20,7 @@ import java.io.InterruptedIOException;
 import java.io.Reader;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileSystemException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -204,10 +205,10 @@ final class RequestExchange
 	 * @param turns        the records to stream as turns, one per line, or empty when the request carries them
 	 * @param sink         receives the child runner's records
 	 * @param destinations where the request's results go
-	 * @return how the request ended
+	 * @return how the request ended, including a failure to copy the kept run in full
 	 * @throws InterruptedIOException if the calling thread is interrupted, which ends the request
-	 * @throws IOException            if the request cannot be sent, or its state or results cannot be read or
-	 *                                written
+	 * @throws IOException            if the request cannot be sent, or its state, records or receipt cannot be read
+	 *                                or written
 	 */
 	Outcome exchange(Request request, Optional<Reader> turns, Sink sink, Destinations destinations)
 		throws IOException
@@ -254,12 +255,32 @@ final class RequestExchange
 			}
 			Response response = Response.read(json, responseFile);
 			copyReceipt(response, destinations, relocation);
-			copyRun(response, destinations, request.harness());
-			if (response.status() == Status.COMPLETED)
-				return new Outcome(0, "");
-			return new Outcome(response.status().exitStatus(), "The requested session ended with status " +
-				response.status().value() + ": " + response.reason());
+			Optional<String> incompleteRun = copyRun(response, destinations, request.harness());
+			return outcomeOf(response, incompleteRun);
 		}
+	}
+
+	/**
+	 * Returns how a request ended for its sender. A failed copy of the kept run does not hide the session's own
+	 * outcome: its message follows the session's, and it makes a completed session fail.
+	 *
+	 * @param response      the request's response
+	 * @param incompleteRun why the kept run was copied only in part, or empty if it was copied in full or not kept
+	 * @return the outcome
+	 */
+	private static Outcome outcomeOf(Response response, Optional<String> incompleteRun)
+	{
+		if (response.status() == Status.COMPLETED)
+		{
+			if (incompleteRun.isEmpty())
+				return new Outcome(0, "");
+			return new Outcome(Status.FAILED.exitStatus(), incompleteRun.get());
+		}
+		String ended = "The requested session ended with status " + response.status().value() + ": " +
+			response.reason();
+		if (incompleteRun.isEmpty())
+			return new Outcome(response.status().exitStatus(), ended);
+		return new Outcome(response.status().exitStatus(), ended + "\n" + incompleteRun.get());
 	}
 
 	/**
@@ -408,42 +429,129 @@ final class RequestExchange
 
 	/**
 	 * Copies the child's kept run into the sender's run root, as {@code <run root>/<harness>/<run id>}, leaving out
-	 * links and the child's isolated home.
+	 * links and the child's isolated home. A file that the sender cannot write ends the copy and is reported, not
+	 * thrown, so that it does not hide the session's outcome.
 	 *
 	 * @param response     the request's response
 	 * @param destinations where the request's results go
 	 * @param harness      the child's harness
-	 * @throws IOException if the run cannot be copied, or a copied file already exists
+	 * @return the message that names the file that could not be copied and says that the kept run is incomplete, or
+	 *   empty if the run was copied in full or is not kept
+	 * @throws IOException if the response names a kept run but no run identifier
 	 */
-	private static void copyRun(Response response, Destinations destinations, String harness) throws IOException
+	private static Optional<String> copyRun(Response response, Destinations destinations, String harness)
+		throws IOException
 	{
 		if (destinations.runRoot().isEmpty() || response.run().isEmpty())
-			return;
+			return Optional.empty();
 		if (response.childRunId().isEmpty())
 			throw new IOException("The response names a kept run but no run identifier");
 		Path source = response.run().get();
 		Path target = destinations.runRoot().get().resolve(harness).resolve(response.childRunId().get());
-		Files.walkFileTree(source, new SimpleFileVisitor<>()
+		RunCopier copier = new RunCopier(source, target);
+		try
 		{
-			@Override
-			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
-				throws IOException
-			{
-				Path relative = source.relativize(directory);
-				if (relative.equals(Path.of(RUN_HOME)))
-					return FileVisitResult.SKIP_SUBTREE;
-				Files.createDirectories(target.resolve(relative.toString()));
-				return FileVisitResult.CONTINUE;
-			}
+			Files.walkFileTree(source, copier);
+		}
+		catch (FileSystemException e)
+		{
+			String reason = e.getReason();
+			if (reason == null)
+				reason = e.getClass().getSimpleName();
+			return Optional.of(incompleteRun(copier.attempted, reason, target));
+		}
+		catch (IOException e)
+		{
+			return Optional.of(incompleteRun(copier.attempted, e.getClass().getSimpleName(), target));
+		}
+		return Optional.empty();
+	}
 
-			@Override
-			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
+	/**
+	 * Returns the message that says a kept run is incomplete.
+	 *
+	 * @param file   the file that could not be copied
+	 * @param reason why it could not be copied
+	 * @param target the sender's copy of the kept run
+	 * @return the message
+	 */
+	private static String incompleteRun(Path file, String reason, Path target)
+	{
+		return "The file " + file + " could not be copied: " + reason + ". The kept run at " + target +
+			" is incomplete.";
+	}
+
+	/**
+	 * Copies a kept run's directories and regular files, and remembers which copy it attempted last.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is not thread-safe.
+	 */
+	private static final class RunCopier extends SimpleFileVisitor<Path>
+	{
+		/**
+		 * The kept run in the launcher's run root.
+		 */
+		private final Path source;
+		/**
+		 * The sender's copy of the kept run.
+		 */
+		private final Path target;
+		/**
+		 * The file or directory of the sender's copy that the visitor last tried to write.
+		 */
+		private Path attempted;
+
+		/**
+		 * Creates a copier.
+		 *
+		 * @param source the kept run in the launcher's run root
+		 * @param target the sender's copy of the kept run
+		 */
+		RunCopier(Path source, Path target)
+		{
+			this.source = source;
+			this.target = target;
+			this.attempted = target;
+		}
+
+		/**
+		 * Returns where a file of the kept run goes in the sender's copy.
+		 *
+		 * @param file the file in the launcher's run root
+		 * @return its place in the sender's copy
+		 */
+		private Path copyOf(Path file)
+		{
+			return target.resolve(source.relativize(file).toString());
+		}
+
+		@Override
+		public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
+		{
+			if (source.relativize(directory).equals(Path.of(RUN_HOME)))
+				return FileVisitResult.SKIP_SUBTREE;
+			attempted = copyOf(directory);
+			Files.createDirectories(attempted);
+			return FileVisitResult.CONTINUE;
+		}
+
+		@Override
+		public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
+		{
+			if (attributes.isRegularFile())
 			{
-				if (attributes.isRegularFile())
-					Files.copy(file, target.resolve(source.relativize(file).toString()), NOFOLLOW_LINKS);
-				return FileVisitResult.CONTINUE;
+				attempted = copyOf(file);
+				Files.copy(file, attempted, NOFOLLOW_LINKS);
 			}
-		});
+			return FileVisitResult.CONTINUE;
+		}
+
+		@Override
+		public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException
+		{
+			attempted = copyOf(file);
+			throw failure;
+		}
 	}
 
 	/**

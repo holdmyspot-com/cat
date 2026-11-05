@@ -294,6 +294,105 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
+	 * The one launch that the copy-failure tests share: a request whose kept run cannot be copied in full, because
+	 * the sender already has a file where the copy of the child's {@code artifacts/result.txt} belongs. The existing
+	 * file stands for a protected file that the sender's sandbox refuses to write, and copying onto it fails.
+	 *
+	 * @param fixture the test's fixture
+	 * @param answer  how the launcher answers the request
+	 * @param errors  receives why the launch did not complete
+	 * @param output  the file that receives the child's records
+	 * @param runRoot the run root that receives the kept run
+	 * @return the launch's exit status
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static int launchWithBlockedCopy(Fixture fixture, Status answer, StringWriter errors, Path output,
+		Path runRoot) throws IOException
+	{
+		fixture.launcher().register();
+		fixture.launcher().status = answer;
+		Path blocked = blockedFile(runRoot);
+		Files.createDirectories(blocked.getParent());
+		Files.writeString(blocked, "protected");
+		return fixture.launch(errors, "--project", fixture.project().toString(), "--model", "m", "--effort", "e",
+			"--input", fixture.records().toString(), "--output", output.toString(), "--keep-run", "--run-root",
+			runRoot.toString());
+	}
+
+	/**
+	 * Returns the file of the sender's copy of the kept run that the copy-failure tests block.
+	 *
+	 * @param runRoot the run root that receives the kept run
+	 * @return the file
+	 */
+	private static Path blockedFile(Path runRoot)
+	{
+		return runRoot.resolve("claude").resolve(FakeLauncher.RUN_ID).resolve("artifacts/result.txt");
+	}
+
+	/**
+	 * Verifies that when the sender cannot write one file of a completed session's kept run, the child's records and
+	 * its receipt still reach the caller, and the launch then reports that the kept run is incomplete, naming the
+	 * file and the kept run, and exits with status 1.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void completedRequestReportsFailedCopy() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			Path output = fixture.root().resolve("out/transcript.jsonl");
+			Path runRoot = fixture.root().resolve("runs");
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithBlockedCopy(fixture, Status.COMPLETED, errors, output, runRoot);
+
+			requireThat(status, "status").isEqualTo(1);
+			requireThat(Files.readString(output, UTF_8), "output").
+				contains("reply 1").
+				contains("\"type\":\"completed\"");
+			requireThat(errors.toString(), "errors").
+				contains(blockedFile(runRoot).toString()).
+				contains("The kept run at " + runRoot.resolve("claude").resolve(FakeLauncher.RUN_ID) +
+					" is incomplete");
+		}
+	}
+
+	/**
+	 * Verifies that when the sender cannot write one file of a refused session's kept run, the launch exits with
+	 * status 2 and prints the refusal's message before the message that the kept run is incomplete.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusalComesBeforeFailedCopyMessage() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			Path output = fixture.root().resolve("out/transcript.jsonl");
+			Path runRoot = fixture.root().resolve("runs");
+			StringWriter errors = new StringWriter();
+
+			int status = launchWithBlockedCopy(fixture, Status.REFUSED, errors, output, runRoot);
+
+			requireThat(status, "status").isEqualTo(2);
+			String message = errors.toString();
+			int refusal = message.indexOf("the child's refused reason");
+			int incomplete = message.indexOf("is incomplete");
+			requireThat(refusal, "refusal").isNotNegative();
+			requireThat(incomplete, "incomplete").isGreaterThan(refusal);
+			requireThat(message, "errors").contains(blockedFile(runRoot).toString());
+		}
+	}
+
+	/**
 	 * Returns each status that does not complete, with the exit status that the launch returns for it.
 	 *
 	 * @return the status and the exit status

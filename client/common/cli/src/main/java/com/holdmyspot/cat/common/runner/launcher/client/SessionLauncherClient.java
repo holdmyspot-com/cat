@@ -195,7 +195,9 @@ public final class SessionLauncherClient
 	 * Sends a runner launcher's launch to the session launcher and waits for it to end. A launch that names
 	 * {@code --artifact} is refused, as the runner launcher refuses it. The child's records go to {@code --output},
 	 * or to {@code output}; its receipt goes to {@code --receipt}; with {@code --keep-run}, its run is copied into
-	 * the run root, as {@code <run root>/<harness>/<run id>}, without links and without the child's isolated home.
+	 * the run root, as {@code <run root>/<harness>/<run id>}, without links and without the child's isolated home. A
+	 * file of the run that cannot be copied ends the copy; the launch then reports the file, the error and the
+	 * incomplete run after the session's own outcome.
 	 *
 	 * @param harness          the harness whose runner the launcher stands for
 	 * @param args             the launch's options
@@ -206,10 +208,13 @@ public final class SessionLauncherClient
 	 * @param errors           receives why the launch did not complete
 	 * @return {@code 0} if the child completed; {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch was
 	 *   refused, no launcher serves the session, the launchers' state cannot be read, or the launcher refused the
-	 *   request; {@code 75} if the child found no capacity; {@code 1} if the launcher stopped or the child failed
+	 *   request; {@code 75} if the child found no capacity; {@code 1} if the launcher stopped, the child failed, or
+	 *   the child completed but its kept run could not be copied in full. When the session ended with another status,
+	 *   a failed copy leaves that status unchanged, and its message follows the status's reason.
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if the launch's options are invalid
-	 * @throws IOException              if the request cannot be sent or followed, or its results cannot be written
+	 * @throws IOException              if the request cannot be sent or followed, or its records or receipt cannot
+	 *                                  be written
 	 */
 	public int launch(String harness, String[] args, Path workingDirectory, HarnessTemporaryRoot temporaryRoot,
 		Reader input, OutputStream output, PrintWriter errors) throws IOException
