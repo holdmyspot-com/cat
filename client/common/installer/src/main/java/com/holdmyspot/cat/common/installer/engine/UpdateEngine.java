@@ -155,9 +155,10 @@ public final class UpdateEngine
 	/**
 	 * Installs an approved release: where the harness has no CAT version it adds it, and otherwise it updates the
 	 * harness's version to it. The release's signed manifest names its build: when the harness already has that build
-	 * consistently installed there is nothing to do, and any other build of the active release is installed, whichever
-	 * of the two was published first. The latest release is refused when it is older than the active one, and a named
-	 * older release is refused when the active release changed CAT's data structures after it.
+	 * consistently installed, the harness installs nothing and only CAT's companion files, data migrations and
+	 * permission and sandbox entries are brought up to date, and any other build of the active release is installed,
+	 * whichever of the two was published first. The latest release is refused when it is older than the active one,
+	 * and a named older release is refused when the active release changed CAT's data structures after it.
 	 *
 	 * @param requestedTag the canonical v-prefixed tag, or null or {@link #LATEST} for the latest release
 	 * @param request      the harness and the running installer's plugin folder
@@ -385,33 +386,50 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Completes an install of the build that the harness already has, without asking the harness to do anything: runs
-	 * the data migrations that an earlier install of the build left pending, from its version folder.
+	 * Completes an install of the build that the harness already has, without asking the harness to install anything:
+	 * installs the provider's companion files from the build's version folder, runs the data migrations that an
+	 * earlier install left pending, and brings the permission and sandbox entries in line with the harness
+	 * configuration, which may have changed since the last install. A change that needs the user's permission is
+	 * refused when the user withholds it.
 	 *
 	 * @param request the harness and the running installer's plugin folder
 	 * @param home    the protected harness home
 	 * @param active  the harness's CAT version, which is consistently installed
 	 * @return the outcome
-	 * @throws IOException    if the data version file is reached through a symbolic link or cannot be read
+	 * @throws IOException    if a check cannot read its input, or the data version file is reached through a
+	 *                        symbolic link
 	 * @throws TrustException if the recorded data version is malformed, or the build's migration registry is absent
 	 *                        or malformed while the data is older than the build
 	 */
 	private UpdateResult upToDate(InstallRequest request, Path home, Active active) throws IOException, TrustException
 	{
+		HarnessSession session = request.session();
+		HarnessIntegration integration = session.integration();
 		PluginVersion plugin = active.plugin();
-		Path versionFolder = request.session().integration().installation(home).versionFolder(plugin);
+		HarnessInstallation installation = integration.installation(home);
+		Path versionFolder = installation.versionFolder(plugin);
 		Path migrationFile = activation.migrationVersionFile(home);
 		DataMigration migration = DataMigration.plan(versionFolder, migrationFile, active.release().orElseThrow(),
 			active.release());
+		integration.validateConfiguration(home);
+		Optional<String> consentRequest = integration.consentRequest(home, request.catLocks());
+		if (consentRequest.isPresent() && !request.consent().grants(consentRequest.get()))
+			return result(Result.REFUSED, active.version(), null, consentRequest.get(), List.of());
+		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer());
+		PluginInstall.InstalledEntries entries;
 		try
 		{
+			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
+			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
+				request.others(), request.catLocks(), consentRequest.isPresent());
 		}
 		catch (IOException e)
 		{
 			return stopped(plugin, active, e, versionFolder);
 		}
-		return result(Result.UP_TO_DATE, active.version(), null, "CAT is up to date.", List.of());
+		return result(Result.UP_TO_DATE, active.version(), null, entries.withNotices("CAT is up to date."),
+			List.of());
 	}
 
 	/**

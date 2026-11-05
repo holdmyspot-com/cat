@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.testng.annotations.Test;
@@ -72,7 +73,7 @@ public final class PluginVersionFolderTest
 
 	/**
 	 * Installing the signed build that is already active and consistent reports that CAT is up to date without asking
-	 * the harness to do anything, and changes nothing in the active build's folder.
+	 * the harness to install anything, and changes nothing in the active build's folder.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -93,7 +94,9 @@ public final class PluginVersionFolderTest
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UP_TO_DATE);
 			requireThat(fixture.integration.calls().subList(calls, fixture.integration.calls().size()),
-				"laterCalls").isEmpty();
+				"laterCalls").doesNotContain("register");
+			requireThat(fixture.integration.registered(), "registered").
+				isEqualTo(List.of(PluginVersion.parse(Releases.pluginVersion("1.1"))));
 			requireThat(Releases.snapshot(active), "active").isEqualTo(before);
 		}
 	}
