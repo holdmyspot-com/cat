@@ -3510,6 +3510,74 @@ public final class DriverTest
 	}
 
 	/**
+	 * Verifies that a trial session that the session launcher refuses before it starts stops the slice at once with
+	 * the launcher's message, verbatim in the status and its summary, without retrying the trial, counting the
+	 * refusal as an infrastructure failure, or raising a decision.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void launchRefusalStopsTrialWork() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("launch-refused")),
+				developing().window(1).build());
+			String refusal = "No session launcher serves this Claude Code session. Start a new Claude Code session.";
+			harness.trials(_ -> new SessionResult.LaunchRefused(refusal, List.of()));
+			try (Driver driver = harness.open())
+			{
+				StatusReport report = harness.runSlice(driver).status();
+				requireThat(report.outcomeDetail(), "outcomeDetail").isEqualTo(refusal);
+				requireThat(report.summary(ZoneOffset.UTC), "summary").contains(refusal);
+				requireThat(harness.sessions().sessions().size(), "sessions").isEqualTo(1);
+				Campaign campaign = harness.campaign();
+				requireThat(campaign.pending(), "pending").isNull();
+				List<LogicalTrial> queued = trials(campaign, TrialState.ASSIGNED);
+				requireThat(queued.size(), "queued").isEqualTo(1);
+				requireThat(queued.getFirst().infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that two trial sessions that fail without an outcome, followed by one that completes, rerun the same
+	 * logical trial and continue the campaign without a decision about trial failures.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void infrastructureFailuresBelowLimitRetry() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("failures-below-limit")),
+				developing().window(1).build());
+			AtomicInteger failures = new AtomicInteger(Campaign.INFRASTRUCTURE_FAILURE_LIMIT - 1);
+			harness.trials(_ ->
+			{
+				if (failures.getAndDecrement() > 0)
+					return new SessionResult.Failed("The harness crashed", List.of());
+				return harness.passed();
+			});
+			try (Driver driver = harness.open())
+			{
+				// The completed trial reaches its judge
+				Campaign campaign = harness.runUntil(driver, _ -> harness.sessions().sessions().stream().
+					anyMatch(session -> session.request().role() == SessionRole.JUDGE));
+				requireThat(campaign.pending(), "pending").isNull();
+				List<FakeSession> trials = harness.sessions().sessions().stream().
+					filter(session -> session.request().role() == SessionRole.TRIAL).toList();
+				requireThat(trials.size(), "trials").isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
+				for (FakeSession trial : trials)
+					requireThat(trial.request(), "request").isEqualTo(trials.getFirst().request());
+				requireThat(campaign.trials().getFirst().infrastructureFailures(), "infrastructureFailures").
+					isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT - 1);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a provider refusal of a judge session holds admissions until the harness's shared hold ends and
 	 * then reruns the judge with the same evidence, without counting the refusal as a failure of the judge or of the
 	 * trial.

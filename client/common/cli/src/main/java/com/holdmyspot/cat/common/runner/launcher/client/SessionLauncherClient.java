@@ -179,6 +179,19 @@ public final class SessionLauncherClient
 	}
 
 	/**
+	 * Returns why the session launcher would refuse every session at once, without sending a request or starting a
+	 * session.
+	 *
+	 * @return the message that names the reason and the user's remedy, if no launcher serves the session or the
+	 *   launchers' state cannot be read; empty if a launcher may answer a request
+	 * @throws IOException if the launchers' state cannot be listed for another reason
+	 */
+	public Optional<String> refusal() throws IOException
+	{
+		return exchange.refusal().map(Outcome::message);
+	}
+
+	/**
 	 * Sends a runner launcher's launch to the session launcher and waits for it to end. A launch that names
 	 * {@code --artifact} is refused, as the runner launcher refuses it. The child's records go to {@code --output},
 	 * or to {@code output}; its receipt goes to {@code --receipt}; with {@code --keep-run}, its run is copied into
@@ -244,7 +257,8 @@ public final class SessionLauncherClient
 	 * The optimizer streams each turn after the replies to the one before, holds each session's capacity slot itself,
 	 * and keeps every run. It names the CAT artifact that a trial installs with {@code --artifact}: unless that is
 	 * {@code ownArtifact}, which the launcher's runner installs as CAT anyway, the request carries it as its first
-	 * plugin. An interrupt of the thread that serves the bridge ends the request, which stops the child.
+	 * plugin. An interrupt of the thread that serves the bridge ends the request, which stops the child. A session that
+	 * no launcher serves, or that the launcher refuses, ends with a {@link LaunchRefusedException}.
 	 *
 	 * @param harness     the harness whose runner the bridge stands for
 	 * @param ownArtifact the CAT artifact that holds the bridge
@@ -270,9 +284,11 @@ public final class SessionLauncherClient
 			Request request = request(harness, options, plugins, true);
 			Optional<Outcome> refusal = exchange.refusal();
 			if (refusal.isPresent())
-				throw new IOException(refusal.get().message());
+				throw new LaunchRefusedException(refusal.get().message());
 			Outcome outcome = exchange.exchange(request, Optional.of(input), sink(output),
 				new Destinations(options.runRoot, Optional.empty()));
+			if (outcome.exitStatus() == SessionLauncherChannel.Status.REFUSED.exitStatus())
+				throw new LaunchRefusedException(outcome.message());
 			if (outcome.exitStatus() != 0)
 				throw new IOException(outcome.message());
 		};

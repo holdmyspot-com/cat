@@ -557,6 +557,9 @@ public final class Driver implements AutoCloseable
 		if (result != null && !result.windows().isEmpty())
 			record(new CampaignEvent.ObserveRateLimit(result.windows(), now));
 		holdAdmissions(result);
+		// Every later session is refused the same way until the user acts, so the slice stops with the refusal
+		if (result instanceof SessionResult.LaunchRefused refused && infrastructureFailure == null)
+			infrastructureFailure = refused.reason();
 		if (session instanceof InFlight.Trial trial)
 			recordTrialSession(trial, result, now);
 		switch (session)
@@ -584,7 +587,8 @@ public final class Driver implements AutoCloseable
 			case null ->
 			{
 			}
-			case SessionResult.Completed _, SessionResult.Interrupted _, SessionResult.Failed _ ->
+			case SessionResult.Completed _, SessionResult.Interrupted _, SessionResult.LaunchRefused _,
+				SessionResult.Failed _ ->
 			{
 			}
 			case SessionResult.RateLimited limited ->
@@ -703,6 +707,8 @@ public final class Driver implements AutoCloseable
 			case SessionResult.Refused _ -> fail(key, RunFailure.RATE_LIMITED,
 				"The provider refused the trial session", now);
 			case SessionResult.Failed failed -> fail(key, RunFailure.INFRASTRUCTURE, failed.reason(), now);
+			// The trial waits in the queue, without counting the refusal, until the user runs the command again
+			case SessionResult.LaunchRefused refused -> fail(key, RunFailure.INTERRUPTED, refused.reason(), now);
 		}
 	}
 
@@ -883,9 +889,10 @@ public final class Driver implements AutoCloseable
 				}
 				reason = "The judge's output does not match its result schema";
 			}
-			case SessionResult.RateLimited _, SessionResult.Refused _ ->
+			case SessionResult.RateLimited _, SessionResult.Refused _, SessionResult.LaunchRefused _ ->
 			{
-				// A rate limit or a refusal is not a failure of the judge, which reruns once the shared hold ends
+				// A rate limit or a refusal is not a failure of the judge, which reruns once the shared hold ends or the
+				// user runs the command again
 				judgingQueue.add(judging);
 				return;
 			}
@@ -1007,9 +1014,10 @@ public final class Driver implements AutoCloseable
 				}
 				reason = "The triage's output does not match its result schema";
 			}
-			case SessionResult.RateLimited _, SessionResult.Refused _ ->
+			case SessionResult.RateLimited _, SessionResult.Refused _, SessionResult.LaunchRefused _ ->
 			{
-				// A rate limit or a refusal is not a failure of the triage, which reruns once the shared hold ends
+				// A rate limit or a refusal is not a failure of the triage, which reruns once the shared hold ends or
+				// the user runs the command again
 				triageQueue.add(triaging);
 				return;
 			}
@@ -1266,8 +1274,8 @@ public final class Driver implements AutoCloseable
 						record(new CampaignEvent.ExhaustReproductionValues(values.attempt(), values.group()));
 				}
 			}
-			// The session starts again once the harness's shared hold ends
-			case SessionResult.RateLimited _, SessionResult.Refused _ ->
+			// The session starts again once the harness's shared hold ends, or once the user runs the command again
+			case SessionResult.RateLimited _, SessionResult.Refused _, SessionResult.LaunchRefused _ ->
 			{
 			}
 			case SessionResult.Interrupted _ -> infrastructureFailure =
@@ -1380,7 +1388,7 @@ public final class Driver implements AutoCloseable
 				}
 				reason = "The ranking output does not match its result schema";
 			}
-			case SessionResult.RateLimited _, SessionResult.Refused _ ->
+			case SessionResult.RateLimited _, SessionResult.Refused _, SessionResult.LaunchRefused _ ->
 			{
 				return;
 			}
@@ -1596,8 +1604,9 @@ public final class Driver implements AutoCloseable
 				{
 					submit(promptAuthor, completed);
 				}
-				// The prompt author starts again with the same brief once the harness's shared hold ends
-				case SessionResult.RateLimited _, SessionResult.Refused _ ->
+				// The prompt author starts again with the same brief once the harness's shared hold ends, or once the user
+				// runs the command again
+				case SessionResult.RateLimited _, SessionResult.Refused _, SessionResult.LaunchRefused _ ->
 				{
 				}
 				case SessionResult.Interrupted _ -> promptAuthorFailed("The prompt author session was interrupted");

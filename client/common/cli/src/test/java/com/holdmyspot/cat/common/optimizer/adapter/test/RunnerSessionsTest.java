@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
@@ -978,6 +979,38 @@ public final class RunnerSessionsTest
 
 				requireThat(result, "result").isEqualTo(new SessionResult.Failed("artifact is invalid", List.of()));
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a session that the session launcher refuses before it starts ends as a launch refusal that carries
+	 * the launcher's message, not as a failure that the optimizer retries.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void classifiesLauncherRefusalAsLaunchRefused()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			String refusal = "No session launcher serves this session. Start a new session.";
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				throw new LaunchRefusedException(refusal);
+			});
+
+			SessionResult result = await(sessions.start(request(source, List.of(), "one")));
+
+			requireThat(result, "result").isEqualTo(new SessionResult.LaunchRefused(refusal, List.of()));
 		}
 	}
 

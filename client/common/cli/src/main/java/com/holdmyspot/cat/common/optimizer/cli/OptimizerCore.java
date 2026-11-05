@@ -284,7 +284,22 @@ public final class OptimizerCore implements Core
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
+		refuseUnlaunchable();
 		return withCleanup(_ -> startBody(target, ceiling, goal));
+	}
+
+	/**
+	 * Refuses the command before it starts a session if the session launcher would refuse every session.
+	 *
+	 * @throws CommandRefusedException with the launcher's message, which names the reason and the user's remedy, if
+	 *   the launcher would refuse every session
+	 * @throws IOException if the launchers' state cannot be listed
+	 */
+	private void refuseUnlaunchable() throws CommandRefusedException, IOException
+	{
+		Optional<String> refusal = scope.launchRefusal();
+		if (refusal.isPresent())
+			throw new CommandRefusedException(refusal.get());
 	}
 
 	/**
@@ -1153,6 +1168,7 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
 	{
+		refuseUnlaunchable();
 		return withCleanup(notices ->
 		{
 			Path root = scope.projectRoot();
@@ -1363,6 +1379,7 @@ public final class OptimizerCore implements Core
 		{
 			case SessionResult.Completed _ -> throw new IllegalArgumentException("The session completed");
 			case SessionResult.Failed failed -> "did not complete: " + failed.reason() + ".";
+			case SessionResult.LaunchRefused refused -> "did not start. " + refused.reason();
 			case SessionResult.Interrupted _ -> "was interrupted.";
 			case SessionResult.Refused refused ->
 			{
@@ -2067,6 +2084,10 @@ public final class OptimizerCore implements Core
 			{
 				return report(root, campaign, null, "The contract author session did not complete: " + failed.reason() +
 					". Run `start` again to retry.");
+			}
+			case SessionResult.LaunchRefused refused ->
+			{
+				return report(root, campaign, null, "The contract author session did not start. " + refused.reason());
 			}
 			case SessionResult.Refused refused ->
 			{

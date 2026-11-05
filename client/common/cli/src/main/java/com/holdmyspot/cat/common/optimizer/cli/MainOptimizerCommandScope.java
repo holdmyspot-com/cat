@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
 
@@ -22,6 +23,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.random.RandomGenerator;
 
 /**
@@ -152,6 +154,13 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		ensureOpen();
 		return trialSandbox;
+	}
+
+	@Override
+	protected final Optional<String> launchRefusal() throws IOException
+	{
+		ensureOpen();
+		return SessionLauncherClient.production(environment, waiting()).refusal();
 	}
 
 	@Override

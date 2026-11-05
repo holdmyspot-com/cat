@@ -74,6 +74,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private final S sessions;
 	private final FakeProfileInventory profiles = new FakeProfileInventory();
 	private String userLoaderSettings;
+	private String launchRefusal;
 	private SymbolicLinkProbe symbolicLinkProbe = () ->
 	{
 	};
@@ -318,6 +319,25 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 		ensureOpen();
 		return _ -> Optional.empty();
+	}
+
+	@Override
+	protected Optional<String> launchRefusal()
+	{
+		ensureOpen();
+		return Optional.ofNullable(launchRefusal);
+	}
+
+	/**
+	 * Makes the session launcher refuse every session of this scope's host session before any session starts.
+	 *
+	 * @param refusal why the launcher refuses and how the user fixes it
+	 * @throws NullPointerException if {@code refusal} is null
+	 */
+	void refuseLaunches(String refusal)
+	{
+		requireThat(refusal, "refusal").isNotNull();
+		this.launchRefusal = refusal;
 	}
 
 	@Override

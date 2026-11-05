@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -463,7 +464,7 @@ final class Session implements SessionHandle
 
 	/**
 	 * Classifies how the session ended and retains its evidence, recording a rejection or refusal in the harness's
-	 * shared hold.
+	 * shared hold. A session that the session launcher refused ends as {@link SessionResult.LaunchRefused}.
 	 *
 	 * @return the result
 	 * @throws IOException if the run directory cannot be cleaned, its evidence cannot be recorded, or the hold cannot
@@ -477,6 +478,11 @@ final class Session implements SessionHandle
 				clock, settings.replacer()).pruneTerminalRuntimes(sessions.harness());
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);
+		if (ended != null && ended.failure() instanceof LaunchRefusedException refused)
+		{
+			return new SessionResult.LaunchRefused(describe(refused, "The session launcher refused the session"),
+				windows);
+		}
 		Optional<HarnessEvents.Rejection> rejection = events.rejection();
 		if (rejection.isPresent())
 			return new SessionResult.RateLimited(settings.capacity().reject(rejection.get().resetsAt()), windows);

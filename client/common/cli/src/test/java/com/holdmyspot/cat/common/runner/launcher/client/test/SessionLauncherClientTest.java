@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
 import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
+import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import com.holdmyspot.cat.common.runner.launcher.client.test.FakeLauncher.FakeHolder;
 import java.io.ByteArrayOutputStream;
@@ -623,5 +624,117 @@ public final class SessionLauncherClientTest
 			requireThat(fixture.launcher().requestHolder().closed, "closed").isTrue();
 			requireThat(fixture.launcher().holders.stream().allMatch(holder -> holder.closed), "allClosed").isTrue();
 		}
+	}
+
+	/**
+	 * Verifies that the optimizer's bridge signals a refusal when no launcher serves the session, so that the optimizer
+	 * does not retry a session that is refused again until the user acts, and that the refusal carries the launcher's
+	 * message.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void bridgeWithoutLauncherIsRefused() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")));
+			Files.createDirectories(fixture.channel().launchers());
+
+			String refusal = bridgeFailure(fixture, LaunchRefusedException.class);
+
+			requireThat(refusal, "refusal").contains(SessionLauncherChannel.noLauncherMessage(PRODUCT));
+			requireThat(fixture.inbox(), "inbox").isEmpty();
+			requireThat(fixture.client().refusal(), "noSpendRefusal").
+				isEqualTo(Optional.of(SessionLauncherChannel.noLauncherMessage(PRODUCT)));
+		}
+	}
+
+	/**
+	 * Verifies that the optimizer's bridge signals a refusal when the launcher refuses the session, carrying the
+	 * launcher's reason, while the no-spend check finds the launcher that serves the session.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void bridgeRefusedByLauncherIsRefused() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")));
+			fixture.launcher().register();
+			fixture.launcher().status = Status.REFUSED;
+
+			String refusal = bridgeFailure(fixture, LaunchRefusedException.class);
+
+			requireThat(refusal, "refusal").contains("the child's " + Status.REFUSED.value() + " reason");
+			requireThat(fixture.client().refusal(), "noSpendRefusal").isEmpty();
+		}
+	}
+
+	/**
+	 * Returns each status that ends a session for a reason that a later attempt may not meet.
+	 *
+	 * @return the status
+	 */
+	@DataProvider
+	public Object[][] retryable()
+	{
+		return new Object[][]{{Status.CAPACITY}, {Status.FAILED}};
+	}
+
+	/**
+	 * Verifies that a session that the child fails, or that finds no capacity, is not signalled as a refusal, so the
+	 * optimizer handles it as before.
+	 *
+	 * @param answer how the launcher answers
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(dataProvider = "retryable")
+	public void bridgeFailureIsNotRefusal(Status answer) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")));
+			fixture.launcher().register();
+			fixture.launcher().status = answer;
+
+			String failure = bridgeFailure(fixture, IOException.class);
+
+			requireThat(failure, "failure").contains("the child's " + answer.value() + " reason");
+		}
+	}
+
+	/**
+	 * Serves one turn through the fixture's bridge and returns the message of the exception that ends it.
+	 *
+	 * @param fixture  the fixture
+	 * @param expected the exact type of exception that the bridge must throw
+	 * @return the exception's message
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static String bridgeFailure(Fixture fixture, Class<? extends IOException> expected) throws IOException
+	{
+		Bridge bridge = fixture.client().bridge("claude", fixture.root());
+		try (FeedReader input = new FeedReader())
+		{
+			input.send("{\"type\":\"turn\",\"prompt\":\"first\"}");
+			input.send("{\"type\":\"complete\"}");
+			bridge.serve(List.of("--project", fixture.project().toString(), "--run-root",
+				fixture.root().resolve("runs").toString(), "--keep-run", "--model", "m", "--effort", "e"), input,
+				new StringWriter());
+		}
+		catch (IOException e)
+		{
+			requireThat(e.getClass().getName(), "exception").isEqualTo(expected.getName());
+			return e.getMessage();
+		}
+		throw new AssertionError("The bridge completed");
 	}
 }

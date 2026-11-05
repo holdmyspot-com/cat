@@ -152,6 +152,11 @@ public final class OptimizerCoreTest
 	 * A host session other than the one that starts the campaigns of the tests.
 	 */
 	private static final String OTHER_SESSION = "5a7c9e1b-3d2f-4a6b-8c0e-9f1d3b5a7c2e";
+	/**
+	 * Why the session launcher refuses the sessions of some tests, and how the user fixes it.
+	 */
+	private static final String LAUNCH_REFUSAL = "No session launcher serves this Claude Code session. Start a new " +
+		"Claude Code session, then run the command again.";
 
 	/**
 	 * Matches the identifier of each assertion that a judge request lists, which its turn holds as a JSON array of
@@ -1440,7 +1445,9 @@ public final class OptimizerCoreTest
 					". Run `start` again after that time."},
 				{new SessionResult.Refused(new Hold(resetsAt, 6), true, List.of()),
 					"The provider refused claude requests after a 30-minute hold. Run `start` again after " +
-					resetsAt + "."}
+					resetsAt + "."},
+				{new SessionResult.LaunchRefused(LAUNCH_REFUSAL, List.of()),
+					"The contract author session did not start. " + LAUNCH_REFUSAL}
 			};
 	}
 
@@ -1466,6 +1473,57 @@ public final class OptimizerCoreTest
 
 			requireThat(result.message(), "message").contains(message).
 				doesNotContain(end.getClass().getSimpleName() + "[");
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses with the session launcher's message, before it starts any session or
+	 * creates a campaign, when no session launcher serves the host session.
+	 *
+	 * @throws Exception if the repository cannot be written or the command fails for another reason
+	 */
+	@Test
+	public void startRefusesWithoutLauncher() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
+			Map<String, String> before = contents(repository.root());
+
+			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
+
+			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
+			requireThat(repository.sessions().requests, "requests").isEmpty();
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that {@code run} refuses with the session launcher's message, before it starts any session, when no
+	 * session launcher serves the host session.
+	 *
+	 * @throws Exception if the repository cannot be written or the command fails for another reason
+	 */
+	@Test
+	public void runRefusesWithoutLauncher() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
+			int requests = repository.sessions().requests.size();
+
+			String refusal = refusal(() -> repository.core().run(id));
+
+			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
+			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
 		}
 	}
 

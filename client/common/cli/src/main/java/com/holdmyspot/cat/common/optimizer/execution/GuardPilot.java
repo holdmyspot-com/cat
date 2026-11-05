@@ -513,6 +513,8 @@ public final class GuardPilot
 				case SessionResult.Refused refused -> refused(trial, refused);
 				case SessionResult.Interrupted _ -> trial.pilot().failed("The trial session was interrupted");
 				case SessionResult.Failed failed -> trial.pilot().failed(failed.reason());
+				// Every later session is refused the same way until the user acts
+				case SessionResult.LaunchRefused refused -> stop(refused.reason());
 			}
 		}
 
@@ -595,6 +597,7 @@ public final class GuardPilot
 				case SessionResult.Refused refused -> refused(judging, refused);
 				case SessionResult.Interrupted _ -> sessionFailed(judging, "The judge session was interrupted");
 				case SessionResult.Failed failed -> sessionFailed(judging, failed.reason());
+				case SessionResult.LaunchRefused refused -> stop(refused.reason());
 			}
 		}
 
