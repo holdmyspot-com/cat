@@ -110,7 +110,8 @@ public final class InstallTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-no-consent-")),
 				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
-			fixture.installActive("1.0");
+			// Stands for the install of 1.0 that the harness ran before this update
+			fixture.registerExisting(Releases.pluginVersion("1.0"));
 			fixture.integration.asking("May CAT change the shared setting?", Map.of("config#selection",
 				List.of("built-in")));
 			Map<String, String> before = Releases.snapshot(fixture.home);
@@ -146,7 +147,8 @@ public final class InstallTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-consent-")),
 				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
-			fixture.installActive("1.0");
+			// Stands for the install of 1.0 that the harness ran before this update
+			fixture.registerExisting(Releases.pluginVersion("1.0"));
 			fixture.integration.asking("May CAT change the shared setting?", Map.of("config#selection",
 				List.of("built-in"))).describing("config#selection", "CAT changed the shared setting.");
 
@@ -179,7 +181,8 @@ public final class InstallTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-runner-")),
 				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
-			fixture.installActive("1.0");
+			// Stands for the install of 1.0 that the harness ran before this update
+			fixture.registerExisting(Releases.pluginVersion("1.0"));
 			fixture.integration.removingRunnerExceptions(List.of("CAT removed the runner entries."));
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),

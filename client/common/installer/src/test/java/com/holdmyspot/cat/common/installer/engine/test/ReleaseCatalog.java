@@ -196,6 +196,25 @@ final class ReleaseCatalog implements ReleaseSource
 	}
 
 	/**
+	 * Writes the files that an installation keeps of a release, as an install of that release leaves them: the signed
+	 * manifest, its signature and the plugin archive. Writing them records no request.
+	 *
+	 * @param version   the release version
+	 * @param directory the directory that receives the files
+	 * @throws IOException if the catalog has no such release or a file cannot be written
+	 */
+	void writeKept(String version, Path directory) throws IOException
+	{
+		String tag = "v" + version;
+		String archive = "cat-harness-a-linux-x64-v" + version + ".tar.gz";
+		Releases release = release(tag);
+		Files.createDirectories(directory);
+		Files.write(directory.resolve("cat-release-manifest.json"), release.manifest(tag));
+		Files.write(directory.resolve("cat-release-manifest.json.sig"), release.signature(tag));
+		release.download(tag, archive, 0, directory.resolve(archive));
+	}
+
+	/**
 	 * Records a request, and fails it while the catalog is offline.
 	 *
 	 * @param request the request

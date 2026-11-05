@@ -43,8 +43,8 @@ public final class OldVersionFoldersTest
 	}
 
 	/**
-	 * After two updates, the version folder of the first version is deleted, and the folders of the active version
-	 * and of the version that it replaced stay.
+	 * After an update of a harness that has the folders of two earlier versions, the folder of the older version is
+	 * deleted, and the folders of the active version and of the version that it replaced stay.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -55,8 +55,9 @@ public final class OldVersionFoldersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-updates-")), catalog());
-			Path first = fixture.installActive("1.0");
-			requireUpdated(fixture.install("v1.1"));
+			// Stands for the installs of 1.0 and then 1.1, which left the folder of each and a harness that runs 1.1
+			Path first = fixture.registerExisting(Releases.pluginVersion("1.0"));
+			fixture.registerExisting(Releases.pluginVersion("1.1"));
 
 			UpdateResult result = fixture.install("v1.2");
 
@@ -83,7 +84,8 @@ public final class OldVersionFoldersTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-up-to-date-")),
 				catalog());
-			Path previous = fixture.installActive("1.0");
+			// Stands for the install of 1.0 that the harness ran before the update
+			Path previous = fixture.registerExisting(Releases.pluginVersion("1.0"));
 			requireUpdated(fixture.install("v1.1"));
 			Path leftBehind = leftBehind(fixture);
 			Path local = Files.createDirectories(leftBehind.resolveSibling("local"));
@@ -166,7 +168,8 @@ public final class OldVersionFoldersTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-downgrade-")), catalog());
 			fixture.integration.runningGreatestName();
-			Path later = fixture.installActive("1.2");
+			// Stands for the install of 1.2 that the harness ran before the move back
+			Path later = fixture.registerExisting(Releases.pluginVersion("1.2"));
 
 			UpdateResult result = fixture.install("v1.0");
 
@@ -193,7 +196,9 @@ public final class OldVersionFoldersTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-downgrade-running-")),
 				catalog());
 			fixture.integration.runningGreatestName();
-			Path running = fixture.installActive("1.2");
+			// Stands for the install of 1.2 that the harness ran before the move back, which the running installer
+			// belongs to
+			Path running = fixture.registerExisting(Releases.pluginVersion("1.2"));
 
 			UpdateResult result = fixture.install("v1.0", running);
 
@@ -217,8 +222,8 @@ public final class OldVersionFoldersTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-undeletable-")),
 				catalog());
-			fixture.installActive("1.0");
-			requireUpdated(fixture.install("v1.1"));
+			// Stands for the install of 1.1 that the harness ran before the installs below
+			fixture.registerExisting(Releases.pluginVersion("1.1"));
 			Path leftBehind = leftBehind(fixture);
 			Path file = leftBehind.resolve("bin/VERSION");
 			UpdateResult result;
@@ -289,8 +294,8 @@ public final class OldVersionFoldersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-copies-")), catalog());
-			fixture.installActive("1.0");
-			requireUpdated(fixture.install("v1.1"));
+			// Stands for the install of 1.1 that the harness ran before the update
+			fixture.registerExisting(Releases.pluginVersion("1.1"));
 			RecordingIntegration.Layout layout = new RecordingIntegration.Layout(fixture.home);
 			List<Path> copies = new ArrayList<>();
 			for (String release : List.of("1.0", "1.1", "1.2"))

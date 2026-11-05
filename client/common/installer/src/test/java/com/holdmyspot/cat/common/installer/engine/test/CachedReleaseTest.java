@@ -9,8 +9,10 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -135,8 +137,8 @@ public final class CachedReleaseTest
 	}
 
 	/**
-	 * Creates a harness that installed release 1.1 and was then updated to release 1.2, so that the installation
-	 * keeps release 1.1.
+	 * Creates a harness that ran release 1.1, which an earlier install of it kept, and was then updated to release
+	 * 1.2, so that the installation keeps releases 1.1 and 1.2 exactly as the release source serves them.
 	 *
 	 * @param cleanup the test's temporary directories
 	 * @return the fixture
@@ -147,10 +149,24 @@ public final class CachedReleaseTest
 	{
 		EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("cached-release-")),
 			new ReleaseCatalog("1.1", NO_MIGRATION).add("1.2", NO_MIGRATION));
-		fixture.installActive("1.1");
+		// Stands for the install of 1.1 that registered the version and kept the release
+		fixture.registerExisting(Releases.pluginVersion("1.1"));
+		fixture.catalog.writeKept("1.1", fixture.data().resolve("releases/1.1"));
+
 		UpdateResult result = fixture.install("v1.2");
+
 		requireThat(result.result(), "update").withContext(result.message(), "message").isEqualTo(Result.UPDATED);
 		requireThat(Files.isRegularFile(fixture.data().resolve("releases/1.1/" + PLUGIN_ARCHIVE)), "kept").isTrue();
+		Path expected = fixture.root.resolve("expected-1.2");
+		fixture.catalog.writeKept("1.2", expected);
+		try (Stream<Path> files = Files.list(expected))
+		{
+			for (Path file : files.toList())
+			{
+				requireThat(Files.mismatch(file, fixture.data().resolve("releases/1.2").resolve(file.getFileName())),
+					"mismatch").withContext(file.getFileName(), "file").isEqualTo(-1L);
+			}
+		}
 		return fixture;
 	}
 }
