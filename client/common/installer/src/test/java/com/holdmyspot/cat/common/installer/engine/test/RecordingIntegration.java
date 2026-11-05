@@ -358,7 +358,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Creates the {@code harness-a} program file that install finds on the search path. Install never starts it.
+	 * Creates the {@code harness-a} program file that install finds on the search path of the platform that runs the
+	 * test. Install never starts it.
 	 *
 	 * @param directory the directory to create the program in
 	 * @return the program
@@ -366,10 +367,41 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	public static Path program(Path directory) throws IOException
 	{
-		Path program = Files.writeString(Files.createDirectories(directory).resolve("harness-a"), "#!/bin/sh\n");
+		// Windows finds only a program with one of the extensions that PATHEXT names
+		String name = "harness-a";
+		if (Platform.current().isWindows())
+			name += ".exe";
+		Path program = Files.writeString(Files.createDirectories(directory).resolve(name), "#!/bin/sh\n");
 		if (Files.getFileStore(program).supportsFileAttributeView(PosixFileAttributeView.class))
 			Files.setPosixFilePermissions(program, PosixFilePermissions.fromString("rwx------"));
 		return program;
+	}
+
+	/**
+	 * Returns the variables of the test process's environment that install needs on Windows to record a program.
+	 *
+	 * @return {@code SystemRoot} on Windows, or no variable elsewhere
+	 */
+	public static Map<String, String> windowsVariables()
+	{
+		String systemRoot = System.getenv("SystemRoot");
+		if (!Platform.current().isWindows() || systemRoot == null)
+			return Map.of();
+		return Map.of("SystemRoot", systemRoot);
+	}
+
+	/**
+	 * Returns the variables that install records for a program on Windows, beside the harness's own variables and
+	 * {@code PATH}, when the environment holds {@link #windowsVariables()}.
+	 *
+	 * @return the variables on Windows, or no variable elsewhere
+	 */
+	public static Map<String, String> recordedWindowsVariables()
+	{
+		Map<String, String> variables = new LinkedHashMap<>(windowsVariables());
+		if (Platform.current().isWindows())
+			variables.put("NoDefaultCurrentDirectoryInExePath", "1");
+		return variables;
 	}
 
 	/**

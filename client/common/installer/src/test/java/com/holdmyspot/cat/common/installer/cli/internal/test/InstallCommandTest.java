@@ -197,8 +197,12 @@ public final class InstallCommandTest
 
 			fixture.install();
 
+			// Windows runs each registered migration's PowerShell script
+			String merge = "merge.sh";
+			if (Platform.current().isWindows())
+				merge = "merge.ps1";
 			requireThat(fixture.migrations.runs().stream().map(RecordingMigrations.Run::script).toList(), "scripts").
-				isEqualTo(List.of(fixture.versionFolder().resolve("install/migrations/merge.sh")));
+				isEqualTo(List.of(fixture.versionFolder().resolve("install/migrations").resolve(merge)));
 			requireThat(Files.readString(dataVersion), "dataVersion").isEqualTo("1.2\n");
 		}
 	}
@@ -240,7 +244,10 @@ public final class InstallCommandTest
 
 			Install.Outcome outcome = fixture.install();
 
+			// Windows runs the launcher's PowerShell script
 			Path installer = fixture.versionFolder().resolve("bin/installer");
+			if (Platform.current().isWindows())
+				installer = fixture.versionFolder().resolve("bin/installer.ps1");
 			requireThat(outcome.installer(), "installer").isEqualTo(installer);
 			requireThat(fixture.integration.callsWithSubjects(), "calls").contains("installPermissions " + installer);
 			requireThat(outcome.entries().recorded(), "permissions").isEqualTo(Map.of("settings.json", List.of("entry")));
@@ -465,13 +472,17 @@ public final class InstallCommandTest
 			this.cwd = Files.createDirectories(root.resolve("project"));
 			this.user = Files.createDirectories(root.resolve("user"));
 			environment.put("HOME", user.toString());
+			environment.put(Platform.current().homeVariable(), user.toString());
 			environment.put("XDG_DATA_HOME", root.resolve("xdg-data").toString());
 			environment.put("XDG_CONFIG_HOME", root.resolve("xdg-config").toString());
 			environment.put("LOCALAPPDATA", root.resolve("local-app-data").toString());
 			Path program = RecordingIntegration.program(root.resolve("tools"));
 			environment.put("PATH", program.getParent().toString());
-			this.command = new HarnessCommand(List.of(program.toString()), Map.of("HARNESS_A_HOME", home.toString(),
-				"PATH", program.getParent().toString()));
+			environment.putAll(RecordingIntegration.windowsVariables());
+			Map<String, String> recorded = new HashMap<>(RecordingIntegration.recordedWindowsVariables());
+			recorded.put("HARNESS_A_HOME", home.toString());
+			recorded.put("PATH", program.getParent().toString());
+			this.command = new HarnessCommand(List.of(program.toString()), recorded);
 		}
 
 		/**
@@ -511,7 +522,7 @@ public final class InstallCommandTest
 		 */
 		private Install.Outcome install() throws IOException, TrustException
 		{
-			Install install = new Install(archive, Platform.LINUX_X64, replacer(),
+			Install install = new Install(archive, Platform.current(), replacer(),
 				(recorded, recordedHome) -> RecordingIntegration.cli(), _ -> false, migrations);
 			return install.install("harness-a", requestedHome, cwd, environment, user, provider,
 				integration, others, _ -> false);

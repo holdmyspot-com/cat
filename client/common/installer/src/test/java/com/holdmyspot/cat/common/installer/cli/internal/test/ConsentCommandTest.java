@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.installer.cli.internal.ConsentCommand;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Set;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -23,6 +24,8 @@ public final class ConsentCommandTest
 	@Test
 	public void repeatsInstallWithPermission()
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException("A POSIX shell treats the backslashes of a Windows path specially");
 		Path root = Path.of(System.getProperty("cat.installer.test.directory")).toAbsolutePath();
 		Path plugin = root.resolve("home/plugins/cache/cat/cat/1.0+b0123456789ab");
 		Path home = root.resolve("home");
@@ -48,6 +51,8 @@ public final class ConsentCommandTest
 	@Test
 	public void quotesHomeWithSpace()
 	{
+		if (Platform.current().isWindows())
+			throw new SkipException("A POSIX shell treats the backslashes of a Windows path specially");
 		Path plugin = Path.of("/data/plugins/cache/cat/cat/1.0+b0123456789ab");
 		Arguments asked = Arguments.parse(new String[]{"--home", "/data/my home", "install", "--harness",
 			"harness-a"}, Set.of("harness-a"));

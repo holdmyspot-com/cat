@@ -33,6 +33,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -619,10 +620,13 @@ public final class InvocationTest
 			RecordingIntegration integration = new RecordingIntegration().
 				adding(Map.of("settings.json", List.of("entry")));
 			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
-			Map<String, String> environment = Map.of("HOME", user.toString(), "PATH", tools.toString());
+			Map<String, String> environment = installEnvironment(user, tools);
 
-			Run run = run(archive, project, environment, List.of(new LiveProvider()), integration, "--home",
-				home.toString(), "install", "--harness", "harness-a");
+			Run run = run(archive, project, environment, List.of(new LiveProvider()), integration, Platform.current(),
+				command ->
+				{
+					throw new AssertionError("Started " + command);
+				}, "--home", home.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			JsonNode result = run.result();
@@ -1203,7 +1207,7 @@ public final class InvocationTest
 			Path user = Files.createDirectory(root.resolve("user"));
 			this.project = Files.createDirectory(root.resolve("project"));
 			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
-			this.environment = Map.of("HOME", user.toString(), "PATH", tools.toString());
+			this.environment = installEnvironment(user, tools);
 		}
 
 		/**
@@ -1220,8 +1224,27 @@ public final class InvocationTest
 			arguments.addAll(List.of(options));
 			arguments.addAll(List.of("install", "--harness", "harness-a"));
 			return InvocationTest.run(plugin, project, environment, List.of(new LiveProvider()), integration,
-				terminal, arguments.toArray(String[]::new));
+				terminal, Platform.current(), command ->
+				{
+					throw new AssertionError("Started " + command);
+				}, arguments.toArray(String[]::new));
 		}
+	}
+
+	/**
+	 * Returns the environment of a user whose harness program install finds, on the platform that runs the test.
+	 *
+	 * @param user  the user's home
+	 * @param tools the directory that holds the harness program
+	 * @return the environment
+	 */
+	private static Map<String, String> installEnvironment(Path user, Path tools)
+	{
+		Map<String, String> environment = new HashMap<>(RecordingIntegration.windowsVariables());
+		environment.put("HOME", user.toString());
+		environment.put(Platform.current().homeVariable(), user.toString());
+		environment.put("PATH", tools.toString());
+		return Map.copyOf(environment);
 	}
 
 	/**

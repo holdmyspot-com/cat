@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -144,9 +145,15 @@ public final class OtherHarnessInstallTest
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			// Windows runs the launcher's PowerShell script
+			String installer = fixture.otherVersionFolder(installed).resolve("bin/installer").toString();
+			if (Platform.current().isWindows())
+			{
+				installer = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" +
+					fixture.otherVersionFolder(installed).resolve("bin/installer.ps1") + "\"";
+			}
 			requireThat(run.result().path("message").stringValue(), "message").
-				contains(fixture.otherVersionFolder(installed).resolve("bin/installer") + " install --harness " +
-					"harness-b " + PluginRelease.TAG);
+				contains(installer + " install --harness harness-b " + PluginRelease.TAG);
 			requireThat(fixture.source.requested(), "requested").isEmpty();
 			requireThat(fixture.otherIntegration.calls(), "calls").isEmpty();
 		}
@@ -250,7 +257,11 @@ public final class OtherHarnessInstallTest
 			this.project = Files.createDirectory(root.resolve("project"));
 			this.otherHome = Files.createDirectory(user.resolve("harness-b-home"));
 			Path program = RecordingIntegration.program(root.resolve("tools"));
-			this.environment = Map.of("HOME", user.toString(), "PATH", program.getParent().toString());
+			Map<String, String> environment = new HashMap<>(RecordingIntegration.windowsVariables());
+			environment.put("HOME", user.toString());
+			environment.put(Platform.current().homeVariable(), user.toString());
+			environment.put("PATH", program.getParent().toString());
+			this.environment = Map.copyOf(environment);
 			this.command = new HarnessCommand(List.of(program.toString()), Map.of("HOME", user.toString()));
 			KeyPair key = keyPair();
 			List<TrustedKey> keys = List.of(trusted("release-key", key));
@@ -312,7 +323,7 @@ public final class OtherHarnessInstallTest
 			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
-				Invocation invocation = new Invocation(image, project, user, Platform.LINUX_X64, environment,
+				Invocation invocation = new Invocation(image, project, user, Platform.current(), environment,
 					List.of(new RegisteredProvider(), new RegisteredProvider("harness-b")),
 					List.of(new RecordingIntegration(), otherIntegration), (recorded, recordedHome) ->
 					RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {}, replacer(),
