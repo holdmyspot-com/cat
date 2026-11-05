@@ -47,10 +47,10 @@ public final class ClaudeArtifactTest
 	}
 
 	/**
-	 * Returns the command, as the selector quotes it, that installs CAT into Claude Code from a Codex plugin, on the
-	 * current platform.
+	 * Returns the command, as the selector quotes it, that runs a plugin's installer with
+	 * {@code install --harness claude}, on the current platform.
 	 *
-	 * @param plugin the Codex plugin's version folder
+	 * @param plugin the version folder whose installer runs the command
 	 * @return the command
 	 */
 	private static String installCommand(Path plugin)
@@ -229,8 +229,8 @@ public final class ClaudeArtifactTest
 	}
 
 	/**
-	 * Verifies that a Claude CAT plugin of another release is refused with a message that names the same command,
-	 * which updates CAT in Claude Code.
+	 * Verifies that a Claude Code CAT plugin of another release is refused with a message that names the command of that
+	 * installation's own installer that updates it to this plugin's release.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -241,13 +241,13 @@ public final class ClaudeArtifactTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-release-"));
 			Path configuration = root.resolve("claude");
-			installClaude(root, configuration, "2.0+b0123456789ab");
+			Path installed = installClaude(root, configuration, "2.0+b0123456789ab");
 			Path plugin = ownPlugin(root);
 
 			IOException refusal = refusal(environment(root, configuration), plugin);
 
 			requireThat(refusal.getMessage(), "message").contains("2.0+b0123456789ab").contains("1.0").
-				contains(installCommand(plugin));
+				contains(installCommand(installed) + " v1.0");
 		}
 	}
 

@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +18,9 @@ import java.util.regex.Pattern;
 /**
  * Finds the CAT plugin that another harness has installed, for a runner launcher in this harness's plugin that runs
  * that harness. The other harness's plugin is used when it is of this plugin's CAT release, whatever its build.
- * Otherwise the lookup stops and names the command, in this plugin, that installs or updates CAT in the other harness;
- * the user approves that command before it runs. Nothing is downloaded.
+ * Otherwise the lookup stops and names the command that brings CAT in the other harness to this plugin's release: the
+ * installer of this plugin, which installs CAT into a harness that has none, or the installer of the other harness's
+ * installation, which updates it. The user approves that command before it runs; the lookup itself downloads nothing.
  */
 public final class OtherHarnessPlugin
 {
@@ -63,19 +65,19 @@ public final class OtherHarnessPlugin
 		requireThat(runner, "runner").isNotBlank();
 		requireThat(platform, "platform").isNotNull();
 		PluginVersion own = HarnessArtifact.version(ownPlugin);
-		String command = installCommand(ownPlugin, harness, platform);
 		if (installed.isEmpty())
 		{
 			throw new IOException("CAT is not installed in " + harnessName + ". CAT will be installed into " +
 				harnessName + " once the user approves this command; ask the user to approve it, run it, then retry: " +
-				command);
+				installCommand(ownPlugin, harness, platform));
 		}
 		Optional<PluginVersion> chosen = choose(own, installed);
 		if (chosen.isEmpty())
 		{
+			String update = updateCommand(other, installed, harness, own, platform);
 			throw new IOException(harnessName + " has CAT " + String.join(", ", installed) + " installed, not CAT " +
-				"release " + own.release() + ". CAT " + own.release() + " will be installed into " + harnessName +
-				" once the user approves this command; ask the user to approve it, run it, then retry: " + command);
+				"release " + own.release() + ". CAT in " + harnessName + " will be updated to " + own.release() +
+				" once the user approves this command; ask the user to approve it, run it, then retry: " + update);
 		}
 		Path folder = other.versionFolder(chosen.get());
 		Path launcher = HarnessArtifact.runnerLauncher(folder, manifest, runner, chosen.get(), platform);
@@ -113,17 +115,50 @@ public final class OtherHarnessPlugin
 	}
 
 	/**
-	 * Returns the command that installs or updates CAT in a harness from this plugin, quoted so that it runs as written:
-	 * in a POSIX shell, or in PowerShell on Windows.
+	 * Returns the command that updates the other harness's CAT installation to this plugin's release: the installer of
+	 * the last installed version, among those that are plugin versions, whose version folder exists. When there is no
+	 * such folder, the command is the CAT entry command of the other harness.
 	 *
-	 * @param ownPlugin the version folder of the plugin that holds the running code
-	 * @param harness   the harness's identifier in the installer's {@code --harness} option
-	 * @param platform  the platform that the plugin runs on
+	 * @param other     the other harness's installation
+	 * @param installed the plugin versions that the other harness has installed, in the order that it records them
+	 * @param harness   the other harness's identifier in the installer's {@code --harness} option
+	 * @param own       this plugin's version
+	 * @param platform  the platform that the plugins run on
 	 * @return the command
 	 */
-	private static String installCommand(Path ownPlugin, String harness, Platform platform)
+	private static String updateCommand(HarnessInstallation other, List<String> installed, String harness,
+		PluginVersion own, Platform platform)
 	{
-		Path installer = ownPlugin.toAbsolutePath().normalize().resolve(PluginDirectory.INSTALLER);
+		for (String text : installed.reversed())
+		{
+			Path folder;
+			try
+			{
+				folder = other.versionFolder(PluginVersion.parse(text));
+			}
+			catch (IllegalArgumentException _)
+			{
+				continue;
+			}
+			if (Files.isDirectory(folder))
+				return installCommand(folder, harness, platform) + " v" + own.release();
+		}
+		return "cat.sh --harness " + harness + " (in PowerShell: cat.ps1 -Harness " + harness + ")";
+	}
+
+	/**
+	 * Returns the command that installs or updates CAT in a harness from a plugin's installer, quoted so that it runs as
+	 * written: in a POSIX shell, or in PowerShell on Windows. The installer of a plugin installs CAT into a harness that
+	 * has none, of the plugin's release, and updates the harness that the plugin belongs to.
+	 *
+	 * @param plugin   the version folder of the plugin whose installer runs the command
+	 * @param harness  the harness's identifier in the installer's {@code --harness} option
+	 * @param platform the platform that the plugin runs on
+	 * @return the command
+	 */
+	private static String installCommand(Path plugin, String harness, Platform platform)
+	{
+		Path installer = plugin.toAbsolutePath().normalize().resolve(PluginDirectory.INSTALLER);
 		String program;
 		if (platform.isWindows())
 		{

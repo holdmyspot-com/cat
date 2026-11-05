@@ -14,7 +14,9 @@ import org.testng.annotations.Test;
 
 /**
  * Tests the command that {@link OtherHarnessPlugin} names when the other harness has no CAT plugin of this plugin's
- * release: it must run as written, in a POSIX shell or in PowerShell, wherever the plugin is.
+ * release: this plugin's installer when the other harness has no CAT plugin, and the other installation's own
+ * installer when it has another release. The command must run as written, in a POSIX shell or in PowerShell, wherever
+ * the plugin is.
  */
 public final class OtherHarnessPluginTest
 {
@@ -90,6 +92,29 @@ public final class OtherHarnessPluginTest
 	}
 
 	/**
+	 * Verifies that when the other harness has a CAT plugin of another release, the command is that installation's own
+	 * installer, which updates it to this plugin's release.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void namesOtherInstallerForOtherRelease() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-release-")), "plugin");
+			HarnessB other = new HarnessB(plugin.getParent().resolve("harness-b"));
+			String installed = "0.9+b0123456789ab";
+			Path folder = Files.createDirectories(other.versionFolders().resolve(installed));
+
+			String message = refusal(plugin, other, List.of(installed), Platform.LINUX_X64);
+
+			requireThat(message, "message").endsWith(": " + folder.resolve("bin/installer") +
+				" install --harness harness-b v1.0");
+		}
+	}
+
+	/**
 	 * Creates the version folder of the plugin that holds the running code, holding its version file.
 	 *
 	 * @param root   the test's directory
@@ -115,10 +140,25 @@ public final class OtherHarnessPluginTest
 	 */
 	private static String refusal(Path plugin, Platform platform)
 	{
-		HarnessB other = new HarnessB(plugin.getParent().resolve("harness-b"));
+		return refusal(plugin, new HarnessB(plugin.getParent().resolve("harness-b")), List.of(), platform);
+	}
+
+	/**
+	 * Looks up the other harness's plugin where that harness has no plugin of this plugin's release, and returns the
+	 * refusal's message.
+	 *
+	 * @param plugin    the plugin that holds the running code
+	 * @param other     the other harness's installation
+	 * @param installed the plugin versions that the other harness has installed
+	 * @param platform  the platform that the plugin runs on
+	 * @return the message
+	 * @throws AssertionError if the lookup does not refuse
+	 */
+	private static String refusal(Path plugin, HarnessB other, List<String> installed, Platform platform)
+	{
 		try
 		{
-			OtherHarnessPlugin.select(plugin, other, "harness-b", "Harness B", List.of(),
+			OtherHarnessPlugin.select(plugin, other, "harness-b", "Harness B", installed,
 				Path.of(".harness-b/plugin.json"), "harness-b-runner", platform);
 			throw new AssertionError("The lookup found a plugin in a harness that has none");
 		}
