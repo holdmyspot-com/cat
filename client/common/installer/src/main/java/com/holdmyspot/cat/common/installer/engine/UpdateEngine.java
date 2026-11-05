@@ -80,7 +80,7 @@ public final class UpdateEngine
 	public UpdateEngine(Path dataDirectory, TrustPolicy policy, ReleaseSource source, PluginActivation activation,
 		String platform, Clock clock, Waiting waiting)
 	{
-		this(dataDirectory, policy, source, activation, platform, clock, waiting, Duration.ofMinutes(10));
+		this(dataDirectory, policy, source, activation, platform, clock, waiting, OperationLock.WAIT);
 	}
 
 	/**
@@ -228,10 +228,7 @@ public final class UpdateEngine
 				if (!lock.isValid())
 					return result(Result.LOCKED, null, null, "The harness lock is no longer valid.", List.of());
 				cleanStaleDownloads();
-				UpdateResult result = work.run(home);
-				if (result.result().exitStatus() == 0)
-					Uninstaller.discard(data);
-				return log(result);
+				return log(work.run(home));
 			}
 		}
 		catch (AccessDeniedException e)
@@ -430,7 +427,7 @@ public final class UpdateEngine
 		{
 			return stopped(plugin, active, e, versionFolder);
 		}
-		VersionFolders.Retention retention = new VersionFolders(integration, installation, state).retain(plugin,
+		FolderRetention retention = new InstallCompletion(integration, installation, data, state).complete(plugin,
 			active.plugin(), request.image());
 		return result(Result.UP_TO_DATE, active.version(), null, retention.append(entries.withNotices(
 			"CAT is up to date.")), List.of()).withExitDeletions(retention.exitDeletions());
@@ -516,7 +513,7 @@ public final class UpdateEngine
 		{
 			return stopped(plugin, active, e, versionFolder);
 		}
-		VersionFolders.Retention retention = new VersionFolders(integration, installation, state).retain(plugin,
+		FolderRetention retention = new InstallCompletion(integration, installation, data, state).complete(plugin,
 			active.plugin(), request.image());
 		if (active.version() == null)
 		{

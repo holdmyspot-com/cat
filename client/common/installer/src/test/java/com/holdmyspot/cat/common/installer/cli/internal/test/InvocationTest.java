@@ -701,6 +701,56 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Install from an extracted plugin archive into a harness that has no CAT version deletes the version folders that
+	 * an earlier installation left behind, as every later install does.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void archiveInstallDeletesOldVersionFolders() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-old-folders-")));
+			Path leftBehind = Files.createDirectories(archive.home.resolve("plugins/cache/cat/cat").
+				resolve(Releases.pluginVersion("0.9")));
+			Files.writeString(leftBehind.resolve("file"), "left behind");
+
+			Run run = archive.run(new RecordingIntegration(), _ -> Optional.empty());
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(Files.exists(leftBehind, NOFOLLOW_LINKS), "leftBehind").isFalse();
+			requireThat(archive.home.resolve("plugins/cache/cat/cat").resolve(PluginArchive.VERSION), "active").
+				isDirectory();
+		}
+	}
+
+	/**
+	 * Install from an extracted plugin archive discards the progress of an uninstall that stopped, so that a later
+	 * uninstall runs every step again.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void archiveInstallDiscardsStoppedUninstall() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-stopped-uninstall-")));
+			Path journal = archive.home.resolve("plugins/data/cat-cat/state/uninstall.json");
+			Files.createDirectories(journal.getParent());
+			Files.writeString(journal, "{\"format\": 1, \"completed\": [\"unregister\"], \"retained\": []}\n");
+
+			Run run = archive.run(new RecordingIntegration(), _ -> Optional.empty());
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(Files.exists(journal, NOFOLLOW_LINKS), "journal").isFalse();
+		}
+	}
+
+	/**
 	 * When the integration needs the user's permission and the user answers yes in the terminal, install makes the
 	 * change and installs CAT.
 	 *

@@ -78,7 +78,7 @@ final class VersionFolders
 	 * @return the folders that were left and the running installer's folder when it is to be deleted
 	 * @throws NullPointerException if {@code active} or {@code running} are null
 	 */
-	Retention retain(PluginVersion active, PluginVersion before, Path running)
+	FolderRetention retain(PluginVersion active, PluginVersion before, Path running)
 	{
 		requireThat(active, "active").isNotNull();
 		requireThat(running, "running").isNotNull();
@@ -89,7 +89,7 @@ final class VersionFolders
 		}
 		catch (IOException e)
 		{
-			return new Retention(List.of("The record of CAT's versions " + record() + " could not be updated (" +
+			return new FolderRetention(List.of("The record of CAT's versions " + record() + " could not be updated (" +
 				describe(e) + "), so no old version folder was deleted; the next install tries again."), List.of());
 		}
 		List<String> notices = new ArrayList<>();
@@ -117,7 +117,7 @@ final class VersionFolders
 					"next install tries again.");
 			}
 		}
-		return new Retention(notices, exitDeletions);
+		return new FolderRetention(notices, exitDeletions);
 	}
 
 	/**
@@ -283,42 +283,6 @@ final class VersionFolders
 		catch (IOException _)
 		{
 			return path.toAbsolutePath().normalize();
-		}
-	}
-
-	/**
-	 * What {@link #retain} left.
-	 *
-	 * @param notices       a sentence for each folder that was left and for a record that could not be read or
-	 *                      written; empty when every unneeded folder was deleted
-	 * @param exitDeletions the running installer's folder when the harness would run it instead of the active
-	 *                      version's, which is deleted once the installer no longer needs its own files
-	 */
-	record Retention(List<String> notices, List<Path> exitDeletions)
-	{
-		/**
-		 * Creates what was left.
-		 *
-		 * @param notices       the sentences about folders that were left
-		 * @param exitDeletions the folders to delete once the installer no longer needs its own files
-		 */
-		Retention
-		{
-			notices = List.copyOf(notices);
-			exitDeletions = List.copyOf(exitDeletions);
-		}
-
-		/**
-		 * Appends the notices to an install's message.
-		 *
-		 * @param message the install's message
-		 * @return the message, followed by any sentences about folders that were left
-		 */
-		String append(String message)
-		{
-			if (notices.isEmpty())
-				return message;
-			return message + " " + String.join(" ", notices);
 		}
 	}
 }

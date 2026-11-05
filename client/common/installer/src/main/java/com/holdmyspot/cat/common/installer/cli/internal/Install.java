@@ -159,8 +159,11 @@ public final class Install
 		if (consentRequest.isPresent() && !consent.grants(consentRequest.get()))
 			throw refusal(consentRequest.get());
 		Path migrationFile = activation.migrationVersionFile(home);
-		DataMigration migration = DataMigration.plan(plugin, migrationFile, release(version),
-			activeRelease(activation, home));
+		Optional<PluginVersion> before = activeVersion(activation, home);
+		Optional<ReleaseVersion> beforeRelease = Optional.empty();
+		if (before.isPresent())
+			beforeRelease = Optional.of(release(before.get()));
+		DataMigration migration = DataMigration.plan(plugin, migrationFile, release(version), beforeRelease);
 
 		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer);
 		Path versionFolder = steps.deliver(home, plugin, version);
@@ -181,7 +184,7 @@ public final class Install
 			map(other -> other.installation(environment, userHome)).toList();
 		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
 			consentRequest.isPresent());
-		return new Outcome(version, versionFolder, installer, startupCache, entries, policy);
+		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}
 
 	/**
@@ -197,31 +200,27 @@ public final class Install
 	}
 
 	/**
-	 * Returns the release of the plugin that the harness has, which stands for the data version when CAT's data
+	 * Returns the plugin version that the harness has. Its release stands for the data version when CAT's data
 	 * records none.
 	 *
 	 * @param activation the harness's activation provider
 	 * @param home       the harness home
-	 * @return the release, or empty when the harness has no plugin version with a build
-	 * @throws IOException    if the installation cannot be read
-	 * @throws TrustException if the release is malformed
+	 * @return the version, or empty when the harness has no plugin version with a build
+	 * @throws IOException if the installation cannot be read
 	 */
-	private static Optional<ReleaseVersion> activeRelease(PluginActivation activation, Path home)
-		throws IOException, TrustException
+	private static Optional<PluginVersion> activeVersion(PluginActivation activation, Path home) throws IOException
 	{
 		Optional<String> installed = activation.installed(home).version();
 		if (installed.isEmpty())
 			return Optional.empty();
-		PluginVersion version;
 		try
 		{
-			version = PluginVersion.parse(installed.get());
+			return Optional.of(PluginVersion.parse(installed.get()));
 		}
 		catch (IllegalArgumentException _)
 		{
 			return Optional.empty();
 		}
-		return Optional.of(release(version));
 	}
 
 	/**
@@ -354,6 +353,7 @@ public final class Install
 	 * The outcome of install.
 	 *
 	 * @param version       the installed plugin version
+	 * @param before        the plugin version that the harness had before install, or empty when it had none
 	 * @param versionFolder the version folder that the harness loads the plugin from
 	 * @param installer     the installer launcher in the version folder, which the permission entries name
 	 * @param startupCache  whether the plugin got its startup cache
@@ -361,13 +361,14 @@ public final class Install
 	 *                      know about the ones that it added
 	 * @param policy        the written policy
 	 */
-	public record Outcome(PluginVersion version, Path versionFolder, Path installer, boolean startupCache,
-		InstalledEntries entries, TrustPolicy policy)
+	public record Outcome(PluginVersion version, Optional<PluginVersion> before, Path versionFolder, Path installer,
+		boolean startupCache, InstalledEntries entries, TrustPolicy policy)
 	{
 		/**
 		 * Creates the outcome.
 		 *
 		 * @param version       the installed plugin version
+		 * @param before        the plugin version that the harness had before install, or empty when it had none
 		 * @param versionFolder the version folder that the harness loads the plugin from
 		 * @param installer     the installer launcher in the version folder, which the permission entries name
 		 * @param startupCache  whether the plugin got its startup cache
@@ -379,6 +380,7 @@ public final class Install
 		public Outcome
 		{
 			requireThat(version, "version").isNotNull();
+			requireThat(before, "before").isNotNull();
 			requireThat(versionFolder, "versionFolder").isNotNull();
 			requireThat(installer, "installer").isNotNull();
 			requireThat(entries, "entries").isNotNull();

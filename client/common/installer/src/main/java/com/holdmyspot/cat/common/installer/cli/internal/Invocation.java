@@ -14,8 +14,10 @@ import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Arguments.Operation;
 import com.holdmyspot.cat.common.installer.engine.Consent;
+import com.holdmyspot.cat.common.installer.engine.FolderRetention;
 import com.holdmyspot.cat.common.installer.engine.HttpsReleaseSource;
 import com.holdmyspot.cat.common.installer.engine.HarnessSession;
+import com.holdmyspot.cat.common.installer.engine.InstallCompletion;
 import com.holdmyspot.cat.common.installer.engine.InstallRequest;
 import com.holdmyspot.cat.common.installer.engine.UninstallResult;
 import com.holdmyspot.cat.common.installer.engine.Uninstaller;
@@ -475,7 +477,7 @@ public final class Invocation
 
 	/**
 	 * Installs a harness's plugin from the extracted plugin archive that the running installer belongs to and writes
-	 * the installation's policy.
+	 * the installation's policy, then completes the install as every later install does.
 	 *
 	 * @param arguments   the validated install operation
 	 * @param activation  the harness's activation provider
@@ -505,12 +507,17 @@ public final class Invocation
 			UpdateResult refusal = failure(Result.REFUSED, harness, e.getMessage(), List.of());
 			return print(refusal, withheld(refusal, consent, arguments, null), arguments, null);
 		}
-		Path policyFile = integration.installation(outcome.policy().harnesses().get(harness)).policy();
-		ObjectNode object = encode(new UpdateResult(Result.INSTALLED, harness,
-			Optional.of(outcome.version().release()), Optional.empty(),
-			outcome.entries().withNotices("CAT is installed for " + harness + "."),
-			List.of(outcome.versionFolder(), policyFile), true,
-			outcome.policy().keys().stream().map(TrustedKey::id).toList()));
+		HarnessInstallation installation = integration.installation(outcome.policy().harnesses().get(harness));
+		resolvedData = installation.dataDirectory();
+		resolvedHarness = harness;
+		FolderRetention retention = new InstallCompletion(integration, installation).completeLocked(outcome.version(),
+			outcome.before(), image, clock, waiting);
+		UpdateResult result = new UpdateResult(Result.INSTALLED, harness, Optional.of(outcome.version().release()),
+			Optional.empty(), retention.append(outcome.entries().withNotices("CAT is installed for " + harness + ".")),
+			List.of(outcome.versionFolder(), installation.policy()), true,
+			outcome.policy().keys().stream().map(TrustedKey::id).toList()).
+			withExitDeletions(retention.exitDeletions());
+		ObjectNode object = encode(result);
 		object.put("plugin_version", outcome.version().toString());
 		object.put("aot_cache", outcome.startupCache());
 		object.put("launcher", outcome.installer().toString());
@@ -520,8 +527,7 @@ public final class Invocation
 			ArrayNode entries = permissions.putArray(entry.getKey());
 			entry.getValue().forEach(entries::add);
 		}
-		stdout.println(mapper.writeValueAsString(object));
-		return 0;
+		return print(result, object, arguments, null);
 	}
 
 	/**

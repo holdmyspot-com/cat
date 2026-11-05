@@ -17,7 +17,6 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -144,8 +143,7 @@ public final class Uninstaller
 		try
 		{
 			home = LinkSafeDeletion.resolveRoot(recorded);
-			Optional<ExclusiveFileLock> acquired = OperationLock.acquire(state, clock, Duration.ofMinutes(10),
-				waiting);
+			Optional<ExclusiveFileLock> acquired = OperationLock.acquire(state, clock, OperationLock.WAIT, waiting);
 			if (acquired.isEmpty())
 				return failure(Result.LOCKED, "Another CAT operation holds the harness lock.", List.of());
 			try (ExclusiveFileLock lock = acquired.get())
@@ -213,7 +211,7 @@ public final class Uninstaller
 	 * @param data the installation's installer data directory
 	 * @throws IOException if the progress cannot be deleted
 	 */
-	public static void discard(Path data) throws IOException
+	static void discard(Path data) throws IOException
 	{
 		Files.deleteIfExists(data.toAbsolutePath().normalize().resolve(JOURNAL));
 	}

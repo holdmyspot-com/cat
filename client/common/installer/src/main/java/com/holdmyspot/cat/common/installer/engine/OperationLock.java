@@ -27,6 +27,10 @@ final class OperationLock
 	 */
 	private static final FileLocks LOCKS = new FileLocks();
 	/**
+	 * How long an operation waits for the harness lock while another operation holds it.
+	 */
+	static final Duration WAIT = Duration.ofMinutes(10);
+	/**
 	 * The longest pause between lock attempts; the deadline limits the final pause further.
 	 */
 	private static final Duration POLL_INTERVAL = Duration.ofMillis(50);
