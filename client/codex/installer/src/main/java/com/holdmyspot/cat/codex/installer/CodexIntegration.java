@@ -73,6 +73,11 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static final String RULES_KEY = "rules/cat-installer.rules#";
 	/**
+	 * The execution-policy file, in Codex's rules directory, in which CAT's installation guide told users to write the
+	 * rules that let CAT's runners run outside the sandbox.
+	 */
+	private static final String RUNNER_RULES_FILE = "cat.rules";
+	/**
 	 * The execution-policy file, in Codex's rules directory, that CAT wrote before its installer was called the
 	 * installer.
 	 */
@@ -381,6 +386,44 @@ public final class CodexIntegration implements HarnessIntegration
 			return;
 		if (InstallerRules.isUpdaterLeftover(read(file), isWindows()))
 			Files.delete(file);
+	}
+
+	/**
+	 * Removes the runner rules that CAT's installation guide told users to write into {@code rules/cat.rules}: each
+	 * {@code prefix_rule} whose pattern is only the {@code claude-runner} or {@code codex-runner} launcher, with or
+	 * without {@code .cmd}, in {@code bin} of one of CAT's version folders in this home, and whose decision is
+	 * {@code allow}. Deletes the file when it holds nothing but such rules. Otherwise leaves it as it is, because CAT
+	 * does not rewrite the user's rules, and names the rules to remove.
+	 *
+	 * @return a sentence saying that the file was deleted, or which rules to remove from it; empty when the file is
+	 * 	absent, not a regular file, reached through a symbolic link, larger than 1 MiB or holds no such rule
+	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
+	 * @throws IOException              if the file cannot be read or deleted
+	 */
+	@Override
+	public List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(replacer, "replacer").isNotNull();
+		CodexInstallation installation = new CodexInstallation(home);
+		Path file = installation.rules().resolve(RUNNER_RULES_FILE);
+		if (Files.isSymbolicLink(home) || Files.isSymbolicLink(file.getParent()) ||
+			!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > MAX_METADATA_BYTES)
+		{
+			return List.of();
+		}
+		InstallerRules.RunnerRules found = InstallerRules.findRunnerRules(read(file), installation.versionFolders());
+		if (found.rules().isEmpty())
+			return List.of();
+		if (!found.other())
+		{
+			Files.delete(file);
+			return List.of("CAT deleted " + file + ", which held only the rules that CAT's installation guide told " +
+				"you to write for its runners; CAT's runners no longer run outside the sandbox.");
+		}
+		return List.of("CAT left " + file + " as it is, because it also holds other content. CAT's runners no " +
+			"longer run outside the sandbox, so remove these rules, which CAT's installation guide told you to write " +
+			"for them, then restart Codex:\n" + String.join("\n", found.rules()));
 	}
 
 	/**

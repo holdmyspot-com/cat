@@ -758,6 +758,201 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Install deletes a {@code rules/cat.rules} file that holds only runner rules in the form that CAT's installation
+	 * guide gave, in any order, for any version and in any layout, and tells the user.
+	 *
+	 * @param template the file's content, in which {@code %1$s} stands for this home's version folders
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "documentedRunnerRules")
+	public void deletesDocumentedRunnerRules(String template) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path file = home.resolve("rules/cat.rules");
+			write(file, template.formatted(home.resolve("plugins/cache/cat/cat")));
+
+			List<String> notices = provider().removeRunnerExceptions(home, replacer());
+
+			requireThat(Files.exists(file), "fileExists").isFalse();
+			requireThat(notices, "notices").size().isEqualTo(1);
+			requireThat(notices.getFirst(), "notice").contains(file.toString());
+		}
+	}
+
+	/**
+	 * Supplies {@code rules/cat.rules} files that hold only documented runner rules.
+	 *
+	 * @return templates in which {@code %1$s} stands for the home's version folders
+	 */
+	@DataProvider
+	public Object[][] documentedRunnerRules()
+	{
+		return new Object[][]
+			{
+				{"""
+					prefix_rule(
+						pattern = ["%1$s/1.0+b0123456789ab/bin/claude-runner"],
+						decision = "allow",
+						justification = "CAT's runner starts an isolated Claude Code session with your login",
+					)
+					prefix_rule(
+						pattern = ["%1$s/1.0+b0123456789ab/bin/codex-runner"],
+						decision = "allow",
+						justification = "CAT's runner starts an isolated Codex session with your login",
+					)
+					"""},
+				{"""
+					prefix_rule(decision="allow", pattern=["%1$s/1.0/bin/codex-runner"])
+
+					prefix_rule(pattern=['%1$s/1.1/bin/claude-runner'], justification='mine', decision='allow');
+					"""},
+				{"prefix_rule(pattern = [\"%1$s/1.0/bin/codex-runner.cmd\",], decision = \"allow\")"}
+			};
+	}
+
+	/**
+	 * Install leaves a {@code rules/cat.rules} file that holds anything besides documented runner rules byte for byte
+	 * as it is, and names the file and each runner rule to remove from it.
+	 *
+	 * @param other the content besides the runner rule
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "otherRules")
+	public void namesRunnerRulesToRemove(String other) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path file = home.resolve("rules/cat.rules");
+			String runnerRule = "prefix_rule(\n\tpattern = [" + MAPPER.writeValueAsString(
+				installer(home, VERSION).resolveSibling("codex-runner").toString()) + "],\n\tdecision = \"allow\",\n)";
+			String content = other + "\n" + runnerRule + "\n";
+			write(file, content);
+
+			List<String> notices = provider().removeRunnerExceptions(home, replacer());
+
+			requireThat(Files.readString(file), "content").isEqualTo(content);
+			requireThat(notices, "notices").size().isEqualTo(1);
+			requireThat(notices.getFirst(), "notice").contains(file.toString()).contains(runnerRule).
+				doesNotContain(other);
+		}
+	}
+
+	/**
+	 * Supplies content that is not a documented runner rule.
+	 *
+	 * @return the content
+	 */
+	@DataProvider
+	public Object[][] otherRules()
+	{
+		return new Object[][]
+			{
+				{"prefix_rule(pattern=[\"git\", \"status\"], decision=\"allow\")"},
+				{"# My runner rules"}
+			};
+	}
+
+	/**
+	 * Install leaves a {@code rules/cat.rules} file without a documented runner rule byte for byte as it is and says
+	 * nothing about it, including rules that only resemble one.
+	 *
+	 * @param template the file's content, in which {@code %1$s} stands for this home's version folders
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "runnerRuleLookalikes")
+	public void ignoresRulesWithoutRunnerRules(String template) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path file = home.resolve("rules/cat.rules");
+			String content = template.formatted(home.resolve("plugins/cache/cat/cat"));
+			write(file, content);
+
+			List<String> notices = provider().removeRunnerExceptions(home, replacer());
+
+			requireThat(notices, "notices").isEmpty();
+			requireThat(Files.readString(file), "content").isEqualTo(content);
+		}
+	}
+
+	/**
+	 * Supplies rules that only resemble documented runner rules.
+	 *
+	 * @return templates in which {@code %1$s} stands for the home's version folders
+	 */
+	@DataProvider
+	public Object[][] runnerRuleLookalikes()
+	{
+		return new Object[][]
+			{
+				{"prefix_rule(pattern=[\"%1$s/1.0/bin/codex-runner\", \"--help\"], decision=\"allow\")\n"},
+				{"prefix_rule(pattern=[\"%1$s/1.0/bin/codex-runner\"], decision=\"prompt\")\n"},
+				{"prefix_rule(pattern=[\"%1$s/1.0/bin/installer\"], decision=\"allow\")\n"},
+				{"prefix_rule(pattern=[\"%1$s/bin/codex-runner\"], decision=\"allow\")\n"},
+				{"prefix_rule(pattern=[\"%1$s/1.0/x/bin/codex-runner\"], decision=\"allow\")\n"},
+				{"prefix_rule(pattern=[\"%1$s/../cat/1.0/bin/codex-runner\"], decision=\"allow\")\n"},
+				{"prefix_rule(pattern=[\"%1$s-other/1.0/bin/codex-runner\"], decision=\"allow\")\n"},
+				{"prefix_rule(pattern=[\"%1$s/1.0/bin/codex-runner\"], decision=\"allow\", match=[\"x\"])\n"},
+				{"prefix_rule(pattern=[\"bin/codex-runner\"], decision=\"allow\")\n"}
+			};
+	}
+
+	/**
+	 * Install changes nothing when there is no {@code rules/cat.rules} file.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void runnerRemovalAcceptsAbsentRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+
+			List<String> notices = provider().removeRunnerExceptions(home, replacer());
+
+			requireThat(notices, "notices").isEmpty();
+			requireThat(Files.exists(home.resolve("rules")), "rulesCreated").isFalse();
+		}
+	}
+
+	/**
+	 * Uninstall leaves the runner rules that the user wrote into {@code rules/cat.rules}, as it leaves every rule that
+	 * CAT did not record, and says nothing about them.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void uninstallKeepsRunnerRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path runnerRules = home.resolve("rules/cat.rules");
+			String content = """
+				prefix_rule(
+					pattern = [%s],
+					decision = "allow",
+					justification = "CAT's runner starts an isolated Codex session with your login",
+				)
+				""".formatted(MAPPER.writeValueAsString(installer(home, VERSION).resolveSibling("codex-runner").
+				toString()));
+			write(runnerRules, content);
+			Map<String, List<String>> added = provider().installPermissions(home, installer(home, VERSION), replacer());
+
+			provider().removePermissions(home, added, replacer());
+			List<String> retained = provider().describeRetained(home, added);
+
+			requireThat(Files.readString(runnerRules), "runnerRules").isEqualTo(content);
+			requireThat(retained, "retained").isEmpty();
+		}
+	}
+
+	/**
 	 * Returns the rules file that CAT writes for a POSIX launcher.
 	 *
 	 * @param launcher the installer launcher in the version folder

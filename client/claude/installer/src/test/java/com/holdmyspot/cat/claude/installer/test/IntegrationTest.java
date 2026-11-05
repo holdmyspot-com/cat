@@ -933,6 +933,174 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Install removes each runner exclusion and runner permission that CAT's installation guide told users to add,
+	 * keeps every other entry and member, and names the removed entries and the file.
+	 *
+	 * @param launcher the runner launcher relative to CAT's plugin folder
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test(dataProvider = "runnerLaunchers")
+	public void removesRunnerExceptions(String launcher) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			String runner = new ClaudeInstallation(home).marketplacePlugin().resolve(launcher).toString();
+			Path settings = Files.writeString(home.resolve("settings.json"), "{\"model\":\"opus\"," +
+				"\"sandbox\":{\"excludedCommands\":[\"docker *\"," + json(runner + " *") + "]}," +
+				"\"permissions\":{\"allow\":[" + json("Bash(" + runner + " *)") + ",\"Bash(ls)\"]}}");
+
+			List<String> notices = integration().removeRunnerExceptions(home, replacer());
+
+			requireThat(Files.readString(settings), "settings").isEqualTo("""
+				{
+				  "model": "opus",
+				  "sandbox": {
+				    "excludedCommands": [
+				      "docker *"
+				    ]
+				  },
+				  "permissions": {
+				    "allow": [
+				      "Bash(ls)"
+				    ]
+				  }
+				}
+				""");
+			requireThat(notices, "notices").size().isEqualTo(2);
+			requireThat(notices.get(0), "excludedNotice").contains(json(runner + " *")).
+				contains("sandbox.excludedCommands").contains(settings.toString());
+			requireThat(notices.get(1), "allowNotice").contains(json("Bash(" + runner + " *)")).
+				contains("permissions.allow").contains(settings.toString());
+		}
+	}
+
+	/**
+	 * Supplies each runner launcher that CAT's installation guide named: in the plugin folder, as the released guide
+	 * gave it, or in a version folder, as the current guide gives it, for both harnesses and with Windows's
+	 * {@code .cmd} extension.
+	 *
+	 * @return the launchers relative to CAT's plugin folder
+	 */
+	@DataProvider
+	public Object[][] runnerLaunchers()
+	{
+		return new Object[][]
+			{
+				{"bin/claude-runner"},
+				{"bin/codex-runner"},
+				{"bin/claude-runner.cmd"},
+				{"bin/codex-runner.cmd"},
+				{VERSION + "/bin/claude-runner"},
+				{VERSION + "/bin/codex-runner"},
+				{VERSION + "/bin/claude-runner.cmd"},
+				{VERSION + "/bin/codex-runner.cmd"}
+			};
+	}
+
+	/**
+	 * Install leaves settings without a documented runner entry byte for byte as they are, including entries that
+	 * only resemble one.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void keepsSettingsWithoutRunnerExceptions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path plugin = new ClaudeInstallation(home).marketplacePlugin();
+			Path otherHome = home.resolveSibling(home.getFileName() + "-other");
+			List<String> lookalikes = List.of(
+				plugin.resolve("bin/claude-runner").toString(),
+				plugin.resolve("bin/claude-runner") + " --help",
+				plugin.resolve("bin/claude-runner") + ":*",
+				plugin.resolve("bin/installer") + " *",
+				plugin.resolve("a/b/bin/codex-runner") + " *",
+				plugin.resolve("../cat/bin/codex-runner") + " *",
+				plugin + "//bin/codex-runner *",
+				new ClaudeInstallation(otherHome).marketplacePlugin().resolve("bin/codex-runner") + " *",
+				"bin/codex-runner *");
+			StringJoiner excluded = new StringJoiner(",");
+			StringJoiner allowed = new StringJoiner(",");
+			for (String lookalike : lookalikes)
+			{
+				excluded.add(json(lookalike));
+				allowed.add(json("Bash(" + lookalike + ")"));
+			}
+			allowed.add(json(plugin.resolve("bin/claude-runner") + " *"));
+			excluded.add(json("Bash(" + plugin.resolve("bin/claude-runner") + " *)"));
+			String content = "{\"sandbox\":{\"excludedCommands\":[" + excluded + "]},\"permissions\":{\"allow\":[" +
+				allowed + "]}}";
+			Path settings = Files.writeString(home.resolve("settings.json"), content);
+
+			List<String> notices = integration().removeRunnerExceptions(home, replacer());
+
+			requireThat(notices, "notices").isEmpty();
+			requireThat(Files.readString(settings), "settings").isEqualTo(content);
+		}
+	}
+
+	/**
+	 * Install changes nothing when there is no settings file.
+	 *
+	 * @throws IOException if the fixture cannot be created or removal fails
+	 */
+	@Test
+	public void runnerRemovalAcceptsAbsentSettings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+
+			List<String> notices = integration().removeRunnerExceptions(home, replacer());
+
+			requireThat(notices, "notices").isEmpty();
+			requireThat(Files.exists(home.resolve("settings.json")), "settingsCreated").isFalse();
+		}
+	}
+
+	/**
+	 * Uninstall leaves the runner entries that the user added, as it leaves every entry that CAT did not record, and
+	 * says nothing about them.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void uninstallKeepsRunnerExceptions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			String runner = new ClaudeInstallation(home).versionFolder(VERSION).resolve("bin/codex-runner").toString();
+			Path settings = Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" +
+				json(runner + " *") + "]},\"permissions\":{\"allow\":[" + json("Bash(" + runner + " *)") + "]}}");
+			Integration integration = integration();
+			Map<String, List<String>> added = integration.installPermissions(home, launcher(home), replacer());
+
+			integration.removePermissions(home, added, replacer());
+			List<String> retained = integration.describeRetained(home, added);
+
+			requireThat(Files.readString(settings), "settings").isEqualTo("""
+				{
+				  "sandbox": {
+				    "excludedCommands": [
+				      %s
+				    ]
+				  },
+				  "permissions": {
+				    "allow": [
+				      %s
+				    ]
+				  }
+				}
+				""".formatted(json(runner + " *"), json("Bash(" + runner + " *)")));
+			requireThat(retained, "retained").isEmpty();
+		}
+	}
+
+	/**
 	 * Validation accepts an absent settings file and one whose target members are absent or arrays.
 	 *
 	 * @throws IOException if the fixture cannot be created or validation fails

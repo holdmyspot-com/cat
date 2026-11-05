@@ -149,6 +149,23 @@ public interface HarnessIntegration
 	void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException;
 
 	/**
+	 * Removes the entries that CAT's installation guide told users to add so that CAT's runners ran outside the
+	 * harness's sandbox, which they no longer do. Removes only the exact forms that the guide gave, leaves a user's
+	 * configuration that holds other settings in the same place unchanged, and leaves a configuration without such
+	 * entries as it is. Install calls this before {@link #installPermissions}; uninstall never does.
+	 *
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                 replacement
+	 * @return the sentences that tell the user what this call removed, or which entries the user must remove; empty
+	 * 	when there was nothing to remove
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the configuration cannot be changed
+	 */
+	List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException;
+
+	/**
 	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox.
 	 * Idempotent.
 	 *

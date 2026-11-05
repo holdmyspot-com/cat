@@ -97,6 +97,10 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private List<String> retained = List.of();
 	/**
+	 * The sentences that {@code removeRunnerExceptions} returns.
+	 */
+	private List<String> runnerRemovals = List.of();
+	/**
 	 * The {@code keepData} argument of each {@code unregister} call, in call order.
 	 */
 	private final List<Boolean> keptData = new ArrayList<>();
@@ -238,6 +242,18 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration describing(String key, String sentence)
 	{
 		notices.put(key, sentence);
+		return this;
+	}
+
+	/**
+	 * Sets the sentences that tell the user which runner entries install removed.
+	 *
+	 * @param sentences the sentences that {@code removeRunnerExceptions} returns
+	 * @return this integration
+	 */
+	public RecordingIntegration removingRunnerExceptions(List<String> sentences)
+	{
+		this.runnerRemovals = List.copyOf(sentences);
 		return this;
 	}
 
@@ -494,6 +510,16 @@ public final class RecordingIntegration implements HarnessIntegration
 	public boolean runsInstead(PluginVersion candidate, PluginVersion active)
 	{
 		return greatestName && candidate.toString().compareTo(active.toString()) > 0;
+	}
+
+	/**
+	 * Records the call and returns the sentences that the test set.
+	 */
+	@Override
+	public List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException
+	{
+		record("removeRunnerExceptions", home);
+		return runnerRemovals;
 	}
 
 	@Override

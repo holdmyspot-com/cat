@@ -12,8 +12,10 @@ import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -77,6 +79,11 @@ public final class Integration implements HarnessIntegration
 	 */
 	private static final List<String> MAINTAINED_SETTINGS = List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS, DENY_WRITE,
 		ALLOW_WRITE);
+	/**
+	 * The file names of the runner launchers that CAT's installation guide told users to add entries for.
+	 */
+	private static final Set<String> RUNNER_LAUNCHERS = Set.of("claude-runner", "codex-runner", "claude-runner.cmd",
+		"codex-runner.cmd");
 	/**
 	 * The marketplace metadata that a plugin version folder ships, relative to that folder.
 	 */
@@ -482,6 +489,118 @@ public final class Integration implements HarnessIntegration
 		requireThat(installer, "installer").isAbsolute();
 		requireThat(replacer, "replacer").isNotNull();
 		return addEntries(home, entries(installer), replacer);
+	}
+
+	/**
+	 * Removes from {@code settings.json} the runner entries that CAT's installation guide told users to add: each
+	 * {@code sandbox.excludedCommands} entry {@code <launcher> *} and each {@code permissions.allow} entry
+	 * {@code Bash(<launcher> *)}, where {@code <launcher>} is the {@code claude-runner} or {@code codex-runner}
+	 * launcher, with or without {@code .cmd}, in {@code bin} of CAT's plugin folder or of one of its version folders.
+	 * CAT's runners no longer run outside the sandbox. Every other entry stays, and settings without such an entry
+	 * stay as they are.
+	 *
+	 * @param home     the absolute Claude Code configuration directory recorded in policy
+	 * @param replacer replaces {@code settings.json}
+	 * @return one sentence for each setting that lost entries, naming the entries and the file; empty when nothing
+	 * 	was removed
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the settings cannot be changed safely
+	 */
+	@Override
+	public List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException
+	{
+		requireThat(replacer, "replacer").isNotNull();
+		Path settings = settingsFile(home);
+		if (Files.notExists(settings, LinkOption.NOFOLLOW_LINKS))
+			return List.of();
+		ObjectNode root = readSettings(home);
+		Path plugin = new ClaudeInstallation(home.normalize()).marketplacePlugin();
+
+		List<String> sentences = new ArrayList<>();
+		for (String setting : List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS))
+		{
+			Optional<ArrayNode> found = findArray(root, setting);
+			if (found.isEmpty())
+				continue;
+			ArrayNode array = found.get();
+			List<String> removed = new ArrayList<>();
+			for (int index = array.size() - 1; index >= 0; --index)
+			{
+				JsonNode element = array.get(index);
+				if (element.isString() && isRunnerException(setting, element.asString(), plugin))
+				{
+					array.remove(index);
+					removed.addFirst(MAPPER.writeValueAsString(element.asString()));
+				}
+			}
+			if (!removed.isEmpty())
+			{
+				sentences.add("CAT removed " + String.join(", ", removed) + " from " + setting + " in " + settings +
+					", which CAT's installation guide told you to add for its runners; CAT's runners no longer run " +
+					"outside the sandbox.");
+			}
+		}
+		if (!sentences.isEmpty())
+			writeSettings(home, root, replacer);
+		return List.copyOf(sentences);
+	}
+
+	/**
+	 * Reports whether a setting's entry is a runner entry that CAT's installation guide told users to add.
+	 *
+	 * @param setting the entry's dotted setting name, {@code sandbox.excludedCommands} or {@code permissions.allow}
+	 * @param entry   the entry
+	 * @param plugin  CAT's plugin folder in the configuration directory
+	 * @return true if the entry is {@code <launcher> *} in {@code sandbox.excludedCommands} or
+	 * 	{@code Bash(<launcher> *)} in {@code permissions.allow}, for a runner launcher of {@code plugin}
+	 */
+	private static boolean isRunnerException(String setting, String entry, Path plugin)
+	{
+		String command;
+		if (setting.equals(EXCLUDED_COMMANDS))
+			command = entry;
+		else if (entry.startsWith("Bash(") && entry.endsWith(")"))
+			command = entry.substring("Bash(".length(), entry.length() - 1);
+		else
+			return false;
+		return command.endsWith(" *") &&
+			isRunnerLauncher(command.substring(0, command.length() - " *".length()), plugin);
+	}
+
+	/**
+	 * Reports whether a path names a runner launcher in {@code bin} of CAT's plugin folder or of one of its version
+	 * folders, spelled exactly as that path.
+	 *
+	 * @param text   the path
+	 * @param plugin CAT's plugin folder in the configuration directory
+	 * @return true if {@code text} names {@code claude-runner} or {@code codex-runner}, with or without {@code .cmd}
+	 */
+	private static boolean isRunnerLauncher(String text, Path plugin)
+	{
+		Path launcher;
+		try
+		{
+			launcher = Path.of(text);
+		}
+		catch (InvalidPathException _)
+		{
+			return false;
+		}
+		// Windows accepts either separator; any other difference in spelling is not the documented entry
+		if (!launcher.isAbsolute() || !launcher.equals(launcher.normalize()) ||
+			!launcher.toString().equals(text.replace('/', File.separatorChar)))
+		{
+			return false;
+		}
+		Path bin = launcher.getParent();
+		if (!RUNNER_LAUNCHERS.contains(launcher.getFileName().toString()) || bin == null ||
+			bin.getFileName() == null || !bin.getFileName().toString().equals("bin"))
+		{
+			return false;
+		}
+		Path folder = bin.getParent();
+		return folder.equals(plugin) || plugin.equals(folder.getParent());
 	}
 
 	/**

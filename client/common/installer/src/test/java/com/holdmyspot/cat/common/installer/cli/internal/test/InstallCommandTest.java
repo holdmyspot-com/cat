@@ -73,7 +73,7 @@ public final class InstallCommandTest
 			requireThat(Files.readString(versionFolder.resolve("bin/runtime-binding")), "binding").
 				isEqualTo(versionFolder.resolve("bin/runtime") + "\n");
 			requireThat(fixture.integration.calls(), "calls").isEqualTo(List.of("requireIdentity",
-				"validateConfiguration", "register", "installPermissions"));
+				"validateConfiguration", "register", "removeRunnerExceptions", "installPermissions"));
 			requireThat(fixture.integration.registered(), "registered").
 				isEqualTo(List.of(PluginVersion.parse(PluginArchive.VERSION)));
 			Path policyFile = fixture.home.resolve("plugins/data/cat-cat/policy.json");

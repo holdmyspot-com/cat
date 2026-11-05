@@ -166,6 +166,36 @@ public final class InstallTest
 	}
 
 	/**
+	 * An update removes the runner entries that CAT's installation guide told the user to add before it adds its own
+	 * entries, and tells the user what it removed in the updated message.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void updateReportsRemovedRunnerExceptions() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-runner-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
+			fixture.installActive("1.0");
+			fixture.integration.removingRunnerExceptions(List.of("CAT removed the runner entries."));
+
+			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
+				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
+				_ -> true));
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UPDATED);
+			requireThat(result.message(), "message").isEqualTo("CAT was updated. CAT removed the runner entries.");
+			List<String> calls = fixture.integration.calls();
+			requireThat(calls.lastIndexOf("removeRunnerExceptions"), "removed").isNotNegative().
+				isLessThan(calls.lastIndexOf("installPermissions"));
+		}
+	}
+
+	/**
 	 * A harness home that is reached through a symbolic link is installed into where the link points.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
