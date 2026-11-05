@@ -114,7 +114,7 @@ public final class OldVersionFoldersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-replaced-")), catalog());
-			Path later = fixture.installActive("1.1");
+			Path later = fixture.registerExisting(Releases.pluginVersion("1.1"));
 			requireUpdated(fixture.install("v1.0"));
 			Path earlier = fixture.versionFolder("1.0");
 			Files.setLastModifiedTime(earlier, FileTime.from(Instant.parse("2000-01-01T00:00:00Z")));
@@ -139,8 +139,9 @@ public final class OldVersionFoldersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-running-")), catalog());
-			Path running = fixture.installActive("1.0");
-			requireUpdated(fixture.install("v1.1"));
+			fixture.registerExisting(Releases.pluginVersion("1.1"));
+			// Stands for the folder that an earlier install of 1.0 left, which the running installer belongs to
+			Path running = writeVersionFolder(fixture.versionFolder("1.0"), Releases.pluginVersion("1.0"));
 
 			requireUpdated(fixture.install("v1.2", running));
 			requireThat(running, "running").isDirectory();
@@ -257,8 +258,7 @@ public final class OldVersionFoldersTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("old-folders-links-")), catalog());
-			fixture.installActive("1.0");
-			requireUpdated(fixture.install("v1.1"));
+			fixture.installActive("1.1");
 			Path outside = Files.createDirectories(fixture.root.resolve("outside"));
 			Files.writeString(outside.resolve("keep"), "user file");
 			Path leftBehind = leftBehind(fixture);
@@ -339,8 +339,20 @@ public final class OldVersionFoldersTest
 	 */
 	private static Path leftBehind(EngineFixture fixture) throws IOException
 	{
-		Path folder = fixture.versionFolder("1.1").resolveSibling(LEFT_BEHIND);
-		Files.writeString(Files.createDirectories(folder.resolve("bin")).resolve("VERSION"), LEFT_BEHIND);
+		return writeVersionFolder(fixture.versionFolder("1.1").resolveSibling(LEFT_BEHIND), LEFT_BEHIND);
+	}
+
+	/**
+	 * Writes a version folder that states its version, as an install of that version leaves it.
+	 *
+	 * @param folder  the folder
+	 * @param version the full plugin version
+	 * @return the folder
+	 * @throws IOException if the folder cannot be written
+	 */
+	private static Path writeVersionFolder(Path folder, String version) throws IOException
+	{
+		Files.writeString(Files.createDirectories(folder.resolve("bin")).resolve("VERSION"), version);
 		return folder;
 	}
 

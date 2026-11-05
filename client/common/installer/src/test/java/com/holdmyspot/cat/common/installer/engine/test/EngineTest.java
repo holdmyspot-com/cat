@@ -185,7 +185,7 @@ public final class EngineTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-refusal-")),
 				new ReleaseCatalog("1.0", NO_MIGRATION));
-			fixture.installActive("1.0");
+			fixture.registerExisting(Releases.pluginVersion("1.0"));
 			Optional<String> migrationVersion = fixture.dataVersion();
 			fixture.catalog.addDefective("1.1", defect);
 
@@ -195,8 +195,7 @@ public final class EngineTest
 				isEqualTo(Result.REFUSED);
 			InstalledState installed = fixture.provider.installed(fixture.home);
 			requireThat(installed.version(), "installed").isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
-			requireThat(fixture.integration.registered(), "registered").
-				isEqualTo(List.of(PluginVersion.parse(Releases.pluginVersion("1.0"))));
+			requireThat(fixture.integration.registered(), "registered").isEmpty();
 			requireThat(fixture.dataVersion(), "migrationVersion").isEqualTo(migrationVersion);
 		}
 	}
