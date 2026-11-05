@@ -883,9 +883,9 @@ public final class CodexRunnerCliTest
 	private static Path policyBound(Path root) throws IOException
 	{
 		return Files.writeString(root.resolve("policy-bound.json"), """
-			{"format_version": 1, "write_roots": ["%s"], "write_denials": [], "read_denials": [],
+			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [],
 			 "read_reallowances": [], "hosts": ["api.openai.com"], "allow_local_binding": false}
-			""".formatted(root.toAbsolutePath()));
+			""".formatted(JsonMapper.builder().build().writeValueAsString(root.toAbsolutePath().toString())));
 	}
 
 	/**

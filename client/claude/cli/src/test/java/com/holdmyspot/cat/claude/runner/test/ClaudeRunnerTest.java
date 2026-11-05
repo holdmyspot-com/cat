@@ -8,6 +8,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
@@ -137,7 +138,7 @@ public final class ClaudeRunnerTest
 				{"env": {"ANTHROPIC_BASE_URL": "https://Gateway.Example:8443/v1"}}
 				""");
 			Path login = Files.writeString(configuration.resolve(".credentials.json"), "{}");
-			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString());
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
 
 			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
 
@@ -162,8 +163,8 @@ public final class ClaudeRunnerTest
 			Path home = cleanup.add(Files.createTempDirectory("cat-claude-child-needs-")).toRealPath();
 			Path configuration = Files.createDirectory(home.resolve(".claude"));
 			Files.writeString(configuration.resolve(".credentials.json"), "{}");
-			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString(), "ANTHROPIC_API_KEY",
-				"credential");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"ANTHROPIC_API_KEY", "credential");
 
 			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
 

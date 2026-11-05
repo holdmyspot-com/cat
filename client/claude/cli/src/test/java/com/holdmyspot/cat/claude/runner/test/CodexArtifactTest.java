@@ -183,7 +183,7 @@ public final class CodexArtifactTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-release-"));
+			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-release-")).toRealPath();
 			Path codexHome = root.resolve("codex");
 			Path installed = installCodex(root, codexHome, "2.0+b0123456789ab");
 			Path plugin = ownPlugin(root);

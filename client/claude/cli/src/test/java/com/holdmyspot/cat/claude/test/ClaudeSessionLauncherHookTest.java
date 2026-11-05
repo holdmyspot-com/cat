@@ -261,15 +261,19 @@ public final class ClaudeSessionLauncherHookTest
 		}
 
 		/**
-		 * Returns the hook's environment.
+		 * Returns the hook's environment, which names the home in the home variable of the platform that runs the
+		 * test and in that of Linux, the platform that a hook which starts a launcher simulates.
 		 *
 		 * @return the environment
 		 */
 		Map<String, String> environment()
 		{
-			return Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(), "CLAUDE_PID", String.valueOf(CLAUDE_PID),
-				"CLAUDE_PROJECT_DIR", project.toString(), "CLAUDE_CONFIG_DIR", configuration.toString(),
-				Platform.current().homeVariable(), home.toString());
+			Map<String, String> environment = new HashMap<>(Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				"CLAUDE_PID", String.valueOf(CLAUDE_PID), "CLAUDE_PROJECT_DIR", project.toString(), "CLAUDE_CONFIG_DIR",
+				configuration.toString()));
+			environment.put(Platform.LINUX_X64.homeVariable(), home.toString());
+			environment.put(Platform.current().homeVariable(), home.toString());
+			return Map.copyOf(environment);
 		}
 	}
 

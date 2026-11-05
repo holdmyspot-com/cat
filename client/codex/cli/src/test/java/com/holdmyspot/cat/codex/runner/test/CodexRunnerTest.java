@@ -345,8 +345,8 @@ public final class CodexRunnerTest
 			Path codexHome = Files.createDirectory(home.resolve(".codex"));
 			Files.writeString(codexHome.resolve("config.toml"), "openai_base_url = \"https://Gateway.Example/v1\"\n");
 			Path login = Files.writeString(codexHome.resolve("auth.json"), "{}");
-			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString(), "CODEX_HOME",
-				codexHome.toString());
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CODEX_HOME", codexHome.toString());
 
 			ChildNeedsReport needs = CodexRunner.childNeeds(environment);
 
@@ -369,8 +369,8 @@ public final class CodexRunnerTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-codex-child-needs-")).toRealPath();
 			Path codexHome = Files.createDirectory(home.resolve(".codex"));
-			Map<String, String> environment = Map.of("PATH", "", "HOME", home.toString(), "CODEX_HOME",
-				codexHome.toString(), "OPENAI_API_KEY", "credential");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CODEX_HOME", codexHome.toString(), "OPENAI_API_KEY", "credential");
 
 			ChildNeedsReport needs = CodexRunner.childNeeds(environment);
 

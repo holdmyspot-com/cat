@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link ClaudeRunnerCli}.
@@ -607,9 +608,9 @@ public final class ClaudeRunnerCliTest
 	private static Path policyBound(Path root) throws IOException
 	{
 		return Files.writeString(root.resolve("policy-bound.json"), """
-			{"format_version": 1, "write_roots": ["%s"], "write_denials": [], "read_denials": [],
+			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [],
 			 "read_reallowances": [], "hosts": ["api.anthropic.com"], "allow_local_binding": false}
-			""".formatted(root.toAbsolutePath()));
+			""".formatted(JsonMapper.builder().build().writeValueAsString(root.toAbsolutePath().toString())));
 	}
 
 	/**
