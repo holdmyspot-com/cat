@@ -1,6 +1,5 @@
 package com.holdmyspot.cat.common.runner.policy;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,24 +12,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public interface HarnessProcesses
 {
 	/**
-	 * Returns the processes that the operating system reports.
+	 * Returns the processes that the operating system reports. On Linux, their arguments come from the process
+	 * folder {@code /proc}, because {@link ProcessHandle} reports none for a command line longer than 4 KiB.
 	 *
 	 * @return the processes
 	 */
 	static HarnessProcesses system()
 	{
-		return processId -> ProcessHandle.of(processId).
-			filter(ProcessHandle::isAlive).
-			map(handle ->
-			{
-				ProcessHandle.Info info = handle.info();
-				return new HarnessProcess(processId, info.startInstant(), info.command(),
-					info.arguments().map(List::of));
-			});
+		return SystemProcesses.current();
 	}
 
 	/**
-	 * Returns the processes that started a process, the nearest first.
+	 * Returns the processes that started a process, the nearest first, as {@link #system()} reports them.
 	 *
 	 * @param process the process
 	 * @return the ancestors of {@code process}, starting with its parent
@@ -39,17 +32,7 @@ public interface HarnessProcesses
 	static List<HarnessProcess> ancestorsOf(ProcessHandle process)
 	{
 		requireThat(process, "process").isNotNull();
-		List<HarnessProcess> ancestors = new ArrayList<>();
-		Optional<ProcessHandle> parent = process.parent();
-		while (parent.isPresent())
-		{
-			ProcessHandle handle = parent.get();
-			ProcessHandle.Info info = handle.info();
-			ancestors.add(new HarnessProcess(handle.pid(), info.startInstant(), info.command(),
-				info.arguments().map(List::of)));
-			parent = handle.parent();
-		}
-		return ancestors;
+		return SystemProcesses.current().ancestryOf(process);
 	}
 
 	/**
