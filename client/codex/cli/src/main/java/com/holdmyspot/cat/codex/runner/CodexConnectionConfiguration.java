@@ -844,8 +844,9 @@ public final class CodexConnectionConfiguration
 	/**
 	 * Appends the runner profile's network rules. With hosts, the session's commands may reach exactly the policy's
 	 * hosts, which Codex enforces only while its {@code network_proxy} feature is on, and may bind local addresses
-	 * only if the policy allows it; Codex's proxy refuses a host that resolves to a loopback address without that
-	 * permission. Without hosts, their network is off.
+	 * only if the policy allows it; Codex's proxy refuses a host that
+	 * {@link ChildPolicy#needsLocalBinding(String) needs local binding} without that permission. Without hosts, their
+	 * network is off.
 	 * <p>
 	 * On macOS, Codex's sandbox lets a session that may bind local addresses connect directly to every loopback port,
 	 * bypassing the proxy's host list, so the runner refuses such a session rather than widen it.
@@ -871,9 +872,9 @@ public final class CodexConnectionConfiguration
 			if (platform == Platform.MACOS_X64 || platform == Platform.MACOS_ARM64)
 			{
 				throw new SessionRefusedException("CAT does not start the session: its hosts " +
-					new TreeSet<>(policy.hosts()) + " include a loopback address, which Codex reaches only if the " +
-					"session may bind local addresses, and on macOS that would let the session's commands reach " +
-					"every loopback port. Use hosts that are not loopback addresses.");
+					new TreeSet<>(policy.hosts()) + " include localhost or a loopback, private or link-local " +
+					"address, which Codex reaches only if the session may bind local addresses, and on macOS that " +
+					"would let the session's commands reach every loopback port. Use hosts that are none of these.");
 			}
 			configuration.append("allow_local_binding = true").append(System.lineSeparator());
 		}

@@ -1,8 +1,7 @@
 package com.holdmyspot.cat.codex.policy;
 
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
-import java.net.Inet6Address;
-import java.net.InetAddress;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -85,42 +84,9 @@ public final class CodexAssumptions
 		Set<String> reachable = new LinkedHashSet<>();
 		for (String domain : allowedDomains)
 		{
-			if (!isLocal(domain))
+			if (!ChildPolicy.needsLocalBinding(domain))
 				reachable.add(domain);
 		}
 		return HostAccess.listed(reachable);
-	}
-
-	/**
-	 * Indicates whether a host is {@code localhost} or a literal local or private address, which Codex's managed
-	 * network proxy blocks unless the profile lets the commands bind local addresses.
-	 *
-	 * @param host a host name or literal IP address, the latter for IPv6 optionally in brackets
-	 * @return {@code true} if {@code host} is local or private
-	 */
-	private static boolean isLocal(String host)
-	{
-		if (host.equalsIgnoreCase("localhost"))
-			return true;
-		String literal = host;
-		if (literal.startsWith("[") && literal.endsWith("]"))
-			literal = literal.substring(1, literal.length() - 1);
-		InetAddress address;
-		try
-		{
-			address = InetAddress.ofLiteral(literal);
-		}
-		catch (IllegalArgumentException _)
-		{
-			// A host name rather than a literal address
-			return false;
-		}
-		if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress() ||
-			address.isAnyLocalAddress())
-		{
-			return true;
-		}
-		// IPv6 unique local addresses, fc00::/7, are private too
-		return address instanceof Inet6Address && (address.getAddress()[0] & 0xFE) == 0xFC;
 	}
 }

@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner.policy;
 
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -70,7 +71,7 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 		{
 			writeRoots.addAll(extraWrites);
 			return new ChildPolicy(List.copyOf(writeRoots), List.of(), childReadDenials, List.of(), needs.hosts(),
-				hasLoopback(needs.hosts()));
+				anyNeedsLocalBinding(needs.hosts()));
 		}
 
 		List<Path> parentWriteRoots = RealPaths.resolveAll(parent.writeRoots());
@@ -106,7 +107,7 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 				hosts.add(host);
 		}
 		return new ChildPolicy(List.copyOf(writeRoots), writeDenials, List.copyOf(readDenials), readReallowances,
-			hosts, parent.allowLocalBinding() && hasLoopback(hosts));
+			hosts, parent.allowLocalBinding() && anyNeedsLocalBinding(hosts));
 	}
 
 	/**
@@ -128,30 +129,54 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	}
 
 	/**
-	 * Indicates whether one of some hosts is a loopback address, so that a command reaching it reaches a server on the
-	 * same machine. No host is looked up: only {@code localhost} and literal loopback addresses count.
+	 * Indicates whether a command reaches a host only if it may bind local addresses: {@code localhost}, or a literal
+	 * loopback, private (site-local or IPv6 unique local, {@code fc00::/7}), link-local or unspecified address. Codex's
+	 * managed network proxy blocks every such host unless the commands may bind local addresses, even when its domain
+	 * list allows the host. No host is looked up, so a host name that resolves to such an address does not count.
 	 *
-	 * @param hosts host names or literal IP addresses, the latter for IPv6 optionally in brackets
-	 * @return {@code true} if one of {@code hosts} is a loopback address
+	 * @param host a host name or literal IP address, the latter for IPv6 optionally in brackets
+	 * @return {@code true} if reaching {@code host} needs local binding
+	 * @throws NullPointerException if {@code host} is null
 	 */
-	private static boolean hasLoopback(Set<String> hosts)
+	public static boolean needsLocalBinding(String host)
+	{
+		requireThat(host, "host").isNotNull();
+		if (host.equalsIgnoreCase("localhost"))
+			return true;
+		String literal = host;
+		if (literal.startsWith("[") && literal.endsWith("]"))
+			literal = literal.substring(1, literal.length() - 1);
+		InetAddress address;
+		try
+		{
+			address = InetAddress.ofLiteral(literal);
+		}
+		catch (IllegalArgumentException _)
+		{
+			// A host name rather than a literal address
+			return false;
+		}
+		if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress() ||
+			address.isAnyLocalAddress())
+		{
+			return true;
+		}
+		// InetAddress counts only the deprecated fec0::/10 as site-local, but fc00::/7 holds IPv6's private addresses
+		return address instanceof Inet6Address && (address.getAddress()[0] & 0xFE) == 0xFC;
+	}
+
+	/**
+	 * Indicates whether one of some hosts {@link #needsLocalBinding(String) needs local binding}.
+	 *
+	 * @param hosts host names or literal IP addresses
+	 * @return {@code true} if reaching one of {@code hosts} needs local binding
+	 */
+	private static boolean anyNeedsLocalBinding(Set<String> hosts)
 	{
 		for (String host : hosts)
 		{
-			if (host.equals("localhost"))
+			if (needsLocalBinding(host))
 				return true;
-			String literal = host;
-			if (literal.startsWith("[") && literal.endsWith("]"))
-				literal = literal.substring(1, literal.length() - 1);
-			try
-			{
-				if (InetAddress.ofLiteral(literal).isLoopbackAddress())
-					return true;
-			}
-			catch (IllegalArgumentException _)
-			{
-				// A host name rather than a literal address
-			}
 		}
 		return false;
 	}

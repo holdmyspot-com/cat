@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -227,23 +228,48 @@ public final class ChildPolicyTest
 	 * may then listen on local addresses.
 	 *
 	 * @return each case
+	 * @throws UnknownHostException if an address cannot be formed
 	 */
 	@DataProvider
-	public Object[][] localBinding()
+	public Object[][] localBinding() throws UnknownHostException
 	{
+		String privateAddress = address(10, 1, 2, 3);
 		return new Object[][]
 			{
 				{true, Set.of("localhost"), true},
 				{true, Set.of(InetAddress.getLoopbackAddress().getHostAddress()), true},
 				{true, Set.of("[::1]"), true},
+				{true, Set.of(privateAddress), true},
+				{true, Set.of(address(192, 168, 1, 2)), true},
+				{true, Set.of(address(169, 254, 1, 2)), true},
+				{true, Set.of(address(0, 0, 0, 0)), true},
+				{true, Set.of("[fd12:3456::1]"), true},
+				{true, Set.of("[fe80::1]"), true},
 				{true, Set.of("api.example.com", "[2001:db8::1]"), false},
-				{false, Set.of("localhost"), false}
+				{false, Set.of("localhost"), false},
+				{false, Set.of(privateAddress), false}
 			};
 	}
 
 	/**
-	 * Verifies that a child may listen on local addresses only when its parent may and the child needs a loopback
-	 * host.
+	 * Returns the literal form of an IPv4 address.
+	 *
+	 * @param octets the address's four octets
+	 * @return the address in dotted-decimal form
+	 * @throws UnknownHostException if the address cannot be formed
+	 */
+	private static String address(int... octets) throws UnknownHostException
+	{
+		byte[] bytes = new byte[octets.length];
+		for (int i = 0; i < octets.length; ++i)
+			bytes[i] = (byte) octets[i];
+		return InetAddress.getByAddress(bytes).getHostAddress();
+	}
+
+	/**
+	 * Verifies that a child may listen on local addresses only when its parent may and the child needs a host that
+	 * Codex's network proxy blocks without that permission: {@code localhost}, or a literal loopback, private,
+	 * link-local or unspecified address.
 	 *
 	 * @param parentAllows {@code true} if the parent may listen on local addresses
 	 * @param hosts        the hosts that the child needs
@@ -251,7 +277,7 @@ public final class ChildPolicyTest
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test(dataProvider = "localBinding")
-	public void bindsLocallyOnlyForParentAndLoopback(boolean parentAllows, Set<String> hosts, boolean expected)
+	public void bindsLocallyOnlyForParentAndLocalHost(boolean parentAllows, Set<String> hosts, boolean expected)
 		throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -285,6 +311,26 @@ public final class ChildPolicyTest
 
 			requireThat(child, "child").isEqualTo(new ChildPolicy(List.of(run, cache), List.of(), List.of(login),
 				List.of(), Set.of("api.example.com", "localhost"), true));
+		}
+	}
+
+	/**
+	 * Verifies that the child of a parent whose commands are unrestricted may listen on local addresses when it needs a
+	 * private address, which Codex's network proxy blocks without that permission.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void bindsLocallyForUnsandboxedPrivateHost() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
+
+			ChildPolicy child = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(run, List.of(),
+				List.of(), Set.of(address(192, 168, 1, 2))));
+
+			requireThat(child.allowLocalBinding(), "allowLocalBinding").isTrue();
 		}
 	}
 
