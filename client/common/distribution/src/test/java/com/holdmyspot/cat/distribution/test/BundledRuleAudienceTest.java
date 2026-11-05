@@ -192,7 +192,9 @@ public final class BundledRuleAudienceTest
 	/**
 	 * Verifies an agent that is about to rerun a failed operation that is expensive to run in full, or to count a
 	 * conclusion that compares separate runs, can reach the packaged rule for that decision: the failure area index
-	 * routes to the diagnostic-run rule and the testing and build area index routes to the run-comparison rule.
+	 * routes to the diagnostic-run rule, and the rule routing that every agent of either harness receives at startup
+	 * routes to the run-comparison rule, so a comparison that is neither test nor build evidence reaches it too. The
+	 * testing and build area index does not repeat that route.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -203,6 +205,7 @@ public final class BundledRuleAudienceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
 			BundledRules.copy(plugin.resolve("rules"));
 			RuleArtifactRouter.route(plugin, scope.yaml());
 			Path include = plugin.resolve("rules/include/common");
@@ -211,10 +214,18 @@ public final class BundledRuleAudienceTest
 				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/diagnostic-runs.md`");
 			requireThat(Files.readString(include.resolve("diagnostic-runs.md")), "diagnosticRuns").
 				startsWith("# Diagnostic Runs\n");
-			requireThat(Files.readString(include.resolve("rule-routing/testing-and-builds.md")), "testingIndex").
-				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/run-comparisons.md`");
 			requireThat(Files.readString(include.resolve("run-comparisons.md")), "runComparisons").
 				startsWith("# Run Comparisons\n");
+			requireThat(Files.readString(include.resolve("rule-routing/testing-and-builds.md")), "testingIndex").
+				doesNotContain("run-comparisons.md");
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			for (String harness : List.of("claude", "codex"))
+			{
+				requireThat(loader.loadForMainAgent(plugin, project, harness), harness + "Main").
+					contains("include/common/run-comparisons.md`");
+				requireThat(loader.loadForSubagent(plugin, project, harness, "cat:reviewer"), harness + "Subagent").
+					contains("include/common/run-comparisons.md`");
+			}
 		}
 	}
 
