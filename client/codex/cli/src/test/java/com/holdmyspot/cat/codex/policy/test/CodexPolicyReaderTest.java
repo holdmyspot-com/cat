@@ -266,7 +266,7 @@ public final class CodexPolicyReaderTest
 
 	/**
 	 * Verifies that a hook that Codex's shared background server runs is refused, and that the fix names
-	 * {@code --no-daemon}.
+	 * {@code --no-daemon}. The server's command line is the one that Codex 0.160.0 starts it with.
 	 */
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*shared.*--no-daemon.*")
 	public void sharedServerRefused() throws IOException, PolicyRefusal
@@ -276,7 +276,7 @@ public final class CodexPolicyReaderTest
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
 			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
 
-			session.read("app-server", "--listen", "unix://");
+			session.read("app-server", "--listen", "unix://", "--managed-daemon");
 		}
 	}
 

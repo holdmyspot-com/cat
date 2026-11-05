@@ -50,6 +50,30 @@ public final class CodexRolloutPolicyTest
 	}
 
 	/**
+	 * Verifies that a rollout entry that Codex records as {@code "access":"deny"}, for a profile path set to
+	 * {@code none}, keeps the commands from reading and writing that path.
+	 */
+	@Test
+	public void rolloutDenialApplies() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			configureExtraRoot(session);
+			Path secret = session.folder("project/secret");
+			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
+				projectOnlyEntries(session) + """
+					,
+					{"path":{"type":"path","path":%s},"access":"deny"}""".formatted(json(secret))));
+
+			ParentPolicy policy = session.read("exec", "summarize");
+
+			requireThat(policy.readDenials(), "readDenials").contains(secret);
+			requireThat(policy.writeDenials(), "writeDenials").contains(secret);
+		}
+	}
+
+	/**
 	 * Verifies that a rollout entry of a kind that the reader does not know is refused.
 	 */
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*home_directory.*")
