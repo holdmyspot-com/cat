@@ -11,6 +11,7 @@ module com.holdmyspot.cat.codex.cli
 
 	exports com.holdmyspot.cat.codex;
 	exports com.holdmyspot.cat.codex.optimizer;
+	exports com.holdmyspot.cat.codex.policy to com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.codex.runner to com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.codex.secrets to com.holdmyspot.cat.codex.cli.test;
 

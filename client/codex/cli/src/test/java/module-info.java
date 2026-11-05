@@ -11,6 +11,7 @@ module com.holdmyspot.cat.codex.cli.test
 	requires org.testng;
 
 	exports com.holdmyspot.cat.codex.optimizer.test to org.testng;
+	exports com.holdmyspot.cat.codex.policy.test to org.testng;
 	exports com.holdmyspot.cat.codex.runner.test to org.testng;
 	exports com.holdmyspot.cat.codex.test to org.testng;
 }
