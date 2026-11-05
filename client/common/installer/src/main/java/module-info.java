@@ -1,6 +1,7 @@
 /**
- * Sets up, installs, updates, rolls back and removes the CAT plugin of one harness, activating only signed releases
- * that the user's trust policy approves.
+ * Installs, reports and uninstalls the CAT plugin of one harness. Install adds CAT to a harness that has none or moves
+ * it to another release, accepting only signed releases that the user's trust policy approves, and migrates CAT's data
+ * to that release.
  */
 module com.holdmyspot.cat.common.installer
 {
