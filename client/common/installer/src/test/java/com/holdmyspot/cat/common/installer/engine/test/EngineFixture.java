@@ -19,7 +19,8 @@ import java.util.List;
 
 /**
  * A harness home whose harness installs each CAT version into its own version folder, with an engine over a catalog
- * of signed releases. The engine does not wait for the harness lock and runs as a user without administrative rights.
+ * of signed releases. The engine does not wait for the harness lock, runs as a user without administrative rights and
+ * runs data migrations through a fake that records them.
  */
 final class EngineFixture
 {
@@ -32,6 +33,7 @@ final class EngineFixture
 	final ReleaseCatalog catalog;
 	final RecordingIntegration integration = new RecordingIntegration();
 	final RegisteredProvider provider;
+	final RecordingMigrations migrations = new RecordingMigrations();
 
 	/**
 	 * Creates the harness home.
@@ -152,7 +154,7 @@ final class EngineFixture
 		throws TrustException
 	{
 		return new UpdateEngine(data(), catalog.policy(home, MINIMUM), source, provider, "linux-x64", clock, waiting,
-			lockWait, _ -> elevated);
+			lockWait, _ -> elevated, migrations);
 	}
 
 	/**

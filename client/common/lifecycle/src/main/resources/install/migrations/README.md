@@ -10,12 +10,14 @@ Register each script by its `.sh` name, and put a PowerShell script with the sam
 it. The `.ps1` script reads the same variables from `$env:`, must stay compatible with Windows PowerShell 5.1, and must
 throw when it cannot finish safely.
 
-The installer refuses to install a release that registers a migration after the plugin data's recorded
-`migration-version`, up to the release's version. It also refuses to install an older release when the active release
-registers a migration after that older release. No part of CAT runs migration scripts yet, so a release that registers
-one must also add the code that runs it.
+When install installs a release, it runs the migrations that the release registers after the plugin data's recorded
+`migration-version`, up to the release's version, in registry order and from the release's installed plugin folder.
+After each script succeeds, install records that script's target version in `migration-version`; the first script
+that fails stops install, which names the script, and running the same install again resumes from it. A first install
+with no earlier data runs no script. Install refuses an older release when the active release registers a migration
+after that older release.
 
 When a release does not change persisted data, leave the registry unchanged.
 
-The installer's handling of the registry is tested by `StagedReleaseTest` in `client/common/installer`, and this
-registry by `MigrationRegistryTest` in `client/common/lifecycle`.
+The installer's handling of the registry is tested by `StagedReleaseTest` and `MigrationTest` in
+`client/common/installer`, and this registry by `MigrationRegistryTest` in `client/common/lifecycle`.

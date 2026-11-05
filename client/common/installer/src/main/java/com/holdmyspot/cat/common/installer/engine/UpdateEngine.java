@@ -1,7 +1,6 @@
 package com.holdmyspot.cat.common.installer.engine;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.Platform;
@@ -63,6 +62,7 @@ public final class UpdateEngine
 	private final Waiting waiting;
 	private final Duration lockWait;
 	private final StartupCacheTrainer trainer;
+	private final MigrationRunner migrations;
 
 	/**
 	 * Creates an engine with a ten-minute lock wait.
@@ -99,12 +99,12 @@ public final class UpdateEngine
 		String platform, Clock clock, Waiting waiting, Duration lockWait)
 	{
 		this(dataDirectory, policy, source, activation, platform, clock, waiting, lockWait,
-			ProcessElevation::isElevated);
+			ProcessElevation::isElevated, new ProcessMigrationRunner());
 	}
 
 	/**
-	 * Creates an engine with an explicit lock wait and check of administrative rights, which decides whether startup
-	 * cache training runs.
+	 * Creates an engine with an explicit lock wait, check of administrative rights, which decides whether startup
+	 * cache training runs, and runner of data migration scripts.
 	 *
 	 * @param dataDirectory the harness's protected CAT data directory
 	 * @param policy        protected policy
@@ -116,11 +116,13 @@ public final class UpdateEngine
 	 * @param lockWait      nonnegative maximum wait for the harness lock
 	 * @param elevation     returns whether this process runs with administrative rights, given a directory that the
 	 *                      check may write short-lived files to
+	 * @param migrations    runs the data migration scripts of the release that install installs
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code platform} is blank or {@code lockWait} is negative
 	 */
 	public UpdateEngine(Path dataDirectory, TrustPolicy policy, ReleaseSource source, PluginActivation activation,
-		String platform, Clock clock, Waiting waiting, Duration lockWait, Predicate<Path> elevation)
+		String platform, Clock clock, Waiting waiting, Duration lockWait, Predicate<Path> elevation,
+		MigrationRunner migrations)
 	{
 		requireThat(dataDirectory, "dataDirectory").isNotNull();
 		requireThat(policy, "policy").isNotNull();
@@ -131,6 +133,7 @@ public final class UpdateEngine
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(lockWait, "lockWait").isGreaterThanOrEqualTo(Duration.ZERO);
 		requireThat(elevation, "elevation").isNotNull();
+		requireThat(migrations, "migrations").isNotNull();
 		this.state = InstallerState.of(dataDirectory, activation.harness());
 		this.data = dataDirectory.toAbsolutePath().normalize();
 		this.windows = Arrays.stream(Platform.values()).
@@ -143,6 +146,7 @@ public final class UpdateEngine
 		this.clock = clock;
 		this.waiting = waiting;
 		this.lockWait = lockWait;
+		this.migrations = migrations;
 		Path trainingScratch = state.directory().resolve("startup-cache");
 		this.trainer = new StartupCacheTrainer(trainingScratch, Duration.ofMinutes(1),
 			() -> elevation.test(trainingScratch));
@@ -280,7 +284,7 @@ public final class UpdateEngine
 		ReleaseVersion release = verified.manifest().version();
 		PluginVersion plugin = verified.manifest().pluginVersion();
 		if (active.isUpToDate(plugin))
-			return upToDate(active);
+			return upToDate(request, home, active);
 		boolean downgrade = active.release().isPresent() && release.compareTo(active.release().get()) < 0;
 		if (downgrade && (requestedTag == null || requestedTag.equals(LATEST)))
 		{
@@ -339,7 +343,7 @@ public final class UpdateEngine
 		PluginVersion plugin = PluginVersion.parse(Files.readString(versionFile, StandardCharsets.UTF_8).strip());
 		StagedRelease.validate(tree, plugin, activation.pluginManifest(), platform);
 		if (active.isUpToDate(plugin))
-			return upToDate(active);
+			return upToDate(request, home, active);
 		ReleaseVersion release = ReleaseVersion.parse(plugin.release());
 		boolean downgrade = active.release().isPresent() && release.compareTo(active.release().get()) < 0;
 		return inScratch((download, extractRoot) ->
@@ -381,22 +385,62 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Reports that the harness already has the build to install, without asking the harness to do anything.
+	 * Completes an install of the build that the harness already has, without asking the harness to do anything: runs
+	 * the data migrations that an earlier install of the build left pending, from its version folder.
 	 *
-	 * @param active the harness's CAT version
+	 * @param request the harness and the running installer's plugin folder
+	 * @param home    the protected harness home
+	 * @param active  the harness's CAT version, which is consistently installed
 	 * @return the outcome
+	 * @throws IOException    if the data version file is reached through a symbolic link or cannot be read
+	 * @throws TrustException if the recorded data version is malformed, or the build's migration registry is absent
+	 *                        or malformed while the data is older than the build
 	 */
-	private UpdateResult upToDate(Active active)
+	private UpdateResult upToDate(InstallRequest request, Path home, Active active) throws IOException, TrustException
 	{
+		PluginVersion plugin = active.plugin();
+		Path versionFolder = request.session().integration().installation(home).versionFolder(plugin);
+		Path migrationFile = activation.migrationVersionFile(home);
+		DataMigration migration = DataMigration.plan(versionFolder, migrationFile, active.release().orElseThrow(),
+			active.release());
+		try
+		{
+			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
+		}
+		catch (IOException e)
+		{
+			return stopped(plugin, active, e, versionFolder);
+		}
 		return result(Result.UP_TO_DATE, active.version(), null, "CAT is up to date.", List.of());
 	}
 
 	/**
-	 * Installs a validated plugin tree into the harness: refuses a pending data migration and a version folder that
-	 * the running installer belongs to, and a change that needs the user's permission when the user withholds it, then
-	 * writes the marketplace, asks the harness to install the version, installs the provider's companion files from
-	 * the version folder, trains its startup cache, rewrites the permission entries and records the data migration
-	 * version.
+	 * Reports an install that stopped after it began changing the harness.
+	 *
+	 * @param plugin        the plugin version being installed
+	 * @param active        the harness's CAT version before the install
+	 * @param failure       why the install stopped
+	 * @param versionFolder the version folder of the plugin version
+	 * @return the outcome
+	 */
+	private UpdateResult stopped(PluginVersion plugin, Active active, IOException failure, Path versionFolder)
+	{
+		if (failure instanceof AccessDeniedException denied)
+		{
+			return result(Result.NOT_WRITABLE, active.version(), null, "Installing CAT " + plugin + " stopped because " +
+				denied.getFile() + " is not writable; run the same install command again after fixing its permissions.",
+				List.of(Path.of(denied.getFile())));
+		}
+		return result(Result.FAILED, active.version(), null, "Installing CAT " + plugin + " stopped: " +
+			failure.getMessage() + "; run the same install command again to complete it.", List.of(versionFolder));
+	}
+
+	/**
+	 * Installs a validated plugin tree into the harness: refuses a version folder that the running installer belongs
+	 * to, and a change that needs the user's permission when the user withholds it, then writes the marketplace, asks
+	 * the harness to install the version, installs the provider's companion files from the version folder, runs the
+	 * data migrations that the release registers after the recorded data version and records each, trains its startup
+	 * cache and rewrites the permission entries.
 	 *
 	 * @param tree    the validated plugin tree, which this method does not change
 	 * @param plugin  the plugin version that the tree states
@@ -405,7 +449,8 @@ public final class UpdateEngine
 	 * @param active  the harness's CAT version
 	 * @return the outcome
 	 * @throws IOException    if a check cannot read its input
-	 * @throws TrustException if a migration is pending or a version is malformed
+	 * @throws TrustException if the recorded data version is malformed, or the release's migration registry is absent
+	 *                        or malformed while the data is older than the release
 	 */
 	private UpdateResult deliver(Path tree, PluginVersion plugin, InstallRequest request, Path home, Active active)
 		throws IOException, TrustException
@@ -414,15 +459,9 @@ public final class UpdateEngine
 		HarnessIntegration integration = session.integration();
 		String release = plugin.release();
 		Path migrationFile = activation.migrationVersionFile(home);
-		StateFiles.requireNoLinks(migrationFile);
 		// Data migrations are registered by release, so the active plugin's build does not matter to them
-		String recorded = null;
-		if (active.release().isPresent())
-			recorded = active.release().get().toString();
-		else if (Files.exists(migrationFile, NOFOLLOW_LINKS))
-			recorded = release;
-		if (recorded != null)
-			StagedRelease.requireNoPendingMigration(tree, migrationFile, recorded, release);
+		DataMigration migration = DataMigration.plan(tree, migrationFile, ReleaseVersion.parse(release),
+			active.release());
 		HarnessInstallation installation = integration.installation(home);
 		Path versionFolder = installation.versionFolder(plugin);
 		Path image = real(request.image());
@@ -446,21 +485,14 @@ public final class UpdateEngine
 		{
 			steps.deliver(home, tree, plugin);
 			activation.installCompanions(home, versionFolder);
+			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			startupCache = trainer.train(versionFolder);
 			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
 				request.others(), request.catLocks(), consentRequest.isPresent());
-			StateFiles.write(migrationFile, (release + "\n").getBytes(StandardCharsets.UTF_8));
-		}
-		catch (AccessDeniedException e)
-		{
-			return result(Result.NOT_WRITABLE, active.version(), null, "Installing CAT " + plugin + " stopped because " +
-				e.getFile() + " is not writable; run the same install command again after fixing its permissions.",
-				List.of(Path.of(e.getFile())));
 		}
 		catch (IOException e)
 		{
-			return result(Result.FAILED, active.version(), null, "Installing CAT " + plugin + " stopped: " +
-				e.getMessage() + "; run the same install command again to complete it.", List.of(versionFolder));
+			return stopped(plugin, active, e, versionFolder);
 		}
 		if (active.version() == null)
 		{
@@ -640,7 +672,8 @@ public final class UpdateEngine
 		return Optional.of(result(Result.REFUSED, active.version(), null, "Release " + older + " is older than the " +
 			"active release " + activeRelease + ", and CAT's data structures changed between them (" +
 			String.join(", ", changes) + "). They are not backward compatible, so installing " + older +
-			" would lose data.", List.of()));
+			" would lose data; run install with the active release " + activeRelease + " or a later one instead.",
+			List.of()));
 	}
 
 	/**

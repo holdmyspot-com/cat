@@ -26,7 +26,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Checks a staged plugin's release identity and refuses updates that require installer migrations. It never executes
+ * Checks a staged plugin's release identity and reads the data migrations that its registry names. It never executes
  * staged files. The caller supplies an extracted tree that it exclusively owns until activation finishes.
  */
 public final class StagedRelease
@@ -161,78 +161,6 @@ public final class StagedRelease
 	}
 
 	/**
-	 * Refuses registered migrations newer than the recorded migration version and no newer than this release.
-	 * An absent recorded migration version uses the active release version. Comments and blank registry lines
-	 * are skipped.
-	 * Each registry line is limited to 4096 characters and the recorded version to 128 bytes.
-	 *
-	 * @param tree                 validated staged top directory
-	 * @param migrationVersionFile installation's recorded migration version file
-	 * @param activeVersion        active release version, used when the recorded version file is absent
-	 * @param newVersion           authenticated release version
-	 * @throws NullPointerException if any argument is null
-	 * @throws TrustException       if the registry is absent or malformed, any release version is malformed, or a
-	 *                              pending migration requires explicit installation
-	 * @throws IOException          if a migration file cannot be read
-	 */
-	public static void requireNoPendingMigration(Path tree, Path migrationVersionFile, String activeVersion,
-		String newVersion) throws IOException, TrustException
-	{
-		ReleaseVersion recorded = recorded(tree, migrationVersionFile, activeVersion, newVersion);
-		requireNoPendingMigration(tree, recorded, ReleaseVersion.parse(newVersion));
-	}
-
-	/**
-	 * Returns the recorded migration version.
-	 *
-	 * @param tree                 validated staged top directory
-	 * @param migrationVersionFile installation's recorded migration version file
-	 * @param activeVersion        active release version, used when the recorded version file is absent
-	 * @param newVersion           authenticated release version
-	 * @return the recorded migration version
-	 * @throws NullPointerException if any argument is null
-	 * @throws TrustException       if a version is malformed
-	 * @throws IOException          if the migration version file cannot be read
-	 */
-	private static ReleaseVersion recorded(Path tree, Path migrationVersionFile, String activeVersion,
-		String newVersion) throws IOException, TrustException
-	{
-		requireThat(tree, "tree").isNotNull();
-		requireThat(migrationVersionFile, "migrationVersionFile").isNotNull();
-		requireThat(activeVersion, "activeVersion").isNotNull();
-		requireThat(newVersion, "newVersion").isNotNull();
-		ReleaseVersion active = ReleaseVersion.parse(activeVersion);
-		ReleaseVersion.parse(newVersion);
-		if (Files.exists(migrationVersionFile))
-			return ReleaseVersion.parse(readVersion(migrationVersionFile));
-		return active;
-	}
-
-	/**
-	 * Refuses registered migrations newer than {@code recorded} and no newer than {@code version}.
-	 *
-	 * @param tree     validated staged top directory
-	 * @param recorded the recorded migration version
-	 * @param version  authenticated release version
-	 * @throws TrustException if the registry is absent or malformed, or a pending migration requires explicit
-	 *                        installation
-	 * @throws IOException    if the registry cannot be read
-	 */
-	private static void requireNoPendingMigration(Path tree, ReleaseVersion recorded, ReleaseVersion version)
-		throws IOException, TrustException
-	{
-		for (Migration migration : migrations(tree))
-		{
-			ReleaseVersion target = migration.version();
-			if (target.compareTo(recorded) > 0 && target.compareTo(version) <= 0)
-			{
-				throw refusal("Release " + version + " requires data migration " + target +
-					"; run the release's explicit installation command instead of routine update");
-			}
-		}
-	}
-
-	/**
 	 * Returns the data migrations that a release registers after an older release, up to and including a newer one.
 	 *
 	 * @param tree  a validated plugin tree
@@ -246,17 +174,34 @@ public final class StagedRelease
 	public static List<String> migrationsAfter(Path tree, ReleaseVersion older, ReleaseVersion newer)
 		throws IOException, TrustException
 	{
+		return migrations(tree, older, newer).stream().map(Migration::script).toList();
+	}
+
+	/**
+	 * Returns the data migrations that a release registers after an older release, up to and including a newer one.
+	 *
+	 * @param tree  a validated plugin tree
+	 * @param older the older release
+	 * @param newer the newer release
+	 * @return the migrations, in registry order
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws TrustException       if the registry is absent or malformed
+	 * @throws IOException          if the registry cannot be read
+	 */
+	static List<Migration> migrations(Path tree, ReleaseVersion older, ReleaseVersion newer)
+		throws IOException, TrustException
+	{
 		requireThat(tree, "tree").isNotNull();
 		requireThat(older, "older").isNotNull();
 		requireThat(newer, "newer").isNotNull();
-		List<String> scripts = new ArrayList<>();
+		List<Migration> pending = new ArrayList<>();
 		for (Migration migration : migrations(tree))
 		{
 			ReleaseVersion target = migration.version();
 			if (target.compareTo(older) > 0 && target.compareTo(newer) <= 0)
-				scripts.add(migration.script());
+				pending.add(migration);
 		}
-		return scripts;
+		return pending;
 	}
 
 	/**
@@ -271,7 +216,7 @@ public final class StagedRelease
 	{
 		Path registry = tree.resolve("install/migrations/registry.tsv");
 		if (!Files.isRegularFile(registry))
-			throw refusal("The staged release lacks install/migrations/registry.tsv; use explicit installation");
+			throw refusal("The release lacks its migration registry, install/migrations/registry.tsv");
 		List<Migration> migrations = new ArrayList<>();
 		try (BufferedReader reader = Files.newBufferedReader(registry, UTF_8))
 		{
@@ -294,7 +239,7 @@ public final class StagedRelease
 	 * @param version the release whose data structures the migration produces
 	 * @param script  the script's path relative to the registry's directory
 	 */
-	private record Migration(ReleaseVersion version, String script)
+	record Migration(ReleaseVersion version, String script)
 	{
 	}
 
@@ -394,7 +339,7 @@ public final class StagedRelease
 	 * @throws TrustException if the file exceeds 128 bytes
 	 * @throws IOException    if the file cannot be read
 	 */
-	private static String readVersion(Path file) throws IOException, TrustException
+	static String readVersion(Path file) throws IOException, TrustException
 	{
 		String text = new String(readBounded(file, 128), UTF_8);
 		if (text.endsWith("\r\n"))

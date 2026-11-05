@@ -1,17 +1,20 @@
 package com.holdmyspot.cat.common.installer.engine.test;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.StagedRelease;
+import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.List;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -255,47 +258,28 @@ public final class StagedReleaseTest
 			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
 			writeRelease(tree);
 			Files.delete(tree.resolve("install/migrations/registry.tsv"));
-			StagedRelease.requireNoPendingMigration(tree, tree.resolve("migration-version"), "1.0",
-				"1.1");
+			StagedRelease.migrationsAfter(tree, ReleaseVersion.parse("1.0"), ReleaseVersion.parse("1.1"));
 		}
 	}
 
 	/**
-	 * A migration newer than the recorded version and no newer than the release requires explicit installation.
+	 * The migrations after an older release, up to and including a newer one, are listed in registry order;
+	 * comments, blank lines, earlier and later migrations are skipped.
 	 *
 	 * @throws IOException if fixture files cannot be written or read
-	 * @throws TrustException expected refusal for pending migration
-	 */
-	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp = ".*explicit installation.*")
-	public void refusesPendingMigration() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
-			writeRelease(tree);
-			Files.writeString(tree.resolve("install/migrations/registry.tsv"), "# migrations\n\n1.1\tchange.sh\n");
-			StagedRelease.requireNoPendingMigration(tree, tree.resolve("migration-version"), "1.0",
-				"1.1");
-		}
-	}
-
-	/**
-	 * Completed migrations and targets above the selected release are skipped; the recorded version overrides active.
-	 *
-	 * @throws IOException if fixture files cannot be written or read
-	 * @throws TrustException if completed or future migrations are refused
+	 * @throws TrustException if the registry is refused
 	 */
 	@Test
-	public void acceptsCompletedAndFutureMigrations() throws IOException, TrustException
+	public void listsMigrationsBetweenReleases() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
 			writeRelease(tree);
-			Files.writeString(tree.resolve("install/migrations/registry.tsv"), "1.1\told.sh\n1.2\tfuture.sh\n");
-			Path recorded = tree.resolve("migration-version");
-			Files.writeString(recorded, "1.1\n");
-			StagedRelease.requireNoPendingMigration(tree, recorded, "1.0", "1.1");
+			Files.writeString(tree.resolve("install/migrations/registry.tsv"),
+				"# migrations\n\n1.0\told.sh\n1.1\tsplit.sh\n1.2\tmerge.sh\n1.3\tfuture.sh\n");
+			requireThat(StagedRelease.migrationsAfter(tree, ReleaseVersion.parse("1.0"), ReleaseVersion.parse("1.2")),
+				"migrations").isEqualTo(List.of("split.sh", "merge.sh"));
 		}
 	}
 
@@ -314,7 +298,7 @@ public final class StagedReleaseTest
 	}
 
 	/**
-	 * Malformed registry records are refused instead of hiding pending migrations.
+	 * Malformed registry records are refused instead of hiding migrations.
 	 *
 	 * @param registry malformed migration registry
 	 * @throws IOException if fixture files cannot be written or read
@@ -328,7 +312,7 @@ public final class StagedReleaseTest
 			Path tree = cleanup.add(ReleaseFixtures.testDirectory("staged-release-"));
 			writeRelease(tree);
 			Files.writeString(tree.resolve("install/migrations/registry.tsv"), registry, UTF_8);
-			StagedRelease.requireNoPendingMigration(tree, tree.resolve("migration-version"), "1.0", "1.1");
+			StagedRelease.migrationsAfter(tree, ReleaseVersion.parse("1.0"), ReleaseVersion.parse("1.1"));
 		}
 	}
 

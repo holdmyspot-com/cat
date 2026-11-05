@@ -97,7 +97,8 @@ public final class DowngradeTest
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").isEqualTo("Release 1.1 is older than the active release 1.2, " +
 				"and CAT's data structures changed between them (split-state.sh). They are not backward compatible, " +
-				"so installing 1.1 would lose data.");
+				"so installing 1.1 would lose data; run install with the active release 1.2 or a later one " +
+				"instead.");
 			requireThat(Releases.snapshot(fixture.home), "after").isEqualTo(before);
 		}
 	}

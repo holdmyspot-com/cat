@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
+import com.holdmyspot.cat.common.installer.engine.ProcessMigrationRunner;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
@@ -494,7 +495,8 @@ public final class Invocation
 		Install.Outcome outcome;
 		try
 		{
-			outcome = new Install(image, platform, replacer, cliFactory, ProcessElevation::isElevated).
+			outcome = new Install(image, platform, replacer, cliFactory, ProcessElevation::isElevated,
+				new ProcessMigrationRunner()).
 				install(harness, arguments.home(), cwd, environment, userHome, activation, integration, others, consent);
 		}
 		catch (TrustException e)

@@ -57,8 +57,9 @@ public interface PluginActivation
 	void installCompanions(Path home, Path versionFolder) throws IOException;
 
 	/**
-	 * Returns the file that records the version of the last data migration applied to CAT's data in this harness. After
-	 * a successful install, the installer replaces its content with the installed release.
+	 * Returns the file that records the release whose data structures CAT's data in this harness has. Its directory is
+	 * the data directory that data migrations change. Install records each data migration that it runs there, and then
+	 * the installed release.
 	 *
 	 * @param home the harness's absolute home directory, from the trust policy
 	 * @return the file's absolute path

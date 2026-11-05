@@ -271,6 +271,15 @@ public final class Releases implements ReleaseSource
 				if (content == null)
 					content = registry(version, defect);
 				entry(tar, top + "/install/migrations/registry.tsv", content, 0644);
+				if (!defect.equals("missingScript"))
+				{
+					for (String script : scripts(content))
+					{
+						entry(tar, top + "/install/migrations/" + script, "exit 0\n", 0755);
+						entry(tar, top + "/install/migrations/" + script.replaceFirst("\\.sh$", ".ps1"), "exit 0\n",
+							0644);
+					}
+				}
 			}
 			entry(tar, top + "/version", pluginVersion, 0644);
 			entry(tar, top + "/agents/reviewer.toml", "name = 'new'", 0644);
@@ -304,9 +313,22 @@ public final class Releases implements ReleaseSource
 	 */
 	private static String registry(String version, String defect)
 	{
-		if (defect.equals("migration"))
+		if (defect.equals("migration") || defect.equals("missingScript"))
 			return version + "\tmigrate.sh\n";
 		return "# No migration\n";
+	}
+
+	/**
+	 * Returns the scripts that a migration registry names.
+	 *
+	 * @param registry the registry's content
+	 * @return the scripts' names
+	 */
+	private static List<String> scripts(String registry)
+	{
+		return registry.lines().filter(line -> !line.isBlank() && !line.startsWith("#")).
+			map(line -> line.split("\t", -1)).filter(fields -> fields.length == 2 && !fields[1].isBlank()).
+			map(fields -> fields[1]).toList();
 	}
 
 	/**

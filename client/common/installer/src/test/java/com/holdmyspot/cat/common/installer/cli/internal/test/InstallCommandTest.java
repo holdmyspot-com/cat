@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.cli.internal.Install;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
+import com.holdmyspot.cat.common.installer.engine.test.RecordingMigrations;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
@@ -81,6 +82,37 @@ public final class InstallCommandTest
 			requireThat(outcome.policy(), "outcomePolicy").isEqualTo(policy);
 			// The fixture plugin does not describe how to train its startup cache
 			requireThat(outcome.startupCache(), "startupCache").isFalse();
+			requireThat(fixture.migrations.runs(), "migrations").isEmpty();
+			requireThat(Files.readString(fixture.provider.migrationVersionFile(fixture.home)), "dataVersion").
+				isEqualTo("1.2\n");
+		}
+	}
+
+	/**
+	 * Data that an uninstall kept records its data version, so install runs, from the version folder, the migrations
+	 * that the archive's release registers after that version, and then records the release as the data version.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if install refuses
+	 */
+	@Test
+	public void migratesKeptData() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-migration-")));
+			Path scripts = fixture.archive.resolve("install/migrations");
+			Files.writeString(scripts.resolve("registry.tsv"), "1.1\tsplit.sh\n1.2\tmerge.sh\n");
+			for (String script : List.of("split.sh", "split.ps1", "merge.sh", "merge.ps1"))
+				Files.writeString(scripts.resolve(script), "exit 0\n");
+			Path dataVersion = fixture.provider.migrationVersionFile(fixture.home);
+			Files.writeString(dataVersion, "1.1\n");
+
+			fixture.install();
+
+			requireThat(fixture.migrations.runs().stream().map(RecordingMigrations.Run::script).toList(), "scripts").
+				isEqualTo(List.of(fixture.versionFolder().resolve("install/migrations/merge.sh")));
+			requireThat(Files.readString(dataVersion), "dataVersion").isEqualTo("1.2\n");
 		}
 	}
 
@@ -324,6 +356,7 @@ public final class InstallCommandTest
 		private final Map<String, String> environment = new HashMap<>();
 		private final RecordingIntegration integration = new RecordingIntegration();
 		private final LiveProvider provider = new LiveProvider();
+		private final RecordingMigrations migrations = new RecordingMigrations();
 		private final List<HarnessIntegration> others = new ArrayList<>();
 		private final HarnessCommand command;
 		private Path requestedHome;
@@ -374,7 +407,7 @@ public final class InstallCommandTest
 		private Install.Outcome install() throws IOException, TrustException
 		{
 			Install install = new Install(archive, Platform.LINUX_X64, replacer(),
-				(recorded, recordedHome) -> RecordingIntegration.cli(), _ -> false);
+				(recorded, recordedHome) -> RecordingIntegration.cli(), _ -> false, migrations);
 			return install.install("harness-a", requestedHome, cwd, environment, user, provider,
 				integration, others, _ -> false);
 		}

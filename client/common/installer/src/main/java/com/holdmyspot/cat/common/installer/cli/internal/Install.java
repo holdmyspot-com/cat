@@ -14,10 +14,13 @@ import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.engine.Consent;
+import com.holdmyspot.cat.common.installer.engine.DataMigration;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
+import com.holdmyspot.cat.common.installer.engine.MigrationRunner;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall.InstalledEntries;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
+import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -37,10 +40,11 @@ import java.util.function.Predicate;
 /**
  * Installs CAT's plugin into one harness from the extracted plugin archive that the running installer belongs to. The
  * installer writes the plugin into CAT's marketplace in the harness home and asks the harness to install it, which
- * puts it in its version folder; it then installs the provider's companion files from that folder, trains the
- * plugin's startup cache there, writes the policy into the plugin's data folder and adds the permission entries that
- * name the installer in the version folder. Every check runs before the first change, and every step can be repeated,
- * so running install again repairs an installation that an earlier install left incomplete.
+ * puts it in its version folder; it then installs the provider's companion files from that folder, runs the data
+ * migrations that the release registers after the recorded data version, trains the plugin's startup cache there,
+ * writes the policy into the plugin's data folder and adds the permission entries that name the installer in the
+ * version folder. Every check runs before the first change, and every step can be repeated, so running install again
+ * repairs an installation that an earlier install left incomplete.
  */
 public final class Install
 {
@@ -62,6 +66,7 @@ public final class Install
 	private final FileReplacer replacer;
 	private final HarnessCliFactory cliFactory;
 	private final Predicate<Path> elevation;
+	private final MigrationRunner migrations;
 
 	/**
 	 * Creates the install of the extracted plugin archive.
@@ -72,21 +77,24 @@ public final class Install
 	 * @param cliFactory runs the harness program that install discovers
 	 * @param elevation  returns whether this process runs with administrative rights, given a directory that the check
 	 *                   may write short-lived files to; the startup cache is not trained with those rights
+	 * @param migrations runs the data migration scripts of the archive's release
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Install(Path image, Platform platform, FileReplacer replacer, HarnessCliFactory cliFactory,
-		Predicate<Path> elevation)
+		Predicate<Path> elevation, MigrationRunner migrations)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(cliFactory, "cliFactory").isNotNull();
 		requireThat(elevation, "elevation").isNotNull();
+		requireThat(migrations, "migrations").isNotNull();
 		this.image = image;
 		this.platform = platform;
 		this.replacer = replacer;
 		this.cliFactory = cliFactory;
 		this.elevation = elevation;
+		this.migrations = migrations;
 	}
 
 	/**
@@ -108,7 +116,8 @@ public final class Install
 	 * @throws TrustException       if a check refuses install, or the user withholds a permission that install needs;
 	 *                              the message of the latter is the question that the integration asked
 	 * @throws IOException          if the harness program is not found, the harness configuration is invalid, the
-	 *                              harness does not install the plugin, or a file cannot be read, written or replaced
+	 *                              harness does not install the plugin, a data migration fails, or a file cannot be
+	 *                              read, written or replaced
 	 */
 	public Outcome install(String harness, Path home, Path cwd, Map<String, String> environment, Path userHome,
 		PluginActivation activation, HarnessIntegration integration, List<HarnessIntegration> others,
@@ -149,10 +158,14 @@ public final class Install
 		Optional<String> consentRequest = integration.consentRequest(home, catLocks);
 		if (consentRequest.isPresent() && !consent.grants(consentRequest.get()))
 			throw refusal(consentRequest.get());
+		Path migrationFile = activation.migrationVersionFile(home);
+		DataMigration migration = DataMigration.plan(plugin, migrationFile, release(version),
+			activeRelease(activation, home));
 
 		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer);
 		Path versionFolder = steps.deliver(home, plugin, version);
 		activation.installCompanions(home, versionFolder);
+		migration.apply(versionFolder, migrationFile.getParent(), migrations, platform.isWindows());
 		Path scratch = InstallerState.of(installation.dataDirectory(), harness).directory().resolve("startup-cache");
 		boolean startupCache = new StartupCacheTrainer(scratch, TRAINING_LIMIT, () -> elevation.test(scratch)).
 			train(versionFolder);
@@ -169,6 +182,46 @@ public final class Install
 		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
 			consentRequest.isPresent());
 		return new Outcome(version, versionFolder, installer, startupCache, entries, policy);
+	}
+
+	/**
+	 * Returns a plugin version's release.
+	 *
+	 * @param version the plugin version
+	 * @return the release
+	 * @throws TrustException if the release is malformed
+	 */
+	private static ReleaseVersion release(PluginVersion version) throws TrustException
+	{
+		return ReleaseVersion.parse(version.release());
+	}
+
+	/**
+	 * Returns the release of the plugin that the harness has, which stands for the data version when CAT's data
+	 * records none.
+	 *
+	 * @param activation the harness's activation provider
+	 * @param home       the harness home
+	 * @return the release, or empty when the harness has no plugin version with a build
+	 * @throws IOException    if the installation cannot be read
+	 * @throws TrustException if the release is malformed
+	 */
+	private static Optional<ReleaseVersion> activeRelease(PluginActivation activation, Path home)
+		throws IOException, TrustException
+	{
+		Optional<String> installed = activation.installed(home).version();
+		if (installed.isEmpty())
+			return Optional.empty();
+		PluginVersion version;
+		try
+		{
+			version = PluginVersion.parse(installed.get());
+		}
+		catch (IllegalArgumentException _)
+		{
+			return Optional.empty();
+		}
+		return Optional.of(release(version));
 	}
 
 	/**
