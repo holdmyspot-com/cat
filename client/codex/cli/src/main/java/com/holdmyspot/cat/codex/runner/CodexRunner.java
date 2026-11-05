@@ -299,6 +299,8 @@ public final class CodexRunner
 		isolatedEnvironment.putAll(caches.environment());
 		isolatedEnvironment.put(CODEX_HOME, isolatedHome.toString());
 		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, runDirectory);
+		// The session's SessionStart hook starts no session launcher
+		isolatedEnvironment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
 		if (platform.isLinux())
 		{
 			// Codex's Linux sandbox creates an empty directory for each protected path that a shell command's sandbox

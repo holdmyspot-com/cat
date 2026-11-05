@@ -20,6 +20,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessEnvironment
 {
 	/**
+	 * The variable that marks a harness process as a session of a CAT run, so that CAT's hooks in it start no session
+	 * launcher. A runner sets it to {@value #RUN_VALUE} in the environment of every harness process that it starts.
+	 */
+	public static final String RUN_VARIABLE = "CAT_RUN";
+	/**
+	 * The value of {@link #RUN_VARIABLE} in a session of a CAT run.
+	 */
+	public static final String RUN_VALUE = "1";
+	/**
 	 * The names of the variables that name the proxy for a child's network connections, in upper and lower case.
 	 */
 	private static final List<String> PROXY_VARIABLES = List.of("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",

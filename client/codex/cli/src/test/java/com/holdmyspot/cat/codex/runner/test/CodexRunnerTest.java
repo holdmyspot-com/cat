@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
@@ -326,6 +327,21 @@ public final class CodexRunnerTest
 			requireThat(shellTemporaryDirectory, "shellTemporaryDirectory").isEqualTo(temporaryDirectory.toString());
 			requireThat(appServer.get("TMPDIR"), "appServerTemporaryDirectory").isEqualTo(shellTemporaryDirectory);
 		}
+	}
+
+	/**
+	 * Verifies that the app-server's environment marks the session as a CAT run, so that the session's SessionStart
+	 * hook starts no session launcher.
+	 */
+	@Test
+	public void marksCatRun()
+	{
+		Path home = Path.of("/run/home").toAbsolutePath();
+		Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin",
+			HarnessEnvironment.RUN_VARIABLE, ""), HarnessDependencyCaches.NONE, home, home.getParent(),
+			home.resolve("tmp"), Platform.LINUX_X64);
+
+		requireThat(appServer.get(HarnessEnvironment.RUN_VARIABLE), "marker").isEqualTo("1");
 	}
 
 	/**

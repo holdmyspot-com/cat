@@ -342,6 +342,8 @@ public final class ClaudeRunner
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
+		// Set after the caller's settings too, so that the session's SessionStart hook starts no session launcher
+		isolatedEnvironment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
 		// Claude Code passes these to the commands that it starts
 		if (requestAccess != null)
 			isolatedEnvironment.putAll(requestAccess.environment());

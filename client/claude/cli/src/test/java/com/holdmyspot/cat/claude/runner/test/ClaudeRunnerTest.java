@@ -9,6 +9,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -87,6 +88,32 @@ public final class ClaudeRunnerTest
 
 			requireThat(result.keySet(), "variables").doesNotContain("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
 			requireThat(result.get("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY").isEqualTo("credential");
+		}
+	}
+
+	/**
+	 * Verifies that the Claude process environment marks the session as a CAT run, even when the caller's settings
+	 * file sets the marker's variable otherwise, so that the session's SessionStart hook starts no session launcher.
+	 *
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test
+	public void marksCatRun() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-run-marker-"));
+			Path settings = Files.writeString(home.resolve("settings.json"), """
+				{"env": {"%s": ""}}
+				""".formatted(HarnessEnvironment.RUN_VARIABLE));
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, settings, home, null);
+
+			requireThat(result.get(HarnessEnvironment.RUN_VARIABLE), "marker").isEqualTo("1");
 		}
 	}
 

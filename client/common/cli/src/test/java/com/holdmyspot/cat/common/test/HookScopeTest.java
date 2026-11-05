@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.fakes.test.TestHookScope;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -147,6 +148,28 @@ public final class HookScopeTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
 			Map<String, String> environment = Map.of("ROOT", plugin.toString(), "USER_HOME", plugin.toString(),
 				"CAT_CALLER_LC_ALL", "+C", "CAT_CALLER_LC_CTYPE", "-");
+			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A,
+				Yielding.waiting()))
+			{
+				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(plugin.toAbsolutePath().normalize());
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a scope accepts the variable that marks a session of a CAT run, which a runner sets in every
+	 * session that it starts, so that CAT's hooks run in those sessions.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void acceptsTheRunMarker() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
+			Map<String, String> environment = Map.of("ROOT", plugin.toString(), "USER_HOME", plugin.toString(),
+				HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
 			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A,
 				Yielding.waiting()))
 			{
