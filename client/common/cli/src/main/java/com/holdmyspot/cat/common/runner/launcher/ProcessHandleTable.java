@@ -2,24 +2,24 @@ package com.holdmyspot.cat.common.runner.launcher;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * The operating system's processes as {@link ProcessHandle} reports them: command lines from
- * {@link ProcessHandle.Info#arguments()}, which reads {@code /proc/<pid>/cmdline} on Linux and the kernel's argument
- * list on macOS, and parents from {@link ProcessHandle#parent()}.
+ * The operating system's processes as {@link ProcessHandle} reports them, with command lines from
+ * {@link HarnessProcesses}, which reads {@code /proc/<pid>/cmdline} on Linux and asks {@link ProcessHandle} elsewhere,
+ * and parents from {@link ProcessHandle#parent()}.
  * <p>
  * The session launcher's requester proof rests on these properties of the platforms and harnesses, which this class
  * is the one place to correct if a platform or harness release differs:
  * <ul>
  *   <li>a holder that a sandboxed command starts descends from the harness process, through the sandbox's own
  *     processes, so that the launcher finds it among {@link #descendants(ProcessIdentity)};</li>
- *   <li>the holder's command line is readable from outside the sandbox, a PID namespace included. On Linux,
- *     {@link ProcessHandle.Info#arguments()} is empty for a process whose command line exceeds 4 KiB, such as a
- *     sandbox wrapper; the holder's command line stays far below that, and the walk from a holder to its harness
- *     reads only parents;</li>
+ *   <li>the holder's command line is readable from outside the sandbox, a PID namespace included, whatever
+ *     its length;</li>
  *   <li>a process's start instant stays the same for as long as it lives, so that the harness's end, and a later
  *     process that reuses its identifier, show as {@link #isAlive(ProcessIdentity)} returning {@code false}. The
  *     launcher polls this rather than waiting on {@link ProcessHandle#onExit()}, which on macOS reports the end of a
@@ -30,11 +30,18 @@ import java.util.stream.Stream;
  */
 public final class ProcessHandleTable implements ProcessTable
 {
+	private final HarnessProcesses processes;
+
 	/**
 	 * Creates the table.
+	 *
+	 * @param processes reports the command lines of processes
+	 * @throws NullPointerException if {@code processes} is null
 	 */
-	public ProcessHandleTable()
+	public ProcessHandleTable(HarnessProcesses processes)
 	{
+		requireThat(processes, "processes").isNotNull();
+		this.processes = processes;
 	}
 
 	@Override
@@ -61,7 +68,13 @@ public final class ProcessHandleTable implements ProcessTable
 	public Optional<List<String>> arguments(ProcessIdentity process)
 	{
 		requireThat(process, "process").isNotNull();
-		return find(process).flatMap(handle -> handle.info().arguments()).map(List::of);
+		// The start instant tells the process apart from a later one that reuses its identifier
+		return processes.find(process.pid()).
+			filter(description -> description.start().
+				map(start -> new ProcessIdentity(process.pid(), start)).
+				filter(process::equals).
+				isPresent()).
+			flatMap(ProcessDescription::arguments);
 	}
 
 	@Override
