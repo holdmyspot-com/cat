@@ -96,16 +96,12 @@ receipt. If the wait ends first, the launcher prints `id=<id>`; run the launcher
 ### Outside a run
 
 Run only the CAT artifact that `<harness>-artifact` selects. Run `<harness>-artifact` by its absolute path, without
-arguments. It selects the CAT artifact of this CAT version and platform for that harness:
-
-- the CAT plugin installed for that harness, when its version matches;
-- otherwise the copy in `.cat/bundles` in the user's home directory;
-- otherwise it downloads that harness's release archive of this CAT version, verifies it against the release's
-	`SHA256SUMS.txt`, and extracts it to that copy. A failed download, checksum or extraction leaves no copy.
-
-On success it prints three lines: `artifact=<artifact>`, `runner=<runner>` and `source=`, which is `installed`,
-`bundle` or `download`. On failure it exits with a non-zero status and prints the reason; report that reason and do
-not start a run. `<harness>-runner` runs that same artifact itself, so do not pass `--artifact`.
+arguments. It selects the CAT plugin installed for that harness when that plugin is this CAT version. On success it
+prints three lines: `artifact=<artifact>`, `runner=<runner>` and `source=installed`. When CAT is not installed in that
+harness, or is installed there at another version, it exits with a non-zero status and prints a reason that names the
+command which installs or updates CAT there; ask the user to approve and run that command, then retry. On any other
+failure, report the reason and do not start a run. `<harness>-runner` runs that same artifact itself, so do not pass
+`--artifact`.
 
 Before a run, require all of these exact prerequisites:
 
