@@ -297,9 +297,7 @@ public final class ClaudeRunnerCli
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
-			HarnessCapacity capacity = null;
-			if (!options.capacityHeld())
-				capacity = capacityForMaximum.apply(options.maximumConcurrency());
+			HarnessCapacity capacity = capacityForMaximum.apply(options.maximumConcurrency());
 			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, bound, extraPermissions, manager,
 				input, output, environment, replacer, capacity);
 		}
@@ -321,7 +319,7 @@ public final class ClaudeRunnerCli
 	 * @param output bridge output when no durable destination was requested
 	 * @param environment host environment
 	 * @param replacer replaces the receipt
-	 * @param capacity the shared harness capacity, or {@code null} if the requester holds the session's slot
+	 * @param capacity the shared harness capacity
 	 * @throws IOException if bridge execution or retained-evidence writing fails
 	 */
 	private static void serve(ToolScope scope, HarnessRunnerOptions options, ClaudeAgentDefinition agent,
@@ -347,8 +345,8 @@ public final class ClaudeRunnerCli
 			HarnessRunStarter starter = () -> new ClaudeRunner(scope.waiting()).start(cat, options.project(),
 				options.workspace(), trialPlugins, manager, "claude", environment, options.model(), options.effort(),
 				agent, options.installCat(), readOnlyEvidence, options.deniedReads(), instructionFilesMode,
-				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),
-				options.gitEmail(), extraPermissions);
+				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
+				extraPermissions);
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) -> requestedRunner(scope, options.artifact(), harness, environment).
 					start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()), directory,
@@ -388,17 +386,15 @@ public final class ClaudeRunnerCli
 	/**
 	 * Takes a capacity permit, waiting no longer than the command's {@code --capacity-wait} if it named one.
 	 *
-	 * @param capacity the shared harness capacity, or {@code null} if the requester holds the session's slot
+	 * @param capacity the shared harness capacity
 	 * @param options the parsed bridge options
-	 * @return the permit, or {@code null} if {@code capacity} is null
+	 * @return the permit
 	 * @throws HarnessCapacityWaitExpiredException if the wait passed without a free permit
 	 * @throws IOException if a slot cannot be locked or the wait fails
 	 */
 	private static HarnessCapacity.Permit acquire(HarnessCapacity capacity, HarnessRunnerOptions options)
 		throws IOException
 	{
-		if (capacity == null)
-			return null;
 		if (options.capacityWait() == null)
 			return capacity.acquire();
 		return capacity.acquire(options.capacityWait());

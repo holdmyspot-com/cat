@@ -881,37 +881,6 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch whose requester holds the session's capacity slot takes none, so that it starts even
-	 * while every slot is taken.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void heldCapacityTakesNoSlot() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model",
-				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
-			try
-			{
-				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
-				{
-					throw new AssertionError("The launch took a capacity slot");
-				}, InPlaceBounds.unused());
-				throw new AssertionError("The launch started a session without a CAT artifact");
-			}
-			catch (IOException _)
-			{
-				// The session starts without a slot, and fails only because the test runs no CAT artifact
-			}
-		}
-	}
-
-	/**
 	 * Writes a policy bound that lets a session's commands write the test's directory and reach OpenAI's API.
 	 *
 	 * @param root the test's directory

@@ -631,27 +631,18 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that the options that a requesting runner gives the runner of a requested session reach it: the file of
-	 * the session's policy bound, that the requester holds the session's capacity slot, and the Git identity of the
-	 * copied project; and that a launch without them has no bound, takes its own slot and reads the identity from the
-	 * source project.
+	 * Verifies that the file of a session's policy bound, which a requesting runner gives the runner of a requested
+	 * session, reaches it, and that a launch without it has no bound.
 	 */
 	@Test
 	public void parsesLauncherOptions()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--policy-bound",
-			absolute("requests/r1/policy-bound.json"), "--capacity-held", "--git-name", "A User", "--git-email",
-			"user@example.test"), "harness", SESSION);
+			absolute("requests/r1/policy-bound.json")), "harness", SESSION);
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(), "harness", SESSION);
 
 		requireThat(result.policyBound(), "policyBound").isEqualTo(path("requests/r1/policy-bound.json"));
-		requireThat(result.capacityHeld(), "capacityHeld").isTrue();
-		requireThat(result.gitName(), "gitName").isEqualTo("A User");
-		requireThat(result.gitEmail(), "gitEmail").isEqualTo("user@example.test");
 		requireThat(without.policyBound(), "withoutPolicyBound").isNull();
-		requireThat(without.capacityHeld(), "withoutCapacityHeld").isFalse();
-		requireThat(without.gitName(), "withoutGitName").isNull();
-		requireThat(without.gitEmail(), "withoutGitEmail").isNull();
 	}
 
 	/**

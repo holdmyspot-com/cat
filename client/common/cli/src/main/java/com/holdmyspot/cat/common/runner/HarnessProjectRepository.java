@@ -31,10 +31,9 @@ public final class HarnessProjectRepository
 			}
 
 			@Override
-			public HarnessProjectRepository.Identity identity(String gitName, String gitEmail, String hostName,
-				String hostEmail)
+			public HarnessProjectRepository.Identity identity(String hostName, String hostEmail)
 			{
-				return HarnessProjectRepository.identity(gitName, gitEmail, hostName, hostEmail);
+				return HarnessProjectRepository.identity(hostName, hostEmail);
 			}
 
 			@Override
@@ -48,8 +47,8 @@ public final class HarnessProjectRepository
 
 	/**
 	 * Makes a copied project a clean repository whose baseline is exactly the copied fixture and that never starts
-	 * background maintenance. Its baseline and later commits use the Git user name and email that the launch names,
-	 * and otherwise the source project's, resolved with the parent environment. If either value is missing, both use
+	 * background maintenance. Its baseline and later commits use the source project's Git user name and email,
+	 * resolved with the parent environment. If either value is missing, both use
 	 * {@code CAT fixture <cat-fixture@example.invalid>}.
 	 *
 	 * @param sourceProject     the source project whose Git identity is inherited
@@ -57,16 +56,11 @@ public final class HarnessProjectRepository
 	 * @param runDirectory      the owned run directory that may hold setup-only state
 	 * @param parentEnvironment the environment resolved by the production entry point
 	 * @param executables       runs Git
-	 * @param gitName           the Git user name that the launch names, or {@code null} to read the source
-	 *                          project's
-	 * @param gitEmail          the Git user email that the launch names, or {@code null} to read the source
-	 *                          project's
-	 * @throws NullPointerException if any of the arguments are null, other than {@code gitName} and {@code gitEmail}
+	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException         if Git cannot resolve the identity or create the independent baseline
 	 */
 	public static void initialize(Path sourceProject, Path project, Path runDirectory,
-		Map<String, String> parentEnvironment, ExecutableFiles executables, String gitName, String gitEmail)
-		throws IOException
+		Map<String, String> parentEnvironment, ExecutableFiles executables) throws IOException
 	{
 		requireThat(sourceProject, "sourceProject").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -74,13 +68,9 @@ public final class HarnessProjectRepository
 		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
 
-		String hostName = null;
-		if (gitName == null)
-			hostName = readIdentity(sourceProject, parentEnvironment, executables, "user.name");
-		String hostEmail = null;
-		if (gitEmail == null)
-			hostEmail = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
-		Identity identity = identity(gitName, gitEmail, hostName, hostEmail);
+		String hostName = readIdentity(sourceProject, parentEnvironment, executables, "user.name");
+		String hostEmail = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
+		Identity identity = identity(hostName, hostEmail);
 		Path gitHome = runDirectory.resolve("git-home");
 		Files.createDirectories(gitHome);
 		Map<String, String> environment = environment(parentEnvironment, gitHome);
@@ -130,27 +120,18 @@ public final class HarnessProjectRepository
 	}
 
 	/**
-	 * Chooses the identity of the copy's commits. A name or email that the launch names is used as given. Otherwise the
-	 * host's is used. If either value is still missing, both are the fixture's.
+	 * Chooses the identity of the copy's commits: the host's, or the fixture's if the host lacks a name or an email.
 	 *
-	 * @param gitName   the Git user name that the launch names, or {@code null} if it names none
-	 * @param gitEmail  the Git user email that the launch names, or {@code null} if it names none
-	 * @param hostName  the source project's Git user name, or {@code null} if it has none or was not read
-	 * @param hostEmail the source project's Git user email, or {@code null} if it has none or was not read
+	 * @param hostName  the source project's Git user name, or {@code null} if it has none
+	 * @param hostEmail the source project's Git user email, or {@code null} if it has none
 	 * @return the identity
 	 */
-	static Identity identity(String gitName, String gitEmail, String hostName, String hostEmail)
+	static Identity identity(String hostName, String hostEmail)
 	{
-		String name = gitName;
-		if (name == null)
-			name = hostName;
-		String email = gitEmail;
-		if (email == null)
-			email = hostEmail;
-		boolean incompleteIdentity = name == null || email == null;
+		boolean incompleteIdentity = hostName == null || hostEmail == null;
 		if (incompleteIdentity)
 			return new Identity("CAT fixture", "cat-fixture@example.invalid");
-		return new Identity(name, email);
+		return new Identity(hostName, hostEmail);
 	}
 
 	/**

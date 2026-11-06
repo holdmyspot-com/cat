@@ -127,8 +127,6 @@ public final class CodexRunner
 	 * @param bound the policy that bounds the session's sandbox: the session gets its run directory, the dependency
 	 *   caches and its model host only within it
 	 * @param policyListener receives the session's sandbox policy before its Codex process starts
-	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
-	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Codex needs
 	 * @return the live owned Codex run session
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
@@ -138,8 +136,7 @@ public final class CodexRunner
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
-		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail, ExtraPermissions extraPermissions)
-		throws IOException
+		Consumer<ChildPolicy> policyListener, ExtraPermissions extraPermissions) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -168,7 +165,7 @@ public final class CodexRunner
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
-				executables, gitName, gitEmail);
+				executables);
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = CodexInstallation.resolveHome(environment);
