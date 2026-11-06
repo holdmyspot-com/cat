@@ -92,6 +92,45 @@ public final class InMemoryForksTest
 	}
 
 	/**
+	 * Verifies that the fake reports a denied removal and keeps the worktree, as the real adapter does for a removal
+	 * that fails.
+	 *
+	 * @throws IOException if fixture files or the contract check fail
+	 */
+	@Test
+	public void reportsAFailedRemoval() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			Files.writeString(base.resolve("prompt.md"), "prompt");
+			InMemoryForks forks = new InMemoryForks(base, Set.of(Path.of("prompt.md")));
+			Path campaign = root.resolve("campaign");
+			forks.create(base, campaign, Set.of());
+
+			new ForksContract(forks, base, campaign).reportsAFailedRemoval(forks::denyRemoval);
+		}
+	}
+
+	/**
+	 * Verifies that removing one campaign's fork keeps another campaign's fork of the same base.
+	 *
+	 * @throws IOException if fixture files or the contract check fail
+	 */
+	@Test
+	public void removalKeepsAnotherCampaignsFork() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-memory-fork-contract-"));
+			contract(root).removalKeepsAnotherCampaignsFork();
+		}
+	}
+
+	/**
 	 * Verifies the fake observes an independently removed worktree instead of relying only on its inventory map.
 	 *
 	 * @throws IOException if fixture files or the contract check fail

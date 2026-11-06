@@ -95,8 +95,9 @@ public final class InMemoryForks implements Forks
 
 	/**
 	 * Makes every later {@code remove} fail as a file system that denies deleting the optimization worktree would.
+	 * {@code ForksContract} checks the failure against this fake and the Git adapter.
 	 */
-	void denyRemoval()
+	public void denyRemoval()
 	{
 		removalDenied = true;
 	}

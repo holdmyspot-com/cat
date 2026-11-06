@@ -321,6 +321,61 @@ public final class ForksContract
 	}
 
 	/**
+	 * Makes the next removal of the current fork fail, as a file system or Git that refuses it would.
+	 */
+	@FunctionalInterface
+	public interface RemovalFailure
+	{
+		/**
+		 * Makes the next removal of the current fork fail.
+		 *
+		 * @throws IOException if the failure cannot be induced
+		 */
+		void induce() throws IOException;
+	}
+
+	/**
+	 * Verifies that a removal that fails is reported to the caller and leaves the fork where it was.
+	 *
+	 * @param failure makes the removal fail
+	 * @throws IOException if the failure cannot be induced
+	 */
+	public void reportsAFailedRemoval(RemovalFailure failure) throws IOException
+	{
+		requireThat(forks.exists(campaign), "existsBefore").isTrue();
+		failure.induce();
+
+		try
+		{
+			forks.remove(base, campaign);
+		}
+		catch (IOException e)
+		{
+			requireThat(e.getMessage(), "message").isNotBlank();
+			requireThat(forks.exists(campaign), "existsAfter").isTrue();
+			return;
+		}
+		throw new AssertionError("A removal that fails must be reported");
+	}
+
+	/**
+	 * Verifies that removing one campaign's fork leaves another campaign's fork of the same base in place.
+	 *
+	 * @throws IOException if a fork cannot be created or removed
+	 */
+	public void removalKeepsAnotherCampaignsFork() throws IOException
+	{
+		Path other = campaign.resolveSibling("other-campaign");
+		forks.create(base, other, Set.of());
+		requireThat(forks.exists(campaign), "existsBefore").isTrue();
+
+		forks.remove(base, campaign);
+
+		requireThat(forks.exists(campaign), "existsAfter").isFalse();
+		requireThat(forks.exists(other), "otherExists").isTrue();
+	}
+
+	/**
 	 * Verifies that a worktree removed outside the adapter makes the fork absent and impossible to open.
 	 *
 	 * @throws IOException if the worktree cannot be removed or its records cannot be read

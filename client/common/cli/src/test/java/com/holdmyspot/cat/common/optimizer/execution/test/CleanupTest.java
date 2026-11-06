@@ -22,17 +22,14 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
-import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
+import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
-import com.holdmyspot.cat.common.optimizer.workspace.test.ForksContract;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
 import java.io.IOException;
-import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -44,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link Cleanup} against a test-owned base worktree whose campaigns hold optimization worktrees, and the two run
- * roots of the CAT session directory that holds the campaigns. The worktrees are directories that {@link FakeForks}
+ * roots of the CAT session directory that holds the campaigns. The worktrees are directories that {@link InMemoryForks}
  * records instead of Git worktrees, since {@code ForkTest} covers removing a Git worktree.
  * <p>
  * Every test stores two campaigns in the base: the campaign under test and another campaign. Each run root holds a run
@@ -68,30 +65,6 @@ public final class CleanupTest
 	 */
 	public CleanupTest()
 	{
-	}
-
-	/**
-	 * Verifies the cleanup fake's physical removal, registration removal and repeated removal through the same
-	 * postconditions as the Git adapter, while preserving another campaign's files and registration.
-	 *
-	 * @throws IOException if the fixture or removal fails
-	 */
-	@Test
-	public void forkRemovalMatchesSharedContract() throws IOException
-	{
-		// Requirement: R-W9
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Fixture fixture = Fixture.create(cleanup);
-			Path campaign = fixture.directory(CAMPAIGN);
-			fixture.forks().fork(fixture.base(), campaign);
-			ForksContract contract = new ForksContract(fixture.forks(), fixture.base(), campaign);
-
-			contract.removesWorktree();
-			contract.removesMissingWorktree();
-
-			fixture.requireOtherKept("sharedRemoval", fixture.forks().worktrees());
-		}
 	}
 
 	/**
@@ -243,7 +216,8 @@ public final class CleanupTest
 			Fixture fixture = Fixture.create(cleanup);
 			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
 			Path worktree = fixture.directory(CAMPAIGN).resolve("worktree");
-			Forks denying = new DenyingForks(worktree);
+			InMemoryForks denying = new InMemoryForks(fixture.base(), Set.of());
+			denying.denyRemoval();
 			String warning = "Could not remove the files of campaign " + CAMPAIGN + ": " + worktree +
 				": Permission denied. The next command retries the removal.";
 
@@ -356,7 +330,7 @@ public final class CleanupTest
 	 * @param runRoots the session's run root and held-out run root
 	 * @param forks the campaigns' optimization worktrees
 	 */
-	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> runRoots, FakeForks forks)
+	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> runRoots, InMemoryForks forks)
 	{
 		/**
 		 * Creates the base worktree, the other campaign with its worktree and runs, and the run roots.
@@ -376,7 +350,8 @@ public final class CleanupTest
 				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
 			Fixture fixture = new Fixture(new FileLocks(), base, session.campaigns(), List.of(sessionRuns,
-				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))), new FakeForks());
+				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))),
+				new InMemoryForks(base, Set.of(Path.of("CLAUDE.md"))));
 			fixture.store(new Builder().header(fixture.header(OTHER, Lifecycle.ACTIVE)));
 			for (Path runRoot : fixture.runRoots())
 			{
@@ -425,7 +400,7 @@ public final class CleanupTest
 			String id = built.header().id();
 			Path directory = directory(id);
 			if (forked)
-				forks.fork(base, directory);
+				forks.create(base, directory, Set.of());
 			for (Path runRoot : runRoots)
 			{
 				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));
@@ -501,15 +476,13 @@ public final class CleanupTest
 				requireThat(Files.notExists(runRoot.resolve("claude/run-" + CAMPAIGN)), "runIsAbsent").
 					withContext(runRoot, "runRoot").isTrue();
 			}
-			Set<Path> worktrees = forks.worktrees();
-			requireThat(worktrees.stream().noneMatch(worktree -> worktree.startsWith(directory(CAMPAIGN))),
-				"campaignWorktreeIsAbsent").withContext(worktrees, "worktrees").isTrue();
+			requireThat(forks.exists(directory(CAMPAIGN)), "campaignWorktreeExists").isFalse();
 			try (Stream<Path> entries = Files.list(directory(CAMPAIGN).getParent()))
 			{
 				requireThat(entries.map(path -> path.getFileName().toString()).toList(), "campaigns").
 					isEqualTo(List.of(OTHER));
 			}
-			requireOtherKept("removed", worktrees);
+			requireOtherKept("removed");
 		}
 
 		/**
@@ -529,24 +502,22 @@ public final class CleanupTest
 				requireThat(runRoot.resolve("claude/run-" + CAMPAIGN + "/run.json"), "run").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
 			}
-			requireOtherKept(context, forks.worktrees());
+			requireOtherKept(context);
 		}
 
 		/**
 		 * Requires every file of {@link #OTHER} and the malformed runs to remain.
 		 *
 		 * @param context the case that the check belongs to
-		 * @param worktrees the optimization worktrees that the forks hold
 		 * @throws IOException if a file's type cannot be read
 		 */
-		void requireOtherKept(String context, Set<Path> worktrees) throws IOException
+		void requireOtherKept(String context) throws IOException
 		{
 			requireThat(directory(OTHER).resolve("held_out/campaign.json"), "otherSnapshot").
 				withContext(context, "context").isRegularFile();
 			requireThat(directory(OTHER).resolve("worktree/CLAUDE.md"), "otherWorktree").
 				withContext(context, "context").isRegularFile();
-			requireThat(worktrees.stream().anyMatch(worktree -> worktree.startsWith(directory(OTHER))),
-				"otherWorktreeIsListed").withContext(context, "context").withContext(worktrees, "worktrees").isTrue();
+			requireThat(forks.exists(directory(OTHER)), "otherWorktreeExists").withContext(context, "context").isTrue();
 			for (Path runRoot : runRoots)
 			{
 				requireThat(runRoot.resolve("claude/run-" + OTHER + "/run.json"), "otherRun").
@@ -554,145 +525,6 @@ public final class CleanupTest
 				requireThat(runRoot.resolve("claude/run-malformed/run.json"), "malformedRun").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
 			}
-		}
-	}
-
-	/**
-	 * Forks whose optimization worktrees are directories that the fake records instead of Git worktrees. Removing a
-	 * worktree deletes its directory and its record, and removing one that does not exist does nothing, as
-	 * {@link Forks#remove(Path, Path)} documents. {@link Cleanup} only removes worktrees, so the fake creates them
-	 * through {@link #fork(Path, Path)} and refuses the other operations.
-	 */
-	private static final class FakeForks implements Forks
-	{
-		/**
-		 * The optimization worktree of each campaign that the fake forked and has not removed.
-		 */
-		private final Set<Path> worktrees = new HashSet<>();
-
-		/**
-		 * Creates forks that hold no worktree.
-		 */
-		FakeForks()
-		{
-		}
-
-		/**
-		 * Gives a campaign an optimization worktree that holds the base's {@code CLAUDE.md}.
-		 *
-		 * @param base the base worktree
-		 * @param campaign the campaign storage directory
-		 * @throws IOException if the worktree cannot be created
-		 */
-		void fork(Path base, Path campaign) throws IOException
-		{
-			Path worktree = Files.createDirectories(campaign.resolve("worktree"));
-			Files.copy(base.resolve("CLAUDE.md"), worktree.resolve("CLAUDE.md"));
-			worktrees.add(worktree);
-		}
-
-		/**
-		 * Returns the optimization worktrees that the fake holds.
-		 *
-		 * @return the worktrees' directories
-		 */
-		Set<Path> worktrees()
-		{
-			return Set.copyOf(worktrees);
-		}
-
-		@Override
-		public ForkView create(Path base, Path campaign, Set<Path> participants)
-		{
-			throw new UnsupportedOperationException("Cleanup never forks a project");
-		}
-
-		@Override
-		public Set<Path> tracked(Path base)
-		{
-			throw new UnsupportedOperationException("Cleanup never lists tracked files");
-		}
-
-		@Override
-		public Set<Path> trackedLinks(Path base)
-		{
-			throw new UnsupportedOperationException("Cleanup never lists tracked links");
-		}
-
-		@Override
-		public String diff(Path base, List<Path> paths)
-		{
-			throw new UnsupportedOperationException("Cleanup never compares files with HEAD");
-		}
-
-		@Override
-		public ForkView open(Path base, Path campaign)
-		{
-			throw new UnsupportedOperationException("Cleanup never opens a fork");
-		}
-
-		@Override
-		public boolean exists(Path campaign)
-		{
-			return worktrees.contains(campaign.resolve("worktree"));
-		}
-
-		@Override
-		public void remove(Path base, Path campaign) throws IOException
-		{
-			Path worktree = campaign.resolve("worktree");
-			TemporaryDirectories.deleteRecursively(worktree);
-			worktrees.remove(worktree);
-		}
-	}
-
-	/**
-	 * Forks whose removal of one optimization worktree is denied, as a file system that refuses the deletion would.
-	 *
-	 * @param denied the worktree whose removal fails
-	 */
-	private record DenyingForks(Path denied) implements Forks
-	{
-		@Override
-		public ForkView create(Path base, Path campaign, Set<Path> participants)
-		{
-			throw new UnsupportedOperationException("Cleanup never forks a project");
-		}
-
-		@Override
-		public ForkView open(Path base, Path campaign)
-		{
-			throw new UnsupportedOperationException("Cleanup never opens a fork");
-		}
-
-		@Override
-		public boolean exists(Path campaign)
-		{
-			throw new UnsupportedOperationException("Cleanup never checks for a fork");
-		}
-
-		@Override
-		public Set<Path> tracked(Path base)
-		{
-			throw new UnsupportedOperationException("Cleanup never lists tracked files");
-		}
-
-		@Override
-		public Set<Path> trackedLinks(Path base)
-		{
-			throw new UnsupportedOperationException("Cleanup never lists tracked links");
-		}
-
-		@Override
-		public String diff(Path base, List<Path> paths)
-		{
-			throw new UnsupportedOperationException("Cleanup never compares files with HEAD");
-		}
-
-		@Override
-		public void remove(Path base, Path campaign) throws IOException
-		{
-			throw new AccessDeniedException(denied.toString(), null, "Permission denied");
 		}
 	}
 

@@ -270,6 +270,71 @@ public final class ForkTest
 	}
 
 	/**
+	 * Verifies that a removal that Git refuses is reported and leaves the optimization worktree in place. The base's
+	 * {@code .git} is replaced with a file that is not a Git file, so that every Git command in the base fails.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void reportsAFailedRemoval() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).reportsAFailedRemoval(() ->
+			{
+				TemporaryDirectories.deleteRecursively(base.resolve(".git"));
+				Files.writeString(base.resolve(".git"), "not a Git file\n");
+			});
+		}
+	}
+
+	/**
+	 * Verifies that removing one campaign's optimization worktree keeps another campaign's worktree of the same base.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void removalKeepsAnotherCampaignsFork() throws IOException
+	{
+		// Requirement: R-W9
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).removalKeepsAnotherCampaignsFork();
+		}
+	}
+
+	/**
+	 * Verifies that a created optimization worktree exists and reopens with the inventory that creation returned.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void createdForkCanBeReopened() throws IOException
+	{
+		// Requirement: R-W2
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
+			Fork created = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+
+			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).createdForkCanBeReopened(created);
+		}
+	}
+
+	/**
 	 * Verifies that a missing optimization worktree is neither reported present nor opened, even when the recorded
 	 * fork inventory remains. The stored fixture needs no Git repository.
 	 *
