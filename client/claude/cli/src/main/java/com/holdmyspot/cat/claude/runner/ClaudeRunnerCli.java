@@ -32,6 +32,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
@@ -237,6 +238,7 @@ public final class ClaudeRunnerCli
 	 * @throws NullPointerException    if any argument is null
 	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, or the session's sandbox would
 	 *                                 not confine it as its policy requires
+	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
 	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
 	 *                                 I/O fails
 	 */
@@ -257,14 +259,16 @@ public final class ClaudeRunnerCli
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
 			ChildPolicy bound = policyBound(scope.json(), options);
+			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
+				options.extraPermissions());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
 			HarnessCapacity capacity = null;
 			if (!options.capacityHeld())
 				capacity = capacityForMaximum.apply(options.maximumConcurrency());
-			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, bound, manager, input, output,
-				environment, replacer, capacity);
+			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, bound, extraPermissions, manager,
+				input, output, environment, replacer, capacity);
 		}
 	}
 
@@ -278,6 +282,7 @@ public final class ClaudeRunnerCli
 	 * @param instructionFilesMode the choice of which instruction files load, or an empty string to keep the parent's
 	 *   choice
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
+	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @param manager owned-run lifecycle manager
 	 * @param input bridge input
 	 * @param output bridge output when no durable destination was requested
@@ -288,7 +293,7 @@ public final class ClaudeRunnerCli
 	 */
 	private static void serve(ToolScope scope, HarnessRunnerOptions options, ClaudeAgentDefinition agent,
 		List<Path> readOnlyEvidence,
-		String instructionFilesMode, ChildPolicy bound, HarnessRunManager manager,
+		String instructionFilesMode, ChildPolicy bound, ExtraPermissions extraPermissions, HarnessRunManager manager,
 		Reader input, Writer output,
 		Map<String, String> environment, FileReplacer replacer,
 		HarnessCapacity capacity) throws IOException
@@ -310,7 +315,7 @@ public final class ClaudeRunnerCli
 				options.workspace(), trialPlugins, manager, "claude", environment, options.model(), options.effort(),
 				agent, options.installCat(), readOnlyEvidence, options.deniedReads(), instructionFilesMode,
 				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),
-				options.gitEmail());
+				options.gitEmail(), extraPermissions);
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) -> requestedRunner(scope, options.artifact(), harness, environment).
 					start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()), directory,

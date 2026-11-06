@@ -33,6 +33,7 @@ import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
@@ -128,6 +129,7 @@ public final class CodexRunner
 	 * @param policyListener receives the session's sandbox policy before its Codex process starts
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
+	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Codex needs
 	 * @return the live owned Codex run session
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
 	 * @throws IOException             if validation, copying, or process startup fails
@@ -136,7 +138,8 @@ public final class CodexRunner
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
-		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail) throws IOException
+		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail, ExtraPermissions extraPermissions)
+		throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -150,6 +153,7 @@ public final class CodexRunner
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(bound, "bound").isNotNull();
 		requireThat(policyListener, "policyListener").isNotNull();
+		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
@@ -183,10 +187,11 @@ public final class CodexRunner
 			String modelHost = CodexConnectionConfiguration.modelHost(configuration(hostHome), environment,
 				isolatedHome.resolve(LOGIN));
 			ChildPolicy policy = ChildPolicy.intersect(bound, new ChildNeeds(run.directory().toAbsolutePath(),
-				caches.directories(), List.of(), Set.of(modelHost)));
+				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions));
 			CodexConnectionConfiguration.copy(configuration(hostHome), isolatedConfiguration,
 				run.directory().resolve("project"), caches,
-				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState, policy);
+				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState, policy,
+				extraPermissions);
 			if (!Platform.current().isWindows())
 			{
 				CodexConnectionConfiguration.requireNarrowingLayers(CodexConnectionConfiguration.SYSTEM_LAYER,

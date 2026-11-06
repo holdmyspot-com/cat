@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -724,6 +725,39 @@ public final class CodexConnectionConfigurationTest
 			requireThat(filesystem.path(keptCache.toString()).asString(), "keptCache").isEqualTo("write");
 			requireThat(filesystem.path(protectedFolder.toString()).asString(), "protectedFolder").isEqualTo("read");
 			requireThat(filesystem.path(secret.toString()).asString(), "secret").isEqualTo("deny");
+		}
+	}
+
+	/**
+	 * Verifies that a session may write the extra directories that its launch asks for, and reach the extra hosts,
+	 * when the policy that bounds it allows them.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void sessionWritesExtraPermissions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-extra-permissions-")).toRealPath();
+			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path registry = Files.createDirectories(root.resolve("registry cache"));
+			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder, registry), List.of(), List.of(), List.of(),
+				HostAccess.listed(Set.of("api.example", "registry.example")), false, List.of());
+			ExtraPermissions extra = new ExtraPermissions(List.of(registry), Set.of("registry.example"));
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
+				Set.of("api.example")).with(extra));
+			Path destination = runFolder.resolve("home/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy, extra);
+
+			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
+			JsonNode permissions = configuration.path("permissions").path("cat-runner");
+			requireThat(permissions.path("filesystem").path(registry.toString()).asString(), "registry").
+				isEqualTo("write");
+			requireThat(Files.readString(destination), "configuration").contains("registry.example");
 		}
 	}
 

@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import static org.testng.Assert.expectThrows;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -564,6 +566,36 @@ public final class ClaudeRunnerCliTest
 			{
 				requireThat(e.getMessage(), "message").contains("allow_everything").contains(bound.toString());
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose file of extra permissions is invalid is refused, naming the file and the problem,
+	 * before it takes a capacity slot.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void rejectsInvalidExtraPermissions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path extra = Files.writeString(root.resolve("extra.json"),
+				"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}");
+			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
+				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--extra-permissions",
+				extra.toString()};
+
+			InvalidArgumentsException refusal = expectThrows(InvalidArgumentsException.class, () ->
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				{
+					throw new AssertionError("The launch took a capacity slot");
+				}));
+
+			requireThat(refusal.getMessage(), "message").contains("relative/cache").contains(extra.toString());
 		}
 	}
 

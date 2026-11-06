@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
@@ -262,7 +263,8 @@ public final class ClaudeConnectionSettings
 		throws IOException
 	{
 		writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
-			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, null, DEFAULT_MODEL_HOST);
+			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, null, ExtraPermissions.NONE,
+			DEFAULT_MODEL_HOST);
 	}
 
 	/**
@@ -296,21 +298,26 @@ public final class ClaudeConnectionSettings
 	 * @param project                  the instance's Git repository, whose {@code .git} is a directory, or
 	 *                                 {@code null} if the instance may register no linked worktree
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
+	 *                                 needs, which join its needs
 	 * @param modelHost                the host of the instance's model provider
 	 * @return the instance's sandbox policy
-	 * @throws NullPointerException     if {@code instructionFilesMode} or {@code modelHost} are null
+	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code extraPermissions} or
+	 *                                  {@code modelHost} are null
 	 * @throws IllegalArgumentException if {@code modelHost} is blank
 	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write {@code claudeHome},
-	 *                                  {@code claudeTemporaryDirectory} or {@code project}
+	 *                                  {@code claudeTemporaryDirectory} or {@code project}, or lacks a write or host
+	 *                                  that the instance needs
 	 * @throws IOException              if settings I/O fails
 	 */
 	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
 		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
-		ChildPolicy bound, String modelHost)
+		ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost)
 		throws IOException
 	{
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
+		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(modelHost, "modelHost").isNotBlank();
 		Path worktreeRegistrations = null;
 		if (project != null)
@@ -327,7 +334,8 @@ public final class ClaudeConnectionSettings
 		implicitWrites.add(claudeTemporaryDirectory);
 		if (project != null)
 			implicitWrites.add(project);
-		ChildPolicy policy = childPolicy(bound, claudeHome, sessionWrites, implicitWrites, deniedReads, modelHost);
+		ChildPolicy policy = childPolicy(bound, claudeHome, sessionWrites, implicitWrites, deniedReads, extraPermissions,
+			modelHost);
 
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
@@ -377,6 +385,7 @@ public final class ClaudeConnectionSettings
 	 * @param sessionWrites  the other paths that the instance's commands may write if {@code bound} lets them
 	 * @param implicitWrites the paths that Claude Code lets the commands write without a setting
 	 * @param deniedReads    the paths that the instance must not read
+	 * @param extra          the writes and hosts that the instance needs beyond what Claude Code needs
 	 * @param modelHost      the host of the instance's model provider
 	 * @return the policy
 	 * @throws SessionRefusedException if {@code bound} does not let the commands write {@code claudeHome} or one of
@@ -384,7 +393,8 @@ public final class ClaudeConnectionSettings
 	 * @throws IOException             if a symbolic link in a path cannot be read
 	 */
 	private static ChildPolicy childPolicy(ChildPolicy bound, Path claudeHome, List<Path> sessionWrites,
-		List<Path> implicitWrites, List<Path> deniedReads, String modelHost) throws IOException
+		List<Path> implicitWrites, List<Path> deniedReads, ExtraPermissions extra, String modelHost)
+		throws IOException
 	{
 		ParentPolicy parent = ParentPolicy.UNSANDBOXED;
 		if (bound != null)
@@ -412,7 +422,7 @@ public final class ClaudeConnectionSettings
 		for (Path path : deniedReads)
 			reads.add(path.toAbsolutePath());
 		return ChildPolicy.intersect(parent, new ChildNeeds(claudeHome.toAbsolutePath(), extraWrites, reads,
-			Set.of(modelHost.strip().toLowerCase(Locale.ROOT))));
+			Set.of(modelHost.strip().toLowerCase(Locale.ROOT))).with(extra));
 	}
 
 	/**

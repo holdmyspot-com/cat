@@ -38,6 +38,7 @@ import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.ByteArrayOutputStream;
@@ -141,6 +142,7 @@ public final class ClaudeRunner
 	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
+	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes, or a settings file that Claude Code also loads would
@@ -151,10 +153,11 @@ public final class ClaudeRunner
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
-		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail)
-		throws IOException
+		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail,
+		ExtraPermissions extraPermissions) throws IOException
 	{
 		requireThat(policyListener, "policyListener").isNotNull();
+		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(trialPlugins, "trialPlugins").isNotNull();
@@ -205,7 +208,7 @@ public final class ClaudeRunner
 				hostConfiguration.resolve("settings.json"), isolatedConfiguration.resolve("settings.json"),
 				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), run.directory(),
 				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, requestAccess),
-				instructionFilesMode, requestAccess, worktree, bound,
+				instructionFilesMode, requestAccess, worktree, bound, extraPermissions,
 				ClaudeConnectionSettings.modelHost(isolatedEnvironment));
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);

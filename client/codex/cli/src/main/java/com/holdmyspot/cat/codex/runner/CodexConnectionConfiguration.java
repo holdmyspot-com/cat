@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -571,13 +572,7 @@ public final class CodexConnectionConfiguration
 	/**
 	 * Copies the configuration as
 	 * {@link #copy(Path, Path, Path, HarnessDependencyCaches, Path, int, SessionRequestAccess, Platform,
-	 * CodexParentMultiAgentState)} does, within a session policy.
-	 * <p>
-	 * The session may write a dependency cache only if the policy keeps it among its writes, may only read each path
-	 * that the policy keeps it from writing, and may not read a path that the policy denies it reading. The session's
-	 * commands may reach exactly the policy's hosts, through Codex's network proxy, and bind local addresses only if
-	 * the policy allows it; a policy without hosts turns their network off. No network setting of the host
-	 * configuration applies to the session.
+	 * CodexParentMultiAgentState, ChildPolicy, ExtraPermissions)} does for a session that asks for no extra permissions.
 	 *
 	 * @param source               the host configuration file
 	 * @param destination          the isolated configuration file
@@ -598,6 +593,43 @@ public final class CodexConnectionConfiguration
 		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform,
 		CodexParentMultiAgentState parentState, ChildPolicy policy) throws IOException
 	{
+		copy(source, destination, project, caches, temporaryDirectory, toolOutputTokenLimit, requestAccess, platform,
+			parentState, policy, ExtraPermissions.NONE);
+	}
+
+	/**
+	 * Copies the configuration as
+	 * {@link #copy(Path, Path, Path, HarnessDependencyCaches, Path, int, SessionRequestAccess, Platform,
+	 * CodexParentMultiAgentState)} does, within a session policy.
+	 * <p>
+	 * The session may write a dependency cache only if the policy keeps it among its writes, may only read each path
+	 * that the policy keeps it from writing, and may not read a path that the policy denies it reading. The session's
+	 * commands may reach exactly the policy's hosts, through Codex's network proxy, and bind local addresses only if
+	 * the policy allows it; a policy without hosts turns their network off. No network setting of the host
+	 * configuration applies to the session.
+	 *
+	 * @param source               the host configuration file
+	 * @param destination          the isolated configuration file
+	 * @param project              the copied project that the isolated session runs in
+	 * @param caches               the verified writable dependency caches
+	 * @param temporaryDirectory   the fresh temporary directory owned by the isolated runner
+	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
+	 *   Codex's default
+	 * @param requestAccess        the session's access to requested sessions, or {@code null} if it may request none
+	 * @param platform             the platform that the session runs on
+	 * @param parentState          the multi-agent state that the starting Codex thread recorded, or
+	 *   {@link CodexParentMultiAgentState#NONE} if no Codex thread starts the session
+	 * @param policy               the session's policy
+	 * @param extraPermissions     the writes and hosts that the session's launch asks for beyond what Codex needs; the
+	 *   session may write each of the writes that the policy keeps, as it may write a dependency cache
+	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
+	 * @throws IOException          if configuration I/O fails
+	 */
+	public static void copy(Path source, Path destination, Path project, HarnessDependencyCaches caches,
+		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform,
+		CodexParentMultiAgentState parentState, ChildPolicy policy, ExtraPermissions extraPermissions)
+		throws IOException
+	{
 		requireThat(project, "project").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
@@ -605,6 +637,7 @@ public final class CodexConnectionConfiguration
 		requireThat(parentState, "parentState").isNotNull();
 		requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNegative();
 		requireThat(policy, "policy").isNotNull();
+		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		// The session's working directory, the copied project, holds its own Git repository and is therefore its
 		// project root anyway. Looking for a root marker in each directory above it costs one sandboxed helper process
 		// per directory whenever a thread starts, and under concurrent sessions that delayed each thread's first
@@ -634,16 +667,21 @@ public final class CodexConnectionConfiguration
 					copied.append(line).append(System.lineSeparator());
 			}
 		}
-		List<Path> keptCaches = new ArrayList<>();
+		List<Path> keptWrites = new ArrayList<>();
 		for (Path cache : caches.directories())
 		{
 			if (policy.writeRoots().contains(RealPaths.resolve(cache.toAbsolutePath())))
-				keptCaches.add(cache);
+				keptWrites.add(cache);
 		}
-		if (!keptCaches.isEmpty())
+		for (Path write : extraPermissions.writes())
+		{
+			if (policy.writeRoots().contains(RealPaths.resolve(write)) && !keptWrites.contains(write))
+				keptWrites.add(write);
+		}
+		if (!keptWrites.isEmpty())
 		{
 			StringJoiner roots = new StringJoiner(", ", "[", "]");
-			for (Path cache : keptCaches)
+			for (Path cache : keptWrites)
 				roots.add('"' + toml(cache) + '"');
 			copied.append(System.lineSeparator()).append("[sandbox_workspace_write]").append(System.lineSeparator()).
 				append("writable_roots = ").append(roots).append(System.lineSeparator());
@@ -658,7 +696,7 @@ public final class CodexConnectionConfiguration
 			append(System.lineSeparator()).append("[shell_environment_policy.set]").append(System.lineSeparator());
 		Map<String, String> commandEnvironment = new TreeMap<>(caches.environment());
 		commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(destination.getParent(), platform));
-		List<Path> writable = new ArrayList<>(keptCaches);
+		List<Path> writable = new ArrayList<>(keptWrites);
 		if (requestAccess != null)
 		{
 			commandEnvironment.putAll(requestAccess.environment());
@@ -801,8 +839,8 @@ public final class CodexConnectionConfiguration
 	 * @param configuration      the isolated configuration being assembled
 	 * @param isolatedHome       the fresh runtime home that the runner owns
 	 * @param writable           the other directories that the session may write: the verified shared dependency caches
-	 *                           that the policy keeps, and the run's requests directory when the session may request
-	 *                           sessions
+	 *                           and the extra writes that its launch asks for, which the policy keeps, and the run's
+	 *                           requests directory when the session may request sessions
 	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
 	 * @param project            the copied project that the isolated session runs in
 	 * @param platform           the platform that the session runs on

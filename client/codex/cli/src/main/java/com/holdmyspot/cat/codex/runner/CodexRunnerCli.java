@@ -26,10 +26,12 @@ import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -284,6 +286,7 @@ public final class CodexRunnerCli
 	 * @throws NullPointerException    if any argument is null
 	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, or the session's sandbox would
 	 *                                 not confine it as its policy requires
+	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
 	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
 	 *                                 I/O fails
 	 */
@@ -304,6 +307,8 @@ public final class CodexRunnerCli
 			Path cat = options.catArtifact(CodexRunner.MANIFEST);
 			CodexAgentDefinition agent = loadAgent(cat, agentName);
 			ParentPolicy bound = policyBound(scope.json(), options);
+			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
+				options.extraPermissions());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
@@ -324,7 +329,7 @@ public final class CodexRunnerCli
 					options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
 					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 					toolOutputTokenLimit, options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
-					options.gitName(), options.gitEmail()),
+					options.gitName(), options.gitEmail(), extraPermissions),
 					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 					requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
 						boundArguments(scope.json(), arguments, directory, policy.get()), directory, environment));
