@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -765,6 +766,42 @@ public final class IntegrationTest
 				"    }\n" +
 				"  }\n" +
 				"}\n");
+		}
+	}
+
+	/**
+	 * A reinstall after CAT granted sandboxed writes to another capacity locks folder, as an earlier installer did
+	 * from a wrong user home, leaves the settings granting only the new folder, keeps the user's own entry, and
+	 * records the new grant.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void reinstallReplacesEarlierLocksGrant() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory());
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			HarnessInstallation claude = new ClaudeInstallation(home);
+			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of(), userHome);
+			Path wrongLocks = userHome.resolve("account/.cat/locks");
+			Path catLocks = userHome.resolve(".cat/locks");
+			Path userEntry = userHome.resolve("shared");
+			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
+				json(userEntry.toString()) + "]}}}");
+			PluginInstall install = new PluginInstall(integration(), _ -> new CommandResult(0, ""), replacer());
+			install.installEntries(home, launcher(home), claude, List.of(codex), wrongLocks, false);
+			requireThat(Files.readString(home.resolve("settings.json")), "granted").contains(json(wrongLocks.toString()));
+
+			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
+				List.of(codex), catLocks, false);
+
+			requireThat(Files.readString(home.resolve("settings.json")), "settings").
+				contains(json(userEntry.toString())).contains(json(catLocks.toString())).
+				doesNotContain(json(wrongLocks.toString()));
+			requireThat(entries.recorded().get(SETTINGS_KEY_ALLOW_WRITE), "recorded").
+				isEqualTo(List.of(catLocks.toString()));
 		}
 	}
 

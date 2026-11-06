@@ -6,7 +6,9 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -433,6 +435,58 @@ public final class SandboxEntriesTest
 			provider().removePermissions(home, earlier, replacer());
 			requireThat(Files.readString(configuration), "removed").
 				isEqualTo("default_permissions = \"b\"\n[permissions.a.filesystem]\n[permissions.b.filesystem]\n");
+		}
+	}
+
+	/**
+	 * Returns the {@code config.toml} forms that can hold the lock folder.
+	 *
+	 * @return the existing file, the key under which the folder is recorded, and text of the file that the user wrote
+	 */
+	@DataProvider
+	public static Object[][] lockForms()
+	{
+		return new Object[][]{
+			{"[sandbox_workspace_write]\nwritable_roots = [\"/data\"]\n", KEY, "\"/data\""},
+			{"default_permissions = \"cat\"\n\n[permissions.cat]\nextends = \":workspace\"\n" +
+				"[permissions.cat.filesystem]\n", "config.toml#permissions.cat.filesystem", "extends = \":workspace\""}};
+	}
+
+	/**
+	 * A reinstall after CAT granted writes to another capacity locks folder, as an earlier installer did from a wrong
+	 * user home, leaves only the new folder granted in each form, keeps the user's own entries, and records only the
+	 * new grant.
+	 *
+	 * @param original the existing {@code config.toml}
+	 * @param key      the key under which the grant is recorded
+	 * @param kept     text that the user wrote and the reinstall keeps
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(dataProvider = "lockForms")
+	public void reinstallReplacesEarlierLocksGrant(String original, String key, String kept) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path wrongLocks = home.resolveSibling("account/.cat/locks");
+			Path locks = home.resolveSibling("user/.cat/locks");
+			Path configuration = home.resolve("config.toml");
+			Files.writeString(configuration, original);
+			HarnessIntegration provider = provider();
+			PluginInstall install = new PluginInstall(provider, _ -> new CommandResult(0, ""), replacer());
+			Path launcher = home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer");
+			if (Platform.current().isWindows())
+				launcher = launcher.resolveSibling("installer.ps1");
+			HarnessInstallation installation = provider.installation(home);
+			install.installEntries(home, launcher, installation, List.of(other()), wrongLocks, false);
+			requireThat(Files.readString(configuration), "granted").contains(quote(wrongLocks));
+
+			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, installation,
+				List.of(other()), locks, false);
+
+			requireThat(Files.readString(configuration), "reinstalled").contains(quote(locks)).
+				doesNotContain(quote(wrongLocks)).contains(kept);
+			requireThat(entries.recorded().get(key), "recorded").isEqualTo(List.of(locks.toString()));
 		}
 	}
 
