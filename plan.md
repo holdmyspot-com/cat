@@ -72,7 +72,12 @@ revised plugin lifecycle and distribution work, which has not been implemented.
 - **Optimizer work resumed (2026-11-06):** delegation and campaigns run in Codex first, then Claude (user ruling,
   2026-11-06). design.md's G4 wording is committed (`4822df6e78`). Codex E5 campaign `20261021T142441Z-30f739`
   resumed as `continue52` on the installed release, which carries the round-129 stall fix (`744af7e126`,
-  `d4ddbb93a6`).
+  `d4ddbb93a6`). It applied `keep_identity` (candidate 60 preserved), then CAT refused to start its sessions: the
+  Claude Code session that runs `step.sh` has a sandbox that lets commands write `/home/gili/cat/home/.cat/sessions`
+  (Claude user `settings.json` `sandbox.filesystem.allowWrite` holds `/home/gili/cat/home`). Every Codex campaign or
+  Codex delegate started from that session meets the same refusal. **Needs the user:** narrow that grant (CAT's
+  own grants keep `.cat/locks` writable) or run `step.sh` from a host terminal; until then, delegation falls back to
+  Claude tier agents.
 
 ### Latest authorized requirements
 
