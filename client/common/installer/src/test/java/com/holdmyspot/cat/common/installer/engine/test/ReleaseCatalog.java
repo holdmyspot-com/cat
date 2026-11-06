@@ -6,23 +6,20 @@ import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 /**
- * Serves several releases that one key signs, each with its own migration registry, and records what it was asked
- * for, so that a test can tell whether an operation used the network.
+ * Serves several releases that one key signs, each with its own migration registry. After {@link #goOffline()} it
+ * fails every request as an unreachable network does, so that a test can tell whether an operation needed the network.
  */
 final class ReleaseCatalog implements ReleaseSource
 {
 	private final Releases signer;
 	private final Map<String, Releases> releases = new HashMap<>();
-	private final List<String> requests = new ArrayList<>();
 	private String latest;
 	private boolean offline;
 
@@ -104,17 +101,6 @@ final class ReleaseCatalog implements ReleaseSource
 	void goOffline()
 	{
 		offline = true;
-	}
-
-	/**
-	 * Returns what the catalog was asked for: {@code manifest <tag>}, {@code signature <tag>} or
-	 * {@code download <asset>}.
-	 *
-	 * @return the requests in order
-	 */
-	List<String> requests()
-	{
-		return List.copyOf(requests);
 	}
 
 	/**
@@ -215,14 +201,13 @@ final class ReleaseCatalog implements ReleaseSource
 	}
 
 	/**
-	 * Records a request, and fails it while the catalog is offline.
+	 * Fails a request while the catalog is offline.
 	 *
 	 * @param request the request
 	 * @throws IOException if the catalog is offline
 	 */
 	private void request(String request) throws IOException
 	{
-		requests.add(request);
 		if (offline)
 			throw new IOException("The network is unreachable: " + request);
 	}

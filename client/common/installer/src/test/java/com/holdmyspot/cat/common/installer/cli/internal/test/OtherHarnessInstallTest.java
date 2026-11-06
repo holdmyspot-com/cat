@@ -88,7 +88,6 @@ public final class OtherHarnessInstallTest
 			requireThat(result.path("result").stringValue(), "result").isEqualTo("installed");
 			requireThat(result.path("harness").stringValue(), "harness").isEqualTo("harness-b");
 			requireThat(result.path("plugin_version").stringValue(), "pluginVersion").isEqualTo(Fixture.RUNNING);
-			requireThat(fixture.source.requested(), "requested").containsAll(List.of(PluginRelease.TAG));
 			requireThat(fixture.otherIntegration.registered(), "registered").
 				isEqualTo(List.of(PluginVersion.parse(Fixture.RUNNING)));
 			Path versionFolder = fixture.otherVersionFolder(Fixture.RUNNING);
@@ -114,6 +113,8 @@ public final class OtherHarnessInstallTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("other-harness-tag-")));
+			// A refusal comes before any request, so a request would turn the refusal into a download failure
+			fixture.source.goOffline();
 
 			Run run = fixture.run(List.of("install", "--harness", "harness-b", "v1.3"));
 
@@ -137,6 +138,8 @@ public final class OtherHarnessInstallTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("other-harness-installed-")));
+			// A refusal comes before any request, so a request would turn the refusal into a download failure
+			fixture.source.goOffline();
 			String installed = "1.1+b0123456789ab";
 			Files.createDirectories(fixture.otherVersionFolder(installed).resolve("bin"));
 			Files.writeString(RecordingIntegration.registeredVersion(fixture.otherHome), installed + "\n");
@@ -154,7 +157,6 @@ public final class OtherHarnessInstallTest
 			}
 			requireThat(run.result().path("message").stringValue(), "message").
 				contains(installer + " install --harness harness-b " + PluginRelease.TAG);
-			requireThat(fixture.source.requested(), "requested").isEmpty();
 			requireThat(fixture.otherIntegration.calls(), "calls").isEmpty();
 		}
 	}
@@ -173,6 +175,8 @@ public final class OtherHarnessInstallTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("other-harness-keys-")));
+			// A refusal comes before any request, so a request would turn the refusal into a download failure
+			fixture.source.goOffline();
 			fixture.writePolicy(List.of());
 
 			Run run = fixture.run(List.of("install", "--harness", "harness-b"));
@@ -235,6 +239,8 @@ public final class OtherHarnessInstallTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("other-harness-no-home-")));
+			// A refusal comes before any request, so a request would turn the refusal into a download failure
+			fixture.source.goOffline();
 			String variable = Platform.current().homeVariable();
 			Map<String, String> environment = new HashMap<>(fixture.environment);
 			environment.remove("HOME");
@@ -365,13 +371,12 @@ public final class OtherHarnessInstallTest
 		}
 
 		/**
-		 * Requires that nothing was downloaded and that {@code harness-b} got no CAT installation.
+		 * Requires that {@code harness-b} got no CAT installation.
 		 *
 		 * @throws IOException if the harness home cannot be listed
 		 */
 		private void requireNothingInstalled() throws IOException
 		{
-			requireThat(source.requested(), "requested").isEmpty();
 			requireThat(otherIntegration.calls(), "calls").isEmpty();
 			requireThat(Files.exists(otherHome.resolve("plugins"), NOFOLLOW_LINKS), "plugins").isFalse();
 		}

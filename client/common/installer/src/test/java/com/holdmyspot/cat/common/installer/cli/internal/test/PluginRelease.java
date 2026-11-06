@@ -14,9 +14,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.List;
 import java.util.stream.Stream;
 import java.util.zip.GZIPOutputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -24,8 +22,8 @@ import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 
 /**
  * Serves release 1.2 of CAT, whose signed manifest names one plugin archive, for the platform that runs the test: a
- * gzip-compressed tar archive of an extracted plugin folder. The source records each tag that it is asked for, and
- * never reaches a network.
+ * gzip-compressed tar archive of an extracted plugin folder. The source supplies the release's files and never reaches
+ * a network; after {@link #goOffline()} it fails every request as an unreachable network does.
  */
 final class PluginRelease implements ReleaseConnection
 {
@@ -36,7 +34,7 @@ final class PluginRelease implements ReleaseConnection
 	private final byte[] manifest;
 	private final byte[] signature;
 	private final byte[] archive;
-	private final List<String> requested = new ArrayList<>();
+	private boolean offline;
 
 	/**
 	 * Creates the release.
@@ -57,13 +55,11 @@ final class PluginRelease implements ReleaseConnection
 	}
 
 	/**
-	 * Returns the tags of the manifests, signatures and archives that the source was asked for, in order.
-	 *
-	 * @return the tags
+	 * Makes every later request fail as if the network were unreachable.
 	 */
-	List<String> requested()
+	void goOffline()
 	{
-		return List.copyOf(requested);
+		offline = true;
 	}
 
 	@Override
@@ -96,16 +92,18 @@ final class PluginRelease implements ReleaseConnection
 	}
 
 	/**
-	 * Records a request and returns the release's file.
+	 * Returns the release's file.
 	 *
 	 * @param tag     the requested tag
 	 * @param content the file of this release
 	 * @return a copy of the file
-	 * @throws IOException if the tag names another release, which the source does not have
+	 * @throws IOException if the network is unreachable, or the tag names another release, which the source does not
+	 *                     have
 	 */
 	private byte[] serve(String tag, byte[] content) throws IOException
 	{
-		requested.add(tag);
+		if (offline)
+			throw new IOException("The network is unreachable: " + tag);
 		if (!tag.equals(TAG))
 			throw new IOException("The release source has no release " + tag);
 		return content.clone();

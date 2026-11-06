@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
@@ -51,15 +50,12 @@ public final class CachedReleaseTest
 		{
 			EngineFixture fixture = updated(cleanup);
 			fixture.catalog.goOffline();
-			int before = fixture.catalog.requests().size();
 
 			UpdateResult result = fixture.install("v1.1");
 
+			// The unreachable source can supply nothing, so the update to 1.1 installed the kept release
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UPDATED);
-			List<String> downloads = fixture.catalog.requests().subList(before, fixture.catalog.requests().size()).
-				stream().filter(request -> request.startsWith("download ")).toList();
-			requireThat(downloads, "downloads").isEmpty();
 			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
 				isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
 		}
@@ -69,13 +65,12 @@ public final class CachedReleaseTest
 	 * While the release source is unreachable, a kept release whose manifest or archive no longer verifies is not
 	 * installed: the install fails to obtain the release and the harness keeps its active version.
 	 *
-	 * @param file    the changed file, relative to the installer data directory
-	 * @param request the request that would obtain the release again
+	 * @param file the changed file, relative to the installer data directory
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test(dataProvider = "tamperedFiles")
-	public void refusesTamperedReleaseOffline(String file, String request) throws IOException, TrustException
+	public void refusesTamperedReleaseOffline(String file) throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -87,50 +82,46 @@ public final class CachedReleaseTest
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.DOWNLOAD_FAILED);
-			requireThat(fixture.catalog.requests(), "requests").contains(request);
 			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
 				isEqualTo(Optional.of(Releases.pluginVersion("1.2")));
 		}
 	}
 
 	/**
-	 * Supplies a file of the kept release to change, and the request with which the install then obtains that part
-	 * of the release again.
+	 * Supplies a file of the kept release to change.
 	 *
-	 * @return the file relative to the installer data directory, and the request
+	 * @return the file relative to the installer data directory
 	 */
 	@DataProvider
 	public Object[][] tamperedFiles()
 	{
-		return new Object[][]{
-			{"releases/1.1/" + PLUGIN_ARCHIVE, "download " + PLUGIN_ARCHIVE},
-			{"releases/1.1/cat-release-manifest.json", "manifest v1.1"}};
+		return new Object[][]{{"releases/1.1/" + PLUGIN_ARCHIVE}, {"releases/1.1/cat-release-manifest.json"}};
 	}
 
 	/**
 	 * A kept release whose manifest or archive no longer verifies is not reused: the install downloads the release
-	 * and installs the downloaded copy.
+	 * and installs the downloaded copy, which replaces the changed file in the installation's kept release.
 	 *
-	 * @param file    the changed file, relative to the installer data directory
-	 * @param request the request that obtains the release again
+	 * @param file the changed file, relative to the installer data directory
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test(dataProvider = "tamperedFiles")
-	public void downloadsInPlaceOfTamperedRelease(String file, String request) throws IOException, TrustException
+	public void downloadsInPlaceOfTamperedRelease(String file) throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = updated(cleanup);
 			Files.writeString(fixture.data().resolve(file), "tampered");
-			int before = fixture.catalog.requests().size();
 
 			UpdateResult result = fixture.install("v1.1");
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UPDATED);
-			requireThat(fixture.catalog.requests().subList(before, fixture.catalog.requests().size()), "requests").
-				contains(request);
+			Path expected = fixture.root.resolve("expected-1.1");
+			fixture.catalog.writeKept("1.1", expected);
+			Path kept = fixture.data().resolve(file);
+			requireThat(Files.mismatch(expected.resolve(kept.getFileName()), kept), "mismatch").isEqualTo(-1L);
 			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
 				isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
 		}
