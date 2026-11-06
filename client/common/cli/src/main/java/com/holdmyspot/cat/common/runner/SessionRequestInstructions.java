@@ -50,7 +50,7 @@ public final class SessionRequestInstructions
 			"\n" +
 			command + " --harness <claude|codex> --project <directory> --prompt <file> " +
 			"[--prompt <file>]... [--plugin <directory>]... --model <name> --effort <level> [--install-cat] " +
-			"[--session-transcripts]\n" +
+			"[--session-transcripts] [--extra-permissions <file>]\n" +
 			"\n" +
 			"Every input is a file path you can read: the project to copy, one prompt file per turn, and each " +
 			"plugin directory to install. Every request names the session's model and reasoning effort, and a request " +
@@ -58,7 +58,10 @@ public final class SessionRequestInstructions
 			"values that the harness lists, or ones you know it accepts if you cannot list them, and state the model " +
 			"and the effort that you chose in your reply. " +
 			"--install-cat also installs CAT in the " +
-			"session. Inputs must contain no " +
+			"session. --extra-permissions names a JSON file of what the session's commands need beyond its own: " +
+			"{\"format_version\":1,\"writes\":[\"<absolute path>\"],\"hosts\":[\"<host name>\"]}. The session gets " +
+			"them only if this session's sandbox allows them; otherwise the request is refused, naming the settings to " +
+			"add. Without the option the session asks for nothing extra. Inputs must contain no " +
 			"symbolic links. The command waits up to 300 seconds. " +
 			"When the session ends, it prints the " +
 			"file path of the response, a JSON file whose status is completed, failed, refused, capacity or stopped, " +
@@ -73,7 +76,8 @@ public final class SessionRequestInstructions
 			"then run:\n" +
 			"\n" +
 			codexRunner + " --project <directory> --input <file> [--plugin <directory>]... --model <name> " +
-			"--effort <level> [--install-cat] [--session-transcripts] [--output <file>] [--receipt <file>]\n" +
+			"--effort <level> [--install-cat] [--session-transcripts] [--extra-permissions <file>] [--output <file>] " +
+			"[--receipt <file>]\n" +
 			"\n" +
 			"It writes the session's transcript to --output, or prints it, copies its receipt to --receipt, and exits " +
 			"with 0 when the session completed, 75 when no capacity was free, and 1 otherwise, with the reason.";

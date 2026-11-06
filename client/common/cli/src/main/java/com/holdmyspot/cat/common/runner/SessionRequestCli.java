@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -41,7 +42,8 @@ public final class SessionRequestCli
 		{
 			System.out.println("Usage: request-session --harness <name> --project <dir> --prompt <file> " +
 				"[--prompt <file>]... [--plugin <dir>]... --model <name> --effort <level> " +
-				"[--install-cat] [--session-transcripts] [--wait <seconds>] | --await <id> [--wait <seconds>]");
+				"[--install-cat] [--session-transcripts] [--extra-permissions <file>] [--wait <seconds>] | " +
+				"--await <id> [--wait <seconds>]");
 			return;
 		}
 		String directory = System.getenv(SessionRequestAccess.REQUESTS_VARIABLE);
@@ -195,6 +197,12 @@ public final class SessionRequestCli
 				}
 				case "--project" -> request.put("project", Path.of(value).toAbsolutePath().toString());
 				case "--harness", "--model", "--effort" -> request.put(option.substring(2), value);
+				case ExtraPermissions.OPTION ->
+				{
+					ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, Path.of(value));
+					if (!extra.isEmpty())
+						request.set(RequestArchive.EXTRA_PERMISSIONS, extra.toDocument(json));
+				}
 				default -> throw new IllegalArgumentException("Unsupported option: " + option);
 			}
 		}
@@ -215,7 +223,8 @@ public final class SessionRequestCli
 		else
 		{
 			if (!Set.of("--await", "--wait").containsAll(scalars) || !request.path("prompts").isEmpty() ||
-				!request.path("plugins").isEmpty() || request.has("session_transcripts") || request.has("install_cat"))
+				!request.path("plugins").isEmpty() || request.has("session_transcripts") || request.has("install_cat") ||
+				request.has(RequestArchive.EXTRA_PERMISSIONS))
 				throw new IllegalArgumentException("--await accepts only --wait");
 			validateId(id);
 		}

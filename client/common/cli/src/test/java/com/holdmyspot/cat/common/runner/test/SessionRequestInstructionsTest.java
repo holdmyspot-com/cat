@@ -35,7 +35,7 @@ public final class SessionRequestInstructionsTest
 		requireThat(text, "text").contains("new session").contains("plugin").contains("up to 3").
 			doesNotContain("$").contains(command + " --harness").contains(command + " --await <id>").
 			contains("--project").contains("--prompt").contains(" --model <name> --effort <level> ").
-			contains("--plugin").contains("--await").contains("file path");
+			contains("--plugin").contains("--await").contains("file path").contains("[--extra-permissions <file>]");
 	}
 
 	/**

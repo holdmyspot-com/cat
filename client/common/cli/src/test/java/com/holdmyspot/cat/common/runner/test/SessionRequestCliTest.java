@@ -151,6 +151,101 @@ public final class SessionRequestCliTest
 	}
 
 	/**
+	 * Verifies that a request that names a file of extra permissions carries the file's writes and hosts, that a
+	 * request without the option carries none, and that an invalid file refuses the request before it is published.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void carriesExtraPermissions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "request-")).toRealPath();
+				Path requests = Files.createDirectory(root.resolve("requests"));
+				Path project = Files.createDirectory(root.resolve("project"));
+				Files.writeString(project.resolve("marker"), "project bytes");
+				Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
+				Path cache = root.resolve("cache");
+				Path needs = Files.writeString(root.resolve("needs.json"), "{\"format_version\": 1, \"writes\": [\"" +
+					cache + "\"], \"hosts\": [\"registry.example.com\"]}");
+				Path invalid = Files.writeString(root.resolve("invalid.json"), "{\"format_version\": 1, \"logins\": []}");
+				ManualClock time = new ManualClock(Instant.EPOCH);
+				List<String> base = List.of("--harness", "harness-a", "--project", project.toString(), "--prompt",
+					prompt.toString(), "--model", "model-a", "--effort", "effort-a");
+
+				List<String> withFile = new ArrayList<>(base);
+				withFile.addAll(List.of("--extra-permissions", needs.toString()));
+				SessionRequestCli.execute(withFile.toArray(String[]::new), requests, time,
+					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
+				JsonNode request = manifest(requests);
+				requireThat(request.path("extra_permissions").path("writes").get(0).asString(), "write").
+					isEqualTo(cache.toString());
+				requireThat(request.path("extra_permissions").path("hosts").get(0).asString(), "host").
+					isEqualTo("registry.example.com");
+				try (Stream<Path> files = Files.list(requests))
+				{
+					for (Path file : files.toList())
+						Files.delete(file);
+				}
+
+				SessionRequestCli.execute(base.toArray(String[]::new), requests, time,
+					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
+				requireThat(manifest(requests).has("extra_permissions"), "plainHasExtra").isFalse();
+				try (Stream<Path> files = Files.list(requests))
+				{
+					for (Path file : files.toList())
+						Files.delete(file);
+				}
+
+				List<String> withInvalid = new ArrayList<>(base);
+				withInvalid.addAll(List.of("--extra-permissions", invalid.toString()));
+				try
+				{
+					SessionRequestCli.execute(withInvalid.toArray(String[]::new), requests, time,
+						() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
+					requireThat(false, "invalidAccepted").isTrue();
+				}
+				catch (IllegalArgumentException e)
+				{
+					requireThat(e.getMessage(), "message").contains("logins").contains(invalid.toString());
+				}
+				try (Stream<Path> files = Files.list(requests))
+				{
+					requireThat(files.count(), "published").isEqualTo(0L);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Reads the manifest of the only request in a directory.
+	 *
+	 * @param requests the directory
+	 * @return the manifest
+	 * @throws IOException if the request cannot be read
+	 */
+	private static JsonNode manifest(Path requests) throws IOException
+	{
+		try (Stream<Path> files = Files.list(requests))
+		{
+			Path file = files.findFirst().orElseThrow();
+			try (InputStream bytes = Files.newInputStream(file);
+				TarArchiveInputStream archive = new TarArchiveInputStream(bytes))
+			{
+				for (TarArchiveEntry entry = archive.getNextEntry(); entry != null; entry = archive.getNextEntry())
+				{
+					if (entry.getName().equals("request.json"))
+						return JsonMapper.builder().build().readTree(archive.readNBytes(65_536));
+				}
+			}
+		}
+		throw new AssertionError("The request has no manifest");
+	}
+
+	/**
 	 * Verifies that a request carries the project as its session sees it, leaving out the null-device placeholders
 	 * that the session's sandbox puts over files that it may not read.
 	 *
