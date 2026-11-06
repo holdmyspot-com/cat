@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -648,16 +649,22 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
-	 * Copies the bundled Codex rules and their common request-execution dependency into a plugin directory.
+	 * Copies the bundled Codex rules, their common request-execution dependency and the common guidance on questions
+	 * for the user that a Codex rule includes into a plugin directory.
 	 *
 	 * @param plugin the plugin directory
 	 * @throws IOException if the rules cannot be copied
 	 */
 	static void copyBundledRules(Path plugin) throws IOException
 	{
-		Path commonRule = plugin.resolve("rules/common/request-execution.md");
-		Files.createDirectories(commonRule.getParent());
-		Files.copy(Path.of("../../common/rules/src/main/resources/rules/common/request-execution.md"), commonRule);
+		Path commonSource = Path.of("../../common/rules/src/main/resources/rules");
+		for (String commonFile : List.of("common/request-execution.md",
+			"include/common/questions-for-the-user-content.md"))
+		{
+			Path copy = plugin.resolve("rules").resolve(commonFile);
+			Files.createDirectories(copy.getParent());
+			Files.copy(commonSource.resolve(commonFile), copy);
+		}
 
 		Path source = Path.of("../rules/src/main/resources/rules/codex");
 		Path target = plugin.resolve("rules/codex");

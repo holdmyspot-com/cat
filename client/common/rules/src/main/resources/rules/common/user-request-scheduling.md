@@ -2,6 +2,7 @@
 depends-on:
   - ./intermediate-vs-terminal-goals.md
   - ./request-execution.md
+  - ./questions-for-the-user.md
 agents: ["main"]
 ---
 # User Request Scheduling

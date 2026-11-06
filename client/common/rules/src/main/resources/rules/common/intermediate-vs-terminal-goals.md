@@ -46,9 +46,6 @@ before stopping work on an active goal because a tool call, delegate, handoff, v
 or seems unavailable; and when a delegate, executor, validator, or tool response is labelled `BLOCKED`, `blocked`, or
 `BLOCKED_*`, lazy load `../include/common/intermediate-vs-terminal-goals/blocked-status.md`.
 
-With an active goal, do not stop because of turn length, context, task size, or a dirty worktree. Before yielding, take
-the next in-scope read, check, or edit. A dirty worktree is state to preserve, not a blocker.
-
 Before an irreversible action that represents completion—such as committing, finalizing, publishing, or declaring a
 workflow complete—record the user-authorized scope and compare it with terminal acceptance evidence. Every scoped item
 must have completion evidence or an explicit user-authorized exclusion. A prior result may reduce the remaining scope

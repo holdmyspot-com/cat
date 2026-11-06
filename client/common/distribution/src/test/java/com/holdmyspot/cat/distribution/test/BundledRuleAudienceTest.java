@@ -76,6 +76,102 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies a subagent of either harness receives the request-execution and goal guidance that governs how work is
+	 * done, checked and reported, but not the guidance on talking with the user: reusing earlier answers, answering
+	 * about content shown in the conversation and continuing an active goal. The main agent receives all of it.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or loaded
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void subagentGetsWorkGuidanceNotUserGuidance() throws IOException, URISyntaxException
+	{
+		List<String> workGuidance = List.of(
+			"Resolve implementation questions yourself using the best long-term approach",
+			"Before escalating a choice during authorized implementation",
+			"When translating a request into a tool or workflow invocation, supply an optional limit",
+			"When a request states or implies a factual claim that the requested action depends on, check the claim " +
+				"before acting on it.",
+			"For every workflow, name the terminal goal and the acceptance evidence that proves it.",
+			"Record every required terminal gate and its required evidence before execution.",
+			"Match evidence to the claim each terminal gate makes.",
+			"When new work arises, such as a user instruction",
+			"Do not mark a goal blocked because the current executor reaches a turn, token, context, polling, tool-wait, " +
+				"or estimated duration limit.",
+			"Before deciding whether a goal is blocked, reporting that work is blocked, or classifying a missing input as " +
+				"external",
+			"Before an irreversible action that represents completion");
+		List<String> userGuidance = List.of(
+			"Before re-answering a question, repeating an investigation, or redoing an action whose subject appeared " +
+				"earlier in the conversation",
+			"A context reset, compaction, handoff, or missing local recollection does not show that the earlier result " +
+				"is absent or invalid.",
+			"When the requester asks about content already in the conversation, such as a report, result, diff, or " +
+				"sequence of events, answer from that content first",
+			"With an active goal, do not stop because of turn length, context, task size, or a dirty worktree.");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+
+			for (String harness : List.of("claude", "codex"))
+			{
+				String subagent = oneLine(loader.loadForSubagent(plugin, project, harness, "cat:reviewer"));
+				String main = oneLine(loader.loadForMainAgent(plugin, project, harness));
+				for (String guidance : workGuidance)
+				{
+					requireThat(subagent, harness + "Subagent").contains(guidance);
+					requireThat(main, harness + "Main").contains(guidance);
+				}
+				for (String guidance : userGuidance)
+				{
+					requireThat(subagent, harness + "Subagent").doesNotContain(guidance);
+					requireThat(main, harness + "Main").contains(guidance);
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies the guidance on which questions to ask the user reaches the main agent of either harness and a Codex
+	 * subagent exactly once each, but not a Claude subagent. A Codex agent receives it before its rules on requesting
+	 * user input, which apply it.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or loaded
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void questionGuidanceReachesAskingAgents() throws IOException, URISyntaxException
+	{
+		String questionGuidance = "Before asking the user a question, identify the unresolved product decision or " +
+			"material architecture/design decision that requires their input.";
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+
+			String codexSubagent = oneLine(loader.loadForSubagent(plugin, project, "codex", "cat:reviewer"));
+			String codexMain = oneLine(loader.loadForMainAgent(plugin, project, "codex"));
+			for (String codex : List.of(codexSubagent, codexMain))
+			{
+				requireThat(occurrences(codex, questionGuidance), "codexQuestionGuidance").isEqualTo(1);
+				requireThat(codex.indexOf(questionGuidance), "codexQuestionGuidanceIndex").
+					isLessThan(codex.indexOf("# Requesting User Input"));
+			}
+			String claudeMain = oneLine(loader.loadForMainAgent(plugin, project, "claude"));
+			requireThat(occurrences(claudeMain, questionGuidance), "claudeMainQuestionGuidance").isEqualTo(1);
+			String claudeSubagent = oneLine(loader.loadForSubagent(plugin, project, "claude", "cat:reviewer"));
+			requireThat(claudeSubagent, "claudeSubagent").doesNotContain(questionGuidance);
+		}
+	}
+
+	/**
 	 * Verifies Codex agents receive the read-file rule at startup, stating the installed plugin's directory, which
 	 * holds the {@code run-part} and {@code read-part} commands it names, while Claude agents, which do not ship those
 	 * commands, do not receive the rule. On Windows, the rule names the batch files that PowerShell runs.
@@ -338,5 +434,35 @@ public final class BundledRuleAudienceTest
 			requireThat(Files.readString(plugin.resolve("rules/include/common/path.md")), "lazyRule").
 				isEqualTo("Bundled rule body");
 		}
+	}
+
+	/**
+	 * Joins the lines of rendered rules, so that a sentence matches wherever the rule wraps it.
+	 *
+	 * @param rules the rendered rules
+	 * @return the rules with every run of whitespace replaced by one space
+	 */
+	private static String oneLine(String rules)
+	{
+		return rules.replaceAll("\\s+", " ");
+	}
+
+	/**
+	 * Counts the occurrences of a text in rendered rules.
+	 *
+	 * @param rules the rendered rules
+	 * @param text  the text to count
+	 * @return the number of non-overlapping occurrences
+	 */
+	private static int occurrences(String rules, String text)
+	{
+		int count = 0;
+		int start = rules.indexOf(text);
+		while (start >= 0)
+		{
+			++count;
+			start = rules.indexOf(text, start + text.length());
+		}
+		return count;
 	}
 }
