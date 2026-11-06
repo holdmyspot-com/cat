@@ -208,7 +208,7 @@ public final class ExtraPermissionsTest
 			Path run = Files.createDirectory(root.resolve("run"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(registry), List.of(), List.of(), List.of(),
-				HostAccess.listed(Set.of("npm.example")), false);
+				HostAccess.listed(Set.of("npm.example")), false, List.of());
 			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
 				with(new ExtraPermissions(List.of(registry), Set.of("npm.example")));
 
@@ -233,7 +233,7 @@ public final class ExtraPermissionsTest
 			Path run = Files.createDirectory(root.resolve("run"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(run), List.of(), List.of(), List.of(),
-				HostAccess.NONE, false);
+				HostAccess.NONE, false, List.of());
 			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
 				with(new ExtraPermissions(List.of(registry), Set.of("npm.example")));
 

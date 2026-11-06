@@ -140,6 +140,8 @@ public final class ClaudeRunner
 	 *   responses directories, and the session is told how to request one
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
+	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
+	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
@@ -151,7 +153,8 @@ public final class ClaudeRunner
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
-		ChildPolicy bound, Consumer<ChildPolicy> policyListener, ExtraPermissions extraPermissions) throws IOException
+		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail,
+		ExtraPermissions extraPermissions) throws IOException
 	{
 		requireThat(policyListener, "policyListener").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
@@ -179,7 +182,7 @@ public final class ClaudeRunner
 				manager.copyWorkspace(workspace, run);
 			manager.snapshotProject(run);
 			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
-				executables);
+				executables, gitName, gitEmail);
 			Path hostConfiguration = claudeConfigDirectory(environment);
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
 			ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
@@ -343,8 +346,7 @@ public final class ClaudeRunner
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
-		// Set after the caller's settings too, so that a runner that the session's commands start knows that it runs
-		// inside a CAT run, where it starts sessions only as requests to this run's runner
+		// Set after the caller's settings too, so that the session's SessionStart hook starts no session launcher
 		isolatedEnvironment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
 		// Claude Code passes these to the commands that it starts
 		if (requestAccess != null)
@@ -353,11 +355,11 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns what a Claude child session needs beyond its run folder, as the runner of the other harness asks for it
-	 * before it starts the child: the shared dependency caches, which the child writes; the host of the model provider
-	 * that the child's Claude Code connects to, which its commands reach; and the caller's login file when the child's
-	 * isolated home copies it, which happens when the caller's environment holds no Claude authentication variable and
-	 * the file exists.
+	 * Returns what a Claude child session needs beyond its run folder, as a session launcher asks for it before it
+	 * starts the child: the shared dependency caches, which the child writes; the host of the model provider that the
+	 * child's Claude Code connects to, which its commands reach; and the caller's login file when the child's isolated
+	 * home copies it, which happens when the caller's environment holds no Claude authentication variable and the
+	 * file exists.
 	 *
 	 * @param scope       services shared for the runner process lifetime
 	 * @param environment the caller's environment

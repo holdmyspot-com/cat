@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.claude.policy.test;
 
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
+import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
@@ -8,6 +9,7 @@ import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.testng.SkipException;
@@ -18,8 +20,8 @@ import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.write;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Tests that CAT reads a Claude Code session's sandbox policy from its settings as Claude Code applies them, finds the
- * session's project from Claude Code's record of the session, and refuses each source that it cannot read safely.
+ * Tests that CAT reads a Claude Code session's sandbox policy from its command line and settings as Claude Code
+ * applies them, and refuses each source that it cannot read safely.
  */
 public final class ClaudePolicyReaderTest
 {
@@ -33,14 +35,6 @@ public final class ClaudePolicyReaderTest
 	 */
 	private static final String ENABLED = """
 		{"sandbox": {"enabled": true}}""";
-	/**
-	 * The ID of the session's Claude Code process.
-	 */
-	private static final long PROCESS_ID = 4242;
-	/**
-	 * The session's identifier.
-	 */
-	private static final String SESSION_ID = "5d2c4a8e-1f3b-4c6d-9e7f-8a9b0c1d2e3f";
 
 	/**
 	 * Creates the test.
@@ -50,8 +44,8 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
-	 * Skips the tests on native Windows, where Claude Code has no sandbox, so that no Claude Code session's sandbox
-	 * policy is read there.
+	 * Skips the tests on native Windows, where Claude Code has no sandbox and CAT starts no session launcher, so that
+	 * no Claude Code session's sandbox policy is read there.
 	 */
 	@BeforeClass
 	public void requireSandboxPlatform()
@@ -97,8 +91,8 @@ public final class ClaudePolicyReaderTest
 
 	/**
 	 * Verifies that a setting that more than one layer gives takes the value of the layer that Claude Code ranks
-	 * highest: managed settings, whose drop-in files override the managed settings file and whose later drop-in files
-	 * override earlier ones, then local, project and user settings.
+	 * highest: managed settings, whose later drop-in files override earlier ones, then {@code --settings}, then
+	 * local, project and user settings.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the policy is refused
@@ -118,17 +112,20 @@ public final class ClaudePolicyReaderTest
 			requireThat(fixture.policy().allowLocalBinding(), "project").isFalse();
 			fixture.localSettings(bind);
 			requireThat(fixture.policy().allowLocalBinding(), "local").isTrue();
-			write(fixture.managed.resolve("managed-settings.json"), noBind);
-			requireThat(fixture.policy().allowLocalBinding(), "managed").isFalse();
-			write(fixture.managed.resolve("managed-settings.d/20-late.json"), bind);
-			write(fixture.managed.resolve("managed-settings.d/10-early.json"), noBind);
-			requireThat(fixture.policy().allowLocalBinding(), "dropIn").isTrue();
+			Path flagFile = write(fixture.root.resolve("flag/settings.json"), noBind);
+			fixture.arguments.addAll(List.of("--settings", flagFile.toString()));
+			requireThat(fixture.policy().allowLocalBinding(), "flag").isFalse();
+			write(fixture.managed.resolve("managed-settings.json"), bind);
+			requireThat(fixture.policy().allowLocalBinding(), "managed").isTrue();
+			write(fixture.managed.resolve("managed-settings.d/20-late.json"), noBind);
+			write(fixture.managed.resolve("managed-settings.d/10-early.json"), bind);
+			requireThat(fixture.policy().allowLocalBinding(), "dropIn").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies that the sandbox's lists merge across every layer: managed settings and their drop-in files, and the
-	 * local, project and user settings.
+	 * Verifies that the sandbox's lists merge across every layer: managed settings and their drop-in files, the file
+	 * of {@code --settings}, and the local, project and user settings.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the policy is refused
@@ -144,6 +141,8 @@ public final class ClaudePolicyReaderTest
 				  "network": {"allowedDomains": ["user.example.com"]}}}""".formatted(root.resolve("w-user")));
 			fixture.projectSettings(allowWrite(root.resolve("w-project")));
 			fixture.localSettings(allowWrite(root.resolve("w-local")));
+			Path flagFile = write(root.resolve("flag/settings.json"), allowWrite(root.resolve("w-flag")));
+			fixture.arguments.addAll(List.of("--settings", flagFile.toString()));
 			write(fixture.managed.resolve("managed-settings.json"), """
 				{"sandbox": {"filesystem": {"allowWrite": ["%s"]},
 				  "network": {"allowedDomains": ["*.managed.example.com"]}}}""".formatted(root.resolve("w-managed")));
@@ -152,7 +151,7 @@ public final class ClaudePolicyReaderTest
 
 			ParentPolicy policy = fixture.policy();
 			requireThat(policy.writeRoots(), "writeRoots").containsAll(List.of(fixture.project,
-				root.resolve("w-user"), root.resolve("w-project"), root.resolve("w-local"),
+				root.resolve("w-user"), root.resolve("w-project"), root.resolve("w-local"), root.resolve("w-flag"),
 				root.resolve("w-managed"), root.resolve("w-drop-in")));
 			requireThat(policy.hosts().allows("user.example.com"), "userHost").isTrue();
 			requireThat(policy.hosts().allows("api.managed.example.com"), "managedHost").isTrue();
@@ -161,7 +160,78 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
-	 * Verifies that {@code Read(...)} deny rules of the settings deny reads, in each spelling of a rule's path.
+	 * Verifies that settings that {@code --settings} gives as JSON apply like a settings file.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void inlineSettingsApply() throws IOException, PolicyRefusal
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			Path folder = fixture.root.resolve("w-inline");
+			fixture.arguments.addAll(List.of("-p", "a prompt", "--settings", """
+				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""".formatted(folder),
+				"--output-format", "text"));
+			requireThat(fixture.policy().writeRoots(), "writeRoots").contains(folder);
+		}
+	}
+
+	/**
+	 * Verifies that {@code --setting-sources user} keeps the user's settings and drops the project's.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void settingSourcesUserDropsProject() throws IOException, PolicyRefusal
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			Path root = fixture.root;
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""".formatted(
+				root.resolve("w-user")));
+			fixture.projectSettings(allowWrite(root.resolve("w-project")));
+			fixture.localSettings(allowWrite(root.resolve("w-local")));
+			fixture.arguments.addAll(List.of("--setting-sources", "user"));
+
+			ParentPolicy policy = fixture.policy();
+			requireThat(policy.writeRoots(), "writeRoots").contains(root.resolve("w-user"));
+			requireThat(policy.writeRoots(), "writeRoots").doesNotContain(root.resolve("w-project"));
+			requireThat(policy.writeRoots(), "writeRoots").doesNotContain(root.resolve("w-local"));
+		}
+	}
+
+	/**
+	 * Verifies that {@code --add-dir} takes every following folder up to the next option, and that each lets
+	 * commands write it.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void addDirTakesEveryFolder() throws IOException, PolicyRefusal
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings(ENABLED);
+			Path first = fixture.root.resolve("first");
+			fixture.arguments.addAll(List.of("--add-dir", first.toString(), "../second", "--unknown-after"));
+			requireThat(fixture.refusal(), "refusal").contains("--unknown-after");
+
+			fixture.arguments.removeLast();
+			fixture.arguments.add("-c");
+			ParentPolicy policy = fixture.policy();
+			requireThat(policy.writeRoots(), "writeRoots").containsAll(List.of(first,
+				fixture.root.resolve("second")));
+		}
+	}
+
+	/**
+	 * Verifies that {@code Read(...)} deny rules of the settings and of {@code --disallowedTools} deny reads, in each
+	 * spelling of a rule's path.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the policy is refused
@@ -178,10 +248,12 @@ public final class ClaudePolicyReaderTest
 				fixture.root.resolve("sandbox-denied"), fixture.root.resolve("absolute").toString().substring(1)));
 			fixture.projectSettings("""
 				{"permissions": {"deny": ["Read(./private/**)"]}}""");
+			fixture.arguments.addAll(List.of("--disallowedTools", "Read(./cli-denied) Edit(./x)"));
 
 			List<Path> readDenials = fixture.policy().readDenials();
 			requireThat(readDenials, "readDenials").containsAll(List.of(fixture.root.resolve("sandbox-denied"),
-				fixture.root.resolve("absolute"), fixture.home.resolve("keys"), secret));
+				fixture.root.resolve("absolute"), fixture.home.resolve("keys"), secret,
+				fixture.project.resolve("cli-denied")));
 			requireThat(readDenials, "readDenials").doesNotContain(fixture.project);
 		}
 	}
@@ -245,6 +317,25 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
+	 * Verifies that an option that Claude Code does not list is refused by its name.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void unknownOptionIsRefusedByName() throws IOException
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings(ENABLED);
+			fixture.arguments.addAll(List.of("-p", "--no-such-option", "value"));
+			String refusal = fixture.refusal();
+			requireThat(refusal, "refusal").startsWith(REFUSAL);
+			requireThat(refusal, "refusal").contains("--no-such-option");
+			requireThat(refusal, "refusal").endsWith(".");
+		}
+	}
+
+	/**
 	 * Verifies that a settings file that is not JSON is refused by its path.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -300,82 +391,84 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
-	 * Verifies that a command environment without {@code CLAUDE_PID} is refused.
+	 * Verifies that a hook environment without {@code CLAUDE_PID} is refused.
 	 */
 	@Test
 	public void missingProcessIdIsRefused()
 	{
 		try
 		{
-			ClaudeSession session = ClaudeSession.fromCommandEnvironment(Map.of("CLAUDECODE", "1",
-				"CLAUDE_CODE_SESSION_ID", SESSION_ID), Path.of("/home/user"), "user");
+			ClaudeSession session = ClaudeSession.fromHookEnvironment(Map.of("CLAUDE_PROJECT_DIR", "/work"),
+				Path.of("/home/user"), "user");
 			throw new AssertionError("The session was not refused: " + session);
 		}
-		catch (IOException | PolicyRefusal e)
+		catch (PolicyRefusal e)
 		{
-			requireThat(e, "e").isInstanceOf(PolicyRefusal.class);
-			requireThat(((PolicyRefusal) e).messageFor(ClaudePolicyReader.HARNESS_NAME), "refusal").
-				startsWith(REFUSAL).contains("CLAUDE_PID");
+			requireThat(e.messageFor(ClaudePolicyReader.HARNESS_NAME), "refusal").startsWith(REFUSAL).
+				contains("CLAUDE_PID");
 		}
 	}
 
 	/**
-	 * Verifies that the session that runs a command is the one that the command environment names, and that its
-	 * project is the folder that Claude Code's record of the session names, whichever folder the command runs in.
+	 * Verifies that a process that is not running, or that started at another instant than the session's process,
+	 * is refused.
 	 *
 	 * @throws IOException   if the fixture cannot be created
-	 * @throws PolicyRefusal if the session is refused
+	 * @throws PolicyRefusal if the first reading is refused
 	 */
 	@Test
-	public void projectComesFromSessionRecord() throws IOException, PolicyRefusal
+	public void otherProcessIsRefused() throws IOException, PolicyRefusal
 	{
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
-			fixture.sessionRecord(PROCESS_ID, SESSION_ID, fixture.project);
-
-			ClaudeSession session = ClaudeSession.fromCommandEnvironment(environment(), fixture.home, "user");
-
-			requireThat(session.projectDirectory(), "projectDirectory").isEqualTo(fixture.project);
-			requireThat(session.configurationDirectory(), "configurationDirectory").
-				isEqualTo(fixture.configuration);
-		}
-	}
-
-	/**
-	 * Verifies that a record that Claude Code keeps under the process ID that the command environment names, but
-	 * that belongs to another session, is refused rather than read, so that a process ID that another process reuses
-	 * never makes CAT read another session's settings.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void recordOfAnotherSessionIsRefused() throws IOException
-	{
-		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
-		{
-			fixture.sessionRecord(PROCESS_ID, "0b6f7c1e-2d3a-4e5f-8a9b-0c1d2e3f4a5b", fixture.project);
+			fixture.userSettings(ENABLED);
+			ClaudePolicyReading snapshot = fixture.read();
+			fixture.reportedStart = Instant.parse("2026-11-05T13:00:00Z");
 			try
 			{
-				ClaudeSession session = ClaudeSession.fromCommandEnvironment(environment(), fixture.home, "user");
-				throw new AssertionError("The session was not refused: " + session);
+				ParentPolicy policy = fixture.reader().reread(fixture.session(), snapshot);
+				throw new AssertionError("The reread was not refused: " + policy);
 			}
 			catch (PolicyRefusal e)
 			{
-				requireThat(e.messageFor(ClaudePolicyReader.HARNESS_NAME), "refusal").
-					contains("belongs to another session").contains(SESSION_ID);
+				requireThat(e.getMessage(), "refusal").contains("another process");
 			}
+			fixture.running = false;
+			requireThat(fixture.refusal(), "refusal").contains("not running");
 		}
 	}
 
 	/**
-	 * Returns the environment of a command that the fixture's Claude Code session runs in its sandbox.
+	 * Verifies that a project settings file that appears after CAT first read the policy narrows the policy that a
+	 * later reading gives, but does not widen it.
 	 *
-	 * @return the environment
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
 	 */
-	private static Map<String, String> environment()
+	@Test
+	public void laterProjectFileOnlyNarrows() throws IOException, PolicyRefusal
 	{
-		return Map.of("CLAUDECODE", "1", "SANDBOX_RUNTIME", "1", "CLAUDE_PID", Long.toString(PROCESS_ID),
-			"CLAUDE_CODE_SESSION_ID", SESSION_ID);
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["api.example.com"]}}}""");
+			ClaudePolicyReading snapshot = fixture.read();
+			Path widened = fixture.root.resolve("widened");
+			Path denied = fixture.project.resolve("denied");
+			fixture.projectSettings("""
+				{"sandbox": {"filesystem": {"allowWrite": ["%s"], "denyWrite": ["%s"], "denyRead": ["%s"]},
+				  "network": {"allowedDomains": ["new.example.com"], "allowLocalBinding": true}}}""".formatted(
+				widened, denied, denied));
+
+			ParentPolicy policy = fixture.reader().reread(fixture.session(), snapshot);
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+			requireThat(policy.writeRoots(), "writeRoots").doesNotContain(widened);
+			requireThat(policy.writeDenials(), "writeDenials").contains(denied);
+			requireThat(policy.readDenials(), "readDenials").contains(denied);
+			requireThat(policy.hosts().allows("api.example.com"), "snapshotHost").isTrue();
+			requireThat(policy.hosts().allows("new.example.com"), "newHost").isFalse();
+			requireThat(policy.allowLocalBinding(), "allowLocalBinding").isFalse();
+		}
 	}
 
 	/**
@@ -406,21 +499,33 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
-	 * Verifies that settings that lift the sandbox's file restrictions let the session's commands write every folder.
+	 * Verifies that the settings files that CAT reads are protected sources of the policy, and that a settings file
+	 * that the session's commands may change, because the settings lift the sandbox's file restrictions, is
+	 * refused.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the policy is refused
 	 */
 	@Test
-	public void liftedFileRestrictionsWriteEverywhere() throws IOException, PolicyRefusal
+	public void writableSettingsFileIsRefused() throws IOException, PolicyRefusal
 	{
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
+			fixture.userSettings(ENABLED);
+			requireThat(fixture.policy().protectedSources(), "protectedSources").containsAll(List.of(
+				fixture.project.resolve(".claude/settings.json"),
+				fixture.project.resolve(".claude/settings.local.json"),
+				fixture.configuration.resolve("settings.json")));
+
+			Path flagFile = write(fixture.project.resolve("flags/settings.json"), "{}");
+			fixture.arguments.addAll(List.of("--settings", flagFile.toString()));
+			requireThat(fixture.policy().protectedSources(), "protectedSources").contains(flagFile);
+
+			fixture.arguments.clear();
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true, "filesystem": {"disabled": true}}}""");
-			ParentPolicy policy = fixture.policy();
-			requireThat(policy.sandboxed(), "sandboxed").isTrue();
-			requireThat(policy.writeRoots(), "writeRoots").isEqualTo(List.of(Path.of("/")));
+			requireThat(fixture.refusal(), "refusal").startsWith(REFUSAL).
+				contains(fixture.configuration.resolve("settings.json").toString());
 		}
 	}
 }

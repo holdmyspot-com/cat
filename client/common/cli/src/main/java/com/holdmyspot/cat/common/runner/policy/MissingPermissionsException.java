@@ -116,7 +116,7 @@ public final class MissingPermissionsException extends SessionRefusedException
 	}
 
 	/**
-	 * Returns the message that refuses the launch of the child.
+	 * Returns the message that the launcher answers a request with.
 	 *
 	 * @param harnessName the display name of the requesting session's harness
 	 * @param entries     the instruction that says which of the settings of the harness to add the {@link #writes()}

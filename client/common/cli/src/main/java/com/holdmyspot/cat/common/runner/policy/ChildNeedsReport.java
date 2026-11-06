@@ -18,9 +18,9 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * What a child session of one harness needs beyond its run folder, as that harness's runner reports it with
- * {@link #OPTION} to a runner of the other harness that starts the child: the folders that it writes outside the run
- * folder, the hosts that its commands reach, and the login files that its isolated home copies. Its file
+ * What a child session of one harness needs beyond its run folder, as that harness's runner reports it to a session
+ * launcher with {@link #OPTION}: the folders that it writes outside the run folder, the hosts that its commands reach,
+ * and the login files that its isolated home copies. The runner writes the report and the launcher reads it. Its file
  * is a JSON object whose {@code format_version} is {@value #VERSION}, whose {@code writes} and {@code logins} are
  * arrays of absolute paths, and whose {@code hosts} is an array of host names in ascending order. It has no other
  * field.
@@ -36,7 +36,7 @@ public record ChildNeedsReport(List<Path> writes, Set<String> hosts, List<Path> 
 	 */
 	public static final String OPTION = "--child-needs";
 	/**
-	 * The report's file name in the folder that the runner reports in.
+	 * The report's file name in a request's directory.
 	 */
 	public static final String FILE_NAME = "child-needs.json";
 	/**
@@ -86,39 +86,6 @@ public record ChildNeedsReport(List<Path> writes, Set<String> hosts, List<Path> 
 				throw new IllegalArgumentException(name + " must hold absolute paths: " + path);
 		}
 		return copy;
-	}
-
-	/**
-	 * Returns the needs of a child whose harness's runner gave this report.
-	 *
-	 * @param harness     the child's harness identifier
-	 * @param runFolder   the folder that holds the child's run
-	 * @param deniedReads the absolute paths that the launch denies the child
-	 * @param bound       the policy of the session that starts the child, which bounds the child
-	 * @return the child's run folder, the launch's denied reads, and the writes and hosts of this report
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code harness} is blank
-	 * @throws PolicyRefusal            if {@code bound} denies reading a login file that the child's isolated home
-	 *                                  would copy into its run folder, where the parent's commands could read it
-	 * @throws IOException              if a symbolic link in a login file's path cannot be read
-	 */
-	public ChildNeeds needs(String harness, Path runFolder, List<Path> deniedReads, ParentPolicy bound)
-		throws IOException, PolicyRefusal
-	{
-		requireThat(harness, "harness").isNotBlank();
-		requireThat(runFolder, "runFolder").isNotNull();
-		requireThat(deniedReads, "deniedReads").isNotNull();
-		requireThat(bound, "bound").isNotNull();
-		for (Path login : logins)
-		{
-			if (!bound.mayRead(login))
-			{
-				throw new PolicyRefusal("its sandbox denies its commands reading " + login + ", the login that a " +
-					harness + " session copies into its run folder, where the commands could read it",
-					"Let the session's sandbox read " + login + ", then start a new session");
-			}
-		}
-		return new ChildNeeds(runFolder, writes, deniedReads, hosts);
 	}
 
 	/**

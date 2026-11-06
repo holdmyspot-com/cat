@@ -5,7 +5,6 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
-import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
@@ -13,7 +12,6 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.fakes.test.InPlaceBounds;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
@@ -86,7 +84,7 @@ public final class ClaudeRunnerCliTest
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
 					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(),
-						_ -> capacity, InPlaceBounds.unused());
+						_ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
 				catch (HarnessCapacityWaitExpiredException _)
@@ -177,7 +175,7 @@ public final class ClaudeRunnerCliTest
 			ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 			{
 				throw new IllegalStateException("Capacity requested");
-			}, InPlaceBounds.unused());
+			});
 			throw new AssertionError("The launch did not ask for capacity");
 		}
 		catch (IllegalStateException e)
@@ -226,7 +224,7 @@ public final class ClaudeRunnerCliTest
 						Map.of(), _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
-						}, InPlaceBounds.unused());
+						});
 					throw new AssertionError("The launch was not refused");
 				}
 				catch (IllegalArgumentException e)
@@ -276,7 +274,7 @@ public final class ClaudeRunnerCliTest
 						Map.of(), _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
-						}, InPlaceBounds.unused());
+						});
 					throw new AssertionError("The launch was not refused");
 				}
 				catch (IllegalArgumentException e)
@@ -325,7 +323,7 @@ public final class ClaudeRunnerCliTest
 						_ ->
 					{
 						throw new AssertionError("The launch took a capacity slot");
-					}, InPlaceBounds.unused());
+					});
 					throw new AssertionError("The launch was not refused");
 				}
 				catch (IOException e)
@@ -508,14 +506,13 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch without {@code --policy-bound} starts its session in place, bounded by the policy of the
-	 * session whose command runs the launch, and is refused with the reason that policy cannot be read before it takes
-	 * a capacity slot or creates a run.
+	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
+	 * run, since only the session launcher starts a session and it always bounds the session's policy.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void refusesInPlaceLaunchWhoseBoundIsRefused() throws IOException
+	public void refusesLaunchWithoutPolicyBound() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -524,19 +521,17 @@ public final class ClaudeRunnerCliTest
 			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
 				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
 				"--effort", "low"};
-			PolicyRefusal refusal = new PolicyRefusal("the settings file /p/settings.json cannot be parsed",
-				"Fix the file, then start a new session");
 			try
 			{
 				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
-				}, InPlaceBounds.refusing("Claude Code", refusal));
+				});
 				throw new AssertionError("The launch was not refused");
 			}
 			catch (SessionRefusedException e)
 			{
-				requireThat(e.getMessage(), "message").isEqualTo(refusal.messageFor("Claude Code"));
+				requireThat(e.getMessage(), "message").contains("--policy-bound");
 			}
 			requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
 		}
@@ -564,7 +559,7 @@ public final class ClaudeRunnerCliTest
 				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
-				}, InPlaceBounds.unused());
+				});
 				throw new AssertionError("The bound was not rejected");
 			}
 			catch (IOException e)
@@ -598,9 +593,40 @@ public final class ClaudeRunnerCliTest
 				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
-				}, InPlaceBounds.unused()));
+				}));
 
 			requireThat(refusal.getMessage(), "message").contains("relative/cache").contains(extra.toString());
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose requester holds the session's capacity slot takes none, so that it starts even
+	 * while every slot is taken.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void heldCapacityTakesNoSlot() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
+				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
+			try
+			{
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				{
+					throw new AssertionError("The launch took a capacity slot");
+				});
+				throw new AssertionError("The launch started a session without a CAT artifact");
+			}
+			catch (IOException _)
+			{
+				// The session starts without a slot, and fails only because the test runs no CAT artifact
+			}
 		}
 	}
 

@@ -10,6 +10,10 @@ enum SettingsScope
 	 */
 	MANAGED,
 	/**
+	 * The settings that {@code --settings} gives.
+	 */
+	FLAG,
+	/**
 	 * The project's settings that are not shared, in {@code .claude/settings.local.json}.
 	 */
 	LOCAL,

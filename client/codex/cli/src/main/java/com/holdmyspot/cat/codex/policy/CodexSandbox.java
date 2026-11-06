@@ -120,7 +120,7 @@ public record CodexSandbox(boolean sandboxed, List<PermissionEntry> entries, Hos
 			}
 		}
 		return new ParentPolicy(true, writeRoots, List.copyOf(writeDenials), List.copyOf(readDenials),
-			readReallowances, hosts, allowLocalBinding);
+			readReallowances, hosts, allowLocalBinding, List.of());
 	}
 
 	/**

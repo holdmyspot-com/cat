@@ -16,6 +16,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
+import static com.holdmyspot.cat.claude.policy.SettingsScope.FLAG;
 import static com.holdmyspot.cat.claude.policy.SettingsScope.MANAGED;
 import static com.holdmyspot.cat.claude.policy.SettingsScope.PROJECT;
 import static com.holdmyspot.cat.claude.policy.SettingsScope.USER;
@@ -44,6 +45,10 @@ final class ClaudePolicyComputation
 	 */
 	private final List<SettingsLayer> layers;
 	/**
+	 * The command line.
+	 */
+	private final ClaudeCommandLine commandLine;
+	/**
 	 * The session.
 	 */
 	private final ClaudeSession session;
@@ -55,12 +60,14 @@ final class ClaudePolicyComputation
 	/**
 	 * Creates a computation.
 	 *
-	 * @param layers  the settings, from the highest precedence to the lowest
-	 * @param session the session
+	 * @param layers      the settings, from the highest precedence to the lowest
+	 * @param commandLine the command line
+	 * @param session     the session
 	 */
-	private ClaudePolicyComputation(List<SettingsLayer> layers, ClaudeSession session)
+	private ClaudePolicyComputation(List<SettingsLayer> layers, ClaudeCommandLine commandLine, ClaudeSession session)
 	{
 		this.layers = layers;
+		this.commandLine = commandLine;
 		this.session = session;
 		this.paths = new ClaudePaths(session.projectDirectory(), session.userHome());
 	}
@@ -68,16 +75,17 @@ final class ClaudePolicyComputation
 	/**
 	 * Computes the policy of a session.
 	 *
-	 * @param layers  the settings, from the highest precedence to the lowest
-	 * @param session the session
+	 * @param layers      the settings, from the highest precedence to the lowest
+	 * @param commandLine the command line
+	 * @param session     the session
 	 * @return the policy
 	 * @throws IOException   if a folder cannot be listed while matching a denied pattern
 	 * @throws PolicyRefusal if a setting has a value that CAT cannot read safely
 	 */
-	static ParentPolicy compute(List<SettingsLayer> layers, ClaudeSession session)
+	static ParentPolicy compute(List<SettingsLayer> layers, ClaudeCommandLine commandLine, ClaudeSession session)
 		throws IOException, PolicyRefusal
 	{
-		return new ClaudePolicyComputation(List.copyOf(layers), session).compute();
+		return new ClaudePolicyComputation(List.copyOf(layers), commandLine, session).compute();
 	}
 
 	/**
@@ -109,7 +117,7 @@ final class ClaudePolicyComputation
 		boolean managedRulesOnly = anyTrue(Set.of(MANAGED), "allowManagedPermissionRulesOnly");
 		// The release ignores some project settings when a more trusted scope forbids unsandboxed commands
 		boolean projectRestricted = managedDomainsOnly ||
-			anyFalse(Set.of(MANAGED), "sandbox", "allowUnsandboxedCommands");
+			anyFalse(Set.of(MANAGED, FLAG), "sandbox", "allowUnsandboxedCommands");
 		if (!sandboxEnabled(projectRestricted))
 			return ParentPolicy.UNSANDBOXED;
 
@@ -117,18 +125,29 @@ final class ClaudePolicyComputation
 		List<Path> writeDenials = new ArrayList<>();
 		List<Path> readDenials = new ArrayList<>();
 		List<Path> readReallowances = new ArrayList<>();
+		List<Path> protectedSources = new ArrayList<>();
 		if (filesystemDisabled())
 		{
-			// Commands may read and write every file
+			// Commands may read and write every file, and nothing says that the settings files stay protected
 			writeRoots.add(Path.of("/"));
 			return new ParentPolicy(true, writeRoots, writeDenials, readDenials, readReallowances,
-				hosts(projectRestricted, managedDomainsOnly, managedRulesOnly), allowLocalBinding(projectRestricted));
+				hosts(projectRestricted, managedDomainsOnly, managedRulesOnly), allowLocalBinding(projectRestricted),
+				protectedSources);
 		}
 		addWrites(writeRoots, writeDenials, projectRestricted, managedRulesOnly || managedDomainsOnly);
 		addReads(readDenials, readReallowances);
+		Path projectSettings = session.projectDirectory().resolve(".claude");
+		protectedSources.add(projectSettings.resolve("settings.json"));
+		protectedSources.add(projectSettings.resolve("settings.local.json"));
+		protectedSources.add(session.configurationDirectory().resolve("settings.json"));
+		for (SettingsLayer layer : layers)
+		{
+			if (layer.scope() == FLAG && layer.file().isPresent())
+				protectedSources.add(layer.file().get());
+		}
 		return new ParentPolicy(true, distinct(writeRoots), distinct(writeDenials), distinct(readDenials),
 			distinct(readReallowances), hosts(projectRestricted, managedDomainsOnly, managedRulesOnly),
-			allowLocalBinding(projectRestricted));
+			allowLocalBinding(projectRestricted), distinct(protectedSources));
 	}
 
 	/**
@@ -140,7 +159,7 @@ final class ClaudePolicyComputation
 	 */
 	private boolean sandboxEnabled(boolean projectRestricted) throws PolicyRefusal
 	{
-		boolean trustedEnable = anyTrue(Set.of(MANAGED, USER), "sandbox", "enabled");
+		boolean trustedEnable = anyTrue(Set.of(MANAGED, FLAG, USER), "sandbox", "enabled");
 		for (SettingsLayer layer : layers)
 		{
 			Optional<Boolean> enabled = bool(layer, "sandbox", "enabled");
@@ -171,7 +190,7 @@ final class ClaudePolicyComputation
 		if (managedFilesystem)
 			scopes = Set.of(MANAGED);
 		else
-			scopes = Set.of(MANAGED, USER);
+			scopes = Set.of(MANAGED, FLAG, USER);
 		for (SettingsLayer layer : layers)
 		{
 			if (!scopes.contains(layer.scope()))
@@ -203,8 +222,15 @@ final class ClaudePolicyComputation
 			for (String rule : strings(layer, "permissions", "deny"))
 				writeDenials.addAll(ruleDenials(rule, "Edit", layer.root(), layer.source()));
 		}
+		for (String rule : commandLine.deniedTools())
+		{
+			writeDenials.addAll(ruleDenials(rule, "Edit", session.projectDirectory(),
+				"Claude Code's option --disallowedTools"));
+		}
 
 		writeRoots.add(session.projectDirectory());
+		for (String directory : commandLine.addDirectories())
+			writeRoots.add(session.projectDirectory().resolve(directory).normalize());
 		for (SettingsLayer layer : layers)
 		{
 			boolean grants = !managedRulesOnly || layer.scope() == MANAGED;
@@ -242,6 +268,11 @@ final class ClaudePolicyComputation
 		writeDenials.add(session.configurationDirectory());
 		writeDenials.add(session.managedDirectory());
 		writeDenials.addAll(session.otherManagedDirectories());
+		for (SettingsLayer layer : layers)
+		{
+			if (layer.scope() == FLAG && layer.file().isPresent())
+				writeDenials.add(layer.file().get());
+		}
 	}
 
 	/**
@@ -267,6 +298,13 @@ final class ClaudePolicyComputation
 			readDenials.addAll(denials);
 			if (layer.scope() != PROJECT)
 				trustedDenials.addAll(denials);
+		}
+		for (String rule : commandLine.deniedTools())
+		{
+			List<Path> denials = ruleDenials(rule, "Read", session.projectDirectory(),
+				"Claude Code's option --disallowedTools");
+			readDenials.addAll(denials);
+			trustedDenials.addAll(denials);
 		}
 
 		boolean managedReadsOnly = anyTrue(Set.of(MANAGED), "sandbox", "filesystem", "allowManagedReadPathsOnly");
@@ -296,10 +334,10 @@ final class ClaudePolicyComputation
 	private HostAccess hosts(boolean projectRestricted, boolean managedDomainsOnly, boolean managedRulesOnly)
 		throws PolicyRefusal
 	{
-		boolean strict = anyTrue(Set.of(MANAGED, USER), "sandbox", "network", "strictAllowlist");
+		boolean strict = anyTrue(Set.of(MANAGED, FLAG, USER), "sandbox", "network", "strictAllowlist");
 		Set<String> denied = new LinkedHashSet<>();
 		boolean deniesAll = false;
-		List<String> deniedRules = new ArrayList<>();
+		List<String> deniedRules = new ArrayList<>(commandLine.deniedTools());
 		for (SettingsLayer layer : layers)
 		{
 			denied.addAll(strings(layer, "sandbox", "network", "deniedDomains"));

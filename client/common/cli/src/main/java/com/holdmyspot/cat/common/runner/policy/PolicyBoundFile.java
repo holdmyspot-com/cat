@@ -18,9 +18,9 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The file that a runner of one harness, or the runner of a CAT run, gives the runner that starts a child with
- * {@link #OPTION}: the child's {@link ChildPolicy}, which the runner renders into the child harness's sandbox settings
- * and which bounds every session that the child requests in turn. It is a JSON object whose {@code format_version} is
+ * The file that a session launcher gives a child's runner with {@link #OPTION}: the child's {@link ChildPolicy}, which
+ * the runner renders into the child harness's sandbox settings and which bounds every session that the child requests
+ * in turn. The launcher writes it and the runner reads it. It is a JSON object whose {@code format_version} is
  * {@value #VERSION}, whose {@code write_roots}, {@code write_denials}, {@code read_denials} and
  * {@code read_reallowances} are arrays of absolute paths, whose {@code hosts} is an array of host names in ascending
  * order, and whose {@code allow_local_binding} is a boolean. It has no other field.

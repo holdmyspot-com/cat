@@ -13,7 +13,6 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
-import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -26,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
@@ -153,8 +153,7 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
-	 * Verifies a session that CAT's runner started in a run, and that may start sessions of its own, still receives
-	 * CAT's rules.
+	 * Verifies a session that its runner lets start sessions of its own still receives CAT's rules.
 	 */
 	@Test
 	public void loadsRulesWhenSessionsMayBeRequested() throws IOException
@@ -167,7 +166,6 @@ public final class ClaudeSessionStartHookTest
 			write(plugin, "rules/common/rule.md", "rule");
 
 			HookResult result = invoke(cwdInput(project), Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
-				HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE,
 				"CAT_SESSION_REQUESTS", requests.toString(),
 				"CAT_REQUEST_SESSION", plugin.resolve("client/bin/request-session").toString()), project);
 
@@ -1133,7 +1131,11 @@ public final class ClaudeSessionStartHookTest
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		ClaudeSessionStartHookSecrets.getClaudeSessionStartHookAccess().run(args,
 			new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			harnessEnvironment, workingDirectory, Yielding.waiting(), git);
+			harnessEnvironment, workingDirectory, Yielding.waiting(), git, Platform.current(), _ -> Optional.empty(),
+			(_, _) ->
+			{
+				throw new AssertionError("The hook started a session launcher");
+			});
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

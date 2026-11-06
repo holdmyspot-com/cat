@@ -46,7 +46,8 @@ public final class ChildPolicyTest
 	private static ParentPolicy sandboxed(List<Path> writeRoots, List<Path> writeDenials, List<Path> readDenials,
 		List<Path> reallowances)
 	{
-		return new ParentPolicy(true, writeRoots, writeDenials, readDenials, reallowances, HostAccess.NONE, false);
+		return new ParentPolicy(true, writeRoots, writeDenials, readDenials, reallowances, HostAccess.NONE, false,
+			List.of());
 	}
 
 	/**
@@ -58,7 +59,7 @@ public final class ChildPolicyTest
 	 */
 	private static ParentPolicy network(HostAccess hosts, boolean allowLocalBinding)
 	{
-		return new ParentPolicy(true, List.of(), List.of(), List.of(), List.of(), hosts, allowLocalBinding);
+		return new ParentPolicy(true, List.of(), List.of(), List.of(), List.of(), hosts, allowLocalBinding, List.of());
 	}
 
 	/**
@@ -103,7 +104,7 @@ public final class ChildPolicyTest
 			Path secondCache = Files.createDirectory(root.resolve("second-cache"));
 			Path run = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(project), List.of(), List.of(), List.of(),
-				HostAccess.listed(Set.of("allowed.example")), false);
+				HostAccess.listed(Set.of("allowed.example")), false, List.of());
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(firstCache, allowed, secondCache),

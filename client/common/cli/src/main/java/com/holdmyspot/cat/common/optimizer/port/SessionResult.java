@@ -159,13 +159,13 @@ public sealed interface SessionResult
 	}
 
 	/**
-	 * No session started because the runner refused it: the session would need more than the sandbox of the harness
-	 * session that runs the optimizer allows, or its own sandbox could not confine it. Every later session is refused
-	 * the same way until the user acts on the reason, so the session is not retried.
+	 * No session started because CAT's session launcher refused it: no launcher serves the host session, or the
+	 * launcher or the child's runner refused the session. Every later session is refused the same way until the user
+	 * acts on the reason, so the session is not retried.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
-	 * @param reason why no session started and how the user fixes it, as the runner states it
+	 * @param reason why no session started and how the user fixes it, as the launcher states it
 	 * @param windows the rate-limit windows that the harness reported during the session
 	 */
 	record LaunchRefused(String reason, List<RateLimitWindow> windows) implements SessionResult
@@ -173,7 +173,7 @@ public sealed interface SessionResult
 		/**
 		 * Creates a launch-refused result.
 		 *
-		 * @param reason why no session started and how the user fixes it, as the runner states it
+		 * @param reason why no session started and how the user fixes it, as the launcher states it
 		 * @param windows the rate-limit windows that the harness reported during the session
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code reason} is blank

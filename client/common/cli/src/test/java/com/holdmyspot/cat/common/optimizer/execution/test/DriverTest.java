@@ -3540,9 +3540,9 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that a trial session that the runner refuses before it starts stops the slice at once with the runner's
-	 * message, verbatim in the status and its summary, without retrying the trial, counting the refusal as an
-	 * infrastructure failure, or raising a decision.
+	 * Verifies that a trial session that the session launcher refuses before it starts stops the slice at once with
+	 * the launcher's message, verbatim in the status and its summary, without retrying the trial, counting the
+	 * refusal as an infrastructure failure, or raising a decision.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -3553,8 +3553,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("launch-refused")),
 				developing().window(1).build());
-			String refusal = "CAT cannot start the session: the Claude Code session that runs this command does not " +
-				"let it reach \"api.anthropic.com\". Start a new Claude Code session.";
+			String refusal = "No session launcher serves this Claude Code session. Start a new Claude Code session.";
 			harness.trials(_ -> new SessionResult.LaunchRefused(refusal, List.of()));
 			try (Driver driver = harness.open())
 			{

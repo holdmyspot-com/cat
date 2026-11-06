@@ -40,12 +40,12 @@ public final class HarnessProjectRepositoryTest
 	}
 
 	/**
-	 * Verifies that the copy's commits use the host's name and email.
+	 * Verifies that the copy's commits use the host's name and email when the launch names none.
 	 */
 	@Test
 	public void usesHostIdentity()
 	{
-		requireThat(ACCESS.identity("A User", "user@example.test"), "identity").
+		requireThat(ACCESS.identity(null, null, "A User", "user@example.test"), "identity").
 			isEqualTo(new Identity("A User", "user@example.test"));
 	}
 
@@ -56,9 +56,23 @@ public final class HarnessProjectRepositoryTest
 	@Test
 	public void fallsBackWhenHostIdentityIsIncomplete()
 	{
-		requireThat(ACCESS.identity(null, null), "none").isEqualTo(FIXTURE);
-		requireThat(ACCESS.identity("A User", null), "emailMissing").isEqualTo(FIXTURE);
-		requireThat(ACCESS.identity(null, "user@example.test"), "nameMissing").isEqualTo(FIXTURE);
+		requireThat(ACCESS.identity(null, null, null, null), "none").isEqualTo(FIXTURE);
+		requireThat(ACCESS.identity(null, null, "A User", null), "emailMissing").isEqualTo(FIXTURE);
+		requireThat(ACCESS.identity(null, null, null, "user@example.test"), "nameMissing").isEqualTo(FIXTURE);
+	}
+
+	/**
+	 * Verifies that an identity that the launch names configures the copy instead of the source project's, and that a
+	 * named value replaces only its own lookup.
+	 */
+	@Test
+	public void configuresNamedIdentity()
+	{
+		requireThat(ACCESS.identity("A User", "user@example.test", "Host User", "host@example.test"), "both").
+			isEqualTo(new Identity("A User", "user@example.test"));
+		requireThat(ACCESS.identity("A User", null, "Host User", "host@example.test"), "onlyName").
+			isEqualTo(new Identity("A User", "host@example.test"));
+		requireThat(ACCESS.identity("A User", null, null, null), "nameWithoutHost").isEqualTo(FIXTURE);
 	}
 
 	/**
@@ -141,7 +155,7 @@ public final class HarnessProjectRepositoryTest
 				"[user]\n\tname = A User\n\temail = user@example.test\n", UTF_8);
 
 			HarnessProjectRepository.initialize(sourceProject, project, root, parentEnvironment(root, hostConfiguration),
-				Yielding.executableFiles());
+				Yielding.executableFiles(), null, null);
 
 			Git git = new Git(project);
 			List<String> commits = git.lines("log", "--format=%an <%ae> %s");
@@ -172,7 +186,7 @@ public final class HarnessProjectRepositoryTest
 			Path hostConfiguration = Files.writeString(root.resolve("host.gitconfig"), "[user\n", UTF_8);
 
 			HarnessProjectRepository.initialize(sourceProject, project, root, parentEnvironment(root, hostConfiguration),
-				Yielding.executableFiles());
+				Yielding.executableFiles(), null, null);
 		}
 	}
 

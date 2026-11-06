@@ -132,7 +132,7 @@ public final class SessionRequestBroker implements Closeable
 		synchronized (this)
 		{
 			Path requests = SessionRequestAccess.requestsDirectory(run);
-			for (String id : RequestArchive.pendingIds(requests))
+			for (String id : RequestArchive.pendingIds(requests, ""))
 			{
 				Path file = requests.resolve(id + RequestArchive.EXTENSION);
 				Path directory = SessionRequestAccess.responsesDirectory(run).resolve(id);
@@ -184,11 +184,10 @@ public final class SessionRequestBroker implements Closeable
 	private RunRequest read(Path file, Path directory) throws IOException
 	{
 		Path copy = directory.resolve("request.tar");
-		// The broker may read files that the requesting session, which keeps running, may not. Walking its input
+		// The broker has the user's permissions while the requesting session keeps running. Walking its input
 		// directories would let it swap a link or junction into the path and make us read a file it may not read.
-		// The runner launcher that forwards the request packs it inside the session's sandbox, which refuses that
-		// read. We open only this single archive in requests, whose path has no session-controlled directory, without
-		// following links and with one hard link.
+		// The launcher packs inside its sandbox, which refuses that read. We open only this single archive in
+		// requests, whose path has no session-controlled directory, without following links and with one hard link.
 		Path inputs = Files.createDirectory(directory.resolve("inputs"));
 		try
 		{
@@ -338,7 +337,7 @@ public final class SessionRequestBroker implements Closeable
 	{
 		try
 		{
-			String reason = BoundedInput.readUtf8(directory.resolve(RequestedRunner.STDERR_FILE), MAXIMUM_REFUSAL_BYTES,
+			String reason = BoundedInput.readUtf8(directory.resolve("runner.stderr"), MAXIMUM_REFUSAL_BYTES,
 				"requested runner refusal").strip();
 			if (!reason.isEmpty())
 				return reason;

@@ -287,7 +287,22 @@ public final class OptimizerCore implements Core
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
+		refuseUnlaunchable();
 		return withCleanup(_ -> startBody(target, ceiling, goal, extraPermissions));
+	}
+
+	/**
+	 * Refuses the command before it starts a session if the session launcher would refuse every session.
+	 *
+	 * @throws CommandRefusedException with the launcher's message, which names the reason and the user's remedy, if
+	 *   the launcher would refuse every session
+	 * @throws IOException if the launchers' state cannot be listed
+	 */
+	private void refuseUnlaunchable() throws CommandRefusedException, IOException
+	{
+		Optional<String> refusal = scope.launchRefusal();
+		if (refusal.isPresent())
+			throw new CommandRefusedException(refusal.get());
 	}
 
 	/**
@@ -1271,6 +1286,7 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
 	{
+		refuseUnlaunchable();
 		return withCleanup(notices ->
 		{
 			Path root = scope.projectRoot();

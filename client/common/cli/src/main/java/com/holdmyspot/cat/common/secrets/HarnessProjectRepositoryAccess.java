@@ -24,11 +24,13 @@ public interface HarnessProjectRepositoryAccess
 	/**
 	 * Chooses the identity of the copy's commits.
 	 *
-	 * @param hostName  the source project's Git user name, or {@code null} if it has none
-	 * @param hostEmail the source project's Git user email, or {@code null} if it has none
+	 * @param gitName   the Git user name that the launch names, or {@code null} if it names none
+	 * @param gitEmail  the Git user email that the launch names, or {@code null} if it names none
+	 * @param hostName  the source project's Git user name, or {@code null} if it has none or was not read
+	 * @param hostEmail the source project's Git user email, or {@code null} if it has none or was not read
 	 * @return the identity
 	 */
-	HarnessProjectRepository.Identity identity(String hostName, String hostEmail);
+	HarnessProjectRepository.Identity identity(String gitName, String gitEmail, String hostName, String hostEmail);
 
 	/**
 	 * Interprets the result of {@code git config --get} for an identity key.

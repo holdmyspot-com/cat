@@ -25,15 +25,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * @param readReallowances  the absolute paths inside read denials that the commands may read nonetheless
  * @param hosts             the network hosts that the commands may reach
  * @param allowLocalBinding {@code true} if the commands may listen on local network addresses
+ * @param protectedSources  the absolute files or folders, possibly inside the write roots, that the harness keeps the
+ *                          commands from changing, such as its own settings files
  */
 public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> writeDenials, List<Path> readDenials,
-	List<Path> readReallowances, HostAccess hosts, boolean allowLocalBinding)
+	List<Path> readReallowances, HostAccess hosts, boolean allowLocalBinding, List<Path> protectedSources)
 {
 	/**
 	 * The policy of a parent whose commands are unrestricted.
 	 */
 	public static final ParentPolicy UNSANDBOXED = new ParentPolicy(false, List.of(), List.of(), List.of(), List.of(),
-		HostAccess.ALL, true);
+		HostAccess.ALL, true, List.of());
 
 	/**
 	 * Creates a policy.
@@ -46,6 +48,8 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	 * @param readReallowances  the absolute paths inside read denials that the commands may read nonetheless
 	 * @param hosts             the network hosts that the commands may reach
 	 * @param allowLocalBinding {@code true} if the commands may listen on local network addresses
+	 * @param protectedSources  the absolute files or folders, possibly inside the write roots, that the harness keeps
+	 *                          the commands from changing, such as its own settings files
 	 * @throws NullPointerException     if any of the arguments are null, or a list contains null
 	 * @throws IllegalArgumentException if a path is not absolute
 	 */
@@ -56,6 +60,7 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 		readDenials = absolutePaths(readDenials, "readDenials");
 		readReallowances = absolutePaths(readReallowances, "readReallowances");
 		requireThat(hosts, "hosts").isNotNull();
+		protectedSources = absolutePaths(protectedSources, "protectedSources");
 	}
 
 	/**
@@ -81,8 +86,10 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	}
 
 	/**
-	 * Returns the policy that gives only the accesses that both this policy and another one give. A reader uses it to
-	 * combine the policy without a source whose effect on the parent is uncertain with the policy that includes the
+	 * Returns the policy that gives only the accesses that both this policy and another one give. The launcher uses it
+	 * to combine the policy that it read when the parent started with the one that it reads for a request, so that a
+	 * change to the parent's settings during the session can narrow a child but never widen it. A reader also uses it
+	 * to combine the policy without a source whose effect on the parent is uncertain with the policy that includes the
 	 * source, so that the source contributes only the entries that narrow the policy.
 	 *
 	 * @param other the other policy of the same parent
@@ -125,7 +132,8 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 		}
 		return new ParentPolicy(true, List.copyOf(commonWriteRoots), union(first.writeDenials, second.writeDenials),
 			union(first.readDenials, second.readDenials), List.copyOf(commonReallowances),
-			commonHosts(first.hosts, second.hosts), first.allowLocalBinding && second.allowLocalBinding);
+			commonHosts(first.hosts, second.hosts), first.allowLocalBinding && second.allowLocalBinding,
+			union(first.protectedSources, second.protectedSources));
 	}
 
 	/**
@@ -137,7 +145,8 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	private ParentPolicy resolved() throws IOException
 	{
 		return new ParentPolicy(sandboxed, RealPaths.resolveAll(writeRoots), RealPaths.resolveAll(writeDenials),
-			RealPaths.resolveAll(readDenials), RealPaths.resolveAll(readReallowances), hosts, allowLocalBinding);
+			RealPaths.resolveAll(readDenials), RealPaths.resolveAll(readReallowances), hosts, allowLocalBinding,
+			RealPaths.resolveAll(protectedSources));
 	}
 
 	/**
@@ -229,5 +238,35 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 			throw new IllegalArgumentException("file must be absolute: " + file);
 		return !sandboxed || readsWhole(RealPaths.resolve(file), RealPaths.resolveAll(readDenials),
 			RealPaths.resolveAll(readReallowances));
+	}
+
+	/**
+	 * Checks that the parent's commands cannot have changed a file that CAT reads to establish the parent's policy or
+	 * to exchange data with it, such as a settings file or a state folder. The file is trusted when it lies outside the
+	 * parent's writable paths, or inside one of {@link #protectedSources()}; every file is trusted when the parent is
+	 * not sandboxed.
+	 *
+	 * @param source the absolute path of the file or folder
+	 * @throws NullPointerException     if {@code source} is null
+	 * @throws IllegalArgumentException if {@code source} is not absolute
+	 * @throws IOException              if a symbolic link in a path cannot be read, or a path follows more than 40 links
+	 * @throws PolicyRefusal            if the parent's commands may write {@code source}
+	 */
+	public void requireTrusted(Path source) throws IOException, PolicyRefusal
+	{
+		requireThat(source, "source").isNotNull();
+		if (!source.isAbsolute())
+			throw new IllegalArgumentException("source must be absolute: " + source);
+		if (!sandboxed)
+			return;
+		Path file = RealPaths.resolve(source);
+		boolean writable = RealPaths.isInsideAny(file, RealPaths.resolveAll(writeRoots)) &&
+			!RealPaths.isInsideAny(file, RealPaths.resolveAll(writeDenials));
+		if (writable && !RealPaths.isInsideAny(file, RealPaths.resolveAll(protectedSources)))
+		{
+			throw new PolicyRefusal("the session's sandbox lets its commands write " + source + ", so they could " +
+				"change what CAT reads there", "Remove " + source + " from the paths that the session's sandbox lets " +
+				"its commands write, then start a new session");
+		}
 	}
 }

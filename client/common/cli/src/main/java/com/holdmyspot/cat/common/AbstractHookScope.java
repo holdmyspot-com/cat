@@ -19,7 +19,10 @@ import tools.jackson.databind.JsonNode;
  */
 public abstract class AbstractHookScope extends AbstractJvmScope implements HookScope
 {
-	private static final int MAXIMUM_EVENT_BYTES = 1_048_576;
+	/**
+	 * The size of the largest hook input that a hook reads.
+	 */
+	public static final int MAXIMUM_EVENT_BYTES = 1_048_576;
 	/**
 	 * The variables in which a jlink launcher saves the caller's locale, whenever that locale is not UTF-8.
 	 */
