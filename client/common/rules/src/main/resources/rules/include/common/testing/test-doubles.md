@@ -28,9 +28,10 @@ production.
 
 A double's scripted behavior is an assumption about the real dependency. Base it on the real dependency's recorded
 output or documented behavior, name that source in the double's documentation, and script only the reactions the source
-shows. When a claim depends on how the real dependency reacts, the double cannot establish it: verify that reaction
-against the real dependency in an integration or contract test, and limit the double-based test's claim to the
-production behavior that follows from the reaction.
+shows. Trust the real dependency to behave as documented; recheck the double against the real dependency only when the
+double's behavior or the dependency's version changes, or when evidence shows the dependency reacts differently. A
+double cannot establish how the real dependency reacts, so limit the double-based test's claim to the production
+behavior that follows from the documented reaction.
 
 A test whose claim is the double's own behavior is a test of the test-support code. Name it as such and do not count it
 as coverage of production behavior.

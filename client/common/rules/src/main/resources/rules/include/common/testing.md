@@ -11,8 +11,8 @@
 - Prove each claim that application code in the test's own process decides with a unit test of the production method
 	that makes the decision, extracting that method from the code that performs the interaction when the two are mixed, not
 	with a test that runs or fakes an executable, network service, or operating-system facility. Keep integration tests
-	only for claims about the boundary's own behavior and one end-to-end check per boundary, and lose no claim when
-	converting an existing test.
+	only for claims about the application's own wiring at the boundary and one end-to-end check per boundary, and lose no
+	claim when converting an existing test.
 - Verify meaningful changes efficiently with the narrowest relevant test and the complete suite before handoff.
 
 ## Guidance
@@ -24,8 +24,12 @@ When a test replaces a collaborator, external program, or process with a fake, s
 load `testing/test-doubles.md` before writing or accepting its assertions.
 
 Test observable behavior with controlled inputs rather than machine-specific configuration or implementation details.
-Each test owns its fixtures and mutable state. Avoid tests that primarily validate third-party tools; test the
-application's interpretation, command construction, error handling, and integration behavior instead.
+Each test owns its fixtures and mutable state. Do not test third-party software or APIs: external programs,
+libraries, the JDK and other platform APIs, and network services. Trust them to work as documented. Test the
+application's own code: how it builds inputs for them, interprets their output, and handles their failures. Set that
+trust aside only when evidence shows the third-party behavior differs from what the application relies on, such as a
+failure, a documented change, or an observed mismatch. Then investigate it, and a test may pin the behavior the
+application depends on.
 
 Choose the test language from the behavior being claimed, not from the fact that it uses a command, files, or another
 tool. Test behavior in the same process when its dependencies can be injected. Use the project's shell-test framework
@@ -44,12 +48,13 @@ test creates and passes in as input is test data, not a boundary. Classify each 
 	decided claim with a unit test instead of an integration test, and do not also assert it in an integration test. Do
 	not prove it by putting a fake executable on the search path, running a fake server, using a real operating-system
 	facility only to deliver a result, or waiting in real time for a deadline to pass.
-- A boundary claim is about the boundary's own behavior: how a launcher or shell parses and expands arguments, the exit
-	status or signal that a real process delivers, stream closure, a lock held across processes, or how the real
-	program, service, or facility reacts to a request. Keep each boundary claim in an integration test. A double cannot
-	establish how the real dependency reacts: prove that reaction against the real dependency, and unit-test only what
-	the code does with it. When a boundary claim needs a stand-in process, write the smallest one in the project's
-	primary language unless the claim is about the shell.
+- A boundary claim is about the application's own wiring at the boundary: how its launcher or shell parses and expands
+	arguments, the exit status or signal its entry point delivers to the caller, stream closure, or a lock held across
+	processes. Keep each boundary claim in an integration test. Do not make a boundary claim about how a third-party
+	program, service, or facility reacts to a request unless evidence has set aside the trust described above; then prove
+	that reaction against the real dependency, and unit-test only what the code does with it. When a boundary claim
+	needs a stand-in process, write the smallest one in the project's primary language unless the claim is about the
+	shell.
 
 To make a decided claim unit-testable, split the decision from the interaction; when the code that decides also performs
 the interaction, extract the decision into a method before writing the test. The method takes plain inputs, such as the
