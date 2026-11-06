@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessRunStarter;
@@ -102,36 +103,66 @@ public final class ClaudeRunnerCli
 			}
 			return;
 		}
+		String[] launch = args;
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
 		{
-			System.exit(SessionRequestForwarder.forward(HARNESS_ID, args,
-				new InputStreamReader(System.in, UTF_8), Path.of(requests), Pause.sleeping(Duration.ofMillis(100)),
-				System.out, new PrintWriter(System.err, true, UTF_8)));
+			System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> SessionRequestForwarder.forward(
+				HARNESS_ID, launch, new InputStreamReader(System.in, UTF_8), Path.of(requests),
+				Pause.sleeping(Duration.ofMillis(100)), System.out, errors()), errors()));
 		}
 		if (SessionLauncherClient.serves(Platform.current(), args))
 		{
-			System.exit(SessionLauncherClient.launchFromMain(HARNESS_ID, args, environment, Pause::sleeping,
-				new InputStreamReader(System.in, UTF_8), System.out,
-				new PrintWriter(System.err, true, UTF_8)));
+			System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> SessionLauncherClient.launchFromMain(
+				HARNESS_ID, launch, environment, Pause::sleeping, new InputStreamReader(System.in, UTF_8), System.out,
+				errors()), errors()));
 		}
+		int status = HarnessRunnerOptions.refusingInvalidArguments(
+			() -> serveInProcess(launch, environment, Pause::sleeping), errors());
+		if (status != 0)
+			System.exit(status);
+	}
+
+	/**
+	 * Returns a writer for the launcher's standard error that flushes each line.
+	 *
+	 * @return the writer
+	 */
+	private static PrintWriter errors()
+	{
+		return new PrintWriter(System.err, true, UTF_8);
+	}
+
+	/**
+	 * Serves the launch in this process.
+	 *
+	 * @param args        the command's options
+	 * @param environment the launcher's environment
+	 * @param waiting     the process's waiting
+	 * @return the exit status
+	 * @throws IOException if runner startup, the harness, or bridge I/O fails
+	 */
+	private static int serveInProcess(String[] args, Map<String, String> environment, Waiting waiting)
+		throws IOException
+	{
 		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(ClaudeRunnerCli.class));
 		Path home = Platform.current().homeDirectory(environment);
-		try (JvmScope process = new MainJvmScope(environment, Pause::sleeping))
+		try (JvmScope process = new MainJvmScope(environment, waiting))
 		{
 			serve(process, Path.of(""), args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 				new OutputStreamWriter(System.out, UTF_8), environment, maximum -> HarnessCapacity.forHome(
 					process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()));
+			return 0;
 		}
 		catch (HarnessCapacityWaitExpiredException e)
 		{
 			System.err.println(e.getMessage());
-			System.exit(HarnessCapacityWaitExpiredException.EXIT_STATUS);
+			return HarnessCapacityWaitExpiredException.EXIT_STATUS;
 		}
 		catch (SessionRefusedException e)
 		{
 			System.err.println(e.getMessage());
-			System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 		}
 	}
 

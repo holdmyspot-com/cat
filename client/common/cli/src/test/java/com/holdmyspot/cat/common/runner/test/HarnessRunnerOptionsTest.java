@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -55,6 +57,70 @@ public final class HarnessRunnerOptionsTest
 	 */
 	public HarnessRunnerOptionsTest()
 	{
+	}
+
+	/**
+	 * Verifies that a launch with invalid arguments prints only the reason, as one line without a stack trace, and
+	 * ends with the status of a refused launch.
+	 */
+	@Test
+	public void invalidArgumentsEndAsRefusedLaunch() throws IOException
+	{
+		StringWriter errors = new StringWriter();
+		int status = HarnessRunnerOptions.refusingInvalidArguments(() ->
+		{
+			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
+		}, new PrintWriter(errors, true));
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		requireThat(errors.toString(), "errors").isEqualTo("--receipt requires --keep-run and --output" +
+			System.lineSeparator());
+	}
+
+	/**
+	 * Verifies that a launch that does not refuse its arguments ends with its own status.
+	 */
+	@Test
+	public void validLaunchKeepsItsStatus() throws IOException
+	{
+		StringWriter errors = new StringWriter();
+		int status = HarnessRunnerOptions.refusingInvalidArguments(() -> 75, new PrintWriter(errors, true));
+		requireThat(status, "status").isEqualTo(75);
+		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Verifies that an unexpected failure is not reported as a refusal.
+	 */
+	@Test
+	public void unexpectedFailuresPropagate() throws IOException
+	{
+		StringWriter errors = new StringWriter();
+		PrintWriter writer = new PrintWriter(errors, true);
+		try
+		{
+			HarnessRunnerOptions.refusingInvalidArguments(() ->
+			{
+				throw new IOException("disk full");
+			}, writer);
+			throw new AssertionError("Expected an IOException");
+		}
+		catch (IOException e)
+		{
+			requireThat(e.getMessage(), "message").isEqualTo("disk full");
+		}
+		try
+		{
+			HarnessRunnerOptions.refusingInvalidArguments(() ->
+			{
+				throw new IllegalStateException("broken");
+			}, writer);
+			throw new AssertionError("Expected an IllegalStateException");
+		}
+		catch (IllegalStateException e)
+		{
+			requireThat(e.getMessage(), "message").isEqualTo("broken");
+		}
+		requireThat(errors.toString(), "errors").isEmpty();
 	}
 
 	/**

@@ -239,6 +239,48 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
+	 * A runner launcher's launch, which ends with an exit status.
+	 */
+	@FunctionalInterface
+	public interface Launch
+	{
+		/**
+		 * Runs the launch.
+		 *
+		 * @return the launch's exit status
+		 * @throws IllegalArgumentException if the launch's options are invalid
+		 * @throws IOException              if the launch fails
+		 */
+		int run() throws IOException;
+	}
+
+	/**
+	 * Runs a runner launcher's launch. A launch whose options are invalid is refused: only the reason is printed, as
+	 * one line without a stack trace, and the launch ends with status {@value #REFUSED_LAUNCH_STATUS}, as every other
+	 * refused launch does.
+	 *
+	 * @param launch the launch
+	 * @param errors receives the reason for a refusal
+	 * @return the launch's exit status, or {@value #REFUSED_LAUNCH_STATUS} if its options are invalid
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the launch fails
+	 */
+	public static int refusingInvalidArguments(Launch launch, PrintWriter errors) throws IOException
+	{
+		requireThat(launch, "launch").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		try
+		{
+			return launch.run();
+		}
+		catch (IllegalArgumentException e)
+		{
+			errors.println(e.getMessage());
+			return REFUSED_LAUNCH_STATUS;
+		}
+	}
+
+	/**
 	 * Refuses a runner launcher's launch that names {@code --artifact}. A runner launcher runs outside the sandbox of
 	 * the agent that starts it, so it always runs its own CAT artifact: the option would let the agent run code of its
 	 * choice outside its sandbox.
