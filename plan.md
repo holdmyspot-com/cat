@@ -35,22 +35,33 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   and JDK-only assertions, and fakes beyond their contracts. Fixed: `85d316d273`, `7164606fe2`, `a0111cfadd` (outcome
   and JDK-only assertions, two `SessionIgnoreTest` real-Git tests removed as duplicates), `b957c1d1bf` and `232bb2d7f9`
   (two Claude SessionEnd hook tests and `ReleaseBuildTest.refusesProjectWithoutHead` answer Git from doubles); a shim
-  run then saw Git only from the listed tests. Fake-contract fixes are in progress; doubles with no contract that gate 3
-  keeps from any real-adapter run (process, harness and installer doubles) wait on the user's ruling whether §8 exempts
-  them. Gate 6 is not passed.
+  run then saw Git only from the listed tests. Fake-contract violations 1-8 are fixed (`6487d9661f`, `4f82b80556`,
+  `8cf132ac44`, `c6d05cf6dc`): the session port, profile inventory, workspace and forks contracts now run on the fakes
+  and the real adapters. Violation 9, doubles with no real adapter (the process, harness and installer doubles), waits
+  on the user's ruling whether §8 exempts them. The fake controls `loading`, `unstartable`, `supplyEvidence`,
+  `supplyPatch` and `supplyTrackedLinks` stay as documented test controls, because no contract case can induce those
+  states in a real adapter. `InstallerActivationTest.installUpdateStatusUninstall` takes 0.52-0.69 s alone (two runs),
+  so its 1.1-1.2 s earlier was load. Gate 6 is not passed.
 - **Child permissions, 2026-11-06 (user ruling: fail fast):** a requested session that needs a write or host the
   requesting session's sandbox lacks is refused before any harness starts, with one message naming every missing entry
   and the settings that grant it (`5466b6c553`, `d0a7fea950`, `546b112c18`). The optimizer reaches the same refusal
   only after `start` has created its campaign; an earlier check waits on the launcher decision below.
+- **Extra permissions, 2026-11-06:** a launch may name a file of extra permissions with `--extra-permissions`
+  (`claude-runner`, `codex-runner`, `request-session`, the optimizer's `start`); without it nothing extra is requested.
+  Its writes and hosts go through the same refusal that names the settings to add (`641c56fa0a`..`a829a003b5`). The
+  optimizer records the contents with the campaign.
+- **Plugin folders, 2026-11-06:** Claude Code runs CAT in place from CAT's version folder in its local marketplace, not
+  from its own cache copy; Codex runs from its own cache. Each harness keeps its native layout, so no stable launcher
+  wrapper is needed; `docs/installation.md` was corrected (`428cc65e6b`).
 - **Claude plugin leftovers:** an install deletes the flat-layout files left beside Claude's version folders
   (`a72ae6ab2e`).
 - **Model runs blocked; open user decisions (2026-11-06):** every runner launch from this session is refused because
   its sandbox can write `~/.cat/sessions`. A probe (branch `srl-in-place-probe`, `863385b77f`, not merged) started
-  both harnesses directly from a sandboxed command on this machine, exit 0, no sandbox violation. Open: whether
-  children start inside the requesting session's sandbox (dropping the hook-started launcher and the D107 exception);
-  whether CAT's own Claude version folders can go in favour of each harness's versioned cache; whether the installer
-  keeps its own sandbox exception; whether §8 exempts doubles gate 3 keeps from a real adapter. Gates 4 and 5, the
-  E-runs and the failure-reporting runs wait on the first.
+  both harnesses directly from a sandboxed command on this machine, exit 0, no sandbox violation. Still blocked on
+  user decisions: whether children start inside the requesting session's sandbox (dropping the hook-started launcher
+  and the D107 exception), which blocks gates 4 and 5, the E-runs and the failure-reporting runs, since the session
+  launcher refuses every launch while the parent can write `~/.cat/sessions`; and whether the installer keeps its own
+  sandbox exception.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
