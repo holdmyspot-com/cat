@@ -8,20 +8,24 @@ import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
+import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
+import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
+import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
+import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns.RecordedProcess;
 import com.holdmyspot.cat.common.optimizer.execution.Reconciler;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
-import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
 import org.testng.annotations.Test;
@@ -38,6 +42,10 @@ import java.util.Map;
  * Verifies the reconciliation that every driver runs first, from campaign states that represent
  * each crash point of the write-ahead order: assignment record, snapshot with the started trial, session, outcome
  * record, adoption.
+ * <p>
+ * {@link Reconciler#recover} decides what a crash leaves behind, from a snapshot and the recorded outcomes, so most
+ * claims call it directly. A driver that opens over a store with the records and a worktree is the one end-to-end
+ * check of the reconciliation, and the promotion crash points need the worktree to hold the right candidate.
  */
 public final class ReconciliationTest
 {
@@ -118,203 +126,191 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Crash point: the assignment record is durable, but the snapshot that starts the trial is not. Nothing is
-	 * adopted or rerun, and the next admission draws the same logical trial again.
-	 *
-	 * @throws IOException if the test directory cannot be used
+	 * Crash point: the assignment record is durable, but the snapshot that starts the trial is not. The store does not
+	 * offer the record's trial for adoption, so nothing is adopted or rerun, and the next admission draws the same
+	 * logical trial again.
 	 */
 	@Test
-	public void afterAssignmentRecord() throws IOException
+	public void afterAssignmentRecord()
 	{
 		// Requirement: R-E11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Campaign base = developing().build();
-			LogicalTrial trial = assign(base, 1).trials().getFirst();
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")), base);
-			harness.store().writeAssignment(DriverHarness.CAMPAIGN, trial);
-			try (Driver driver = harness.open())
-			{
-				requireThat(harness.campaign().trials(), "trials").isEmpty();
-				requireThat(developmentOutcomes(harness.campaign()), "outcomes").isEqualTo(100);
-				driver.step();
-				requireThat(harness.campaign().trials().getFirst().key(), "key").isEqualTo(trial.key());
-			}
-		}
+		Campaign base = developing().build();
+		LogicalTrial trial = assign(base, 1).trials().getFirst();
+		Campaign reconciled = Reconciler.recover(base, List.of(), DriverHarness.START);
+		requireThat(reconciled, "reconciled").isEqualTo(base);
+		requireThat(assign(reconciled, 1).trials().getFirst().key(), "nextTrial").isEqualTo(trial.key());
 	}
 
 	/**
 	 * Crash point: the snapshot records the trial as started, but no outcome was recorded. The trial returns to the
 	 * queue and reruns as the same logical trial, without counting as an infrastructure failure.
-	 *
-	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void startedWithoutOutcome() throws IOException
+	public void startedWithoutOutcome()
 	{
 		// Requirement: R-E11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Campaign assigned = assign(developing().build(), 1);
-			LogicalTrial trial = assigned.trials().getFirst();
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")),
-				start(assigned));
-			harness.store().writeAssignment(DriverHarness.CAMPAIGN, trial);
-			try (Driver driver = harness.open())
-			{
-				LogicalTrial requeued = harness.campaign().trials().getFirst();
-				requireThat(requeued.key(), "key").isEqualTo(trial.key());
-				requireThat(requeued.state(), "state").isEqualTo(TrialState.ASSIGNED);
-				requireThat(requeued.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
-				driver.step();
-				requireThat(harness.campaign().trials().getFirst().state(), "state").isEqualTo(TrialState.RUNNING);
-				requireThat(harness.sessions().sessions().size(), "sessions").isEqualTo(1);
-			}
-		}
+		Campaign assigned = assign(developing().build(), 1);
+		LogicalTrial trial = assigned.trials().getFirst();
+		Campaign requeued = Reconciler.recover(start(assigned), List.of(), DriverHarness.START);
+		LogicalTrial returned = requeued.trials().getFirst();
+		requireThat(returned.key(), "key").isEqualTo(trial.key());
+		requireThat(returned.state(), "state").isEqualTo(TrialState.ASSIGNED);
+		requireThat(returned.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
+		requireThat(Scheduler.plan(requeued, DriverHarness.START, 1), "next").
+			isEqualTo(List.of(new Admission.Rerun(trial.key())));
 	}
 
 	/**
-	 * Crash point: the outcome is recorded, but the snapshot that adopts it is not. Reconciliation adopts it once.
-	 *
-	 * @throws IOException if the test directory cannot be used
+	 * Crash point: the outcome is recorded, but the snapshot that adopts it is not. Reconciliation adopts it once,
+	 * and a repeated reconciliation changes nothing.
 	 */
 	@Test
-	public void outcomeRecordedNotAdopted() throws IOException
+	public void outcomeRecordedNotAdopted()
 	{
 		// Requirement: R-E11
 		// Requirement: R-E1
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Campaign assigned = assign(developing().build(), 1);
-			LogicalTrial trial = assigned.trials().getFirst();
-			Campaign started = start(assigned);
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")), started);
-			harness.store().writeAssignment(DriverHarness.CAMPAIGN, trial);
-			harness.store().writeOutcome(DriverHarness.CAMPAIGN, passed(started, trial.key()));
-			try (Driver _ = harness.open())
-			{
-				Campaign reconciled = harness.campaign();
-				requireThat(developmentOutcomes(reconciled), "outcomes").isEqualTo(101);
-				requireThat(reconciled.trials(), "trials").isEmpty();
-				requireThat(reconciled.evidenceRevision(), "evidenceRevision").
-					isEqualTo(started.evidenceRevision() + 1);
-			}
-			try (Driver _ = harness.open())
-			{
-				requireThat(developmentOutcomes(harness.campaign()), "outcomes").isEqualTo(101);
-			}
-		}
+		Campaign assigned = assign(developing().build(), 1);
+		LogicalTrial trial = assigned.trials().getFirst();
+		Campaign started = start(assigned);
+		List<CampaignEvent.Complete> outcomes = List.of(passed(started, trial.key()));
+		Campaign reconciled = Reconciler.recover(started, outcomes, DriverHarness.START);
+		requireThat(developmentOutcomes(reconciled), "outcomes").isEqualTo(101);
+		requireThat(reconciled.trials(), "trials").isEmpty();
+		requireThat(reconciled.evidenceRevision(), "evidenceRevision").isEqualTo(started.evidenceRevision() + 1);
+		requireThat(Reconciler.recover(reconciled, outcomes, DriverHarness.START), "again").isEqualTo(reconciled);
 	}
 
 	/**
 	 * Crash point: the snapshot that adopts the outcome is durable. Reconciliation changes nothing.
-	 *
-	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void afterAdoption() throws IOException
+	public void afterAdoption()
 	{
 		// Requirement: R-E11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Campaign assigned = assign(developing().build(), 1);
-			LogicalTrial trial = assigned.trials().getFirst();
-			Campaign started = start(assigned);
-			Campaign adopted = Transitions.apply(started, passed(started, trial.key()));
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")), adopted);
-			harness.store().writeAssignment(DriverHarness.CAMPAIGN, trial);
-			harness.store().writeOutcome(DriverHarness.CAMPAIGN, passed(started, trial.key()));
-			try (Driver _ = harness.open())
-			{
-				requireThat(harness.campaign(), "campaign").isEqualTo(adopted);
-			}
-		}
+		Campaign assigned = assign(developing().build(), 1);
+		LogicalTrial trial = assigned.trials().getFirst();
+		Campaign started = start(assigned);
+		Campaign adopted = Transitions.apply(started, passed(started, trial.key()));
+		requireThat(Reconciler.recover(adopted, List.of(), DriverHarness.START), "reconciled").isEqualTo(adopted);
 	}
 
 	/**
 	 * Crash point: two trials started and only the later one recorded an outcome. Its outcome waits for the earlier
 	 * trial, which reruns; both are then adopted in assignment order.
+	 */
+	@Test
+	public void outOfOrderRecords()
+	{
+		// Requirement: R-E11
+		// Requirement: R-E5
+		Campaign assigned = assign(developing().window(2).build(), 2);
+		LogicalTrial first = assigned.trials().getFirst();
+		LogicalTrial second = assigned.trials().getLast();
+		Campaign started = start(assigned);
+		Campaign reconciled = Reconciler.recover(started, List.of(passed(started, second.key())),
+			DriverHarness.START);
+		requireThat(developmentOutcomes(reconciled), "outcomes").isEqualTo(100);
+		requireThat(Reconciler.find(reconciled, first.key()).orElseThrow().state(), "first").
+			isEqualTo(TrialState.ASSIGNED);
+		requireThat(Reconciler.find(reconciled, second.key()).orElseThrow().state(), "second").
+			isEqualTo(TrialState.JUDGED);
+
+		Campaign rerun = Transitions.apply(reconciled, new CampaignEvent.Start(first.key()));
+		Campaign adopted = Transitions.apply(rerun, passed(started, first.key()));
+		requireThat(developmentOutcomes(adopted), "outcomes").isEqualTo(102);
+		requireThat(adopted.trials(), "trials").isEmpty();
+	}
+
+	/**
+	 * Crash point: the outcome of a trial is recorded and the trial is in the snapshot. A driver that opens over the
+	 * store's records adopts the outcome once, and a driver that opens again adopts nothing.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void outOfOrderRecords() throws IOException
+	public void driverAdoptsRecordedOutcome() throws IOException
 	{
 		// Requirement: R-E11
-		// Requirement: R-E5
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Campaign assigned = assign(developing().window(2).build(), 2);
-			LogicalTrial first = assigned.trials().getFirst();
-			LogicalTrial second = assigned.trials().getLast();
+			Campaign assigned = assign(developing().build(), 1);
+			LogicalTrial trial = assigned.trials().getFirst();
 			Campaign started = start(assigned);
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")), started);
-			harness.store().writeAssignment(DriverHarness.CAMPAIGN, first);
-			harness.store().writeAssignment(DriverHarness.CAMPAIGN, second);
-			harness.store().writeOutcome(DriverHarness.CAMPAIGN, passed(started, second.key()));
-			try (Driver driver = harness.open())
+			harness.store().writeAssignment(DriverHarness.CAMPAIGN, trial);
+			harness.store().writeOutcome(DriverHarness.CAMPAIGN, passed(started, trial.key()));
+			Campaign reconciled;
+			try (Driver _ = harness.open())
 			{
-				Campaign reconciled = harness.campaign();
-				requireThat(developmentOutcomes(reconciled), "outcomes").isEqualTo(100);
-				requireThat(Reconciler.find(reconciled, first.key()).orElseThrow().state(), "first").
-					isEqualTo(TrialState.ASSIGNED);
-				requireThat(Reconciler.find(reconciled, second.key()).orElseThrow().state(), "second").
-					isEqualTo(TrialState.JUDGED);
-
-				driver.step();
-				harness.endSessions();
-				harness.settle(driver);
-				Campaign adopted = harness.campaign();
-				requireThat(Reconciler.find(adopted, first.key()).isEmpty(), "firstAdopted").isTrue();
-				requireThat(Reconciler.find(adopted, second.key()).isEmpty(), "secondAdopted").isTrue();
+				reconciled = harness.campaign();
+			}
+			requireThat(developmentOutcomes(reconciled), "outcomes").isEqualTo(101);
+			requireThat(reconciled.trials(), "trials").isEmpty();
+			try (Driver _ = harness.open())
+			{
+				requireThat(harness.campaign(), "reopened").isEqualTo(reconciled);
 			}
 		}
 	}
 
 	/**
-	 * Runs a campaign until the process crashes after minimality finishes and the working candidate is materialized.
-	 * The driver writes the promoted candidate into the optimization worktree before it replaces the snapshot, so
-	 * at the crash the worktree holds the promoted candidate and the snapshot the one it replaces.
+	 * A prompt author attempt whose promotion decides to replace the working candidate.
 	 *
-	 * @param directory a directory that the test owns
-	 * @return the harness after the crash, whose store no longer crashes
-	 * @throws IOException if the test directory cannot be used
+	 * @param running the snapshot in which the attempt's last promotion trial runs
+	 * @param decided the snapshot after the trial's outcome is adopted, before minimality advances
 	 */
-	private static DriverHarness crashAtPromotion(Path directory) throws IOException
+	private record Promoting(Campaign running, Campaign decided)
 	{
-		DriverHarness harness = new DriverHarness(directory, developing().build());
-		Sha256 first = Builder.snapshot("candidate-1");
-		harness.trials(request ->
+	}
+
+	/**
+	 * Returns the snapshots of a prompt author attempt, on the working candidate {@code candidate-1}, that
+	 * {@code candidate-2} fixes. Every promotion trial passes.
+	 *
+	 * @return the snapshots
+	 */
+	private static Promoting promoting()
+	{
+		DrawnTestCase logs = Builder.targeted("safety", "logs");
+		List<DiagnosticRerun> reruns = List.of(new DiagnosticRerun(Verdict.PASS, "diagnostic outcome"),
+			new DiagnosticRerun(Verdict.FAIL, "diagnostic outcome"), new DiagnosticRerun(Verdict.FAIL, "diagnostic outcome"));
+		Campaign round = new Builder().confirmed().working(1).readyBaseline().development("safety", 60, 1).
+			development("formatting", 61, 0).failure(new Failure(logs, "representative failure", List.of(), null, reruns,
+				List.of(), Builder.FILES)).regression(logs, Verdict.FAIL).round(new Round(Map.of("safety", 0))).build();
+		Campaign reserved = Transitions.apply(round, new CampaignEvent.StartPromptAuthorAttempt("safety"));
+		int number = reserved.development().round().reservations().keySet().stream().mapToInt(Integer::intValue).
+			max().orElseThrow();
+		Campaign campaign = Transitions.apply(reserved, new CampaignEvent.SubmitPromptAuthorAttempt(number, "safety",
+			Builder.snapshot("candidate-2"), List.of()));
+		for (int step = 0; step < 100; ++step)
 		{
-			if (DriverHarness.cell(request).equals("safety") && harness.snapshot(request).equals(first))
-				return harness.failed();
-			return harness.passed();
-		});
-		try (Driver driver = harness.open())
-		{
-			harness.crashingStore().crashAfter(CrashingStore.Write.WORKING_CANDIDATE);
-			boolean crashed = false;
-			try
-			{
-				harness.runUntil(driver, state -> state.development().working().number() == 2);
-			}
-			catch (IOException _)
-			{
-				crashed = true;
-			}
-			requireThat(crashed, "crashed").isTrue();
+			Admission admission = Scheduler.plan(campaign, DriverHarness.START, 1).getFirst();
+			Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign((Admission.Assign) admission));
+			TrialKey key = assigned.trials().getLast().key();
+			Campaign started = Transitions.apply(assigned, new CampaignEvent.Start(key));
+			Campaign completed = Transitions.apply(started, passed(started, key));
+			if (Promotion.decide(completed.development().promptAuthor(), completed) != Promotion.Decision.PENDING)
+				return new Promoting(started, completed);
+			campaign = completed;
 		}
-		harness.crashingStore().restart();
-		requireThat(harness.campaign().development().working().number(), "working").isEqualTo(1);
-		return harness;
+		throw new AssertionError("The promotion did not decide after 100 trials");
+	}
+
+	/**
+	 * Returns the project files of the promoted candidate.
+	 *
+	 * @param harness the harness
+	 * @return the candidate's inventory
+	 * @throws IOException if the candidate cannot be read
+	 */
+	private static FileInventory promoted(DriverHarness harness) throws IOException
+	{
+		return harness.overlays().require(Builder.snapshot("candidate-2")).snapshot();
 	}
 
 	/**
 	 * Crash point: minimality's final outcomes are recorded, and the optimization worktree holds
 	 * the promoted candidate. Reconciliation adopts the promotion, which the worktree already matches.
-	 * <p>
-	 * The test can take over a second under a parallel build: reaching the crash point needs a campaign that runs
-	 * promotion trials and minimality to completion, and each of its steps rebuilds and validates the campaign state.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -325,15 +321,15 @@ public final class ReconciliationTest
 		// Requirement: R-W7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = crashAtPromotion(cleanup.add(Files.createTempDirectory("reconcile")));
-			FileInventory worktree = harness.workspace().scanWorktree();
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")),
+				promoting().decided());
+			harness.workspace().changeWorktree(promoted(harness));
 			try (Driver _ = harness.open())
 			{
 				Campaign reconciled = harness.campaign();
-				requireThat(reconciled.development().working().number(), "working").isEqualTo(2);
-				Overlay promoted = harness.overlays().require(reconciled.development().working().snapshot());
-				requireThat(worktree, "worktree").isEqualTo(promoted.snapshot());
-				requireThat(harness.workspace().scanWorktree(), "worktreeAfterReconciliation").isEqualTo(worktree);
+				requireThat(reconciled.development().working().snapshot(), "working").
+					isEqualTo(Builder.snapshot("candidate-2"));
+				requireThat(harness.workspace().scanWorktree(), "worktree").isEqualTo(promoted(harness));
 				requireThat(reconciled.pending(), "pending").isNull();
 			}
 		}
@@ -343,9 +339,6 @@ public final class ReconciliationTest
 	 * Crash point: minimality's final outcomes are recorded, but the optimization worktree still
 	 * holds the candidate that it replaces. Reconciliation adopts the promotion and writes the new working candidate
 	 * into the worktree, without reporting an unowned change.
-	 * <p>
-	 * The test can take over a second under a parallel build: reaching the crash point needs a campaign that runs
-	 * promotion trials and minimality to completion, and each of its steps rebuilds and validates the campaign state.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -356,15 +349,58 @@ public final class ReconciliationTest
 		// Requirement: R-W7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = crashAtPromotion(cleanup.add(Files.createTempDirectory("reconcile")));
-			harness.workspace().changeWorktree(harness.overlays().require(Builder.snapshot("candidate-1")).
-				snapshot());
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")),
+				promoting().decided());
+			try (Driver _ = harness.open())
+			{
+				Campaign reconciled = harness.campaign();
+				requireThat(reconciled.development().working().snapshot(), "working").
+					isEqualTo(Builder.snapshot("candidate-2"));
+				requireThat(harness.workspace().scanWorktree(), "worktree").isEqualTo(promoted(harness));
+				requireThat(reconciled.pending(), "pending").isNull();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the driver writes a promoted candidate into the optimization worktree before it replaces the
+	 * snapshot, so that a crash between the two leaves the worktree with the promoted candidate and the snapshot with
+	 * the one it replaces, and the reconciliation that follows adopts the promotion.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void driverMaterializesPromotionFirst() throws IOException
+	{
+		// Requirement: R-E11
+		// Requirement: R-W7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("reconcile")),
+				promoting().running());
+			try (Driver driver = harness.open())
+			{
+				harness.crashingStore().crashAfter(CrashingStore.Write.WORKING_CANDIDATE);
+				boolean crashed = false;
+				try
+				{
+					harness.runUntil(driver, state -> state.development().working().number() == 2);
+				}
+				catch (IOException _)
+				{
+					crashed = true;
+				}
+				requireThat(crashed, "crashed").isTrue();
+			}
+			harness.crashingStore().restart();
+			requireThat(harness.campaign().development().working().number(), "working").isEqualTo(1);
+			FileInventory worktree = harness.workspace().scanWorktree();
+			requireThat(worktree, "worktree").isEqualTo(promoted(harness));
 			try (Driver _ = harness.open())
 			{
 				Campaign reconciled = harness.campaign();
 				requireThat(reconciled.development().working().number(), "working").isEqualTo(2);
-				Overlay promoted = harness.overlays().require(reconciled.development().working().snapshot());
-				requireThat(harness.workspace().scanWorktree(), "worktree").isEqualTo(promoted.snapshot());
+				requireThat(harness.workspace().scanWorktree(), "worktreeAfterReconciliation").isEqualTo(worktree);
 				requireThat(reconciled.pending(), "pending").isNull();
 			}
 		}

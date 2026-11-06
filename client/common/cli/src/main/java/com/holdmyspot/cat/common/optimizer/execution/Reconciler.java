@@ -59,8 +59,7 @@ public final class Reconciler
 			context.terminator().terminate(process.pid(), process.startedAt());
 
 		Candidate previous = campaign.development().working();
-		Campaign reconciled = adoptRecordedOutcomes(context, campaign);
-		reconciled = requeueStartedTrials(reconciled, now);
+		Campaign reconciled = recover(campaign, context.store().listUnadoptedOutcomes(campaign), now);
 		reconciled = MinimalityAdvancement.advance(context, reconciled);
 		if (reconciled.lifecycle() == Lifecycle.ACTIVE)
 			reconciled = WorktreeCheck.verify(context, reconciled, previous);
@@ -74,17 +73,31 @@ public final class Reconciler
 	}
 
 	/**
-	 * Adopts the outcomes that were recorded after the snapshot was last replaced.
+	 * Brings a persisted snapshot up to date with the trial records that were written after it: adopts the recorded
+	 * outcomes that it does not hold yet, then returns every trial that started without an outcome to the queue, to
+	 * rerun as the same logical trial.
 	 *
-	 * @param context the driver's context
 	 * @param campaign the persisted snapshot
-	 * @return the campaign after adoption
-	 * @throws IOException if the store cannot be read
+	 * @param outcomes the recorded outcomes that the snapshot does not hold, in assignment order
+	 * @param now the current time
+	 * @return the campaign after adoption and requeueing
 	 */
-	private static Campaign adoptRecordedOutcomes(DriverContext context, Campaign campaign) throws IOException
+	public static Campaign recover(Campaign campaign, List<CampaignEvent.Complete> outcomes, Instant now)
+	{
+		return requeueStartedTrials(adoptRecordedOutcomes(campaign, outcomes), now);
+	}
+
+	/**
+	 * Adopts recorded outcomes.
+	 *
+	 * @param campaign the persisted snapshot
+	 * @param outcomes the recorded outcomes that the snapshot does not hold
+	 * @return the campaign after adoption
+	 */
+	private static Campaign adoptRecordedOutcomes(Campaign campaign, List<CampaignEvent.Complete> outcomes)
 	{
 		Campaign adopted = campaign;
-		for (CampaignEvent.Complete outcome : context.store().listUnadoptedOutcomes(campaign))
+		for (CampaignEvent.Complete outcome : outcomes)
 		{
 			Optional<LogicalTrial> trial = find(adopted, outcome.key());
 			// An earlier adoption may have made the trial stale and removed it
