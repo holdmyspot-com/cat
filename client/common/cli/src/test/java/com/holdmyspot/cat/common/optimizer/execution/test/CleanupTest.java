@@ -8,6 +8,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
@@ -22,11 +23,14 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
-import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
+import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
+import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -41,8 +45,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link Cleanup} against a test-owned base worktree whose campaigns hold optimization worktrees, and the two run
- * roots of the CAT session directory that holds the campaigns. The worktrees are directories that {@link InMemoryForks}
- * records instead of Git worktrees, since {@code ForkTest} covers removing a Git worktree.
+ * roots of the CAT session directory that holds the campaigns. The base is a real Git repository and the campaigns are
+ * removed through {@link GitForks}. Each optimization worktree is a directory that lost its {@code .git} file, as a
+ * removal that was interrupted leaves it, since {@code ForkTest} covers removing a Git worktree.
  * <p>
  * Every test stores two campaigns in the base: the campaign under test and another campaign. Each run root holds a run
  * of each campaign, identified by a project path below that campaign's directory, and a run whose manifest is
@@ -215,24 +220,49 @@ public final class CleanupTest
 		{
 			Fixture fixture = Fixture.create(cleanup);
 			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
-			Path worktree = fixture.directory(CAMPAIGN).resolve("worktree");
-			InMemoryForks denying = new InMemoryForks(fixture.base(), Set.of());
-			denying.denyRemoval();
-			String warning = "Could not remove the files of campaign " + CAMPAIGN + ": " + worktree +
-				": Permission denied. The next command retries the removal.";
+			// Replacing the base's ".git" with a file that is not a Git file makes every Git command in the base fail
+			TemporaryDirectories.deleteRecursively(fixture.base().resolve(".git"));
+			Files.writeString(fixture.base().resolve(".git"), "not a Git file\n", UTF_8);
 
-			Cleanup.Removal removal = fixture.cleanup(denying).end(campaign,
-				delivered(Outcome.CERTIFIED));
+			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign, delivered(Outcome.CERTIFIED));
 
-			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Failed(warning));
+			requireThat(removal, "removal").isInstanceOf(Cleanup.Removal.Failed.class);
+			String warning = ((Cleanup.Removal.Failed) removal).warning();
+			requireThat(warning, "warning").startsWith("Could not remove the files of campaign " + CAMPAIGN + ": ").
+				contains(fixture.directory(CAMPAIGN).toString()).contains("git worktree prune").
+				endsWith(". The next command retries the removal.");
 			requireThat(FileCampaignStore.removals(fixture.campaigns()), "removals").isEqualTo(List.of(CAMPAIGN));
-			requireThat(fixture.cleanup(denying).resume(), "retryWarnings").isEqualTo(List.of(warning));
+			requireThat(fixture.cleanup(NO_HOOK).resume(), "retryWarnings").isEqualTo(List.of(warning));
 			requireThat(FileCampaignStore.removals(fixture.campaigns()), "removalsAfterRetry").
 				isEqualTo(List.of(CAMPAIGN));
 
+			Files.delete(fixture.base().resolve(".git"));
+			new Git(fixture.base()).run("init", "--quiet");
 			requireThat(fixture.cleanup(NO_HOOK).resume(), "warnings").isEmpty();
 			fixture.requireRemoved();
 		}
+	}
+
+	/**
+	 * A failure of a removal step is worded with the file it names and the system's reason when it is a file system
+	 * failure, and otherwise with the fallback path and the failure's message; a class name stands in for what the
+	 * failure lacks.
+	 */
+	@Test
+	public void failureNamesFileAndReason()
+	{
+		Path fallback = Path.of("campaigns/campaign-1");
+
+		requireThat(Cleanup.describe(fallback, new AccessDeniedException("worktree/CLAUDE.md", null,
+			"Permission denied")), "denied").isEqualTo("worktree/CLAUDE.md: Permission denied");
+		requireThat(Cleanup.describe(fallback, new AccessDeniedException("worktree/CLAUDE.md")), "noReason").
+			isEqualTo("worktree/CLAUDE.md: AccessDeniedException");
+		requireThat(Cleanup.describe(fallback, new FileSystemException(null, null, "Read-only file system")),
+			"noFile").isEqualTo(fallback + ": Read-only file system");
+		requireThat(Cleanup.describe(fallback, new IOException("Git command failed")), "other").
+			isEqualTo(fallback + ": Git command failed");
+		requireThat(Cleanup.describe(fallback, new IOException()), "noMessage").
+			isEqualTo(fallback + ": IOException");
 	}
 
 	/**
@@ -330,7 +360,7 @@ public final class CleanupTest
 	 * @param runRoots the session's run root and held-out run root
 	 * @param forks the campaigns' optimization worktrees
 	 */
-	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> runRoots, InMemoryForks forks)
+	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> runRoots, Forks forks)
 	{
 		/**
 		 * Creates the base worktree, the other campaign with its worktree and runs, and the run roots.
@@ -346,12 +376,14 @@ public final class CleanupTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-cleanup-")).toRealPath();
 			Path base = Files.createDirectory(root.resolve("base"));
 			Files.writeString(base.resolve("CLAUDE.md"), "prompt v1\n", UTF_8);
+			// Removing a campaign's worktree ends with a "git worktree prune" in the base
+			new Git(base).run("init", "--quiet");
 			SessionDirectory session = GitProjects.openSession(base, SESSION_ID, SessionHarnesses.HARNESS_A,
 				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
 			Fixture fixture = new Fixture(new FileLocks(), base, session.campaigns(), List.of(sessionRuns,
 				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))),
-				new InMemoryForks(base, Set.of(Path.of("CLAUDE.md"))));
+				new GitForks(Yielding.fileReplacer()));
 			fixture.store(new Builder().header(fixture.header(OTHER, Lifecycle.ACTIVE)));
 			for (Path runRoot : fixture.runRoots())
 			{
@@ -400,7 +432,11 @@ public final class CleanupTest
 			String id = built.header().id();
 			Path directory = directory(id);
 			if (forked)
-				forks.create(base, directory, Set.of());
+			{
+				ForkTree.record(base, directory, Set.of(Path.of("CLAUDE.md")));
+				Files.createDirectories(directory.resolve("worktree"));
+				Files.writeString(directory.resolve("worktree/CLAUDE.md"), "prompt v1\n", UTF_8);
+			}
 			for (Path runRoot : runRoots)
 			{
 				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));

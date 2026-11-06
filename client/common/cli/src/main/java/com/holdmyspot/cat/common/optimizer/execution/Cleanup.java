@@ -225,11 +225,33 @@ public final class Cleanup
 	 *
 	 * @param id the campaign's identifier, or {@code null} if the failure concerns no single campaign
 	 * @param failure the failure
-	 * @return {@code <path>: <cause>}; the path is the campaign directory, or the directory that holds the campaigns if
-	 *   {@code id} is null, when the failure names no file
+	 * @return {@code <path>: <cause>}, as {@link #describe(Path, IOException)} words it, where the fallback path is the
+	 *   campaign directory, or the directory that holds the campaigns if {@code id} is null
 	 */
 	private String cause(String id, IOException failure)
 	{
+		Path path;
+		if (id == null)
+			path = campaigns;
+		else
+			path = FileCampaignStore.directory(campaigns, id);
+		return describe(path, failure);
+	}
+
+	/**
+	 * Names the path and the cause of a failure.
+	 *
+	 * @param fallback the path to name when the failure names no file
+	 * @param failure the failure
+	 * @return {@code <path>: <cause>}: the file that a file system failure names and the system's reason for it, or
+	 *   {@code fallback} and the failure's message; the class name of the failure stands in for a missing reason or
+	 *   message
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static String describe(Path fallback, IOException failure)
+	{
+		requireThat(fallback, "fallback").isNotNull();
+		requireThat(failure, "failure").isNotNull();
 		if (failure instanceof FileSystemException fileFailure && fileFailure.getFile() != null)
 		{
 			String reason = fileFailure.getReason();
@@ -237,15 +259,10 @@ public final class Cleanup
 				reason = failure.getClass().getSimpleName();
 			return fileFailure.getFile() + ": " + reason;
 		}
-		Path path;
-		if (id == null)
-			path = campaigns;
-		else
-			path = FileCampaignStore.directory(campaigns, id);
 		String reason = failure.getMessage();
 		if (reason == null)
 			reason = failure.getClass().getSimpleName();
-		return path + ": " + reason;
+		return fallback + ": " + reason;
 	}
 
 	/**
