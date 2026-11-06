@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -104,24 +105,24 @@ public final class StartupCacheTrainer
 				return false;
 			Training training = Training.read(description);
 			work = StateFiles.createTemporaryDirectory(scratch, "training-");
-			Path project = Files.createDirectory(work.resolve("project"));
-			Path temporary = Files.createDirectory(work.resolve("tmp"));
-			Path input = Files.writeString(work.resolve("input"), training.input(), UTF_8);
-			Map<String, String> environment = environment(work, temporary, training.rootVariable(), plugin);
-			Path configuration = temporary.resolve("session-start.aotconf");
-			if (!run(plugin, training, List.of("-XX:AOTMode=record", "-XX:AOTConfiguration=" + configuration),
-				environment, project, input) || !Files.isRegularFile(configuration, NOFOLLOW_LINKS))
-			{
+			Path configuration = work.resolve("tmp").resolve("session-start.aotconf");
+			TrainingRun recording = plan(plugin, training, work,
+				List.of("-XX:AOTMode=record", "-XX:AOTConfiguration=" + configuration), System.getenv(),
+				Platform.current());
+			for (Path directory : recording.directories())
+				Files.createDirectory(directory);
+			Files.writeString(recording.input(), training.input(), UTF_8);
+			OptionalInt recorded = run(recording);
+			if (!succeeded(recorded, Files.isRegularFile(configuration, NOFOLLOW_LINKS)))
 				return false;
-			}
 			Files.createDirectories(cacheDirectory);
 			Path partial = cacheDirectory.resolve(StartupCache.FILE.getFileName() + ".partial");
-			if (!run(plugin, training, List.of("-XX:AOTMode=create", "-XX:AOTConfiguration=" + configuration,
-				"-XX:AOTCache=" + partial), environment, project, input) ||
-				!Files.isRegularFile(partial, NOFOLLOW_LINKS))
-			{
+			TrainingRun writing = plan(plugin, training, work, List.of("-XX:AOTMode=create",
+				"-XX:AOTConfiguration=" + configuration, "-XX:AOTCache=" + partial), System.getenv(),
+				Platform.current());
+			OptionalInt created = run(writing);
+			if (!succeeded(created, Files.isRegularFile(partial, NOFOLLOW_LINKS)))
 				return false;
-			}
 			Files.move(partial, plugin.resolve(StartupCache.FILE), StandardCopyOption.ATOMIC_MOVE);
 			written = true;
 			return true;
@@ -137,31 +138,42 @@ public final class StartupCacheTrainer
 		}
 		finally
 		{
-			if (!written)
-				deleteQuietly(cacheDirectory);
-			if (work != null)
-				deleteQuietly(work);
+			cleanUp(written, cacheDirectory, work);
 		}
 	}
 
 	/**
-	 * Returns the environment of a training run: the caller's program search path, the variables that Windows programs
-	 * need to start, a scratch home and temporary folder, a Git ceiling at the scratch folder, and the plugin
-	 * directory in the plugin's variable.
+	 * Plans one Java run of a training: the plugin's {@code java} wrapper with the run's options and the training's
+	 * arguments, in an environment that holds the caller's program search path, the variables that Windows programs need
+	 * to start, a scratch home and temporary folder, a Git ceiling at the scratch folder, and the plugin directory in the
+	 * plugin's variable.
+	 * <p>
+	 * The scratch folders lie below {@code work}: {@code home}, {@code tmp} and {@code project}, which is the run's
+	 * working directory, and the file {@code input}, which the run reads its standard input from.
 	 *
-	 * @param work         the training's scratch folder
-	 * @param temporary    the training's temporary folder
-	 * @param rootVariable the variable that names the plugin directory
-	 * @param plugin       the plugin directory
-	 * @return the environment
-	 * @throws IOException if the scratch home cannot be created
+	 * @param plugin   the plugin directory
+	 * @param training the plugin's training description
+	 * @param work     the training's scratch folder
+	 * @param options  the Java options of this run
+	 * @param caller   the caller's environment
+	 * @param platform the platform that the run is on
+	 * @return the run
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private static Map<String, String> environment(Path work, Path temporary, String rootVariable, Path plugin)
-		throws IOException
+	public static TrainingRun plan(Path plugin, Training training, Path work, List<String> options,
+		Map<String, String> caller, Platform platform)
 	{
-		Platform platform = Platform.current();
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(training, "training").isNotNull();
+		requireThat(work, "work").isNotNull();
+		requireThat(options, "options").isNotNull();
+		requireThat(caller, "caller").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+
+		Path home = work.resolve("home");
+		Path temporary = work.resolve("tmp");
+		Path project = work.resolve("project");
 		Map<String, String> environment = new HashMap<>();
-		Map<String, String> caller = System.getenv();
 		List<String> copied = new ArrayList<>(List.of("PATH"));
 		if (platform.isWindows())
 			copied.addAll(WINDOWS_VARIABLES);
@@ -173,50 +185,62 @@ public final class StartupCacheTrainer
 					environment.put(entry.getKey(), entry.getValue());
 			}
 		}
-		environment.putAll(HarnessEnvironment.homeVariables(Files.createDirectory(work.resolve("home")), platform));
+		environment.putAll(HarnessEnvironment.homeVariables(home, platform));
 		for (String name : List.of("TMPDIR", "TMP", "TEMP"))
 			environment.put(name, temporary.toString());
 		HarnessEnvironment.preventGitDiscoveryAbove(environment, work);
-		environment.put(rootVariable, plugin.toString());
-		return environment;
-	}
+		environment.put(training.rootVariable(), plugin.toString());
 
-	/**
-	 * Runs the plugin's session-start program once through its {@code java} wrapper, discarding its output and
-	 * stopping it, with every process that it started, when it takes too long.
-	 *
-	 * @param plugin      the plugin directory
-	 * @param training    the plugin's training description
-	 * @param options     the Java options of this run
-	 * @param environment the run's environment
-	 * @param project     the run's working directory
-	 * @param input       the file that the program reads its standard input from
-	 * @return {@code true} if the program ended in time with status 0
-	 * @throws IOException          if the program cannot be started
-	 * @throws InterruptedException if the thread is interrupted while waiting
-	 */
-	private boolean run(Path plugin, Training training, List<String> options, Map<String, String> environment,
-		Path project, Path input) throws IOException, InterruptedException
-	{
 		String wrapper = "java";
-		if (Platform.current().isWindows())
+		if (platform.isWindows())
 			wrapper = "java.cmd";
 		List<String> command = new ArrayList<>();
 		command.add(plugin.resolve(PluginDirectory.BIN).resolve(wrapper).toString());
 		command.addAll(options);
 		command.addAll(training.arguments());
-		ProcessBuilder builder = new ProcessBuilder(command).
-			directory(project.toFile()).
-			redirectInput(input.toFile()).
+		return new TrainingRun(List.copyOf(command), Map.copyOf(environment), project, work.resolve("input"),
+			List.of(home, temporary, project));
+	}
+
+	/**
+	 * Decides whether a Java run of a training did what the training needs.
+	 *
+	 * @param status        the status that the run ended with, or empty if it did not end within the time limit
+	 * @param outputWritten {@code true} if the run wrote the file that it is to write
+	 * @return {@code true} if the run ended in time with status 0 and wrote its file
+	 * @throws NullPointerException if {@code status} is null
+	 */
+	public static boolean succeeded(OptionalInt status, boolean outputWritten)
+	{
+		requireThat(status, "status").isNotNull();
+		return status.isPresent() && status.getAsInt() == 0 && outputWritten;
+	}
+
+	/**
+	 * Runs a planned run once, discarding its output and stopping it, with every process that it started, when it takes
+	 * too long.
+	 *
+	 * @param run the run
+	 * @return the status that the program ended with, or empty if it did not end within the time limit
+	 * @throws IOException          if the program cannot be started
+	 * @throws InterruptedException if the thread is interrupted while waiting
+	 */
+	private OptionalInt run(TrainingRun run) throws IOException, InterruptedException
+	{
+		ProcessBuilder builder = new ProcessBuilder(run.command()).
+			directory(run.directory().toFile()).
+			redirectInput(run.input().toFile()).
 			redirectOutput(ProcessBuilder.Redirect.DISCARD).
 			redirectError(ProcessBuilder.Redirect.DISCARD);
 		builder.environment().clear();
-		builder.environment().putAll(environment);
+		builder.environment().putAll(run.environment());
 		try (Process process = builder.start())
 		{
 			try
 			{
-				return process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS) && process.exitValue() == 0;
+				if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS))
+					return OptionalInt.empty();
+				return OptionalInt.of(process.exitValue());
 			}
 			finally
 			{
@@ -228,6 +252,25 @@ public final class StartupCacheTrainer
 				}
 			}
 		}
+	}
+
+	/**
+	 * Ends a training: removes its scratch folder and, unless it wrote the cache, the plugin's cache folder, which may
+	 * hold a partial file. A folder that cannot be deleted is left, because a later training of the same plugin directory
+	 * deletes the cache folder first and the scratch folder is below a directory that the caller owns.
+	 *
+	 * @param written        {@code true} if the training wrote the cache
+	 * @param cacheDirectory the plugin's cache folder, which may be absent
+	 * @param work           the training's scratch folder, or {@code null} if the training made none
+	 * @throws NullPointerException if {@code cacheDirectory} is null
+	 */
+	public static void cleanUp(boolean written, Path cacheDirectory, Path work)
+	{
+		requireThat(cacheDirectory, "cacheDirectory").isNotNull();
+		if (!written)
+			deleteQuietly(cacheDirectory);
+		if (work != null)
+			deleteQuietly(work);
 	}
 
 	/**
@@ -254,7 +297,7 @@ public final class StartupCacheTrainer
 	 * @param rootVariable the environment variable that names the plugin directory to the program
 	 * @param input        the program's standard input
 	 */
-	private record Training(List<String> arguments, String rootVariable, String input)
+	public record Training(List<String> arguments, String rootVariable, String input)
 	{
 		/**
 		 * Reads a training description.
@@ -284,5 +327,19 @@ public final class StartupCacheTrainer
 				throw new IOException("The member input must be a string: " + file);
 			return new Training(List.copyOf(arguments), variable.stringValue(), input.stringValue());
 		}
+	}
+
+	/**
+	 * One Java run of a training, as it is started.
+	 *
+	 * @param command     the program and its arguments
+	 * @param environment the whole environment of the run
+	 * @param directory   the run's working directory
+	 * @param input       the file that the run reads its standard input from
+	 * @param directories the scratch folders that the run needs, which are created before it starts
+	 */
+	public record TrainingRun(List<String> command, Map<String, String> environment, Path directory, Path input,
+		List<Path> directories)
+	{
 	}
 }

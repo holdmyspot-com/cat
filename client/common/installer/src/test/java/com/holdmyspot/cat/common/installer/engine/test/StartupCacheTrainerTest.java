@@ -9,18 +9,18 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
+import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.Training;
+import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.TrainingRun;
+import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.OptionalInt;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
@@ -28,11 +28,10 @@ import org.testng.annotations.Test;
 /**
  * Tests writing a plugin directory's startup cache after the plugin directory is activated.
  * <p>
- * Each fixture plugin has a {@code bin/java} wrapper that runs the {@code java} of the runtime that the
- * plugin's binding names, as a plugin's wrapper does. One test runs real Java: its plugin is bound to a copy of the
- * testing JVM's runtime in its own folder, and its wrapper runs that runtime's {@code java} with the plugin's
- * {@link StartupProgram} jar. The other tests concern how training reacts to a run's outcome, so their wrapper runs
- * {@link FakeJava}, which reacts to the cache options as Java documents them but records and writes nothing real.
+ * What a training runs and what it does with a run's outcome are decisions, so the tests call the methods that make
+ * them. The only claim about real Java, that it accepts a cache which a training wrote through a plugin's wrapper, is
+ * checked once, by {@code PluginLaunchersTest.wrapperTrainsAndPassesStartupCache} in the distribution module, which
+ * has the wrapper that plugins ship.
  */
 public final class StartupCacheTrainerTest
 {
@@ -49,74 +48,97 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * A startup cache that real Java trains with the runtime in the plugin's own version folder, as an install trains the
-	 * version folder that the harness installed, is accepted by Java through the plugin's wrapper. The training removes
-	 * its scratch folders.
-	 * <p>
-	 * The test takes about one second alone: Java starts twice, once to write the cache and once to load it, and the
-	 * claim is that real Java accepts the cache, so a stand-in for Java cannot prove it.
+	 * A run starts the plugin's {@code java} wrapper with the run's options and then the training's arguments, in a
+	 * working directory below the scratch folder, with an environment that holds the caller's program search path
+	 * and nothing else of the caller's: a scratch home and temporary folder, a Git ceiling at the scratch folder, and the
+	 * plugin directory in the plugin's variable. The run reads its standard input from a file in the scratch folder.
 	 *
-	 * @throws IOException          if the fixture cannot be created or inspected
-	 * @throws InterruptedException if the test is interrupted
+	 * @throws IOException if the test directory cannot be created
 	 */
 	@Test
-	public void trainedCacheIsAccepted() throws IOException, InterruptedException
+	public void runUsesScratchEnvironment() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("startup-cache-trains-")).toRealPath();
-			Path runtime = linkedRuntime(root.resolve("plugin/bin/runtime"));
-			Path plugin = javaPlugin(root.resolve("plugin"), runtime);
-			Path scratch = root.resolve("scratch");
+			Path base = cleanup.add(testDirectory("startup-cache-plan-")).toRealPath();
+			Path plugin = base.resolve("plugin");
+			Path work = base.resolve("scratch/training-1");
+			Training training = new Training(List.of("-m", "app/example.Main", "--flag"), ROOT_VARIABLE, INPUT);
+			Map<String, String> caller = Map.of("PATH", "/usr/bin", "HOME", "/home/caller", "SECRET", "token",
+				"TMPDIR", "/tmp/caller", ROOT_VARIABLE, "/other/plugin", "GIT_CEILING_DIRECTORIES", "/caller");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
+			TrainingRun run = StartupCacheTrainer.plan(plugin, training, work, List.of("-XX:AOTMode=record"), caller,
+				Platform.LINUX_X64);
 
-			requireThat(written, "written").isTrue();
-			requireThat(entries(plugin.resolve(StartupCache.DIRECTORY)), "cacheFolder").
-				isEqualTo(List.of(StartupCache.FILE.getFileName().toString()));
-			requireThat(acceptedBy(plugin), "acceptedCache").isEqualTo("");
-			requireThat(entries(scratch), "scratchEntries").isEmpty();
+			requireThat(run.command(), "command").isEqualTo(List.of(plugin.resolve("bin/java").toString(),
+				"-XX:AOTMode=record", "-m", "app/example.Main", "--flag"));
+			requireThat(run.environment(), "environment").isEqualTo(Map.of("PATH", "/usr/bin",
+				"HOME", work.resolve("home").toString(),
+				"TMPDIR", work.resolve("tmp").toString(),
+				"TMP", work.resolve("tmp").toString(),
+				"TEMP", work.resolve("tmp").toString(),
+				"GIT_CEILING_DIRECTORIES", work.toString(),
+				ROOT_VARIABLE, plugin.toString()));
+			requireThat(run.directory(), "directory").isEqualTo(work.resolve("project"));
+			requireThat(run.input(), "input").isEqualTo(work.resolve("input"));
+			requireThat(run.directories(), "directories").
+				isEqualTo(List.of(work.resolve("home"), work.resolve("tmp"), work.resolve("project")));
 		}
 	}
 
 	/**
-	 * Training runs the start-up program with the training input, the plugin directory in the plugin's variable, and
-	 * a scratch home, temporary folder, project and Git ceiling that the training removes afterwards.
+	 * On Windows, a run starts the plugin's {@code java.cmd} wrapper, and its environment also holds the variables that
+	 * a Windows program needs to start, under the names that the caller gave them, and a scratch profile.
 	 *
-	 * @throws IOException if the fixture cannot be created or inspected
+	 * @throws IOException if the test directory cannot be created
 	 */
 	@Test
-	public void trainsInScratchEnvironment() throws IOException
+	public void runOnWindowsUsesBatchWrapper() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("startup-cache-environment-")).toRealPath();
-			Path report = root.resolve("report.properties");
-			Path plugin = fakePlugin(root.resolve("plugin"), "report", report);
-			Path scratch = root.resolve("scratch");
+			Path base = cleanup.add(testDirectory("startup-cache-plan-")).toRealPath();
+			Path plugin = base.resolve("plugin");
+			Path work = base.resolve("scratch/training-1");
+			Training training = new Training(List.of("--flag"), ROOT_VARIABLE, INPUT);
+			Map<String, String> caller = Map.of("Path", "C:\\Windows", "SYSTEMROOT", "C:\\Windows", "ComSpec", "cmd.exe",
+				"USERPROFILE", "C:\\Users\\caller", "SECRET", "token");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
+			TrainingRun run = StartupCacheTrainer.plan(plugin, training, work, List.of(), caller, Platform.WINDOWS_X64);
 
-			requireThat(written, "written").isTrue();
-			Properties observed = new Properties();
-			try (InputStream in = Files.newInputStream(report))
-			{
-				observed.load(in);
-			}
-			requireThat(observed.getProperty("input"), "input").isEqualTo(INPUT);
-			requireThat(observed.getProperty("variable." + ROOT_VARIABLE), "root").isEqualTo(plugin.toString());
-			requireThat(isIn(observed, "variable.HOME", scratch), "scratchHome").isTrue();
-			requireThat(isIn(observed, "property.user.dir", scratch), "scratchProject").isTrue();
-			requireThat(isIn(observed, "variable.TMPDIR", scratch), "scratchTemporary").isTrue();
-			requireThat(isIn(observed, "variable.GIT_CEILING_DIRECTORIES", scratch), "ceiling").isTrue();
-			requireThat(entries(scratch), "scratchEntries").isEmpty();
+			requireThat(run.command(), "command").
+				isEqualTo(List.of(plugin.resolve("bin/java.cmd").toString(), "--flag"));
+			requireThat(run.environment(), "environment").isEqualTo(Map.ofEntries(
+				Map.entry("Path", "C:\\Windows"),
+				Map.entry("SYSTEMROOT", "C:\\Windows"),
+				Map.entry("ComSpec", "cmd.exe"),
+				Map.entry("HOME", work.resolve("home").toString()),
+				Map.entry("USERPROFILE", work.resolve("home").toString()),
+				Map.entry("LOCALAPPDATA", work.resolve("home/AppData/Local").toString()),
+				Map.entry("TMPDIR", work.resolve("tmp").toString()),
+				Map.entry("TMP", work.resolve("tmp").toString()),
+				Map.entry("TEMP", work.resolve("tmp").toString()),
+				Map.entry("GIT_CEILING_DIRECTORIES", work.toString()),
+				Map.entry(ROOT_VARIABLE, plugin.toString())));
 		}
 	}
 
 	/**
-	 * A start-up program whose cache-writing run fails after writing part of the cache leaves the plugin without a
-	 * startup cache or partial file, removing the cache of an earlier activation, and reports that no cache was
-	 * written.
+	 * A run counts only if it ended within the time limit with status 0 and wrote the file that it is to write.
+	 */
+	@Test
+	public void runNeedsTimelyStatusZeroAndOutput()
+	{
+		requireThat(StartupCacheTrainer.succeeded(OptionalInt.of(0), true), "ended").isTrue();
+		requireThat(StartupCacheTrainer.succeeded(OptionalInt.of(1), true), "failed").isFalse();
+		requireThat(StartupCacheTrainer.succeeded(OptionalInt.empty(), true), "timedOut").isFalse();
+		requireThat(StartupCacheTrainer.succeeded(OptionalInt.of(0), false), "wroteNothing").isFalse();
+	}
+
+	/**
+	 * A training that did not write the cache, such as one whose cache-writing run failed after writing part of the
+	 * cache, leaves the plugin without a startup cache folder or partial file, removing the cache of an earlier
+	 * activation, and removes its scratch folder.
 	 *
 	 * @throws IOException if the fixture cannot be created or inspected
 	 */
@@ -126,7 +148,54 @@ public final class StartupCacheTrainerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("startup-cache-fails-")).toRealPath();
-			Path plugin = fakePlugin(root.resolve("plugin"), "fail", root.resolve("report.properties"));
+			Path cacheFolder = root.resolve("plugin").resolve(StartupCache.DIRECTORY);
+			Files.createDirectories(cacheFolder);
+			Files.writeString(cacheFolder.resolve(StartupCache.FILE.getFileName() + ".partial"), "part of a cache");
+			Path work = Files.createDirectories(root.resolve("scratch/training-1/tmp"));
+
+			StartupCacheTrainer.cleanUp(false, cacheFolder, work.getParent());
+
+			requireThat(Files.exists(cacheFolder, NOFOLLOW_LINKS), "cacheFolder").isFalse();
+			requireThat(Files.exists(work.getParent(), NOFOLLOW_LINKS), "scratchFolder").isFalse();
+		}
+	}
+
+	/**
+	 * A training that wrote the cache keeps it and removes its scratch folder.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void writtenCacheIsKept() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-written-")).toRealPath();
+			Path cache = root.resolve("plugin").resolve(StartupCache.FILE);
+			Files.createDirectories(cache.getParent());
+			Files.writeString(cache, "a cache");
+			Path work = Files.createDirectories(root.resolve("scratch/training-1/tmp")).getParent();
+
+			StartupCacheTrainer.cleanUp(true, cache.getParent(), work);
+
+			requireThat(Files.readString(cache), "cache").isEqualTo("a cache");
+			requireThat(Files.exists(work, NOFOLLOW_LINKS), "scratchFolder").isFalse();
+		}
+	}
+
+	/**
+	 * A plugin whose {@code java} wrapper cannot be started gets no startup cache, and an earlier activation's cache
+	 * is removed.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void unstartableProgramLeavesNoCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-unstartable-")).toRealPath();
+			Path plugin = describedPlugin(root.resolve("plugin"));
 			Files.createDirectories(plugin.resolve(StartupCache.DIRECTORY));
 			Files.writeString(plugin.resolve(StartupCache.FILE), "a cache of an earlier activation");
 			Path scratch = root.resolve("scratch");
@@ -142,6 +211,8 @@ public final class StartupCacheTrainerTest
 	/**
 	 * A start-up program that does not end within the time limit is stopped, and the plugin is left without a startup
 	 * cache.
+	 * <p>
+	 * The program is real Java, which cannot end in one millisecond.
 	 *
 	 * @throws IOException if the fixture cannot be created or inspected
 	 */
@@ -150,21 +221,28 @@ public final class StartupCacheTrainerTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(testDirectory("startup-cache-hangs-")).toRealPath();
-			Path plugin = fakePlugin(root.resolve("plugin"), "hang", root.resolve("report.properties"));
+			Path root = cleanup.add(testDirectory("startup-cache-stops-")).toRealPath();
+			Path plugin = javaPlugin(root.resolve("plugin"));
 			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMillis(300), NOT_ELEVATED).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMillis(1), NOT_ELEVATED).train(plugin);
 
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
 			requireThat(entries(scratch), "scratchEntries").isEmpty();
+			String jar = plugin.resolve(StartupCacheFixtures.JAR).toString();
+			List<ProcessHandle> running = ProcessHandle.allProcesses().
+				filter(process -> process.info().commandLine().map(line -> line.contains(jar)).orElse(false)).toList();
+			requireThat(running, "stillRunning").isEmpty();
 		}
 	}
 
 	/**
 	 * A process with administrative rights does not run the plugin's start-up program, and leaves the plugin without a
 	 * startup cache, removing the cache of an earlier activation.
+	 * <p>
+	 * A training makes its scratch folder before it runs anything, so a scratch folder that was never made shows that
+	 * nothing ran.
 	 *
 	 * @throws IOException if the fixture cannot be created or inspected
 	 */
@@ -174,24 +252,24 @@ public final class StartupCacheTrainerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("startup-cache-elevated-")).toRealPath();
-			Path report = root.resolve("report.properties");
-			Path plugin = fakePlugin(root.resolve("plugin"), "report", report);
+			Path plugin = describedPlugin(root.resolve("plugin"));
 			Files.createDirectories(plugin.resolve(StartupCache.DIRECTORY));
 			Files.writeString(plugin.resolve(StartupCache.FILE), "a cache of an earlier activation");
+			Path scratch = root.resolve("scratch");
 			// Stands in for the check of a process with administrative rights
 			BooleanSupplier elevated = () -> true;
 
-			boolean written = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1), elevated).
-				train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), elevated).train(plugin);
 
 			requireThat(written, "written").isFalse();
-			requireThat(Files.exists(report, NOFOLLOW_LINKS), "programRan").isFalse();
+			requireThat(Files.exists(scratch, NOFOLLOW_LINKS), "scratchMade").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
 		}
 	}
 
 	/**
-	 * A plugin that does not describe how to train its startup cache gets none.
+	 * A plugin that does not describe how to train its startup cache gets none, and an earlier activation's cache is
+	 * removed.
 	 *
 	 * @throws IOException if the fixture cannot be created or inspected
 	 */
@@ -201,189 +279,59 @@ public final class StartupCacheTrainerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("startup-cache-undescribed-")).toRealPath();
-			Path plugin = fakePlugin(root.resolve("plugin"), "report", root.resolve("report.properties"));
+			Path plugin = describedPlugin(root.resolve("plugin"));
 			Files.delete(plugin.resolve(StartupCache.TRAINING));
+			Files.createDirectories(plugin.resolve(StartupCache.DIRECTORY));
+			Files.writeString(plugin.resolve(StartupCache.FILE), "a cache of an earlier activation");
+			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1), NOT_ELEVATED).
-				train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
 
 			requireThat(written, "written").isFalse();
+			requireThat(Files.exists(scratch, NOFOLLOW_LINKS), "scratchMade").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
 		}
 	}
 
 	/**
-	 * Creates a fixture plugin whose {@code java} wrapper runs real Java with the plugin's {@link StartupProgram}.
+	 * Creates a plugin that has a training description and no {@code java} wrapper.
 	 *
-	 * @param plugin  the plugin directory, which must not exist
-	 * @param runtime the Java runtime that the plugin is bound to
+	 * @param plugin the plugin directory, which must not exist
 	 * @return the plugin directory
 	 * @throws IOException if the fixture cannot be created
 	 */
-	private static Path javaPlugin(Path plugin, Path runtime) throws IOException
+	private static Path describedPlugin(Path plugin) throws IOException
 	{
-		return plugin(plugin, runtime, StartupProgram.class, "", List.of(StartupProgram.class.getName()));
-	}
-
-	/**
-	 * Creates a fixture plugin, bound to the testing JVM's runtime, whose {@code java} wrapper runs {@link FakeJava}.
-	 *
-	 * @param plugin   the plugin directory, which must not exist
-	 * @param behavior what the start-up program does
-	 * @param report   the file that the start-up program writes its observations to
-	 * @return the plugin directory
-	 * @throws IOException if the fixture cannot be created
-	 */
-	private static Path fakePlugin(Path plugin, String behavior, Path report) throws IOException
-	{
-		// The fake receives every argument, including the cache options, as a program receives its arguments
-		return plugin(plugin, Path.of(System.getProperty("java.home")), FakeJava.class, FakeJava.class.getName(),
-			List.of("-Dfixture.behavior=" + behavior, "-Dfixture.report=" + report,
-				"-Dfixture.variables=HOME,TMPDIR,GIT_CEILING_DIRECTORIES," + ROOT_VARIABLE,
-				"-Dfixture.properties=user.dir"));
-	}
-
-	/**
-	 * Creates a fixture plugin: a jar of one program in its {@code bin/modules} folder, a {@code bin/java}
-	 * wrapper that runs the bound runtime's {@code java} with that jar as the class path, the binding, and a training
-	 * description.
-	 *
-	 * @param plugin    the plugin directory, which must not exist
-	 * @param runtime   the Java runtime that the plugin is bound to
-	 * @param program   the program, a class without nested classes
-	 * @param main      the main class that the wrapper names before the arguments that it receives, or an empty string
-	 * @param arguments the arguments that the training description gives the wrapper after the startup cache options
-	 * @return the plugin directory
-	 * @throws IOException if the fixture cannot be created
-	 */
-	private static Path plugin(Path plugin, Path runtime, Class<?> program, String main, List<String> arguments)
-		throws IOException
-	{
-		Path bin = Files.createDirectories(plugin.resolve("bin"));
-		Files.createDirectories(bin.resolve("modules"));
-		Files.write(plugin.resolve(StartupCacheFixtures.JAR), StartupCacheFixtures.jar(program));
-		if (Platform.current().isWindows())
-			Files.writeString(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper(main, "java.exe"));
-		else
-		{
-			Path wrapper = Files.writeString(bin.resolve("java"), StartupCacheFixtures.posixWrapper(main));
-			requireThat(wrapper.toFile().setExecutable(true), "executable").isTrue();
-		}
-		bind(plugin, runtime);
-		Files.writeString(plugin.resolve(StartupCache.TRAINING), StartupCacheFixtures.description(arguments), UTF_8);
+		Files.createDirectories(plugin.resolve(StartupCache.TRAINING).getParent());
+		Files.writeString(plugin.resolve(StartupCache.TRAINING),
+			StartupCacheFixtures.description(List.of("--flag")), UTF_8);
 		return plugin;
 	}
 
 	/**
-	 * Binds a fixture plugin to a Java runtime, as an installation does.
+	 * Creates a plugin, bound to the testing JVM's runtime, whose {@code java} wrapper runs real Java with the
+	 * {@link StartupProgram} in a jar as the class path.
 	 *
-	 * @param plugin  the plugin directory
-	 * @param runtime the runtime directory
-	 * @throws IOException if the binding cannot be written
+	 * @param plugin the plugin directory, which must not exist
+	 * @return the plugin directory
+	 * @throws IOException if the fixture cannot be created
 	 */
-	private static void bind(Path plugin, Path runtime) throws IOException
+	private static Path javaPlugin(Path plugin) throws IOException
 	{
-		Files.writeString(plugin.resolve("bin/runtime-binding"), runtime + "\n", UTF_8);
-	}
-
-	/**
-	 * Places a Java runtime at a new location by linking the files of the testing JVM's runtime, so that Java started
-	 * from it reads its runtime image at that location. A file that cannot be linked, such as one on another file
-	 * system, is copied.
-	 *
-	 * @param target the runtime directory, which must not exist
-	 * @return the runtime directory
-	 * @throws IOException if the runtime cannot be placed
-	 */
-	private static Path linkedRuntime(Path target) throws IOException
-	{
-		Path source = Path.of(System.getProperty("java.home")).toRealPath();
-		for (String part : List.of("bin", "conf", "lib", "release"))
-		{
-			try (Stream<Path> paths = Files.walk(source.resolve(part)))
-			{
-				for (Path path : paths.toList())
-				{
-					Path copy = target.resolve(source.relativize(path).toString());
-					if (Files.isDirectory(path, NOFOLLOW_LINKS))
-						Files.createDirectories(copy);
-					else
-						linkOrCopy(path, copy);
-				}
-			}
-		}
-		return target;
-	}
-
-	/**
-	 * Links a file of the testing JVM's runtime at another location, or copies it when it cannot be linked.
-	 *
-	 * @param file the file, which is never changed
-	 * @param copy the new location
-	 * @throws IOException if the file can be neither linked nor copied
-	 */
-	private static void linkOrCopy(Path file, Path copy) throws IOException
-	{
-		Files.createDirectories(copy.getParent());
-		if (Files.isRegularFile(file, NOFOLLOW_LINKS))
-		{
-			try
-			{
-				Files.createLink(copy, file);
-				return;
-			}
-			catch (IOException | UnsupportedOperationException _)
-			{
-				// Copied below
-			}
-		}
-		Files.copy(file, copy, NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
-	}
-
-	/**
-	 * Runs the fixture plugin's start-up program with the plugin's startup cache, requiring Java to use the cache.
-	 *
-	 * @param plugin the fixture plugin, whose wrapper runs real Java
-	 * @return the program's standard error, empty when Java used the cache
-	 * @throws IOException          if the program cannot be run, or ends with a failure status
-	 * @throws InterruptedException if the test is interrupted
-	 */
-	private static String acceptedBy(Path plugin) throws IOException, InterruptedException
-	{
-		String wrapper = "java";
+		Path bin = Files.createDirectories(plugin.resolve("bin"));
+		Files.createDirectories(bin.resolve("modules"));
+		Files.write(plugin.resolve(StartupCacheFixtures.JAR), StartupCacheFixtures.jar(StartupProgram.class));
 		if (Platform.current().isWindows())
-			wrapper = "java.cmd";
-		Path error = plugin.resolveSibling("accepted-error.txt");
-		ProcessBuilder builder = new ProcessBuilder(plugin.resolve("bin").resolve(wrapper).toString(),
-			"-XX:AOTMode=on", "-XX:AOTCache=" + plugin.resolve(StartupCache.FILE), StartupProgram.class.getName()).
-			redirectInput(Files.writeString(plugin.resolveSibling("input.txt"), INPUT).toFile()).
-			redirectOutput(ProcessBuilder.Redirect.DISCARD).
-			redirectError(error.toFile());
-		try (Process process = builder.start())
+			Files.writeString(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper());
+		else
 		{
-			if (!process.waitFor(1, TimeUnit.MINUTES))
-			{
-				process.destroyForcibly();
-				throw new IOException("The program did not end: " + builder.command());
-			}
-			String standardError = Files.readString(error);
-			if (process.exitValue() != 0)
-				throw new IOException("Java refused the cache: " + standardError);
-			return standardError.strip();
+			Path wrapper = Files.writeString(bin.resolve("java"), StartupCacheFixtures.posixWrapper());
+			requireThat(wrapper.toFile().setExecutable(true), "executable").isTrue();
 		}
-	}
-
-	/**
-	 * Indicates whether an observed path lies in a directory.
-	 *
-	 * @param observed  what the fixture program observed
-	 * @param name      the name of the observed path
-	 * @param directory the directory
-	 * @return {@code true} if the observed path is {@code directory} or below it
-	 */
-	private static boolean isIn(Properties observed, String name, Path directory)
-	{
-		return Path.of(observed.getProperty(name)).startsWith(directory);
+		Files.writeString(bin.resolve("runtime-binding"), Path.of(System.getProperty("java.home")) + "\n", UTF_8);
+		Files.writeString(plugin.resolve(StartupCache.TRAINING),
+			StartupCacheFixtures.description(List.of(StartupProgram.class.getName())), UTF_8);
+		return plugin;
 	}
 
 	/**

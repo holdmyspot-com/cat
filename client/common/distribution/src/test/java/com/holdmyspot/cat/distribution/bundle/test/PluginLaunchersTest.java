@@ -12,7 +12,9 @@ import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -192,11 +194,14 @@ public final class PluginLaunchersTest
 	/**
 	 * Verifies that the plugin's {@code java} wrapper on this platform, {@code java.cmd} on Windows, trains a startup
 	 * cache that the wrapper then passes to Java, which accepts it, while the wrapper passes no cache before the
-	 * training writes one. The plugin's path holds spaces, as a user's home directory can.
+	 * training writes one. The runtime is the plugin's own, in its {@code bin/runtime} folder, as an install places it,
+	 * so the cache is trained and used by the runtime at that location. The training leaves the cache file alone in
+	 * the plugin's cache folder and removes its scratch folder. The plugin's path holds spaces, as a user's home
+	 * directory can.
 	 * <p>
-	 * The test takes about 1.6 seconds alone: Java starts several times, for the training and for each of three
-	 * wrapper runs, and the claim is how the real wrapper and real Java handle the cache, so a stand-in for either
-	 * cannot prove it.
+	 * This is the one check of how real Java handles a cache that a training wrote through a plugin's wrapper. The
+	 * test takes seconds: Java starts several times, for the training and for each of three wrapper runs,
+	 * and the claim is how the real wrapper and real Java handle the cache, so a stand-in for either cannot prove it.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a wrapper cannot be run
 	 * @throws InterruptedException if the test is interrupted
@@ -212,30 +217,87 @@ public final class PluginLaunchersTest
 			PluginLaunchers.write(List.of(), Platform.current(), !Platform.current().isWindows(), bin);
 			// Java uses a startup cache that it trained on a module path only for the same module path, which an empty
 			// folder is not; any jar stands in for the plugin's modules
-			Path modules = Files.createDirectories(bin.resolve("runtime/modules"));
+			Path runtime = linkedRuntime(bin.resolve("runtime"));
+			Path modules = Files.createDirectories(runtime.resolve("modules"));
 			Files.copy(Path.of(URI.create(Test.class.getProtectionDomain().getCodeSource().getLocation().toString())),
 				modules.resolve("module.jar"));
-			Path runtime = Path.of(System.getProperty("java.home")).toRealPath();
 			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n", UTF_8);
 			Files.writeString(plugin.resolve(StartupCache.TRAINING), """
 				{"format":1,"arguments":["-m","jdk.jartool/sun.tools.jar.Main","--version"],\
 				"plugin_root_variable":"CAT_PLUGIN_ROOT","input":""}""", UTF_8);
 
 			String untrainedFlags = runWrapper(bin, "-XX:+PrintCommandLineFlags", "-version");
-			boolean written = new StartupCacheTrainer(plugin.resolve("scratch"), Duration.ofMinutes(1), () -> false).
-				train(plugin);
+			Path scratch = plugin.resolve("scratch");
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), () -> false).train(plugin);
 			String trainedFlags = runWrapper(bin, "-XX:+PrintCommandLineFlags", "-version");
 			// With AOTMode=on, Java fails instead of starting without a cache that it cannot use
 			String trainedRun = runWrapper(bin, "-XX:AOTMode=on", "-m", "jdk.jartool/sun.tools.jar.Main", "--version");
 
 			requireThat(untrainedFlags, "untrainedFlags").doesNotContain("-XX:AOTCache=");
 			requireThat(written, "written").isTrue();
+			requireThat(names(plugin.resolve(StartupCache.DIRECTORY)), "cacheFolder").
+				isEqualTo(Set.of(StartupCache.FILE.getFileName().toString()));
+			requireThat(names(scratch), "scratchEntries").isEmpty();
 			Matcher cache = Pattern.compile("-XX:AOTCache=(.+?)(?: -XX:|\\R)").matcher(trainedFlags);
 			requireThat(cache.find(), "cachePassed").withContext(trainedFlags, "trainedFlags").isTrue();
 			requireThat(Files.isSameFile(Path.of(cache.group(1)), plugin.resolve(StartupCache.FILE)), "passedCache").
 				withContext(cache.group(1), "passed").isTrue();
 			requireThat(trainedRun.strip(), "trainedRun").startsWith("jar ");
 		}
+	}
+
+	/**
+	 * Places a Java runtime at a new location by linking the files of the testing JVM's runtime, so that Java started
+	 * from it reads its runtime image at that location. A file that cannot be linked, such as one on another file
+	 * system, is copied.
+	 *
+	 * @param target the runtime directory, which must not exist
+	 * @return the runtime directory
+	 * @throws IOException if the runtime cannot be placed
+	 */
+	private static Path linkedRuntime(Path target) throws IOException
+	{
+		Path source = Path.of(System.getProperty("java.home")).toRealPath();
+		for (String part : List.of("bin", "conf", "lib", "release"))
+		{
+			try (Stream<Path> paths = Files.walk(source.resolve(part)))
+			{
+				for (Path path : paths.toList())
+				{
+					Path copy = target.resolve(source.relativize(path).toString());
+					if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+						Files.createDirectories(copy);
+					else
+						linkOrCopy(path, copy);
+				}
+			}
+		}
+		return target;
+	}
+
+	/**
+	 * Links a file of the testing JVM's runtime at another location, or copies it when it cannot be linked.
+	 *
+	 * @param file the file, which is never changed
+	 * @param copy the new location
+	 * @throws IOException if the file can be neither linked nor copied
+	 */
+	private static void linkOrCopy(Path file, Path copy) throws IOException
+	{
+		Files.createDirectories(copy.getParent());
+		if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+		{
+			try
+			{
+				Files.createLink(copy, file);
+				return;
+			}
+			catch (IOException | UnsupportedOperationException _)
+			{
+				// Copied below
+			}
+		}
+		Files.copy(file, copy, LinkOption.NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
 	}
 
 	/**
