@@ -25,6 +25,13 @@ public interface HarnessIntegration
 	String harness();
 
 	/**
+	 * Returns the name by which the harness's users know the harness, which the installer's report to a person uses.
+	 *
+	 * @return the product name
+	 */
+	String productName();
+
+	/**
 	 * Returns where the harness keeps CAT's installation below a harness home.
 	 *
 	 * @param home the absolute, normalized harness home

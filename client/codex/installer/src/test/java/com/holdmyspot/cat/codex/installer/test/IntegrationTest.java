@@ -1209,6 +1209,15 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * The installer's report to a person names the harness by the name that its users know.
+	 */
+	@Test
+	public void namesCodex()
+	{
+		requireThat(provider().productName(), "productName").isEqualTo("Codex");
+	}
+
+	/**
 	 * Finds the Codex integration through the same registration that the installer consumes.
 	 *
 	 * @return the Codex integration

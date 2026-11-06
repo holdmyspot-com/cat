@@ -79,6 +79,15 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * The installer's report to a person names the harness by the name that its users know.
+	 */
+	@Test
+	public void namesClaudeCode()
+	{
+		requireThat(new Integration(Platform.LINUX_X64).productName(), "productName").isEqualTo("Claude Code");
+	}
+
+	/**
 	 * Setup finds Claude Code's {@code claude} program.
 	 */
 	@Test

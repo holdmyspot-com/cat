@@ -130,6 +130,12 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	@Override
+	public String productName()
+	{
+		return "Codex";
+	}
+
+	@Override
 	public HarnessInstallation installation(Path home)
 	{
 		return new CodexInstallation(home);

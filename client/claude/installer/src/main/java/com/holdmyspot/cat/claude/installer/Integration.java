@@ -148,6 +148,12 @@ public final class Integration implements HarnessIntegration
 	}
 
 	@Override
+	public String productName()
+	{
+		return "Claude Code";
+	}
+
+	@Override
 	public HarnessInstallation installation(Path home)
 	{
 		return new ClaudeInstallation(home);

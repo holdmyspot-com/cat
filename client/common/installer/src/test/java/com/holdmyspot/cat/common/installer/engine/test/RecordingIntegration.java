@@ -436,6 +436,12 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
+	public String productName()
+	{
+		return "Product " + harness;
+	}
+
+	@Override
 	public HarnessInstallation installation(Path home)
 	{
 		return layout(harness, home);
