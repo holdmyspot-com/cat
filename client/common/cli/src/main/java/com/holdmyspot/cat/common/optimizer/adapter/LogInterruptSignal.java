@@ -71,7 +71,7 @@ public abstract class LogInterruptSignal implements HostInterruptSignal
 				}
 				if (!isInterrupt(record))
 					continue;
-				Instant recorded = timestamp(record);
+				Instant recorded = recordedAt(record, clock.instant());
 				if (latest == null || recorded.isAfter(latest))
 					latest = recorded;
 			}
@@ -91,10 +91,14 @@ public abstract class LogInterruptSignal implements HostInterruptSignal
 	 * Returns when a record was written.
 	 *
 	 * @param record the record
-	 * @return the record's timestamp, or the current time if the record has none
+	 * @param now    the current time
+	 * @return the record's timestamp, or {@code now} if the record has none or its timestamp is not an instant
+	 * @throws NullPointerException if any argument is null
 	 */
-	private Instant timestamp(JsonNode record)
+	public static Instant recordedAt(JsonNode record, Instant now)
 	{
+		requireThat(record, "record").isNotNull();
+		requireThat(now, "now").isNotNull();
 		JsonNode stamp = record.path("timestamp");
 		if (stamp.isString())
 		{
@@ -104,9 +108,9 @@ public abstract class LogInterruptSignal implements HostInterruptSignal
 			}
 			catch (DateTimeParseException _)
 			{
-				return clock.instant();
+				return now;
 			}
 		}
-		return clock.instant();
+		return now;
 	}
 }

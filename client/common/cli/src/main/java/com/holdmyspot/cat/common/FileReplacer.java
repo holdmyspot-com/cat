@@ -68,6 +68,23 @@ public final class FileReplacer
 	}
 
 	/**
+	 * Returns whether a replacement that the file system refused is tried again.
+	 *
+	 * @param platform the platform whose file system the replacer writes
+	 * @param now      the time of the refusal
+	 * @param deadline the time at which the replacer gives up, which is {@link #RETRY_LIMIT} after it started
+	 * @return {@code true} on Windows, until the deadline; elsewhere a refusal is final
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean retries(Platform platform, Instant now, Instant deadline)
+	{
+		requireThat(platform, "platform").isNotNull();
+		requireThat(now, "now").isNotNull();
+		requireThat(deadline, "deadline").isNotNull();
+		return platform.isWindows() && now.isBefore(deadline);
+	}
+
+	/**
 	 * Atomically replaces a file with another file in the same directory.
 	 *
 	 * @param source the file that takes the target's place
@@ -93,7 +110,7 @@ public final class FileReplacer
 			}
 			catch (AccessDeniedException e)
 			{
-				if (!platform.isWindows() || !clock.instant().isBefore(deadline))
+				if (!retries(platform, clock.instant(), deadline))
 					throw e;
 				try
 				{

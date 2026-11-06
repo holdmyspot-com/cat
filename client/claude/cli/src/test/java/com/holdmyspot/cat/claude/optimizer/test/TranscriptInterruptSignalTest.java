@@ -9,13 +9,13 @@ import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.ManualClock;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 import org.testng.annotations.Test;
@@ -26,6 +26,10 @@ import org.testng.annotations.Test;
 public final class TranscriptInterruptSignalTest
 {
 	private static final Instant START = Instant.parse("2026-10-01T07:55:00Z");
+	/**
+	 * A clock that stands at the start, for the records that carry their own timestamp.
+	 */
+	private static final Clock AT_START = Clock.fixed(START, ZoneOffset.UTC);
 	private static final String INTERRUPT = """
 		{"type":"user","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]},\
 		"timestamp":"%s"}""";
@@ -62,12 +66,10 @@ public final class TranscriptInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-transcript-")).resolve("session.jsonl");
-			ManualClock clock = new ManualClock(START);
-			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, clock);
+			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, AT_START);
 			append(transcript, "{\"type\":\"assistant\",\"timestamp\":\"2026-10-01T07:55:01.000Z\"}");
 			requireThat(signal.isInterruptedAfter(START), "beforeInterrupt").isFalse();
 
-			clock.advance(Duration.ofSeconds(2));
 			append(transcript, INTERRUPT.formatted("2026-10-01T07:55:02.000Z"));
 			requireThat(signal.isInterruptedAfter(START), "afterInterrupt").isTrue();
 			requireThat(signal.isInterruptedAfter(START), "stillInterrupted").isTrue();
@@ -87,7 +89,7 @@ public final class TranscriptInterruptSignalTest
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-transcript-")).resolve("session.jsonl");
 			append(transcript, INTERRUPT.formatted("2026-10-01T07:54:59.999Z"));
-			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, new ManualClock(START));
+			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, AT_START);
 			requireThat(signal.isInterruptedAfter(START), "interrupted").isFalse();
 			requireThat(signal.isInterruptedAfter(START.minusSeconds(1)), "earlierStart").isTrue();
 		}
@@ -106,8 +108,7 @@ public final class TranscriptInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-transcript-")).resolve("session.jsonl");
-			ManualClock clock = new ManualClock(START);
-			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, clock);
+			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, AT_START);
 			append(transcript, "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[" +
 				"{\"type\":\"text\",\"text\":\"[Request interrupted by user]\"}]}," +
 				"\"timestamp\":\"2026-10-01T07:55:03.000Z\"}");
@@ -134,7 +135,7 @@ public final class TranscriptInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-transcript-")).resolve("session.jsonl");
-			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, new ManualClock(START));
+			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, AT_START);
 			String record = INTERRUPT.formatted("2026-10-01T07:55:05.000Z");
 			Files.writeString(transcript, record.substring(0, 40), UTF_8, CREATE, APPEND);
 			requireThat(signal.isInterruptedAfter(START), "partialRecord").isFalse();
@@ -156,7 +157,7 @@ public final class TranscriptInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-transcript-")).resolve("session.jsonl");
-			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, new ManualClock(START));
+			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, AT_START);
 			requireThat(signal.isInterruptedAfter(START), "missing").isFalse();
 			append(transcript, INTERRUPT.formatted("2026-10-01T07:55:06.000Z"));
 			requireThat(signal.isInterruptedAfter(START), "created").isTrue();
@@ -175,9 +176,8 @@ public final class TranscriptInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path transcript = cleanup.add(Files.createTempDirectory("cat-transcript-")).resolve("session.jsonl");
-			ManualClock clock = new ManualClock(START);
-			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, clock);
-			clock.advance(Duration.ofSeconds(5));
+			Clock readTime = Clock.fixed(START.plusSeconds(5), ZoneOffset.UTC);
+			TranscriptInterruptSignal signal = new TranscriptInterruptSignal(transcript, readTime);
 			append(transcript, "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":" +
 				"\"[Request interrupted by user]\"}}");
 			requireThat(signal.isInterruptedAfter(START), "unstamped").isTrue();

@@ -12,8 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -27,6 +29,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class FileReplacerTest
 {
+	/**
+	 * A clock that the tests whose replacement never reaches its limit give the replacer.
+	 */
+	private static final Clock FIXED = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
 	private static final Set<PosixFilePermission> READ_ONLY_DIRECTORY =
 		Set.copyOf(PosixFilePermissions.fromString("r-xr-xr-x"));
 	private static final Set<PosixFilePermission> WRITABLE_DIRECTORY =
@@ -60,7 +66,7 @@ public final class FileReplacerTest
 				{
 					pauses.incrementAndGet();
 					refusal.end();
-				}, new ManualClock(Instant.EPOCH));
+				}, FIXED);
 				replacer.replace(source, target);
 			}
 
@@ -68,6 +74,25 @@ public final class FileReplacerTest
 			requireThat(Files.readString(target), "content").isEqualTo("new");
 			requireThat(Files.exists(source), "sourceExists").isFalse();
 		}
+	}
+
+	/**
+	 * Verifies that a refusal is tried again on Windows until the five-second limit, and never elsewhere.
+	 */
+	@Test
+	public void retriesOnlyOnWindowsBeforeLimit()
+	{
+		Instant start = Instant.EPOCH;
+		Instant deadline = start.plus(Duration.ofSeconds(5));
+
+		requireThat(FileReplacer.retries(Platform.WINDOWS_X64, start, deadline), "atStart").isTrue();
+		requireThat(FileReplacer.retries(Platform.WINDOWS_X64, deadline.minusNanos(1), deadline), "beforeLimit").
+			isTrue();
+		requireThat(FileReplacer.retries(Platform.WINDOWS_X64, deadline, deadline), "atLimit").isFalse();
+		requireThat(FileReplacer.retries(Platform.WINDOWS_X64, deadline.plusSeconds(1), deadline), "afterLimit").
+			isFalse();
+		requireThat(FileReplacer.retries(Platform.LINUX_X64, start, deadline), "linux").isFalse();
+		requireThat(FileReplacer.retries(Platform.MACOS_ARM64, start, deadline), "macos").isFalse();
 	}
 
 	/**
@@ -122,7 +147,7 @@ public final class FileReplacerTest
 			FileReplacer replacer = new FileReplacer(Platform.WINDOWS_X64, () ->
 			{
 				throw interrupted;
-			}, new ManualClock(Instant.EPOCH));
+			}, FIXED);
 
 			try (Refusal _ = new Refusal(directory, target))
 			{
@@ -153,7 +178,7 @@ public final class FileReplacerTest
 			FileReplacer replacer = new FileReplacer(Platform.LINUX_X64, () ->
 			{
 				throw new AssertionError("A refusal outside Windows must not pause");
-			}, new ManualClock(Instant.EPOCH));
+			}, FIXED);
 
 			try (Refusal _ = new Refusal(directory, target))
 			{

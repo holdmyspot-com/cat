@@ -134,7 +134,7 @@ public final class ExecutableFiles
 			catch (IOException failure)
 			{
 				// WORKAROUND: https://bugs.openjdk.org/browse/JDK-8068370
-				if (!isTextFileBusy(failure) || !clock.instant().isBefore(deadline))
+				if (!retries(failure, clock.instant(), deadline))
 					throw failure;
 				try
 				{
@@ -147,6 +147,23 @@ public final class ExecutableFiles
 				}
 			}
 		}
+	}
+
+	/**
+	 * Returns whether a failed start is tried again.
+	 *
+	 * @param failure  the process-start failure
+	 * @param now      the time of the failure
+	 * @param deadline the time at which the start gives up, which is {@link #RETRY_LIMIT} after it started
+	 * @return {@code true} if the failure reports the POSIX {@code ETXTBSY} condition and the deadline has not passed
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean retries(IOException failure, Instant now, Instant deadline)
+	{
+		requireThat(failure, "failure").isNotNull();
+		requireThat(now, "now").isNotNull();
+		requireThat(deadline, "deadline").isNotNull();
+		return isTextFileBusy(failure) && now.isBefore(deadline);
 	}
 
 	/**

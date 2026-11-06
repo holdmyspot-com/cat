@@ -7,13 +7,13 @@ import static java.nio.file.StandardOpenOption.CREATE;
 
 import com.holdmyspot.cat.codex.optimizer.RolloutInterruptSignal;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.ManualClock;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 import org.testng.annotations.Test;
@@ -24,6 +24,10 @@ import org.testng.annotations.Test;
 public final class RolloutInterruptSignalTest
 {
 	private static final Instant START = Instant.parse("2026-10-01T07:56:00Z");
+	/**
+	 * A clock that stands at the start, for the records that carry their own timestamp.
+	 */
+	private static final Clock AT_START = Clock.fixed(START, ZoneOffset.UTC);
 	private static final String ABORTED = """
 		{"timestamp":"%s","ordinal":40,"type":"event_msg","payload":{"type":"turn_aborted",\
 		"turn_id":"01a0f676-b871-74c2-9e1f-ecbf1f2cd080","reason":"interrupted"}}""";
@@ -60,13 +64,11 @@ public final class RolloutInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path rollout = cleanup.add(Files.createTempDirectory("cat-rollout-")).resolve("rollout.jsonl");
-			ManualClock clock = new ManualClock(START);
-			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, clock);
+			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, AT_START);
 			append(rollout, "{\"timestamp\":\"2026-10-01T07:56:01.000Z\",\"type\":\"event_msg\"," +
 				"\"payload\":{\"type\":\"task_started\"}}");
 			requireThat(signal.isInterruptedAfter(START), "beforeAbort").isFalse();
 
-			clock.advance(Duration.ofSeconds(3));
 			append(rollout, ABORTED.formatted("2026-10-01T07:56:03.000Z"));
 			requireThat(signal.isInterruptedAfter(START), "afterAbort").isTrue();
 			requireThat(signal.isInterruptedAfter(START), "stillAborted").isTrue();
@@ -86,7 +88,7 @@ public final class RolloutInterruptSignalTest
 		{
 			Path rollout = cleanup.add(Files.createTempDirectory("cat-rollout-")).resolve("rollout.jsonl");
 			append(rollout, ABORTED.formatted("2026-10-01T07:55:59.000Z"));
-			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, new ManualClock(START));
+			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, AT_START);
 			requireThat(signal.isInterruptedAfter(START), "interrupted").isFalse();
 		}
 	}
@@ -104,7 +106,7 @@ public final class RolloutInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path rollout = cleanup.add(Files.createTempDirectory("cat-rollout-")).resolve("rollout.jsonl");
-			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, new ManualClock(START));
+			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, AT_START);
 			append(rollout, "{\"timestamp\":\"2026-10-01T07:56:04.000Z\",\"type\":\"response_item\",\"payload\":" +
 				"{\"type\":\"message\",\"role\":\"developer\",\"content\":[{\"type\":\"input_text\",\"text\":" +
 				"\"<turn_aborted>\\nThe previous turn was interrupted on purpose.\\n</turn_aborted>\"}]}}");
@@ -125,7 +127,7 @@ public final class RolloutInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path rollout = cleanup.add(Files.createTempDirectory("cat-rollout-")).resolve("rollout.jsonl");
-			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, new ManualClock(START));
+			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, AT_START);
 			String record = ABORTED.formatted("2026-10-01T07:56:05.000Z");
 			Files.writeString(rollout, record.substring(0, 50), UTF_8, CREATE, APPEND);
 			requireThat(signal.isInterruptedAfter(START), "partialRecord").isFalse();
@@ -147,7 +149,7 @@ public final class RolloutInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path rollout = cleanup.add(Files.createTempDirectory("cat-rollout-")).resolve("rollout.jsonl");
-			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, new ManualClock(START));
+			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, AT_START);
 			requireThat(signal.isInterruptedAfter(START), "missing").isFalse();
 			append(rollout, ABORTED.formatted("2026-10-01T07:56:06.000Z"));
 			requireThat(signal.isInterruptedAfter(START), "created").isTrue();
@@ -166,9 +168,8 @@ public final class RolloutInterruptSignalTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path rollout = cleanup.add(Files.createTempDirectory("cat-rollout-")).resolve("rollout.jsonl");
-			ManualClock clock = new ManualClock(START);
-			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, clock);
-			clock.advance(Duration.ofSeconds(5));
+			Clock readTime = Clock.fixed(START.plusSeconds(5), ZoneOffset.UTC);
+			RolloutInterruptSignal signal = new RolloutInterruptSignal(rollout, readTime);
 			append(rollout, "{\"type\":\"event_msg\",\"payload\":{\"type\":\"turn_aborted\"}}");
 			requireThat(signal.isInterruptedAfter(START), "unstamped").isTrue();
 			requireThat(signal.isInterruptedAfter(START.plusSeconds(5)), "notAfterReadTime").isFalse();
