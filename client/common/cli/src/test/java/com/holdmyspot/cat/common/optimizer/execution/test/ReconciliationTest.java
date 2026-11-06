@@ -181,6 +181,22 @@ public final class ReconciliationTest
 	}
 
 	/**
+	 * Crash point: the snapshot still holds the trial as assigned, but its record holds an outcome. Reconciliation
+	 * starts the trial and adopts the outcome, so the outcome is counted once and the trial does not rerun.
+	 */
+	@Test
+	public void outcomeRecordedForAssignedTrial()
+	{
+		// Requirement: R-E11
+		Campaign assigned = assign(developing().build(), 1);
+		LogicalTrial trial = assigned.trials().getFirst();
+		Campaign reconciled = Reconciler.recover(assigned, List.of(passed(start(assigned), trial.key())),
+			DriverHarness.START);
+		requireThat(developmentOutcomes(reconciled), "outcomes").isEqualTo(101);
+		requireThat(reconciled.trials(), "trials").isEmpty();
+	}
+
+	/**
 	 * Crash point: the snapshot that adopts the outcome is durable. Reconciliation changes nothing.
 	 */
 	@Test
