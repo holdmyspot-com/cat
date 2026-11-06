@@ -297,7 +297,7 @@ public final class DriverTest
 
 	/**
 	 * Returns a campaign that has not yet observed its judge, trial model or reasoning configuration, with 49
-	 * development outcomes in each cell.
+	 * development outcomes in the formatting and safety cells, while every other cell meets the commit gate.
 	 *
 	 * @return the campaign
 	 */
@@ -310,16 +310,12 @@ public final class DriverTest
 		conditions.remove(MeasurementCondition.REASONING);
 		MeasurementIdentity initial = new MeasurementIdentity(conditions);
 		return new Builder().confirmed().identity(initial).baselineIdentity(initial).working(1).readyBaseline().
-			development("formatting", 49, 0).development("safety", 49, 0).ceiling(1).build();
+			readyDevelopment().development("formatting", 49, 0).development("safety", 49, 0).ceiling(1).build();
 	}
 
 	/**
 	 * The model that a judge session reports is not a measurement condition: the judge version stands for the
 	 * judge, so a changed judge session model neither pauses the campaign nor is recorded.
-	 * <p>
-	 * The fixture seeds prior development counts, then observes profiles and completes outcomes in both cells before
-	 * and after changing the judge's reported model. Persisting those transitions can exceed one second during a
-	 * parallel build; omitting either observation would not exercise the change between judged trials.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -395,8 +391,8 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("version-change")),
-				new Builder().confirmed().working(1).readyBaseline().development("formatting", 49, 0).
-					development("safety", 49, 0).ceiling(1).build());
+				new Builder().confirmed().working(1).readyBaseline().readyDevelopment().
+					development("formatting", 49, 0).development("safety", 49, 0).ceiling(1).build());
 			try (Driver driver = harness.open())
 			{
 				harness.runUntil(driver, state -> state.development().count("formatting").outcomes() >= 50 &&
