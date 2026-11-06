@@ -100,7 +100,15 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   2.42 s, `StartupCacheTrainerTest.trainedCacheIsAccepted` 2.17/1.73 s, three `SessionLauncherTest` cases 2.09–2.10 s,
   `PluginLaunchersTest.wrapperTrainsAndPassesStartupCache` 1.95/1.92 s, `GeneratorTest.drawsTestCasesUniformlyWithinThePart`
   2.91 s, three `MarkdownSectionsTest` cases 2.17–2.49 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.55 s
-  and `certifyWaitsForIncumbentComparisons` 1.17 s. Gate 1 reruns on the final tree.
+  and `certifyWaitsForIncumbentComparisons` 1.17 s. Gate 1 reruns on the final tree. Timed alone, every case but two
+  ran under 0.5 s (parallel load); `StartupCacheTrainerTest.trainedCacheIsAccepted` (about 1.0 s) and
+  `PluginLaunchersTest.wrapperTrainsAndPassesStartupCache` (about 1.6 s) start real Java and now state why in their
+  Javadoc (`9c241bc350`).
+- **Gates 3 and 6, source audit on `beeed80bd1` (2026-11-06, `reports/gate3-6.md`):** gate 3 passes at the source level
+  (469 test sources, 28 POMs; no test starts a real Codex, Claude or model process; the interim process trace was not
+  repeated). Gate 6: §8's real-Git list corrected (`521d69a1a7`), the stale `GateCommandFixture` audit entry removed
+  (`0f84b98b71`); the statement that other tests assert built commands from captured Git output is spot-checked only,
+  since no Git shim ran at HEAD.
 
 ### Latest authorized requirements
 
