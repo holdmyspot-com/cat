@@ -88,6 +88,14 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   user decides what to do with it.
 - **Gate 2 refresh (2026-11-06, `final-gates-lLlQqp/refresh-2026-11-06/`):** 2,181 tags in 205 test sources; after
   `d027d5f5bc` tagged the replacement tests for R-I6, only R-I1 is untagged (native receipts pending); no unknown tags.
+- **Gate 1/6 builds on `4bda867300` (2026-11-06, `reports/gate1-build.md`):** clean whole-reactor `verify` passed in
+  115 s, and again with HOME unset in 113 s: 4,548 tests, 0 failures, 0 errors, 7 platform skips each. The HOME-unset
+  build needs `MAVEN_USER_HOME` and `-s <settings.xml>`, because the Maven wrapper script itself reads `${HOME}`;
+  CAT's code and tests ran without it. Tests ≥ 1 s (they vary under `-T 4C`): `SessionLauncherStartTest.launcherOutlivesHookOutput`
+  2.42 s, `StartupCacheTrainerTest.trainedCacheIsAccepted` 2.17/1.73 s, three `SessionLauncherTest` cases 2.09–2.10 s,
+  `PluginLaunchersTest.wrapperTrainsAndPassesStartupCache` 1.95/1.92 s, `GeneratorTest.drawsTestCasesUniformlyWithinThePart`
+  2.91 s, three `MarkdownSectionsTest` cases 2.17–2.49 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.55 s
+  and `certifyWaitsForIncumbentComparisons` 1.17 s. Gate 1 reruns on the final tree.
 
 ### Latest authorized requirements
 
