@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortableFiles;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -75,12 +76,16 @@ public final class RequestArchive
 	 * The device that a sandbox mounts over each file that a session may not read.
 	 */
 	static final Path NULL_DEVICE = Path.of("/dev/null");
+	/**
+	 * The manifest field that holds a request's extra permissions.
+	 */
+	static final String EXTRA_PERMISSIONS = "extra_permissions";
 	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
-		"plugins", "model", "effort", "session_transcripts", "install_cat");
+		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS);
 	private static final Set<String> SESSION_FIELDS = Set.of("format_version", "harness", "model", "effort", "agent",
 		"turns", "input", "project", "plugins", "workspace", "read_only_evidence", "install_cat", "session_transcripts",
 		"keep_run", "session_requests", "request_depth", "capacity_wait", "max_concurrency", "capacity",
-		"instruction_files", "tool_output_token_limit", "deny_read", "git_name", "git_email");
+		"instruction_files", "tool_output_token_limit", "deny_read", EXTRA_PERMISSIONS, "git_name", "git_email");
 	private static final Set<PosixFilePermission> FILE_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> PROGRAM_MODE = PosixFilePermissions.fromString("rwxr-xr-x");
 
@@ -206,6 +211,8 @@ public final class RequestArchive
 			ArrayNode deniedReads = manifest.putArray("deny_read");
 			for (Path denied : request.deniedReads())
 				deniedReads.add(denied.toString());
+			if (!request.extraPermissions().isEmpty())
+				manifest.set(EXTRA_PERMISSIONS, request.extraPermissions().toDocument(json));
 			putText(manifest, "git_name", request.gitName());
 			putText(manifest, "git_email", request.gitEmail());
 			return manifest;
@@ -675,7 +682,7 @@ public final class RequestArchive
 		String effort = optionalText(value, "effort").orElse("");
 		HarnessRunnerOptions.requireProfile(harness, model, effort);
 		return new RunRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
-			flag(value, "install_cat"));
+			flag(value, "install_cat"), extraPermissions(value));
 	}
 
 	/**
@@ -735,13 +742,27 @@ public final class RequestArchive
 				evidence, flag(value, "install_cat"), flag(value, "session_transcripts"), flag(value, "keep_run"),
 				count(value, "session_requests").orElse(0), count(value, "request_depth").orElse(0), capacityWait,
 				count(value, "max_concurrency"), capacityHeld, optionalText(value, "instruction_files"),
-				count(value, "tool_output_token_limit"), deniedReads, optionalText(value, "git_name"),
-				optionalText(value, "git_email"));
+				count(value, "tool_output_token_limit"), deniedReads, extraPermissions(value),
+				optionalText(value, "git_name"), optionalText(value, "git_email"));
 		}
 		catch (IllegalArgumentException e)
 		{
 			throw new IOException(e.getMessage(), e);
 		}
+	}
+
+	/**
+	 * Reads the extra permissions that a manifest asks for.
+	 *
+	 * @param value the manifest
+	 * @return the permissions, or none if the manifest has no such field
+	 * @throws IOException if the field is not a valid document of extra permissions
+	 */
+	private static ExtraPermissions extraPermissions(JsonNode value) throws IOException
+	{
+		if (!value.has(EXTRA_PERMISSIONS))
+			return ExtraPermissions.NONE;
+		return ExtraPermissions.fromDocument(value.get(EXTRA_PERMISSIONS), "The request's " + EXTRA_PERMISSIONS);
 	}
 
 	/**
@@ -972,9 +993,10 @@ public final class RequestArchive
 	 * @param effort             the selected effort
 	 * @param sessionTranscripts indicates whether native transcripts are requested
 	 * @param installCat         indicates whether CAT is installed in the requested session's home
+	 * @param extraPermissions   the writes and hosts that the requested session needs beyond its harness's
 	 */
 	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
-		String effort, boolean sessionTranscripts, boolean installCat)
+		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions)
 	{
 	}
 

@@ -216,7 +216,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, false, null,
-				null);
+				null, null);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -257,7 +257,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", null, true, null, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, input, null, false, null,
-				null);
+				null, null);
 			StringWriter output = new StringWriter();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
@@ -296,7 +296,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, true, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, false, null,
-				null);
+				null, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			try (TranscriptProcess process = new TranscriptProcess(nativeFile, run.sessionTranscripts()))
@@ -342,7 +342,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, false, null,
-				null);
+				null, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,

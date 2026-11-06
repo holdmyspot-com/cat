@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncher;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -652,6 +653,103 @@ public final class SessionLauncherTest
 	}
 
 	/**
+	 * Verifies that the extra permissions of a request join the child's needs, so that a parent that allows them gives
+	 * them to the child, and that the child's runner is given a file of the same permissions to join them to the needs
+	 * that it derives itself.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void givesChildAllowedExtraPermissions() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			Path work = fixture.home.resolve("work");
+			Path cache = Files.createDirectory(fixture.home.resolve("registry cache"));
+			fixture.policy.allow(new ParentPolicy(true, List.of(work, cache), List.of(), List.of(), List.of(),
+				HostAccess.listed(Set.of(MODEL_HOST, "registry.example")), false, List.of()));
+			ExtraPermissions extra = new ExtraPermissions(List.of(cache), Set.of("registry.example"));
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(false, extra));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+
+			requireThat(launcher.poll(), "poll").isTrue();
+			FakeRunner runner = fixture.starter.awaitRunner();
+			runner.awaitRecords(2);
+			fixture.executor.awaitIdle();
+
+			JsonNode bound = json.readTree(Files.readString(Path.of(runner.option("--policy-bound").orElseThrow())));
+			requireThat(bound.path("write_roots").toString(), "writeRoots").contains(cache.toString());
+			requireThat(bound.path("hosts").toString(), "hosts").contains(MODEL_HOST).contains("registry.example");
+			requireThat(ExtraPermissions.read(json, Path.of(runner.option(ExtraPermissions.OPTION).orElseThrow())),
+				"given").isEqualTo(extra);
+			requireThat(fixture.response(id).status(), "status").isEqualTo(Status.COMPLETED);
+		}
+	}
+
+	/**
+	 * Verifies that a request that asks for no extra permissions leaves the child with the permissions that it needed
+	 * without them, and gives its runner no file of extra permissions.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void givesChildNoExtraPermissionsUnlessAsked() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(false));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+
+			requireThat(launcher.poll(), "poll").isTrue();
+			FakeRunner runner = fixture.starter.awaitRunner();
+			runner.awaitRecords(2);
+			fixture.executor.awaitIdle();
+
+			requireThat(runner.option(ExtraPermissions.OPTION), "extraPermissions").isEqualTo(Optional.empty());
+			JsonNode bound = json.readTree(Files.readString(Path.of(runner.option("--policy-bound").orElseThrow())));
+			requireThat(bound.path("hosts").toString(), "hosts").isEqualTo("[\"" + MODEL_HOST + "\"]");
+		}
+	}
+
+	/**
+	 * Verifies that a request is answered {@code refused}, and starts nothing, when it asks for a write and a host that
+	 * the parent's sandbox does not allow; the reason names both and the settings to add them to.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void refusesDisallowedExtraPermissions() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			Path cache = fixture.home.resolve("registry cache");
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(false,
+				new ExtraPermissions(List.of(cache), Set.of("registry.example"))));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+
+			requireThat(launcher.poll(), "poll").isTrue();
+			fixture.executor.awaitIdle();
+
+			Response response = fixture.response(id);
+			requireThat(response.status(), "status").isEqualTo(Status.REFUSED);
+			requireThat(response.reason(), "reason").isEqualTo("CAT cannot start the session: this " + HARNESS_NAME +
+				" session's sandbox does not let its commands write " + cache + " and reach registry.example, " +
+				"which the requested session needs. To allow this, add [" + cache + "] and [registry.example] to the " +
+				"settings of " + HARNESS_NAME + ", then start a new " + HARNESS_NAME + " session.");
+			requireThat(fixture.starter.runners(), "runners").isEmpty();
+		}
+	}
+
+	/**
 	 * Supplies runner exit statuses and the request status that each one gives.
 	 *
 	 * @return the exit status and the request status
@@ -853,12 +951,24 @@ public final class SessionLauncherTest
 		 */
 		private Request request(boolean streamed)
 		{
+			return request(streamed, ExtraPermissions.NONE);
+		}
+
+		/**
+		 * Returns a request for a Claude child that asks for extra permissions.
+		 *
+		 * @param streamed {@code true} to stream the records as turn files, {@code false} to send them in the request
+		 * @param extra    the writes and hosts that the child needs beyond its harness's
+		 * @return the request, naming the sender's files
+		 */
+		private Request request(boolean streamed, ExtraPermissions extra)
+		{
 			Optional<Path> records = Optional.of(turns);
 			if (streamed)
 				records = Optional.empty();
 			return new Request("claude", Optional.of("model-a"), Optional.of("effort-a"), Optional.empty(), records,
 				project, List.of(), Optional.empty(), List.of(), false, false, true, 0, 0, Optional.empty(),
-				Optional.empty(), false, Optional.empty(), Optional.empty(), List.of(), Optional.empty(),
+				Optional.empty(), false, Optional.empty(), Optional.empty(), List.of(), extra, Optional.empty(),
 				Optional.empty());
 		}
 

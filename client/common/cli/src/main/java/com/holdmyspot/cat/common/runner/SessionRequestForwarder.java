@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -50,7 +51,7 @@ public final class SessionRequestForwarder
 	 * The options that take a value and that a launch may name.
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--run-root", "--project", "--plugin",
-		"--model", "--effort", "--input", "--output", "--receipt");
+		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION);
 
 	/**
 	 * Forwards one launch and waits for its requested session to end.
@@ -133,6 +134,12 @@ public final class SessionRequestForwarder
 				case "--input" -> records = Path.of(value);
 				case "--output" -> transcript = Path.of(value);
 				case "--receipt" -> receipt = Path.of(value);
+				case ExtraPermissions.OPTION ->
+				{
+					ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, Path.of(value));
+					if (!extra.isEmpty())
+						request.set(RequestArchive.EXTRA_PERMISSIONS, extra.toDocument(json));
+				}
 				default -> throw new InvalidArgumentsException("Unsupported option: " + option);
 			}
 		}

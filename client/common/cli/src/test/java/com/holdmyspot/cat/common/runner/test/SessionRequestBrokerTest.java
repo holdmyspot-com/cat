@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -42,6 +43,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -238,6 +240,102 @@ public final class SessionRequestBrokerTest
 			}
 			requireThat(arguments.get(0), "plain").doesNotContain("--install-cat");
 			requireThat(arguments.get(1), "installed").contains("--install-cat");
+		}
+	}
+
+	/**
+	 * Verifies that a request's extra permissions reach the requested session's runner as a file of the same
+	 * permissions, and that a request without them gives the runner no such option.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void givesChildTheRequestedExtraPermissions() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "2"))
+		{
+			ExtraPermissions extra = new ExtraPermissions(List.of(fixture.root.resolve("registry cache")),
+				Set.of("registry.example"));
+			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			List<ExtraPermissions> given = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					arguments.add(options);
+					if (options.contains(ExtraPermissions.OPTION))
+						given.add(ExtraPermissions.read(fixture.json, Path.of(option(options, ExtraPermissions.OPTION))));
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					}, 1);
+					process.closeOutputThenExitWhenAwaited();
+					return process;
+				}))
+			{
+				fixture.request("plain");
+				broker.scan();
+				fixture.await("plain");
+				fixture.writeRequest("extra", fixture.document().set("extra_permissions", extra.toDocument(fixture.json)));
+				broker.scan();
+				fixture.await("extra");
+			}
+			requireThat(arguments.get(0), "plain").doesNotContain(ExtraPermissions.OPTION);
+			requireThat(given, "given").isEqualTo(List.of(extra));
+		}
+	}
+
+	/**
+	 * Verifies that a request whose extra permissions are not valid is refused and starts no session.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesInvalidExtraPermissions() throws IOException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			{
+				throw new AssertionError("Invalid extra permissions cannot start a child");
+			}))
+		{
+			ObjectNode extra = fixture.json.createObjectNode().put("format_version", 1);
+			extra.putArray("writes").add("relative/cache");
+			fixture.writeRequest("bad", fixture.document().set("extra_permissions", extra));
+			broker.scan();
+			JsonNode response = fixture.await("bad");
+			requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+			requireThat(response.path("reason").asString(), "reason").contains("relative/cache");
+		}
+	}
+
+	/**
+	 * Verifies that a requested session that its runner refuses to launch, because the requesting session's sandbox
+	 * lacks permissions that the session needs, is answered as refused with the runner's reason, which names them.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void answersRefusedWhenRunnerRefusesLaunch() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			String reason = "The session needs host registry.example, which the parent's sandbox does not allow";
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, directory) ->
+				{
+					Files.writeString(directory.resolve("runner.stderr"), reason + System.lineSeparator());
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					}, HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+					process.closeOutputThenExitWhenAwaited();
+					return process;
+				}))
+			{
+				fixture.request("refused");
+				broker.scan();
+				JsonNode response = fixture.await("refused");
+				requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+				requireThat(response.path("reason").asString(), "reason").isEqualTo(reason);
+			}
 		}
 	}
 

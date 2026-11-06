@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Response;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.MissingPermissionsException;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
@@ -960,7 +961,8 @@ public final class SessionLauncher implements Closeable
 			ParentPolicy current = policy.read();
 			current.requireTrusted(channel.stateRoot());
 			ParentPolicy bound = snapshot.intersect(current);
-			ChildNeeds childNeeds = needs.needs(choices.harness(), runRoot, choices.deniedReads(), bound);
+			ChildNeeds childNeeds = needs.needs(choices.harness(), runRoot, choices.deniedReads(), bound).
+				with(choices.extraPermissions());
 			child = ChildPolicy.intersect(bound, childNeeds);
 		}
 		catch (PolicyRefusal e)
@@ -981,6 +983,8 @@ public final class SessionLauncher implements Closeable
 		Files.createDirectories(runRoot);
 		Path policyBound = request.directory.resolve(PolicyBoundFile.FILE_NAME);
 		PolicyBoundFile.write(json, policyBound, child);
+		if (!choices.extraPermissions().isEmpty())
+			choices.extraPermissions().write(json, request.directory.resolve(ExtraPermissions.FILE_NAME));
 
 		List<String> arguments = RunnerArguments.of(choices, request.directory, runRoot, policyBound);
 		try

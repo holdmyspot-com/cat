@@ -2,7 +2,9 @@ package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
@@ -107,6 +110,77 @@ public final class SessionRequestForwarderTest
 			requireThat(fixture.entries.get("prompts/1"), "second").isEqualTo("second task");
 			requireThat(Files.readString(transcript), "transcript").isEqualTo(Fixture.TRANSCRIPT);
 			requireThat(output.size(), "standardOutput").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Verifies that a launch inside a run that names a file of extra permissions asks the parent for the file's writes
+	 * and hosts, as the content that the parent's runner reads, and that a launch without the file asks for none.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void forwardsExtraPermissions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			Path cache = fixture.root.resolve("registry cache");
+			ExtraPermissions permissions = new ExtraPermissions(List.of(cache), Set.of("registry.example"));
+			JsonMapper json = JsonMapper.builder().build();
+			Path file = fixture.root.resolve("permissions.json");
+			permissions.write(json, file);
+			Fixture without = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+
+			fixture.forward("harness-a", new String[]{"--project", fixture.project.toString(), "--model", "model-a",
+				"--effort", "effort-a", ExtraPermissions.OPTION, file.toString()}, new StringReader(RECORDS),
+				new ByteArrayOutputStream(), "completed");
+			without.forward("harness-a", new String[]{"--project", without.project.toString(), "--model", "model-a",
+				"--effort", "effort-a"}, new StringReader(RECORDS), new ByteArrayOutputStream(), "completed");
+
+			JsonNode request = json.readTree(fixture.entries.get("request.json"));
+			requireThat(ExtraPermissions.fromDocument(request.path("extra_permissions"), "request"), "extraPermissions").
+				isEqualTo(permissions);
+			requireThat(json.readTree(without.entries.get("request.json")).has("extra_permissions"),
+				"withoutExtraPermissions").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch inside a run whose file of extra permissions is malformed, such as one that names a
+	 * relative path, is refused with the reason before any request is written.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesInvalidExtraPermissions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			Path file = Files.writeString(fixture.root.resolve("permissions.json"),
+				"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}");
+
+			try
+			{
+				fixture.forward("harness-a", new String[]{"--project", fixture.project.toString(), "--model",
+					"model-a", "--effort", "effort-a", ExtraPermissions.OPTION, file.toString()},
+					new StringReader(RECORDS), new ByteArrayOutputStream(), "completed");
+				throw new AssertionError("The launch was not refused");
+			}
+			catch (InvalidArgumentsException e)
+			{
+				requireThat(e.getMessage(), "message").contains("relative/cache").contains(file.toString());
+			}
+			try (Stream<Path> files = Files.list(fixture.requests))
+			{
+				requireThat(files.count(), "requests").isEqualTo(0);
+			}
 		}
 	}
 

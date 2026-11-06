@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Request;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Response;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +20,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -54,7 +56,7 @@ public final class SessionLauncherChannelTest
 			{"plugins"}, {"workspace"}, {"read_only_evidence"}, {"install_cat"}, {"session_transcripts"},
 			{"keep_run"}, {"session_requests"}, {"request_depth"}, {"capacity_wait"}, {"max_concurrency"},
 			{"capacity"}, {"instruction_files"}, {"tool_output_token_limit"}, {"deny_read"}, {"git_name"},
-			{"git_email"}};
+			{"git_email"}, {"extra_permissions"}};
 	}
 
 	/**
@@ -158,6 +160,39 @@ public final class SessionLauncherChannelTest
 			ObjectNode manifest = fixture.minimalManifest();
 			manifest.putArray("deny_read").add("relative/secret");
 			fixture.requireRefusal(manifest, "deny_read");
+		}
+	}
+
+	/**
+	 * Supplies extra permissions that the launcher must refuse, each with the text that the refusal names.
+	 *
+	 * @return the permissions' JSON and the text that the refusal names
+	 */
+	@DataProvider
+	public Object[][] invalidExtraPermissions()
+	{
+		return new Object[][]{{"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}", "relative/cache"},
+			{"{\"format_version\": 1, \"hosts\": [\"*.example\"]}", "*.example"},
+			{"{\"format_version\": 1, \"logins\": []}", "logins"},
+			{"{\"format_version\": 2}", "format_version"}, {"[]", "extra_permissions"}};
+	}
+
+	/**
+	 * Verifies that the launcher refuses extra permissions that name a relative path, a host pattern or an unknown
+	 * field, as the runner refuses them in a file, so that the launcher never grants what a sender could not name.
+	 *
+	 * @param permissions the permissions' JSON
+	 * @param problem     the text that the refusal names
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "invalidExtraPermissions")
+	public void refusesInvalidExtraPermissions(String permissions, String problem) throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			ObjectNode manifest = fixture.minimalManifest();
+			manifest.set("extra_permissions", json.readTree(permissions));
+			fixture.requireRefusal(manifest, problem);
 		}
 	}
 
@@ -320,6 +355,12 @@ public final class SessionLauncherChannelTest
 			List<Path> deniedReads = List.of();
 			if (field.equals("deny_read"))
 				deniedReads = List.of(root.resolve("secret"), root.resolve("other secret"));
+			ExtraPermissions extraPermissions = ExtraPermissions.NONE;
+			if (field.equals("extra_permissions"))
+			{
+				extraPermissions = new ExtraPermissions(List.of(root.resolve("registry cache")),
+					Set.of("registry.example"));
+			}
 			Optional<String> gitName = Optional.empty();
 			if (field.equals("git_name"))
 				gitName = Optional.of("Ada Lovelace");
@@ -330,7 +371,7 @@ public final class SessionLauncherChannelTest
 			return new Request(harness, model, effort, agent, turns, project, plugins, requestWorkspace, evidence,
 				field.equals("install_cat"), field.equals("session_transcripts"), keepRun, sessionRequests, requestDepth,
 				capacityWait, maximumConcurrency, field.equals("capacity"), instructionFiles, toolOutputTokenLimit,
-				deniedReads, gitName, gitEmail);
+				deniedReads, extraPermissions, gitName, gitEmail);
 		}
 
 		/**
@@ -436,7 +477,7 @@ public final class SessionLauncherChannelTest
 				received.readOnlyEvidence(), sent.installCat(), sent.sessionTranscripts(), sent.keepRun(),
 				sent.sessionRequests(), sent.requestDepth(), sent.capacityWait(), sent.maximumConcurrency(),
 				sent.capacityHeld(), sent.instructionFiles(), sent.toolOutputTokenLimit(), sent.deniedReads(),
-				sent.gitName(), sent.gitEmail());
+				sent.extraPermissions(), sent.gitName(), sent.gitEmail());
 			requireThat(received, "received").isEqualTo(expected);
 			requireThat(contents(received.turns()), "turns").isEqualTo(contents(sent.turns()));
 			requireThat(contents(Optional.of(received.project())), "project").

@@ -66,6 +66,10 @@ public final class SessionLauncherClient
 	 * Sends the requests.
 	 */
 	private final RequestExchange exchange;
+	/**
+	 * Reads the files of extra permissions.
+	 */
+	private final JsonMapper json = JsonMapper.builder().build();
 
 	/**
 	 * Creates a client.
@@ -90,8 +94,7 @@ public final class SessionLauncherClient
 		requireThat(clock, "clock").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		this.git = git;
-		this.exchange = new RequestExchange(channel, sessionProduct, holders, clock, pause,
-			JsonMapper.builder().build());
+		this.exchange = new RequestExchange(channel, sessionProduct, holders, clock, pause, json);
 	}
 
 	/**
@@ -323,7 +326,8 @@ public final class SessionLauncherClient
 	 * @param plugins      the plugins that the request carries
 	 * @param capacityHeld indicates whether the sender holds the child's capacity slot
 	 * @return the request
-	 * @throws IllegalArgumentException if the options do not form a valid request
+	 * @throws IllegalArgumentException if the options do not form a valid request, or name a file of extra
+	 *                                  permissions that is missing or invalid
 	 * @throws IOException              if the project's Git identity cannot be read
 	 */
 	private Request request(String harness, LaunchOptions options, List<Path> plugins, boolean capacityHeld)
@@ -333,7 +337,8 @@ public final class SessionLauncherClient
 			plugins, options.workspace, options.readOnlyEvidence, options.installCat, options.sessionTranscripts,
 			options.keepRun, options.sessionRequests, options.requestDepth, options.capacityWait,
 			options.maximumConcurrency, capacityHeld, options.instructionFiles, options.toolOutputTokenLimit,
-			options.deniedReads, git.name(options.project), git.email(options.project));
+			options.deniedReads, HarnessRunnerOptions.readExtraPermissions(json, options.extraPermissions.orElse(null)),
+			git.name(options.project), git.email(options.project));
 	}
 
 	/**

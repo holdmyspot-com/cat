@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -36,6 +38,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class SessionRequestBroker implements Closeable
 {
+	/**
+	 * The most bytes of a requested runner's refusal that the broker reads.
+	 */
+	private static final int MAXIMUM_REFUSAL_BYTES = 65_536;
 	private final HarnessRun run;
 	private final HarnessRunnerOptions options;
 	private final RequestedSessionStarter starter;
@@ -206,8 +212,10 @@ public final class SessionRequestBroker implements Closeable
 	 * @param directory the response directory
 	 * @param ordinal   the accepted request number
 	 * @return the runner options
+	 * @throws IOException if the request's extra permissions cannot be written for the runner
 	 */
 	private List<String> arguments(RunRequest request, Path project, List<Path> plugins, Path directory, int ordinal)
+		throws IOException
 	{
 		List<String> arguments = new ArrayList<>(List.of("--project", project.toString(), "--run-root",
 			SessionRequestAccess.requestedRunsDirectory(run).resolve(String.valueOf(ordinal)).toString(),
@@ -224,6 +232,12 @@ public final class SessionRequestBroker implements Closeable
 			arguments.add("--session-transcripts");
 		if (request.installCat())
 			arguments.add("--install-cat");
+		if (!request.extraPermissions().isEmpty())
+		{
+			Path file = directory.resolve(ExtraPermissions.FILE_NAME);
+			request.extraPermissions().write(json, file);
+			arguments.addAll(List.of(ExtraPermissions.OPTION, file.toString()));
+		}
 		if (options.requestDepth() > 0)
 		{
 			arguments.addAll(List.of("--session-requests", String.valueOf(options.sessionRequests())));
@@ -280,6 +294,11 @@ public final class SessionRequestBroker implements Closeable
 					status = "capacity";
 					reason = "capacity";
 				}
+				else if (exit == HarnessRunnerOptions.REFUSED_LAUNCH_STATUS)
+				{
+					status = "refused";
+					reason = refusal(directory, reason);
+				}
 				finish(id, request.harness(), status, reason, directory);
 			}
 		}
@@ -305,6 +324,29 @@ public final class SessionRequestBroker implements Closeable
 				processes.remove(id);
 			}
 		}
+	}
+
+	/**
+	 * Reads why a requested runner refused its launch, which it wrote to its standard error.
+	 *
+	 * @param directory the private response directory, which holds the runner's diagnostics
+	 * @param fallback  the reason to give if the runner wrote none
+	 * @return the runner's reason
+	 */
+	private static String refusal(Path directory, String fallback)
+	{
+		try
+		{
+			String reason = BoundedInput.readUtf8(directory.resolve("runner.stderr"), MAXIMUM_REFUSAL_BYTES,
+				"requested runner refusal").strip();
+			if (!reason.isEmpty())
+				return reason;
+		}
+		catch (IOException _)
+		{
+			// The runner left no readable reason
+		}
+		return fallback;
 	}
 
 	/**

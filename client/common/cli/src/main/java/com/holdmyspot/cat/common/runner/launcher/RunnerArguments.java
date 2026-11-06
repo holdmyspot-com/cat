@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Request;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -47,7 +48,8 @@ public final class RunnerArguments
 	 * Returns the runner options of a request.
 	 *
 	 * @param request     the request, whose files lie among the launcher's private copies
-	 * @param directory   the request's directory, which receives the transcript and the receipt
+	 * @param directory   the request's directory, which receives the transcript and the receipt, and holds the file of
+	 *                    the request's extra permissions, if it has any, under {@link ExtraPermissions#FILE_NAME}
 	 * @param runRoot     the folder that receives the child's run
 	 * @param policyBound the child's {@link PolicyBoundFile}
 	 * @return the options, in the order that the runner documents them
@@ -91,6 +93,8 @@ public final class RunnerArguments
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(limit))));
 		for (Path denied : request.deniedReads())
 			arguments.addAll(List.of("--deny-read", denied.toString()));
+		if (!request.extraPermissions().isEmpty())
+			arguments.addAll(List.of(ExtraPermissions.OPTION, directory.resolve(ExtraPermissions.FILE_NAME).toString()));
 		request.gitName().ifPresent(name -> arguments.addAll(List.of(GIT_NAME_OPTION, name)));
 		request.gitEmail().ifPresent(email -> arguments.addAll(List.of(GIT_EMAIL_OPTION, email)));
 		return arguments;

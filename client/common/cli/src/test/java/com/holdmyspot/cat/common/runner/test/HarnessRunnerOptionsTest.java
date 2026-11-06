@@ -140,6 +140,7 @@ public final class HarnessRunnerOptionsTest
 			contains(" (--model <name> --effort <level> | --agent <name>) ").
 			contains("--max-concurrency <1..16>").
 			contains("--deny-read <path>").
+			contains("[--extra-permissions <file>]").
 			contains("--workspace <path>").
 			contains("--plugin <path>").
 			contains("[--session-transcripts]").
@@ -650,6 +651,21 @@ public final class HarnessRunnerOptionsTest
 		requireThat(without.capacityHeld(), "withoutCapacityHeld").isFalse();
 		requireThat(without.gitName(), "withoutGitName").isNull();
 		requireThat(without.gitEmail(), "withoutGitEmail").isNull();
+	}
+
+	/**
+	 * Verifies that a launch that names a file of extra permissions passes its path to the runner, and that a launch
+	 * without the option requests none.
+	 */
+	@Test
+	public void parsesExtraPermissionsFile()
+	{
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--extra-permissions",
+			absolute("requests/r1/extra-permissions.json")), "harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(), "harness", SESSION);
+
+		requireThat(result.extraPermissions(), "extraPermissions").isEqualTo(path("requests/r1/extra-permissions.json"));
+		requireThat(without.extraPermissions(), "withoutExtraPermissions").isNull();
 	}
 
 	/**

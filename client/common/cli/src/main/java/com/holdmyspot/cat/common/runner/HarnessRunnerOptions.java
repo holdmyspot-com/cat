@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.file.Path;
@@ -10,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Represents command-line settings for a JSONL bridge that serves one or more turns through one harness process.
@@ -44,12 +46,14 @@ import java.util.Set;
  *   takes none
  * @param gitName the Git user name of the copied project, or {@code null} to read the source project's
  * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
+ * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, in the
+ *   format of {@link ExtraPermissions}, or {@code null} if the launch asks for none
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path policyBound, boolean capacityHeld, String gitName,
-	String gitEmail)
+	String gitEmail, Path extraPermissions)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -70,7 +74,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--run-root", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
-		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email");
+		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
+		ExtraPermissions.OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -217,6 +222,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.gitName = value;
 			else if (option.equals("--git-email"))
 				options.gitEmail = value;
+			else if (option.equals(ExtraPermissions.OPTION))
+				options.extraPermissions = Path.of(value);
 			else
 				options.input = Path.of(value);
 			index += 2;
@@ -235,7 +242,32 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.policyBound, options.capacityHeld,
-			options.gitName, options.gitEmail);
+			options.gitName, options.gitEmail, options.extraPermissions);
+	}
+
+	/**
+	 * Reads the file of extra permissions that a launch names.
+	 *
+	 * @param json the document mapper
+	 * @param file the file that follows {@value ExtraPermissions#OPTION}, or {@code null} if the launch names none
+	 * @return the permissions that the file lists, or none if {@code file} is {@code null}
+	 * @throws NullPointerException      if {@code json} is null
+	 * @throws InvalidArgumentsException if the file does not exist, cannot be read, or is not valid, such as when it
+	 *                                   names an unknown field, a relative path or a host pattern
+	 */
+	public static ExtraPermissions readExtraPermissions(JsonMapper json, Path file)
+	{
+		requireThat(json, "json").isNotNull();
+		if (file == null)
+			return ExtraPermissions.NONE;
+		try
+		{
+			return ExtraPermissions.read(json, file.toAbsolutePath());
+		}
+		catch (IOException e)
+		{
+			throw new InvalidArgumentsException(e.getMessage());
+		}
 	}
 
 	/**
@@ -481,7 +513,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
-			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>]";
+			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>] " +
+			"[--extra-permissions <file>]";
 	}
 
 	/**
@@ -512,9 +545,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param capacityHeld whether the requester holds the session's capacity slot itself
 	 * @param gitName the Git user name of the copied project, or {@code null} to read the source project's
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
+	 * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, or
+	 *   {@code null} if the launch asks for none
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
-	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code policyBound}, {@code gitName} and
-	 *   {@code gitEmail}
+	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code policyBound}, {@code gitName},
+	 *   {@code gitEmail} and {@code extraPermissions}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
 	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
@@ -650,5 +685,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private boolean capacityHeld;
 		private String gitName;
 		private String gitEmail;
+		private Path extraPermissions;
 	}
 }

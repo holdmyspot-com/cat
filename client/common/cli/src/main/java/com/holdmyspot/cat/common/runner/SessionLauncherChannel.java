@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -477,6 +478,8 @@ public final class SessionLauncherChannel
 	 *                             default
 	 * @param toolOutputTokenLimit the child's tool output token limit, or empty for the runner's default
 	 * @param deniedReads          the absolute paths that the child may not read beyond what its policy denies
+	 * @param extraPermissions     the writes and hosts that the child needs beyond what its harness needs, which join
+	 *                             its needs
 	 * @param gitName              the Git author name of the copied project, or empty
 	 * @param gitEmail             the Git author email of the copied project, or empty
 	 */
@@ -485,7 +488,7 @@ public final class SessionLauncherChannel
 		boolean installCat, boolean sessionTranscripts, boolean keepRun, int sessionRequests, int requestDepth,
 		Optional<Duration> capacityWait, Optional<Integer> maximumConcurrency, boolean capacityHeld,
 		Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, List<Path> deniedReads,
-		Optional<String> gitName, Optional<String> gitEmail)
+		ExtraPermissions extraPermissions, Optional<String> gitName, Optional<String> gitEmail)
 	{
 		/**
 		 * Creates a request.
@@ -513,6 +516,8 @@ public final class SessionLauncherChannel
 		 *                             default
 		 * @param toolOutputTokenLimit the child's tool output token limit, or empty for the runner's default
 		 * @param deniedReads          the absolute paths that the child may not read beyond what its policy denies
+		 * @param extraPermissions     the writes and hosts that the child needs beyond what its harness needs, which join
+		 *                             its needs
 		 * @param gitName              the Git author name of the copied project, or empty
 		 * @param gitEmail             the Git author email of the copied project, or empty
 		 * @throws NullPointerException     if any of the arguments are null
@@ -544,6 +549,7 @@ public final class SessionLauncherChannel
 			requireThat(instructionFiles, "instructionFiles").isNotNull();
 			requireThat(toolOutputTokenLimit, "toolOutputTokenLimit").isNotNull();
 			requireThat(deniedReads, "deniedReads").isNotNull();
+			requireThat(extraPermissions, "extraPermissions").isNotNull();
 			requireThat(gitName, "gitName").isNotNull();
 			requireThat(gitEmail, "gitEmail").isNotNull();
 			if (!RequestArchive.HARNESSES.contains(harness))

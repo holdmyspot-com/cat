@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.launcher.client.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -9,12 +10,14 @@ import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
 import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import com.holdmyspot.cat.common.runner.launcher.client.test.FakeLauncher.FakeHolder;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -31,6 +34,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.stream.Stream;
@@ -706,6 +710,72 @@ public final class SessionLauncherClientTest
 			requireThat(Duration.between(START, fixture.clock().instant()), "waited").
 				isGreaterThan(SessionLauncherChannel.HEARTBEAT_TIMEOUT);
 			requireThat(fixture.launcher().requestHolder().closed, "closed").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a launch that names a file of extra permissions sends the writes and hosts that it lists in its
+	 * request, and that a launch without the option sends none.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void requestCarriesExtraPermissions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture asking = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			Fixture silent = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			asking.launcher().register();
+			silent.launcher().register();
+			Path cache = asking.root().resolve("registry cache");
+			Files.writeString(asking.root().resolve("needs.json"), """
+				{"format_version": 1, "writes": ["%s"], "hosts": ["Registry.Example"]}
+				""".formatted(cache));
+
+			asking.launch(new StringWriter(), "--project", asking.project().toString(), "--model", "m", "--effort",
+				"e", "--input", asking.records().toString(), "--extra-permissions", "needs.json");
+			silent.launch(new StringWriter(), "--project", silent.project().toString(), "--model", "m", "--effort",
+				"e", "--input", silent.records().toString());
+
+			requireThat(asking.launcher().request.extraPermissions(), "extraPermissions").
+				isEqualTo(new ExtraPermissions(List.of(cache), Set.of("registry.example")));
+			requireThat(silent.launcher().request.extraPermissions(), "withoutOption").
+				isEqualTo(ExtraPermissions.NONE);
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose file of extra permissions is missing or invalid is refused before anything is
+	 * published, with a reason that names the file and the problem.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusesInvalidExtraPermissions() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"client-")).toRealPath());
+			fixture.launcher().register();
+			Path invalid = Files.writeString(fixture.root().resolve("invalid.json"),
+				"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}");
+			Path missing = fixture.root().resolve("missing.json");
+			for (Path file : List.of(invalid, missing))
+			{
+				InvalidArgumentsException refusal = expectThrows(InvalidArgumentsException.class, () ->
+					fixture.launch(new StringWriter(), "--project", fixture.project().toString(), "--model", "m",
+						"--effort", "e", "--extra-permissions", file.toString()));
+
+				requireThat(refusal.getMessage(), "message").contains(file.toString());
+			}
+			requireThat(fixture.inbox(), "inbox").isEmpty();
+			requireThat(fixture.launcher().holders, "holders").isEmpty();
 		}
 	}
 

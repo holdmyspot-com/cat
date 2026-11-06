@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.BoundedInput;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -127,9 +128,9 @@ public record ExtraPermissions(List<Path> writes, Set<String> hosts)
 	 * @param source the file
 	 * @return the permissions
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the file cannot be read, is larger than {@value #MAXIMUM_BYTES} bytes, is not
-	 *                              JSON, or is not a version {@value #VERSION} document with the fields above and
-	 *                              absolute paths and host names
+	 * @throws IOException          if the file does not exist, cannot be read, is larger than {@value #MAXIMUM_BYTES}
+	 *                              bytes, is not JSON, or is not a version {@value #VERSION} document with the fields
+	 *                              above and absolute paths and host names
 	 */
 	public static ExtraPermissions read(JsonMapper json, Path source) throws IOException
 	{
@@ -139,6 +140,10 @@ public record ExtraPermissions(List<Path> writes, Set<String> hosts)
 		try
 		{
 			document = json.readTree(BoundedInput.readUtf8(source, MAXIMUM_BYTES, "extra permissions"));
+		}
+		catch (NoSuchFileException e)
+		{
+			throw new IOException("The extra permissions file " + source + " does not exist", e);
 		}
 		catch (JacksonException e)
 		{

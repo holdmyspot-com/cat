@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.launcher.client;
 
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
@@ -32,7 +33,7 @@ final class LaunchOptions
 	 */
 	private static final Set<String> SINGLE = Set.of("--artifact", "--project", "--run-root", "--model", "--effort",
 		"--agent", "--output", "--receipt", "--input", "--workspace", "--instruction-files", "--session-requests",
-		"--request-depth", "--capacity-wait", "--max-concurrency", "--tool-output-token-limit");
+		"--request-depth", "--capacity-wait", "--max-concurrency", "--tool-output-token-limit", ExtraPermissions.OPTION);
 	/**
 	 * The directory against which relative paths resolve.
 	 */
@@ -127,6 +128,11 @@ final class LaunchOptions
 	Optional<Integer> toolOutputTokenLimit = Optional.empty();
 
 	/**
+	 * The file of extra permissions, or empty.
+	 */
+	Optional<Path> extraPermissions = Optional.empty();
+
+	/**
 	 * Creates empty options.
 	 *
 	 * @param workingDirectory the directory against which relative paths resolve
@@ -218,6 +224,7 @@ final class LaunchOptions
 			case "--capacity-wait" -> capacityWait = Optional.of(Duration.ofSeconds(seconds(option, value)));
 			case "--max-concurrency" -> maximumConcurrency = Optional.of(count(option, value));
 			case "--tool-output-token-limit" -> toolOutputTokenLimit = Optional.of(count(option, value));
+			case ExtraPermissions.OPTION -> extraPermissions = Optional.of(path(value));
 			default -> throw new AssertionError(option);
 		}
 	}
