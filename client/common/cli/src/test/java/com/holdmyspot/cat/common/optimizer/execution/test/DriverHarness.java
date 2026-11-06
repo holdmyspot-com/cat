@@ -13,7 +13,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
-import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
 import com.holdmyspot.cat.common.optimizer.execution.NeededEdit;
@@ -147,7 +146,6 @@ public final class DriverHarness
 	private Function<SessionRequest, SessionResult> triages = _ -> triaged(Impact.SELF_RECOVERING);
 	private Function<SessionRequest, SessionResult> contractAuthors = this::newValues;
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
-	private CapCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 	private HarnessProcessLiveness liveness = new FakeProcessLiveness();
 	private SliceSettings settings = SliceSettings.DEFAULT;
 	private Set<Path> promptSources = Set.of(PROMPT);
@@ -270,7 +268,7 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
-			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, deliverer, calibrator,
+			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, deliverer, MemoizedCalibration.INSTANCE,
 			terminator,
 			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
@@ -595,16 +593,6 @@ public final class DriverHarness
 	public void promptSources(Set<Path> value)
 	{
 		this.promptSources = Set.copyOf(value);
-	}
-
-	/**
-	 * Replaces the cap calibrator.
-	 *
-	 * @param value the calibrator
-	 */
-	public void calibrator(CapCalibrator value)
-	{
-		this.calibrator = value;
 	}
 
 	/**

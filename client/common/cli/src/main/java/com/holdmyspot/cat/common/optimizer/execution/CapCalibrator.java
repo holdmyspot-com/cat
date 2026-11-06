@@ -9,8 +9,7 @@ import java.math.BigDecimal;
 /**
  * Determines the maximum trial count for a certification attempt when the {@link Driver} commits a candidate.
  * <p>
- * Production passes {@link CapCalibration#calibrate(SignificanceLevel, BigDecimal)}; tests pass a precomputed
- * calibration.
+ * Production and tests pass {@link CapCalibration#calibrate(SignificanceLevel, BigDecimal)}.
  */
 @FunctionalInterface
 public interface CapCalibrator
