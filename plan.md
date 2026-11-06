@@ -28,6 +28,29 @@ revised plugin lifecycle and distribution work, which has not been implemented.
 
 ### Status at 2026-11-06 (supersedes the release facts below)
 
+- **Gate 1 and gate 6 work, 2026-11-06 (not pushed):** a whole-reactor `clean verify` at `3242a535ba` passed (4,552
+  tests, 0 failures, 7 platform skips, 136 s); every case at or over 1 s there and in the module runs is a parallel-load
+  artifact when run alone, or already states its reason. Gate 6 audits (a Git shim over the whole suite, an
+  outcome-assertion sweep, a fake-contract sweep) found tests outside the real-Git list that ran Git, internal-call
+  and JDK-only assertions, and fakes beyond their contracts. Fixed: `85d316d273`, `7164606fe2`, `a0111cfadd` (outcome
+  and JDK-only assertions, two `SessionIgnoreTest` real-Git tests removed as duplicates), `b957c1d1bf` and `232bb2d7f9`
+  (two Claude SessionEnd hook tests and `ReleaseBuildTest.refusesProjectWithoutHead` answer Git from doubles); a shim
+  run then saw Git only from the listed tests. Fake-contract fixes are in progress; doubles with no contract that gate 3
+  keeps from any real-adapter run (process, harness and installer doubles) wait on the user's ruling whether §8 exempts
+  them. Gate 6 is not passed.
+- **Child permissions, 2026-11-06 (user ruling: fail fast):** a requested session that needs a write or host the
+  requesting session's sandbox lacks is refused before any harness starts, with one message naming every missing entry
+  and the settings that grant it (`5466b6c553`, `d0a7fea950`, `546b112c18`). The optimizer reaches the same refusal
+  only after `start` has created its campaign; an earlier check waits on the launcher decision below.
+- **Claude plugin leftovers:** an install deletes the flat-layout files left beside Claude's version folders
+  (`a72ae6ab2e`).
+- **Model runs blocked; open user decisions (2026-11-06):** every runner launch from this session is refused because
+  its sandbox can write `~/.cat/sessions`. A probe (branch `srl-in-place-probe`, `863385b77f`, not merged) started
+  both harnesses directly from a sandboxed command on this machine, exit 0, no sandbox violation. Open: whether
+  children start inside the requesting session's sandbox (dropping the hook-started launcher and the D107 exception);
+  whether CAT's own Claude version folders can go in favour of each harness's versioned cache; whether the installer
+  keeps its own sandbox exception; whether §8 exempts doubles gate 3 keeps from a real adapter. Gates 4 and 5, the
+  E-runs and the failure-reporting runs wait on the first.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
@@ -4462,8 +4485,8 @@ These rules restate `design.md` §10 as checks for reviewers:
 	JDK/OS-only demonstrations. Retain the smallest integration check when replacing the dependency would hide a
 	defect at the actual product boundary, including packaged scripts, launchers, installers and harness interaction.
 - The only test that runs `CapCalibration` is `CapCalibrationTest`.
-- The only tests that run real Git are `ForkTest`, `DeliveryTest` (final diff and no-commit check),
-	`InventoryScannerTest` (ignored files) and `GitTest` (the process adapter's exit status and argument passing). Outside
+- The only tests that run real Git are `ForkTest`, `DeliveryTest` (final diff and no-commit check) and `GitTest` (the
+	process adapter's exit status and argument passing); `InventoryScannerTest` writes its `.git` files by hand. Outside
 	the optimizer, `SessionIgnoreTest.addsLinesInRealWorkTree` (the exclude file of a real linked worktree) and
 	`ReleaseBuildTest.usesHeadOfWorkingTree` (the release build reads the working tree's `HEAD`) run real Git, each
 	under 1 second. The git-replay tests this list once named were removed with that skill (`c249a62d2b`). Every other test
