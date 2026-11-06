@@ -29,6 +29,20 @@ public final class HarnessProjectRepository
 			{
 				return HarnessProjectRepository.environment(parentEnvironment, gitHome);
 			}
+
+			@Override
+			public HarnessProjectRepository.Identity identity(String gitName, String gitEmail, String hostName,
+				String hostEmail)
+			{
+				return HarnessProjectRepository.identity(gitName, gitEmail, hostName, hostEmail);
+			}
+
+			@Override
+			public String identityValue(List<String> command, int exitCode, String output, String error)
+				throws IOException
+			{
+				return HarnessProjectRepository.identityValue(command, exitCode, output, error);
+			}
 		});
 	}
 
@@ -60,22 +74,17 @@ public final class HarnessProjectRepository
 		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
 
-		String name = gitName;
-		if (name == null)
-			name = readIdentity(sourceProject, parentEnvironment, executables, "user.name");
-		String email = gitEmail;
-		if (email == null)
-			email = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
-		boolean incompleteIdentity = name == null || email == null;
-		if (incompleteIdentity)
-		{
-			name = "CAT fixture";
-			email = "cat-fixture@example.invalid";
-		}
+		String hostName = null;
+		if (gitName == null)
+			hostName = readIdentity(sourceProject, parentEnvironment, executables, "user.name");
+		String hostEmail = null;
+		if (gitEmail == null)
+			hostEmail = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
+		Identity identity = identity(gitName, gitEmail, hostName, hostEmail);
 		Path gitHome = runDirectory.resolve("git-home");
 		Files.createDirectories(gitHome);
 		Map<String, String> environment = environment(parentEnvironment, gitHome);
-		for (List<String> command : commands(name, email))
+		for (List<String> command : commands(identity.name(), identity.email()))
 			HarnessCommand.execute(command, project, environment, executables);
 	}
 
@@ -102,14 +111,7 @@ public final class HarnessProjectRepository
 				String output = new String(process.getInputStream().readAllBytes(), UTF_8);
 				int exitCode = process.waitFor();
 				String error = stderr.await();
-				boolean missing = exitCode == 1 && output.isEmpty() && error.isEmpty();
-				if (missing)
-					return null;
-				if (exitCode != 0)
-					throw new IOException("Git identity command failed: " + command + ": " + error.strip());
-				if (output.endsWith("\n"))
-					return output.substring(0, output.length() - 1);
-				return output;
+				return identityValue(command, exitCode, output, error);
 			}
 			finally
 			{
@@ -125,6 +127,53 @@ public final class HarnessProjectRepository
 		{
 			throw new IOException("Unable to resolve Git identity using " + command + ": " + e.getMessage(), e);
 		}
+	}
+
+	/**
+	 * Chooses the identity of the copy's commits. A name or email that the launch names is used as given. Otherwise the
+	 * host's is used. If either value is still missing, both are the fixture's.
+	 *
+	 * @param gitName   the Git user name that the launch names, or {@code null} if it names none
+	 * @param gitEmail  the Git user email that the launch names, or {@code null} if it names none
+	 * @param hostName  the source project's Git user name, or {@code null} if it has none or was not read
+	 * @param hostEmail the source project's Git user email, or {@code null} if it has none or was not read
+	 * @return the identity
+	 */
+	static Identity identity(String gitName, String gitEmail, String hostName, String hostEmail)
+	{
+		String name = gitName;
+		if (name == null)
+			name = hostName;
+		String email = gitEmail;
+		if (email == null)
+			email = hostEmail;
+		boolean incompleteIdentity = name == null || email == null;
+		if (incompleteIdentity)
+			return new Identity("CAT fixture", "cat-fixture@example.invalid");
+		return new Identity(name, email);
+	}
+
+	/**
+	 * Interprets the result of {@code git config --get} for an identity key.
+	 *
+	 * @param command  the command that ran
+	 * @param exitCode the command's exit status
+	 * @param output   the command's standard output
+	 * @param error    the command's standard error
+	 * @return the configured value without its final line feed, or {@code null} if Git reports a missing value with
+	 *   status one and no output
+	 * @throws IOException if the command failed
+	 */
+	static String identityValue(List<String> command, int exitCode, String output, String error) throws IOException
+	{
+		boolean missing = exitCode == 1 && output.isEmpty() && error.isEmpty();
+		if (missing)
+			return null;
+		if (exitCode != 0)
+			throw new IOException("Git identity command failed: " + command + ": " + error.strip());
+		if (output.endsWith("\n"))
+			return output.substring(0, output.length() - 1);
+		return output;
 	}
 
 	/**
@@ -162,6 +211,16 @@ public final class HarnessProjectRepository
 		environment.put("GIT_CONFIG_NOSYSTEM", "1");
 		environment.put("GIT_TERMINAL_PROMPT", "0");
 		return environment;
+	}
+
+	/**
+	 * The Git identity of the copy's commits.
+	 *
+	 * @param name  the user name
+	 * @param email the user email
+	 */
+	public record Identity(String name, String email)
+	{
 	}
 
 	/**

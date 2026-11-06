@@ -1,36 +1,37 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
-import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
-import com.holdmyspot.cat.common.secrets.HarnessProjectRepositorySecrets;
-import com.holdmyspot.cat.common.ExecutableFiles;
-import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.ManualClock;
-import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
-import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
+import com.holdmyspot.cat.common.runner.HarnessProjectRepository.Identity;
+import com.holdmyspot.cat.common.secrets.HarnessProjectRepositoryAccess;
+import com.holdmyspot.cat.common.secrets.HarnessProjectRepositorySecrets;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
- * Tests the Git commands and environment that {@link HarnessProjectRepository} uses for a copied project's baseline.
- * Git is assumed to behave as documented, so the tests check what CAT asks it to do instead of running it.
+ * Tests the identity and the environment that {@link HarnessProjectRepository} uses for a copied project's baseline.
+ * <p>
+ * The decisions are tested by calling the methods that make them with the values that Git gives. Real Git runs only
+ * in {@link #commitsBaselineAsHostIdentity()} and {@link #reportsFailedIdentityLookup()}, the end-to-end checks of
+ * what Git does with the commands.
  */
 public final class HarnessProjectRepositoryTest
 {
+	private static final Identity FIXTURE = new Identity("CAT fixture", "cat-fixture@example.invalid");
+	private static final HarnessProjectRepositoryAccess ACCESS =
+		HarnessProjectRepositorySecrets.getHarnessProjectRepositoryAccess();
+
 	/**
 	 * Creates the test.
 	 */
@@ -39,92 +40,82 @@ public final class HarnessProjectRepositoryTest
 	}
 
 	/**
-	 * Verifies initialization configures the host identity before committing, with isolated baseline commands.
-	 *
-	 * @throws IOException if the fixture cannot be created or initialization fails
+	 * Verifies that the copy's commits use the host's name and email when the launch names none.
 	 */
 	@Test
-	public void configuresHostIdentity() throws IOException
+	public void usesHostIdentity()
 	{
-		verifyIdentity(Map.of("user.name", new GitResult(0, "A User\n"),
-			"user.email", new GitResult(0, "user@example.test\n")), "A User", "user@example.test");
+		requireThat(ACCESS.identity(null, null, "A User", "user@example.test"), "identity").
+			isEqualTo(new Identity("A User", "user@example.test"));
 	}
 
 	/**
-	 * Verifies two missing host values select the complete fixture identity.
-	 *
-	 * @throws IOException if the fixture cannot be created or initialization fails
+	 * Verifies that a host that lacks a name or an email, or both, selects the complete fixture identity and
+	 * discards the value that the host has.
 	 */
 	@Test
-	public void fallsBackWhenIdentityMissing() throws IOException
+	public void fallsBackWhenHostIdentityIsIncomplete()
 	{
-		verifyIdentity(Map.of(), "CAT fixture", "cat-fixture@example.invalid");
+		requireThat(ACCESS.identity(null, null, null, null), "none").isEqualTo(FIXTURE);
+		requireThat(ACCESS.identity(null, null, "A User", null), "emailMissing").isEqualTo(FIXTURE);
+		requireThat(ACCESS.identity(null, null, null, "user@example.test"), "nameMissing").isEqualTo(FIXTURE);
 	}
 
 	/**
-	 * Verifies that an identity that the launch names configures the copy instead of the source project's, so that a
-	 * copy made from a private copy of the project commits as the requester's project does, and that a named value
-	 * replaces only its own lookup.
-	 *
-	 * @throws IOException if the fixture cannot be created or initialization fails
+	 * Verifies that an identity that the launch names configures the copy instead of the source project's, and that a
+	 * named value replaces only its own lookup.
 	 */
 	@Test
-	public void configuresNamedIdentity() throws IOException
+	public void configuresNamedIdentity()
 	{
-		Map<String, GitResult> host = Map.of("user.name", new GitResult(0, "Host User\n"),
-			"user.email", new GitResult(0, "host@example.test\n"));
-		verifyIdentity(host, "A User", "user@example.test", "A User", "user@example.test");
-		verifyIdentity(host, "A User", null, "A User", "host@example.test");
+		requireThat(ACCESS.identity("A User", "user@example.test", "Host User", "host@example.test"), "both").
+			isEqualTo(new Identity("A User", "user@example.test"));
+		requireThat(ACCESS.identity("A User", null, "Host User", "host@example.test"), "onlyName").
+			isEqualTo(new Identity("A User", "host@example.test"));
+		requireThat(ACCESS.identity("A User", null, null, null), "nameWithoutHost").isEqualTo(FIXTURE);
 	}
 
 	/**
-	 * Verifies a missing email discards the host name and selects the complete fixture identity.
+	 * Verifies how {@code git config --get} results read, as Git 2.43.0 gives them: status 0 and the value with a final
+	 * line feed for a set key, status 1 with no output for an unset key, and status 128 with a message for a failure.
 	 *
-	 * @throws IOException if the fixture cannot be created or initialization fails
+	 * @throws IOException if a result that denotes a value or a missing value is refused
 	 */
 	@Test
-	public void fallsBackWhenEmailMissing() throws IOException
+	public void readsConfigurationResult() throws IOException
 	{
-		verifyIdentity(Map.of("user.name", new GitResult(0, "A User\n")),
-			"CAT fixture", "cat-fixture@example.invalid");
+		List<String> command = List.of("git", "config", "--get", "user.name");
+
+		requireThat(ACCESS.identityValue(command, 0, "A User\n", ""), "set").isEqualTo("A User");
+		requireThat(ACCESS.identityValue(command, 0, "A User", ""), "withoutLineFeed").isEqualTo("A User");
+		requireThat(ACCESS.identityValue(command, 1, "", ""), "unset").isNull();
 	}
 
 	/**
-	 * Verifies a missing name discards the host email and selects the complete fixture identity.
-	 *
-	 * @throws IOException if the fixture cannot be created or initialization fails
+	 * Verifies that a failed lookup, including status one with output or a message, is a Git failure that names the
+	 * command, rather than a missing configuration value.
 	 */
 	@Test
-	public void fallsBackWhenNameMissing() throws IOException
+	public void rejectsFailedConfigurationResult()
 	{
-		verifyIdentity(Map.of("user.email", new GitResult(0, "user@example.test\n")),
-			"CAT fixture", "cat-fixture@example.invalid");
-	}
-
-	/**
-	 * Verifies a failed lookup reports the Git command instead of selecting the fallback identity.
-	 *
-	 * @throws IOException the expected lookup failure
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*git, config, --get, user.email.*")
-	public void reportsFailedIdentityLookup() throws IOException
-	{
-		verifyIdentity(Map.of("user.email", new GitResult(128, "")),
-			"CAT fixture", "cat-fixture@example.invalid");
-	}
-
-	/**
-	 * Verifies status one with output is a Git failure rather than a missing configuration value.
-	 *
-	 * @throws IOException the expected lookup failure
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*git, config, --get, user.name.*")
-	public void rejectsMissingStatusWithOutput() throws IOException
-	{
-		verifyIdentity(Map.of("user.name", new GitResult(1, "unexpected output")),
-			"CAT fixture", "cat-fixture@example.invalid");
+		List<String> command = List.of("git", "config", "--get", "user.name");
+		Map<String, Object[]> results = Map.of(
+			"failure", new Object[]{128, "", "fatal: bad config line 1 in file x"},
+			"statusOneWithOutput", new Object[]{1, "unexpected output", ""},
+			"statusOneWithMessage", new Object[]{1, "", "error: could not lock config file"});
+		for (Map.Entry<String, Object[]> result : results.entrySet())
+		{
+			try
+			{
+				ACCESS.identityValue(command, (Integer) result.getValue()[0], (String) result.getValue()[1],
+					(String) result.getValue()[2]);
+				throw new AssertionError(result.getKey() + " was accepted");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), result.getKey() + ".message").contains("git, config, --get, user.name");
+			}
+		}
 	}
 
 	/**
@@ -138,149 +129,77 @@ public final class HarnessProjectRepositoryTest
 		Map<String, String> parent = Map.of("PATH", "/bin", "HOME", "/home/user", "GIT_DIR", "/elsewhere",
 			"GIT_CONFIG_GLOBAL", "/home/user/.gitconfig");
 
-		Map<String, String> environment = HarnessProjectRepositorySecrets.getHarnessProjectRepositoryAccess().
-			environment(parent, gitHome);
+		Map<String, String> environment = ACCESS.environment(parent, gitHome);
 
 		requireThat(environment, "environment").isEqualTo(Map.of("PATH", "/bin", "HOME", gitHome.toString(),
 			"GIT_CONFIG_NOSYSTEM", "1", "GIT_TERMINAL_PROMPT", "0"));
 	}
 
 	/**
-	 * Runs initialization against completed Git results, checking command order, identity and environment boundaries.
+	 * Verifies, end to end through real Git, that initialization makes the copy a repository whose one commit holds
+	 * the copied files, is authored by the host's identity, and whose configuration disables background maintenance.
 	 *
-	 * @param identity      the host configuration lookup results; absent keys model Git status one with no output
-	 * @param expectedName  the user name that must be configured before the baseline commit
-	 * @param expectedEmail the user email that must be configured before the baseline commit
 	 * @throws IOException if the fixture cannot be created or initialization fails
 	 */
-	private static void verifyIdentity(Map<String, GitResult> identity, String expectedName, String expectedEmail)
-		throws IOException
-	{
-		verifyIdentity(identity, null, null, expectedName, expectedEmail);
-	}
-
-	/**
-	 * Runs initialization with a named identity against completed Git results, checking command order, identity and
-	 * environment boundaries.
-	 *
-	 * @param identity      the host configuration lookup results; absent keys model Git status one with no output
-	 * @param name          the user name that the launch names, or {@code null} to look it up
-	 * @param email         the user email that the launch names, or {@code null} to look it up
-	 * @param expectedName  the user name that must be configured before the baseline commit
-	 * @param expectedEmail the user email that must be configured before the baseline commit
-	 * @throws IOException if the fixture cannot be created or initialization fails
-	 */
-	private static void verifyIdentity(Map<String, GitResult> identity, String name, String email,
-		String expectedName, String expectedEmail) throws IOException
+	@Test
+	public void commitsBaselineAsHostIdentity() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "repository-identity-"));
-			Path sourceProject = Files.createDirectory(root.resolve("source"));
+			Path sourceProject = GitWorkTrees.notIgnoring(root.resolve("source"));
 			Path project = Files.createDirectory(root.resolve("project"));
-			Path programs = Files.createDirectory(root.resolve("programs"));
-			String filename = "git";
-			if (Platform.current().isWindows())
-				filename += ".exe";
-			Path git = Files.createFile(programs.resolve(filename));
-			requireThat(git.toFile().setExecutable(true, false), "executable").isTrue();
-			Map<String, String> parent = Map.of("PATH", programs.toString(), "HOME", root.resolve("home").toString(),
-				"GIT_CONFIG_GLOBAL", root.resolve("host.gitconfig").toString(), "GIT_AUTHOR_NAME", "Parent Author");
-			Map<String, String> isolated = Map.of("PATH", programs.toString(), "HOME", root.resolve("git-home").toString(),
-				"GIT_CONFIG_NOSYSTEM", "1", "GIT_TERMINAL_PROMPT", "0");
-			List<List<String>> commands = new ArrayList<>();
-			ExecutableFiles executables = ExecutableFilesSecrets.getExecutableFilesAccess().create(
-				() -> {}, new ManualClock(Instant.EPOCH), builder ->
-				{
-					List<String> command = new ArrayList<>(builder.command());
-					command.set(0, "git");
-					commands.add(command);
-					if (command.subList(1, 3).equals(List.of("config", "--get")))
-					{
-						requireThat(builder.directory().toPath(), "lookupDirectory").isEqualTo(sourceProject);
-						requireThat(builder.environment(), "lookupEnvironment").isEqualTo(parent);
-						return identity.getOrDefault(command.getLast(), new GitResult(1, ""));
-					}
-					requireThat(builder.directory().toPath(), "baselineDirectory").isEqualTo(project);
-					requireThat(builder.environment(), "baselineEnvironment").isEqualTo(isolated);
-					return new GitResult(0, "");
-				});
+			Files.writeString(project.resolve("file.txt"), "content", UTF_8);
+			Path hostConfiguration = Files.writeString(root.resolve("host.gitconfig"),
+				"[user]\n\tname = A User\n\temail = user@example.test\n", UTF_8);
 
-			HarnessProjectRepository.initialize(sourceProject, project, root, parent, executables, name, email);
+			HarnessProjectRepository.initialize(sourceProject, project, root, parentEnvironment(root, hostConfiguration),
+				Yielding.executableFiles(), null, null);
 
-			List<List<String>> expected = new ArrayList<>();
-			if (name == null)
-				expected.add(List.of("git", "config", "--get", "user.name"));
-			if (email == null)
-				expected.add(List.of("git", "config", "--get", "user.email"));
-			expected.addAll(List.of(
-				List.of("git", "init", "--quiet"),
-				List.of("git", "config", "maintenance.auto", "false"),
-				List.of("git", "config", "gc.auto", "0"),
-				List.of("git", "config", "user.name", expectedName),
-				List.of("git", "config", "user.email", expectedEmail),
-				List.of("git", "add", "--all"),
-				List.of("git", "-c", "commit.gpgSign=false", "commit", "--quiet", "--allow-empty", "--no-verify", "-m",
-					"CAT fixture baseline")));
-			requireThat(commands, "commands").isEqualTo(expected);
+			Git git = new Git(project);
+			List<String> commits = git.lines("log", "--format=%an <%ae> %s");
+			requireThat(commits, "commits").isEqualTo(List.of("A User <user@example.test> CAT fixture baseline"));
+			requireThat(git.lines("ls-tree", "-r", "--name-only", "HEAD"), "files").isEqualTo(List.of("file.txt"));
+			requireThat(git.lines("config", "--local", "maintenance.auto"), "maintenance.auto").
+				isEqualTo(List.of("false"));
+			requireThat(git.lines("config", "--local", "gc.auto"), "gc.auto").isEqualTo(List.of("0"));
 		}
 	}
 
 	/**
-	 * Supplies completed Git output and status without starting Git. Configuration reads follow the brief's Git
-	 * contract: status zero returns a value and status one with no output denotes a missing value.
+	 * Verifies, end to end through real Git, that a host configuration that Git cannot read fails initialization with
+	 * the lookup command instead of selecting the fixture identity.
+	 *
+	 * @throws IOException the expected lookup failure
 	 */
-	private static final class GitResult extends Process
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*git, config, --get, user\\.name.*")
+	public void reportsFailedIdentityLookup() throws IOException
 	{
-		private final int status;
-		private final InputStream stdout;
-
-		/**
-		 * Creates a completed command result.
-		 *
-		 * @param status the Git exit status
-		 * @param output the Git stdout text
-		 */
-		private GitResult(int status, String output)
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			this.status = status;
-			this.stdout = new ByteArrayInputStream(output.getBytes(UTF_8));
-		}
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "repository-identity-"));
+			Path sourceProject = GitWorkTrees.notIgnoring(root.resolve("source"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path hostConfiguration = Files.writeString(root.resolve("host.gitconfig"), "[user\n", UTF_8);
 
-		@Override
-		public OutputStream getOutputStream()
-		{
-			return OutputStream.nullOutputStream();
+			HarnessProjectRepository.initialize(sourceProject, project, root, parentEnvironment(root, hostConfiguration),
+				Yielding.executableFiles(), null, null);
 		}
+	}
 
-		@Override
-		public InputStream getInputStream()
-		{
-			return stdout;
-		}
-
-		@Override
-		public InputStream getErrorStream()
-		{
-			return InputStream.nullInputStream();
-		}
-
-		@Override
-		public int waitFor()
-		{
-			return status;
-		}
-
-		@Override
-		public int exitValue()
-		{
-			return status;
-		}
-
-		@Override
-		public void destroy()
-		{
-		}
+	/**
+	 * Returns a parent environment in which Git reads only the given host configuration.
+	 *
+	 * @param root              the test's directory
+	 * @param hostConfiguration the host's global Git configuration
+	 * @return the environment
+	 */
+	private static Map<String, String> parentEnvironment(Path root, Path hostConfiguration)
+	{
+		return Map.of("PATH", System.getenv("PATH"), "HOME", root.resolve("home").toString(),
+			"GIT_CONFIG_GLOBAL", hostConfiguration.toString(), "GIT_CONFIG_NOSYSTEM", "1");
 	}
 }
