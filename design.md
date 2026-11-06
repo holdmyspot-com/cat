@@ -2631,7 +2631,7 @@ one of the session's own commands and therefore inside its sandbox, packs the re
 file in the run's `requests` directory, the one directory outside its project and home that the session may write. The runner answers in the run's `responses` directory, which the session may read but not write, so a link
 that the session plants cannot redirect the runner's writes: a response file that names copies, beside it, of the
 requested run's transcript, receipt and native transcripts, since the requesting session cannot read other runs. The
-runner, which runs outside the session's sandbox with the permissions of the session that started the run, opens no
+runner, which runs outside the session's sandbox with the user's permissions, opens no
 path that the session chose:
 it opens only the archive, without following a link and refusing a file with more than one hard link, and unpacks it
 into a directory of its own, refusing links, absolute and parent paths and anything beyond its size bounds. An archive
@@ -2656,8 +2656,8 @@ session (user ruling, 2026-11-06). A caller that knows its task needs more, such
 cache outside the project, names a JSON file with `--extra-permissions <file>` on either runner launcher or on
 `request-session`: `{"format_version": 1, "writes": ["<absolute path>"], "hosts": ["<host name>"]}`, where either list
 may be left out and no other field is allowed. It rejects a relative path and a `*` host pattern, as the child's own
-needs do. The writes and hosts join the requested session's needs on every path that starts it (in place in the runner
-that the requesting session's command runs, and through a run's broker), so the same rule applies: the session gets
+needs do. The writes and hosts join the requested session's needs on every path that starts it (through the session launcher,
+through a run's broker, and in place for a command that no harness runs), so the same rule applies: the session gets
 them when the requesting session's sandbox allows them and otherwise is refused, with each one named and the settings
 entry that grants it. A caller that names no file requests nothing extra; the file's contents travel inside the request,
 so the runner never opens a path that the requesting session chose (user ruling, 2026-11-06: a file that describes
@@ -2678,29 +2678,68 @@ parent runner chooses the run root, artifact, harness executable, denied reads a
 the options that would choose them and accepts only the project, plugins, model, effort, `--install-cat`,
 `--session-transcripts`, input, output and receipt. It requires the model and the effort, as outside a run, and refuses
 a launch without either before it packs a request (D119). The session's commands stay sandboxed and read no login but the session's own copy. A
-runner launcher that a run's session runs starts no harness, even though it could start one inside the session's
-sandbox, because the run's runner counts the session's requests against the run's limit, passes its denied reads,
+runner launcher that a run's session runs starts no harness and asks no session launcher, because the run's runner
+counts the session's requests against the run's limit, passes its denied reads,
 capacity ceiling and remaining request depth down, keeps each requested session's evidence under its own run and stops
 the requested sessions when its run ends. A launch inside a run whose caller allows no requested sessions is refused
 with status 2 and starts nothing (D107).
 
-**Runner launches outside a run (user ruling, 2026-11-06):** a runner launcher that a session's command runs outside a
-run starts the session in place: it runs the harness's runner itself, as a command of the asking session, so the new
-session runs inside its harness's own sandbox nested inside the asking session's sandbox, and no process outside that
-sandbox takes part. The launcher bounds the new session before it starts: it reads the asking session's sandbox policy
-from that harness's settings files only and assumes that the asking session was started without sandbox options on its
-command line; for Codex, it also narrows the policy by the turn policy that the asking thread's session log records,
-which it finds through the thread identifier in the command's environment. It intersects that policy with the new
-session's needs (its run folder, the denied reads, the writes and hosts that the child harness's runner reports, and
-any `--extra-permissions`) and refuses the launch before any harness starts when the policy cannot be read safely or
-lacks a need, with the message and settings entries above. The bound is never taken from the request. A command that no
-harness sandbox confines gives the new session exactly what it needs. Because nesting already confines the new session
-to the asking session's sandbox, CAT does not check whether the asking session's commands can change the files that it
-reads the policy from: a command that widens them widens nothing that its own sandbox does not already allow. No
-sandbox exception, process outside the sandbox or SessionStart hook takes part. Each plugin's launcher for the other
-harness reads its own harness's policy and hands the bound to the other harness's runner as its policy bound; a
-launcher that the other harness runs is refused and names the plugin to use. CAT does not read a harness process to
-find the asking session: a sandbox that runs in its own process namespace hides it.
+**Runner launches outside a run (user rulings, 2026-11-06):** a sandboxed command cannot start a session whose
+harness sandboxes it: macOS refuses to apply a sandbox inside a sandbox, and hosted Linux runners restrict the
+nested user namespaces that the harness sandboxes need. So a runner launcher that a harness session's command runs
+outside a run does not start the session itself. When a Claude Code or Codex session starts, CAT's SessionStart
+hook, which the harness runs outside the session's sandbox, starts a session launcher for it. The session launcher
+is one process per harness process, outside the sandbox. It serves only that session, and it starts each session
+that the session asks for inside that session's harness's own sandbox. The hook starts none in a CAT run, whose
+launches the run's runner serves, and none on native Windows, where the runner launchers refuse every launch.
+
+The session launcher keeps its state in a folder below the user's home that only session launchers write,
+`~/.cat/sessions`. The asking command writes the launch, packed into one archive with its options and inputs, to an
+inbox folder that the session's commands may write. It keeps a holder process running that names the launch and the
+archive's digest. The session launcher accepts a launch only while that holder runs inside its own harness process's
+tree and names the digest of the archive it read, so a command of another session cannot use it. When the holder ends,
+it stops the new session's whole process tree. It answers each launch in a response that the asking command reads, and
+the runner launcher exits `0` when the session completed, `75` when no capacity was free, `2` when CAT refused the
+launch, and `1` otherwise.
+
+The bound is the intersection of the asking session's policy and the new session's needs, and the launch never
+supplies it:
+
+- **The policy.** When the session launcher starts, it reads the asking session's sandbox policy from that
+  harness's settings files and from the command line of the harness process that the hook named, with the
+  session's identity taken from the hook. On the command line it reads Claude Code's `--settings`,
+  `--setting-sources`, `--add-dir` and `--disallowedTools`, and Codex's profile, `-c` overrides and sandbox options.
+  It refuses an option that it does not know, by name. It keeps this reading as a snapshot. For each launch it
+  reads the policy again and intersects the new reading with the snapshot, so a later change narrows the bound and
+  never widens it.
+- **Codex turns.** For Codex, it also narrows the policy by the latest turn policy that the session's log records
+  and, for a launch from another thread of the same session, by that thread's log.
+- **The needs.** The new session's needs are its run folder, the denied reads, the writes and hosts that the new
+  session's harness's runner reports, and any `--extra-permissions`.
+
+Because the session launcher runs outside the sandbox, it trusts no file that the asking session's commands could
+change. It refuses the session when its sandbox lets its commands write a file that the policy is read from, unless
+the harness itself keeps that file from its commands, as Claude Code keeps its settings files. It also refuses when
+the sandbox lets the commands write the session launcher's state folder. `install` adds a write denial for that
+folder, `~/.cat/sessions`, to each harness's sandbox settings, so that a session whose sandbox grants the user's home
+still passes this check (user ruling, 2026-11-06). It refuses a launch before any harness starts when:
+
+- the policy cannot be read safely;
+- the harness process that the hook named has ended or was replaced; or
+- the policy lacks a need. The message and settings entries are those given above.
+
+A session that started before CAT was installed or updated has no session launcher. Its runner launchers start
+nothing, exit `2` and say to start a new session. A session launcher ends when its harness process ends, when
+Claude Code's SessionEnd hook asks it to stop, or when it loses its lock, and it stops every session that it started
+and that still runs.
+
+A command that no harness runs, such as one in a terminal, has no sandbox to bound the new session. Its runner
+launcher starts the session itself, inside that harness's own sandbox, with exactly what the session needs. Each
+plugin's launcher for the other harness sends the launch to its own harness's session launcher, which starts the
+other harness's runner with the bound. A launcher that the other harness runs is refused and names the plugin to
+use. A command that hides which harness runs it gains nothing. One that claims no harness starts the session as its
+own descendant, inside the sandbox that confines it. One that claims a session it does not belong to is refused,
+because its holder runs outside that session's harness process tree.
 
 **Source-only content in prompt files (user rulings, 2026-10-23):** a prompt file's `## Design Goals` section is the
 reference that its authors update the guidance from, and its HTML comments remind the plugin developers why a Design
@@ -3023,7 +3062,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D104 | Supply `executableFiles()` through `JvmScope`; production scopes retain retry pauses and test scopes do not sleep (user ruling, 2026-10-24). | Consumers need one scope-owned service that tests can control, rather than an inline production instance or a separate constructor argument. | The optimizer, requested runner and both harness runners obtain the service from their scope. |
 | D105 | Retain refusal of symlinks anywhere in a requested-session input path (user ruling, 2026-10-24). | The user chose to preserve the existing restriction. | macOS callers must supply resolved paths when an ancestor such as `/var` is a symlink. |
 | D106 | Refactor lock coordination into an explicitly shared, process-owned object, supplied by scopes to every lock consumer (user ruling, 2026-10-24). | A mutable static registry shares state across independent scopes and tests; opening and closing another channel to a held file can release its POSIX lock. | Each process scope owns its coordinator, child scopes share it, and reservations outlive open channels. Independent coordinators retain independent state; no mutable static lock registry remains. |
-| D107 | Let a session launch either harness, its own included, through CAT's runner launchers, which both plugins hold; inside a run whose caller allows requested sessions, the launcher forwards the launch to the run's runner, and `--request-depth` lets requested sessions request sessions to a bounded depth (user rulings, 2026-10-25: implemented directly, forward through the broker, keep the runner split for later). | A session that tests work needing another harness, or a grandchild of its own, needed a different command per harness and could not start any harness from a requested session, whose commands are sandboxed and hold no login. Forwarding keeps the login, capacity, evidence and limits with the runner that already starts requested sessions host-side, so no child needs a sandbox exception, a login copy or a credential in its commands. | Supersedes D99's rule that requested sessions request none of their own. A forwarded launch carries only turns, not steering or interrupts. Revised by user ruling, 2026-11-02 ("Allow session's own login"): a session's commands may read the session's own login, a copy of the user's login in its isolated home, so a harness that a command starts directly, such as the prompt optimizer's sessions, can sign in; the user's real logins and the other harness's stay denied. Revised by user ruling, 2026-11-06 (children in place): outside a run, a runner launcher starts the session itself, nested inside the asking session's sandbox and bounded by the policy that the asking harness's settings files give, narrowed for Codex by the thread's recorded turn policy, so the top-level session needs no sandbox exception and `install` removes the exceptions that earlier versions configured. |
+| D107 | Let a session launch either harness, its own included, through CAT's runner launchers, which both plugins hold; inside a run whose caller allows requested sessions, the launcher forwards the launch to the run's runner, and `--request-depth` lets requested sessions request sessions to a bounded depth (user rulings, 2026-10-25: implemented directly, forward through the broker, keep the runner split for later). | A session that tests work needing another harness, or a grandchild of its own, needed a different command per harness and could not start any harness from a requested session, whose commands are sandboxed and hold no login. Forwarding keeps the login, capacity, evidence and limits with the runner that already starts requested sessions host-side, so no child needs a sandbox exception, a login copy or a credential in its commands. | Supersedes D99's rule that requested sessions request none of their own. A forwarded launch carries only turns, not steering or interrupts. Revised by user ruling, 2026-11-02 ("Allow session's own login"): a session's commands may read the session's own login, a copy of the user's login in its isolated home, so a harness that a command starts directly, such as the prompt optimizer's sessions, can sign in; the user's real logins and the other harness's stay denied. Revised by user rulings, 2026-11-06: outside a run, a runner launcher that a session's command runs asks the session launcher that CAT's SessionStart hook starts for that session outside its sandbox. The session launcher starts the session inside its harness's own sandbox, bounded by the intersection of the asking session's policy and the session's needs, because no sandbox on macOS or on hosted Linux runners lets a sandboxed command start a sandboxed child. This supersedes the same day's ruling that started sessions in place, nested inside the asking session's sandbox. The top-level session needs no sandbox exception. `install` removes the exceptions that earlier versions configured and adds a write denial for the session launcher's state folder, `~/.cat/sessions`, so that the session's commands may not write it. |
 | D108 | Give the prompt author a compact table of earlier attempts’ kinds and results, with no hunks or line ranges (user ruling, 2026-10-25). | Full earlier manifests grow with every attempt and exceeded Codex’s input limit in a campaign with 417 attempts. The recurrence decision needs only which kinds were targeted and how each attempt ended; the campaign edits already hold what CAT kept of promoted hunks. | One row per attempt, oldest first, gives its number, cell, result, whether CAT rejected its manifest, and each kind’s name, classification and failure count. The prompt author no longer sees an earlier hunk’s wording, only that a kind was targeted and how the attempt ended. Full manifests remain in campaign state; no campaign format or measurement identity changes. |
 | D109 | Rank approaches by fit before each cell's round reserves its prompt authors, break adjacent equal-fit ties by the cell's per-approach promotion share in this campaign, and add compatible-instruction combination and load-trigger correction (user ruling, 2026-10-27). Supersedes the approach-order policy of D34 and D59. | Declaration order is a guess and never examines the failures. A short role session can judge which techniques fit the current evidence; the promotion record resolves ties without overriding fit. Combining compatible instructions differs from resolving a contradiction, and repairing a load trigger differs from editing a correct instruction. | One ranking session per cell and round, with triage-style retries and nonblocking declaration-order fallback. Persisted orders preserve assignments on resume; version-43 campaigns upgrade on read, retain their existing nine-approach rounds and rank their next new round. Status records each attempt's approach and its order's origin. |
 | D110 | Judge regression runs per prompt test by an exact pooled check: reject when the attempt's failures in a group would occur less than 5% of the time at the working candidate's smoothed failure rate, looking at the end of the first pass and after every 5 paired reruns of the attempt and the working candidate, up to 15 (user choice B, 2026-10-27). Run regression runs only after a triggering test case has an unfailed streak of 2 passes, except for a minimality reduction, and stop a rejected attempt's runs at once, in weak rounds too, cancelling its queued runs (user ruling, 2026-10-27). Supersedes the regression wording of D33. | In a live Codex campaign of 115 rounds and 464 attempts, promotion runs were 75% of 17,439 trials and rejected attempts held 80% of them. 258 of 398 rejected attempts had fixed a triggering test case and were rejected only because a regression run failed where the working candidate's single outcome passed, 123 on one failed run; at the observed failure rates an equally good edit failed at least one of 21 regression runs about 59% of the time. 3,760 of the rejected attempts' 7,311 judged runs came after the run that decided the rejection, and 1,608 regression runs went to 140 attempts that failed every triggering test case. In simulation at a 93% working pass rate, the pooled check rejects an equally good edit about 2.4% of the time per prompt test and an 80% edit about 38%. | Up to 30 more targeted runs per prompt test with a failed regression run, and paired working-candidate reruns recorded under their own role, which needs format 45; version-44 campaigns upgrade on read and keep their recorded decisions. A weak round's winner is ranked by its passing triggering and first-pass regression runs, excluding paired reruns (user ruling, 2026-10-27), because only an attempt that failed a regression run receives reruns, starting with the test cases it failed, so counting them would favour that attempt. A queued reference run of a rejected attempt that no other attempt needs is not cancelled. |
