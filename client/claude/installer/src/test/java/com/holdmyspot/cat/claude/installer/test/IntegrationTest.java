@@ -88,6 +88,17 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * The integration names the variable in which Claude Code gives the commands that its agent runs the session's
+	 * identifier, which tells the installer that an agent reads its result.
+	 */
+	@Test
+	public void namesAgentSessionVariable()
+	{
+		requireThat(new Integration(Platform.LINUX_X64).agentSessionVariable(), "agentSessionVariable").
+			isEqualTo("CLAUDE_CODE_SESSION_ID");
+	}
+
+	/**
 	 * Setup finds Claude Code's {@code claude} program.
 	 */
 	@Test

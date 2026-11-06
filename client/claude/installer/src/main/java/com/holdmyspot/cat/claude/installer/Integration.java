@@ -154,6 +154,12 @@ public final class Integration implements HarnessIntegration
 	}
 
 	@Override
+	public String agentSessionVariable()
+	{
+		return "CLAUDE_CODE_SESSION_ID";
+	}
+
+	@Override
 	public HarnessInstallation installation(Path home)
 	{
 		return new ClaudeInstallation(home);

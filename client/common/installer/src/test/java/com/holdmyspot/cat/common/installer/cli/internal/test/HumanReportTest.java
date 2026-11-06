@@ -163,6 +163,56 @@ public final class HumanReportTest
 	}
 
 	/**
+	 * An agent that runs the installer in a terminal that its harness allocates reads the same JSON line as a reader
+	 * that is not a terminal, because the agent parses the result.
+	 *
+	 * @throws IOException    if the fixture cannot be created
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void agentSessionAtTerminalReadsMachineResult() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Map<String, List<String>> entries = Map.of("settings.json", List.of("entry"));
+			String harness = "harness-a";
+			Fixture piped = new Fixture(cleanup.add(testDirectory("human-report-agent-pipe-")));
+			Fixture agent = new Fixture(cleanup.add(testDirectory("human-report-agent-")));
+			Run machine = piped.run(new RecordingIntegration(harness).adding(entries), pipe(), Map.of(), "install",
+				"--harness", harness);
+
+			Run run = agent.run(new RecordingIntegration(harness).adding(entries), terminal(),
+				Map.of(RecordingIntegration.agentSessionVariable(harness), "1"), "install", "--harness", harness);
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.output.replace(agent.root.toString(), "ROOT"), "output").
+				isEqualTo(machine.output.replace(piped.root.toString(), "ROOT"));
+			requireThat(run.output.lines().count(), "lines").isEqualTo(1L);
+		}
+	}
+
+	/**
+	 * A harness's agent variable that is set to an empty value does not mark an agent session, so a person at a
+	 * terminal still reads the report.
+	 *
+	 * @throws IOException    if the fixture cannot be created
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void emptyAgentVariableLeavesPersonReport() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("human-report-empty-agent-")));
+
+			Run run = fixture.run(new RecordingIntegration(), terminal(),
+				Map.of(RecordingIntegration.agentSessionVariable("harness-a"), ""), "install", "--harness", "harness-a");
+
+			requireThat(run.output, "output").contains("Product harness-a").doesNotContain("{");
+		}
+	}
+
+	/**
 	 * A command line that the installer rejects prints the same JSON line to a terminal that asked for {@code --json}
 	 * as to a reader that is not a terminal.
 	 *
@@ -466,6 +516,23 @@ public final class HumanReportTest
 		 */
 		private Run run(RecordingIntegration integration, Terminal terminal, String... operation)
 		{
+			return run(integration, terminal, Map.of(), operation);
+		}
+
+		/**
+		 * Runs the installer from the archive into the harness home, with more variables in its environment.
+		 *
+		 * @param integration the harness integration
+		 * @param terminal    the user's terminal
+		 * @param extra       the variables to add to the environment
+		 * @param operation   the operation and its options, after the harness home
+		 * @return the outcome
+		 */
+		private Run run(RecordingIntegration integration, Terminal terminal, Map<String, String> extra,
+			String... operation)
+		{
+			Map<String, String> variables = new HashMap<>(environment);
+			variables.putAll(extra);
 			List<String> arguments = new ArrayList<>();
 			// An option that precedes the operation goes before the harness home
 			int start = 0;
@@ -484,7 +551,7 @@ public final class HumanReportTest
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
 				Invocation invocation = new Invocation(plugin, Platform.current(),
-					environment, List.of(new LiveProvider()), List.of(integration),
+					variables, List.of(new LiveProvider()), List.of(integration),
 					(command, harnessHome) -> RecordingIntegration.cli(), Clock.systemUTC(), interval -> () ->
 					{
 					}, new FileReplacer(Platform.current(), () ->

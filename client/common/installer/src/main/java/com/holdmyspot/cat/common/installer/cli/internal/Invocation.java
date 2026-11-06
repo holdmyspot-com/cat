@@ -204,11 +204,11 @@ public final class Invocation
 		try
 		{
 			arguments = Arguments.parse(args, harnesses);
-			describesToPerson = !arguments.json() && terminal.isStdoutTerminal();
+			describesToPerson = !arguments.json() && readerIsPerson();
 		}
 		catch (IllegalArgumentException e)
 		{
-			describesToPerson = !Arrays.asList(args).contains("--json") && terminal.isStdoutTerminal();
+			describesToPerson = !Arrays.asList(args).contains("--json") && readerIsPerson();
 			return print(failure(Result.USAGE, "unknown", e.getMessage(), List.of()), null, null);
 		}
 		try
@@ -834,6 +834,19 @@ public final class Invocation
 		stdout.flush();
 		new ExitDeletion(platform, environment, starter, stderr).delete(result.exitDeletions());
 		return result.result().exitStatus();
+	}
+
+	/**
+	 * Returns whether a person, not a program, reads the standard output: it shows on a terminal and no installed
+	 * harness's agent session runs the installer. An agent parses the result even where its harness gives the command
+	 * a terminal.
+	 *
+	 * @return {@code true} if the result is described to a person
+	 */
+	private boolean readerIsPerson()
+	{
+		return terminal.isStdoutTerminal() && integrations.stream().map(HarnessIntegration::agentSessionVariable).
+			allMatch(variable -> environment.getOrDefault(variable, "").isEmpty());
 	}
 
 	/**

@@ -1218,6 +1218,16 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * The integration names the variable in which Codex gives the commands that its agent runs the session's
+	 * identifier, which tells the installer that an agent reads its result.
+	 */
+	@Test
+	public void namesAgentSessionVariable()
+	{
+		requireThat(provider().agentSessionVariable(), "agentSessionVariable").isEqualTo("CODEX_THREAD_ID");
+	}
+
+	/**
 	 * Finds the Codex integration through the same registration that the installer consumes.
 	 *
 	 * @return the Codex integration
