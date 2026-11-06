@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
+import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -57,7 +58,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
-import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Boundaries;
@@ -2671,11 +2671,7 @@ public final class DriverTest
 	 */
 	private static DriverContext deliveryContext(DriverHarness harness, Path base) throws IOException
 	{
-		Git git = new Git(base);
-		git.run("init", "--quiet");
-		git.run("add", "--all");
-		git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
-			"commit", "--quiet", "--no-verify", "--message", "Recorded files");
+		GitWorkTrees.recordFiles(base);
 		DriverContext original = harness.context();
 		Delivery deliverer = new Delivery(original.store(), original.workspace(),
 			new GitForks(Yielding.fileReplacer()), original.json(), Yielding.fileReplacer());

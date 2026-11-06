@@ -46,6 +46,24 @@ public final class GitWorkTrees
 	}
 
 	/**
+	 * Makes a directory a Git repository that records its current files in a commit, so that a diff against the
+	 * repository's head reports every later change. A directory that is already a repository gets a further commit.
+	 *
+	 * @param project the directory whose files the commit records
+	 * @return {@code project}
+	 * @throws IOException if Git fails
+	 */
+	public static Path recordFiles(Path project) throws IOException
+	{
+		Git git = new Git(project);
+		git.run("init", "--quiet");
+		git.run("add", "--all");
+		git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
+			"commit", "--quiet", "--no-verify", "--allow-empty", "--message", "Recorded files");
+		return project;
+	}
+
+	/**
 	 * Creates a Git work tree whose Git ignores the CAT session directories, through the work tree's own exclude file,
 	 * so that the project's directory gains no {@code .gitignore}.
 	 *

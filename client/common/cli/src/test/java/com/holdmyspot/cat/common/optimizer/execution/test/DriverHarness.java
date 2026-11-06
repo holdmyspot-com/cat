@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution.test;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -34,7 +35,6 @@ import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPromp
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
-import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
@@ -57,6 +57,7 @@ import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.AliasedOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
+import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
 import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
@@ -151,6 +152,10 @@ public final class DriverHarness
 	 * The base worktree that deliveries write, or {@code null} if the harness has none.
 	 */
 	private final Path base;
+	/**
+	 * {@code true} once the base worktree is a Git repository that records the fork's files.
+	 */
+	private boolean baseRecorded;
 	private Consumer<DeliveryChange> afterWrite = _ ->
 	{
 	};
@@ -1178,13 +1183,18 @@ public final class DriverHarness
 			throw new IllegalStateException("The harness has no base worktree to deliver to. Create it with the " +
 				"project directory that holds the fork's files.");
 		}
+		if (!baseRecorded)
+		{
+			GitWorkTrees.recordFiles(base);
+			baseRecorded = true;
+		}
 		DeliveryRequest named = request;
 		if (request != null)
 		{
 			named = new DeliveryRequest(new Candidate(request.candidate().number(), selected.identity()),
 				request.attempt(), request.label());
 		}
-		Delivery delivery = new Delivery(crashingStore, fakeWorkspace, new InMemoryForks(base, Set.of(PROMPT)), json,
+		Delivery delivery = new Delivery(crashingStore, fakeWorkspace, new GitForks(Yielding.fileReplacer()), json,
 			Yielding.fileReplacer(), afterWrite);
 		return delivery.deliver(campaignId, named, selected, working, promptSources, record, tests);
 	}
