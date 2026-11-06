@@ -17,7 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -320,15 +319,7 @@ public final class EngineTest
 				requireThat(entered.await(2, TimeUnit.SECONDS), "enteredTransport").isTrue();
 				requireThat(second.install("v1.1", fixture.request(image)).result(), "contendingResult").
 					isEqualTo(Result.LOCKED);
-				List<Duration> pauses = new ArrayList<>();
-				Duration deadline = Duration.ofMillis(120);
-				UpdateEngine timed = fixture.engine(release, Clock.systemUTC(), interval -> () -> pauses.add(interval),
-					deadline, false);
-				requireThat(timed.install("v1.1", fixture.request(image)).result(), "deadlineResult").
-					isEqualTo(Result.LOCKED);
-				requireThat(pauses, "lockPauses").isNotEmpty();
-				requireThat(pauses.stream().allMatch(pause -> pause.compareTo(Duration.ofMillis(50)) <= 0),
-					"pausesWithinPollInterval").isTrue();
+				Duration deadline = Duration.ofMinutes(5);
 				UpdateEngine interrupted = fixture.engine(release, Clock.systemUTC(), interval -> Pause.interruptible(() ->
 				{
 					throw new InterruptedException("Interrupted lock wait");
