@@ -1078,7 +1078,7 @@ public final class InvocationTest
 	 * Runs one installer invocation whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1095,7 +1095,7 @@ public final class InvocationTest
 	 * Runs one installer invocation, with a terminal, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1116,7 +1116,7 @@ public final class InvocationTest
 	 * Runs one installer invocation on a platform, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1137,7 +1137,7 @@ public final class InvocationTest
 	 * Runs one installer invocation on a platform, with a terminal, whose harness program never starts.
 	 *
 	 * @param image        the plugin folder of the running installer
-	 * @param defaultHome  the user's home when the environment names none in {@code HOME}
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
 	 * @param environment  the caller's environment
 	 * @param activations  the installed activation providers
 	 * @param integration  the harness integration
@@ -1158,8 +1158,9 @@ public final class InvocationTest
 			PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 		{
 			// The user's home is the one that the environment names, as the installer's process has it
-			Path userHome = Path.of(environment.getOrDefault("HOME", defaultHome.toString()));
-			Invocation invocation = new Invocation(image, userHome, platform, environment, activations,
+			Map<String, String> variables = new HashMap<>(environment);
+			variables.putIfAbsent(platform.homeVariable(), defaultHome.toString());
+			Invocation invocation = new Invocation(image, platform, variables, activations,
 				List.of(integration), (command, home) -> RecordingIntegration.cli(), Clock.systemUTC(),
 				interval -> () -> {}, replacer(), terminal, starter, stdout, stderr);
 			status = invocation.run(arguments);

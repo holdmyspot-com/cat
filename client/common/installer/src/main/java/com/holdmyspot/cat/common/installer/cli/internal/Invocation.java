@@ -68,7 +68,6 @@ public final class Invocation
 	 */
 	private static final Duration REQUEST_LIMIT = Duration.ofMinutes(5);
 	private final Path image;
-	private final Path userHome;
 	private final Platform platform;
 	private final Map<String, String> environment;
 	private final List<PluginActivation> activations;
@@ -91,14 +90,17 @@ public final class Invocation
 	 * The harness of the installation that the running installer belongs to, once it is known.
 	 */
 	private String resolvedHarness;
+	/**
+	 * The user's home directory, which the environment names in the platform's home variable, as it does for the
+	 * runtime; known once install has checked that the environment sets it.
+	 */
+	private Path userHome;
 
 	/**
 	 * Creates one process invocation that downloads releases over HTTPS, with its other boundaries explicit.
 	 *
 	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
 	 *                     install, otherwise the version folder of the installed plugin
-	 * @param userHome     the user's home directory, which holds the capacity locks and in which the harness homes lie
-	 *                     unless the environment names them
 	 * @param platform     the running platform
 	 * @param environment  the boundary-captured environment; routine path authority never comes from this map
 	 * @param activations  the installed activation services
@@ -114,12 +116,12 @@ public final class Invocation
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Invocation(Path image, Path userHome, Platform platform, Map<String, String> environment,
+	public Invocation(Path image, Platform platform, Map<String, String> environment,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
 		PrintStream stdout, PrintStream stderr)
 	{
-		this(image, userHome, platform, environment, activations, integrations, cliFactory, clock, waiting,
+		this(image, platform, environment, activations, integrations, cliFactory, clock, waiting,
 			replacer, terminal, starter, releaseBaseUrl -> new HttpsReleaseSource(releaseBaseUrl, environment,
 				CONNECT_LIMIT, REQUEST_LIMIT), stdout, stderr);
 	}
@@ -129,8 +131,6 @@ public final class Invocation
 	 *
 	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
 	 *                     install, otherwise the version folder of the installed plugin
-	 * @param userHome     the user's home directory, which holds the capacity locks and in which the harness homes lie
-	 *                     unless the environment names them
 	 * @param platform     the running platform
 	 * @param environment  the boundary-captured environment; routine path authority never comes from this map
 	 * @param activations  the installed activation services
@@ -147,13 +147,12 @@ public final class Invocation
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Invocation(Path image, Path userHome, Platform platform, Map<String, String> environment,
+	public Invocation(Path image, Platform platform, Map<String, String> environment,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
 		ReleaseSources sources, PrintStream stdout, PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
-		requireThat(userHome, "userHome").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(cliFactory, "cliFactory").isNotNull();
 		requireThat(clock, "clock").isNotNull();
@@ -165,7 +164,6 @@ public final class Invocation
 		requireThat(stdout, "stdout").isNotNull();
 		requireThat(stderr, "stderr").isNotNull();
 		this.image = image;
-		this.userHome = userHome;
 		this.platform = platform;
 		this.environment = Map.copyOf(environment);
 		this.activations = List.copyOf(activations);
@@ -295,6 +293,8 @@ public final class Invocation
 	 * Installs a harness's plugin: through the installation whose version folder the running installer runs from, from
 	 * the extracted plugin archive that the running installer belongs to, or, for a harness other than the one whose
 	 * version folder the running installer runs from, from that harness's plugin of the running installer's release.
+	 * Install refuses, changing nothing, unless the environment sets the platform's home variable to an absolute path,
+	 * because the user's home holds the capacity locks and the harness homes that the environment does not name.
 	 *
 	 * @param arguments the validated install operation
 	 * @return its printed result's status
@@ -303,6 +303,23 @@ public final class Invocation
 	 */
 	private int install(Arguments arguments) throws IOException, TrustException
 	{
+		String refusal = null;
+		try
+		{
+			userHome = platform.homeDirectory(platform.environment(environment));
+			if (!userHome.isAbsolute())
+				refusal = userHome + " is not an absolute path";
+		}
+		catch (IOException e)
+		{
+			refusal = e.getMessage();
+		}
+		if (refusal != null)
+		{
+			return print(failure(Result.REFUSED, arguments.harness(), "The user's home folder is wrong: " + refusal +
+				". CAT takes it from " + platform.homeVariable() + " in the environment, as the runtime does; set it " +
+				"to an absolute path and run the command again.", List.of()), arguments, null);
+		}
 		Locations locations;
 		try
 		{

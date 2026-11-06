@@ -339,7 +339,7 @@ public final class InstallerActivationTest
 				FileReplacer replacer = new FileReplacer(platform, () ->
 				{
 				}, Clock.systemUTC());
-				new Invocation(plugin, user, platform, environment,
+				new Invocation(plugin, platform, environment,
 					List.copyOf(ServiceLoader.load(PluginActivation.class).stream().map(ServiceLoader.Provider::get).
 						toList()),
 					List.copyOf(ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).

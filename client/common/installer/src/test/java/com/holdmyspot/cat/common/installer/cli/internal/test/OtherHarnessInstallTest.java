@@ -186,6 +186,76 @@ public final class OtherHarnessInstallTest
 	}
 
 	/**
+	 * Install takes the user's home from the environment's home variable, the home that the runtime uses: the other
+	 * harness's home lies under it, and the capacity locks that the installation may write are its locks.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if a test policy is invalid
+	 */
+	@Test
+	public void usesEnvironmentHome() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("other-harness-home-")));
+
+			Run run = fixture.run(List.of("install", "--harness", "harness-b"));
+
+			requireThat(run.status, "status").withContext(run.output, "output").
+				withContext(run.diagnostics, "diagnostics").isEqualTo(0);
+			requireThat(fixture.otherIntegration.callsWithSubjects(), "calls").contains("installSandboxEntries " +
+				fixture.user.resolve("harness-a-home") + " " + fixture.user.resolve(".cat/locks"));
+			requireThat(Files.isRegularFile(fixture.otherVersionFolder(Fixture.RUNNING).resolve("bin/VERSION")),
+				"installed").isTrue();
+		}
+	}
+
+	/**
+	 * Returns the environments whose home variable gives no usable user home.
+	 *
+	 * @return each condition's name
+	 */
+	@DataProvider
+	public static Object[][] unusableHomes()
+	{
+		return new Object[][]{{"unset"}, {"blank"}, {"relative"}};
+	}
+
+	/**
+	 * Install refuses, installing nothing, when the environment does not set the user's home to an absolute path,
+	 * rather than using another home than the runtime does; the refusal names the home variable.
+	 *
+	 * @param condition what is wrong with the home variable
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if a test policy is invalid
+	 */
+	@Test(dataProvider = "unusableHomes")
+	public void refusesUnusableHome(String condition) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("other-harness-no-home-")));
+			String variable = Platform.current().homeVariable();
+			Map<String, String> environment = new HashMap<>(fixture.environment);
+			environment.remove("HOME");
+			switch (condition)
+			{
+				case "unset" -> environment.remove(variable);
+				case "blank" -> environment.put(variable, " ");
+				case "relative" -> environment.put(variable, "relative-home");
+				default -> throw new AssertionError(condition);
+			}
+
+			Run run = fixture.run(environment, List.of("install", "--harness", "harness-b"));
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").contains(variable);
+			fixture.requireNothingInstalled();
+		}
+	}
+
+	/**
 	 * Returns a replacer whose isolated files never need a retry wait.
 	 *
 	 * @return the replacer
@@ -315,13 +385,26 @@ public final class OtherHarnessInstallTest
 		 */
 		private Run run(List<String> arguments)
 		{
+			return run(environment, arguments);
+		}
+
+		/**
+		 * Runs one installer invocation from the {@code harness-a} version folder in an environment, whose terminal
+		 * answers nothing and whose harness program never starts.
+		 *
+		 * @param environment the caller's environment
+		 * @param arguments   the command line
+		 * @return the outcome
+		 */
+		private Run run(Map<String, String> environment, List<String> arguments)
+		{
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 			int status;
 			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
-				Invocation invocation = new Invocation(image, user, Platform.current(), environment,
+				Invocation invocation = new Invocation(image, Platform.current(), environment,
 					List.of(new RegisteredProvider(), new RegisteredProvider("harness-b")),
 					List.of(new RecordingIntegration(), otherIntegration), (recorded, recordedHome) ->
 					RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {}, replacer(),
