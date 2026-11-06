@@ -77,7 +77,17 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   (Claude user `settings.json` `sandbox.filesystem.allowWrite` holds `/home/gili/cat/home`). Every Codex campaign or
   Codex delegate started from that session meets the same refusal. **Needs the user:** narrow that grant (CAT's
   own grants keep `.cat/locks` writable) or run `step.sh` from a host terminal; until then, delegation falls back to
-  Claude tier agents.
+  Claude tier agents. The Claude runner refuses the same way (probe 2026-11-06, exit 2), so no model-spending run
+  can start from that session in either harness.
+- **Claude E1 (analysis 2026-11-06, `shared_runtime_lifecycle-vZqE9s/reports/e1-reconcile.md`):** the parked campaign
+  `20261103T210547Z-4335de` holds no contract, trial or baseline (phase `unconfirmed`), recorded session environment
+  version 17 (source now 19) and a build that can no longer be re-verified, so the next Claude E1 starts fresh on the
+  installed release; continuing would retain nothing. Its turn-2 failure was the 260-character hook-results folder
+  name, fixed by `433105b048`, which the installed build contains. The fresh run copies the whole `deficient` fixture,
+  including `.cat/tests/CLAUDE/prompt.json` (the parked copy omitted it). The parked campaign stays as it is until the
+  user decides what to do with it.
+- **Gate 2 refresh (2026-11-06, `final-gates-lLlQqp/refresh-2026-11-06/`):** 2,181 tags in 205 test sources; after
+  `d027d5f5bc` tagged the replacement tests for R-I6, only R-I1 is untagged (native receipts pending); no unknown tags.
 
 ### Latest authorized requirements
 
