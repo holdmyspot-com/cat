@@ -80,18 +80,21 @@ public interface Core
 	 * @param target the prompt file or prompt system
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
 	 * @param goal what the user wants the target to achieve, in the user's own words, which a new campaign stores and
-	 *   gives to the contract author, or {@code null} if the user stated no goal
+	 *   gives to the contract author, or {@code null} if the user stated no goal. A resumed campaign refuses a goal
+	 *   that differs from its own.
 	 * @param extraPermissions the JSON file that lists the absolute paths that the commands of the campaign's
 	 *   sessions may write and the hosts that they may reach, which a new campaign reads once and stores with
-	 *   its header, and applies to every session it starts, or {@code null} if the sessions need nothing extra
+	 *   its header, and applies to every session it starts, or {@code null} if the sessions need nothing extra. A
+	 *   resumed campaign refuses a file whose permissions differ from its own.
 	 * @return the result, which presents the proposal that awaits confirmation
 	 * @throws NullPointerException if {@code target} is null
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
 	 *   {@code goal} is blank
 	 * @throws CommandRefusedException if no session launcher serves the host session, the current harness cannot deny
 	 *   its sessions reads of held-out content, the other harness started the target's campaign, another process runs
-	 *   the target's campaign, the target is not in the project, the base worktree has uncommitted changes, or a new
-	 *   campaign's file of extra permissions is missing or invalid
+	 *   the target's campaign, the target is not in the project, the base worktree has uncommitted changes, the file of
+	 *   extra permissions is missing or invalid, or the resumed campaign's goal or extra permissions differ from the
+	 *   ones named
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */

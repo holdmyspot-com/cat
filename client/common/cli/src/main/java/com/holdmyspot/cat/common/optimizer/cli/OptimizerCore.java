@@ -311,9 +311,10 @@ public final class OptimizerCore implements Core
 	 * @param target the target, relative to the working directory
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign
 	 * @param goal the user's goal for a new campaign, or {@code null} if the user stated none. A resumed campaign
-	 *   keeps the goal it was started with.
+	 *   keeps the goal it was started with, so a goal that differs from it is refused.
 	 * @param extraPermissions the file of extra permissions for a new campaign, or {@code null} if the user named
-	 *   none. A resumed campaign keeps the permissions it was started with.
+	 *   none. A resumed campaign keeps the permissions it was started with, so a file whose permissions differ from
+	 *   them is refused.
 	 * @return the result
 	 * @throws CommandRefusedException if the command is refused
 	 * @throws IOException if the store, the workspace or a session fails
@@ -343,9 +344,82 @@ public final class OptimizerCore implements Core
 		return switch (opening)
 		{
 			case Registry.Opening.Refuse refuse -> throw refused(refuse.owner());
-			case Registry.Opening.Resume resume -> resume(root, store, resume.header());
+			case Registry.Opening.Resume resume ->
+			{
+				requireUnchangedInputs(resume.header(), goal, extraPermissions);
+				yield resume(root, store, resume.header());
+			}
 			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal, extraPermissions);
 		};
+	}
+
+	/**
+	 * Refuses a resume that names a goal or a file of extra permissions that differs from what the campaign recorded.
+	 *
+	 * @param header the campaign's header
+	 * @param goal the goal that the command names, or {@code null} if it names none
+	 * @param extraPermissions the file of extra permissions that the command names, or {@code null} if it names none
+	 * @throws CommandRefusedException if the goal differs from the campaign's, or the file is missing or invalid, or
+	 *   holds permissions that differ from the campaign's; the message names the goals and the added and removed
+	 *   writes and hosts, and says to start a new campaign
+	 */
+	private void requireUnchangedInputs(Header header, String goal, Path extraPermissions)
+		throws CommandRefusedException
+	{
+		List<String> differences = new ArrayList<>();
+		if (goal != null && !goal.equals(header.goal()))
+		{
+			String recorded = "no goal";
+			if (header.goal() != null)
+				recorded = "the goal \"" + header.goal() + "\"";
+			differences.add("Campaign " + header.id() + " was started with " + recorded + ", but `start` names the " +
+				"goal \"" + goal + "\".");
+		}
+		if (extraPermissions != null)
+		{
+			ExtraPermissions recorded = header.extraPermissions();
+			ExtraPermissions named = readExtraPermissions(extraPermissions);
+			Set<Path> addedWrites = new TreeSet<>(named.writes());
+			addedWrites.removeAll(recorded.writes());
+			Set<Path> removedWrites = new TreeSet<>(recorded.writes());
+			removedWrites.removeAll(named.writes());
+			Set<String> addedHosts = new TreeSet<>(named.hosts());
+			addedHosts.removeAll(recorded.hosts());
+			Set<String> removedHosts = new TreeSet<>(recorded.hosts());
+			removedHosts.removeAll(named.hosts());
+			if (!addedWrites.isEmpty() || !removedWrites.isEmpty() || !addedHosts.isEmpty() || !removedHosts.isEmpty())
+			{
+				StringBuilder difference = new StringBuilder("The file ").append(extraPermissions).
+					append(" names extra permissions that differ from those of campaign ").append(header.id()).append('.');
+				if (!addedWrites.isEmpty() || !addedHosts.isEmpty())
+					difference.append(" It adds ").append(describeEntries(addedWrites, addedHosts)).append('.');
+				if (!removedWrites.isEmpty() || !removedHosts.isEmpty())
+					difference.append(" It removes ").append(describeEntries(removedWrites, removedHosts)).append('.');
+				differences.add(difference.toString());
+			}
+		}
+		if (differences.isEmpty())
+			return;
+		throw new CommandRefusedException(String.join("\n", differences) + "\nA campaign keeps the goal and the " +
+			"extra permissions it started with. To use these instead, run `cancel " + header.id() + "`, then run " +
+			"`start` again to start a new campaign with them. To continue this campaign, run `start` without them.");
+	}
+
+	/**
+	 * Describes writes and hosts for a message.
+	 *
+	 * @param writes the writes
+	 * @param hosts the hosts
+	 * @return the writes and then the hosts, each kind introduced by its name and omitted when empty
+	 */
+	private static String describeEntries(Set<Path> writes, Set<String> hosts)
+	{
+		List<String> parts = new ArrayList<>();
+		if (!writes.isEmpty())
+			parts.add("the writes " + writes.stream().map(Path::toString).collect(Collectors.joining(", ")));
+		if (!hosts.isEmpty())
+			parts.add("the hosts " + String.join(", ", hosts));
+		return String.join(" and ", parts);
 	}
 
 	/**

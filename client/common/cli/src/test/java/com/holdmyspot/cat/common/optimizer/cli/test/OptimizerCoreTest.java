@@ -2114,6 +2114,295 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that a resumed {@code start} that names a file whose permissions differ from the campaign's refuses,
+	 * names the writes and hosts that the file adds and removes but not those it keeps, tells the user to start a new
+	 * campaign with the file, and starts no session and changes nothing.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails other than by a refusal
+	 */
+	@Test
+	public void resumeRefusesChangedExtraPermissions() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path directory = scope.add(Files.createTempDirectory("cat-extra-"));
+			Path recorded = extraPermissionsFile(directory, "recorded.json", "[\"/cache/kept\", \"/cache/removed\"]",
+				"[\"kept.example.com\", \"removed.example.com\"]");
+			Path changed = extraPermissionsFile(directory, "changed.json", "[\"/cache/kept\", \"/cache/added\"]",
+				"[\"kept.example.com\", \"added.example.com\"]");
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, recorded).
+				status().campaignId();
+			Header before = repository.load(id).header();
+			int requests = repository.sessions().requests.size();
+
+			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
+				null, changed));
+
+			requireThat(refusal, "refusal").contains(changed.toString()).contains("/cache/added").
+				contains("added.example.com").contains("/cache/removed").contains("removed.example.com").
+				doesNotContain("/cache/kept").doesNotContain("kept.example.com").contains("start a new campaign");
+			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+			requireThat(repository.load(id).header(), "header").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} refuses a file of permissions for a campaign that recorded none, naming
+	 * the entries.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails other than by a refusal
+	 */
+	@Test
+	public void resumeRefusesPermissionsAddedToNone() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path file = extraPermissionsFile(scope.add(Files.createTempDirectory("cat-extra-")), "file.json",
+				"[\"/cache/one\"]", "[\"one.example.com\"]");
+			repository.core().start(Path.of("CLAUDE.md"));
+
+			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
+				null, file));
+
+			requireThat(refusal, "refusal").contains("/cache/one").contains("one.example.com").
+				contains("start a new campaign");
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} refuses a file that only removes the campaign's permissions, naming the
+	 * entries.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails other than by a refusal
+	 */
+	@Test
+	public void resumeRefusesPermissionsRemoved() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path directory = scope.add(Files.createTempDirectory("cat-extra-"));
+			Path recorded = extraPermissionsFile(directory, "recorded.json", "[\"/cache/one\"]",
+				"[\"one.example.com\"]");
+			Path empty = extraPermissionsFile(directory, "empty.json", "[]", "[]");
+			repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, recorded);
+
+			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
+				null, empty));
+
+			requireThat(refusal, "refusal").contains("/cache/one").contains("one.example.com").
+				contains("start a new campaign");
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} that names a file with the campaign's permissions, however its entries are
+	 * ordered, continues the campaign without starting a new one.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails
+	 */
+	@Test
+	public void resumeKeepsReorderedPermissions() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path directory = scope.add(Files.createTempDirectory("cat-extra-"));
+			Path recorded = extraPermissionsFile(directory, "recorded.json", "[\"/cache/a\", \"/cache/b\"]",
+				"[\"a.example.com\", \"b.example.com\"]");
+			Path reordered = extraPermissionsFile(directory, "reordered.json", "[\"/cache/b\", \"/cache/a\"]",
+				"[\"B.example.com\", \"a.example.com\"]");
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, recorded).
+				status().campaignId();
+
+			String resumed = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, reordered).
+				status().campaignId();
+
+			requireThat(resumed, "resumed").isEqualTo(id);
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} that names no file continues a campaign that has extra permissions
+	 * without changing them.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails
+	 */
+	@Test
+	public void resumeKeepsPermissionsWithoutFile() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path file = extraPermissionsFile(scope.add(Files.createTempDirectory("cat-extra-")), "file.json",
+				"[\"/cache/a\"]", "[\"a.example.com\"]");
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, file).status().
+				campaignId();
+			Header before = repository.load(id).header();
+
+			String resumed = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			requireThat(resumed, "resumed").isEqualTo(id);
+			requireThat(repository.load(id).header(), "header").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} that names a goal that differs from the campaign's refuses, names both
+	 * goals and tells the user to start a new campaign, and starts no session and changes nothing.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails other than by a refusal
+	 */
+	@Test
+	public void resumeRefusesChangedGoal() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String recorded = "Replies stay brief without dropping facts.";
+			String named = "Replies cite their sources.";
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, recorded).status().
+				campaignId();
+			int requests = repository.sessions().requests.size();
+
+			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
+				named));
+
+			requireThat(refusal, "refusal").contains(recorded).contains(named).contains("start a new campaign");
+			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+			requireThat(repository.load(id).header().goal(), "goal").isEqualTo(recorded);
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} refuses a goal for a campaign that recorded none and says that the
+	 * campaign has none.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails other than by a refusal
+	 */
+	@Test
+	public void resumeRefusesGoalAddedToNone() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String named = "Replies cite their sources.";
+			repository.core().start(Path.of("CLAUDE.md"));
+
+			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
+				named));
+
+			requireThat(refusal, "refusal").contains(named).contains("no goal").contains("start a new campaign");
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} that names the campaign's own goal continues the campaign.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails
+	 */
+	@Test
+	public void resumeKeepsSameGoal() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String goal = "Replies stay brief without dropping facts.";
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, goal).status().
+				campaignId();
+
+			String resumed = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, goal).status().
+				campaignId();
+
+			requireThat(resumed, "resumed").isEqualTo(id);
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} that names no goal continues a campaign that has one without changing it.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails
+	 */
+	@Test
+	public void resumeKeepsGoalWithoutGoal() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String goal = "Replies stay brief without dropping facts.";
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, goal).status().
+				campaignId();
+
+			String resumed = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			requireThat(resumed, "resumed").isEqualTo(id);
+			requireThat(repository.load(id).header().goal(), "goal").isEqualTo(goal);
+		}
+	}
+
+	/**
+	 * Verifies that a resumed {@code start} whose goal and permissions both differ names both in one refusal.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails other than by a refusal
+	 */
+	@Test
+	public void resumeRefusalNamesGoalAndPermissions() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path file = extraPermissionsFile(scope.add(Files.createTempDirectory("cat-extra-")), "file.json",
+				"[\"/cache/one\"]", "[]");
+			repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, "Replies stay brief.");
+
+			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
+				"Replies cite their sources.", file));
+
+			requireThat(refusal, "refusal").contains("Replies stay brief.").contains("Replies cite their sources.").
+				contains("/cache/one");
+		}
+	}
+
+	/**
+	 * Writes a file of extra permissions.
+	 *
+	 * @param directory the directory that receives the file
+	 * @param name      the file's name
+	 * @param writes    the JSON array of the writes
+	 * @param hosts     the JSON array of the hosts
+	 * @return the file
+	 * @throws IOException if the file cannot be written
+	 */
+	private static Path extraPermissionsFile(Path directory, String name, String writes, String hosts)
+		throws IOException
+	{
+		return Files.writeString(directory.resolve(name),
+			"{\"format_version\": 1, \"writes\": " + writes + ", \"hosts\": " + hosts + "}");
+	}
+
+	/**
 	 * Verifies that a refused proposal gets one correction turn in the same contract author session, which names the
 	 * refusal reasons, and that the corrected proposal is presented.
 	 *
