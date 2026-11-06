@@ -90,7 +90,8 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   installed release; continuing would retain nothing. Its turn-2 failure was the 260-character hook-results folder
   name, fixed by `433105b048`, which the installed build contains. The fresh run copies the whole `deficient` fixture,
   including `.cat/tests/CLAUDE/prompt.json` (the parked copy omitted it). The parked campaign stays as it is until the
-  user decides what to do with it.
+  user decides what to do with it. The fresh run's project is prepared at
+  `~/cat/worktrees/e1-claude-fresh/project` (the whole fixture, committed); it has not started.
 - **Gate 2 refresh (2026-11-06, `final-gates-lLlQqp/refresh-2026-11-06/`):** 2,181 tags in 205 test sources; after
   `d027d5f5bc` tagged the replacement tests for R-I6, only R-I1 is untagged (native receipts pending); no unknown tags.
 - **Gate 1/6 builds on `4bda867300` (2026-11-06, `reports/gate1-build.md`):** clean whole-reactor `verify` passed in
