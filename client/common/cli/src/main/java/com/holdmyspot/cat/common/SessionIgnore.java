@@ -16,6 +16,7 @@ import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.BooleanSupplier;
 
 /**
  * Keeps the CAT session directories out of Git by adding them to the {@code .gitignore} of the project's root
@@ -109,7 +110,7 @@ public final class SessionIgnore
 			return Optional.empty();
 		Path project = projectRoot.toAbsolutePath().normalize();
 		Path file = project.resolve(FILE_NAME);
-		int status;
+		Integer status;
 		try
 		{
 			status = git.checkIgnore(project, SessionDirectory.ROOT + "/probe");
@@ -117,14 +118,13 @@ public final class SessionIgnore
 		catch (IOException _)
 		{
 			// Git cannot start, so the project is not in a Git work tree that CAT can inspect
-			return Optional.empty();
+			status = null;
 		}
-		if (status == 0)
+		Action action = decide(status, () -> isInsideWorkTree(git, project));
+		if (action == Action.NOTHING)
 			return Optional.empty();
-		if (status != 1)
+		if (action == Action.REPORT_UNKNOWN)
 		{
-			if (!isInsideWorkTree(git, project))
-				return Optional.empty();
 			return Optional.of(failure(file, "Git could not tell whether it ignores " + SessionDirectory.ROOT +
 				" (git check-ignore exited with status " + status + ")"));
 		}
@@ -140,6 +140,28 @@ public final class SessionIgnore
 		String added = "CAT added " + ENTRY + " to " + file + " so that its per-session files stay out of Git.";
 		return Optional.of(new IgnoreNotice(added + " Commit the change when convenient.",
 			added + " Tell the user that this change is theirs to commit; do not stage or commit it."));
+	}
+
+	/**
+	 * Decides what CAT does about a project's {@code .gitignore} from what Git said about the project.
+	 *
+	 * @param checkIgnoreStatus the exit status of {@code git check-ignore --quiet --no-index} for a path in the CAT
+	 *   session directories, or {@code null} if Git cannot start
+	 * @param insideWorkTree    tells whether Git reports that the project is inside a work tree; it is consulted only
+	 *   when {@code checkIgnoreStatus} is neither {@code 0} nor {@code 1}
+	 * @return what CAT does
+	 * @throws NullPointerException if {@code insideWorkTree} is null
+	 */
+	public static Action decide(Integer checkIgnoreStatus, BooleanSupplier insideWorkTree)
+	{
+		requireThat(insideWorkTree, "insideWorkTree").isNotNull();
+		if (checkIgnoreStatus == null || checkIgnoreStatus == 0)
+			return Action.NOTHING;
+		if (checkIgnoreStatus == 1)
+			return Action.ADD_ENTRY;
+		if (insideWorkTree.getAsBoolean())
+			return Action.REPORT_UNKNOWN;
+		return Action.NOTHING;
 	}
 
 	/**
@@ -293,6 +315,27 @@ public final class SessionIgnore
 		 * @throws IOException if Git cannot start or fails, such as outside any repository
 		 */
 		List<String> isInsideWorkTree(Path directory) throws IOException;
+	}
+
+	/**
+	 * What CAT does about a project's {@code .gitignore}.
+	 */
+	public enum Action
+	{
+		/**
+		 * CAT leaves {@code .gitignore} alone and tells nothing: Git already ignores the CAT session directories, or
+		 * the project is not in a Git work tree that CAT can inspect.
+		 */
+		NOTHING,
+		/**
+		 * CAT adds {@link #BLOCK} to {@code .gitignore}, unless a line of the file is already {@link #ENTRY}.
+		 */
+		ADD_ENTRY,
+		/**
+		 * CAT leaves {@code .gitignore} alone and tells that Git could not say whether it ignores the CAT session
+		 * directories in a work tree.
+		 */
+		REPORT_UNKNOWN
 	}
 
 	/**

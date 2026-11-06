@@ -7,7 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.git.Git;
 import java.io.IOException;
@@ -32,8 +32,10 @@ import tools.jackson.databind.json.JsonMapper;
  * Tests that creating a project's first CAT session directory keeps the CAT session directories out of Git through
  * the project's {@code .gitignore}.
  * <p>
- * {@link #addsLinesInRealWorkTree()} runs real Git and is the end-to-end check that Git's answers reach the
- * decision. The other tests give the decision Git's answers through {@link GitAnswers} and start no Git.
+ * Each test that opens a session directory asks real Git about a project that {@link GitProjects} makes a work tree,
+ * and {@link #addsLinesInRealWorkTree()} uses a work tree that {@code git init} creates. The decision from Git's
+ * exit status and output is tested by calling {@link SessionIgnore#decide(Integer, java.util.function.BooleanSupplier)}
+ * with the statuses that Git gives.
  */
 public final class SessionIgnoreTest
 {
@@ -92,8 +94,8 @@ public final class SessionIgnoreTest
 				resolve("project"));
 			Files.writeString(project.resolve(".gitignore"), "build/", UTF_8);
 
-			SessionDirectory first = open(project, GitAnswers.NOT_IGNORED);
-			SessionDirectory second = open(project, GitAnswers.NOT_IGNORED);
+			SessionDirectory first = open(project, GitProjects.NOT_IGNORING);
+			SessionDirectory second = open(project, GitProjects.NOT_IGNORING);
 
 			requireThat(Files.readString(project.resolve(".gitignore"), UTF_8), "gitignore").
 				isEqualTo("build/\n" + LINES);
@@ -121,10 +123,11 @@ public final class SessionIgnoreTest
 			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
 				resolve("project"));
 			String sessionId = UUID.randomUUID().toString();
-			GitAnswers.IGNORED.open(project, sessionId, HARNESS_A, project.resolve("configuration"), CREATED,
+			GitProjects.IGNORING.open(project, sessionId, HARNESS_A, project.resolve("configuration"), CREATED,
 				JsonMapper.builder().build());
+			Files.writeString(project.resolve(".git/info/exclude"), "", UTF_8);
 
-			SessionDirectory reopened = GitAnswers.NOT_IGNORED.open(project, sessionId, HARNESS_A,
+			SessionDirectory reopened = GitProjects.NOT_IGNORING.open(project, sessionId, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
 
 			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
@@ -146,7 +149,7 @@ public final class SessionIgnoreTest
 			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
 				resolve("project"));
 
-			SessionDirectory session = open(project, GitAnswers.NOT_IGNORED);
+			SessionDirectory session = open(project, GitProjects.NOT_IGNORING);
 
 			requireThat(Files.readString(project.resolve(".gitignore"), UTF_8), "gitignore").isEqualTo(LINES);
 			requireThat(session.ignoreNotice(), "ignoreNotice").isPresent();
@@ -166,7 +169,7 @@ public final class SessionIgnoreTest
 			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
 				resolve("project"));
 
-			SessionDirectory session = open(project, GitAnswers.IGNORED);
+			SessionDirectory session = open(project, GitProjects.IGNORING);
 
 			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
 			requireThat(session.ignoreNotice(), "ignoreNotice").isEmpty();
@@ -174,34 +177,31 @@ public final class SessionIgnoreTest
 	}
 
 	/**
-	 * Verifies that a project outside a Git work tree, in a bare repository or outside any repository, or where Git
-	 * cannot start, gets no {@code .gitignore} and no notice.
+	 * Verifies that a project that is the directory of a bare repository gets no {@code .gitignore} and no notice,
+	 * because Git cannot say what it ignores outside a work tree.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void writesNothingWhenNotInWorkTree() throws IOException
+	public void writesNothingInBareRepository() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-ignore-"));
-			Map<String, GitAnswers> answers = Map.of("bare", new GitAnswers(128, List.of("false")),
-				"noRepository", new GitAnswers(128, null), "noGit", new GitAnswers(null, null));
-			for (Map.Entry<String, GitAnswers> answer : answers.entrySet())
-			{
-				Path project = Files.createDirectories(root.resolve(answer.getKey()));
+			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
+				resolve("project"));
+			new Git(project).run("init", "--quiet", "--bare");
 
-				SessionDirectory session = open(project, answer.getValue());
+			SessionDirectory session = open(project);
 
-				requireThat(Files.exists(project.resolve(".gitignore")), answer.getKey() + ".gitignoreExists").isFalse();
-				requireThat(session.ignoreNotice(), answer.getKey() + ".ignoreNotice").isEmpty();
-			}
+			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
+			requireThat(session.ignoreNotice(), "ignoreNotice").isEmpty();
 		}
 	}
 
 	/**
-	 * Verifies that when Git fails to tell whether it ignores the CAT session directories in a work tree, CAT leaves
-	 * {@code .gitignore} alone and tells the user that it could not add the entry, naming Git's exit status.
+	 * Verifies that when Git fails to tell whether it ignores the CAT session directories in a work tree, here because
+	 * {@code .cat} is a symbolic link, CAT leaves {@code .gitignore} alone and tells the user that it could not add the
+	 * entry, naming Git's exit status.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -210,10 +210,11 @@ public final class SessionIgnoreTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
-				resolve("project"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-ignore-"));
+			Path project = GitWorkTrees.notIgnoring(root.resolve("project"));
+			Files.createSymbolicLink(project.resolve(".cat"), Files.createDirectories(root.resolve("elsewhere")));
 
-			SessionDirectory session = open(project, new GitAnswers(128, List.of("true")));
+			SessionDirectory session = open(project, GitProjects.NOT_IGNORING);
 
 			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
 			SessionIgnore.IgnoreNotice notice = session.ignoreNotice().orElseThrow();
@@ -222,6 +223,25 @@ public final class SessionIgnoreTest
 				contains("git check-ignore exited with status 128");
 			requireThat(notice.forAgent(), "forAgent").contains("do not change that file yourself.");
 		}
+	}
+
+	/**
+	 * Verifies what CAT does for each status that Git gives for the check of the CAT session directories and each
+	 * answer to whether the project is in a work tree, including the cases that real Git does not produce on demand,
+	 * such as Git failing to start.
+	 */
+	@Test
+	public void decidesFromGitStatus()
+	{
+		requireThat(SessionIgnore.decide(0, () -> true), "ignored").isEqualTo(SessionIgnore.Action.NOTHING);
+		requireThat(SessionIgnore.decide(1, () -> true), "notIgnored").isEqualTo(SessionIgnore.Action.ADD_ENTRY);
+		requireThat(SessionIgnore.decide(null, () -> true), "gitCannotStart").isEqualTo(SessionIgnore.Action.NOTHING);
+		requireThat(SessionIgnore.decide(128, () -> true), "failedInWorkTree").
+			isEqualTo(SessionIgnore.Action.REPORT_UNKNOWN);
+		requireThat(SessionIgnore.decide(128, () -> false), "failedOutsideWorkTree").
+			isEqualTo(SessionIgnore.Action.NOTHING);
+		requireThat(SessionIgnore.decide(2, () -> true), "otherStatusInWorkTree").
+			isEqualTo(SessionIgnore.Action.REPORT_UNKNOWN);
 	}
 
 	/**
@@ -240,7 +260,7 @@ public final class SessionIgnoreTest
 			String content = "/.cat/sessions/\n!/.cat/sessions/\n";
 			Files.writeString(project.resolve(".gitignore"), content, UTF_8);
 
-			SessionDirectory session = open(project, GitAnswers.NOT_IGNORED);
+			SessionDirectory session = open(project, GitProjects.NOT_IGNORING);
 
 			requireThat(Files.readString(project.resolve(".gitignore"), UTF_8), "gitignore").isEqualTo(content);
 			requireThat(session.ignoreNotice(), "ignoreNotice").isEmpty();
@@ -262,7 +282,7 @@ public final class SessionIgnoreTest
 		{
 			Path project = isolated.getPath("/");
 
-			SessionDirectory session = open(project, GitAnswers.NOT_IGNORED);
+			SessionDirectory session = open(project, GitProjects.NOT_IGNORING);
 
 			requireThat(session.temp(), "temp").isDirectory();
 			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
@@ -288,7 +308,7 @@ public final class SessionIgnoreTest
 				resolve("project"));
 			List<Callable<SessionDirectory>> sessions = new ArrayList<>();
 			for (int index = 0; index < 8; ++index)
-				sessions.add(() -> open(project, GitAnswers.NOT_IGNORED));
+				sessions.add(() -> open(project, GitProjects.NOT_IGNORING));
 
 			int notices = 0;
 			for (Future<SessionDirectory> session : executor.invokeAll(sessions))
@@ -318,7 +338,7 @@ public final class SessionIgnoreTest
 				resolve("project"));
 			Files.createDirectories(project.resolve(".gitignore"));
 
-			SessionDirectory session = open(project, GitAnswers.NOT_IGNORED);
+			SessionDirectory session = open(project, GitProjects.NOT_IGNORING);
 
 			requireThat(session.temp(), "temp").isDirectory();
 			requireThat(session.ignoreNotice().orElseThrow().forUser(), "notice").
@@ -355,15 +375,15 @@ public final class SessionIgnoreTest
 	}
 
 	/**
-	 * Opens the CAT session directory of a new session, deciding about the project's {@code .gitignore} from given Git
-	 * answers.
+	 * Opens the CAT session directory of a new session, asking real Git about a project that becomes the given kind of
+	 * work tree.
 	 *
 	 * @param project the project
-	 * @param git     what Git answers about the project
+	 * @param git     the kind of work tree that the project is
 	 * @return the session directory
 	 * @throws IOException if the directory cannot be created
 	 */
-	private static SessionDirectory open(Path project, GitAnswers git) throws IOException
+	private static SessionDirectory open(Path project, GitProjects git) throws IOException
 	{
 		return git.open(project, UUID.randomUUID().toString(), HARNESS_A, project.resolve("configuration"), CREATED,
 			JsonMapper.builder().build());

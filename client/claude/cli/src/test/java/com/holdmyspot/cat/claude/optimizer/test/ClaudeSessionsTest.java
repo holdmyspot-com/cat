@@ -2,7 +2,7 @@ package com.holdmyspot.cat.claude.optimizer.test;
 
 import com.holdmyspot.cat.common.JvmScope;
 
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -467,7 +467,7 @@ public final class ClaudeSessionsTest
 			JsonMapper json = JsonMapper.builder().build();
 			String sessionId = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
 			String otherSessionId = "5a7c9e1b-3d2f-4a6b-8c0e-9f1d3b5a7c2e";
-			SessionDirectory session = GitAnswers.openSession(root, sessionId, ClaudeSessionHarness.HARNESS,
+			SessionDirectory session = GitProjects.openSession(root, sessionId, ClaudeSessionHarness.HARNESS,
 				root.resolve("configuration"), Instant.EPOCH, json);
 			Path heldOut = Files.createDirectories(session.campaigns().resolve("c1/held_out"));
 			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/sessions/" + otherSessionId +

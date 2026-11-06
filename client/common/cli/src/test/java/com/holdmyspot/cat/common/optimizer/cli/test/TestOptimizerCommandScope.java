@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
@@ -42,8 +42,8 @@ import java.util.random.RandomGenerator;
  * creates.
  * <p>
  * The command runs in the host session {@link #SESSION_ID} unless the test names another one. Opening its CAT session
- * directory starts no Git: the scope answers that Git already ignores the CAT session directories unless the test
- * gives other answers.
+ * directory asks real Git about the project, which is a work tree that ignores the CAT session directories unless
+ * the test names another kind.
  * <p>
  * The launcher reports version {@code 1.0} and counts how often it runs. The clock starts at
  * {@code 2026-10-01T00:00:00Z}, and campaign identifiers, split salts and draw seeds come from a seeded generator.
@@ -79,7 +79,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 	};
 	private volatile ExecutableFiles.ProcessLauncher processes = ProcessBuilder::start;
-	private volatile GitAnswers git = GitAnswers.IGNORED;
+	private volatile GitProjects git = GitProjects.IGNORING;
 	private final ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(
 		Thread::yield, Clock.systemUTC(), this::startProcess);
 
@@ -239,13 +239,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	}
 
 	/**
-	 * Sets what Git answers when a command opens the session's CAT session directory and asks whether Git ignores the
-	 * CAT session directories.
+	 * Sets the kind of Git work tree that the project is when a command opens the session's CAT session directory and
+	 * real Git is asked whether it ignores the CAT session directories.
 	 *
-	 * @param git the answers
+	 * @param git the kind of work tree
 	 * @throws NullPointerException if {@code git} is null
 	 */
-	void answerGit(GitAnswers git)
+	void useGit(GitProjects git)
 	{
 		requireThat(git, "git").isNotNull();
 		this.git = git;

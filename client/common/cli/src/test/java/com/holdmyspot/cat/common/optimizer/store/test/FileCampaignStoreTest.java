@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.store.test;
 
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -1233,7 +1233,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-campaign-layout-"));
-			SessionDirectory session = GitAnswers.openSession(project, SESSION_ID, SessionHarnesses.HARNESS_A,
+			SessionDirectory session = GitProjects.openSession(project, SESSION_ID, SessionHarnesses.HARNESS_A,
 				project.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path campaigns = session.campaigns();
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());

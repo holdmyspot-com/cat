@@ -8,7 +8,7 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
@@ -1222,9 +1222,10 @@ public final class OptimizerCoreTest
 	 * @param tracked the files, relative to the project, that Git tracks
 	 * @param contractAuthorEnd how every contract author session ends instead of completing with
 	 *   {@code contractAuthor}'s response, or null to let the contract author complete
-	 * @param notIgnored {@code true} if Git answers that it does not ignore the CAT session directories, so that the
-	 *   first command's session directory adds CAT's lines to the project's {@code .gitignore}; {@code false} if Git
-	 *   answers that it ignores them and the host session's CAT session directory exists before any command runs
+	 * @param notIgnored {@code true} if the project is a Git work tree that does not ignore the CAT session
+	 *   directories, so that the first command's session directory adds CAT's lines to the project's
+	 *   {@code .gitignore}; {@code false} if the project ignores them and the host session's CAT session directory
+	 *   exists before any command runs
 	 * @return the repository
 	 * @throws IOException if the repository cannot be written
 	 */
@@ -1263,7 +1264,7 @@ public final class OptimizerCoreTest
 		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
 			tracked, clock -> new ScriptedSessions(clock, script));
 		if (notIgnored)
-			command.answerGit(GitAnswers.NOT_IGNORED);
+			command.useGit(GitProjects.NOT_IGNORING);
 		else
 		{
 			// The host session's CAT session directory exists before any command runs in it

@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -705,8 +705,8 @@ public final class ClaudeSessionStartHookTest
 				project.resolve(".claude").toString());
 			String input = "{\"cwd\":" + jsonString(project) + ",\"session_id\":\"" + SESSION_ID + "\"}";
 
-			HookResult first = invoke(new String[0], input, environment, project, GitAnswers.NOT_IGNORED);
-			HookResult second = invoke(new String[0], input, environment, project, GitAnswers.NOT_IGNORED);
+			HookResult first = invoke(new String[0], input, environment, project, GitProjects.NOT_IGNORING);
+			HookResult second = invoke(new String[0], input, environment, project, GitProjects.NOT_IGNORING);
 
 			requireThat(scope.json().readTree(first.output()).path("systemMessage").asString(), "systemMessage").
 				contains("CAT added /.cat/sessions/ to " + project.resolve(".gitignore")).
@@ -1104,21 +1104,21 @@ public final class ClaudeSessionStartHookTest
 	 */
 	private static HookResult invoke(String[] args, String input, Map<String, String> environment, Path workingDirectory)
 	{
-		return invoke(args, input, environment, workingDirectory, GitAnswers.IGNORED);
+		return invoke(args, input, environment, workingDirectory, GitProjects.IGNORING);
 	}
 
 	/**
-	 * Runs the SessionStart hook with supplied arguments and Git answers, and captures its standard streams.
+	 * Runs the SessionStart hook with supplied arguments and a kind of Git work tree, and captures its standard streams.
 	 *
 	 * @param args the command-line arguments
 	 * @param input the hook input
 	 * @param environment the process environment
 	 * @param workingDirectory the process working directory
-	 * @param git what Git answers about the project
+	 * @param git the kind of Git work tree that the project is
 	 * @return the captured standard streams
 	 */
 	private static HookResult invoke(String[] args, String input, Map<String, String> environment, Path workingDirectory,
-		GitAnswers git)
+		GitProjects git)
 	{
 		assert args != null;
 		assert input != null;
@@ -1158,7 +1158,7 @@ public final class ClaudeSessionStartHookTest
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		ClaudeSubagentStartHookSecrets.getClaudeSubagentStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			harnessEnvironment, workingDirectory, Yielding.waiting(), GitAnswers.IGNORED);
+			harnessEnvironment, workingDirectory, Yielding.waiting(), GitProjects.IGNORING);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

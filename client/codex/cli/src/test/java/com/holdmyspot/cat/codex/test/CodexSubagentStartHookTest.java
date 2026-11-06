@@ -9,7 +9,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -219,7 +219,7 @@ public final class CodexSubagentStartHookTest
 		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
 		CodexSubagentStartHookSecrets.getCodexSubagentStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			harnessEnvironment, workingDirectory, Yielding.waiting(), GitAnswers.IGNORED);
+			harnessEnvironment, workingDirectory, Yielding.waiting(), GitProjects.IGNORING);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

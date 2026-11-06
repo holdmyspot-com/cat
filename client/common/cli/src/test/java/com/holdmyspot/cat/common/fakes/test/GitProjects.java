@@ -7,51 +7,52 @@ import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.secrets.SessionDirectorySecrets;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Stands in for the Git binary that {@link SessionIgnore} asks whether a project ignores the CAT session directories,
- * so that a test opens a {@link SessionDirectory} without starting Git.
+ * Asks real Git whether a project ignores the CAT session directories, after making the project the kind of Git work
+ * tree that a test needs: a test does not depend on whether the build's temporary directory sits inside a Git
+ * repository or which ignore files the user's Git configuration reads.
  * <p>
- * Each answer is one that real Git gives, as recorded from Git 2.43.0: {@code check-ignore --quiet --no-index} exits
- * with status 0 when Git ignores the path, 1 when it does not, and 128 in a bare repository or outside any repository;
- * {@code rev-parse --is-inside-work-tree} prints {@code true} in a work tree, prints {@code false} in a bare repository
- * and exits with status 128 outside any repository. {@code SessionIgnoreTest} observes the work-tree, already-ignored
- * and bare-repository answers through real Git.
- *
- * @param checkIgnoreStatus the exit status of {@code git check-ignore}, or null if Git cannot start
- * @param workTreeAnswer    the output lines of {@code git rev-parse --is-inside-work-tree}, or null if it fails
+ * Before the first question about a directory that holds no work tree's {@code .git/HEAD}, it writes the files that
+ * make the directory a work tree ({@link GitWorkTrees#ignoring(Path)} or {@link GitWorkTrees#notIgnoring(Path)}). A
+ * directory that already holds a work tree is left as it is. Git itself answers every question, in about 3.5 ms.
  */
-public record GitAnswers(Integer checkIgnoreStatus, List<String> workTreeAnswer) implements SessionIgnore.GitQueries
+public final class GitProjects implements SessionIgnore.GitQueries
 {
 	/**
-	 * The answers in a project whose Git already ignores the CAT session directories, where opening a session
-	 * directory leaves {@code .gitignore} alone and reports nothing.
+	 * Projects whose Git already ignores the CAT session directories, where opening a session directory leaves
+	 * {@code .gitignore} alone and reports nothing.
 	 */
-	public static final GitAnswers IGNORED = new GitAnswers(0, List.of("true"));
+	public static final GitProjects IGNORING = new GitProjects(true);
 	/**
-	 * The answers in a Git work tree that does not ignore the CAT session directories.
+	 * Projects that are Git work trees that do not ignore the CAT session directories.
 	 */
-	public static final GitAnswers NOT_IGNORED = new GitAnswers(1, List.of("true"));
+	public static final GitProjects NOT_IGNORING = new GitProjects(false);
+	/**
+	 * Serializes the creation of work trees, so that two threads that ask about one directory do not both create it.
+	 */
+	private static final Object MONITOR = new Object();
+
+	private final boolean ignoring;
 
 	/**
-	 * Creates the answers.
+	 * Creates the questions.
 	 *
-	 * @param checkIgnoreStatus the exit status of {@code git check-ignore}, or null if Git cannot start
-	 * @param workTreeAnswer    the output lines of {@code git rev-parse --is-inside-work-tree}, or null if it fails
+	 * @param ignoring {@code true} if a project that is not yet a work tree becomes one that ignores the CAT session
+	 *   directories
 	 */
-	public GitAnswers
+	private GitProjects(boolean ignoring)
 	{
-		if (workTreeAnswer != null)
-			workTreeAnswer = List.copyOf(workTreeAnswer);
+		this.ignoring = ignoring;
 	}
 
 	/**
-	 * Opens a session's CAT session directory in a project whose Git already ignores the CAT session directories,
-	 * without starting Git.
+	 * Opens a session's CAT session directory in a project whose Git already ignores the CAT session directories.
 	 *
 	 * @param projectRoot            the session's project
 	 * @param sessionId              the harness's session ID, a UUID in canonical form
@@ -67,11 +68,12 @@ public record GitAnswers(Integer checkIgnoreStatus, List<String> workTreeAnswer)
 	public static SessionDirectory openSession(Path projectRoot, String sessionId, SessionHarness harness,
 		Path configurationDirectory, Instant now, JsonMapper json) throws IOException
 	{
-		return IGNORED.open(projectRoot, sessionId, harness, configurationDirectory, now, json);
+		return IGNORING.open(projectRoot, sessionId, harness, configurationDirectory, now, json);
 	}
 
 	/**
-	 * Opens a session's CAT session directory, deciding about the project's {@code .gitignore} from these answers.
+	 * Opens a session's CAT session directory, deciding about the project's {@code .gitignore} from what real Git says
+	 * about the project.
 	 *
 	 * @param projectRoot            the session's project
 	 * @param sessionId              the harness's session ID, a UUID in canonical form
@@ -96,20 +98,34 @@ public record GitAnswers(Integer checkIgnoreStatus, List<String> workTreeAnswer)
 	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(path, "path").isNotNull();
-		if (checkIgnoreStatus == null)
-			throw new IOException("Cannot run program \"git\": error=2, No such file or directory");
-		return checkIgnoreStatus;
+		prepare(directory);
+		return SessionIgnore.GIT_PROCESS.checkIgnore(directory, path);
 	}
 
 	@Override
 	public List<String> isInsideWorkTree(Path directory) throws IOException
 	{
 		requireThat(directory, "directory").isNotNull();
-		if (workTreeAnswer == null)
+		prepare(directory);
+		return SessionIgnore.GIT_PROCESS.isInsideWorkTree(directory);
+	}
+
+	/**
+	 * Makes a directory a work tree unless it already holds the {@code .git/HEAD} of one.
+	 *
+	 * @param directory the project
+	 * @throws IOException if the work tree cannot be created
+	 */
+	private void prepare(Path directory) throws IOException
+	{
+		synchronized (MONITOR)
 		{
-			throw new IOException("Git command failed: git rev-parse --is-inside-work-tree: fatal: not a git " +
-				"repository (or any of the parent directories): .git");
+			if (Files.exists(directory.resolve(".git/HEAD")))
+				return;
+			if (ignoring)
+				GitWorkTrees.ignoring(directory);
+			else
+				GitWorkTrees.notIgnoring(directory);
 		}
-		return workTreeAnswer;
 	}
 }

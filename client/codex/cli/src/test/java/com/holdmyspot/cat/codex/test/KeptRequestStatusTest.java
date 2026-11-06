@@ -9,7 +9,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -299,7 +299,7 @@ public final class KeptRequestStatusTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(writeJson(event).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			environment, project, Yielding.waiting(), GitAnswers.IGNORED, Platform.current(), List::of, (_, _) ->
+			environment, project, Yielding.waiting(), GitProjects.IGNORING, Platform.current(), List::of, (_, _) ->
 			{
 				throw new AssertionError("The hook started a session launcher");
 			});

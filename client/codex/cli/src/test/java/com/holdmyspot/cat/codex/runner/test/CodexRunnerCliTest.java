@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
@@ -75,7 +75,7 @@ public final class CodexRunnerCliTest
 			Path folder = Files.createDirectories(project.resolve("src"));
 
 			try (ToolScope scope = ACCESS.toolScope(folder, Map.of("CODEX_THREAD_ID", THREAD_ID,
-				"CODEX_HOME", project.resolve("codex-home").toString()), Yielding.waiting(), GitAnswers.IGNORED))
+				"CODEX_HOME", project.resolve("codex-home").toString()), Yielding.waiting(), GitProjects.IGNORING))
 			{
 				HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
 					project.resolve("artifact").toAbsolutePath().toString(), "--model", "gpt-6-luna", "--effort", "low"},
@@ -104,7 +104,7 @@ public final class CodexRunnerCliTest
 			Files.createDirectories(project.resolve(".cat"));
 			String[] args = {"--artifact", project.resolve("artifact").toAbsolutePath().toString(), "--model",
 				"gpt-6-luna", "--effort", "low"};
-			try (ToolScope scope = ACCESS.toolScope(project, Map.of(), Yielding.waiting(), GitAnswers.IGNORED))
+			try (ToolScope scope = ACCESS.toolScope(project, Map.of(), Yielding.waiting(), GitProjects.IGNORING))
 			{
 				HarnessRunnerOptions.parse(args, "codex", HarnessTemporaryRoot.from(scope));
 				throw new AssertionError("A command without a thread or --run-root chose a run root");

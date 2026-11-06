@@ -8,7 +8,7 @@ import com.holdmyspot.cat.claude.secrets.ClaudeSessionStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
@@ -210,7 +210,7 @@ public final class ClaudeSessionLauncherHookTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		ClaudeSessionStartHookSecrets.getClaudeSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(json.writeValueAsBytes(event)), output, new PrintStream(error, true, UTF_8),
-			environment, fixture.project, Yielding.waiting(), GitAnswers.IGNORED, platform, PROCESSES, starter);
+			environment, fixture.project, Yielding.waiting(), GitProjects.IGNORING, platform, PROCESSES, starter);
 		return error.toString(UTF_8);
 	}
 
@@ -229,7 +229,7 @@ public final class ClaudeSessionLauncherHookTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		ClaudeSessionEndHook.run(new String[0], new ByteArrayInputStream(json.writeValueAsBytes(event)),
 			new PrintStream(error, true, UTF_8), fixture.environment(), fixture.project, Yielding.waiting(), PROCESSES,
-			GitAnswers.IGNORED);
+			GitProjects.IGNORING);
 		return error.toString(UTF_8);
 	}
 

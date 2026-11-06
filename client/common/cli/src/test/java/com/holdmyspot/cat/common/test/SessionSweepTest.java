@@ -8,7 +8,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -308,7 +308,7 @@ public final class SessionSweepTest
 	private static SessionDirectory open(Path project, String sessionId, SessionHarness harness,
 		Path configuration, Instant created) throws IOException
 	{
-		return GitAnswers.openSession(project, sessionId, harness, configuration, created,
+		return GitProjects.openSession(project, sessionId, harness, configuration, created,
 			JsonMapper.builder().build());
 	}
 

@@ -10,7 +10,7 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -542,8 +542,8 @@ public final class CodexSessionStartHookTest
 			Map<String, String> environment = Map.of("PLUGIN_ROOT", plugin.toString(),
 				Platform.current().homeVariable(), project.resolve("home").toString());
 
-			HookResult first = invoke(event(project), environment, project, GitAnswers.NOT_IGNORED);
-			HookResult second = invoke(event(project), environment, project, GitAnswers.NOT_IGNORED);
+			HookResult first = invoke(event(project), environment, project, GitProjects.NOT_IGNORING);
+			HookResult second = invoke(event(project), environment, project, GitProjects.NOT_IGNORING);
 
 			requireThat(readResponse(first).path("systemMessage").asString(), "systemMessage").
 				contains("CAT added /.cat/sessions/ to " + project.resolve(".gitignore")).
@@ -582,7 +582,7 @@ public final class CodexSessionStartHookTest
 					",\"agent_type\":\"cat:worker\"}").getBytes(UTF_8)), subagentOutput,
 				new PrintStream(subagentError, true, UTF_8), Map.of("PLUGIN_ROOT", plugin.toString(),
 					Platform.current().homeVariable(), project.resolve("home").toString()), project, Yielding.waiting(),
-				GitAnswers.IGNORED);
+				GitProjects.IGNORING);
 			requireThat(readJson(subagentOutput.toString(UTF_8)).has("systemMessage"), "subagent.hasSystemMessage").
 				isFalse();
 			requireThat(Files.exists(listFile), "listFileAfterSubagentStart").isFalse();
@@ -872,21 +872,21 @@ public final class CodexSessionStartHookTest
 	 */
 	private static HookResult invoke(String input, Map<String, String> environment, Path workingDirectory)
 	{
-		return invoke(input, environment, workingDirectory, GitAnswers.IGNORED);
+		return invoke(input, environment, workingDirectory, GitProjects.IGNORING);
 	}
 
 	/**
-	 * Runs the SessionStart hook with supplied input, process state and Git answers, then captures its standard
-	 * streams.
+	 * Runs the SessionStart hook with supplied input, process state and a kind of Git work tree, then captures its
+	 * standard streams.
 	 *
 	 * @param input the hook input
 	 * @param environment the process environment
 	 * @param workingDirectory the process working directory
-	 * @param git what Git answers about the project
+	 * @param git the kind of Git work tree that the project is
 	 * @return the captured standard streams
 	 */
 	private static HookResult invoke(String input, Map<String, String> environment, Path workingDirectory,
-		GitAnswers git)
+		GitProjects git)
 	{
 		assert input != null;
 		assert environment != null;

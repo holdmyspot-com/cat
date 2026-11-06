@@ -33,7 +33,7 @@ public final class TestToolScope extends AbstractToolScope
 	 */
 	private TestToolScope(JvmScope parent)
 	{
-		super(parent, temporaryDirectory(parent), Map.of(), List.of(), GitAnswers.IGNORED);
+		super(parent, temporaryDirectory(parent), Map.of(), List.of(), GitProjects.IGNORING);
 	}
 
 	/**

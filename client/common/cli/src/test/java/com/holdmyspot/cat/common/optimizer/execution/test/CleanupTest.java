@@ -1,7 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
 import com.holdmyspot.cat.common.FileLocks;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -346,7 +346,7 @@ public final class CleanupTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-cleanup-")).toRealPath();
 			Path base = Files.createDirectory(root.resolve("base"));
 			Files.writeString(base.resolve("CLAUDE.md"), "prompt v1\n", UTF_8);
-			SessionDirectory session = GitAnswers.openSession(base, SESSION_ID, SessionHarnesses.HARNESS_A,
+			SessionDirectory session = GitProjects.openSession(base, SESSION_ID, SessionHarnesses.HARNESS_A,
 				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
 			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
 			Fixture fixture = new Fixture(new FileLocks(), base, session.campaigns(), List.of(sessionRuns,

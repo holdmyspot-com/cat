@@ -7,7 +7,7 @@ import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.fakes.test.GitAnswers;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
@@ -157,7 +157,7 @@ public final class CodexSessionLauncherHookTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(json.writeValueAsBytes(event)), output, new PrintStream(error, true, UTF_8),
-			environment, fixture.project, Yielding.waiting(), GitAnswers.IGNORED, platform, () -> ANCESTORS, starter);
+			environment, fixture.project, Yielding.waiting(), GitProjects.IGNORING, platform, () -> ANCESTORS, starter);
 		return error.toString(UTF_8);
 	}
 
