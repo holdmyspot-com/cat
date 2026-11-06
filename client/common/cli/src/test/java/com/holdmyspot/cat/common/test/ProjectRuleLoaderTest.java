@@ -877,6 +877,28 @@ public final class ProjectRuleLoaderTest
 	}
 
 	/**
+	 * Verifies the loader rejects a subagent's rule whose prerequisite only main agents load, instead of loading the
+	 * prerequisite for the subagent or omitting it.
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*dependency is not available.*")
+	public void rejectsDependencyOutsideAudience() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/dependent.md", "---\ndepends-on: [\"./main-only.md\"]\n---\n" +
+				"Dependent guidance\n");
+			write(plugin, "rules/common/main-only.md", "---\nagents: [\"main\"]\n---\nMain guidance\n");
+
+			try (ToolScope scope = new TestToolScope())
+			{
+				new ProjectRuleLoader(scope.yaml()).loadForSubagent(plugin, project, "harnessa", "worker");
+			}
+		}
+	}
+
+	/**
 	 * Verifies direct rules cannot use lazy-loaded path-scoped rules as prerequisites.
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*dependency is not available.*")
