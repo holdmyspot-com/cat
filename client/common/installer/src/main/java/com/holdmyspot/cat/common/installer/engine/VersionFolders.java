@@ -24,7 +24,9 @@ import java.util.Optional;
  * harness keeps elsewhere, in every folder that the installation's layout declares. A harness session that started
  * before an install keeps running hooks and skills from its version folder until it restarts, so the folders of the
  * active version, of the version that the active one replaced, and the folder that the running installer belongs to
- * stay; every other version folder and copy is deleted without following links. A harness that selects the folder
+ * stay; every other version folder and copy is deleted without following links, and so is every other file or folder
+ * in a folder of version folders that lies inside CAT's marketplace folder, which only the installer writes, such as
+ * the plugin that an earlier layout put in that folder itself. A harness that selects the folder
  * it runs by the folder's name would run the replaced version's folder or the running installer's folder instead of
  * the active one's when the name selects it, so neither stays then: the running installer's folder is left for
  * deletion once the installer no longer needs its own files, and the other is deleted. A folder that cannot be
@@ -206,8 +208,10 @@ final class VersionFolders
 
 	/**
 	 * Indicates whether an entry of a folder that holds copies of the plugin versions is the copy of a version that
-	 * the harness no longer needs. An entry that is not a real directory, or whose name names no plugin version in
-	 * that folder, is not one of CAT's copies.
+	 * the harness no longer needs. A link is never one of CAT's copies. In a folder inside CAT's marketplace folder,
+	 * which only the installer writes, every other entry is CAT's own, so a file, or a folder whose name names no plugin
+	 * version, is what an earlier layout of the plugin left there. Elsewhere, an entry that is not a real directory, or
+	 * whose name names no plugin version in that folder, is not one of CAT's copies.
 	 *
 	 * @param folder        the folder, one that the installation's layout declares
 	 * @param child         the entry
@@ -222,11 +226,14 @@ final class VersionFolders
 	{
 		BasicFileAttributes attributes = Files.readAttributes(child, BasicFileAttributes.class, NOFOLLOW_LINKS);
 		// Windows reports a junction as both a directory and "other"
-		if (!attributes.isDirectory() || attributes.isOther())
+		if (attributes.isSymbolicLink() || attributes.isOther())
 			return false;
+		boolean catOwned = folder.startsWith(installation.marketplaceRoot());
+		if (!attributes.isDirectory())
+			return catOwned;
 		Optional<PluginVersion> version = installation.copiedVersion(folder, child.getFileName().toString());
 		if (version.isEmpty())
-			return false;
+			return catOwned;
 		if (version.get().equals(active))
 			return false;
 		// The replaced version's folder and the running installer's folder stay unless the harness would run them

@@ -201,7 +201,9 @@ which records the newest data migration that has shaped CAT's data. An install n
 after an uninstall unless you ask to delete it.
 
 An install keeps the version folder of the active version, the folder of the version it replaced, and the folder of the
-installer that is running, and deletes every other version folder of CAT. A harness session that started before the
+installer that is running, and deletes every other version folder of CAT. In Claude Code, it also deletes every other
+file and folder in `<home>/plugins/cat-marketplace/plugins/cat/`, which only the installer writes, such as the plugin
+files that an earlier layout put directly in that folder. A harness session that started before the
 install keeps running from its folder until you restart it, which is why the replaced version's folder stays. Codex runs
 the version folder with the greatest name, so a folder that Codex would run instead of the active version, such as a
 newer version's folder after you go back to an older release, is deleted. A folder that the installer cannot delete,
