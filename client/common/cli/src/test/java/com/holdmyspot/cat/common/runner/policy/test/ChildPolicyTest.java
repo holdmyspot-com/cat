@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -16,11 +17,13 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 /**
- * Tests that {@link ChildPolicy#intersect(ParentPolicy, ChildNeeds)} gives a child session its needs only as far as
- * its parent's policy allows them. Each test's parent policy and child needs name folders in a temporary directory
- * that stands for the user's file system.
+ * Tests that {@link ChildPolicy#intersect(ParentPolicy, ChildNeeds)} gives a child session its needs when its
+ * parent's policy allows them, and refuses the child, naming every write and host that the parent's policy lacks,
+ * when it does not. Each test's parent policy and child needs name folders in a temporary directory that stands for
+ * the user's file system.
  */
 public final class ChildPolicyTest
 {
@@ -60,13 +63,13 @@ public final class ChildPolicyTest
 	}
 
 	/**
-	 * Verifies that a write that a child needs outside every folder that its parent may write is not given to the
-	 * child.
+	 * Verifies that a child that needs a write outside every folder that its parent may write is refused, and the
+	 * refusal names that write.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void dropsWriteOutsideParentWrites() throws IOException
+	public void refusesWriteOutsideParentWrites() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -76,15 +79,45 @@ public final class ChildPolicyTest
 			Path run = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(project), List.of(), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(cache), List.of(), Set.of()));
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(cache), List.of(), Set.of())));
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run));
+			requireThat(refusal.getMessage(), "message").contains(cache.toString());
 		}
 	}
 
 	/**
-	 * Verifies that a write that a child needs inside a folder its parent may write is given to the child, and one
-	 * inside a path that the parent may not write there is not.
+	 * Verifies that a child that needs several writes and hosts that its parent's policy lacks is refused once, and
+	 * that the refusal names every one of them and none that the parent allows.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void namesEveryMissingWriteAndHost() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path allowed = Files.createDirectory(project.resolve("allowed"));
+			Path firstCache = Files.createDirectory(root.resolve("first-cache"));
+			Path secondCache = Files.createDirectory(root.resolve("second-cache"));
+			Path run = Files.createDirectory(root.resolve("run"));
+			ParentPolicy parent = new ParentPolicy(true, List.of(project), List.of(), List.of(), List.of(),
+				HostAccess.listed(Set.of("allowed.example")), false, List.of());
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(firstCache, allowed, secondCache),
+					List.of(), Set.of("allowed.example", "first.example", "second.example"))));
+
+			requireThat(refusal.getMessage(), "message").contains(firstCache.toString()).
+				contains(secondCache.toString()).contains("first.example").contains("second.example").
+				doesNotContain(allowed.toString()).doesNotContain("allowed.example");
+		}
+	}
+
+	/**
+	 * Verifies that a write that a child needs inside a folder its parent may write is given to the child.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -96,15 +129,61 @@ public final class ChildPolicyTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path build = Files.createDirectory(project.resolve("build"));
+			Path run = Files.createDirectory(root.resolve("run"));
+			ParentPolicy parent = sandboxed(List.of(project), List.of(), List.of(), List.of());
+
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(build), List.of(),
+				Set.of()));
+
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, build));
+		}
+	}
+
+	/**
+	 * Verifies that a child that needs a write inside a path that its parent may not write is refused, and the
+	 * refusal names the write and the path that its parent may not write.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void refusesWriteInsideParentWriteDenial() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path project = Files.createDirectory(root.resolve("project"));
 			Path git = Files.createDirectory(project.resolve(".git"));
 			Path hooks = git.resolve("hooks");
 			Path run = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(project), List.of(git), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(build, hooks), List.of(),
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(hooks), List.of(), Set.of())));
+
+			requireThat(refusal.getMessage(), "message").contains(hooks.toString()).contains(git.toString());
+		}
+	}
+
+	/**
+	 * Verifies that a write inside the child's own run folder is given to the child even though its parent may not
+	 * write the run folder.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void keepsWriteInsideRunFolder() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path run = Files.createDirectory(root.resolve("run"));
+			Path requests = Files.createDirectory(run.resolve("requests"));
+			ParentPolicy parent = sandboxed(List.of(), List.of(), List.of(), List.of());
+
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(requests), List.of(),
 				Set.of()));
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, build));
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, requests));
 		}
 	}
 
@@ -185,41 +264,58 @@ public final class ChildPolicyTest
 
 	/**
 	 * Returns parent host access with the hosts that a child that needs {@code api.example.com},
-	 * {@code mirror.other.org} and {@code model.test} may reach under it.
+	 * {@code mirror.other.org} and {@code model.test} lacks under it.
 	 *
-	 * @return each parent access and the child's hosts
+	 * @return each parent access and the child's hosts that it does not allow
 	 */
 	@DataProvider
 	public Object[][] hostAccess()
 	{
 		return new Object[][]
 			{
-				{HostAccess.ALL, Set.of("api.example.com", "mirror.other.org", "model.test")},
-				{HostAccess.listed(Set.of("API.example.com", "*.other.org", "unused.test")),
-					Set.of("api.example.com", "mirror.other.org")},
-				{HostAccess.listed(Set.of("*.model.test", "example.com")), Set.of()},
-				{HostAccess.NONE, Set.of()}
+				{HostAccess.ALL, Set.of()},
+				{HostAccess.listed(Set.of("API.example.com", "*.other.org", "unused.test", "*.model.test")),
+					Set.of("model.test")},
+				{HostAccess.listed(Set.of("*.model.test", "example.com")),
+					Set.of("api.example.com", "mirror.other.org", "model.test")},
+				{HostAccess.NONE, Set.of("api.example.com", "mirror.other.org", "model.test")}
 			};
 	}
 
 	/**
-	 * Verifies that a child reaches each host it needs only when its parent may reach that host.
+	 * Verifies that a child reaches every host it needs when its parent may reach them, and is otherwise refused with
+	 * a refusal that names each host that its parent may not reach and no other.
 	 *
 	 * @param parentHosts the hosts that the parent may reach
-	 * @param expected    the hosts that the child may reach
+	 * @param missing     the hosts that the child needs and the parent may not reach
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test(dataProvider = "hostAccess")
-	public void limitsHostsToParentHosts(HostAccess parentHosts, Set<String> expected) throws IOException
+	public void requiresParentToReachChildHosts(HostAccess parentHosts, Set<String> missing) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
+			Set<String> needed = Set.of("api.example.com", "mirror.other.org", "model.test");
+			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), needed);
 
-			ChildPolicy child = ChildPolicy.intersect(network(parentHosts, false), new ChildNeeds(run, List.of(),
-				List.of(), Set.of("api.example.com", "mirror.other.org", "model.test")));
+			if (missing.isEmpty())
+			{
+				ChildPolicy child = ChildPolicy.intersect(network(parentHosts, false), needs);
+				requireThat(child.hosts(), "hosts").isEqualTo(needed);
+				return;
+			}
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(network(parentHosts, false), needs));
 
-			requireThat(child.hosts(), "hosts").isEqualTo(expected);
+			String message = refusal.getMessage();
+			for (String host : needed)
+			{
+				if (missing.contains(host))
+					requireThat(message, "message").contains(host);
+				else
+					requireThat(message, "message").doesNotContain(host);
+			}
 		}
 	}
 
@@ -355,10 +451,14 @@ public final class ChildPolicyTest
 			Path returningCache = outside.resolve("../project/build");
 			ParentPolicy parent = sandboxed(List.of(link), List.of(), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(cache, escapingCache,
-				returningCache), List.of(), Set.of()));
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(cache, returningCache),
+				List.of(), Set.of()));
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(escapingCache), List.of(),
+					Set.of())));
 
 			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, cache, project.resolve("build")));
+			requireThat(refusal.getMessage(), "message").contains(outside.resolve("cache").toString());
 		}
 	}
 
@@ -379,22 +479,22 @@ public final class ChildPolicyTest
 			Path run = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(project), List.of(), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(link.resolve("cache")),
-				List.of(), Set.of()));
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(link.resolve("cache")), List.of(),
+					Set.of())));
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run));
+			requireThat(refusal.getMessage(), "message").contains(root.resolve("outside/missing/cache").toString());
 		}
 	}
 
 	/**
-	 * Verifies that a session that a bounded session requests gets nothing beyond the bound: bounded by the bound as a
-	 * parent policy, it keeps the writes inside the bound's write roots, the bound's read denials and the hosts of the
-	 * bound that it needs, and loses every other write and host.
+	 * Verifies that a session that a bounded session requests gets the writes inside the bound's write roots, the
+	 * bound's read denials and the hosts of the bound that it needs.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void boundLimitsRequestedSession() throws IOException
+	public void boundGivesRequestedSessionWhatItAllows() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -402,13 +502,12 @@ public final class ChildPolicyTest
 			Path run = Files.createDirectory(root.resolve("run"));
 			Path work = Files.createDirectory(run.resolve("work"));
 			Path requested = Files.createDirectory(run.resolve("requested"));
-			Path cache = Files.createDirectory(root.resolve("cache"));
 			Path secret = Files.createDirectory(root.resolve("secret"));
 			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(secret), List.of(),
 				Set.of("model.example"), false);
 
 			ChildPolicy child = ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(requested,
-				List.of(work, cache), List.of(), Set.of("model.example", "other.example")));
+				List.of(work), List.of(), Set.of("model.example")));
 
 			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(requested, work));
 			requireThat(child.readDenials(), "readDenials").isEqualTo(List.of(secret));
@@ -417,12 +516,39 @@ public final class ChildPolicyTest
 	}
 
 	/**
-	 * Verifies that a session that a bounded session without hosts requests reaches no host.
+	 * Verifies that a session that a bounded session requests is refused when it needs a write or a host beyond the
+	 * bound, and the refusal names them.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void boundWithoutHostsReachesNone() throws IOException
+	public void boundRefusesRequestedSessionNeedingMore() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path run = Files.createDirectory(root.resolve("run"));
+			Path requested = Files.createDirectory(run.resolve("requested"));
+			Path cache = Files.createDirectory(root.resolve("cache"));
+			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of("model.example"),
+				false);
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(requested, List.of(cache),
+					List.of(), Set.of("model.example", "other.example"))));
+
+			requireThat(refusal.getMessage(), "message").contains(cache.toString()).contains("other.example").
+				doesNotContain("model.example");
+		}
+	}
+
+	/**
+	 * Verifies that a session that a bounded session without hosts requests is refused when it needs a host.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void boundWithoutHostsRefusesHost() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -430,10 +556,11 @@ public final class ChildPolicyTest
 			Path run = Files.createDirectory(root.resolve("run"));
 			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of(), false);
 
-			ChildPolicy child = ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(run, List.of(),
-				List.of(), Set.of("model.example")));
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(run, List.of(), List.of(),
+					Set.of("model.example"))));
 
-			requireThat(child.hosts(), "hosts").isEmpty();
+			requireThat(refusal.getMessage(), "message").contains("model.example");
 		}
 	}
 }

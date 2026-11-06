@@ -5,15 +5,18 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * The sandbox policy that a child session's harness enforces on the child's commands: its needs, bounded by its
- * parent's policy. Its paths are resolved as {@link ParentPolicy} describes, and the commands may write, read and
+ * The sandbox policy that a child session's harness enforces on the child's commands: its needs, which its parent's
+ * policy allows. Its paths are resolved as {@link ParentPolicy} describes, and the commands may write, read and
  * reach what {@link ParentPolicy} describes for the same components.
  *
  * @param writeRoots        the folders that the commands may write; the first is the child's run folder
@@ -50,13 +53,17 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	}
 
 	/**
-	 * Returns the policy of a child: its needs, bounded by its parent's policy.
+	 * Returns the policy of a child: its needs, which its parent's policy must allow. The child's run folder is always
+	 * allowed. Read denials only narrow the child's reads, so the parent's are added to the child's.
 	 *
 	 * @param parent the parent's policy
 	 * @param needs  the child's needs
 	 * @return the child's policy, whose paths are resolved
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if a symbolic link in a path cannot be read, or a path follows more than 40 links
+	 * @throws NullPointerException        if any of the arguments are null
+	 * @throws MissingPermissionsException if the parent is sandboxed and does not allow a write outside the child's run
+	 *                                     folder, or a host, that the child needs
+	 * @throws IOException                 if a symbolic link in a path cannot be read, or a path follows more than 40
+	 *                                     links
 	 */
 	public static ChildPolicy intersect(ParentPolicy parent, ChildNeeds needs) throws IOException
 	{
@@ -76,12 +83,22 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 
 		List<Path> parentWriteRoots = RealPaths.resolveAll(parent.writeRoots());
 		List<Path> parentWriteDenials = RealPaths.resolveAll(parent.writeDenials());
+		List<Path> missingWrites = new ArrayList<>();
+		Map<Path, Path> deniedWrites = new LinkedHashMap<>();
 		for (Path write : extraWrites)
 		{
-			boolean parentMayWrite = RealPaths.isInsideAny(write, parentWriteRoots) &&
-				!RealPaths.isInsideAny(write, parentWriteDenials);
-			if (parentMayWrite || write.startsWith(runFolder))
+			if (write.startsWith(runFolder))
 				writeRoots.add(write);
+			else if (!RealPaths.isInsideAny(write, parentWriteRoots))
+				missingWrites.add(write);
+			else
+			{
+				Path denial = deniedBy(write, parentWriteDenials);
+				if (denial == null)
+					writeRoots.add(write);
+				else
+					deniedWrites.put(write, denial);
+			}
 		}
 		List<Path> writeDenials = new ArrayList<>();
 		for (Path denial : parentWriteDenials)
@@ -100,20 +117,40 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 				readReallowances.add(reallowance);
 		}
 
-		Set<String> hosts = new LinkedHashSet<>();
+		Set<String> missingHosts = new TreeSet<>();
 		for (String host : needs.hosts())
 		{
-			if (parent.hosts().allows(host))
-				hosts.add(host);
+			if (!parent.hosts().allows(host))
+				missingHosts.add(host);
 		}
+		if (!missingWrites.isEmpty() || !deniedWrites.isEmpty() || !missingHosts.isEmpty())
+			throw new MissingPermissionsException(missingWrites, deniedWrites, missingHosts);
+		Set<String> hosts = needs.hosts();
 		return new ChildPolicy(List.copyOf(writeRoots), writeDenials, List.copyOf(readDenials), readReallowances,
 			hosts, parent.allowLocalBinding() && anyNeedsLocalBinding(hosts));
 	}
 
 	/**
-	 * Returns this policy as the policy of a parent, so that a session that the child requests in turn is bounded by
-	 * it: {@link #intersect(ParentPolicy, ChildNeeds) intersecting} the requested session's needs with it gives the
-	 * requested session nothing that this policy does not give.
+	 * Returns the first of some resolved paths that contains a resolved path.
+	 *
+	 * @param path    a resolved path
+	 * @param folders resolved paths
+	 * @return the first of {@code folders} that is {@code path} or lies above it, or {@code null} if there is none
+	 */
+	private static Path deniedBy(Path path, List<Path> folders)
+	{
+		for (Path folder : folders)
+		{
+			if (path.startsWith(folder))
+				return folder;
+		}
+		return null;
+	}
+
+	/**
+	 * Returns this policy as the policy of a parent, so that a session that the child requests in turn gets nothing
+	 * that this policy does not give: {@link #intersect(ParentPolicy, ChildNeeds) intersecting} the requested
+	 * session's needs with it refuses a need that this policy does not allow.
 	 *
 	 * @return a sandboxed parent policy with exactly this policy's accesses, which protects no source of its own
 	 */

@@ -6,7 +6,7 @@ import java.io.IOException;
  * Signals that the runner refuses to start a session because the session's sandbox would be wider than its policy or
  * could not confine it. The session's commands never run.
  */
-public final class SessionRefusedException extends IOException
+public class SessionRefusedException extends IOException
 {
 	private static final long serialVersionUID = 1L;
 

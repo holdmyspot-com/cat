@@ -516,8 +516,7 @@ public final class CodexConnectionConfigurationTest
 			Path destination = root.resolve("isolated/config.toml");
 			ParentPolicy parent = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
 				HostAccess.NONE, false, List.of());
-			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(),
-				Set.of("chatgpt.com")));
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(), Set.of()));
 
 			copy(source, destination, root.resolve("project"), policy);
 
@@ -693,8 +692,8 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies that a session may write a dependency cache only inside its parent's writes, may not write what its
-	 * parent may not write, and may not read what its parent may not read.
+	 * Verifies that a session may write a dependency cache inside its parent's writes, may not write what its parent
+	 * may not write, and may not read what its parent may not read.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -706,11 +705,10 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-filesystem-policy-")).toRealPath();
 			Path parentWrites = Files.createDirectories(root.resolve("parent-writes"));
 			Path keptCache = Files.createDirectories(parentWrites.resolve("npm-cache"));
-			Path droppedCache = Files.createDirectories(root.resolve("maven-cache"));
 			Path runFolder = Files.createDirectories(root.resolve("run"));
 			Path protectedFolder = Files.createDirectories(runFolder.resolve("home/protected"));
 			Path secret = Files.createDirectories(root.resolve("secret"));
-			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(keptCache, droppedCache), Map.of());
+			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(keptCache), Map.of());
 			ParentPolicy parent = new ParentPolicy(true, List.of(parentWrites, runFolder), List.of(protectedFolder),
 				List.of(secret), List.of(), HostAccess.NONE, false, List.of());
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, caches.directories(),
@@ -724,11 +722,8 @@ public final class CodexConnectionConfigurationTest
 			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
 			JsonNode filesystem = configuration.path("permissions").path("cat-runner").path("filesystem");
 			requireThat(filesystem.path(keptCache.toString()).asString(), "keptCache").isEqualTo("write");
-			requireThat(filesystem.has(droppedCache.toString()), "droppedCache").isFalse();
 			requireThat(filesystem.path(protectedFolder.toString()).asString(), "protectedFolder").isEqualTo("read");
 			requireThat(filesystem.path(secret.toString()).asString(), "secret").isEqualTo("deny");
-			requireThat(configuration.path("sandbox_workspace_write").path("writable_roots").toString(),
-				"writableRoots").doesNotContain(toml(droppedCache));
 		}
 	}
 

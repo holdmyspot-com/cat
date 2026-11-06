@@ -581,6 +581,77 @@ public final class SessionLauncherTest
 	}
 
 	/**
+	 * Verifies that a request is answered {@code refused}, and starts nothing, when the requested child needs a write
+	 * outside the parent's write roots and hosts that the parent may not reach; the reason names each, quotes the
+	 * settings that the parent's harness adds them to and says to start a new session.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void refusesChildNeedingMoreThanParentAllows() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			Path cache = fixture.home.resolve("cache");
+			fixture.childNeeds(List.of(cache), Set.of(MODEL_HOST, "zeta.example", "other.example"));
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(false));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+
+			requireThat(launcher.poll(), "poll").isTrue();
+			fixture.executor.awaitIdle();
+
+			Response response = fixture.response(id);
+			requireThat(response.status(), "status").isEqualTo(Status.REFUSED);
+			requireThat(response.reason(), "reason").isEqualTo("CAT cannot start the session: this " + HARNESS_NAME +
+				" session's sandbox does not let its commands write " + cache + " and reach other.example, " +
+				"zeta.example, which the requested session needs. To allow this, add [" + cache + "] and " +
+				"[other.example, zeta.example] to the settings of " + HARNESS_NAME + ", then start a new " +
+				HARNESS_NAME + " session.");
+			requireThat(fixture.starter.runners(), "runners").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a request is answered {@code refused}, and starts nothing, when the requested child needs a write
+	 * inside a path that the parent's sandbox denies writing; the reason names the denial to remove, because adding
+	 * the write to the settings would not allow it.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void refusesChildNeedingWriteThatParentDenies() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			Path work = fixture.home.resolve("work");
+			Path denial = Files.createDirectory(work.resolve("protected"));
+			Path cache = denial.resolve("cache");
+			fixture.policy.allow(new ParentPolicy(true, List.of(work), List.of(denial), List.of(), List.of(),
+				HostAccess.listed(Set.of(MODEL_HOST)), false, List.of()));
+			fixture.childNeeds(List.of(cache), Set.of(MODEL_HOST));
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(false));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+
+			requireThat(launcher.poll(), "poll").isTrue();
+			fixture.executor.awaitIdle();
+
+			Response response = fixture.response(id);
+			requireThat(response.status(), "status").isEqualTo(Status.REFUSED);
+			requireThat(response.reason(), "reason").isEqualTo("CAT cannot start the session: this " + HARNESS_NAME +
+				" session's sandbox does not let its commands write " + cache + " (denied by " + denial + "), which " +
+				"the requested session needs. To allow this, remove the denial of " + denial + " from its settings, " +
+				"then start a new " + HARNESS_NAME + " session.");
+			requireThat(fixture.starter.runners(), "runners").isEmpty();
+		}
+	}
+
+	/**
 	 * Supplies runner exit statuses and the request status that each one gives.
 	 *
 	 * @return the exit status and the request status
@@ -711,6 +782,8 @@ public final class SessionLauncherTest
 		private final Path turns;
 		private final Path nullDevice;
 		private final Policy policy;
+		private List<Path> childWrites = List.of();
+		private Set<String> childHosts = Set.of(MODEL_HOST);
 		private long nextPid = 1000;
 
 		/**
@@ -747,6 +820,18 @@ public final class SessionLauncherTest
 		}
 
 		/**
+		 * Sets the writes outside its run folder and the hosts that the requested child's runner reports it needs.
+		 *
+		 * @param writes the paths that the child writes
+		 * @param hosts  the hosts that the child reaches
+		 */
+		private void childNeeds(List<Path> writes, Set<String> hosts)
+		{
+			childWrites = writes;
+			childHosts = hosts;
+		}
+
+		/**
 		 * Creates a launcher for a harness process.
 		 *
 		 * @param harnessProcess the harness process
@@ -754,8 +839,8 @@ public final class SessionLauncherTest
 		 */
 		private SessionLauncher launcher(ProcessIdentity harnessProcess)
 		{
-			ChildNeedsSource needs = (_, runFolder, deniedReads, _) -> new ChildNeeds(runFolder, List.of(),
-				deniedReads, Set.of(MODEL_HOST, "other.example"));
+			ChildNeedsSource needs = (_, runFolder, deniedReads, _) -> new ChildNeeds(runFolder, childWrites,
+				deniedReads, childHosts);
 			return new SessionLauncher(channel, "harness-a", harnessProcess, processes, policy, needs, starter,
 				fileLocks, clock, executor);
 		}

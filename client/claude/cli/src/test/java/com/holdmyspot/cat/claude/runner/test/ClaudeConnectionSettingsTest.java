@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.claude.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -800,7 +801,6 @@ public final class ClaudeConnectionSettingsTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-child-policy-")).toRealPath();
 			Path run = Files.createDirectories(root.resolve("run"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
-			Path outsideCache = Files.createDirectories(root.resolve("outside-cache"));
 			Path locked = Files.createDirectories(run.resolve("home/locked"));
 			Path secrets = Files.createDirectories(root.resolve("secrets"));
 			Path shared = Files.createDirectories(secrets.resolve("shared"));
@@ -822,7 +822,7 @@ public final class ClaudeConnectionSettingsTest
 				List.of(shared), Set.of("api.example", "other.example"), false);
 
 			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
-				claudeTemporaryDirectory, claudeHome, List.of(cache, outsideCache), run, List.of(snapshot), "", null,
+				claudeTemporaryDirectory, claudeHome, List.of(cache), run, List.of(snapshot), "", null,
 				null, bound, "api.example");
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
@@ -843,7 +843,38 @@ public final class ClaudeConnectionSettingsTest
 				snapshot.toString()));
 			requireThat(strings(filesystem.path("allowRead")), "allowRead").isEqualTo(List.of(shared.toString()));
 			requireThat(effective.hosts(), "hosts").isEqualTo(Set.of("api.example"));
-			requireThat(effective.writeRoots(), "writeRoots").doesNotContain(outsideCache);
+			requireThat(effective.writeRoots(), "writeRoots").contains(cache);
+		}
+	}
+
+	/**
+	 * Verifies that a session whose dependency cache lies outside every folder its bound lets the commands write is
+	 * refused, and the refusal names the cache and the host that the bound does not allow, before any settings file is
+	 * written.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesCacheOutsideBound() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-child-refusal-")).toRealPath();
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path outsideCache = Files.createDirectories(root.resolve("outside-cache"));
+			Path source = Files.writeString(root.resolve("settings.json"), "{}");
+			Path destination = root.resolve("isolated/settings.json");
+			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of("api.example"),
+				false);
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
+					run.resolve("claude"), run.resolve("home"), List.of(outsideCache), run, List.of(), "", null, null,
+					bound, "model.example"));
+
+			requireThat(refusal.getMessage(), "message").contains(outsideCache.toString()).contains("model.example");
+			requireThat(Files.exists(destination), "written").isFalse();
 		}
 	}
 

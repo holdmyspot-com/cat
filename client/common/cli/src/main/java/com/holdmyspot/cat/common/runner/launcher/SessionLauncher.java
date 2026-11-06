@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Response;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.MissingPermissionsException;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -965,6 +966,13 @@ public final class SessionLauncher implements Closeable
 		catch (PolicyRefusal e)
 		{
 			return request.answer(Status.REFUSED, e.messageFor(policy.harnessName()));
+		}
+		catch (MissingPermissionsException e)
+		{
+			String entries = "";
+			if (!e.writes().isEmpty() || !e.hosts().isEmpty())
+				entries = policy.permissionEntries(e.writes(), e.hosts());
+			return request.answer(Status.REFUSED, e.messageFor(policy.harnessName(), entries));
 		}
 		catch (IOException e)
 		{
