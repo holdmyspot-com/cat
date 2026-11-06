@@ -404,6 +404,15 @@ session's") and goes on to say what failed and how to fix it: for example, a set
 settings file that the session's sandbox lets its commands write, or a harness option that CAT does not know. Make the
 fix that the message names, then start a new session.
 
+A session that you ask a runner to start needs a few writes outside its run folder, such as its dependency caches, and
+the host of its model. When the session that asks does not allow all of them in its sandbox, the launcher starts nothing.
+Its message begins "CAT cannot start the session: this Claude Code session's sandbox does not let its commands write
+... and reach ..., which the requested session needs." (or "this Codex session's"), lists every missing path and host
+and names the entries to add: in Claude Code, to `sandbox.filesystem.allowWrite` and `sandbox.network.allowedDomains` in
+your settings; in Codex, to the filesystem and network domain entries of your permissions profile. Add them, then start
+a new session, because a running session keeps the policy it started with. When a path lies inside a path that your
+sandbox denies writing, the message names that denial: remove it, because allowing the folder would not help.
+
 Earlier versions of this guide told you to exempt the two runner launchers from your harness's sandbox. They no longer
 need that exception, so `install` removes it and reports each removal: in Claude Code, the
 runner entries in `sandbox.excludedCommands` and `permissions.allow` of your user settings; in Codex, the file

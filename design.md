@@ -2634,7 +2634,16 @@ harness's runner launcher, resolved as the runner rule resolves it, with the req
 reads, and with no requested sessions of its own unless the caller passed `--request-depth <levels>`: each level below
 may then request as many sessions as its parent, one level less deep, and each level's runner starts its own requested
 sessions outside its session's sandbox (D107). A requested session therefore has at most the permissions of the
-session that requested it, and no credential reaches a command beyond those its harness's limits allow.
+session that requested it, and no credential reaches a command beyond those its harness's limits allow. A requested
+session needs a few writes outside its run folder (its dependency caches) and hosts (its model's host); when the
+requesting session's sandbox does not allow all of them, the launcher does not start a session with less than it
+needs: it answers the request `refused` before any harness starts, with one message that lists every missing write
+and host and, for the requesting session's harness, the settings entry that grants each (Claude Code:
+`sandbox.filesystem.allowWrite` and `sandbox.network.allowedDomains`; Codex: the permission profile's filesystem and
+network domain entries), and says to start a new session, because a running session keeps the policy it started with.
+A write inside a path that the requesting session's sandbox denies is listed with that denial, which the user removes,
+since allowing the folder would not help. The run folder stays allowed, and read denials only narrow the requested
+session (user ruling, 2026-11-06).
 It takes its own slot of its harness's shared
 capacity and honours its hold, but waits at most 10 minutes for a slot, because the requesting session keeps its own
 slot while it waits; a request that times out fails with the reason `capacity`. Ending the run or interrupting its turn
