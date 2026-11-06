@@ -42,6 +42,19 @@ public record ChildNeeds(Path runFolder, List<Path> extraWrites, List<Path> read
 			throw new IllegalArgumentException("runFolder must be absolute: " + runFolder);
 		extraWrites = ParentPolicy.absolutePaths(extraWrites, "extraWrites");
 		readDenials = ParentPolicy.absolutePaths(readDenials, "readDenials");
+		hosts = lowerCaseHosts(hosts);
+	}
+
+	/**
+	 * Returns a copy of some hosts in lower case.
+	 *
+	 * @param hosts the network hosts, as host names or literal IP addresses
+	 * @return the hosts, without surrounding whitespace, in lower case
+	 * @throws NullPointerException     if {@code hosts} is null, or contains null
+	 * @throws IllegalArgumentException if a host is blank or is a pattern that starts with {@code *}
+	 */
+	static Set<String> lowerCaseHosts(Set<String> hosts)
+	{
 		requireThat(hosts, "hosts").isNotNull();
 		Set<String> lowerCase = new LinkedHashSet<>();
 		for (String host : hosts)
@@ -51,6 +64,26 @@ public record ChildNeeds(Path runFolder, List<Path> extraWrites, List<Path> read
 				throw new IllegalArgumentException("hosts must name hosts, not patterns: " + host);
 			lowerCase.add(host.strip().toLowerCase(Locale.ROOT));
 		}
-		hosts = Set.copyOf(lowerCase);
+		return Set.copyOf(lowerCase);
+	}
+
+	/**
+	 * Returns these needs with some extra permissions added: the extra writes after the writes that these needs
+	 * already hold, each write once, and the extra hosts.
+	 *
+	 * @param extra the permissions that the caller asks for beyond what the child's harness needs
+	 * @return the needs of the same child, or these needs if {@code extra} is empty
+	 * @throws NullPointerException if {@code extra} is null
+	 */
+	public ChildNeeds with(ExtraPermissions extra)
+	{
+		requireThat(extra, "extra").isNotNull();
+		if (extra.isEmpty())
+			return this;
+		Set<Path> writes = new LinkedHashSet<>(extraWrites);
+		writes.addAll(extra.writes());
+		Set<String> allHosts = new LinkedHashSet<>(hosts);
+		allHosts.addAll(extra.hosts());
+		return new ChildNeeds(runFolder, List.copyOf(writes), readDenials, allHosts);
 	}
 }
