@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -141,6 +142,27 @@ public final class CodexProfileInventoryTest
 			public String content(TrialProfile profile)
 			{
 				return agent(profile);
+			}
+
+			@Override
+			public String supportedModel()
+			{
+				return "gpt-6.1-sol";
+			}
+
+			@Override
+			public Optional<String> unsupportedModel()
+			{
+				return Optional.of("gpt-5.2");
+			}
+
+			@Override
+			public OptionalLong toolOutputBytes(int tokenLimit)
+			{
+				// Codex keeps at most 10,000 tokens of a tool output, at 4 bytes each
+				if (tokenLimit == 0 || tokenLimit > 10_000)
+					return OptionalLong.of(40_000);
+				return OptionalLong.of(4L * tokenLimit);
 			}
 		});
 	}
@@ -369,6 +391,51 @@ public final class CodexProfileInventoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).readsCompletePartialAndEmptyBindings();
+		}
+	}
+
+	/**
+	 * Verifies that the ranking names a source and ranks every model that the inventory lists.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void ranksEveryListedModel() throws IOException
+	{
+		// Requirement: R-C10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).ranksEveryListedModel();
+		}
+	}
+
+	/**
+	 * Verifies which models the harness runs.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void supportsTheModelsItLists() throws IOException
+	{
+		// Requirement: R-C10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).supportsTheModelsItLists();
+		}
+	}
+
+	/**
+	 * Verifies the bytes of each tool output that a trial receives whole.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void reportsTheToolOutputBytesOfAProfile() throws IOException
+	{
+		// Requirement: R-C10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).reportsTheToolOutputBytesOfAProfile();
 		}
 	}
 

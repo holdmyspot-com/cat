@@ -17,6 +17,8 @@ import java.util.concurrent.CopyOnWriteArraySet;
 /**
  * A {@link ProfileInventory} with a fixed inventory and role profile.
  * <p>
+ * {@code ProfileInventoryContract} checks every answer of the fake, which runs against it and the real adapters.
+ * <p>
  * Its binding files are the {@code .agent} files under an {@code agents} directory, whose lines {@code model=VALUE}
  * and {@code effort=VALUE} bind a dimension each.
  * <p>
@@ -157,8 +159,8 @@ public final class FakeProfileInventory implements ProfileInventory
 	}
 
 	/**
-	 * Returns 40,000 bytes for every profile without a tool-output token limit, and 4 bytes per token of a profile's
-	 * limit.
+	 * Returns 4 bytes per token of a profile's tool-output token limit, up to 10,000 tokens, which is also the answer
+	 * for a profile with no limit.
 	 *
 	 * @param profile the trial profile
 	 * @return the number of bytes
@@ -167,8 +169,9 @@ public final class FakeProfileInventory implements ProfileInventory
 	public OptionalLong toolOutputBytes(TrialProfile profile)
 	{
 		requireThat(profile, "profile").isNotNull();
-		if (profile.toolOutputTokenLimit() == 0)
-			return OptionalLong.of(40_000);
-		return OptionalLong.of(4L * profile.toolOutputTokenLimit());
+		long tokens = 10_000;
+		if (profile.toolOutputTokenLimit() > 0)
+			tokens = Math.min(tokens, profile.toolOutputTokenLimit());
+		return OptionalLong.of(4 * tokens);
 	}
 }

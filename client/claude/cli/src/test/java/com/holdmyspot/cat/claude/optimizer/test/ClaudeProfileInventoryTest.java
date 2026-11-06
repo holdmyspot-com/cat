@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
 
 import org.testng.annotations.DataProvider;
@@ -87,6 +88,26 @@ public final class ClaudeProfileInventoryTest
 			public String content(TrialProfile profile)
 			{
 				return skill(profile);
+			}
+
+			@Override
+			public String supportedModel()
+			{
+				return "opus";
+			}
+
+			@Override
+			public Optional<String> unsupportedModel()
+			{
+				// Claude Code runs whatever model name the user gives it
+				return Optional.empty();
+			}
+
+			@Override
+			public OptionalLong toolOutputBytes(int tokenLimit)
+			{
+				// Claude Code does not state how much of a tool output its model receives
+				return OptionalLong.empty();
 			}
 		});
 	}
@@ -294,6 +315,51 @@ public final class ClaudeProfileInventoryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).readsCompletePartialAndEmptyBindings();
+		}
+	}
+
+	/**
+	 * Verifies that the ranking names a source and ranks every model that the inventory lists.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void ranksEveryListedModel() throws IOException
+	{
+		// Requirement: R-C10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).ranksEveryListedModel();
+		}
+	}
+
+	/**
+	 * Verifies which models the harness runs.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void supportsTheModelsItLists() throws IOException
+	{
+		// Requirement: R-C10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).supportsTheModelsItLists();
+		}
+	}
+
+	/**
+	 * Verifies the bytes of each tool output that a trial receives whole.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void reportsTheToolOutputBytesOfAProfile() throws IOException
+	{
+		// Requirement: R-C10
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).reportsTheToolOutputBytesOfAProfile();
 		}
 	}
 

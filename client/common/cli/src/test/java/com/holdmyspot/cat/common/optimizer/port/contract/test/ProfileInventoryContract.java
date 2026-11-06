@@ -2,12 +2,15 @@ package com.holdmyspot.cat.common.optimizer.port.contract.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Optional;
+import java.util.OptionalLong;
 
 /**
  * The behaviour that every {@link ProfileInventory} implementation must show, one check per operation.
@@ -58,6 +61,28 @@ public final class ProfileInventoryContract
 		 * @return the content
 		 */
 		String content(TrialProfile profile);
+
+		/**
+		 * Returns a model that the harness runs sessions under.
+		 *
+		 * @return the model's name
+		 */
+		String supportedModel();
+
+		/**
+		 * Returns a model that the harness does not run sessions under.
+		 *
+		 * @return the model's name, or empty if the harness accepts every model
+		 */
+		Optional<String> unsupportedModel();
+
+		/**
+		 * Returns the bytes of each tool output that the harness is known to give a trial whole.
+		 *
+		 * @param tokenLimit the profile's tool-output token limit, or {@code 0} if it has none
+		 * @return the number of bytes, or empty if the harness's limit is not known
+		 */
+		OptionalLong toolOutputBytes(int tokenLimit);
 	}
 
 	/**
@@ -104,5 +129,52 @@ public final class ProfileInventoryContract
 	public void roleProfileIsBound() throws IOException
 	{
 		requireThat(subject.port().roleProfile().isBound(), "roleProfile().isBound()").isTrue();
+	}
+
+	/**
+	 * Checks that the ranking names a source and ranks the family of every model that the inventory lists.
+	 *
+	 * @throws IOException if the inventory or the ranking cannot be read
+	 */
+	public void ranksEveryListedModel() throws IOException
+	{
+		CapabilityRanking ranking = subject.port().ranking();
+		requireThat(ranking.source(), "source").isNotBlank();
+		for (TrialProfile profile : subject.port().inventory().profiles())
+		{
+			requireThat(ranking.families(), "families").contains(CapabilityRanking.family(profile.model()));
+		}
+	}
+
+	/**
+	 * Checks that the harness runs the models that its inventory lists and the model that the subject supports, and
+	 * does not run the one that the subject does not support.
+	 *
+	 * @throws IOException if the inventory cannot be read
+	 */
+	public void supportsTheModelsItLists() throws IOException
+	{
+		ProfileInventory port = subject.port();
+		for (TrialProfile profile : port.inventory().profiles())
+			requireThat(port.supportsModel(profile.model()), "supportsModel(" + profile.model() + ")").isTrue();
+		requireThat(port.supportsModel(subject.supportedModel()), "supportsModel(supportedModel)").isTrue();
+		Optional<String> unsupported = subject.unsupportedModel();
+		if (unsupported.isPresent())
+			requireThat(port.supportsModel(unsupported.get()), "supportsModel(unsupportedModel)").isFalse();
+	}
+
+	/**
+	 * Checks the bytes of each tool output that a trial of a profile receives whole, for a profile with no limit, a
+	 * limit below the harness's and a limit above it.
+	 */
+	public void reportsTheToolOutputBytesOfAProfile()
+	{
+		ProfileInventory port = subject.port();
+		for (int tokenLimit : new int[]{0, 1_000, 20_000})
+		{
+			TrialProfile profile = new TrialProfile("model-a", "high", tokenLimit);
+			requireThat(port.toolOutputBytes(profile), "toolOutputBytes(" + tokenLimit + ")").
+				isEqualTo(subject.toolOutputBytes(tokenLimit));
+		}
 	}
 }

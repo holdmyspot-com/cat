@@ -6,6 +6,8 @@ import com.holdmyspot.cat.common.optimizer.port.contract.test.ProfileInventoryCo
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Optional;
+import java.util.OptionalLong;
 
 import org.testng.annotations.Test;
 
@@ -15,6 +17,8 @@ import org.testng.annotations.Test;
  */
 public final class FakeProfileInventoryContractTest
 {
+	private static final String REJECTED_MODEL = "rejected-model";
+
 	/**
 	 * Creates the test.
 	 */
@@ -30,6 +34,7 @@ public final class FakeProfileInventoryContractTest
 	private static ProfileInventoryContract contract()
 	{
 		FakeProfileInventory port = new FakeProfileInventory();
+		port.rejectModel(REJECTED_MODEL);
 		return new ProfileInventoryContract(new ProfileInventoryContract.Subject()
 		{
 			@Override
@@ -48,6 +53,27 @@ public final class FakeProfileInventoryContractTest
 			public String content(TrialProfile profile)
 			{
 				return FakeProfileInventory.content(profile);
+			}
+
+			@Override
+			public String supportedModel()
+			{
+				return "model-a";
+			}
+
+			@Override
+			public Optional<String> unsupportedModel()
+			{
+				return Optional.of(REJECTED_MODEL);
+			}
+
+			@Override
+			public OptionalLong toolOutputBytes(int tokenLimit)
+			{
+				// The fake answers as Codex does
+				if (tokenLimit == 0 || tokenLimit > 10_000)
+					return OptionalLong.of(40_000);
+				return OptionalLong.of(4L * tokenLimit);
 			}
 		});
 	}
@@ -94,5 +120,39 @@ public final class FakeProfileInventoryContractTest
 	{
 		// Requirement: R-E17
 		contract().roleProfileIsBound();
+	}
+
+	/**
+	 * Verifies that the fake ranks the family of every model that it lists.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void ranksEveryListedModel() throws IOException
+	{
+		// Requirement: R-C10
+		contract().ranksEveryListedModel();
+	}
+
+	/**
+	 * Verifies that the fake supports its listed models and rejects the one that the test rejected.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void supportsTheModelsItLists() throws IOException
+	{
+		// Requirement: R-C10
+		contract().supportsTheModelsItLists();
+	}
+
+	/**
+	 * Verifies the bytes of each tool output that the fake reports.
+	 */
+	@Test
+	public void reportsTheToolOutputBytesOfAProfile()
+	{
+		// Requirement: R-C10
+		contract().reportsTheToolOutputBytesOfAProfile();
 	}
 }
