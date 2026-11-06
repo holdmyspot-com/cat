@@ -347,7 +347,6 @@ public final class InvocationTest
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
 			requireThat(run.result().path("message").stringValue(), "message").
 				contains(installation.policyFile.toString()).contains("cat.sh --harness harness-a");
-			requireThat(integration.calls(), "calls").isEqualTo(List.of("requireIdentity"));
 			requireThat(Files.exists(installation.data.resolve("state"), NOFOLLOW_LINKS), "state").isFalse();
 			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
 		}

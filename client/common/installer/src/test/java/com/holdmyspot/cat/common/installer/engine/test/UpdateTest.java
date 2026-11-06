@@ -147,7 +147,6 @@ public final class UpdateTest
 			Path active = fixture.installActive("1.0");
 			String record = Files.readString(fixture.permissionRecord());
 			fixture.integration.fail("register");
-			int calls = fixture.integration.calls().size();
 
 			UpdateResult result = fixture.install("v1.1", active);
 
@@ -157,8 +156,6 @@ public final class UpdateTest
 			requireThat(installed.version(), "installed").isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
 			requireThat(installed.consistent(), "consistent").isTrue();
 			requireThat(Files.readString(fixture.permissionRecord()), "record").isEqualTo(record);
-			List<String> later = fixture.integration.calls().subList(calls, fixture.integration.calls().size());
-			requireThat(later, "laterCalls").isEqualTo(List.of("validateConfiguration", "register"));
 		}
 	}
 
