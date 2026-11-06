@@ -45,7 +45,7 @@ public final class ConflictPauseTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver-conflict")),
 				authoring(1, true));
-			harness.promptAuthor().conflicts(brief -> List.of(new PromptAuthorConflict(List.copyOf(brief.failureIds()),
+			harness.conflicts(brief -> List.of(new PromptAuthorConflict(List.copyOf(brief.failureIds()),
 				List.of("r1", "r2"), List.of(new PromptAuthorConflict.Quotation(DriverHarness.PROMPT, "fork")),
 				List.of("Exempt r1 from r2", "Drop r2"), 1, "Keep both requirements")));
 			try (Driver driver = harness.open())

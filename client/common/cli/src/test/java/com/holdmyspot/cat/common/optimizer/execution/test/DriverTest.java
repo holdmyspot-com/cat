@@ -6389,7 +6389,7 @@ public final class DriverTest
 					return failed;
 				return harness.passed();
 			});
-			harness.promptAuthor().reports(_ ->
+			harness.neededEdits(() ->
 			{
 				if (harness.promptAuthor().briefs().size() == 1)
 					return Optional.of(List.of(new NeededEdit("r2", link, Operation.EDIT_CONTENT, target)));
@@ -6495,7 +6495,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				authoring().build());
-			harness.promptAuthor().reports(_ -> Optional.empty());
+			harness.neededEdits(Optional::empty);
 			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -6524,7 +6524,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				authoring().build());
-			harness.promptAuthor().reports(_ -> Optional.of(List.of(
+			harness.neededEdits(() -> Optional.of(List.of(
 				new NeededEdit("r2", DriverHarness.PROMPT, Operation.EDIT_CONTENT, null))));
 			try (Driver driver = harness.open())
 			{

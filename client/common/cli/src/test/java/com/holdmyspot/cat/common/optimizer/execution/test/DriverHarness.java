@@ -15,6 +15,9 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
+import com.holdmyspot.cat.common.optimizer.execution.NeededEdit;
+import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief;
+import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
@@ -62,10 +65,12 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 /**
  * The ports, fakes and session script of one driver test.
@@ -132,6 +137,8 @@ public final class DriverHarness
 	private final FileInventory fork;
 	private Function<SessionRequest, SessionResult> trials = _ -> passed();
 	private Function<SessionRequest, SessionResult> promptAuthors = request -> edit(request, PROMPT);
+	private Supplier<Optional<List<NeededEdit>>> neededEdits = () -> Optional.of(List.of());
+	private Function<PromptAuthorBrief, List<PromptAuthorConflict>> conflicts = _ -> List.of();
 	private Function<SessionRequest, SessionResult> judges = this::scriptedJudgment;
 	private Function<SessionRequest, SessionResult> rankings = _ -> ranked();
 	private Function<SessionRequest, SessionResult> triages = _ -> triaged(Impact.SELF_RECOVERING);
@@ -294,6 +301,29 @@ public final class DriverHarness
 	public void promptAuthors(Function<SessionRequest, SessionResult> script)
 	{
 		this.promptAuthors = script;
+	}
+
+	/**
+	 * Replaces the needed edits that the report of each prompt author written by {@link #edit} lists. By default, it
+	 * lists none.
+	 *
+	 * @param script returns the edits that the prompt author reports needing but not making, or empty if its report is
+	 *   malformed
+	 */
+	public void neededEdits(Supplier<Optional<List<NeededEdit>>> script)
+	{
+		this.neededEdits = script;
+	}
+
+	/**
+	 * Replaces the conflicts that the report of each prompt author written by {@link #edit} lists. By default, it lists
+	 * none.
+	 *
+	 * @param script returns the conflicts that the prompt author reports for the brief it received
+	 */
+	public void conflicts(Function<PromptAuthorBrief, List<PromptAuthorConflict>> script)
+	{
+		this.conflicts = script;
 	}
 
 	/**
@@ -750,18 +780,16 @@ public final class DriverHarness
 		++edits;
 		Path effects = directory.resolve("effects").resolve(String.valueOf(edits));
 		byte[] content = text.getBytes(UTF_8);
+		byte[] original = "fork".getBytes(UTF_8);
 		try
 		{
 			Files.createDirectories(effects);
 			Overlay working = overlays.require(campaign().development().working().snapshot());
 			Write entry = (Write) working.entries().get(file);
-			byte[] before = "fork".getBytes(UTF_8);
 			if (entry != null)
-				before = entry.content().bytes();
+				original = entry.content().bytes();
 			else if (file.isAbsolute() && Files.isRegularFile(file))
-				before = Files.readAllBytes(file);
-			Files.write(effects.resolve("before"), before);
-			Files.writeString(effects.resolve("changed-path"), file.toString(), UTF_8);
+				original = Files.readAllBytes(file);
 			Files.createDirectories(effects.resolve(file).getParent());
 			Files.write(effects.resolve(file), content);
 		}
@@ -775,7 +803,10 @@ public final class DriverHarness
 		// The fake rejects an unprepared copy, so a prompt author request cannot edit a project the driver did not
 		// supply
 		fakeWorkspace.editAuthoringCopy(request.source(), new FileInventory(effects, entries));
-		return new SessionResult.Completed(directory.resolve("prompt-author-transcript"), List.of(List.of("done")),
+		PromptAuthorBrief brief = promptAuthor.briefs().getLast();
+		String report = PromptAuthorReplies.report(brief, file, original, content, neededEdits.get(),
+			conflicts.apply(brief));
+		return new SessionResult.Completed(directory.resolve("prompt-author-transcript"), List.of(List.of(report)),
 			effects, effects.resolveSibling("initial-project"), MODEL, "reasoning-1", null, List.of(), PROMPT_SOURCES,
 			List.of());
 	}
