@@ -57,6 +57,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
+import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Boundaries;
@@ -92,7 +93,6 @@ import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
-import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief;
@@ -151,6 +151,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
+import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -2660,17 +2661,24 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns the harness context with actual file delivery and a controlled Git diff response.
+	 * Returns the harness context with actual file delivery. The base worktree becomes a Git repository that records
+	 * its current files, so that delivery reads the diff from Git.
 	 *
 	 * @param harness the fixture whose existing services are borrowed
 	 * @param base the base worktree that delivery writes
 	 * @return a context that shares the fixture's stores, workspace and lock coordinator
+	 * @throws IOException if Git fails
 	 */
-	private static DriverContext deliveryContext(DriverHarness harness, Path base)
+	private static DriverContext deliveryContext(DriverHarness harness, Path base) throws IOException
 	{
+		Git git = new Git(base);
+		git.run("init", "--quiet");
+		git.run("add", "--all");
+		git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
+			"commit", "--quiet", "--no-verify", "--message", "Recorded files");
 		DriverContext original = harness.context();
 		Delivery deliverer = new Delivery(original.store(), original.workspace(),
-			new InMemoryForks(base, Set.of(DriverHarness.PROMPT)), original.json(), Yielding.fileReplacer());
+			new GitForks(Yielding.fileReplacer()), original.json(), Yielding.fileReplacer());
 		return new DriverContext(original.fileLocks(), original.store(), original.sessions(),
 			original.workspace(), original.interrupts(), original.clock(), original.overlays(), original.judge(),
 			original.triage(),
