@@ -50,10 +50,10 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   `skipped_copy_paths`); native-platform fixes, including two product fixes: a Codex child on macOS could read a denied
   file nested under a write grant (the other harness's `.claude/.credentials.json`), and Windows self-uninstall no
   longer holds the caller's pipe for up to 60 s.
-- **Self-install:** build `1.0+b015b4f093740` (a local tree of the installer PATH fix) is installed in both harnesses
-  (2026-11-06, verified by each `bin/plugin-info`). It still grants `/home/gili/.cat/locks`; the user reinstalls from
-  the release, outside the sandbox, with `HOME=/home/gili/cat/home` (the `.nvm` link in that home serves the Codex
-  `node` wrapper), then restarts both harnesses; verify each reports `eb0776e89628` and the locks grant moved.
+- **Self-install (done 2026-11-06):** the user installed the release in both harnesses with `HOME=/home/gili/cat/home`;
+  each `bin/plugin-info` reports `1.0+beb0776e89628`, and the locks grant moved to `/home/gili/cat/home/.cat/locks` in
+  Claude `settings.json` and the Codex `cat` profile. The unused Codex profiles `cat.client` and `cat-client` were
+  removed from `config.toml` at the user's request.
 - **Known defect in the previously installed build:** its `install/cat.sh` downloads `bootstrap.sh` from
   `client/common/lifecycle/src/main/resources/install/` on the default branch, which no longer exists (404). Updating
   from that build needs the release's own `cat.sh` (above).
@@ -69,7 +69,10 @@ revised plugin lifecycle and distribution work, which has not been implemented.
 - **Next release, also:** fix the intermittent "Text file busy" in `CodexPluginHooksTest`; Windows terminal detection
   and `cat.ps1` pass-through of the installer's text report are unverified; `CodexSessionLauncherCli` and
   `CodexInstallation.resolveHome` still read `user.home` (the first deliberately, for account system files).
-- **After self-install:** resume the optimizer work in `goal.md`.
+- **Optimizer work resumed (2026-11-06):** delegation and campaigns run in Codex first, then Claude (user ruling,
+  2026-11-06). design.md's G4 wording is committed (`4822df6e78`). Codex E5 campaign `20261021T142441Z-30f739`
+  resumed as `continue52` on the installed release, which carries the round-129 stall fix (`744af7e126`,
+  `d4ddbb93a6`).
 
 ### Latest authorized requirements
 
@@ -294,12 +297,12 @@ The six native validation run/suffix/commit records are:
 | 41748960981 | Abj28l | f28d0c52a48a4cef47ef3fc7ac40fddb7d221b61 |
 | 41750867148 | GbtOXa | 34483e64bee793028e750b25b1a9f3adfbfd728d |
 
-Preserve unrelated uncommitted changes: `ClaudeRunner.java`, `ClaudeRunnerTest.java`, optimizer `CommitTest.java`,
-`TransitionsTest.java`, `OptimizerCoreTest.java`, `DriverTest.java`, and `design.md`. This plan already contained
-uncommitted historical updater work before this handoff; it is preserved. Untracked home/configuration files and
-`goal.md` remain untouched. Do not stage them or discard them.
+The files this paragraph once listed as uncommitted (`ClaudeRunner.java`, its test, the optimizer tests and
+`design.md`) are all committed (2026-11-06). Untracked home/configuration files and `goal.md` remain untouched. Do not
+stage them or discard them.
 
-The runner long-path repair still needs native R-I1/E1 acceptance and integration. Its 26 focused checks and parent
+The runner long-path repair is integrated as `433105b048` (2026-11-04; the source postimage below matches). It still
+needs native R-I1/E1 acceptance. Its 26 focused checks and parent
 full build passed; evidence/isolated patch are in the separate session
 `.cat/sessions/01a1a3a5-0316-70e0-879b-f49ca711abe3/temp/runner-long-path-92VasA/`
 (`receipt.json`, `runner-long-path-only.patch`). Claude Code 2.1.317 maps non-ASCII-alphanumeric UTF-16 units, including
@@ -3961,8 +3964,9 @@ selection and download it describes are unchanged.
 	recording that does. Then delete that harness's `*SessionsNativeTest`, and after both harnesses, remove the
 	`native` profile, `cat.test.groups`, `cat.test.excludedGroups` and `cat.native.harness`. Keep `cat.session.temp`,
 	the fixture directory of tests that start no harness.
-- **Order:** run every step in Claude first; start Codex only after Claude passes all of E1–E8 (user ruling,
-	2026-10-19, which reverses the Codex-first order of 2026-10-01). The Codex E1 and E7 campaigns that were in
+- **Order:** Codex first, then Claude (user rulings 2026-10-20 and 2026-11-06); at most one campaign per harness at
+	a time, and the two harnesses may overlap. History: the 2026-10-19 ruling ran every step in Claude first, reversing
+	the Codex-first order of 2026-10-01. The Codex E1 and E7 campaigns that were in
 	progress, `20261019T185225Z-6ba4c4` and `20261019T185226Z-c05d87`, paused when a runner change altered their session
 	environment and were stopped at the user's ruling (2026-10-20); Codex E1 and E7 run again from the start.
 - **Fixtures:** small prompt systems under `client/common/cli/src/test/resources/optimizer/e2e/`, with a deliberately
