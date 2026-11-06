@@ -10,9 +10,13 @@ import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
+import java.util.Set;
 import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -80,6 +84,47 @@ public final class ClaudeLauncherPolicyTest
 			{
 				requireThat(e.getMessage(), "refusal").contains("another process");
 			}
+		}
+	}
+
+	/**
+	 * Supplies the writes and hosts that a child's sandbox lacks and the instruction that names the Claude Code
+	 * settings which allow them.
+	 *
+	 * @return the missing writes, the missing hosts and the instruction
+	 */
+	@DataProvider
+	public Object[][] grantInstructions()
+	{
+		return new Object[][]
+			{
+				{List.of(Path.of("/data/m2"), Path.of("/data/gradle")), Set.of("a.example.com", "b.example.com"),
+					"add \"/data/m2\", \"/data/gradle\" to sandbox.filesystem.allowWrite and \"a.example.com\", " +
+						"\"b.example.com\" to sandbox.network.allowedDomains in your Claude Code settings"},
+				{List.of(Path.of("/data/m2")), Set.of(),
+					"add \"/data/m2\" to sandbox.filesystem.allowWrite in your Claude Code settings"},
+				{List.of(), Set.of("api.example.com"),
+					"add \"api.example.com\" to sandbox.network.allowedDomains in your Claude Code settings"}
+			};
+	}
+
+	/**
+	 * Verifies that the launcher tells the user which Claude Code settings to add a missing write and host to.
+	 *
+	 * @param writes   the paths that the session's sandbox lacks
+	 * @param hosts    the hosts that the session's sandbox lacks
+	 * @param expected the instruction
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "grantInstructions")
+	public void namesSettingsThatAllowMissingAccess(List<Path> writes, Set<String> hosts, String expected)
+		throws IOException
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			ParentPolicySource source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
+
+			requireThat(source.permissionEntries(writes, hosts), "entries").isEqualTo(expected);
 		}
 	}
 }

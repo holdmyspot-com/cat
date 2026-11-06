@@ -24,9 +24,12 @@ import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.Executors;
 
 /**
@@ -113,6 +116,38 @@ public final class CodexSessionLauncherCli
 			public String harnessName()
 			{
 				return HARNESS_NAME;
+			}
+
+			@Override
+			public String permissionEntries(List<Path> writes, Set<String> hosts)
+			{
+				requireThat(writes, "writes").isNotNull();
+				requireThat(hosts, "hosts").isNotNull();
+				if (writes.isEmpty() && hosts.isEmpty())
+					throw new IllegalArgumentException("writes and hosts may not both be empty");
+				List<String> additions = new ArrayList<>();
+				if (!writes.isEmpty())
+				{
+					List<String> entries = new ArrayList<>();
+					for (Path write : writes)
+						entries.add("\"" + write + "\" = \"write\"");
+					additions.add(String.join(" and ", entries) + " under [permissions.<profile>.filesystem]");
+				}
+				if (!hosts.isEmpty())
+				{
+					List<String> entries = new ArrayList<>();
+					for (String host : new TreeSet<>(hosts))
+						entries.add("\"" + host + "\" = \"allow\"");
+					additions.add(String.join(" and ", entries) + " under [permissions.<profile>.network.domains]");
+				}
+				String instruction = "add " + String.join(" and ", additions) + " in Codex's config.toml, where " +
+					"<profile> is the permissions profile that default_permissions names";
+				if (!writes.isEmpty())
+				{
+					instruction += "; a session that sets sandbox_mode instead lists the paths in " +
+						"sandbox_workspace_write.writable_roots";
+				}
+				return instruction;
 			}
 
 			@Override

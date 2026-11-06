@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -670,6 +671,12 @@ public final class SessionLauncherTest
 		public String harnessName()
 		{
 			return HARNESS_NAME;
+		}
+
+		@Override
+		public String permissionEntries(List<Path> writes, Set<String> hosts)
+		{
+			return "add " + writes + " and " + new TreeSet<>(hosts) + " to the settings of " + HARNESS_NAME;
 		}
 
 		@Override

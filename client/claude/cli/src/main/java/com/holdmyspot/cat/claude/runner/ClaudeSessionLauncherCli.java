@@ -22,7 +22,11 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.Executors;
 
 /**
@@ -137,6 +141,31 @@ public final class ClaudeSessionLauncherCli
 		public String harnessName()
 		{
 			return ClaudePolicyReader.HARNESS_NAME;
+		}
+
+		@Override
+		public String permissionEntries(List<Path> writes, Set<String> hosts)
+		{
+			requireThat(writes, "writes").isNotNull();
+			requireThat(hosts, "hosts").isNotNull();
+			if (writes.isEmpty() && hosts.isEmpty())
+				throw new IllegalArgumentException("writes and hosts may not both be empty");
+			List<String> additions = new ArrayList<>();
+			if (!writes.isEmpty())
+			{
+				List<String> quoted = new ArrayList<>();
+				for (Path write : writes)
+					quoted.add("\"" + write + "\"");
+				additions.add(String.join(", ", quoted) + " to sandbox.filesystem.allowWrite");
+			}
+			if (!hosts.isEmpty())
+			{
+				List<String> quoted = new ArrayList<>();
+				for (String host : new TreeSet<>(hosts))
+					quoted.add("\"" + host + "\"");
+				additions.add(String.join(", ", quoted) + " to sandbox.network.allowedDomains");
+			}
+			return "add " + String.join(" and ", additions) + " in your Claude Code settings";
 		}
 
 		@Override

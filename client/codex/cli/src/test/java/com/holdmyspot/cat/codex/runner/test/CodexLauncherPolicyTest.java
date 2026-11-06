@@ -22,6 +22,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -89,6 +91,53 @@ public final class CodexLauncherPolicyTest
 					requireThat(e.getMessage(), "refusal").contains(String.valueOf(CODEX_PID));
 				}
 			}
+		}
+	}
+
+	/**
+	 * Supplies the writes and hosts that a child's sandbox lacks and the instruction that names the Codex settings
+	 * which allow them.
+	 *
+	 * @return the missing writes, the missing hosts and the instruction
+	 */
+	@DataProvider
+	public Object[][] grantInstructions()
+	{
+		String where = " in Codex's config.toml, where <profile> is the permissions profile that default_permissions " +
+			"names";
+		String legacy = "; a session that sets sandbox_mode instead lists the paths in " +
+			"sandbox_workspace_write.writable_roots";
+		return new Object[][]
+			{
+				{List.of(Path.of("/data/m2"), Path.of("/data/gradle")), Set.of("a.example.com", "b.example.com"),
+					"add \"/data/m2\" = \"write\" and \"/data/gradle\" = \"write\" under " +
+						"[permissions.<profile>.filesystem] and \"a.example.com\" = \"allow\" and " +
+						"\"b.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where + legacy},
+				{List.of(Path.of("/data/m2")), Set.of(),
+					"add \"/data/m2\" = \"write\" under [permissions.<profile>.filesystem]" + where + legacy},
+				{List.of(), Set.of("api.example.com"),
+					"add \"api.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where}
+			};
+	}
+
+	/**
+	 * Verifies that the launcher tells the user which Codex settings to add a missing write and host to.
+	 *
+	 * @param writes   the paths that the session's sandbox lacks
+	 * @param hosts    the hosts that the session's sandbox lacks
+	 * @param expected the instruction
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "grantInstructions")
+	public void namesSettingsThatAllowMissingAccess(List<Path> writes, Set<String> hosts, String expected)
+		throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
+
+			requireThat(source.permissionEntries(writes, hosts), "entries").isEqualTo(expected);
 		}
 	}
 

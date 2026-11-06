@@ -209,6 +209,12 @@ public final class SessionLauncherServiceTest
 				}
 
 				@Override
+				public String permissionEntries(List<Path> writes, Set<String> hosts)
+				{
+					return "add the entries to the settings of Harness A";
+				}
+
+				@Override
 				public ParentPolicy read()
 				{
 					return policy;
