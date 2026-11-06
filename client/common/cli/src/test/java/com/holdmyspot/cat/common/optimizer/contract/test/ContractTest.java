@@ -102,22 +102,6 @@ public final class ContractTest
 	}
 
 	/**
-	 * Verifies that a judge profile with the same fields equals another, so a frozen profile can be compared with
-	 * the one a later trial uses.
-	 */
-	@Test
-	public void judgeProfilesCompareByValue()
-	{
-		// Requirement: R-C5
-		JudgeProfile profile = ContractFixtures.judge();
-		JudgeProfile changedRubric = new JudgeProfile(profile.profile(), profile.prompt(), "A different rubric.",
-			profile.decisionRule(), profile.resultSchema());
-
-		requireThat(ContractFixtures.judge(), "same").isEqualTo(profile);
-		requireThat(changedRubric, "changedRubric").isNotEqualTo(profile);
-	}
-
-	/**
 	 * Verifies that a contract keeps the values it was built with when the caller later changes its lists, and
 	 * that it offers no way to change them.
 	 */

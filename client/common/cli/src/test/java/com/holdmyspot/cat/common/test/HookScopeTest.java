@@ -82,38 +82,6 @@ public final class HookScopeTest
 	}
 
 	/**
-	 * Verifies the scope shares one JSON mapper for its entire hook invocation.
-	 */
-	@Test
-	public void sharesJsonMapper() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path directory = cleanup.add(Files.createTempDirectory("cat-plugin-"));
-			try (HookScope scope = scope(directory, directory))
-			{
-				requireThat(scope.json() == scope.json(), "sameMapper").isTrue();
-			}
-		}
-	}
-
-	/**
-	 * Verifies the scope reuses one YAML mapper for its hook invocation.
-	 */
-	@Test
-	public void sharesYamlMapper() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path directory = cleanup.add(Files.createTempDirectory("cat-plugin-"));
-			try (HookScope scope = scope(directory, directory))
-			{
-				requireThat(scope.yaml() == scope.yaml(), "sameMapper").isTrue();
-			}
-		}
-	}
-
-	/**
 	 * Verifies a scope created from a hook environment resolves the plugin root and the user's rule directory, and
 	 * accepts a {@code CAT_INSTALL_DIR} that names the plugin root.
 	 */

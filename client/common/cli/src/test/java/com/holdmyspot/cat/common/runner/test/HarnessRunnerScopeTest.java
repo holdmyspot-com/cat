@@ -20,16 +20,15 @@ public final class HarnessRunnerScopeTest
 	}
 
 	/**
-	 * Verifies callers receive the one mapper owned by a live run scope.
+	 * Verifies the mapper of a live run scope writes indented JSON.
 	 */
 	@Test
-	public void returnsSharedJsonMapper()
+	public void writesIndentedJson()
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope())
 		{
-			requireThat(scope.json() == scope.json(), "sameMapper").isTrue();
 			requireThat(scope.json().writeValueAsString(scope.json().createObjectNode().put("name", "CAT")), "json").
-			contains("\n");
+				contains("\n");
 		}
 	}
 

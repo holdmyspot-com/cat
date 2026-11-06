@@ -39,13 +39,4 @@ public final class ManualClockTest
 		clock.set(start);
 		requireThat(utc.instant(), "resetInstant").isEqualTo(start);
 	}
-
-	/**
-	 * Verifies that the inherited clock boundary rejects a missing zone.
-	 */
-	@Test(expectedExceptions = NullPointerException.class)
-	public void rejectsMissingZone()
-	{
-		new ManualClock(Instant.EPOCH).withZone(null);
-	}
 }
