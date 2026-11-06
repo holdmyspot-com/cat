@@ -16,7 +16,7 @@ import java.nio.file.Path;
 /**
  * Measures the target prompt file of a staged snapshot.
  */
-final class PromptMeasurements
+public final class PromptMeasurements
 {
 	/**
 	 * Prevents instantiation.
@@ -34,7 +34,7 @@ final class PromptMeasurements
 	 * @param target the target prompt file, relative to the project
 	 * @return observed sizes, or the reason a measurement is unavailable
 	 */
-	static PromptSize measure(Path staged, FileInventory inventory, Path target)
+	public static PromptSize measure(Path staged, FileInventory inventory, Path target)
 	{
 		byte[] bytes;
 		try
