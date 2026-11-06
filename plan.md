@@ -4455,10 +4455,9 @@ These rules restate `design.md` §10 as checks for reviewers:
 - The only test that runs `CapCalibration` is `CapCalibrationTest`.
 - The only tests that run real Git are `ForkTest`, `DeliveryTest` (final diff and no-commit check),
 	`InventoryScannerTest` (ignored files) and `GitTest` (the process adapter's exit status and argument passing). Outside
-	the optimizer, the git-replay package keeps one real-Git test per Git operation, each under 1 second:
-	`BackupTest.recordsAndDeletesBackupBranch`, `HistoryTest.inventoriesSourcePathStates`, three
-	`EditorPatchWorkflowTest` patch-adaptation and draft-tree tests, `ReplayExecutionTest.replaysOrderedBatchesWithMatchingTag`,
-	`FinalizationTest.publishAndVerifyGitReceipt` and the two `OutputGatesTest` worktree-lifecycle tests. Every other test
+	the optimizer, `SessionIgnoreTest.addsLinesInRealWorkTree` (the exclude file of a real linked worktree) and
+	`ReleaseBuildTest.usesHeadOfWorkingTree` (the release build reads the working tree's `HEAD`) run real Git, each
+	under 1 second. The git-replay tests this list once named were removed with that skill (`c249a62d2b`). Every other test
 	asserts the commands CAT builds or its decisions from captured Git output (user ruling, 2026-10-02: assume Git works
 	as documented).
 - No Java test starts a runner, a harness process or a model. Only the WI-15 end-to-end runs start nested sessions.
