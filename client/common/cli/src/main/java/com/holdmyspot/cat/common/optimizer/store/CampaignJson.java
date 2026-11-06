@@ -133,6 +133,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -191,8 +192,19 @@ final class CampaignJson
 	private static final String FAILED_ASSERTIONS = "failed_assertions";
 	private static final Comparator<SequenceGroup> GROUP_ORDER = Comparator.comparing(SequenceGroup::cell).
 		thenComparing(SequenceGroup::purpose).thenComparing(group -> group.snapshot().hex());
+	/**
+	 * The most contracts that a converter keeps for reuse. A campaign holds one contract per lineage, so this covers
+	 * the lineages of the campaigns that a store reads one after another.
+	 */
+	private static final int MAX_CACHED_CONTRACTS = 32;
 	private final JsonMapper json;
 	private final ProposalSchema schema;
+	/**
+	 * The contracts that {@link #readLineage} parsed, by the exact JSON text that they were parsed from. A contract
+	 * is immutable, so a read of the same text may reuse it; a read of other text never does. When the map is full,
+	 * the next contract to add empties it first.
+	 */
+	private final Map<String, Contract> contracts = new ConcurrentHashMap<>();
 
 	/**
 	 * Creates a converter.
@@ -1432,14 +1444,21 @@ final class CampaignJson
 	private Lineage readLineage(JsonNode node)
 	{
 		JsonNode contractNode = field(node, "contract");
-		Contract contract;
-		try
+		String contractText = json.writeValueAsString(contractNode);
+		Contract contract = contracts.get(contractText);
+		if (contract == null)
 		{
-			contract = schema.parse(json.writeValueAsString(contractNode));
-		}
-		catch (InvalidProposalException e)
-		{
-			throw new IllegalArgumentException("contract: " + e.getMessage(), e);
+			try
+			{
+				contract = schema.parse(contractText);
+			}
+			catch (InvalidProposalException e)
+			{
+				throw new IllegalArgumentException("contract: " + e.getMessage(), e);
+			}
+			if (contracts.size() >= MAX_CACHED_CONTRACTS)
+				contracts.clear();
+			contracts.put(contractText, contract);
 		}
 		List<RegressionTestCase> regressionSet = new ArrayList<>();
 		for (JsonNode element : elements(node, "regression_set"))

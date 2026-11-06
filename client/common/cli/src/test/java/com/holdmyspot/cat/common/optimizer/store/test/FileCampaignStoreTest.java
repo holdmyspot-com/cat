@@ -80,6 +80,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -1721,6 +1725,138 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			}
 			requireThat(message, "message").isEqualTo("The file " + record + " is malformed: rationale: is missing");
 		}
+	}
+
+	/**
+	 * A store that has loaded a snapshot loads the contract that the file holds now when the file's contract changes:
+	 * a different contract is loaded as written, a contract that no longer satisfies the schema is refused with the
+	 * schema's message, and restoring the first contract loads it again.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void loadsContractThatChangedSinceLastLoad() throws IOException
+	{
+		// Requirement: R-E1
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-contract-change-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign campaign = new Builder().header(header(ID)).confirmed().working(1).build();
+			store.replaceSnapshot(campaign);
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			String original = Files.readString(snapshot, UTF_8);
+			requireThat(store.load(ID).orElseThrow().contract(), "first").isEqualTo(campaign.contract());
+			requireThat(store.load(ID).orElseThrow().contract(), "again").isEqualTo(campaign.contract());
+
+			ObjectNode root = (ObjectNode) JSON.readTree(original);
+			ObjectNode contract = (ObjectNode) root.get("lineages").get(0).get("contract");
+			((ObjectNode) contract.get("judge")).put("prompt", "A judge prompt that the file changed.");
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			requireThat(store.load(ID).orElseThrow().contract().judge().prompt(), "changed").
+				isEqualTo("A judge prompt that the file changed.");
+
+			contract.remove("limitations");
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			String message = loadFailure(store);
+			requireThat(message, "refused").startsWith("The file " + snapshot + " is malformed: contract: ");
+			requireThat(loadFailure(store), "refusedAgain").isEqualTo(message);
+
+			Files.writeString(snapshot, original, UTF_8);
+			requireThat(store.load(ID).orElseThrow().contract(), "restored").isEqualTo(campaign.contract());
+		}
+	}
+
+	/**
+	 * A store that loads more distinct contracts than it could hold on to loads each of them as written, in any
+	 * order and when a contract recurs.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void loadsManyDistinctContracts() throws IOException
+	{
+		// Requirement: R-E1
+		int contracts = 40;
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-contract-many-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).build());
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			ObjectNode judge = (ObjectNode) root.get("lineages").get(0).get("contract").get("judge");
+			List<Integer> order = new ArrayList<>();
+			for (int i = 0; i < contracts; ++i)
+				order.add(i);
+			for (int i = contracts - 1; i >= 0; --i)
+				order.add(i);
+			order.addAll(List.of(0, 0, contracts - 1, 1));
+			for (int variant : order)
+			{
+				judge.put("prompt", "Judge prompt " + variant);
+				Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+				requireThat(store.load(ID).orElseThrow().contract().judge().prompt(), "prompt").
+					isEqualTo("Judge prompt " + variant);
+			}
+		}
+	}
+
+	/**
+	 * Threads that load the same snapshot through one store at the same time each load the campaign that was stored.
+	 *
+	 * @throws IOException if the store fails
+	 * @throws InterruptedException if the test is interrupted while it waits for the threads
+	 * @throws ExecutionException if a thread fails to load the campaign
+	 */
+	@Test
+	public void concurrentLoadsReturnStoredCampaign() throws IOException, InterruptedException, ExecutionException
+	{
+		// Requirement: R-E1
+		int threads = 8;
+		int loads = 20;
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-concurrent-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign campaign = new Builder().header(header(ID)).confirmed().working(1).build();
+			store.replaceSnapshot(campaign);
+			try (ExecutorService executor = Executors.newFixedThreadPool(threads))
+			{
+				List<Future<Boolean>> results = new ArrayList<>();
+				for (int thread = 0; thread < threads; ++thread)
+				{
+					results.add(executor.submit(() ->
+					{
+						boolean allEqual = true;
+						for (int load = 0; load < loads; ++load)
+							allEqual &= store.load(ID).orElseThrow().equals(campaign);
+						return allEqual;
+					}));
+				}
+				for (Future<Boolean> result : results)
+					requireThat(result.get(), "loadedStoredCampaign").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Returns the message of the exception that loading the campaign throws.
+	 *
+	 * @param store the store
+	 * @return the message
+	 */
+	private static String loadFailure(FileCampaignStore store)
+	{
+		try
+		{
+			store.load(ID);
+		}
+		catch (IOException e)
+		{
+			return e.getMessage();
+		}
+		throw new AssertionError("Loading " + ID + " did not fail");
 	}
 
 	/**
