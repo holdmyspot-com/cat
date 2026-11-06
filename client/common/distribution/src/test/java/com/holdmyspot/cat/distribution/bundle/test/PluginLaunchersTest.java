@@ -193,6 +193,10 @@ public final class PluginLaunchersTest
 	 * Verifies that the plugin's {@code java} wrapper on this platform, {@code java.cmd} on Windows, trains a startup
 	 * cache that the wrapper then passes to Java, which accepts it, while the wrapper passes no cache before the
 	 * training writes one. The plugin's path holds spaces, as a user's home directory can.
+	 * <p>
+	 * The test takes about 1.6 seconds alone: Java starts several times, for the training and for each of three
+	 * wrapper runs, and the claim is how the real wrapper and real Java handle the cache, so a stand-in for either
+	 * cannot prove it.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a wrapper cannot be run
 	 * @throws InterruptedException if the test is interrupted

@@ -52,6 +52,9 @@ public final class StartupCacheTrainerTest
 	 * A startup cache that real Java trains with the runtime in the plugin's own version folder, as an install trains the
 	 * version folder that the harness installed, is accepted by Java through the plugin's wrapper. The training removes
 	 * its scratch folders.
+	 * <p>
+	 * The test takes about one second alone: Java starts twice, once to write the cache and once to load it, and the
+	 * claim is that real Java accepts the cache, so a stand-in for Java cannot prove it.
 	 *
 	 * @throws IOException          if the fixture cannot be created or inspected
 	 * @throws InterruptedException if the test is interrupted
