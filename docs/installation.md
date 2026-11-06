@@ -203,10 +203,12 @@ after an uninstall unless you ask to delete it.
 An install keeps the version folder of the active version, the folder of the version it replaced, and the folder of the
 installer that is running, and deletes every other version folder of CAT. In Claude Code, it also deletes every other
 file and folder in `<home>/plugins/cat-marketplace/plugins/cat/`, which only the installer writes, such as the plugin
-files that an earlier layout put directly in that folder. A harness session that started before the
-install keeps running from its folder until you restart it, which is why the replaced version's folder stays. Codex runs
-the version folder with the greatest name, so a folder that Codex would run instead of the active version, such as a
-newer version's folder after you go back to an older release, is deleted. A folder that the installer cannot delete,
+files that an earlier layout put directly in that folder. Claude Code runs CAT in place from that version folder, so a
+Claude Code session that started before the install keeps running from its folder until you restart it, which is why the
+replaced version's folder stays. Codex runs CAT from its own plugin cache and deletes the old cache folder when it
+installs the new version, so restart a running Codex session after an install. Codex runs the version folder with the
+greatest name, so a folder that Codex would run instead of the active version, such as a newer
+version's folder after you go back to an older release, is deleted. A folder that the installer cannot delete,
 such as one whose file a process still has open on Windows, is left, and a later install deletes it. On Windows, the
 installer cannot delete the folder it is running from, so it starts Windows PowerShell, which waits for the installer to
 exit and then deletes that folder, retrying for up to 60 seconds.
