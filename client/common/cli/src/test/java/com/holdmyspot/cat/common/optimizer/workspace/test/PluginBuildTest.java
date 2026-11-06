@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.workspace.PluginBuild;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
@@ -13,7 +12,9 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,6 +25,11 @@ import java.util.stream.IntStream;
  */
 public final class PluginBuildTest
 {
+	/**
+	 * A clock for builds that never wait, so that nothing reads its time against a limit.
+	 */
+	private static final Clock FIXED = Clock.fixed(Instant.EPOCH, ZoneOffset.UTC);
+
 	/**
 	 * Verifies the worktree and resolved build program reach the process starter, and a failed build reports its
 	 * exit status and the last 40 output lines.
@@ -44,7 +50,7 @@ public final class PluginBuildTest
 			process.emit(IntStream.rangeClosed(1, 100).mapToObj(i -> "line " + i).toArray(String[]::new));
 			process.exit();
 			ExecutableFiles executables = ExecutableFilesSecrets.getExecutableFilesAccess().create(
-				() -> {}, new ManualClock(Instant.EPOCH), builder ->
+				() -> {}, FIXED, builder ->
 				{
 					request.set(builder);
 					return process;
@@ -79,7 +85,7 @@ public final class PluginBuildTest
 			process.emit("build output");
 			process.exit();
 			ExecutableFiles executables = ExecutableFilesSecrets.getExecutableFilesAccess().create(
-				() -> {}, new ManualClock(Instant.EPOCH), _ ->
+				() -> {}, FIXED, _ ->
 				{
 					if (busy.getAndSet(false))
 						throw new IOException("error=26, Text file busy");
