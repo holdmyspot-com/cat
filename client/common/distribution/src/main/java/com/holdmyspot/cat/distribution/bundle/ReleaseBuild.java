@@ -46,7 +46,26 @@ public final class ReleaseBuild
 	 */
 	public static String commit(String named, Path projectRoot) throws IOException
 	{
+		return commit(named, projectRoot, ReleaseBuild::runRevParse);
+	}
+
+	/**
+	 * Returns the release commit's first twelve lower-case hexadecimal digits, as {@link #commit(String, Path)} does,
+	 * deciding from the answer that a given Git gives.
+	 *
+	 * @param named       the value of {@value #PROPERTY}, or null or empty when the build names no commit
+	 * @param projectRoot the root of the project's Git working tree, whose {@code HEAD} is used when the build names no
+	 *                    commit
+	 * @param git         answers what {@code git rev-parse --verify --quiet HEAD} reports in {@code projectRoot}
+	 * @return the commit's first twelve lower-case hexadecimal digits
+	 * @throws NullPointerException if any argument other than {@code named} is null
+	 * @throws IOException          if {@code named} is not twelve lower-case hexadecimal digits, or the build names no
+	 *                              commit and Git cannot read the {@code HEAD} of {@code projectRoot}
+	 */
+	public static String commit(String named, Path projectRoot, GitHead git) throws IOException
+	{
 		requireThat(projectRoot, "projectRoot").isNotNull();
+		requireThat(git, "git").isNotNull();
 		if (named != null && !named.isEmpty())
 		{
 			if (!COMMIT.matcher(named).matches())
@@ -56,7 +75,7 @@ public final class ReleaseBuild
 			}
 			return named;
 		}
-		String head = head(projectRoot.toAbsolutePath().normalize());
+		String head = head(projectRoot.toAbsolutePath().normalize(), git);
 		if (head.length() < DIGITS || !COMMIT.matcher(head.substring(0, DIGITS)).matches())
 			throw new IOException("Git named an unexpected HEAD of " + projectRoot + ": \"" + head + "\"");
 		return head.substring(0, DIGITS);
@@ -66,10 +85,29 @@ public final class ReleaseBuild
 	 * Reads the object name of a working tree's {@code HEAD}.
 	 *
 	 * @param projectRoot the working tree's root, an absolute normalized path
+	 * @param git         answers what Git reports for the working tree's {@code HEAD}
 	 * @return the object name
 	 * @throws IOException if Git cannot run or cannot read the {@code HEAD}
 	 */
-	private static String head(Path projectRoot) throws IOException
+	private static String head(Path projectRoot, GitHead git) throws IOException
+	{
+		GitAnswer answer = git.revParseHead(projectRoot);
+		if (answer.status() != 0)
+		{
+			throw new IOException(noHead(projectRoot, "git rev-parse exited with status " + answer.status() + ": " +
+				answer.output()));
+		}
+		return answer.output();
+	}
+
+	/**
+	 * Runs {@code git rev-parse --verify --quiet HEAD} in a working tree.
+	 *
+	 * @param projectRoot the working tree's root, an absolute normalized path
+	 * @return what Git reported
+	 * @throws IOException if Git cannot run
+	 */
+	private static GitAnswer runRevParse(Path projectRoot) throws IOException
 	{
 		ProcessBuilder builder = new ProcessBuilder(List.of("git", "-C", projectRoot.toString(), "rev-parse",
 			"--verify", "--quiet", "HEAD")).redirectErrorStream(true);
@@ -77,14 +115,12 @@ public final class ReleaseBuild
 		// A project that is no working tree of its own must not use the HEAD of a repository that holds it
 		if (parent != null)
 			builder.environment().put("GIT_CEILING_DIRECTORIES", parent.toString());
-		String output;
-		int status;
 		try (Process process = builder.start())
 		{
 			process.getOutputStream().close();
-			output = new String(process.getInputStream().readNBytes(MAXIMUM_OUTPUT_BYTES), UTF_8).strip();
+			String output = new String(process.getInputStream().readNBytes(MAXIMUM_OUTPUT_BYTES), UTF_8).strip();
 			process.getInputStream().transferTo(OutputStream.nullOutputStream());
-			status = process.waitFor();
+			return new GitAnswer(process.waitFor(), output);
 		}
 		catch (IOException e)
 		{
@@ -95,9 +131,6 @@ public final class ReleaseBuild
 			Thread.currentThread().interrupt();
 			throw new IOException(noHead(projectRoot, "the build was interrupted while Git ran"), e);
 		}
-		if (status != 0)
-			throw new IOException(noHead(projectRoot, "git rev-parse exited with status " + status + ": " + output));
-		return output;
 	}
 
 	/**
@@ -118,5 +151,43 @@ public final class ReleaseBuild
 	 */
 	private ReleaseBuild()
 	{
+	}
+
+	/**
+	 * Answers what {@code git rev-parse --verify --quiet HEAD} reports in a working tree.
+	 */
+	@FunctionalInterface
+	public interface GitHead
+	{
+		/**
+		 * Returns what {@code git rev-parse --verify --quiet HEAD} reports in a working tree: the object name of its
+		 * {@code HEAD} and status 0, or a failure status and Git's message.
+		 *
+		 * @param projectRoot the working tree's root, an absolute normalized path
+		 * @return what Git reported
+		 * @throws IOException if Git cannot run; the message says why the release commit cannot be found
+		 */
+		GitAnswer revParseHead(Path projectRoot) throws IOException;
+	}
+
+	/**
+	 * What a Git command reported.
+	 *
+	 * @param status the command's exit status
+	 * @param output the command's output with its surrounding whitespace removed
+	 */
+	public record GitAnswer(int status, String output)
+	{
+		/**
+		 * Creates an answer.
+		 *
+		 * @param status the command's exit status
+		 * @param output the command's output with its surrounding whitespace removed
+		 * @throws NullPointerException if {@code output} is null
+		 */
+		public GitAnswer
+		{
+			requireThat(output, "output").isNotNull();
+		}
 	}
 }

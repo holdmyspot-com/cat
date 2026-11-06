@@ -93,23 +93,30 @@ public final class ReleaseBuildTest
 
 	/**
 	 * Verifies that a build that names no commit, in a project that is not a Git working tree, fails with a message
-	 * that names the property to set instead of inventing a commit.
+	 * that names the property to set, the project and Git's status instead of inventing a commit.
+	 * <p>
+	 * Git's answer is the one that Git 2.43.0 gives for {@code git rev-parse --verify --quiet HEAD} in a directory
+	 * outside any repository: it prints the message and exits with status 128. {@link #usesHeadOfWorkingTree()}
+	 * observes the answer in a work tree through real Git.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
 	@Test
 	public void refusesProjectWithoutHead() throws IOException
 	{
+		ReleaseBuild.GitHead outsideRepository = _ -> new ReleaseBuild.GitAnswer(128,
+			"fatal: not a git repository (or any of the parent directories): .git");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-build-"));
 			try
 			{
-				ReleaseBuild.commit(null, project);
+				ReleaseBuild.commit(null, project, outsideRepository);
 			}
 			catch (IOException e)
 			{
-				requireThat(e.getMessage(), "message").contains("-Dcat.build=").contains(project.toString());
+				requireThat(e.getMessage(), "message").contains("-Dcat.build=").contains(project.toString()).
+					contains("status 128").contains("fatal: not a git repository");
 				return;
 			}
 			throw new AssertionError("A commit was found");
