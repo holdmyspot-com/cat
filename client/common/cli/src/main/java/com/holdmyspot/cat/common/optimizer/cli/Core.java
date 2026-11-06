@@ -57,19 +57,45 @@ public interface Core
 	 *
 	 * @param target the prompt file or prompt system
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+	 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user
+	 *   stated no goal
+	 * @return the result, which presents the proposal that awaits confirmation
+	 * @throws NullPointerException if {@code target} is null
+	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
+	 *   {@code goal} is blank
+	 * @throws CommandRefusedException as {@link #start(Path, int, String, Path)} refuses
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	default CommandResult start(Path target, int ceiling, String goal)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		return start(target, ceiling, goal, null);
+	}
+
+	/**
+	 * Starts a campaign with the selected ceiling, the user's goal and the permissions that its sessions need beyond
+	 * their own, or resumes the target's resumable campaign with its stored ceiling, goal and permissions.
+	 *
+	 * @param target the prompt file or prompt system
+	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
 	 * @param goal what the user wants the target to achieve, in the user's own words, which a new campaign stores and
 	 *   gives to the contract author, or {@code null} if the user stated no goal
+	 * @param extraPermissions the JSON file that lists the absolute paths that the commands of the campaign's
+	 *   sessions may write and the hosts that they may reach, which a new campaign reads once and stores with
+	 *   its header, and applies to every session it starts, or {@code null} if the sessions need nothing extra
 	 * @return the result, which presents the proposal that awaits confirmation
 	 * @throws NullPointerException if {@code target} is null
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
 	 *   {@code goal} is blank
 	 * @throws CommandRefusedException if no session launcher serves the host session, the current harness cannot deny
 	 *   its sessions reads of held-out content, the other harness started the target's campaign, another process runs
-	 *   the target's campaign, the target is not in the project, or the base worktree has uncommitted changes
+	 *   the target's campaign, the target is not in the project, the base worktree has uncommitted changes, or a new
+	 *   campaign's file of extra permissions is missing or invalid
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	CommandResult start(Path target, int ceiling, String goal)
+	CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
 		throws CommandRefusedException, IOException, InterruptedException;
 
 	/**

@@ -7,6 +7,8 @@ import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFiles;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -35,10 +37,13 @@ import java.util.Optional;
  *   turn gets a time limit of its own as long as {@code timeLimit}. Empty to end the session after {@code turns}.
  * @param controlSource {@code true} if the session is a trial that runs on the control source, where the target prompt
  *   file is empty; the harness then loads no other instruction file in its place
+ * @param extraPermissions the writes and hosts that the session's commands need beyond what its harness needs, which
+ *   the session gets when its parent's sandbox allows them and otherwise cannot start; {@link ExtraPermissions#NONE}
+ *   if the session needs none
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
-	Optional<FollowUp> followUp, boolean controlSource)
+	Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions)
 {
 	/**
 	 * Creates a request whose workspace receives no files.
@@ -135,6 +140,31 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	}
 
 	/**
+	 * Creates a request that asks for no extra permissions.
+	 *
+	 * @param role the kind of work that the session performs
+	 * @param part the part of the contract whose content the session may read
+	 * @param source the directory that the session works in
+	 * @param turns the complete turn sequence, sent one turn at a time
+	 * @param readOnly paths that the session may read but never write, such as a judge's evidence
+	 * @param timeLimit how long the session may run before its remaining turns are abandoned
+	 * @param profile the model and reasoning effort that the session starts under
+	 * @param files the files that the workspace receives on top of {@code source} before the first turn
+	 * @param plugins the plugin directories that a trial installs, and no other plugin
+	 * @param followUp chooses at most one turn to send after the last of {@code turns}
+	 * @param controlSource {@code true} if the session is a trial that runs on the control source
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the arguments are not a valid request, as the canonical constructor reports
+	 */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
+		Optional<FollowUp> followUp, boolean controlSource)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp, controlSource,
+			ExtraPermissions.NONE);
+	}
+
+	/**
 	 * Creates a request.
 	 *
 	 * @param role the kind of work that the session performs
@@ -148,6 +178,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	 * @param plugins the plugin directories that a trial installs, and no other plugin
 	 * @param followUp chooses at most one turn to send after the last of {@code turns}
 	 * @param controlSource {@code true} if the session is a trial that runs on the control source
+	 * @param extraPermissions the writes and hosts that the session's commands need beyond what its harness needs
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code turns} is empty, if {@code timeLimit} is not positive, if a judge's
 	 *   {@code part} is not {@link Part#HELD_OUT}, if the {@code part} of triage, a prompt author or the contract
@@ -177,6 +208,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(files, "files").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(followUp, "followUp").isNotNull();
+		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		if (role != SessionRole.TRIAL && role != SessionRole.CONTRACT_AUTHOR && !files.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session receives no files");
 		if (role != SessionRole.TRIAL && !plugins.isEmpty())
@@ -186,5 +218,18 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		turns = List.copyOf(turns);
 		plugins = List.copyOf(plugins);
 		readOnly = List.copyOf(readOnly);
+	}
+
+	/**
+	 * Returns this request with other extra permissions.
+	 *
+	 * @param permissions the writes and hosts that the session's commands need beyond what its harness needs
+	 * @return the updated request
+	 * @throws NullPointerException if {@code permissions} is null
+	 */
+	public SessionRequest withExtraPermissions(ExtraPermissions permissions)
+	{
+		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
+			controlSource, permissions);
 	}
 }

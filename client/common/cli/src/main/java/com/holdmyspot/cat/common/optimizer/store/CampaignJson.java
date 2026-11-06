@@ -109,7 +109,9 @@ import com.holdmyspot.cat.common.optimizer.statistics.Comparison;
 import com.holdmyspot.cat.common.optimizer.statistics.ComparisonBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.file.InvalidPathException;
@@ -153,6 +155,9 @@ import tools.jackson.databind.node.ObjectNode;
  * may hold a window that had just dropped. An upgraded trial session's peak window is its window cap, the level at
  * which that throttle stopped growth. Other unsupported versions are refused with a message that asks the user to
  * start a new campaign.
+ * <p>
+ * A campaign header has an {@code extra_permissions} object only when the user named writes or hosts for the
+ * campaign's sessions; a header without it asks for none, so campaigns that started without them still load.
  * <p>
  * A campaign snapshot written before it recorded the concurrency window of each unit of work has no
  * {@code concurrency} object; every unit then starts at its starting window, and its earlier single window is
@@ -1235,6 +1240,8 @@ final class CampaignJson
 		node.put("harness", EnumNames.lowerCase(header.harness()));
 		node.put("lifecycle", EnumNames.lowerCase(header.lifecycle()));
 		node.put("goal", header.goal());
+		if (!header.extraPermissions().isEmpty())
+			node.set("extra_permissions", header.extraPermissions().toDocument(json));
 		return node;
 	}
 
@@ -1246,9 +1253,21 @@ final class CampaignJson
 	 */
 	private static Header readHeader(JsonNode node)
 	{
+		ExtraPermissions extra = ExtraPermissions.NONE;
+		if (node.has("extra_permissions"))
+		{
+			try
+			{
+				extra = ExtraPermissions.fromDocument(node.get("extra_permissions"), "The campaign's extra_permissions");
+			}
+			catch (IOException e)
+			{
+				throw new IllegalArgumentException(e.getMessage(), e);
+			}
+		}
 		return new Header(text(node, "id"), Path.of(text(node, "root")), Path.of(text(node, "target")),
 			constant(node, "harness", Harness.class), constant(node, "lifecycle", Lifecycle.class),
-			nullableText(node, "goal"));
+			nullableText(node, "goal"), extra);
 	}
 
 	/**

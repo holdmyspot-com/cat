@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -258,11 +259,13 @@ final class Session implements SessionHandle
 	{
 		IOException problem = null;
 		Path workspace = null;
+		Path permissions = null;
 		// Closing the sink releases the run's transcript
 		try (sink)
 		{
 			workspace = writeWorkspace();
-			sessions.bridge().serve(arguments(workspace), feed, sink);
+			permissions = writeExtraPermissions();
+			sessions.bridge().serve(arguments(workspace, permissions), feed, sink);
 		}
 		catch (IOException e)
 		{
@@ -274,11 +277,16 @@ final class Session implements SessionHandle
 		}
 		finally
 		{
+			List<Path> directories = new ArrayList<>();
 			if (workspace != null)
+				directories.add(workspace);
+			if (permissions != null)
+				directories.add(permissions.getParent());
+			for (Path directory : directories)
 			{
 				try
 				{
-					TemporaryDirectories.deleteRecursively(workspace);
+					TemporaryDirectories.deleteRecursively(directory);
 				}
 				catch (IOException e)
 				{
@@ -314,6 +322,33 @@ final class Session implements SessionHandle
 			throw e;
 		}
 		return directory;
+	}
+
+	/**
+	 * Writes the file that lists the request's extra permissions, in a new directory under the run root of the
+	 * session's part.
+	 *
+	 * @return the file, or {@code null} if the request asks for no extra permissions
+	 * @throws IOException if the file cannot be written
+	 */
+	private Path writeExtraPermissions() throws IOException
+	{
+		if (request.extraPermissions().isEmpty())
+			return null;
+		Path directory = Files.createDirectories(runRoot().resolve("extra-permissions")).
+			resolve(UUID.randomUUID().toString());
+		Files.createDirectory(directory);
+		Path file = directory.resolve(ExtraPermissions.FILE_NAME);
+		try
+		{
+			request.extraPermissions().write(json, file);
+		}
+		catch (IOException | RuntimeException e)
+		{
+			TemporaryDirectories.deleteRecursively(directory);
+			throw e;
+		}
+		return file;
 	}
 
 	/**
@@ -547,13 +582,15 @@ final class Session implements SessionHandle
 	 * plugins: the first one whose manifest states CAT's repository is installed as CAT, and each other one as a plugin.
 	 * Other sessions install no plugin. A trial on the control source adds the harness's control-source options.
 	 * Every session is denied reading the host session's project, except its own run and the evidence that it reads,
-	 * and a session of the development part is also denied reading the held-out locations.
+	 * and a session of the development part is also denied reading the held-out locations. A session whose request
+	 * asks for extra permissions names the file that lists them.
 	 *
 	 * @param workspace the directory that holds the trial's workspace files, or {@code null} if there are none
+	 * @param permissions the file that lists the request's extra permissions, or {@code null} if it asks for none
 	 * @return the options
 	 * @throws IOException if the held-out locations cannot be created or listed
 	 */
-	private List<String> arguments(Path workspace) throws IOException
+	private List<String> arguments(Path workspace, Path permissions) throws IOException
 	{
 		List<String> arguments = new ArrayList<>();
 		Path artifact = settings.artifact();
@@ -583,6 +620,8 @@ final class Session implements SessionHandle
 			arguments.addAll(sessions.controlSourceArguments());
 		if (workspace != null)
 			arguments.addAll(List.of("--workspace", workspace.toString()));
+		if (permissions != null)
+			arguments.addAll(List.of(ExtraPermissions.OPTION, permissions.toString()));
 		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
 		List<Path> heldOut = sessions.heldOutLocations();
 		if (request.part() == Part.DEVELOPMENT)

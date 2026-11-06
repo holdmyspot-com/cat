@@ -92,6 +92,7 @@ public final class CommandsTest
 		private Exception failure;
 		private int ceiling;
 		private String goal;
+		private Path extraPermissions;
 
 		/**
 		 * Returns the result, or throws the scripted failure.
@@ -112,10 +113,12 @@ public final class CommandsTest
 		}
 
 		@Override
-		public CommandResult start(Path target, int ceiling, String goal) throws CommandRefusedException, IOException
+		public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
+			throws CommandRefusedException, IOException
 		{
 			this.ceiling = ceiling;
 			this.goal = goal;
+			this.extraPermissions = extraPermissions;
 			return answer("start " + target);
 		}
 
@@ -374,6 +377,53 @@ public final class CommandsTest
 	}
 
 	/**
+	 * Verifies that {@code start} passes the file of extra permissions to the core in any option order, and none when
+	 * the option is absent.
+	 */
+	@Test
+	public void passesTheExtraPermissionsFile()
+	{
+		List<List<String>> commands = List.of(
+			List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json"),
+			List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json", "--goal", "Be brief."),
+			List.of("start", "prompts/a.md", "--max-concurrency", "3", "--extra-permissions", "needs/registry.json",
+				"--goal", "Be brief."));
+		for (List<String> command : commands)
+		{
+			FakeCore core = new FakeCore();
+			requireThat(run(core, command, new StringBuilder()), "exit").isEqualTo(0);
+			requireThat(core.extraPermissions, "extraPermissions").isEqualTo(Path.of("needs/registry.json"));
+		}
+		FakeCore core = new FakeCore();
+		requireThat(run(core, List.of("start", "prompts/a.md"), new StringBuilder()), "exit").isEqualTo(0);
+		requireThat(core.extraPermissions, "absentExtraPermissions").isNull();
+	}
+
+	/**
+	 * Verifies that {@code start} refuses a missing, blank or repeated file of extra permissions before calling the
+	 * core.
+	 */
+	@Test
+	public void rejectsInvalidExtraPermissionsOption()
+	{
+		List<List<String>> options = List.of(
+			List.of("--extra-permissions"),
+			List.of("--extra-permissions", " "),
+			List.of("--extra-permissions", "a.json", "--extra-permissions", "b.json"));
+		for (List<String> option : options)
+		{
+			FakeCore core = new FakeCore();
+			StringBuilder output = new StringBuilder();
+			List<String> args = new ArrayList<>(List.of("start", "prompts/a.md"));
+			args.addAll(option);
+			requireThat(run(core, args, output), "exit").isEqualTo(2);
+			requireThat(core.calls, "calls").isEmpty();
+			requireThat(JSON.readTree(output.toString()).get("message").asString(), "message").
+				contains("--extra-permissions");
+		}
+	}
+
+	/**
 	 * Verifies that malformed ceilings are refused with the range before calling the core.
 	 */
 	@Test
@@ -406,7 +456,8 @@ public final class CommandsTest
 	public void usageListsCampaignCeiling()
 	{
 		// Requirement: R-E4
-		requireThat(Commands.USAGE, "usage").contains("start <target> [--goal <text>] [--max-concurrency <1..16>]");
+		requireThat(Commands.USAGE, "usage").contains(
+			"start <target> [--goal <text>] [--max-concurrency <1..16>] [--extra-permissions <file>]");
 	}
 
 	/**

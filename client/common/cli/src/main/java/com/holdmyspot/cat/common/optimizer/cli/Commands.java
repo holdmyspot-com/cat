@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -43,6 +44,7 @@ public final class Commands
 {
 	private static final String MAX_CONCURRENCY = "--max-concurrency";
 	private static final String GOAL = "--goal";
+	private static final String EXTRA_PERMISSIONS = ExtraPermissions.OPTION;
 	/**
 	 * The arguments of {@code contract workspace}.
 	 */
@@ -53,7 +55,7 @@ public final class Commands
 	 */
 	public static final String USAGE = """
 		usage: prompt-optimizer <command> ...
-		  start <target> [%s <text>] [%s <1..%d>]
+		  start <target> [%s <text>] [%s <1..%d>] [%s <file>]
 		  run <campaign>
 		  status <campaign | target>
 		  confirm <campaign> [<%s>]
@@ -61,8 +63,8 @@ public final class Commands
 		  choose <campaign> <choice> [--attempt N | --review-point N]
 		  cancel <campaign>
 		  contract check <context file>
-		  contract workspace %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, scopeIds(),
-		WORKSPACE_FORM);
+		  contract workspace %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, EXTRA_PERMISSIONS,
+		scopeIds(), WORKSPACE_FORM);
 	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
@@ -156,8 +158,8 @@ public final class Commands
 	}
 
 	/**
-	 * Parses {@code start}, whose options may appear in either order, each at most once. The ceiling defaults to 8
-	 * and the goal to none.
+	 * Parses {@code start}, whose options may appear in any order, each at most once. The ceiling defaults to 8,
+	 * and the goal and the file of extra permissions to none.
 	 *
 	 * @param rest the arguments after the command's name
 	 * @return the command
@@ -166,7 +168,7 @@ public final class Commands
 	private static Command start(List<String> rest)
 	{
 		String form = "<target> [" + GOAL + " <text>] [" + MAX_CONCURRENCY + " <1.." + Campaign.MAXIMUM_CEILING +
-			">]";
+			">] [" + EXTRA_PERMISSIONS + " <file>]";
 		if (rest.isEmpty())
 			throw new InvalidCommandException("start: expected " + form);
 		Path target = target("start", rest.getFirst());
@@ -174,7 +176,7 @@ public final class Commands
 		for (int i = 1; i < rest.size(); i += 2)
 		{
 			String option = rest.get(i);
-			if (!option.equals(GOAL) && !option.equals(MAX_CONCURRENCY))
+			if (!option.equals(GOAL) && !option.equals(MAX_CONCURRENCY) && !option.equals(EXTRA_PERMISSIONS))
 				throw new InvalidCommandException("start: expected " + form + "; unknown option '" + option + "'.");
 			if (i + 1 == rest.size())
 				throw new InvalidCommandException("start: " + option + " needs a value; expected " + form);
@@ -200,7 +202,11 @@ public final class Commands
 		String goal = options.get(GOAL);
 		if (goal != null && goal.isBlank())
 			throw new InvalidCommandException("start: the " + GOAL + " text is blank.");
-		return new Command.Start(target, ceiling, goal);
+		Path extraPermissions = null;
+		String extraPermissionsText = options.get(EXTRA_PERMISSIONS);
+		if (extraPermissionsText != null)
+			extraPermissions = path("start", "the " + EXTRA_PERMISSIONS + " file", extraPermissionsText);
+		return new Command.Start(target, ceiling, goal, extraPermissions);
 	}
 
 	/**
@@ -584,7 +590,7 @@ public final class Commands
 		}
 		return switch (command)
 		{
-			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal());
+			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal(), start.extraPermissions());
 			case Command.Run run -> core.run(run.campaign());
 			case Command.Status status -> core.status(status.subject());
 			case Command.Confirm confirm -> core.confirm(confirm.campaign(), confirm.scope());

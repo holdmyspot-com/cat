@@ -23,8 +23,10 @@ public sealed interface Command
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
 	 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user
 	 *   stated no goal
+	 * @param extraPermissions the file that lists the writes and hosts that every session of a new campaign needs
+	 *   beyond its own, as the user wrote it, or {@code null} if the user named none
 	 */
-	record Start(Path target, int ceiling, String goal) implements Command
+	record Start(Path target, int ceiling, String goal, Path extraPermissions) implements Command
 	{
 		/**
 		 * Creates the command.
@@ -33,6 +35,7 @@ public sealed interface Command
 		 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
 		 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the
 		 *   user stated no goal
+		 * @param extraPermissions the file of extra permissions, or {@code null} if the user named none
 		 * @throws NullPointerException if {@code target} is null
 		 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
 		 *   {@code goal} is blank

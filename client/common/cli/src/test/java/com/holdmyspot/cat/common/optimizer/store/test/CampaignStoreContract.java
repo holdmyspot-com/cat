@@ -80,6 +80,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.optimizer.store.AbstractCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
@@ -433,6 +434,36 @@ public abstract class CampaignStoreContract
 			fixture.store().replaceSnapshot(campaign);
 
 			requireThat(fixture.reopen().load("campaign-draft"), "loaded").isEqualTo(Optional.of(campaign));
+		}
+	}
+
+	/**
+	 * The extra permissions that the user named for the campaign's sessions survive a reload, and a campaign that
+	 * named none reloads with none.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void extraPermissionsSurviveReload() throws IOException
+	{
+		try (StoreFixture fixture = open())
+		{
+			ExtraPermissions extra = new ExtraPermissions(List.of(Path.of("/cache/npm").toAbsolutePath()),
+				Set.of("registry.example.com"));
+			Header header = new Header("campaign-extra", Path.of("/project").toAbsolutePath(),
+				Path.of("/project/AGENTS.md").toAbsolutePath(), Harness.CODEX, Lifecycle.ACTIVE, null, extra);
+			fixture.store().replaceSnapshot(Campaign.start(header, Campaign.DEFAULT_CEILING, Builder.INCUMBENT,
+				Builder.OBSERVED));
+			Header plain = new Header("campaign-plain", Path.of("/project").toAbsolutePath(),
+				Path.of("/project/AGENTS.md").toAbsolutePath(), Harness.CODEX, Lifecycle.ACTIVE);
+			fixture.store().replaceSnapshot(Campaign.start(plain, Campaign.DEFAULT_CEILING, Builder.INCUMBENT,
+				Builder.OBSERVED));
+
+			CampaignStore reopened = fixture.reopen();
+			requireThat(reopened.load("campaign-extra").orElseThrow().header().extraPermissions(), "extra").
+				isEqualTo(extra);
+			requireThat(reopened.load("campaign-plain").orElseThrow().header().extraPermissions(), "plain").
+				isEqualTo(ExtraPermissions.NONE);
 		}
 	}
 

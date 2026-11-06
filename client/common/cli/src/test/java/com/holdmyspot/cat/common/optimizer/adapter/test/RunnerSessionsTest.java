@@ -32,6 +32,7 @@ import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
@@ -49,6 +50,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -58,6 +60,7 @@ import java.util.stream.Stream;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link RunnerSessions} over the real runner bridge with a scripted harness.
@@ -325,6 +328,56 @@ public final class RunnerSessionsTest
 
 				requireThat(arguments.get(0), "control").contains("--control-source");
 				requireThat(arguments.get(1), "formal").doesNotContain("--control-source");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a session whose request asks for extra permissions starts its runner with a file that lists them,
+	 * that a session that asks for none passes no such option, and that the file is gone when the session ends.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void passesExtraPermissionsFile()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path runRoot = root.resolve("runs");
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				List<ExtraPermissions> files = new CopyOnWriteArrayList<>();
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, false,
+					Map.of(), runRoot, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+				{
+					arguments.add(options);
+					if (options.contains(ExtraPermissions.OPTION))
+					{
+						files.add(ExtraPermissions.read(JsonMapper.builder().build(),
+							Path.of(ScriptedHarness.optionValue(options, ExtraPermissions.OPTION))));
+					}
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")),
+						TestSessions.HARNESS, List.of(Turn.replies("ok")), input, output);
+				});
+				ExtraPermissions extra = new ExtraPermissions(List.of(root.resolve("cache").toAbsolutePath()),
+					Set.of("registry.example.com"));
+
+				await(sessions.start(request(SESSION_PROFILE, source, List.of(), "plain")));
+				await(sessions.start(request(SESSION_PROFILE, source, List.of(), "extra").withExtraPermissions(extra)));
+
+				requireThat(arguments.get(0), "plain").doesNotContain(ExtraPermissions.OPTION);
+				requireThat(arguments.get(1), "extra").contains(ExtraPermissions.OPTION);
+				requireThat(files, "files").isEqualTo(List.of(extra));
+				Path file = Path.of(ScriptedHarness.optionValue(arguments.get(1), ExtraPermissions.OPTION));
+				requireThat(Files.exists(file), "fileKept").isFalse();
 			}
 		}
 	}

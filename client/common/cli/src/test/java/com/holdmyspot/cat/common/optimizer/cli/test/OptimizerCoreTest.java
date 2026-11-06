@@ -72,6 +72,7 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
@@ -2017,6 +2018,98 @@ public final class OptimizerCoreTest
 			requireThat(repository.load(id).header().goal(), "goal").isEqualTo(goal);
 			requireThat(repository.sessions().requests.getFirst().turns().getFirst(), "contractAuthorTurn").
 				contains(goal).contains("`CLAUDE.md`");
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} records the file's extra permissions with the campaign and asks for them in the
+	 * session it starts, and that a later command on the campaign asks for the recorded permissions even when the
+	 * file is gone.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void startRecordsAndAppliesExtraPermissions() throws IOException, CommandRefusedException,
+		InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path cache = Path.of("/home/user/.cache/npm").toAbsolutePath();
+			Path file = scope.add(Files.createTempDirectory("cat-extra-")).resolve("needs.json");
+			Files.writeString(file, "{\"format_version\": 1, \"writes\": [\"" + cache + "\"], " +
+				"\"hosts\": [\"registry.example.com\"]}");
+			ExtraPermissions expected = new ExtraPermissions(List.of(cache), Set.of("registry.example.com"));
+
+			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, file).status().
+				campaignId();
+			Files.delete(file);
+			repository.core().revise(id, "cover the formal tone");
+
+			requireThat(repository.load(id).header().extraPermissions(), "recorded").isEqualTo(expected);
+			List<SessionRequest> requests = repository.sessions().requests;
+			requireThat(requests.size(), "requests.size()").isGreaterThanOrEqualTo(2);
+			for (SessionRequest request : requests)
+				requireThat(request.extraPermissions(), "extraPermissions").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} without a file asks for no extra permissions.
+	 *
+	 * @throws IOException if the project cannot be written
+	 * @throws CommandRefusedException if the project cannot start a campaign
+	 * @throws InterruptedException if the session wait is interrupted
+	 */
+	@Test
+	public void startAsksForNoExtraPermissionsByDefault() throws IOException, CommandRefusedException,
+		InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+
+			requireThat(repository.load(id).header().extraPermissions(), "recorded").isEqualTo(ExtraPermissions.NONE);
+			requireThat(repository.sessions().requests.getFirst().extraPermissions(), "requested").
+				isEqualTo(ExtraPermissions.NONE);
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses a missing or invalid file of extra permissions, naming the file, before it
+	 * starts a session.
+	 *
+	 * @throws Exception if the project cannot be written or a start fails other than by a refusal
+	 */
+	@Test
+	public void startRefusesInvalidExtraPermissions() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Path directory = scope.add(Files.createTempDirectory("cat-extra-"));
+			Path invalid = Files.writeString(directory.resolve("invalid.json"),
+				"{\"format_version\": 1, \"hosts\": [\"*.example.com\"]}");
+			Path missing = directory.resolve("missing.json");
+
+			for (Path file : List.of(invalid, missing))
+			{
+				String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
+					null, file));
+
+				requireThat(refusal, "refusal").contains(file.toString());
+			}
+			requireThat(repository.sessions().requests, "requests").isEmpty();
 		}
 	}
 

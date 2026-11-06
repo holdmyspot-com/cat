@@ -69,11 +69,13 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.optimizer.port.ExtraPermissionSessions;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
+import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
@@ -101,6 +103,7 @@ import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.runner.PluginManifest;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.optimizer.workspace.ControlSource;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
@@ -277,7 +280,7 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult start(Path target, int ceiling, String goal)
+	public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(target, "target").isNotNull();
@@ -285,7 +288,7 @@ public final class OptimizerCore implements Core
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
 		refuseUnlaunchable();
-		return withCleanup(_ -> startBody(target, ceiling, goal));
+		return withCleanup(_ -> startBody(target, ceiling, goal, extraPermissions));
 	}
 
 	/**
@@ -309,12 +312,14 @@ public final class OptimizerCore implements Core
 	 * @param ceiling the maximum simultaneous nested sessions of a new campaign
 	 * @param goal the user's goal for a new campaign, or {@code null} if the user stated none. A resumed campaign
 	 *   keeps the goal it was started with.
+	 * @param extraPermissions the file of extra permissions for a new campaign, or {@code null} if the user named
+	 *   none. A resumed campaign keeps the permissions it was started with.
 	 * @return the result
 	 * @throws CommandRefusedException if the command is refused
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private CommandResult startBody(Path target, int ceiling, String goal)
+	private CommandResult startBody(Path target, int ceiling, String goal, Path extraPermissions)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
@@ -339,7 +344,7 @@ public final class OptimizerCore implements Core
 		{
 			case Registry.Opening.Refuse refuse -> throw refused(refuse.owner());
 			case Registry.Opening.Resume resume -> resume(root, store, resume.header());
-			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal);
+			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal, extraPermissions);
 		};
 	}
 
@@ -589,15 +594,19 @@ public final class OptimizerCore implements Core
 	 * @param target the canonical target
 	 * @param ceiling the maximum simultaneous nested sessions of the new campaign
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
+	 * @param extraPermissions the file that lists the writes and hosts that the campaign's sessions need beyond their
+	 *   own, or {@code null} if the user named none
 	 * @return the result
-	 * @throws CommandRefusedException if the prompt test configuration is missing or invalid, the base worktree has
-	 *   uncommitted changes, or the trial plugins cannot be built, copied or mapped
+	 * @throws CommandRefusedException if the file of extra permissions is missing or invalid, the prompt test
+	 *   configuration is missing or invalid, the base worktree has uncommitted changes, or the trial plugins cannot be
+	 *   built, copied or mapped
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
 	 */
-	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling, String goal)
-		throws CommandRefusedException, IOException, InterruptedException
+	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling, String goal,
+		Path extraPermissions) throws CommandRefusedException, IOException, InterruptedException
 	{
+		ExtraPermissions extra = readExtraPermissions(extraPermissions);
 		String id = ID_TIME.format(scope.clock().instant()) + "-" +
 			HexFormat.of().toHexDigits(scope.random().nextInt()).substring(Integer.BYTES * 2 - RANDOM_ID_DIGITS);
 		Path directory = campaignDirectory(id);
@@ -622,7 +631,7 @@ public final class OptimizerCore implements Core
 			FileInventory inventory = fork.inventory();
 			Overlay incumbent = Overlay.of(inventory);
 			new FileCandidateOverlays(directory, inventory, scope.json(), scope.fileReplacer()).save(incumbent);
-			Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal);
+			Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal, extra);
 			Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
 			store.replaceSnapshot(campaign);
 			campaign = withTrialPlugins(root, store, campaign, fork, configured);
@@ -634,6 +643,41 @@ public final class OptimizerCore implements Core
 		if (result.message() != null)
 			message += "\n" + result.message();
 		return new CommandResult(result.status(), result.harness(), result.proposal(), result.delivery(), message);
+	}
+
+	/**
+	 * Reads the file of extra permissions that a new campaign's user named.
+	 *
+	 * @param file the file, relative to the working directory, or {@code null} if the user named none
+	 * @return the permissions, or {@link ExtraPermissions#NONE} if the user named no file
+	 * @throws CommandRefusedException if the file does not exist, cannot be read or is not valid; the message names the
+	 *   file and the problem
+	 */
+	private ExtraPermissions readExtraPermissions(Path file) throws CommandRefusedException
+	{
+		if (file == null)
+			return ExtraPermissions.NONE;
+		try
+		{
+			return ExtraPermissions.read(scope.json(), scope.directory().resolve(file));
+		}
+		catch (IOException e)
+		{
+			throw new CommandRefusedException(e.getMessage() + ". Fix the file named by " + ExtraPermissions.OPTION +
+				", or leave the option out, then run `start` again.", e);
+		}
+	}
+
+	/**
+	 * Returns the session port that starts a campaign's sessions with the permissions that its user asked for.
+	 *
+	 * @param campaign the campaign
+	 * @return the port
+	 * @throws IOException if the port cannot be created
+	 */
+	private SessionPort sessions(Campaign campaign) throws IOException
+	{
+		return new ExtraPermissionSessions(scope.sessions(), campaign.header().extraPermissions());
 	}
 
 	/**
@@ -1244,7 +1288,7 @@ public final class OptimizerCore implements Core
 		{
 			TestRevisionProtocol.Examination examined = new TestRevisionProtocol.Examination(current,
 				stored.profiles(), request, evidenceSections(request));
-			SessionResult result = await(scope.sessions().start(protocol.request(staged, examined)));
+			SessionResult result = await(sessions(campaign).start(protocol.request(staged, examined)));
 			String session = "The test revision of `" + request.test() + "`";
 			if (!(result instanceof SessionResult.Completed completed))
 				return Optional.of(session + " " + describe(result) + " Run `run` again to retry.");
@@ -2075,7 +2119,7 @@ public final class OptimizerCore implements Core
 			// The proposal that the user gave feedback on is still stored, so revise can regenerate it again
 			invalidRetry = "Run `revise` with feedback, or `start`, to retry.";
 		}
-		SessionResult result = await(scope.sessions().start(request));
+		SessionResult result = await(sessions(campaign).start(request));
 		SessionResult.Completed completed;
 		switch (result)
 		{
@@ -2266,7 +2310,7 @@ public final class OptimizerCore implements Core
 		PilotFile file = pilotFile(campaign);
 		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(root, campaign),
 			derived.contract().projectRemovals(), scope.json());
-		GuardPilot pilot = new GuardPilot(scope.sessions(), fork.workspace(), judgePrompt(campaign), schema,
+		GuardPilot pilot = new GuardPilot(sessions(campaign), fork.workspace(), judgePrompt(campaign), schema,
 			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
@@ -2671,7 +2715,7 @@ public final class OptimizerCore implements Core
 			Set.copyOf(scope.loaderConfiguration()));
 		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory,
 			new SplittableRandom(scope.random().nextLong()));
-		return new DriverContext(scope.fileLocks(), store, scope.sessions(), fork.workspace(), scope.interrupts(),
+		return new DriverContext(scope.fileLocks(), store, sessions(campaign), fork.workspace(), scope.interrupts(),
 			scope.clock(),
 			new FileCandidateOverlays(directory, inventory, fork::version, scope.json(), scope.fileReplacer()), judge, triage,
 			new ApproachRankingPrompt(scope.json(), triageDirectory), promptAuthor,
