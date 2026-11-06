@@ -2490,7 +2490,10 @@ The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `statu
 (`--extra-permissions <file>`, the format of the runner launchers' option); it refuses a directory, naming it, and a
 missing or invalid file. A new campaign reads the file once and records its contents in the campaign's header, and
 applies them to every session it starts, the contract author's and judges' included; a resumed campaign keeps the
-permissions it started with, and a campaign that named no file asks for none. A session whose parent's sandbox lacks
+permissions and the goal it started with, so a resume that names a file with other contents or a different goal is
+refused, naming the added and removed writes and hosts or both goals and saying to start a new campaign (user ruling,
+2026-11-06), while a resume that names neither, or the same contents, continues; a campaign that named no file asks
+for none. A session whose parent's sandbox lacks
 a listed write or host is refused as any requested session is.
 It reads the prompt test configuration from the target's test directory (below) and refuses a target without one, naming
 the file to write ([§4.4](#44-trial-staging)).

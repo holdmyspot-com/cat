@@ -43,6 +43,10 @@ launcher field.
 	with a file-writing tool into `{"format_version":1,"writes":["<absolute path>"],"hosts":["<host name>"]}` and add
 	`--extra-permissions <file>`; otherwise leave it out. It creates a campaign or resumes the one that already exists
 	for that target. Use its `campaign` value in every later command.
+	- A resumed campaign keeps the goal and the extra permissions it started with. When `start` is refused because the
+		`--goal` or the file differs from the campaign's, show its `message` to the user and ask whether to continue the
+		campaign without that option, or to cancel it and start a new campaign with it. Never cancel on the user's
+		behalf.
 	- A result may say that CAT added `/.cat/sessions/` to the project's `.gitignore`. Show that text to the user with
 		the rest of the result. The user commits that change: do not stage or commit it yourself. `start` accepts a
 		project whose only uncommitted change is those lines.
