@@ -22,9 +22,9 @@ import tools.jackson.databind.node.ObjectNode;
  * CAT cannot add an entry to a built-in profile, and Codex ignores {@code sandbox_workspace_write.writable_roots} while
  * one is selected. CAT's profile of the built-in profile {@code :<name>} is {@code cat-<name>}, which holds only
  * {@code extends = ":<name>"} when this class creates it; {@link PermissionProfile} then adds the write entry of the
- * capacity locks to it. The editor changes only the {@code default_permissions} line before the first table header and
- * appends or removes the profile's tables, and it accepts an edit only when the edited file parses to the expected
- * document.
+ * capacity locks and the read entry of the session launcher's state to it. The editor changes only the
+ * {@code default_permissions} line before the first table header and appends or removes the profile's tables, and it
+ * accepts an edit only when the edited file parses to the expected document.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -262,7 +262,7 @@ final class BuiltInProfile
 	}
 
 	/**
-	 * Returns whether a profile holds only the content that CAT writes, once its write entries are removed.
+	 * Returns whether a profile holds only the content that CAT writes, once its filesystem entries are removed.
 	 *
 	 * @param document the parsed file
 	 * @param profile  CAT's profile's name

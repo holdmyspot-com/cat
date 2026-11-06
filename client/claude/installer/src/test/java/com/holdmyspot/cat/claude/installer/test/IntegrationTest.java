@@ -744,8 +744,8 @@ public final class IntegrationTest
 
 	/**
 	 * The sandbox entries deny sandboxed writes to the other harness's CAT folders, found through its own home
-	 * variable, and allow writes to the capacity locks, in Claude Code's two-space layout; repeating the call adds
-	 * nothing.
+	 * variable, and to the session launcher's state, and allow writes to the capacity locks, in Claude Code's
+	 * two-space layout; repeating the call adds nothing.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
@@ -769,7 +769,8 @@ public final class IntegrationTest
 				launcherState, replacer());
 
 			List<String> denied = List.of(codexHome.resolve("plugins/cat-marketplace").toString(),
-				codexHome.resolve("plugins/cache/cat/cat").toString(), codexHome.resolve("plugins/data/cat-cat").toString());
+				codexHome.resolve("plugins/cache/cat/cat").toString(), codexHome.resolve("plugins/data/cat-cat").toString(),
+				launcherState.toString());
 			Map<String, List<String>> expected = Map.of(SETTINGS_KEY_DENY_WRITE, denied, SETTINGS_KEY_ALLOW_WRITE,
 				List.of(catLocks.toString()));
 			requireThat(added, "added").isEqualTo(expected);
@@ -870,6 +871,43 @@ public final class IntegrationTest
 				doesNotContain(json(wrongLocks.toString()));
 			requireThat(entries.recorded().get(SETTINGS_KEY_ALLOW_WRITE), "recorded").
 				isEqualTo(List.of(catLocks.toString()));
+		}
+	}
+
+	/**
+	 * A reinstall after CAT denied sandboxed writes to another launcher state folder, as an earlier installer did
+	 * from a wrong user home, leaves the settings denying only the new folder, keeps the user's own entry, and
+	 * records the new denial.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void reinstallReplacesStaleStateDenial() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory());
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			HarnessInstallation claude = new ClaudeInstallation(home);
+			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of(), userHome);
+			Path catLocks = userHome.resolve(".cat/locks");
+			Path wrongState = userHome.resolve("account/.cat/sessions");
+			Path launcherState = userHome.resolve(".cat/sessions");
+			Path userEntry = userHome.resolve("private");
+			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"denyWrite\":[" +
+				json(userEntry.toString()) + "]}}}");
+			PluginInstall install = new PluginInstall(integration(), _ -> new CommandResult(0, ""), replacer());
+			install.installEntries(home, launcher(home), claude, List.of(codex), catLocks, wrongState, false);
+			requireThat(Files.readString(home.resolve("settings.json")), "denied").contains(json(wrongState.toString()));
+
+			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
+				List.of(codex), catLocks, launcherState, false);
+
+			requireThat(Files.readString(home.resolve("settings.json")), "settings").
+				contains(json(userEntry.toString())).contains(json(launcherState.toString())).
+				doesNotContain(json(wrongState.toString()));
+			requireThat(entries.recorded().get(SETTINGS_KEY_DENY_WRITE), "recorded").
+				contains(launcherState.toString()).doesNotContain(userEntry.toString());
 		}
 	}
 

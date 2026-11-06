@@ -123,11 +123,12 @@ public final class BuiltInProfileTest
 
 	/**
 	 * With the user's permission, install selects CAT's profile, which extends the built-in one and holds only the lock
-	 * folder, changing nothing else. It tells the user so, and a repeated install changes nothing and tells nothing.
-	 * Uninstall then restores the original file.
+	 * folder's write entry and the session launcher state's read entry, changing nothing else. It tells the user so,
+	 * and a repeated install changes nothing and tells nothing. Uninstall then restores the original file.
 	 *
 	 * @param original the existing {@code config.toml}
-	 * @param edited   the expected {@code config.toml} after install, with {@code %1$s} for the quoted lock folder
+	 * @param edited   the expected {@code config.toml} after install, with {@code %1$s} for the quoted lock folder and
+	 *                 {@code %2$s} for the quoted launcher state
 	 * @param removed  the expected {@code config.toml} after uninstall
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -143,11 +144,13 @@ public final class BuiltInProfileTest
 
 			Map<String, List<String>> recorded = install(home, locks);
 
-			requireThat(Files.readString(configuration), "edited").isEqualTo(edited.formatted(quote(locks)));
+			String expected = edited.formatted(quote(locks), quote(launcherState(locks)));
+			requireThat(Files.readString(configuration), "edited").isEqualTo(expected);
 			requireThat(recorded, "recorded").isEqualTo(Map.of(
 				"config.toml#default_permissions", List.of(":workspace"),
 				"config.toml#permissions.cat-workspace", List.of(":workspace"),
-				"config.toml#permissions.cat-workspace.filesystem", List.of(locks.toString())));
+				"config.toml#permissions.cat-workspace.filesystem", List.of(locks.toString()),
+				"config.toml#permissions.cat-workspace.filesystem.read", List.of(launcherState(locks).toString())));
 			requireThat(provider().describeAdded(home, recorded), "notices").isEqualTo(List.of(
 				"CAT set default_permissions in " + configuration + " to its permission profile \"cat-workspace\", " +
 					"which extends \":workspace\" and lets sandboxed commands take CAT's capacity locks; " +
@@ -158,7 +161,7 @@ public final class BuiltInProfileTest
 			Map<String, List<String>> repeated = installSandboxEntries(home, locks);
 			requireThat(repeated, "repeated").isEmpty();
 			requireThat(provider().describeAdded(home, repeated), "repeatedNotices").isEmpty();
-			requireThat(Files.readString(configuration), "repeated").isEqualTo(edited.formatted(quote(locks)));
+			requireThat(Files.readString(configuration), "repeated").isEqualTo(expected);
 
 			provider().removePermissions(home, recorded, replacer());
 			requireThat(Files.readString(configuration), "removed").isEqualTo(removed);
@@ -181,14 +184,14 @@ public final class BuiltInProfileTest
 					"network_access = true\n",
 					"model = \"gpt\"\ndefault_permissions = \"cat-workspace\"\n\n[sandbox_workspace_write]\n" +
 						"network_access = true\n\n[permissions.cat-workspace]\nextends = \":workspace\"\n\n" +
-						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n",
+						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n%2$s = \"read\"\n",
 					"model = \"gpt\"\ndefault_permissions = \":workspace\"\n\n[sandbox_workspace_write]\n" +
 						"network_access = true\n"},
 				// A literal string with a comment, and another profile of the user's
 				{"default_permissions = ':workspace' # mine\n\n[permissions.mine]\nextends = \":read-only\"\n",
 					"default_permissions = \"cat-workspace\" # mine\n\n[permissions.mine]\nextends = \":read-only\"\n\n" +
 						"[permissions.cat-workspace]\nextends = \":workspace\"\n\n" +
-						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n",
+						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n%2$s = \"read\"\n",
 					"default_permissions = \":workspace\" # mine\n\n[permissions.mine]\nextends = \":read-only\"\n"}
 			};
 	}

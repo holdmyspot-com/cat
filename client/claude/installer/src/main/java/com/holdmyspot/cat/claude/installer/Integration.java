@@ -882,14 +882,16 @@ public final class Integration implements HarnessIntegration
 		Path launcherState, FileReplacer replacer) throws IOException
 	{
 		requireThat(replacer, "replacer").isNotNull();
-		return addEntries(home, filesystemEntries(home, other, catLocks), replacer);
+		return addEntries(home, filesystemEntries(home, other, catLocks, launcherState), replacer);
 	}
 
 	/**
-	 * Returns the entries that keep sandboxed commands from writing the other harness's CAT installation, and that let
-	 * them take the capacity locks. The denied folders are the other harness's marketplace folder, which decides what
-	 * that harness installs, its CAT version folders, from which it runs CAT, and CAT's data directory there, which
-	 * holds the installer's policy. Claude Code's sandbox already denies writes below its own {@code plugins} folder.
+	 * Returns the entries that keep sandboxed commands from writing the other harness's CAT installation and the session
+	 * launcher's state, and that let them take the capacity locks. The denied folders are the other harness's
+	 * marketplace folder, which decides what that harness installs, its CAT version folders, from which it runs CAT,
+	 * CAT's data directory there, which holds the installer's policy, and the session launcher's state, which the
+	 * launcher trusts only while no sandboxed command can write it. Claude Code's sandbox already denies writes below
+	 * its own {@code plugins} folder.
 	 *
 	 * @param home          the absolute Claude Code configuration directory
 	 * @param other         the other harness's CAT installation
@@ -904,27 +906,30 @@ public final class Integration implements HarnessIntegration
 	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks,
 		Path launcherState)
 	{
-		return keyed(filesystemEntries(home, other, catLocks));
+		return keyed(filesystemEntries(home, other, catLocks, launcherState));
 	}
 
 	/**
 	 * Returns the sandbox entries for each setting.
 	 *
-	 * @param home     the absolute Claude Code configuration directory
-	 * @param other    the other harness's CAT installation
-	 * @param catLocks the absolute capacity lock directory
+	 * @param home          the absolute Claude Code configuration directory
+	 * @param other         the other harness's CAT installation
+	 * @param catLocks      the absolute capacity lock directory
+	 * @param launcherState the absolute directory that holds the session launcher's state
 	 * @return the denied and the allowed paths, by dotted setting name, in a stable order
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative
 	 */
-	private static Map<String, List<String>> filesystemEntries(Path home, HarnessInstallation other, Path catLocks)
+	private static Map<String, List<String>> filesystemEntries(Path home, HarnessInstallation other, Path catLocks,
+		Path launcherState)
 	{
 		requireThat(home, "home").isAbsolute();
 		requireThat(other, "other").isNotNull();
 		requireThat(catLocks, "catLocks").isAbsolute();
+		requireThat(launcherState, "launcherState").isAbsolute();
 		Map<String, List<String>> entries = new LinkedHashMap<>();
 		entries.put(DENY_WRITE, List.of(other.marketplaceRoot().toString(), other.versionFolders().toString(),
-			other.dataDirectory().toString()));
+			other.dataDirectory().toString(), launcherState.toString()));
 		entries.put(ALLOW_WRITE, List.of(catLocks.toString()));
 		return entries;
 	}

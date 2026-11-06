@@ -21,8 +21,9 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests the one sandbox entry, for CAT's capacity locks, that the Codex integration adds to and removes from Codex's
- * {@code config.toml}: a writable root, or a write entry in the permission profile that the file selects and defines.
+ * Tests the sandbox entries that the Codex integration adds to and removes from Codex's {@code config.toml}: for CAT's
+ * capacity locks, a writable root or a write entry in the permission profile that the file selects and defines, and for
+ * the session launcher's state, a read entry in that profile.
  */
 public final class SandboxEntriesTest
 {
@@ -30,6 +31,10 @@ public final class SandboxEntriesTest
 	 * The key under which the integration records the writable root that it added.
 	 */
 	private static final String KEY = "config.toml#sandbox_workspace_write.writable_roots";
+	/**
+	 * The suffix of the key under which the integration records the read entries that it added to a profile.
+	 */
+	private static final String READ_SUFFIX = ".read";
 	/**
 	 * Quotes the lock folder as a TOML basic string, which JSON's string form also is.
 	 */
@@ -262,19 +267,22 @@ public final class SandboxEntriesTest
 			Files.writeString(home.resolve("config.toml"), "default_permissions = \"cat\"\n\n[permissions.cat]\n" +
 				"extends = \":workspace\"\n");
 
-			requireThat(sandboxEntries(home, locks), "entries").
-				isEqualTo(Map.of("config.toml#permissions.cat.filesystem", List.of(locks.toString())));
+			requireThat(sandboxEntries(home, locks), "entries").isEqualTo(Map.of(
+				"config.toml#permissions.cat.filesystem", List.of(locks.toString()),
+				"config.toml#permissions.cat.filesystem.read", List.of(launcherState(locks).toString())));
 		}
 	}
 
 	/**
 	 * When {@code config.toml} selects a permission profile that it defines, install adds the lock folder to that
-	 * profile as a write entry in each form it can edit, instead of a writable root, changing nothing else, and reports
-	 * the entry as added only when it wrote it. Uninstall then removes only that entry.
+	 * profile as a write entry, and the session launcher's state as a read entry that narrows any broader write grant,
+	 * in each form it can edit, instead of a writable root, changing nothing else, and reports each entry as added only
+	 * when it wrote it. Uninstall then removes only those entries.
 	 *
 	 * @param original the existing {@code config.toml}
-	 * @param key      the key under which install records the entry
-	 * @param edited   the expected {@code config.toml} after install, with {@code %1$s} for the quoted lock folder
+	 * @param key      the key under which install records the write entry; the read entry's key adds {@code .read}
+	 * @param edited   the expected {@code config.toml} after install, with {@code %1$s} for the quoted lock folder and
+	 *                 {@code %2$s} for the quoted launcher state
 	 * @param removed  the expected {@code config.toml} after uninstall
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -286,15 +294,18 @@ public final class SandboxEntriesTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path locks = home.resolveSibling("user/.cat/locks");
+			Path state = launcherState(locks);
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, original);
 
 			provider().validateConfiguration(home);
 			Map<String, List<String>> added = installSandboxEntries(home, locks);
-			requireThat(added, "added").isEqualTo(Map.of(key, List.of(locks.toString())));
-			requireThat(Files.readString(configuration), "edited").isEqualTo(edited.formatted(quote(locks)));
+			requireThat(added, "added").isEqualTo(Map.of(key, List.of(locks.toString()),
+				key + READ_SUFFIX, List.of(state.toString())));
+			String expected = edited.formatted(quote(locks), quote(state));
+			requireThat(Files.readString(configuration), "edited").isEqualTo(expected);
 			requireThat(installSandboxEntries(home, locks), "repeated").isEmpty();
-			requireThat(Files.readString(configuration), "repeated").isEqualTo(edited.formatted(quote(locks)));
+			requireThat(Files.readString(configuration), "repeated").isEqualTo(expected);
 
 			provider().removePermissions(home, added, replacer());
 			requireThat(Files.readString(configuration), "removed").isEqualTo(removed);
@@ -317,7 +328,8 @@ public final class SandboxEntriesTest
 					"[permissions.cat.filesystem] # mine\n\"/data\" = \"write\"\n\n[other]\nx = 1\n",
 					key,
 					"default_permissions = \"cat\"\n\n[permissions.cat]\nextends = \":workspace\"\n\n" +
-						"[permissions.cat.filesystem] # mine\n%1$s = \"write\"\n\"/data\" = \"write\"\n\n[other]\nx = 1\n",
+						"[permissions.cat.filesystem] # mine\n%1$s = \"write\"\n%2$s = \"read\"\n\"/data\" = \"write\"\n" +
+						"\n[other]\nx = 1\n",
 					"default_permissions = \"cat\"\n\n[permissions.cat]\nextends = \":workspace\"\n\n" +
 						"[permissions.cat.filesystem] # mine\n\"/data\" = \"write\"\n\n[other]\nx = 1\n"},
 				// A profile without a filesystem table, and a sandbox table that stays as it is
@@ -325,26 +337,29 @@ public final class SandboxEntriesTest
 					"[permissions.cat]\nextends = \":workspace\"\n",
 					key,
 					"default_permissions = \"cat\"\n\n[sandbox_workspace_write]\nnetwork_access = true\n\n" +
-						"[permissions.cat]\nextends = \":workspace\"\n\n[permissions.cat.filesystem]\n%1$s = \"write\"\n",
+						"[permissions.cat]\nextends = \":workspace\"\n\n[permissions.cat.filesystem]\n" +
+						"%1$s = \"write\"\n%2$s = \"read\"\n",
 					"default_permissions = \"cat\"\n\n[sandbox_workspace_write]\nnetwork_access = true\n\n" +
 						"[permissions.cat]\nextends = \":workspace\"\n\n[permissions.cat.filesystem]\n"},
 				// A profile that only its subtable defines, without a final line feed
 				{"default_permissions = \"cat\"\n[permissions.cat.workspace_roots]\n\"/w\" = true",
 					key,
 					"default_permissions = \"cat\"\n[permissions.cat.workspace_roots]\n\"/w\" = true\n\n" +
-						"[permissions.cat.filesystem]\n%1$s = \"write\"\n",
+						"[permissions.cat.filesystem]\n%1$s = \"write\"\n%2$s = \"read\"\n",
 					"default_permissions = \"cat\"\n[permissions.cat.workspace_roots]\n\"/w\" = true\n\n" +
 						"[permissions.cat.filesystem]\n"},
 				// A profile whose name needs quotes
 				{"default_permissions = \"my profile\"\n\n[permissions.\"my profile\".filesystem]\n\"/d\" = \"read\"\n",
 					"config.toml#permissions.\"my profile\".filesystem",
-					"default_permissions = \"my profile\"\n\n[permissions.\"my profile\".filesystem]\n%1$s = \"write\"\n" +
+					"default_permissions = \"my profile\"\n\n[permissions.\"my profile\".filesystem]\n" +
+						"%1$s = \"write\"\n%2$s = \"read\"\n" +
 						"\"/d\" = \"read\"\n",
 					"default_permissions = \"my profile\"\n\n[permissions.\"my profile\".filesystem]\n\"/d\" = \"read\"\n"},
 				// Windows line ends
 				{"default_permissions = \"cat\"\r\n[permissions.cat.filesystem]\r\n\"/d\" = \"write\"\r\n",
 					key,
 					"default_permissions = \"cat\"\r\n[permissions.cat.filesystem]\r\n%1$s = \"write\"\r\n" +
+						"%2$s = \"read\"\r\n" +
 						"\"/d\" = \"write\"\r\n",
 					"default_permissions = \"cat\"\r\n[permissions.cat.filesystem]\r\n\"/d\" = \"write\"\r\n"}
 			};
@@ -375,10 +390,10 @@ public final class SandboxEntriesTest
 	}
 
 	/**
-	 * A profile entry for the lock folder that the user already wrote, whatever its access, is neither changed nor
-	 * recorded, so uninstall keeps it.
+	 * Profile entries for the lock folder and the session launcher's state that the user already wrote, whatever their
+	 * access, are neither changed nor recorded, so uninstall keeps them.
 	 *
-	 * @param access the access that the user's entry grants
+	 * @param access the access that the user's entries grant
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test(dataProvider = "accesses")
@@ -390,7 +405,7 @@ public final class SandboxEntriesTest
 			Path locks = home.resolveSibling("user/.cat/locks");
 			Path configuration = home.resolve("config.toml");
 			String original = "default_permissions = \"cat\"\n[permissions.cat.filesystem]\n" + quote(locks) +
-				" = \"" + access + "\"\n";
+				" = \"" + access + "\"\n" + quote(launcherState(locks)) + " = \"" + access + "\"\n";
 			Files.writeString(configuration, original);
 
 			requireThat(installSandboxEntries(home, locks), "added").isEmpty();
@@ -410,8 +425,8 @@ public final class SandboxEntriesTest
 	}
 
 	/**
-	 * After the user selects another permission profile, install retires the entry that it recorded in the earlier
-	 * profile, and removing that entry changes only the earlier profile.
+	 * After the user selects another permission profile, install retires the entries that it recorded in the earlier
+	 * profile, and removing those entries changes only the earlier profile.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -427,11 +442,12 @@ public final class SandboxEntriesTest
 				"[permissions.b.filesystem]\n");
 			Map<String, List<String>> earlier = installSandboxEntries(home, locks);
 			String selectsB = "default_permissions = \"b\"\n[permissions.a.filesystem]\n" + quote(locks) +
-				" = \"write\"\n[permissions.b.filesystem]\n";
+				" = \"write\"\n" + quote(launcherState(locks)) + " = \"read\"\n[permissions.b.filesystem]\n";
 			Files.writeString(configuration, selectsB);
 
-			requireThat(sandboxEntries(home, locks), "entries").
-				isEqualTo(Map.of("config.toml#permissions.b.filesystem", List.of(locks.toString())));
+			requireThat(sandboxEntries(home, locks), "entries").isEqualTo(Map.of(
+				"config.toml#permissions.b.filesystem", List.of(locks.toString()),
+				"config.toml#permissions.b.filesystem.read", List.of(launcherState(locks).toString())));
 			provider().removePermissions(home, earlier, replacer());
 			requireThat(Files.readString(configuration), "removed").
 				isEqualTo("default_permissions = \"b\"\n[permissions.a.filesystem]\n[permissions.b.filesystem]\n");

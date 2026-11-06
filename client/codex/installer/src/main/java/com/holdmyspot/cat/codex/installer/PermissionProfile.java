@@ -15,9 +15,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Adds one write entry to, and removes it from, the {@code filesystem} table of the permission profile that Codex's
- * {@code config.toml} selects with {@code default_permissions}, changing no other part of the file. Codex uses that
- * profile in place of {@code sandbox_workspace_write.writable_roots}.
+ * Adds one read or write entry to, and removes it from, the {@code filesystem} table of the permission profile that
+ * Codex's {@code config.toml} selects with {@code default_permissions}, changing no other part of the file. Codex uses
+ * that profile in place of {@code sandbox_workspace_write.writable_roots}.
  * <p>
  * The editor changes the text of two forms only:
  * <ul>
@@ -41,10 +41,6 @@ final class PermissionProfile
 	 * The table of a profile's filesystem entries.
 	 */
 	private static final String FILESYSTEM = "filesystem";
-	/**
-	 * The access of the entry that the editor adds.
-	 */
-	private static final String WRITE = "write";
 	/**
 	 * Matches a profile name that TOML accepts as a key without quotes.
 	 */
@@ -108,17 +104,18 @@ final class PermissionProfile
 	}
 
 	/**
-	 * Adds a write entry for a path to the profile unless the profile already has an entry for it.
+	 * Adds an entry for a path to the profile unless the profile already has an entry for it.
 	 *
 	 * @param text    the file's content
 	 * @param profile the name of a profile that the file defines
-	 * @param path    the path that the entry lets commands write
+	 * @param path    the path of the entry
+	 * @param access  what the entry lets commands do with the path
 	 * @param file    the file, named in the refusal
 	 * @return the edited content, or {@code text} when the profile already has an entry for the path, whatever its
 	 * 	access
 	 * @throws IOException if the content is not valid TOML or the profile is in a form that the editor does not change
 	 */
-	static String add(String text, String profile, String path, Path file) throws IOException
+	static String add(String text, String profile, String path, Access access, Path file) throws IOException
 	{
 		ObjectNode document = parse(text, file);
 		List<String> lines = lines(text);
@@ -128,21 +125,21 @@ final class PermissionProfile
 			return text;
 
 		String newline = TomlText.newline(text);
-		String entry = quote(path) + " = \"" + WRITE + "\"";
+		String entry = quote(path) + " = " + quote(access.value);
 		ObjectNode expected = document.deepCopy();
 		ObjectNode expectedTable = (ObjectNode) expected.get(PROFILES).get(profile);
 		String edited;
 		if (header == -1)
 		{
 			edited = TomlText.appendTable(text, "[" + tableKey(profile) + "]", entry, newline);
-			expectedTable.putObject(FILESYSTEM).put(path, WRITE);
+			expectedTable.putObject(FILESYSTEM).put(path, access.value);
 		}
 		else
 		{
 			TomlText.terminate(lines, header, newline);
 			lines.add(header + 1, entry + newline);
 			edited = String.join("", lines);
-			((ObjectNode) expectedTable.get(FILESYSTEM)).put(path, WRITE);
+			((ObjectNode) expectedTable.get(FILESYSTEM)).put(path, access.value);
 		}
 		if (!expected.equals(tryParse(edited)))
 			throw uneditable(profile, file);
@@ -150,22 +147,24 @@ final class PermissionProfile
 	}
 
 	/**
-	 * Removes the write entry for a path from a profile, leaving its table and the rest of the file in place.
+	 * Removes the entry for a path from a profile when it has the given access, leaving its table and the rest of the
+	 * file in place.
 	 *
 	 * @param text    the file's content
 	 * @param profile the profile's name
 	 * @param path    the path of the entry
+	 * @param access  the access of the entry
 	 * @param file    the file, named in the refusal
-	 * @return the edited content, or {@code text} when the file does not define the profile or the profile has no write
-	 * 	entry for the path
+	 * @return the edited content, or {@code text} when the file does not define the profile or the profile has no entry
+	 * 	with that access for the path
 	 * @throws IOException if the content is not valid TOML, or the profile holds the entry in a form that the editor
 	 *                     does not change
 	 */
-	static String remove(String text, String profile, String path, Path file) throws IOException
+	static String remove(String text, String profile, String path, Access access, Path file) throws IOException
 	{
 		ObjectNode document = parse(text, file);
-		JsonNode access = document.path(PROFILES).path(profile).path(FILESYSTEM).path(path);
-		if (!access.isString() || !access.stringValue().equals(WRITE))
+		JsonNode current = document.path(PROFILES).path(profile).path(FILESYSTEM).path(path);
+		if (!current.isString() || !current.stringValue().equals(access.value))
 			return text;
 		List<String> lines = lines(text);
 		int header = locate(lines, document, profile, file);
@@ -228,5 +227,36 @@ final class PermissionProfile
 		return new IOException("CAT cannot edit the permission profile " + quote(profile) + " in " + file +
 			". CAT edits it only below a [" + tableKey(profile) + "] table header with one entry per line, such as " +
 			"\"/data\" = \"write\". Write the table that way, then rerun this command.");
+	}
+
+	/**
+	 * What a profile's filesystem entry lets commands do with its path.
+	 */
+	enum Access
+	{
+		/**
+		 * The commands may read the path but not write it. Codex applies the most specific entry, so this entry keeps
+		 * the commands from writing the path even inside a broader {@code write} entry.
+		 */
+		READ("read"),
+		/**
+		 * The commands may read and write the path.
+		 */
+		WRITE("write");
+
+		/**
+		 * The entry's value in {@code config.toml}.
+		 */
+		private final String value;
+
+		/**
+		 * Creates an access.
+		 *
+		 * @param value the entry's value in {@code config.toml}
+		 */
+		Access(String value)
+		{
+			this.value = value;
+		}
 	}
 }

@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.installer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.installer.PermissionProfile.Access;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
@@ -89,6 +90,10 @@ public final class CodexIntegration implements HarnessIntegration
 	 * The start of a sandbox key in Codex's configuration, which the setting's dotted TOML key follows.
 	 */
 	private static final String CONFIGURATION_KEY = "config.toml#";
+	/**
+	 * The suffix that turns the sandbox key of a profile's write entries into the key of its read entries.
+	 */
+	private static final String READ_SUFFIX = ".read";
 	/**
 	 * The record key of the built-in permission profile that {@code default_permissions} selected before CAT selected
 	 * its own profile in its place.
@@ -536,17 +541,21 @@ public final class CodexIntegration implements HarnessIntegration
 	/**
 	 * Lets sandboxed commands write {@code catLocks}. When {@code config.toml} selects with {@code default_permissions}
 	 * a permission profile that it defines, adds {@code "<catLocks>" = "write"} to that profile's {@code filesystem}
-	 * table, creating the table when it is absent, unless the profile already has an entry for {@code catLocks}.
-	 * Otherwise adds {@code catLocks} to {@code sandbox_workspace_write.writable_roots}, creating the file or the table
-	 * when it is absent, unless the writable roots already hold it. Codex's own sandbox already keeps sandboxed commands
-	 * from writing the other harness's CAT installation, so this call adds nothing for it.
+	 * table, creating the table when it is absent, unless the profile already has an entry for {@code catLocks}, and
+	 * adds {@code "<launcherState>" = "read"} to the same table unless the profile already has an entry for
+	 * {@code launcherState}. The session launcher trusts its state only while no sandboxed command can write it, and
+	 * Codex applies the most specific entry, so the read entry keeps the commands from writing that folder even when
+	 * the profile lets them write a folder that contains it. Otherwise adds {@code catLocks} to
+	 * {@code sandbox_workspace_write.writable_roots}, creating the file or the table when it is absent, unless the
+	 * writable roots already hold it. Codex's own sandbox already keeps sandboxed commands from writing the other
+	 * harness's CAT installation, so this call adds nothing for it.
 	 *
 	 * @param home          the absolute Codex home
 	 * @param other         the other harness's CAT installation
 	 * @param catLocks      the capacity lock directory
 	 * @param launcherState the directory that holds the session launcher's state
 	 * @param replacer      replaces Codex's configuration
-	 * @return the entry that {@link #sandboxEntries} returns when this call added it, otherwise an empty map
+	 * @return each entry that {@link #sandboxEntries} returns and that this call added
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative or
 	 *                                  not normalized
@@ -561,6 +570,7 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(other, "other").isNotNull();
 		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
+		requireThat(launcherState, "launcherState").isAbsolute().isEqualTo(launcherState.normalize());
 		requireThat(replacer, "replacer").isNotNull();
 		validateSandboxEntry(home);
 
@@ -571,33 +581,39 @@ public final class CodexIntegration implements HarnessIntegration
 			content = read(file);
 		Optional<String> profile = PermissionProfile.selected(TomlText.parse(content, file));
 		String edited;
-		Map<String, List<String>> entries;
+		Map<String, List<String>> entries = new HashMap<>();
 		if (profile.isPresent())
 		{
-			edited = PermissionProfile.add(content, profile.get(), catLocks.toString(), file);
-			entries = Map.of(profileKey(profile.get()), List.of(catLocks.toString()));
+			// Adding the read entry first leaves the write entry above it, below the table header
+			String denied = PermissionProfile.add(content, profile.get(), launcherState.toString(), Access.READ, file);
+			if (!denied.equals(content))
+				entries.put(profileKey(profile.get()) + READ_SUFFIX, List.of(launcherState.toString()));
+			edited = PermissionProfile.add(denied, profile.get(), catLocks.toString(), Access.WRITE, file);
+			if (!edited.equals(denied))
+				entries.put(profileKey(profile.get()), List.of(catLocks.toString()));
 		}
 		else
 		{
 			edited = WritableRoots.add(content, catLocks.toString(), file);
-			entries = Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
+			entries.put(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
 		}
 		if (exists && edited.equals(content))
 			return Map.of();
 		write(file, edited, replacer);
-		return entries;
+		return Map.copyOf(entries);
 	}
 
 	/**
-	 * Returns the sandbox entry for {@code catLocks} that {@link #installSandboxEntries} adds to the current
-	 * {@code config.toml}.
+	 * Returns the sandbox entries for {@code catLocks} and {@code launcherState} that {@link #installSandboxEntries}
+	 * adds to the current {@code config.toml}.
 	 *
 	 * @param home          the absolute Codex home
 	 * @param other         the other harness's CAT installation
 	 * @param catLocks      the capacity lock directory
 	 * @param launcherState the directory that holds the session launcher's state
-	 * @return {@code {"config.toml#permissions.<profile>.filesystem": [<catLocks>]}} when {@code config.toml} selects
-	 * 	a permission profile that it defines, with the profile's name quoted when TOML requires it, otherwise
+	 * @return {@code {"config.toml#permissions.<profile>.filesystem": [<catLocks>],
+	 * 	"config.toml#permissions.<profile>.filesystem.read": [<launcherState>]}} when {@code config.toml} selects a
+	 * 	permission profile that it defines, with the profile's name quoted when TOML requires it, otherwise
 	 * 	{@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}; when the selected profile is
 	 * 	CAT's profile of a built-in profile, also the entries that {@link #installConsentedEntries} returns for it
 	 * @throws NullPointerException     if any of the arguments are null
@@ -612,6 +628,7 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(other, "other").isNotNull();
 		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
+		requireThat(launcherState, "launcherState").isAbsolute().isEqualTo(launcherState.normalize());
 		Path file = new CodexInstallation(home).configuration();
 		ObjectNode document;
 		try
@@ -627,6 +644,7 @@ public final class CodexIntegration implements HarnessIntegration
 			return Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
 		Map<String, List<String>> entries = new HashMap<>();
 		entries.put(profileKey(profile.get()), List.of(catLocks.toString()));
+		entries.put(profileKey(profile.get()) + READ_SUFFIX, List.of(launcherState.toString()));
 		Optional<String> builtIn = BuiltInProfile.extended(document, profile.get());
 		if (builtIn.isPresent())
 		{
@@ -763,12 +781,12 @@ public final class CodexIntegration implements HarnessIntegration
 
 	/**
 	 * Deletes {@code rules/cat-installer.rules} when its content equals a recorded content, removes each recorded
-	 * writable root from {@code config.toml}, and removes each recorded write entry from the permission profile that it
-	 * was added to, when that entry still grants write access. Then sets {@code default_permissions} back to the
-	 * recorded built-in profile while it still names CAT's profile of it, and removes CAT's profile while it holds only
-	 * what CAT wrote and is not selected. Leaves a changed rules file, a file reached through a symbolic link, the
-	 * writable roots' array and table, each profile's filesystem table of the user's profiles, and every other entry in
-	 * place.
+	 * writable root from {@code config.toml}, and removes each recorded write or read entry from the permission profile
+	 * that it was added to, when that entry still has the access that CAT gave it. Then sets
+	 * {@code default_permissions} back to the recorded built-in profile while it still names CAT's profile of it, and
+	 * removes CAT's profile while it holds only what CAT wrote and is not selected. Leaves a changed rules file, a file
+	 * reached through a symbolic link, the writable roots' array and table, each profile's filesystem table of the
+	 * user's profiles, and every other entry in place.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if a file cannot be read or written, or {@code config.toml} holds a recorded
@@ -805,7 +823,7 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Removes recorded writable roots and recorded profile write entries from {@code config.toml}, then sets
+	 * Removes recorded writable roots and recorded profile write and read entries from {@code config.toml}, then sets
 	 * {@code default_permissions} back to a recorded built-in profile while it names CAT's profile of it, and removes
 	 * CAT's profile while it holds only what CAT wrote. A recorded entry of a profile that the file no longer defines
 	 * needs no removal.
@@ -831,7 +849,9 @@ public final class CodexIntegration implements HarnessIntegration
 		for (String profile : document.path("permissions").propertyNames())
 		{
 			for (String path : added.getOrDefault(profileKey(profile), List.of()))
-				edited = PermissionProfile.remove(edited, profile, path, file);
+				edited = PermissionProfile.remove(edited, profile, path, Access.WRITE, file);
+			for (String path : added.getOrDefault(profileKey(profile) + READ_SUFFIX, List.of()))
+				edited = PermissionProfile.remove(edited, profile, path, Access.READ, file);
 		}
 		for (String builtIn : recordedBuiltIns(added))
 			edited = BuiltInProfile.remove(edited, builtIn, file);
