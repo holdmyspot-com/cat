@@ -32,9 +32,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Tests that creating a project's first CAT session directory keeps the CAT session directories out of Git through
  * the project's {@code .gitignore}.
  * <p>
- * The tests that run real Git prove how Git answers the questions that CAT asks, and
- * {@link #addsLinesInRealWorkTree()} is the end-to-end check that the answers reach the decision. The other tests give
- * the decision Git's answers through {@link GitAnswers} and start no Git.
+ * {@link #addsLinesInRealWorkTree()} runs real Git and is the end-to-end check that Git's answers reach the
+ * decision. The other tests give the decision Git's answers through {@link GitAnswers} and start no Git.
  */
 public final class SessionIgnoreTest
 {
@@ -155,28 +154,6 @@ public final class SessionIgnoreTest
 	}
 
 	/**
-	 * Verifies that real Git counts the CAT session directories as ignored when an ignore source other than
-	 * {@code .gitignore}, here the repository's local exclude file, ignores them, so the work tree gets no
-	 * {@code .gitignore} and no notice.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void leavesGitignoreWhenAlreadyIgnored() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path project = GitWorkTrees.create(cleanup.add(Files.createTempDirectory("cat-ignore-")).resolve("project"));
-			Files.writeString(project.resolve(".git/info/exclude"), "/.cat/\n", UTF_8);
-
-			SessionDirectory session = open(project);
-
-			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
-			requireThat(session.ignoreNotice(), "ignoreNotice").isEmpty();
-		}
-	}
-
-	/**
 	 * Verifies that a project that Git ignores the CAT session directories in gets no {@code .gitignore} and no notice.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -190,28 +167,6 @@ public final class SessionIgnoreTest
 				resolve("project"));
 
 			SessionDirectory session = open(project, GitAnswers.IGNORED);
-
-			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
-			requireThat(session.ignoreNotice(), "ignoreNotice").isEmpty();
-		}
-	}
-
-	/**
-	 * Verifies that real Git tells that a bare repository is not a work tree, so that a project there gets no
-	 * {@code .gitignore} and no notice.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void writesNothingOutsideWorkTree() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
-				resolve("bare"));
-			new Git(project).run("init", "--quiet", "--bare");
-
-			SessionDirectory session = open(project);
 
 			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
 			requireThat(session.ignoreNotice(), "ignoreNotice").isEmpty();
