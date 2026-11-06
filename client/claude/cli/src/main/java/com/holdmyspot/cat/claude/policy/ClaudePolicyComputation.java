@@ -339,9 +339,17 @@ final class ClaudePolicyComputation
 			}
 		}
 		Set<String> patterns = new LinkedHashSet<>();
+		boolean everyHost = false;
 		for (String pattern : allowed)
 		{
 			String host = pattern.strip().toLowerCase(Locale.ROOT);
+			// "*" lets commands reach every host; a denial leaves an unknown subset of them, so it then gives none
+			if (host.equals("*"))
+			{
+				if (denied.isEmpty())
+					everyHost = true;
+				continue;
+			}
 			if (!HOST_PATTERN.matcher(host).matches())
 				continue;
 			boolean overlaps = false;
@@ -356,6 +364,8 @@ final class ClaudePolicyComputation
 			if (!overlaps)
 				patterns.add(host);
 		}
+		if (everyHost)
+			return HostAccess.ALL;
 		if (patterns.isEmpty())
 			return HostAccess.NONE;
 		return HostAccess.listed(patterns);

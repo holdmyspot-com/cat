@@ -3,6 +3,7 @@ package com.holdmyspot.cat.claude.policy.test;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
@@ -212,6 +213,34 @@ public final class ClaudePolicyReaderTest
 			requireThat(policy.hosts().allows("example.org"), "allowedHost").isTrue();
 			requireThat(policy.hosts().allows("good.example.com"), "overlappingHost").isFalse();
 			requireThat(policy.hosts().allows("bad.example.com"), "deniedHost").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the allowed domain {@code *}, which lets commands reach every host, gives every host when no
+	 * setting denies one, and none of its hosts when a setting denies one, since CAT cannot tell which of them the
+	 * denial leaves.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void everyDomainAllowsEveryHost() throws IOException, PolicyRefusal
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["*", "localhost:2455"]}}}""");
+			requireThat(fixture.policy().hosts(), "hosts").isEqualTo(HostAccess.ALL);
+		}
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["*", "api.example.com"],
+				 "deniedDomains": ["bad.example.com"]}}}""");
+			HostAccess hosts = fixture.policy().hosts();
+			requireThat(hosts.allows("api.example.com"), "listedHost").isTrue();
+			requireThat(hosts.allows("other.example.org"), "otherHost").isFalse();
 		}
 	}
 
