@@ -5489,7 +5489,7 @@ public final class OptimizerCoreTest
 			FileCampaignStore.recordRemoval(repository.campaigns(), id, Yielding.fileReplacer());
 			// Git fails in a base whose ".git" is not a Git file, after the removal deleted the optimization worktree
 			Path git = repository.root().resolve(".git");
-			Files.delete(git);
+			TemporaryDirectories.deleteRecursively(git);
 			Files.writeString(git, "not a Git file\n");
 			repository.forks().removeThroughGit();
 			String warningStart = "Could not remove the files of campaign " + id + ": ";
