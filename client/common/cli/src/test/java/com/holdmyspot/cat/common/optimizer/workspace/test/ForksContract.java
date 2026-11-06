@@ -25,15 +25,14 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Checks the same captured-file, selection, adoption, lifecycle, refusal and project-query outcomes for a real
- * fork adapter and its in-memory fake. The caller supplies an isolated project and campaign storage. Selection,
- * captured-file and lifecycle checks use an already-created current fork; creation-refusal checks use a campaign
- * directory with no fork. Project-query checks need no fork. Selection checks require {@code prompt.md} with text
- * prompt and {@code ignored.md} with text ignored, with only the prompt recorded at creation. Captured-file checks
- * require the same texts, the tracked executable fixture program and an external participant holding text shared.
- * The caller owns cleanup. These checks create no Git repository; operations use the supplied adapter, which may
- * invoke Git. Passing them validates the fake's covered assumptions; the fake run is test-support coverage and the
- * real run checks production behavior.
+ * Checks the captured-file, selection, adoption, lifecycle, refusal and project-query outcomes of a fork adapter
+ * against the Git repository that the caller supplies. The caller supplies an isolated project and campaign storage.
+ * Selection, captured-file and lifecycle checks use an already-created current fork; creation-refusal checks use a
+ * campaign directory with no fork. Project-query checks need no fork. Selection checks require {@code prompt.md} with
+ * text prompt and {@code ignored.md} with text ignored, with only the prompt recorded at creation. Captured-file
+ * checks require the same texts, the tracked executable fixture program and an external participant holding text
+ * shared. The caller owns cleanup. These checks create no Git repository; operations use the supplied adapter, which
+ * may invoke Git.
  */
 public final class ForksContract
 {
