@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -56,6 +57,19 @@ public final class SliceEvidence
 		sorted.sort(null);
 		int rank = (int) Math.ceil(DURATION_PERCENTILE * sorted.size());
 		return sorted.get(rank - 1);
+	}
+
+	/**
+	 * Indicates whether the slice admits another trial: the trial is expected to end by the slice's deadline.
+	 *
+	 * @param now the current time
+	 * @param deadline the end of the slice's budget
+	 * @param timeLimit the trial's time limit
+	 * @return {@code true} if the trial is expected to end by the deadline
+	 */
+	public boolean admits(Instant now, Instant deadline, Duration timeLimit)
+	{
+		return !now.plus(expectedDuration(timeLimit)).isAfter(deadline);
 	}
 
 	/**

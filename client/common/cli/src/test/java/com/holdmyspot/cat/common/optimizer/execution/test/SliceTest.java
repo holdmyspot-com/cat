@@ -121,9 +121,22 @@ public final class SliceTest
 	 */
 	private static DriverHarness developing(TemporaryDirectories cleanup) throws IOException
 	{
+		return developing(cleanup, 1);
+	}
+
+	/**
+	 * Returns a harness whose campaign develops its working candidate under {@link #SETTINGS}.
+	 *
+	 * @param cleanup the test's temporary directories
+	 * @param window the number of trials that the campaign runs at once
+	 * @return the harness
+	 * @throws IOException if the test directory cannot be created
+	 */
+	private static DriverHarness developing(TemporaryDirectories cleanup, int window) throws IOException
+	{
 		DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("slice")),
 			new Builder().confirmed(withTimeLimit(TIME_LIMIT), 1).working(1).readyBaseline().
-				development("formatting", 50, 0).development("safety", 50, 0).build());
+				development("formatting", 50, 0).development("safety", 50, 0).window(window).build());
 		harness.settings(SETTINGS);
 		return harness;
 	}
@@ -175,14 +188,49 @@ public final class SliceTest
 
 	/**
 	 * Verifies that, before the slice has measured how long trials take, a trial is admitted only if its time limit
-	 * ends by the slice's deadline, and that a slice that stops at the cutoff reports that the host should run again.
+	 * ends by the slice's deadline.
 	 *
-	 * @param elapsed how far into the slice the first trial ends
-	 * @param admitted whether another trial is admitted then
-	 * @throws IOException if the test directory cannot be used
+	 * @param elapsed how far into the slice the trial would start
+	 * @param admitted whether the trial is admitted then
 	 */
 	@Test(dataProvider = "cutoff")
-	public void timeLimitCutsOffAdmission(Duration elapsed, boolean admitted) throws IOException
+	public void timeLimitCutsOffAdmission(Duration elapsed, boolean admitted)
+	{
+		// Requirement: R-E9
+		SliceEvidence evidence = new SliceEvidence();
+		requireThat(evidence.admits(DriverHarness.START.plus(elapsed), DEADLINE, TIME_LIMIT), "admits").
+			isEqualTo(admitted);
+	}
+
+	/**
+	 * Verifies that once the slice has measured five trials, admission uses the 90th percentile of their durations
+	 * instead of the time limit, so that short trials keep being admitted past the time limit's cutoff.
+	 */
+	@Test
+	public void measuredDurationsExtendAdmission()
+	{
+		// Requirement: R-E9
+		Instant late = DriverHarness.START.plusSeconds(70);
+		SliceEvidence evidence = new SliceEvidence();
+		for (int count = 0; count < 4; ++count)
+			evidence.recordDuration(Duration.ofSeconds(10));
+		requireThat(evidence.admits(late, DEADLINE, TIME_LIMIT), "admitsBeforeFifthDuration").isFalse();
+		evidence.recordDuration(Duration.ofSeconds(10));
+		requireThat(evidence.admits(late, DEADLINE, TIME_LIMIT), "admitsAfterFifthDuration").isTrue();
+		// The 90th percentile of the measured durations ends after the deadline
+		evidence.recordDuration(Duration.ofSeconds(111));
+		evidence.recordDuration(Duration.ofSeconds(111));
+		requireThat(evidence.admits(late, DEADLINE, TIME_LIMIT), "admitsLongDurations").isFalse();
+	}
+
+	/**
+	 * Verifies that a slice that reaches the admission cutoff stops without admitting another trial and reports that
+	 * the host should run again. A slice that has measured nothing stops at the cutoff when the time limit does not fit.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void sliceStopsAtAdmissionCutoff() throws IOException
 	{
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -192,14 +240,8 @@ public final class SliceTest
 			{
 				driver.step();
 				requireThat(trialSessions(harness), "trialSessions").isEqualTo(1);
-				harness.clock().set(DriverHarness.START.plus(elapsed));
+				harness.clock().set(DriverHarness.START.plusSeconds(61));
 				harness.endSessions();
-				harness.settle(driver);
-				if (admitted)
-				{
-					requireThat(trialSessions(harness), "trialSessions").isGreaterThan(1);
-					return;
-				}
 				SliceResult result = harness.runSlice(driver);
 				requireThat(trialSessions(harness), "trialSessions").isEqualTo(1);
 				requireThat(harness.campaign().trials(), "trials").isEmpty();
@@ -209,35 +251,27 @@ public final class SliceTest
 	}
 
 	/**
-	 * Verifies that once the slice has measured five trials, admission uses the 90th percentile of their durations
-	 * instead of the time limit, so that short trials keep being admitted past the time limit's cutoff.
+	 * Verifies that the driver measures each trial session's duration, so that the admission cutoff uses the
+	 * measured durations. Five trials that each take 70 seconds leave a sixth trial admitted at 70 seconds, though its
+	 * 2-minute time limit would end after the deadline.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void measuredDurationsExtendAdmission() throws IOException
+	public void driverMeasuresTrialDurations() throws IOException
 	{
 		// Requirement: R-E9
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = developing(cleanup);
+			DriverHarness harness = developing(cleanup, 5);
 			try (Driver driver = harness.open())
 			{
 				driver.step();
-				// Each trial ends 10 seconds after it starts
-				for (int seconds = 10; seconds <= 60; seconds += 10)
-				{
-					harness.clock().set(DriverHarness.START.plusSeconds(seconds));
-					harness.endSessions();
-					harness.settle(driver);
-				}
-				int beforeCutoff = trialSessions(harness);
-				requireThat(beforeCutoff, "beforeCutoff").isGreaterThanOrEqualTo(6);
-
+				requireThat(trialSessions(harness), "trialSessions").isEqualTo(5);
 				harness.clock().set(DriverHarness.START.plusSeconds(70));
 				harness.endSessions();
 				harness.settle(driver);
-				requireThat(trialSessions(harness), "trialSessions").isGreaterThan(beforeCutoff);
+				requireThat(trialSessions(harness), "trialSessions").isGreaterThan(5);
 			}
 		}
 	}

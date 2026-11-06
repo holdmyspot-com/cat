@@ -1885,8 +1885,7 @@ public final class Driver implements AutoCloseable
 					yield next.trials().getLast();
 				}
 			};
-			Duration expected = evidence.expectedDuration(findTimeLimit(trial.testCase()));
-			if (now.plus(expected).isAfter(deadline))
+			if (!evidence.admits(now, deadline, findTimeLimit(trial.testCase())))
 				break;
 			context.store().writeAssignment(campaignId, trial);
 			campaign = Transitions.apply(next, new CampaignEvent.Start(trial.key()));
