@@ -42,6 +42,7 @@ public final class OtherHarnessPluginTest
 	@Test
 	public void namesPlainPosixCommandUnquoted() throws IOException
 	{
+		// Requirement: R-I6
 		if (Platform.current().isWindows())
 			throw new SkipException("A POSIX shell treats the backslashes of a Windows path specially");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -63,6 +64,7 @@ public final class OtherHarnessPluginTest
 	@Test
 	public void quotesPosixCommandWithSpaces() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-posix-")), "Gili's plugins");
@@ -83,6 +85,7 @@ public final class OtherHarnessPluginTest
 	@Test
 	public void quotesPowerShellCommandWithSpaces() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-windows-")), "Gili's plugins");
@@ -103,6 +106,7 @@ public final class OtherHarnessPluginTest
 	@Test
 	public void namesOtherInstallerForOtherRelease() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-release-")), "plugin");

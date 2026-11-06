@@ -115,6 +115,7 @@ public final class CodexArtifactTest
 	@Test
 	public void usesInstalledCodexPluginOfSameBuild() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-installed-")).toRealPath();
@@ -136,6 +137,7 @@ public final class CodexArtifactTest
 	@Test
 	public void usesInstalledCodexPluginOfAnotherBuild() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-build-")).toRealPath();
@@ -159,6 +161,7 @@ public final class CodexArtifactTest
 	@Test
 	public void refusesWithoutCatInCodex() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-absent-"));
@@ -181,6 +184,7 @@ public final class CodexArtifactTest
 	@Test
 	public void refusesCodexPluginOfAnotherRelease() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-release-")).toRealPath();
@@ -203,6 +207,7 @@ public final class CodexArtifactTest
 	@Test
 	public void ignoresMarketplaceFolder() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("codex-artifact-marketplace-"));

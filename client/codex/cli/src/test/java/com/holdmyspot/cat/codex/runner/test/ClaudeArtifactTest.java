@@ -167,6 +167,7 @@ public final class ClaudeArtifactTest
 	@Test
 	public void usesInstalledClaudePluginOfSameBuild() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-installed-"));
@@ -190,6 +191,7 @@ public final class ClaudeArtifactTest
 	@Test
 	public void usesInstalledClaudePluginOfAnotherBuild() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-build-"));
@@ -215,6 +217,7 @@ public final class ClaudeArtifactTest
 	@Test
 	public void refusesWithoutCatInClaude() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-absent-"));
@@ -237,6 +240,7 @@ public final class ClaudeArtifactTest
 	@Test
 	public void refusesClaudePluginOfAnotherRelease() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-release-"));
@@ -260,6 +264,7 @@ public final class ClaudeArtifactTest
 	@Test
 	public void ignoresMarketplaceFolder() throws IOException
 	{
+		// Requirement: R-I6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("claude-artifact-marketplace-"));
