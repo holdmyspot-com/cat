@@ -143,6 +143,7 @@ public final class InstallerActivationTest
 			Path second = assemble(scope, harness, platform, SECOND, root.resolve("second"));
 			Path home = fake.home;
 			Path data = activation.dataDirectory(home);
+			fake.dataDirectory = data;
 
 			JsonNode installed = fake.run(first, "--home", home.toString(), "install", "--harness", harness);
 			requireThat(installed.path("result").asString(), "installed").withContext(installed, "output").
@@ -175,16 +176,6 @@ public final class InstallerActivationTest
 				isEqualTo("uninstalled");
 			fake.requireExitDeletion(versionFolder);
 			requireThat(Files.exists(data), "dataDeleted").isFalse();
-			if (harness.equals("claude"))
-			{
-				requireThat(fake.unregistrations, "unregistrations").isEqualTo(List.of(
-					"plugin uninstall --keep-data cat@cat", "plugin uninstall cat@cat"));
-			}
-			else
-			{
-				requireThat(fake.unregistrations, "unregistrations").
-					isEqualTo(List.of("plugin remove cat@cat", "plugin remove cat@cat"));
-			}
 		}
 	}
 
@@ -270,7 +261,9 @@ public final class InstallerActivationTest
 
 	/**
 	 * A harness home whose harness program is a fake: the program that install finds on PATH, and the commands that it
-	 * answers as the harness does.
+	 * answers as the harness does. The Claude Code answers follow Claude Code 2.1.318, including that its uninstall
+	 * deletes the plugin's data directory unless it is told to keep it. The Codex answers are scripted from Codex's
+	 * documented behavior; no recording of Codex backs them.
 	 */
 	private static final class FakeHarness implements HarnessCli
 	{
@@ -280,9 +273,10 @@ public final class InstallerActivationTest
 		private final Path user;
 		private final Map<String, String> environment = new HashMap<>();
 		/**
-		 * The commands that unregistered CAT from the harness.
+		 * The plugin data directory, which Claude Code's {@code plugin uninstall} deletes unless the command passes
+		 * {@code --keep-data}.
 		 */
-		private final List<String> unregistrations = new ArrayList<>();
+		private Path dataDirectory;
 		/**
 		 * The commands that the installer started to delete folders once it exits.
 		 */
@@ -403,7 +397,8 @@ public final class InstallerActivationTest
 				case "plugin add cat@cat" -> loadCodex();
 				case "plugin uninstall --keep-data cat@cat", "plugin uninstall cat@cat", "plugin remove cat@cat" ->
 				{
-					unregistrations.add(command);
+					if (harness.equals("claude") && !arguments.contains("--keep-data"))
+						TemporaryDirectories.deleteRecursively(dataDirectory);
 					Files.deleteIfExists(home.resolve("plugins/installed_plugins.json"));
 					yield new CommandResult(0, "Removed cat@cat\n");
 				}
