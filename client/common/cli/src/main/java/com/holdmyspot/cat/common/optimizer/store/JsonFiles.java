@@ -53,19 +53,49 @@ final class JsonFiles
 	static <T> T read(JsonMapper json, Path file, Function<JsonNode, T> reader, String invalid)
 		throws IOException
 	{
+		return convert(file, parse(json, file), reader, invalid);
+	}
+
+	/**
+	 * Reads a file and parses its document.
+	 *
+	 * @param json the JSON mapper
+	 * @param file the file
+	 * @return the document
+	 * @throws IOException if the file cannot be read or is not valid JSON; the message names the file
+	 */
+	static JsonNode parse(JsonMapper json, Path file) throws IOException
+	{
 		byte[] content = Files.readAllBytes(file);
-		JsonNode tree;
 		try
 		{
-			tree = json.readTree(content);
+			return json.readTree(content);
 		}
 		catch (JacksonException e)
 		{
 			throw new IOException("The file " + file + " is not valid JSON: " + e.getOriginalMessage(), e);
 		}
+	}
+
+	/**
+	 * Converts the document that a file holds to a value.
+	 *
+	 * @param <T> the type of the value
+	 * @param file the file that holds the document
+	 * @param document the document, as {@link #parse} returned it
+	 * @param reader converts the document to the value, reporting a document that does not describe a valid value
+	 *   with an {@link IllegalArgumentException} or a {@link NullPointerException}
+	 * @param invalid what the error says about a file whose document the reader rejects, following the file's path
+	 *   (for example, "is malformed")
+	 * @return the value
+	 * @throws IOException if the document does not describe a valid value; the message names the file
+	 */
+	static <T> T convert(Path file, JsonNode document, Function<JsonNode, T> reader, String invalid)
+		throws IOException
+	{
 		try
 		{
-			return reader.apply(tree);
+			return reader.apply(document);
 		}
 		catch (IllegalArgumentException | NullPointerException e)
 		{

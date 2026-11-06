@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.function.Consumer;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -135,8 +136,9 @@ public final class FileCandidateOverlays implements CandidateOverlays
 		if (Files.notExists(file))
 			return Optional.empty();
 		// An overlay holds only the prompt files a candidate changes, so the whole document fits in memory
-		FileInventory recorded = forkOf(JsonFiles.read(json, file, codec::fork, "does not describe an overlay"));
-		Overlay overlay = JsonFiles.read(json, file, tree -> codec.read(tree, recorded),
+		JsonNode document = JsonFiles.parse(json, file);
+		FileInventory recorded = forkOf(JsonFiles.convert(file, document, codec::fork, "does not describe an overlay"));
+		Overlay overlay = JsonFiles.convert(file, document, tree -> codec.read(tree, recorded),
 			"does not describe an overlay on this campaign's fork");
 		Sha256 identity = overlay.identity();
 		if (!identity.equals(snapshot))

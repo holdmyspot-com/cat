@@ -314,6 +314,105 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 	}
 
 	/**
+	 * A lookup that finds the overlay file changed since the previous lookup of the same snapshot reports the file's
+	 * current content, not the content that the previous lookup read: a file that was corrupted is rejected, and the
+	 * restored file is found again.
+	 *
+	 * @throws IOException if the overlays fail
+	 */
+	@Test
+	public void lookupReadsCurrentFileContent() throws IOException
+	{
+		// Requirement: R-W3
+		FileInventory fork = fork();
+		Overlay overlay = candidate(fork, "changing");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-changing-"));
+			FileCandidateOverlays overlays = new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer());
+			overlays.save(overlay);
+			Path file = overlayFile(campaign, overlay.identity());
+			String original = Files.readString(file, UTF_8);
+			requireThat(overlays.find(overlay.identity()), "before").isEqualTo(Optional.of(overlay));
+
+			Files.writeString(file, "{\"format_version\": 1, \"fork\": ", UTF_8);
+			requireRejected(overlays, overlay.identity(), file);
+
+			Files.writeString(file, original, UTF_8);
+			requireThat(overlays.find(overlay.identity()), "restored").isEqualTo(Optional.of(overlay));
+		}
+	}
+
+	/**
+	 * A stored overlay that is not an overlay at all is rejected with the file's name and the reason, and a stored
+	 * overlay on the campaign's fork whose entries are invalid is rejected with the file's name, the statement that
+	 * it does not describe an overlay on this campaign's fork, and the reason.
+	 *
+	 * @throws IOException if the overlays fail
+	 */
+	@Test
+	public void invalidDocumentsNameTheirFileAndReason() throws IOException
+	{
+		// Requirement: R-W3
+		FileInventory fork = fork();
+		Overlay overlay = candidate(fork, "invalid");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-invalid-"));
+			FileCandidateOverlays overlays = new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer());
+			overlays.save(overlay);
+			Path file = overlayFile(campaign, overlay.identity());
+			ObjectNode saved = (ObjectNode) JSON.readTree(Files.readString(file, UTF_8));
+
+			ObjectNode noFork = saved.deepCopy();
+			noFork.remove("fork");
+			Files.writeString(file, JSON.writeValueAsString(noFork), UTF_8);
+			requireThat(requireRejected(overlays, overlay.identity(), file), "withoutFork").
+				startsWith("The file " + file + " does not describe an overlay: $: must hold the fields ").
+				contains(", but holds [");
+
+			ObjectNode badKind = saved.deepCopy();
+			((ObjectNode) ((ArrayNode) badKind.get("entries")).get(0)).put("kind", "rename");
+			Files.writeString(file, JSON.writeValueAsString(badKind), UTF_8);
+			requireThat(requireRejected(overlays, overlay.identity(), file), "badKind").isEqualTo(
+				"The file " + file + " does not describe an overlay on this campaign's fork: " +
+				"entries[0].kind: must be write or delete, but was rename");
+		}
+	}
+
+	/**
+	 * A lookup reports the overlay that one reading of the file describes: an overlay file that is replaced while the
+	 * lookup resolves the earlier fork that the file names is neither rejected for the replacement nor read from it.
+	 *
+	 * @throws IOException if the overlays fail
+	 */
+	@Test
+	public void lookupDescribesOneReadingOfFile() throws IOException
+	{
+		// Requirement: R-W3
+		FileInventory earlier = fork();
+		Overlay overlay = candidate(earlier, "one reading");
+		FileInventory larger = Overlay.of(earlier).write(Path.of("fixture.md"), content("fixture"), READ_WRITE).
+			snapshot();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-reading-"));
+			new FileCandidateOverlays(campaign, earlier, JSON, Yielding.fileReplacer()).save(overlay);
+			Path file = overlayFile(campaign, overlay.identity());
+			ForkVersions replacing = identity ->
+			{
+				Files.writeString(file, "{\"format_version\": 1, \"fork\": ", UTF_8);
+				return Optional.of(earlier);
+			};
+
+			Optional<Overlay> found = new FileCandidateOverlays(campaign, larger, replacing, JSON,
+				Yielding.fileReplacer()).find(overlay.identity());
+
+			requireThat(found, "found").isEqualTo(Optional.of(overlay));
+		}
+	}
+
+	/**
 	 * Saving an overlay on a fork other than the one the overlays were opened for is rejected before anything is
 	 * written.
 	 *
