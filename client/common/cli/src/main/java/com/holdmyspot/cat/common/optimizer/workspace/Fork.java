@@ -42,19 +42,6 @@ import java.util.Set;
 public final class Fork implements ForkView
 {
 	private static final String CLEAN_PATHSPEC_EXCLUDING_SESSIONS = ":(exclude)" + SessionDirectory.ROOT;
-	/**
-	 * The start of a {@code git status --porcelain} entry for an untracked path, which the path follows.
-	 */
-	private static final String UNTRACKED_STATUS = "?? ";
-	/**
-	 * The {@code git status --porcelain} entry of a {@code .gitignore} that differs from the index only in the work
-	 * tree.
-	 */
-	private static final String UNSTAGED_IGNORE_FILE = " M " + SessionIgnore.FILE_NAME;
-	/**
-	 * The mode that a Git index records for a symbolic link.
-	 */
-	private static final String SYMBOLIC_LINK_MODE = "120000";
 	private final ForkTree recorded;
 	private final ParticipantSelection selection;
 	private final ForkTree tree;
@@ -232,14 +219,7 @@ public final class Fork implements ForkView
 		Git git = new Git(base.toAbsolutePath().normalize());
 		if (git.status("rev-parse", "--is-inside-work-tree") != 0)
 			return Set.of();
-		Set<Path> links = new HashSet<>();
-		// Each entry is "<mode> <object> <stage>\t<path>", with the path relative to the base
-		for (String entry : new String(git.bytes("ls-files", "--stage", "-z"), UTF_8).split("\0"))
-		{
-			if (entry.startsWith(SYMBOLIC_LINK_MODE + " "))
-				links.add(Path.of(entry.substring(entry.indexOf('\t') + 1)));
-		}
-		return links;
+		return ForkGit.trackedLinks(new String(git.bytes("ls-files", "--stage", "-z"), UTF_8));
 	}
 
 	/**
@@ -274,27 +254,9 @@ public final class Fork implements ForkView
 			Path index = cleanup.add(Files.createTempDirectory(gitDirectory, "cat-delivery-")).resolve("index");
 			git.lines(index, "read-tree", "HEAD");
 			if (!existing.isEmpty())
-				git.lines(index, arguments(List.of("add", "--intent-to-add", "--force", "--"), existing));
-			List<String> lines = git.lines(index, arguments(List.of("diff", "--no-color", "--no-ext-diff", "HEAD",
-				"--"), targets));
-			if (lines.isEmpty())
-				return "";
-			return String.join("\n", lines) + "\n";
+				git.lines(index, ForkGit.intentToAdd(existing));
+			return ForkGit.diffText(git.lines(index, ForkGit.diffAgainstHead(targets)));
 		}
-	}
-
-	/**
-	 * Concatenates a Git command and its paths.
-	 *
-	 * @param command the subcommand and options
-	 * @param paths the paths
-	 * @return the arguments
-	 */
-	private static String[] arguments(List<String> command, List<String> paths)
-	{
-		List<String> arguments = new ArrayList<>(command);
-		arguments.addAll(paths);
-		return arguments.toArray(String[]::new);
 	}
 
 	/**
@@ -306,13 +268,7 @@ public final class Fork implements ForkView
 	 */
 	private static Set<Path> tracked(Git git) throws IOException
 	{
-		Set<Path> paths = new HashSet<>();
-		for (String tracked : new String(git.bytes("ls-files", "-z"), UTF_8).split("\0"))
-		{
-			if (!tracked.isEmpty())
-				paths.add(Path.of(tracked));
-		}
-		return paths;
+		return ForkGit.trackedFiles(new String(git.bytes("ls-files", "-z"), UTF_8));
 	}
 
 	/**
@@ -439,8 +395,7 @@ public final class Fork implements ForkView
 	 */
 	private static Path worktreeRegistrations(Git git) throws IOException
 	{
-		String common = git.run("rev-parse", "--path-format=absolute", "--git-common-dir").strip();
-		return Path.of(common).resolve("worktrees").normalize();
+		return ForkGit.worktreeRegistrations(git.run("rev-parse", "--path-format=absolute", "--git-common-dir"));
 	}
 
 	/**
@@ -483,12 +438,7 @@ public final class Fork implements ForkView
 		}
 		catch (IOException e)
 		{
-			String message = e.getMessage();
-			if (message == null)
-				throw e;
-			// Git names the entry that it could not create below the registrations directory and the system's reason
-			boolean deniedWrite = message.contains("Read-only file system") || message.contains("Permission denied");
-			if (!deniedWrite || !message.contains(registrations.getFileName().toString()))
+			if (!ForkGit.deniedRegistrationWrite(e.getMessage(), registrations))
 				throw e;
 			WorkspaceException refusal = unwritableRegistrations(registrations);
 			refusal.initCause(e);
@@ -519,12 +469,8 @@ public final class Fork implements ForkView
 	 */
 	private static void requireTopLevel(Git git, Path base) throws IOException
 	{
-		// The output is the path from the base to the top-level directory, which is empty at the top level
-		for (String line : git.lines("rev-parse", "--show-cdup"))
-		{
-			if (!line.isEmpty())
-				throw new IllegalArgumentException(base + " is not the top-level directory of its repository.");
-		}
+		if (!ForkGit.isTopLevel(git.lines("rev-parse", "--show-cdup")))
+			throw new IllegalArgumentException(base + " is not the top-level directory of its repository.");
 	}
 
 	/**
@@ -540,32 +486,16 @@ public final class Fork implements ForkView
 	 */
 	private static void requireClean(Git git, Path base, CharacterDevices devices) throws IOException
 	{
-		// With -z, Git quotes no path, ends each entry with NUL and follows a rename's entry with its source path
 		String status = git.run("status", "--porcelain", "-z", "--untracked-files=all", "--", ".",
 			CLEAN_PATHSPEC_EXCLUDING_SESSIONS);
-		List<String> changes = new ArrayList<>();
-		String[] fields = status.split("\0");
-		for (int i = 0; i < fields.length; ++i)
+		List<String> changes = ForkGit.changes(status, entry ->
 		{
-			String entry = fields[i];
-			if (entry.isEmpty())
-				continue;
-			char staged = entry.charAt(0);
-			boolean sourcePathFollows = staged == 'R' || staged == 'C';
-			if (sourcePathFollows)
-				i += 1;
-			boolean untracked = entry.startsWith(UNTRACKED_STATUS);
-			if (untracked && isCharacterDevice(base.resolve(entry.substring(UNTRACKED_STATUS.length())), devices))
-				continue;
-			if (isOnlyIgnoreLines(git, base, entry))
-				continue;
-			changes.add(entry);
-		}
-		if (changes.isEmpty())
-			return;
-		throw new WorkspaceException("The base worktree " + base + " has staged, unstaged or untracked changes, so " +
-			"CAT cannot fork it: commit, stash or remove the changes, then start the campaign again. CAT stopped " +
-			"before it created anything. Changes:\n" + String.join("\n", changes));
+			String untracked = ForkGit.untrackedPath(entry);
+			return (untracked != null && isCharacterDevice(base.resolve(untracked), devices)) ||
+				isOnlyIgnoreLines(git, base, entry);
+		});
+		if (!changes.isEmpty())
+			throw ForkGit.dirtyBase(base, changes);
 	}
 
 	/**
@@ -603,13 +533,12 @@ public final class Fork implements ForkView
 	 */
 	private static boolean isOnlyIgnoreLines(Git git, Path base, String entry) throws IOException
 	{
-		String before;
-		if (entry.equals(UNSTAGED_IGNORE_FILE))
-			before = new String(git.bytes("show", ":" + SessionIgnore.FILE_NAME), UTF_8);
-		else if (entry.equals(UNTRACKED_STATUS + SessionIgnore.FILE_NAME))
-			before = "";
-		else
+		ForkGit.IgnoreFileChange change = ForkGit.ignoreFileChange(entry);
+		if (change == ForkGit.IgnoreFileChange.NONE)
 			return false;
+		String before = "";
+		if (change == ForkGit.IgnoreFileChange.UNSTAGED)
+			before = new String(git.bytes("show", ":" + SessionIgnore.FILE_NAME), UTF_8);
 		Path file = base.resolve(SessionIgnore.FILE_NAME);
 		return Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) &&
 			SessionIgnore.isAppended(before, Files.readString(file, UTF_8));

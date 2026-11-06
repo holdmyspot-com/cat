@@ -41,6 +41,11 @@ import org.testng.annotations.Test;
  * {@code .gitignore} lines that ignore CAT's session directories, the recorded participants and the detached
  * optimization worktree at {@code HEAD}. The diff of the selected paths runs against such a repository too. Changing a
  * fork's participants reads and writes only campaign storage, so those tests store a fork without Git.
+ * <p>
+ * These are the end-to-end checks of how Git reports and does what a fork asks of it. What the fork decides from
+ * Git's output, such as which status entries count as changes, how the tracked files and links are read and when a
+ * failure is a denied registration, is checked on recorded output in {@link ForkGitTest}, so only the kinds of change
+ * that exercise a different Git behavior run here.
  */
 public final class ForkTest
 {
@@ -127,14 +132,10 @@ public final class ForkTest
 		return new Object[][]
 			{
 				{"staged new file"},
-				{"staged modification"},
-				{"staged deletion"},
 				{"unstaged modification"},
-				{"unstaged deletion"},
 				{"untracked file"},
 				{"empty untracked file"},
 				{"ignore lines and another line"},
-				{"ignore lines and an edited line"},
 				{"staged ignore lines"}
 			};
 	}
@@ -163,21 +164,12 @@ public final class ForkTest
 					writeFile(base.resolve("added.md"), "added", READ_WRITE);
 					git.run("add", "added.md");
 				}
-				case "staged modification" ->
-				{
-					writeFile(base.resolve("prompt.md"), "staged edit", READ_WRITE);
-					git.run("add", "prompt.md");
-				}
-				case "staged deletion" -> git.run("rm", "--quiet", "prompt.md");
 				case "unstaged modification" -> writeFile(base.resolve("prompt.md"), "unstaged edit", READ_WRITE);
-				case "unstaged deletion" -> Files.delete(base.resolve("prompt.md"));
 				case "untracked file" -> writeFile(base.resolve("untracked.md"), "untracked", READ_WRITE);
 				// An empty regular file on the host is a change, unlike the device that a sandbox lays over a path
 				case "empty untracked file" -> writeFile(base.resolve(".bashrc"), "", READ_WRITE);
 				case "ignore lines and another line" ->
 					writeFile(ignoreFile(base), "ignored.md\n" + IGNORE_LINES + "other.md\n", READ_WRITE);
-				case "ignore lines and an edited line" ->
-					writeFile(ignoreFile(base), "edited.md\n" + IGNORE_LINES, READ_WRITE);
 				case "staged ignore lines" ->
 				{
 					writeFile(ignoreFile(base), "ignored.md\n" + IGNORE_LINES, READ_WRITE);
