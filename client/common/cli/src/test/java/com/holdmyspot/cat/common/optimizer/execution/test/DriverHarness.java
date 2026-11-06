@@ -81,6 +81,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -993,7 +994,8 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Steps a driver, ending its sessions after each step, until the persisted campaign meets a condition.
+	 * Steps a driver, ending its sessions after each step, until the persisted campaign meets a condition. The campaign
+	 * is read once after each step, because a step is the only time that the driver writes it.
 	 *
 	 * @param driver the driver
 	 * @param condition the condition
@@ -1009,17 +1011,52 @@ public final class DriverHarness
 			Campaign campaign = campaign();
 			if (condition.test(campaign))
 				return campaign;
-			switch (step)
-			{
-				case Step.Stopped stopped -> throw new AssertionError("The slice stopped first: " + stopped.result());
-				case Step.Continue next ->
-				{
-					if (endSessions() == 0 && next.wakeBy().isAfter(clock.instant()))
-						clock.set(next.wakeBy());
-				}
-			}
+			continueAfter(step);
 		}
 		throw new AssertionError("The condition did not hold after " + STEP_LIMIT + " steps");
+	}
+
+	/**
+	 * Steps a driver, ending its sessions after each step, until a condition on the driver's progress holds, such as
+	 * the sessions that it started. The persisted campaign is read once, after the condition holds, never while
+	 * waiting.
+	 *
+	 * @param driver the driver
+	 * @param condition the condition, which reads no campaign state
+	 * @return the persisted campaign once the condition holds
+	 * @throws IOException if a step fails
+	 * @throws AssertionError if the slice stops first
+	 */
+	public Campaign runUntil(Driver driver, BooleanSupplier condition) throws IOException
+	{
+		for (int iteration = 0; iteration < STEP_LIMIT; ++iteration)
+		{
+			Step step = driver.step();
+			if (condition.getAsBoolean())
+				return campaign();
+			continueAfter(step);
+		}
+		throw new AssertionError("The condition did not hold after " + STEP_LIMIT + " steps");
+	}
+
+	/**
+	 * Lets a slice continue after a step: ends every running session, and when none ended, advances the clock to the
+	 * time by which the driver wants to step again.
+	 *
+	 * @param step the step's result
+	 * @throws AssertionError if the slice stopped
+	 */
+	private void continueAfter(Step step)
+	{
+		switch (step)
+		{
+			case Step.Stopped stopped -> throw new AssertionError("The slice stopped first: " + stopped.result());
+			case Step.Continue next ->
+			{
+				if (endSessions() == 0 && next.wakeBy().isAfter(clock.instant()))
+					clock.set(next.wakeBy());
+			}
+		}
 	}
 
 	/**

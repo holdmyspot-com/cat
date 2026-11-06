@@ -577,7 +577,7 @@ public final class DriverTest
 				held.end(harness.passed());
 				harness.settle(driver);
 				requireThat(harness.running().size(), "sharedCapacity").isLessThanOrEqualTo(2);
-				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 3);
 				for (PromptAuthorBrief brief : harness.promptAuthor().briefs())
 				{
 					requireThat(brief.developmentFailures(), "sameFailures").
@@ -746,7 +746,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 
 				PromptAuthorBrief brief = harness.promptAuthor().briefs().getFirst();
 				requireThat(brief.evidenceSections().keySet(), "evidenceSections").
@@ -806,7 +806,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 
 				PromptAuthorBrief brief = harness.promptAuthor().briefs().getFirst();
 				requireThat(brief.developmentFailures().size(), "failures").isEqualTo(1);
@@ -975,7 +975,7 @@ public final class DriverTest
 
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 3);
 				requireThat(harness.promptAuthor().briefs().size(), "concurrentAttempts").isEqualTo(3);
 				requireThat(harness.promptAuthor().briefs().get(1).developmentFailures(), "sameFailures").
 					isEqualTo(harness.promptAuthor().briefs().get(0).developmentFailures());
@@ -1022,8 +1022,8 @@ public final class DriverTest
 						return harness.failed();
 					return harness.passed();
 				});
-				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
-				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 4);
+				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 3);
+				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 4);
 				requireThat(harness.promptAuthor().briefs().size(), "nextRoundAttempts").isEqualTo(4);
 				requireThat(harness.running().stream().filter(session ->
 					session.request().role() == SessionRole.PROMPT_AUTHOR).count(), "strongRoundAuthors").isEqualTo(1);
@@ -1051,7 +1051,7 @@ public final class DriverTest
 			Map<String, CellCounts> counts;
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 3);
 				requireThat(harness.promptAuthor().briefs().size(), "attempts").isEqualTo(3);
 				harness.endSessions();
 				driver.step();
@@ -1264,7 +1264,7 @@ public final class DriverTest
 			harness.rankings(_ -> harness.ranked(List.of(PromptAuthorApproach.values()).reversed(), false));
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 2);
+				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 2);
 				SessionRequest second = harness.sessions().sessions().getLast().request();
 				requireThat(second.role(), "role").isEqualTo(SessionRole.PROMPT_AUTHOR);
 				requireThat(second.turns().getFirst(), "secondApproach").contains(combinationApproach);
@@ -1335,7 +1335,7 @@ public final class DriverTest
 			harness.rankings(_ -> harness.completed("{}", DriverHarness.JUDGE_MODEL));
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 				requireThat(harness.promptAuthor().briefs().getFirst().approach(), "approach").
 					isEqualTo(PromptAuthorApproach.values()[2]);
 			}
@@ -1358,7 +1358,7 @@ public final class DriverTest
 			harness.trials(_ -> harness.failed());
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 				List<String> roles = harness.sessions().sessions().stream().map(session -> session.request().role().name()).
 					toList();
 				requireThat(roles, "sessionRoles").contains("APPROACH_RANKER");
@@ -1392,7 +1392,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				Campaign campaign = harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				Campaign campaign = harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 3);
 				List<PromptAuthorApproach> expected = ranked.subList(0, 3);
 				String source = "ranking";
 				int expectedRankings = 2;
@@ -1477,7 +1477,7 @@ public final class DriverTest
 			harness.rankings(_ -> harness.ranked(List.of(PromptAuthorApproach.values()).reversed(), false));
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> harness.promptAuthor().briefs().size() == 3);
+				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 3);
 				requireThat(harness.promptAuthor().briefs().stream().map(PromptAuthorBrief::approach).toList(), "continued").
 					isEqualTo(List.of(PromptAuthorApproach.CORRECT_INSTRUCTION, PromptAuthorApproach.REWRITE_INSTRUCTIONS,
 						PromptAuthorApproach.FIX_LOAD_TRIGGER));
@@ -2307,7 +2307,7 @@ public final class DriverTest
 			try (Driver driver = harness.open())
 			{
 				driver.apply(confirm());
-				harness.runUntil(driver, _ -> !harness.sessions().sessions().isEmpty());
+				harness.runUntil(driver, () -> !harness.sessions().sessions().isEmpty());
 				requireThat(harness.sessions().sessions().getFirst().request().role(), "role").
 					isEqualTo(SessionRole.TRIAL);
 			}
@@ -3600,7 +3600,7 @@ public final class DriverTest
 			try (Driver driver = harness.open())
 			{
 				// The completed trial reaches its judge
-				Campaign campaign = harness.runUntil(driver, _ -> harness.sessions().sessions().stream().
+				Campaign campaign = harness.runUntil(driver, () -> harness.sessions().sessions().stream().
 					anyMatch(session -> session.request().role() == SessionRole.JUDGE));
 				requireThat(campaign.pending(), "pending").isNull();
 				List<FakeSession> trials = harness.sessions().sessions().stream().
@@ -3689,7 +3689,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> starts.size() > Driver.PROMPT_AUTHOR_FAILURE_LIMIT);
+				harness.runUntil(driver, () -> starts.size() > Driver.PROMPT_AUTHOR_FAILURE_LIMIT);
 				List<PromptAuthorBrief> briefs = harness.promptAuthor().briefs();
 				requireThat(briefs.size(), "briefs").isEqualTo(Driver.PROMPT_AUTHOR_FAILURE_LIMIT + 1);
 				for (PromptAuthorBrief brief : briefs)
@@ -3782,7 +3782,7 @@ public final class DriverTest
 			try (Driver driver = harness.open())
 			{
 				driver.apply(confirm());
-				harness.runUntil(driver, _ -> harness.sessions().sessions().size() >= before + 10);
+				harness.runUntil(driver, () -> harness.sessions().sessions().size() >= before + 10);
 				Campaign campaign = harness.campaign();
 				requireThat(campaign.attempt(1).outcome(), "outcome").isEqualTo(Outcome.STOPPED_FOR_CONTRACT_REVISION);
 				requireThat(campaign.runningAttempt().isEmpty(), "running").isTrue();
@@ -4243,7 +4243,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> trials.size() >= 2);
+				harness.runUntil(driver, () -> trials.size() >= 2);
 			}
 
 			requireThat(trials, "trials").isNotEmpty();
@@ -4288,7 +4288,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> trials.stream().anyMatch(trial -> !trial.files().isEmpty()) &&
+				harness.runUntil(driver, () -> trials.stream().anyMatch(trial -> !trial.files().isEmpty()) &&
 					trials.stream().anyMatch(trial -> trial.files().isEmpty()));
 			}
 			int index = 0;
@@ -4335,7 +4335,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> trials.size() >= 2);
+				harness.runUntil(driver, () -> trials.size() >= 2);
 			}
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
@@ -5224,7 +5224,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 				requireThat(triageRequests(harness).getFirst().turns().getFirst(), "triage").contains(target);
 				Failure failure = harness.promptAuthor().briefs().getFirst().developmentFailures().getFirst();
 				requireThat(failure.testCase().testCase(), "testCase").isEqualTo(drive);
@@ -5618,7 +5618,7 @@ public final class DriverTest
 			harness.trials(request -> compliant(harness, request));
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> judged(harness, "plain_list") && judged(harness, "formatting") &&
+				harness.runUntil(driver, () -> judged(harness, "plain_list") && judged(harness, "formatting") &&
 					judged(harness, "safety"));
 			}
 			JsonMapper json = JsonMapper.builder().build();
@@ -5696,7 +5696,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !judgeRequests(harness).isEmpty());
+				harness.runUntil(driver, () -> !judgeRequests(harness).isEmpty());
 			}
 			SessionRequest request = judgeRequests(harness).getFirst();
 			requireThat(request.turns().getFirst(), "turn").
@@ -5730,7 +5730,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> judgeRequests(harness).size() >= 2);
+				harness.runUntil(driver, () -> judgeRequests(harness).size() >= 2);
 			}
 
 			List<SessionRequest> judges = judgeRequests(harness);
@@ -5774,7 +5774,7 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(directory, loaded);
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !judgeRequests(harness).isEmpty());
+				harness.runUntil(driver, () -> !judgeRequests(harness).isEmpty());
 			}
 			SessionRequest request = judgeRequests(harness).getFirst();
 			Path effects = request.readOnly().getFirst();
@@ -5988,7 +5988,7 @@ public final class DriverTest
 					certificationAttempt(2).cell("safety", 10, 1).failure(runningFailure).build());
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 				requireThat(harness.promptAuthor().briefs().size(), "briefs").isEqualTo(1);
 				PromptAuthorBrief brief = harness.promptAuthor().briefs().getFirst();
 				requireThat(brief.developmentFailures(), "developmentFailures").
@@ -6512,7 +6512,7 @@ public final class DriverTest
 				authoring().answered(warning).build());
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, _ -> !harness.promptAuthor().briefs().isEmpty());
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 				requireThat(harness.promptAuthor().briefs().getFirst().answeredWarnings(), "answeredWarnings").
 					isEqualTo(List.of(warning));
 			}
