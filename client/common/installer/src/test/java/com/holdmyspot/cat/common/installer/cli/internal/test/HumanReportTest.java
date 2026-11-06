@@ -157,8 +157,8 @@ public final class HumanReportTest
 			requireThat(machine.result().path("permissions").path("settings.json").get(0).stringValue(), "entry").
 				isEqualTo("entry");
 			requireThat(option.status, "status").isEqualTo(0);
-			requireThat(option.output.replace(json.root.toString(), "ROOT"), "jsonOption").
-				isEqualTo(machine.output.replace(piped.root.toString(), "ROOT"));
+			requireThat(normalize(option.output, json.root), "jsonOption").
+				isEqualTo(normalize(machine.output, piped.root));
 		}
 	}
 
@@ -185,8 +185,8 @@ public final class HumanReportTest
 				Map.of(RecordingIntegration.agentSessionVariable(harness), "1"), "install", "--harness", harness);
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
-			requireThat(run.output.replace(agent.root.toString(), "ROOT"), "output").
-				isEqualTo(machine.output.replace(piped.root.toString(), "ROOT"));
+			requireThat(normalize(run.output, agent.root), "output").
+				isEqualTo(normalize(machine.output, piped.root));
 			requireThat(run.output.lines().count(), "lines").isEqualTo(1L);
 		}
 	}
@@ -412,6 +412,21 @@ public final class HumanReportTest
 		result.put("consistent", true);
 		result.putArray("key_ids");
 		return result;
+	}
+
+	/**
+	 * Replaces a fixture's root in output with {@code ROOT}, both in the plain form and in the form that JSON writes,
+	 * where each backslash is escaped.
+	 *
+	 * @param output the output to normalize
+	 * @param root   the fixture's root
+	 * @return the normalized output
+	 */
+	private static String normalize(String output, Path root)
+	{
+		String plain = root.toString();
+		String escaped = plain.replace("\\", "\\\\");
+		return output.replace(escaped, "ROOT").replace(plain, "ROOT");
 	}
 
 	/**
