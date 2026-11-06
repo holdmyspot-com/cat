@@ -2505,15 +2505,13 @@ runs a task in either harness, its own included, through the same launcher and o
 harness runs that harness's runner from the artifact described below and refuses a caller's `--artifact`; the
 launcher for the plugin's own harness runs the artifact that holds it. A session gives a launcher its records in a file
 named by `--input`, so it needs no pipe or redirection (D107). A plugin ships only its own harness's classes and files.
-A launch of the other harness uses that harness's CAT artifact of the same CAT version and platform: that harness's installed CAT plugin when its version
-matches, otherwise a copy in `${HOME}/.cat/bundles/cat-<harness>-v<version>-<platform>/`. When neither exists, it
-downloads that harness's release archive and the release's `SHA256SUMS.txt`, verifies the archive's checksum, and
-extracts it into that directory before the run; a failed download, checksum or extraction leaves no copy and reports
-the failure (D96). A download waits at most 30 seconds to connect, 60 seconds for the server's response and 15 minutes
-for the whole file. After a download, the launcher deletes the copies of every other CAT version in that directory, and
-uninstalling CAT for either harness removes the directory (user rulings, 2026-10-22). A copy's age counts from its last
-use: each check for a copy deletes the copies, of any version, harness and platform, that no run has used for more than
-three calendar months (user ruling, 2026-10-23).
+A launch of the other harness uses the CAT plugin that the other harness has installed, when it is of the same CAT
+release, whatever its build: its own version when installed, otherwise the first installed build of that release.
+The launcher downloads nothing and keeps no copy of its own (user rulings, 2026-11-04, which replace the
+`${HOME}/.cat/bundles` copy and its download of 2026-10-22 and 2026-10-23). When the other harness has no CAT, the
+launch is refused with the command that installs CAT into it through this plugin's installer; when it has only other
+releases, the refusal names the command that updates it to this release through the installer. The agent asks the
+user to approve that command, runs it, then retries.
 
 **Runner profile (user ruling, 2026-10-30):** a run requires `--model` and `--effort`, in both runner launchers, outside
 a run and inside one. A launch that lacks either is refused before it takes a capacity slot or starts a harness, and the
