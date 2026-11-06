@@ -31,6 +31,7 @@ import org.testng.annotations.Test;
 public final class FakeSessionPortContractTest
 {
 	private static final Instant RESET = Instant.parse("2026-10-01T00:00:00Z");
+	private static final List<RateLimitWindow> WINDOWS = List.of(new RateLimitWindow(0.1, RESET));
 
 	/**
 	 * Creates the test.
@@ -46,7 +47,18 @@ public final class FakeSessionPortContractTest
 	 */
 	private static SessionPortContract contract()
 	{
-		return new SessionPortContract(FakeSessionPortContractTest::open);
+		return contract(true);
+	}
+
+	/**
+	 * Creates a contract over a fresh fake that stands for a harness that does or does not report exit statuses.
+	 *
+	 * @param reportsExitStatus whether the harness reports the exit status of the commands that a session runs
+	 * @return the contract
+	 */
+	private static SessionPortContract contract(boolean reportsExitStatus)
+	{
+		return new SessionPortContract(() -> open(reportsExitStatus));
 	}
 
 	/**
@@ -112,16 +124,78 @@ public final class FakeSessionPortContractTest
 	}
 
 	/**
+	 * Verifies that the fake reports the exit status answer that the test chose.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	@Test
+	public void reportsExitStatusAsTheHarnessDoes() throws Exception
+	{
+		// Requirement: R-E7
+		contract(true).reportsExitStatusAsTheHarnessDoes();
+		contract(false).reportsExitStatusAsTheHarnessDoes();
+	}
+
+	/**
+	 * Verifies that the fake identifies its versions and run roots.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	@Test
+	public void identifiesItsVersionsAndRunRoots() throws Exception
+	{
+		// Requirement: R-E7
+		contract().identifiesItsVersionsAndRunRoots();
+	}
+
+	/**
+	 * Verifies that the fake reports nothing for an empty host.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	@Test
+	public void reportsNothingForAnEmptyHost() throws Exception
+	{
+		// Requirement: R-E7
+		contract().reportsNothingForAnEmptyHost();
+	}
+
+	/**
+	 * Verifies that the fake reads the evidence of a completed transcript repeatably.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	@Test
+	public void readsTheEvidenceOfACompletedTranscript() throws Exception
+	{
+		// Requirement: R-E13
+		contract().readsTheEvidenceOfACompletedTranscript();
+	}
+
+	/**
+	 * Verifies that the fake's interrupted session carries the windows reported before the interrupt.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	@Test
+	public void interruptKeepsTheWindowsReportedBeforeIt() throws Exception
+	{
+		// Requirement: R-E15
+		contract().interruptKeepsTheWindowsReportedBeforeIt();
+	}
+
+	/**
 	 * Opens a fake with its fixtures.
 	 *
+	 * @param reportsExitStatus whether the harness reports the exit status of the commands that a session runs
 	 * @return the subject
 	 * @throws IOException if the fixtures cannot be created
 	 */
-	private static Subject open() throws IOException
+	private static Subject open(boolean reportsExitStatus) throws IOException
 	{
 		TemporaryDirectories cleanup = new TemporaryDirectories();
 		Path workspace = cleanup.add(Files.createTempDirectory("cat-fake-session-"));
-		return new FakeSubject(cleanup, workspace);
+		return new FakeSubject(cleanup, workspace, reportsExitStatus);
 	}
 
 	/**
@@ -132,17 +206,21 @@ public final class FakeSessionPortContractTest
 		private final TemporaryDirectories cleanup;
 		private final Path workspace;
 		private final FakeSessionPort port = new FakeSessionPort(HostLogin.SUBSCRIPTION);
+		private final boolean reportsExitStatus;
 
 		/**
 		 * Creates a subject.
 		 *
 		 * @param cleanup   deletes the workspace
 		 * @param workspace the workspace
+		 * @param reportsExitStatus whether the harness that the fake stands for reports exit statuses
 		 */
-		private FakeSubject(TemporaryDirectories cleanup, Path workspace)
+		private FakeSubject(TemporaryDirectories cleanup, Path workspace, boolean reportsExitStatus)
 		{
 			this.cleanup = cleanup;
 			this.workspace = workspace;
+			this.reportsExitStatus = reportsExitStatus;
+			port.reportsExitStatus(reportsExitStatus);
 		}
 
 		@Override
@@ -178,7 +256,26 @@ public final class FakeSessionPortContractTest
 		@Override
 		public void awaitTurnInProgress(SessionHandle session)
 		{
-			// A fake session has no turn to wait for.
+			// A fake session has no turn to wait for, so the test reports the windows that the harness would have
+			((FakeSession) session).reportWindows(WINDOWS);
+		}
+
+		@Override
+		public boolean reportsExitStatus()
+		{
+			return reportsExitStatus;
+		}
+
+		@Override
+		public Path pluginWithoutHooks() throws IOException
+		{
+			return Files.createDirectories(workspace.resolve("plugin"));
+		}
+
+		@Override
+		public List<RateLimitWindow> windowsReportedBeforeInterrupt()
+		{
+			return WINDOWS;
 		}
 
 		@Override
@@ -192,7 +289,7 @@ public final class FakeSessionPortContractTest
 				List<List<String>> responses = Collections.nCopies(fake.request().turns().size(), List.of("ok"));
 				fake.end(new SessionResult.Completed(transcript, responses, workspace,
 					workspace.resolveSibling("initial-project"), "fake-model", "medium",
-					new TokenUsage(10, 0, 5, 0), List.of(new RateLimitWindow(0.1, RESET)), "none", List.of()));
+					new TokenUsage(10, 0, 5, 0), WINDOWS, "none", List.of()));
 			}
 			catch (IOException e)
 			{

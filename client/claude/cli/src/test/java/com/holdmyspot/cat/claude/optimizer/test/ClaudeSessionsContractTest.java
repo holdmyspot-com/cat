@@ -80,10 +80,11 @@ public final class ClaudeSessionsContractTest
 	 */
 	private static ClaudeSessions port(JvmScope jvm, Path root, Bridge bridge)
 	{
+		// The host's managed settings are not read, so that the host cannot change what the contract finds
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().
 			newClaudeSessions(new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
 			List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
-			bridge);
+			bridge, List.of());
 	}
 
 	/**
@@ -242,6 +243,104 @@ public final class ClaudeSessionsContractTest
 					throw new AssertionError("Login classification must not start a session");
 				}), root, claude);
 			}).reportsTheHostLoginWithoutASession();
+		}
+	}
+
+	/**
+	 * Creates the contract over the real adapter, with a bridge that no check may reach.
+	 *
+	 * @param jvm the borrowed process scope, open until the contract check completes
+	 * @return the contract
+	 */
+	private static SessionPortContract contractWithoutSessions(JvmScope jvm)
+	{
+		return new SessionPortContract(() ->
+		{
+			Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "claude-contract-");
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			cleanup.add(root);
+			RecordedClaude claude = new RecordedClaude(List.of());
+			return new RecordedSubject(cleanup, port(jvm, root, (_, _, _) ->
+			{
+				throw new AssertionError("The check must not start a session");
+			}), root, claude);
+		});
+	}
+
+	/**
+	 * Verifies the shared contract check that the port reports that Claude Code does not report exit statuses.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test(timeOut = 60_000)
+	public void reportsExitStatusAsTheHarnessDoes() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7
+			contractWithoutSessions(jvm).reportsExitStatusAsTheHarnessDoes();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that the port identifies its versions and run roots.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test(timeOut = 60_000)
+	public void identifiesItsVersionsAndRunRoots() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7
+			contractWithoutSessions(jvm).identifiesItsVersionsAndRunRoots();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that an empty host loads no prompt sources, registers no hooks and has no
+	 * installed plugins.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test(timeOut = 60_000)
+	public void reportsNothingForAnEmptyHost() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7
+			contractWithoutSessions(jvm).reportsNothingForAnEmptyHost();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that the evidence read from a completed recording is the same on every read.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test(timeOut = 60_000)
+	public void readsTheEvidenceOfACompletedTranscript() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E13
+			contract(jvm, List.of(recorded("trial-turn-1.jsonl"))).readsTheEvidenceOfACompletedTranscript();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that an interrupted session carries the windows that Claude reported.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test(timeOut = 60_000)
+	public void interruptKeepsTheWindowsReportedBeforeIt() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E15
+			contract(jvm, List.of(recorded("interrupted-judge-turn-1.jsonl"))).
+				interruptKeepsTheWindowsReportedBeforeIt();
 		}
 	}
 
@@ -417,6 +516,26 @@ public final class ClaudeSessionsContractTest
 		{
 			// The test-owned configuration directory holds no credential file and the environment selects no API key
 			return Set.of(HostLogin.UNKNOWN);
+		}
+
+		@Override
+		public boolean reportsExitStatus()
+		{
+			return false;
+		}
+
+		@Override
+		public Path pluginWithoutHooks() throws IOException
+		{
+			// Claude Code runs every hook of an installed plugin, so the adapter reads no manifest
+			return Files.createDirectories(workspace.resolve("plugin"));
+		}
+
+		@Override
+		public List<RateLimitWindow> windowsReportedBeforeInterrupt()
+		{
+			return List.of(new RateLimitWindow(0.37, Instant.ofEpochSecond(1_792_455_600L)),
+				new RateLimitWindow(0.25, Instant.ofEpochSecond(1_792_879_200L)));
 		}
 
 		@Override

@@ -122,6 +122,169 @@ public final class CodexSessionsContractTest
 	}
 
 	/**
+	 * Creates the contract over the real adapter, replaying the recorded turns once per session.
+	 *
+	 * @param jvm   the borrowed process scope, open until the contract check completes
+	 * @param turns the recordings, one per turn
+	 * @return the contract
+	 */
+	private static SessionPortContract contract(JvmScope jvm, List<List<String>> turns)
+	{
+		return new SessionPortContract(() ->
+		{
+			Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-");
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			cleanup.add(root);
+			RecordedAppServer server = new RecordedAppServer(turns);
+			return new RecordedSubject(cleanup, port(jvm, root, server), root, server);
+		});
+	}
+
+	/**
+	 * Creates the contract over the real adapter, with a bridge that no check may reach.
+	 *
+	 * @param jvm the borrowed process scope, open until the contract check completes
+	 * @return the contract
+	 */
+	private static SessionPortContract contractWithoutSessions(JvmScope jvm)
+	{
+		return new SessionPortContract(() ->
+		{
+			Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-");
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			cleanup.add(root);
+			return new RecordedSubject(cleanup, port(jvm, root, (_, _, _) ->
+			{
+				throw new AssertionError("The check must not start a session");
+			}), root, new RecordedAppServer(List.of()));
+		});
+	}
+
+	/**
+	 * Verifies the shared contract check that a completed two-turn session reports evidence of every turn.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void completesWithEvidenceOfEveryTurnContract() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E13
+			// Requirement: R-E16
+			// Requirement: R-E6
+			contract(jvm, List.of(recorded("deriver-turn-1.jsonl"), recorded("deriver-turn-2.jsonl"))).
+				completesWithEvidenceOfEveryTurn();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that a judge leaves its read-only evidence unchanged.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void judgeLeavesReadOnlyEvidenceUnchanged() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E13
+			contract(jvm, List.of(recorded("judge-turn-1.jsonl"))).judgeLeavesReadOnlyEvidenceUnchanged();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that the port classifies the host's login without starting a session.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void hostLoginIsReportedContract() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7
+			contractWithoutSessions(jvm).reportsTheHostLoginWithoutASession();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that the port reports that Codex reports exit statuses.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void reportsExitStatusAsTheHarnessDoes() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7
+			contractWithoutSessions(jvm).reportsExitStatusAsTheHarnessDoes();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that the port identifies its versions and run roots.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void identifiesItsVersionsAndRunRoots() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7
+			contractWithoutSessions(jvm).identifiesItsVersionsAndRunRoots();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that an empty host loads no prompt sources, registers no hooks and has no
+	 * installed plugins.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void reportsNothingForAnEmptyHost() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E7
+			contractWithoutSessions(jvm).reportsNothingForAnEmptyHost();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that the evidence read from a completed recording is the same on every read.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void readsTheEvidenceOfACompletedTranscript() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E13
+			contract(jvm, List.of(recorded("trial-turn-1.jsonl"))).readsTheEvidenceOfACompletedTranscript();
+		}
+	}
+
+	/**
+	 * Verifies the shared contract check that an interrupted session carries the window that Codex reported.
+	 *
+	 * @throws Exception if the contract check fails
+	 */
+	@Test
+	public void interruptKeepsTheWindowsReportedBeforeIt() throws Exception
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E10
+			contract(jvm, List.of(recorded("interrupt-turn-1.jsonl"))).interruptKeepsTheWindowsReportedBeforeIt();
+		}
+	}
+
+	/**
 	 * Verifies that the adapter interrupts an active turn through JSON-RPC, classifies the recorded terminal status
 	 * as interrupted within the contract's bound, and retains every event after a successful bridge shutdown.
 	 *
@@ -139,7 +302,8 @@ public final class CodexSessionsContractTest
 				List<String> events = recorded("interrupt-turn-1.jsonl");
 				RecordedAppServer server = new RecordedAppServer(List.of(events));
 
-				new SessionPortContract(() -> new RecordedSubject(port(jvm, root, server), root, server)).
+				new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(jvm, root, server), root,
+					server)).
 					interruptEndsARunningTurnAsInterrupted();
 
 				requireThat(Files.readAllLines(server.transcript(), UTF_8), "transcript").isEqualTo(
@@ -171,7 +335,8 @@ public final class CodexSessionsContractTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
 				RecordedAppServer server = new RecordedAppServer(List.of(recorded("trial-turn-1.jsonl")));
 
-				new SessionPortContract(() -> new RecordedSubject(port(jvm, root, server), root, server)).
+				new SessionPortContract(() -> new RecordedSubject(new TemporaryDirectories(), port(jvm, root, server), root,
+					server)).
 					interruptAfterTheEndChangesNothing();
 
 				requireThat(server.interrupts().isEmpty(), "interrupts.isEmpty").isTrue();
@@ -418,17 +583,20 @@ public final class CodexSessionsContractTest
 	}
 
 	/**
-	 * Supplies the production port and an in-memory app server to the shared interrupt checks.
+	 * Supplies the production port and an in-memory app server to the shared contract checks.
 	 *
+	 * @param cleanup deletes the subject's fixtures
 	 * @param port the production adapter
 	 * @param workspace the test-owned source directory
 	 * @param server the recorded external boundary
 	 */
-	private record RecordedSubject(CodexSessions port, Path workspace, RecordedAppServer server) implements Subject
+	private record RecordedSubject(TemporaryDirectories cleanup, CodexSessions port, Path workspace,
+		RecordedAppServer server) implements Subject
 	{
 		/**
-		 * Creates a subject for the shared interrupt checks.
+		 * Creates a subject for the shared contract checks.
 		 *
+		 * @param cleanup deletes the subject's fixtures
 		 * @param port the production adapter
 		 * @param workspace the test-owned source directory
 		 * @param server the recorded external boundary
@@ -436,6 +604,7 @@ public final class CodexSessionsContractTest
 		 */
 		private RecordedSubject
 		{
+			requireThat(cleanup, "cleanup").isNotNull();
 			requireThat(port, "port").isNotNull();
 			requireThat(workspace, "workspace").isNotNull();
 			requireThat(server, "server").isNotNull();
@@ -445,6 +614,26 @@ public final class CodexSessionsContractTest
 		public Set<HostLogin> acceptableLogins()
 		{
 			return Set.of(HostLogin.UNKNOWN);
+		}
+
+		@Override
+		public boolean reportsExitStatus()
+		{
+			return true;
+		}
+
+		@Override
+		public Path pluginWithoutHooks() throws IOException
+		{
+			Path plugin = Files.createDirectories(workspace.resolve("plugin/.codex-plugin"));
+			Files.writeString(plugin.resolve("plugin.json"), "{\"name\":\"sample\"}", UTF_8);
+			return plugin.getParent();
+		}
+
+		@Override
+		public List<RateLimitWindow> windowsReportedBeforeInterrupt()
+		{
+			return List.of(new RateLimitWindow(0.49, Instant.ofEpochSecond(1_791_046_710L)));
 		}
 
 		@Override
@@ -476,6 +665,14 @@ public final class CodexSessionsContractTest
 		public void close()
 		{
 			server.close();
+			try
+			{
+				cleanup.close();
+			}
+			catch (IOException e)
+			{
+				throw new AssertionError(e);
+			}
 		}
 	}
 }

@@ -5,7 +5,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
+import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -17,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -131,6 +135,30 @@ public final class SessionPortContract
 		 * @param session a session that the test started
 		 */
 		void finish(SessionHandle session);
+
+		/**
+		 * Indicates whether the harness reports the exit status of the commands that a session runs, which differs
+		 * between harnesses.
+		 *
+		 * @return {@code true} if the port must report that it does
+		 */
+		boolean reportsExitStatus();
+
+		/**
+		 * Returns a plugin directory whose manifest declares no hooks, in the form that the harness reads.
+		 *
+		 * @return the directory, which exists for the subject's lifetime
+		 * @throws IOException if the plugin cannot be created
+		 */
+		Path pluginWithoutHooks() throws IOException;
+
+		/**
+		 * Returns the rate-limit windows that the harness has reported by the time that {@link #awaitTurnInProgress}
+		 * returns for a session that was started with {@link #longPrompt()}, in the order that the port reports them.
+		 *
+		 * @return the windows
+		 */
+		List<RateLimitWindow> windowsReportedBeforeInterrupt();
 
 		@Override
 		void close();
@@ -277,6 +305,121 @@ public final class SessionPortContract
 			HostLogin login = subject.port().hostLogin();
 
 			requireThat(subject.acceptableLogins(), "acceptableLogins").contains(login);
+		}
+	}
+
+	/**
+	 * Checks that the port reports whether the harness reports exit statuses as that harness does.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	public void reportsExitStatusAsTheHarnessDoes() throws Exception
+	{
+		try (Subject subject = opener.open())
+		{
+			requireThat(subject.port().reportsExitStatus(), "reportsExitStatus").isEqualTo(subject.reportsExitStatus());
+		}
+	}
+
+	/**
+	 * Checks that the port names a positive session environment version and judge version, the release that
+	 * introduced the environment version, and the absolute and distinct directories that hold its runs.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	public void identifiesItsVersionsAndRunRoots() throws Exception
+	{
+		try (Subject subject = opener.open())
+		{
+			SessionPort port = subject.port();
+
+			requireThat(port.sessionEnvironmentVersion(), "sessionEnvironmentVersion").isPositive();
+			requireThat(port.sessionEnvironmentRelease(), "sessionEnvironmentRelease").isNotBlank();
+			requireThat(port.judgeVersion(), "judgeVersion").isPositive();
+			List<Path> runRoots = port.runRoots();
+			requireThat(runRoots, "runRoots").isNotEmpty();
+			for (Path runRoot : runRoots)
+				requireThat(runRoot, "runRoot").isAbsolute();
+			requireThat(Set.copyOf(runRoots).size(), "distinctRunRoots").isEqualTo(runRoots.size());
+		}
+	}
+
+	/**
+	 * Checks that a project with no instruction files, hooks, plugins or host settings loads no prompt sources,
+	 * registers no hooks, finds no installed plugin and no held-out exposure, and that a plugin with no hooks has no
+	 * unapproved hook.
+	 *
+	 * @throws Exception if the check fails
+	 */
+	public void reportsNothingForAnEmptyHost() throws Exception
+	{
+		try (Subject subject = opener.open())
+		{
+			SessionPort port = subject.port();
+			Path project = subject.workspace();
+
+			LoadedSources loaded = port.loadedSources(project, List.of());
+			requireThat(loaded.production(), "loaded.production").isEmpty();
+			requireThat(loaded.trials(), "loaded.trials").isEmpty();
+			requireThat(loaded.productionOnly(), "loaded.productionOnly").isEmpty();
+			requireThat(loaded.homeOnly(), "loaded.homeOnly").isEmpty();
+			requireThat(loaded.unreachable(), "loaded.unreachable").isEmpty();
+			requireThat(port.hookRegistrations(project, List.of()), "hookRegistrations").isEmpty();
+			requireThat(port.earlyHooks(project, List.of(), Optional.of(project), "Reply with the single word ok."),
+				"earlyHooks").isEmpty();
+			requireThat(port.installedPlugins("absent@marketplace"), "installedPlugins").isEmpty();
+			requireThat(port.installedPluginNames(), "installedPluginNames").isEmpty();
+			requireThat(port.findHeldOutExposure(project), "heldOutExposure").isEmpty();
+			requireThat(port.unapprovedHooks(subject.pluginWithoutHooks()), "unapprovedHooks").isEmpty();
+		}
+	}
+
+	/**
+	 * Checks that the activity that the port reads from a completed session's transcript is the same on every read
+	 * and leaves the transcript as it found it.
+	 *
+	 * @throws Exception if the session fails
+	 */
+	public void readsTheEvidenceOfACompletedTranscript() throws Exception
+	{
+		try (Subject subject = opener.open())
+		{
+			SessionRequest request = request(subject, SessionRole.TRIAL, List.of(), List.of(subject.quickPrompt()));
+			SessionHandle session = subject.port().start(request);
+			subject.finish(session);
+			SessionResult result = await(session);
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			Path transcript = ((SessionResult.Completed) result).transcript();
+			String before = Files.readString(transcript, UTF_8);
+
+			SessionEvidence first = subject.port().readEvidence(transcript);
+			SessionEvidence second = subject.port().readEvidence(transcript);
+
+			requireThat(second, "secondRead").isEqualTo(first);
+			requireThat(Files.readString(transcript, UTF_8), "transcript").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Checks that a session that CAT interrupts reports the rate-limit windows that the harness reported before the
+	 * interrupt.
+	 *
+	 * @throws Exception if the session fails
+	 */
+	public void interruptKeepsTheWindowsReportedBeforeIt() throws Exception
+	{
+		try (Subject subject = opener.open())
+		{
+			SessionRequest request = request(subject, SessionRole.TRIAL, List.of(), List.of(subject.longPrompt()));
+			SessionHandle session = subject.port().start(request);
+			subject.awaitTurnInProgress(session);
+
+			session.interrupt();
+			SessionResult result = await(session);
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Interrupted.class);
+			requireThat(((SessionResult.Interrupted) result).windows(), "windows").
+				isEqualTo(subject.windowsReportedBeforeInterrupt());
 		}
 	}
 }

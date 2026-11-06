@@ -8,12 +8,14 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
+import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,6 +33,13 @@ import java.util.function.Predicate;
 /**
  * A {@link SessionPort} whose sessions end only when the test ends them, in any order.
  * <p>
+ * The answers that a real port gives without a session are checked by {@code SessionPortContract}, which runs against
+ * this fake and the real adapters: the versions, run roots, empty answers about the host, evidence reading, the
+ * exit-status answer and the windows of an interrupted session. {@link #loading(Function)},
+ * {@link #unstartable(Predicate)} and {@link #supplyEvidence(Path, SessionEvidence)} are controls that make the fake
+ * answer what no contract case can induce in a real port, such as a project with prompt files or a session that
+ * cannot start.
+ * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class FakeSessionPort implements SessionPort
@@ -47,6 +56,13 @@ public final class FakeSessionPort implements SessionPort
 	 * The judge version that every fake port reports.
 	 */
 	public static final int JUDGE_VERSION = 5;
+	/**
+	 * The directories that a port reports as holding its runs unless the test supplies its own: a run root and a
+	 * held-out run root, as a real port has, which do not exist.
+	 */
+	private static final List<Path> DEFAULT_RUN_ROOTS = List.of(
+		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-runs/development"),
+		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-runs/held-out"));
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
 	private final String heldOutExposure;
@@ -62,6 +78,10 @@ public final class FakeSessionPort implements SessionPort
 	 * Selects the requests whose sessions cannot start, which {@link #start(SessionRequest)} refuses.
 	 */
 	private volatile Predicate<SessionRequest> unstartable = _ -> false;
+	/**
+	 * Whether {@link #reportsExitStatus()} answers {@code true}, which the harness that the test stands for decides.
+	 */
+	private volatile boolean reportsExitStatus = true;
 
 	/**
 	 * Creates a port that has started no sessions and whose host login is not identified.
@@ -91,7 +111,7 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	public FakeSessionPort(HostLogin login, String heldOutExposure)
 	{
-		this(login, heldOutExposure, List.of());
+		this(login, heldOutExposure, DEFAULT_RUN_ROOTS);
 	}
 
 	/**
@@ -211,7 +231,18 @@ public final class FakeSessionPort implements SessionPort
 	@Override
 	public boolean reportsExitStatus()
 	{
-		return true;
+		return reportsExitStatus;
+	}
+
+	/**
+	 * Sets whether the harness that the test stands for reports the exit status of the commands that a session runs.
+	 * Claude Code does not and Codex does.
+	 *
+	 * @param reportsExitStatus the answer that {@link #reportsExitStatus()} gives; by default, {@code true}
+	 */
+	public void reportsExitStatus(boolean reportsExitStatus)
+	{
+		this.reportsExitStatus = reportsExitStatus;
 	}
 
 	/**
@@ -293,6 +324,7 @@ public final class FakeSessionPort implements SessionPort
 		private final SessionRequest request;
 		private final CompletableFuture<SessionResult> result = new CompletableFuture<>();
 		private final AtomicBoolean interruptRequested = new AtomicBoolean();
+		private volatile List<RateLimitWindow> windows = List.of();
 
 		/**
 		 * Creates a running session.
@@ -343,6 +375,18 @@ public final class FakeSessionPort implements SessionPort
 		}
 
 		/**
+		 * Sets the rate-limit windows that the harness has reported so far, which an interrupted session carries.
+		 *
+		 * @param windows the windows
+		 * @throws NullPointerException if {@code windows} is null
+		 */
+		public void reportWindows(List<RateLimitWindow> windows)
+		{
+			requireThat(windows, "windows").isNotNull();
+			this.windows = List.copyOf(windows);
+		}
+
+		/**
 		 * Indicates whether CAT asked the session to stop.
 		 *
 		 * @return {@code true} if {@link #interrupt()} was called
@@ -356,7 +400,7 @@ public final class FakeSessionPort implements SessionPort
 		public void interrupt()
 		{
 			interruptRequested.set(true);
-			result.complete(new SessionResult.Interrupted(List.of()));
+			result.complete(new SessionResult.Interrupted(windows));
 		}
 	}
 }
