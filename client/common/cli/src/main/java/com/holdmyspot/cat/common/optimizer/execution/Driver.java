@@ -1091,11 +1091,7 @@ public final class Driver implements AutoCloseable
 			context.store().writeOutcome(campaignId, complete);
 			evidence.observe(new AssumptionCheck.Observation(concurrency, verdict));
 		}
-		Candidate previous = campaign.development().working();
-		Campaign next = Transitions.apply(campaign, complete);
-		if (next.lifecycle() == Lifecycle.ACTIVE && !next.development().working().equals(previous))
-			next = WorktreeCheck.verify(context, next, previous);
-		campaign = next;
+		campaign = WorktreeCheck.adopt(context, campaign, complete);
 		context.store().replaceSnapshot(campaign);
 		if (recorded && verdict == Verdict.PASS)
 			deleteProjects(trial);

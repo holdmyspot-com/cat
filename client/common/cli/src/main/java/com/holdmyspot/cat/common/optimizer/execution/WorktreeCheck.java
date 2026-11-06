@@ -24,13 +24,34 @@ import java.util.StringJoiner;
  * only what CAT wrote there: at every {@code run} and before a promoted candidate replaces the working
  * one.
  */
-final class WorktreeCheck
+public final class WorktreeCheck
 {
 	/**
 	 * Prevents instantiation.
 	 */
 	private WorktreeCheck()
 	{
+	}
+
+	/**
+	 * Adopts a recorded outcome. When the adoption changes the working candidate, such as when a promoted candidate
+	 * is withdrawn for its predecessor, the optimization worktree receives the new working candidate before the
+	 * caller replaces the snapshot.
+	 *
+	 * @param context the driver's context
+	 * @param campaign the campaign before the adoption
+	 * @param outcome the outcome to adopt
+	 * @return the campaign after the adoption, paused if the worktree has an unowned change
+	 * @throws IOException if the worktree cannot be scanned or written, or an overlay cannot be read
+	 */
+	public static Campaign adopt(DriverContext context, Campaign campaign, CampaignEvent.Complete outcome)
+		throws IOException
+	{
+		Candidate previous = campaign.development().working();
+		Campaign adopted = Transitions.apply(campaign, outcome);
+		if (adopted.lifecycle() == Lifecycle.ACTIVE && !adopted.development().working().equals(previous))
+			return verify(context, adopted, previous);
+		return adopted;
 	}
 
 	/**
