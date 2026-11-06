@@ -9,7 +9,6 @@ module com.holdmyspot.cat.distribution
 
 	exports com.holdmyspot.cat.distribution;
 	exports com.holdmyspot.cat.distribution.bundle to com.holdmyspot.cat.distribution.test;
-	exports com.holdmyspot.cat.distribution.bundle.secrets to com.holdmyspot.cat.distribution.test;
 	exports com.holdmyspot.cat.distribution.license to com.holdmyspot.cat.distribution.test;
 	exports com.holdmyspot.cat.distribution.secrets to com.holdmyspot.cat.distribution.test;
 }

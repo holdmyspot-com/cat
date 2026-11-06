@@ -2,10 +2,7 @@ package com.holdmyspot.cat.distribution.bundle;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.distribution.bundle.secrets.JlinkImageBuilderSecrets;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -22,11 +19,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class JlinkImageBuilder
 {
-	static
-	{
-		JlinkImageBuilderSecrets.setJlinkImageBuilderAccess(JlinkImageBuilder::new);
-	}
-
 	private final ToolProvider jlink;
 
 	/**
@@ -36,20 +28,8 @@ public final class JlinkImageBuilder
 	 */
 	public JlinkImageBuilder()
 	{
-		this(ToolProvider.findFirst("jlink").
-			orElseThrow(() -> new IllegalStateException("The JDK does not provide jlink")));
-	}
-
-	/**
-	 * Creates a builder backed by a tool provider.
-	 *
-	 * @param jlink the jlink tool provider
-	 * @throws NullPointerException if {@code jlink} is null
-	 */
-	private JlinkImageBuilder(ToolProvider jlink)
-	{
-		requireThat(jlink, "jlink").isNotNull();
-		this.jlink = jlink;
+		this.jlink = ToolProvider.findFirst("jlink").
+			orElseThrow(() -> new IllegalStateException("The JDK does not provide jlink"));
 	}
 
 	/**
@@ -72,28 +52,47 @@ public final class JlinkImageBuilder
 		requireThat(output, "output").isNotNull();
 		requireThat(json, "json").isNotNull();
 
-		List<String> arguments = List.of("--add-modules", String.join(",", new TreeSet<>(modules)), "--output",
+		ToolInvocation.run(jlink, "jlink", arguments(modules, output));
+		complete(output, json);
+		return output;
+	}
+
+	/**
+	 * Returns the arguments that link the runtime: the JDK modules, sorted, without debug information, header files
+	 * or manual pages, with the default class data sharing archive of those modules, which shortens the start-up of
+	 * every program.
+	 *
+	 * @param modules the JDK modules that the runtime holds
+	 * @param output  the runtime's directory
+	 * @return the arguments of {@code jlink}
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code modules} is empty
+	 */
+	public static List<String> arguments(Set<String> modules, Path output)
+	{
+		requireThat(modules, "modules").isNotEmpty();
+		requireThat(output, "output").isNotNull();
+		return List.of("--add-modules", String.join(",", new TreeSet<>(modules)), "--output",
 			output.toAbsolutePath().normalize().toString(), "--strip-debug", "--no-header-files", "--no-man-pages",
 			"--generate-cds-archive");
-		StringWriter standardOutput = new StringWriter();
-		StringWriter standardError = new StringWriter();
-		int exitCode;
-		try (PrintWriter out = new PrintWriter(standardOutput);
-			PrintWriter err = new PrintWriter(standardError))
-		{
-			exitCode = jlink.run(out, err, arguments.toArray(String[]::new));
-		}
-		if (exitCode != 0)
-		{
-			String diagnostics = (standardError + System.lineSeparator() + standardOutput).trim();
-			String details = "";
-			if (!diagnostics.isEmpty())
-				details = ": " + diagnostics;
-			throw new IOException("jlink failed with exit code " + exitCode + details);
-		}
-		replaceLinksWithCopies(output);
-		RuntimeDescription.write(output, json);
-		return output;
+	}
+
+	/**
+	 * Completes a runtime image that {@code jlink} wrote: replaces each symbolic link with a copy of its target, and
+	 * writes the runtime's description and manifest.
+	 *
+	 * @param image the runtime-image directory
+	 * @param json  the JSON writer
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if a link does not resolve to a regular file, the image lacks the information that
+	 *                              the description needs, or the image cannot be read or changed
+	 */
+	public static void complete(Path image, JsonMapper json) throws IOException
+	{
+		requireThat(image, "image").isNotNull();
+		requireThat(json, "json").isNotNull();
+		replaceLinksWithCopies(image);
+		RuntimeDescription.write(image, json);
 	}
 
 	/**

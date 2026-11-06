@@ -1,14 +1,9 @@
 package com.holdmyspot.cat.distribution.bundle;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
-import com.holdmyspot.cat.distribution.bundle.secrets.ModuleDescriptorPatcherSecrets;
-
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -21,12 +16,6 @@ import java.util.spi.ToolProvider;
  */
 public final class ModuleDescriptorPatcher
 {
-	static
-	{
-		ModuleDescriptorPatcherSecrets.setModuleDescriptorPatcherAccess((javac, jar, source, destination, moduleName,
-		exportedPackages) -> new ModuleDescriptorPatcher(javac, jar).patch(source, destination, moduleName,
-			exportedPackages));
-	}
 	private final ToolProvider javac;
 	private final ToolProvider jar;
 
@@ -37,22 +26,8 @@ public final class ModuleDescriptorPatcher
 	 */
 	public ModuleDescriptorPatcher()
 	{
-		this(findTool("javac"), findTool("jar"));
-	}
-
-	/**
-	 * Creates a patcher backed by tool providers.
-	 *
-	 * @param javac the javac tool provider
-	 * @param jar the jar tool provider
-	 * @throws NullPointerException if {@code javac} or {@code jar} are null
-	 */
-	private ModuleDescriptorPatcher(ToolProvider javac, ToolProvider jar)
-	{
-		requireThat(javac, "javac").isNotNull();
-		requireThat(jar, "jar").isNotNull();
-		this.javac = javac;
-		this.jar = jar;
+		this.javac = findTool("javac");
+		this.jar = findTool("jar");
 	}
 
 	/**
@@ -80,18 +55,67 @@ public final class ModuleDescriptorPatcher
 		Path workspace = destination.getParent().resolve(".module-info").resolve(moduleName);
 		Path classes = Files.createDirectories(workspace.resolve("classes"));
 		Path descriptor = workspace.resolve("module-info.java");
+		Files.write(descriptor, descriptorLines(moduleName, exportedPackages));
+
+		ToolInvocation.run(javac, "javac", javacArguments(destination, moduleName, classes, descriptor));
+		ToolInvocation.run(jar, "jar", jarArguments(destination, classes));
+		return destination;
+	}
+
+	/**
+	 * Returns the lines of the module descriptor's source: the module, exporting the packages in sorted order.
+	 *
+	 * @param moduleName       the module name
+	 * @param exportedPackages the packages to export
+	 * @return the lines
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code moduleName} is blank or {@code exportedPackages} is empty
+	 */
+	public static List<String> descriptorLines(String moduleName, Set<String> exportedPackages)
+	{
+		requireThat(moduleName, "moduleName").isNotBlank();
+		requireThat(exportedPackages, "exportedPackages").isNotEmpty();
 		List<String> lines = new ArrayList<>();
 		lines.add("module " + moduleName);
 		lines.add("{");
 		exportedPackages.stream().sorted().forEach(packageName -> lines.add("\texports " + packageName + ";"));
 		lines.add("}");
-		Files.write(descriptor, lines);
+		return lines;
+	}
 
-		run(javac, "javac", List.of("--patch-module", moduleName + "=" + destination, "-d", classes.toString(),
-			descriptor.toString()));
-		run(jar, "jar", List.of("--update", "--file", destination.toString(), "-C", classes.toString(),
-			"module-info.class"));
-		return destination;
+	/**
+	 * Returns the arguments that compile the module descriptor against the classes of the JAR that is patched.
+	 *
+	 * @param patchedJar the JAR that the descriptor is compiled against
+	 * @param moduleName the module name
+	 * @param classes    the directory to write the compiled descriptor to
+	 * @param descriptor the descriptor's source file
+	 * @return the arguments of {@code javac}
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static List<String> javacArguments(Path patchedJar, String moduleName, Path classes, Path descriptor)
+	{
+		requireThat(patchedJar, "patchedJar").isNotNull();
+		requireThat(moduleName, "moduleName").isNotNull();
+		requireThat(classes, "classes").isNotNull();
+		requireThat(descriptor, "descriptor").isNotNull();
+		return List.of("--patch-module", moduleName + "=" + patchedJar, "-d", classes.toString(),
+			descriptor.toString());
+	}
+
+	/**
+	 * Returns the arguments that add the compiled module descriptor to a JAR.
+	 *
+	 * @param patchedJar the JAR to update
+	 * @param classes    the directory that holds the compiled descriptor
+	 * @return the arguments of {@code jar}
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static List<String> jarArguments(Path patchedJar, Path classes)
+	{
+		requireThat(patchedJar, "patchedJar").isNotNull();
+		requireThat(classes, "classes").isNotNull();
+		return List.of("--update", "--file", patchedJar.toString(), "-C", classes.toString(), "module-info.class");
 	}
 
 	/**
@@ -105,34 +129,5 @@ public final class ModuleDescriptorPatcher
 	{
 		return ToolProvider.findFirst(name).
 			orElseThrow(() -> new UnsupportedOperationException("The current Java runtime does not provide " + name));
-	}
-
-	/**
-	 * Runs a JDK tool and converts failures to {@link IOException}.
-	 *
-	 * @param tool the tool provider
-	 * @param name the tool name
-	 * @param arguments the tool arguments
-	 * @throws IOException if the tool exits unsuccessfully
-	 */
-	private static void run(ToolProvider tool, String name, List<String> arguments) throws IOException
-	{
-		assert that(name, "name").isNotBlank().elseThrow();
-		StringWriter standardOutput = new StringWriter();
-		StringWriter standardError = new StringWriter();
-		int exitCode;
-		try (PrintWriter out = new PrintWriter(standardOutput);
-			PrintWriter err = new PrintWriter(standardError))
-		{
-			exitCode = tool.run(out, err, arguments.toArray(String[]::new));
-		}
-		if (exitCode != 0)
-		{
-			String diagnostics = (standardError + System.lineSeparator() + standardOutput).trim();
-			String details = "";
-			if (!diagnostics.isEmpty())
-				details = ": " + diagnostics;
-			throw new IOException(name + " failed with exit code " + exitCode + details);
-		}
 	}
 }

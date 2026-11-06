@@ -1,20 +1,21 @@
 package com.holdmyspot.cat.distribution.bundle.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.that;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.distribution.bundle.ModuleDescriptorPatcher;
-import com.holdmyspot.cat.distribution.bundle.secrets.ModuleDescriptorPatcherAccess;
-import com.holdmyspot.cat.distribution.bundle.secrets.ModuleDescriptorPatcherSecrets;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.io.InputStream;
+import java.lang.module.ModuleDescriptor;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.spi.ToolProvider;
+import java.util.TreeSet;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
+import java.util.stream.Collectors;
 import org.testng.annotations.Test;
 
 /**
@@ -28,41 +29,83 @@ public final class ModuleDescriptorPatcherTest
 	}
 
 	/**
-	 * Verifies injected JDK tools are invoked in process.
+	 * Verifies that the descriptor's source names the module and exports the packages in sorted order.
 	 */
 	@Test
-	public void invokesInjectedJdkToolsInProcess() throws IOException
+	public void descriptorExportsSortedPackages()
+	{
+		List<String> lines = ModuleDescriptorPatcher.descriptorLines("example.module",
+			Set.of("example.two", "example.one"));
+
+		requireThat(lines, "lines").isEqualTo(List.of("module example.module", "{", "\texports example.one;",
+			"\texports example.two;", "}"));
+	}
+
+	/**
+	 * Verifies that the compiler is told to compile the descriptor as part of the patched JAR's module, into the
+	 * classes folder.
+	 */
+	@Test
+	public void compilerPatchesTheModule()
+	{
+		Path jar = Path.of("modules/dependency.jar");
+		Path classes = Path.of("workspace/classes");
+		Path descriptor = Path.of("workspace/module-info.java");
+
+		List<String> arguments = ModuleDescriptorPatcher.javacArguments(jar, "example.module", classes, descriptor);
+
+		requireThat(arguments, "arguments").isEqualTo(List.of("--patch-module", "example.module=" + jar, "-d",
+			classes.toString(), descriptor.toString()));
+	}
+
+	/**
+	 * Verifies that the archiver is told to add the compiled descriptor to the patched JAR.
+	 */
+	@Test
+	public void archiverAddsTheDescriptor()
+	{
+		Path jar = Path.of("modules/dependency.jar");
+		Path classes = Path.of("workspace/classes");
+
+		List<String> arguments = ModuleDescriptorPatcher.jarArguments(jar, classes);
+
+		requireThat(arguments, "arguments").isEqualTo(List.of("--update", "--file", jar.toString(), "-C",
+			classes.toString(), "module-info.class"));
+	}
+
+	/**
+	 * Verifies that the real JDK compiler and archiver give a JAR an explicit module descriptor that names the module
+	 * and exports the packages, and that the source JAR stays as it was.
+	 *
+	 * @throws IOException if the fixture cannot be created or read
+	 */
+	@Test
+	public void patchedJarHoldsModuleDescriptor() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-module-patch-"));
-		Path source = Files.writeString(temporary.resolve("source.jar"), "jar");
-		Path destination = temporary.resolve("modules/dependency.jar");
-		FakeToolProvider javac = new FakeToolProvider("javac", 0, "");
-		FakeToolProvider jar = new FakeToolProvider("jar", 0, "");
+			Path source = jarOfThisTest(temporary.resolve("source.jar"));
+			Path destination = temporary.resolve("modules/dependency.jar");
 
-		Path result = access().patch(javac, jar, source, destination, "example.module",
-			Set.of("example.two", "example.one"));
+			Path result = new ModuleDescriptorPatcher().patch(source, destination, "example.module",
+				Set.of(ModuleDescriptorPatcherTest.class.getPackageName()));
 
-		requireThat(result, "result").isEqualTo(destination.toAbsolutePath().normalize());
-		requireThat(Files.readString(result), "patchedJarContent").isEqualTo("jar");
-		Path workspace = result.getParent().resolve(".module-info/example.module");
-		requireThat(javac.arguments, "javacArguments").isEqualTo(List.of("--patch-module", "example.module=" + result,
-			"-d", workspace.resolve("classes").toString(), workspace.resolve("module-info.java").toString()));
-		requireThat(jar.arguments, "jarArguments").isEqualTo(List.of("--update", "--file", result.toString(), "-C",
-			workspace.resolve("classes").toString(), "module-info.class"));
-			requireThat(Files.readString(workspace.resolve("module-info.java")), "moduleDescriptor").isEqualTo("""
-			module example.module
-			{
-			\texports example.one;
-			\texports example.two;
-			}
-			""".replace("\n", System.lineSeparator()));
+			requireThat(result, "result").isEqualTo(destination.toAbsolutePath().normalize());
+			ModuleDescriptor descriptor = descriptorOf(result);
+			requireThat(descriptor.name(), "name").isEqualTo("example.module");
+			Set<String> exported = descriptor.exports().stream().map(ModuleDescriptor.Exports::source).
+				collect(Collectors.toSet());
+			requireThat(exported, "exports").isEqualTo(Set.of(ModuleDescriptorPatcherTest.class.getPackageName()));
+			requireThat(entries(source), "sourceEntries").doesNotContain("module-info.class");
 		}
 	}
 
 	/**
-	 * Verifies compiler diagnostics stop the JAR update.
+	 * Verifies that a descriptor which the real JDK compiler rejects stops the update of the JAR, and that the failure
+	 * holds the compiler's diagnostics.
+	 *
+	 * @throws IOException if the fixture cannot be created or read
 	 */
 	@Test
 	public void compilerFailureStopsJarUpdate() throws IOException
@@ -70,75 +113,73 @@ public final class ModuleDescriptorPatcherTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-module-patch-failure-"));
-		Path source = Files.writeString(temporary.resolve("source.jar"), "jar");
-		FakeToolProvider jar = new FakeToolProvider("jar", 0, "");
-		try
-		{
-			access().patch(new FakeToolProvider("javac", 2, "bad descriptor"), jar, source,
-				temporary.resolve("dependency.jar"), "example.module", Set.of("example.api"));
-			throw new AssertionError("Expected javac failure");
-		}
-		catch (IOException failure)
-		{
-			requireThat(failure.getMessage(), "failureMessage").contains("javac failed with exit code 2").
-				contains("bad descriptor");
-		}
+			Path source = jarOfThisTest(temporary.resolve("source.jar"));
+			Path destination = temporary.resolve("dependency.jar");
+			try
+			{
+				new ModuleDescriptorPatcher().patch(source, destination, "example.module",
+					Set.of("example.missing"));
+				throw new AssertionError("Expected javac failure");
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), "failureMessage").contains("javac failed with exit code").
+					contains("example.missing");
+			}
 
-			requireThat(jar.arguments, "jarArguments").isEmpty();
+			requireThat(entries(destination), "destinationEntries").doesNotContain("module-info.class");
 		}
 	}
 
 	/**
-	 * Returns the controlled test access point.
+	 * Writes a JAR that holds this test's class, so that its package exists.
 	 *
-	 * @return the module-descriptor patcher access point
+	 * @param jar the JAR to write
+	 * @return the JAR
+	 * @throws IOException if the JAR cannot be written
 	 */
-	private static ModuleDescriptorPatcherAccess access()
+	private static Path jarOfThisTest(Path jar) throws IOException
 	{
-		return ModuleDescriptorPatcherSecrets.getModuleDescriptorPatcherAccess();
+		Class<?> type = ModuleDescriptorPatcherTest.class;
+		try (InputStream in = type.getResourceAsStream(type.getSimpleName() + ".class");
+			JarOutputStream out = new JarOutputStream(Files.newOutputStream(jar)))
+		{
+			requireThat(in, "testClass").isNotNull();
+			out.putNextEntry(new JarEntry(type.getName().replace('.', '/') + ".class"));
+			in.transferTo(out);
+			out.closeEntry();
+		}
+		return jar;
 	}
 
 	/**
-	 * A controllable in-process JDK tool.
+	 * Reads the module descriptor of a JAR.
+	 *
+	 * @param jar the JAR
+	 * @return the descriptor
+	 * @throws IOException if the JAR cannot be read or holds no descriptor
 	 */
-	private static final class FakeToolProvider implements ToolProvider
+	private static ModuleDescriptor descriptorOf(Path jar) throws IOException
 	{
-		private final String name;
-		private final int exitCode;
-		private final String diagnostic;
-		private List<String> arguments = List.of();
-
-		/**
-		 * Creates a tool provider with a predetermined result.
-		 *
-		 * @param name the tool name
-		 * @param exitCode the exit code to return
-		 * @param diagnostic the diagnostic text to write
-		 */
-		private FakeToolProvider(String name, int exitCode, String diagnostic)
+		try (JarFile file = new JarFile(jar.toFile());
+			InputStream in = file.getInputStream(file.getEntry("module-info.class")))
 		{
-			assert that(name, "name").isNotBlank().elseThrow();
-			assert that(diagnostic, "diagnostic").isNotNull().elseThrow();
-			this.name = name;
-			this.exitCode = exitCode;
-			this.diagnostic = diagnostic;
+			return ModuleDescriptor.read(in);
 		}
+	}
 
-		@Override
-		public String name()
+	/**
+	 * Lists the entries of a JAR.
+	 *
+	 * @param jar the JAR
+	 * @return the names of its entries
+	 * @throws IOException if the JAR cannot be read
+	 */
+	private static Set<String> entries(Path jar) throws IOException
+	{
+		try (JarFile file = new JarFile(jar.toFile()))
 		{
-			return name;
-		}
-
-		@Override
-		public int run(PrintWriter out, PrintWriter err, String... args)
-		{
-			requireThat(out, "out").isNotNull();
-			requireThat(err, "err").isNotNull();
-			requireThat(args, "args").isNotNull();
-			arguments = new ArrayList<>(List.of(args));
-			err.print(diagnostic);
-			return exitCode;
+			return file.stream().map(JarEntry::getName).collect(Collectors.toCollection(TreeSet::new));
 		}
 	}
 }
