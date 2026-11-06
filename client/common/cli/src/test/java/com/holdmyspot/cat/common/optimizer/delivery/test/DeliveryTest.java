@@ -18,7 +18,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
-import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
@@ -76,15 +75,16 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link Delivery} against a test-owned base worktree and a test-owned external directory that holds a read-only
  * external participant. The optimization worktree is the in-memory {@link FakeWorkspacePort}. The base worktree is a
- * real Git repository only for the no-commit check; every other test reports the delivered diff through
- * {@link InMemoryForks}, from a patch that the test supplies for each file that could change. The delivery journal is
- * kept by a {@link FileCampaignStore} in the fixture's directory.
+ * real Git repository, copied from one template, and every test reports the delivered diff through {@link GitForks}.
+ * The delivery journal is kept by a {@link FileCampaignStore} in the fixture's directory.
  * <p>
  * Every test starts from the same fork: the base holds the prompt sources {@code rules/main.md},
  * {@code rules/style.md} and {@code rules/old.md} and the non-prompt file {@code README.md}, and the external directory
@@ -144,10 +144,40 @@ public final class DeliveryTest
 		""";
 
 	/**
-	 * Creates the test.
+	 * The directory that holds the repository and the external directory that every fixture copies.
 	 */
-	public DeliveryTest()
+	private final Path template;
+
+	/**
+	 * Creates the test and the empty directory that will hold the template.
+	 *
+	 * @throws IOException if the directory cannot be created
+	 */
+	public DeliveryTest() throws IOException
 	{
+		template = Files.createTempDirectory("cat-delivery-template-");
+	}
+
+	/**
+	 * Creates the repository that every fixture copies. Copying it starts no Git process.
+	 *
+	 * @throws IOException if the repository cannot be created
+	 */
+	@BeforeClass
+	public void createTemplate() throws IOException
+	{
+		Fixture.writeTemplate(template);
+	}
+
+	/**
+	 * Deletes the template.
+	 *
+	 * @throws IOException if the template cannot be deleted
+	 */
+	@AfterClass(alwaysRun = true)
+	public void deleteTemplate() throws IOException
+	{
+		TemporaryDirectories.deleteRecursively(template);
 	}
 
 	/**
@@ -164,7 +194,7 @@ public final class DeliveryTest
 		// Requirement: R-W8, R-F3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.base().resolve("README.md"), "readme edited by the user\n", UTF_8);
 
@@ -197,7 +227,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.base().resolve("rules/main.md"), "main edited by the user\n", UTF_8);
 			CampaignStore store = fixture.store();
@@ -237,12 +267,12 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories templateCleanup = new TemporaryDirectories())
 		{
-			Fixture template = Fixture.create(templateCleanup);
+			Fixture original = Fixture.create(template, templateCleanup);
 			for (Path crashAfter : List.of(RECORD_FILE, Path.of("rules/main.md"), Path.of("rules/old.md")))
 			{
 				try (TemporaryDirectories cleanup = new TemporaryDirectories())
 				{
-					Fixture fixture = template.copy(cleanup);
+					Fixture fixture = original.copy(cleanup);
 					Overlay candidate = fixture.candidate();
 					DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 					Consumer<DeliveryChange> crashing = change ->
@@ -306,7 +336,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			List<DeliveryChange> planned = DeliveryPlan.of(candidate, fixture.scan()).changes();
 			Path editedByUser = fixture.resolve(planned.get(1).target());
@@ -346,7 +376,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.base().resolve("rules/style.md"), "style edited by the user\n", UTF_8);
 
@@ -378,7 +408,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.shared(), "shared edited by the user\n", UTF_8);
 
@@ -409,7 +439,7 @@ public final class DeliveryTest
 		// Requirement: R-W4, R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate().write(fixture.shared(), content("shared v2\n"), READ_WRITE);
 			CampaignStore store = fixture.store();
 			List<DeliveryChange> writes = new ArrayList<>();
@@ -445,7 +475,7 @@ public final class DeliveryTest
 		// Requirement: R-F6, R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay kept = fixture.candidate();
 			Overlay working = kept.write(Path.of("rules/main.md"), content("main v3\n"), READ_WRITE);
 			FakeWorkspacePort workspace = new FakeWorkspacePort(fixture.root().resolve("workspace"),
@@ -477,7 +507,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.createWithGit(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Git git = new Git(fixture.base());
 			List<String> commitsBefore = git.lines("rev-list", "--all");
@@ -507,7 +537,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Map<Path, com.holdmyspot.cat.common.optimizer.inventory.FileEntry> files =
 				new HashMap<>(candidate.snapshot().entries());
@@ -542,7 +572,7 @@ public final class DeliveryTest
 		// Requirement: R-F3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 
 			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
@@ -567,7 +597,7 @@ public final class DeliveryTest
 		// Requirement: R-F3
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 
 			fixture.delivery(fixture.store(), candidate, NO_HOOK).
@@ -587,7 +617,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			CampaignStore store = fixture.store();
 			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
@@ -615,7 +645,7 @@ public final class DeliveryTest
 		// Requirement: R-W8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Overlay other = Overlay.of(fixture.fork()).write(Path.of("rules/style.md"), content("style v2\n"),
 				READ_WRITE);
@@ -640,7 +670,7 @@ public final class DeliveryTest
 		// Requirement: R-M6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 
 			Delivered delivered = requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK).
@@ -672,7 +702,7 @@ public final class DeliveryTest
 		{
 			CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
 			byte[] earlier = codec.write(CertificationHistory.EMPTY.appended(record(3)));
-			Fixture fixture = Fixture.create(cleanup).recordFile(RECORD_FILE, earlier);
+			Fixture fixture = Fixture.create(template, cleanup).recordFile(RECORD_FILE, earlier);
 			Overlay candidate = fixture.candidate();
 
 			Delivered delivered = requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK).
@@ -701,7 +731,7 @@ public final class DeliveryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			String malformed = "{\"format_version\": 1, \"records\": [\"text\"]}\n";
-			Fixture fixture = Fixture.create(cleanup).recordFile(RECORD_FILE, malformed.getBytes(UTF_8));
+			Fixture fixture = Fixture.create(template, cleanup).recordFile(RECORD_FILE, malformed.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
 			List<DeliveryChange> writes = new ArrayList<>();
 
@@ -749,7 +779,7 @@ public final class DeliveryTest
 		// Requirement: R-M6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Path recordFile = fixture.resolve(RECORD_FILE);
 			Files.createDirectories(recordFile.resolve("occupied"));
@@ -767,7 +797,7 @@ public final class DeliveryTest
 
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Path recordFile = fixture.resolve(RECORD_FILE);
 			// The user writes the record's path while CAT is between its first and second writes
@@ -809,7 +839,7 @@ public final class DeliveryTest
 		// Requirement: R-M6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK);
 
@@ -852,7 +882,8 @@ public final class DeliveryTest
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup).recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
+			Fixture fixture = Fixture.create(template, cleanup).
+				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
 			DeliveredTest created = promptTest("created_summary", true);
 			DeliveredTest edited = promptTest("release_notes", false);
@@ -893,7 +924,7 @@ public final class DeliveryTest
 			Path notesFile = workspace.resolve("docs/{{notes}}");
 			Path agentsFile = workspace.resolve("AGENTS.md");
 			String notes = "Release {{notes}} fixes the installer.\n";
-			Fixture fixture = Fixture.create(cleanup).
+			Fixture fixture = Fixture.create(template, cleanup).
 				recordFile(notesFile, notes.getBytes(UTF_8)).
 				recordFile(agentsFile, "Reply briefly.\n".getBytes(UTF_8)).
 				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
@@ -965,7 +996,8 @@ public final class DeliveryTest
 			requireThat(tests.stream().map(DeliveredTest::location).toList(), "locations").isEqualTo(List.of(
 				new Location(EDITED_SCENARIO.getParent(), false), new Location(TESTS.resolve("release_dates"), true)));
 
-			Fixture fixture = Fixture.create(cleanup).recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
+			Fixture fixture = Fixture.create(template, cleanup).
+				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
 			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK,
 				recordedScenario()).
@@ -1004,7 +1036,7 @@ public final class DeliveryTest
 			Path sharedGuide = TESTS.resolve("shared/docs/guide.md");
 			Path editedWorkspace = EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE);
 			Path createdWorkspace = TESTS.resolve("release_dates").resolve(PromptTestFiles.WORKSPACE);
-			Fixture fixture = Fixture.create(cleanup).
+			Fixture fixture = Fixture.create(template, cleanup).
 				recordFile(sharedGuide, "Guide\n".getBytes(UTF_8)).
 				recordLink(editedWorkspace.resolve("notes.md"), "../../shared/docs/guide.md").
 				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
@@ -1065,7 +1097,7 @@ public final class DeliveryTest
 		{
 			Path shared = TESTS.resolve("shared");
 			Path workspace = EDITED_SCENARIO.resolveSibling(PromptTestFiles.WORKSPACE);
-			Fixture fixture = Fixture.create(cleanup).
+			Fixture fixture = Fixture.create(template, cleanup).
 				recordFile(shared.resolve("AGENTS.md"), "Reply in one sentence.\n".getBytes(UTF_8)).
 				recordFile(shared.resolve("logs/a.log"), "a1\n".getBytes(UTF_8)).
 				recordFile(shared.resolve("logs/b.log"), "b1\n".getBytes(UTF_8)).
@@ -1140,7 +1172,7 @@ public final class DeliveryTest
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			DeliveredTest created = promptTest("created_summary", true);
 
@@ -1172,7 +1204,8 @@ public final class DeliveryTest
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup).recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
+			Fixture fixture = Fixture.create(template, cleanup).
+				recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
 			Path createdDirectory = TESTS.resolve("created_summary");
 			Path occupant = createdDirectory.resolve("notes.md");
@@ -1216,7 +1249,7 @@ public final class DeliveryTest
 		DeliveredTest created = promptTest("created_summary", true);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 			Consumer<DeliveryChange> crashing = change ->
@@ -1283,7 +1316,7 @@ public final class DeliveryTest
 		// Requirement: R-W11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = Fixture.create(cleanup);
+			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK);
 			List<DeliveredTest> tests = List.of(promptTest("created_summary", true));
@@ -1397,26 +1430,6 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * Returns a patch for a file, in the form that Git's diff gives each file: a {@code diff --git} header that names
-	 * the path, followed by the change.
-	 *
-	 * @param path the file's path, relative to the base worktree
-	 * @return the patch
-	 */
-	private static String patch(Path path)
-	{
-		String name = PortablePaths.text(path);
-		return """
-			diff --git a/%1$s b/%1$s
-			--- a/%1$s
-			+++ b/%1$s
-			@@ -1 +1 @@
-			-before
-			+after
-			""".formatted(name);
-	}
-
-	/**
 	 * Returns the paths whose patches a delivered diff holds.
 	 *
 	 * @param delivered the delivered result
@@ -1516,77 +1529,79 @@ public final class DeliveryTest
 	private record Fixture(Path root, Path base, Path external, FileInventory fork)
 	{
 		/**
-		 * Creates the base files and the external directory, and records the fork without running Git.
+		 * Writes the repository that every fixture copies: the base files committed, and the external directory.
 		 *
-		 * @param cleanup the scope that deletes the fixture
-		 * @return the fixture
-		 * @throws IOException if the fixture cannot be created
+		 * @param template the empty directory that will hold the repository
+		 * @throws IOException if the repository cannot be created
 		 */
-		static Fixture create(TemporaryDirectories cleanup) throws IOException
+		static void writeTemplate(Path template) throws IOException
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-delivery-"));
-			Path base = Files.createDirectory(root.resolve("base"));
-			Path external = Files.createDirectory(root.resolve("external"));
+			Path base = Files.createDirectory(template.resolve("base"));
+			Path external = Files.createDirectory(template.resolve("external"));
 			Files.createDirectory(base.resolve("rules"));
 			Files.writeString(base.resolve("rules/main.md"), "main v1\n", UTF_8);
 			Files.writeString(base.resolve("rules/style.md"), "style v1\n", UTF_8);
 			Files.writeString(base.resolve("rules/old.md"), "old rule\n", UTF_8);
 			Files.writeString(base.resolve("README.md"), "readme v1\n", UTF_8);
 			Files.writeString(external.resolve("shared.md"), "shared v1\n", UTF_8);
+			new Git(base).run("init", "--quiet");
+			// The sample hooks are disabled, so leaving them out only saves copying them
+			TemporaryDirectories.deleteRecursively(base.resolve(".git/hooks"));
+			commit(base);
+		}
 
+		/**
+		 * Creates a fixture: a copy of the template, whose base files are committed in a Git repository.
+		 *
+		 * @param template the directory that {@link #writeTemplate(Path)} wrote
+		 * @param cleanup the scope that deletes the fixture
+		 * @return the fixture
+		 * @throws IOException if the fixture cannot be created
+		 */
+		static Fixture create(Path template, TemporaryDirectories cleanup) throws IOException
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-delivery-"));
+			FileTrees.copy(template, root);
+			Path base = root.resolve("base");
+			Path external = root.resolve("external");
 			return new Fixture(root, base, external, InventoryScanner.scan(base, Set.of(external)));
 		}
 
 		/**
-		 * Creates a Git-backed fixture for assertions about the unchanged Git history and index.
+		 * Commits the current files of a base worktree.
 		 *
-		 * @param cleanup the scope that deletes the fixture
-		 * @return the fixture with its initial files committed
-		 * @throws IOException if the fixture or repository cannot be created
+		 * @param base the base worktree
+		 * @throws IOException if Git fails
 		 */
-		static Fixture createWithGit(TemporaryDirectories cleanup) throws IOException
+		private static void commit(Path base) throws IOException
 		{
-			Fixture fixture = create(cleanup);
-			new Git(fixture.base()).run("init", "--quiet");
-			return fixture.recordBase();
+			Git git = new Git(base);
+			git.run("add", "--all");
+			git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
+				"commit", "--quiet", "--no-verify", "--message", "Recorded files");
 		}
 
 		/**
-		 * Records the current files and commits them when this fixture has a Git repository.
+		 * Records the current files and commits them.
 		 *
 		 * @return the fixture with the current files recorded
 		 * @throws IOException if recording or committing fails
 		 */
 		private Fixture recordBase() throws IOException
 		{
-			if (Files.isDirectory(base.resolve(".git")))
-			{
-				Git git = new Git(base);
-				git.run("add", "--all");
-				git.run("-c", "user.name=CAT Test", "-c", "user.email=cat-test@example.com", "-c", "commit.gpgsign=false",
-					"commit", "--quiet", "--no-verify", "--message", "Recorded files");
-			}
+			commit(base);
 			return new Fixture(root, base, external, InventoryScanner.scan(base, Set.of(external)));
 		}
 
 		/**
-		 * Returns the Git adapter for a Git-backed fixture, or else the in-memory adapter. The in-memory adapter holds a
-		 * patch for each file that the candidate, a certified delivery or a user's edit changes, so the delivered diff
-		 * shows which of them delivery selected.
+		 * Returns the Git adapter of the fixture's repository. The delivered diff shows which of the files that the
+		 * candidate, a certified delivery or a user's edit changes delivery selected.
 		 *
 		 * @return the forks
 		 */
 		Forks forks()
 		{
-			if (Files.isDirectory(base.resolve(".git")))
-				return new GitForks(Yielding.fileReplacer());
-			InMemoryForks forks = new InMemoryForks(base, Set.of());
-			for (Path path : List.of(Path.of("rules/main.md"), Path.of("rules/new.md"), Path.of("rules/old.md"),
-				Path.of("README.md"), RECORD_FILE))
-			{
-				forks.supplyPatch(path, patch(path));
-			}
-			return forks;
+			return new GitForks(Yielding.fileReplacer());
 		}
 
 		/**
