@@ -304,6 +304,7 @@ public final class RunnerLaunchersTest
 			requireThat(names(access.codexLaunchers()), "codexLaunchers").contains(launcher);
 		}
 		requireThat(rule, "rule").contains("CAT_SESSION_REQUESTS").contains("--input").contains("--request-depth").
+			contains("--extra-permissions").contains("\"format_version\":1").
 			contains("{\"type\":\"turn_completed\"").contains("assistant_response").contains("\"type\":\"turn_").
 			doesNotContain("printf").doesNotContain(" | ").doesNotContain("$(").doesNotContain("```bash").
 			doesNotContain("cannot start a harness");

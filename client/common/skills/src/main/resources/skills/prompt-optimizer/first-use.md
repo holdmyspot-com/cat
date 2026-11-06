@@ -38,9 +38,11 @@ launcher field.
 
 1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
 	user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should
-	achieve, add `--goal <text>` with the user's own words, quoted as one argument; otherwise leave it out. It creates
-	a campaign or resumes the one that already exists for that target. Use its `campaign` value in every later
-	command.
+	achieve, add `--goal <text>` with the user's own words, quoted as one argument; otherwise leave it out. When the
+	user says the campaign's sessions need writes or hosts beyond their own, such as a package registry, write them
+	with a file-writing tool into `{"format_version":1,"writes":["<absolute path>"],"hosts":["<host name>"]}` and add
+	`--extra-permissions <file>`; otherwise leave it out. It creates a campaign or resumes the one that already exists
+	for that target. Use its `campaign` value in every later command.
 	- A result may say that CAT added `/.cat/sessions/` to the project's `.gitignore`. Show that text to the user with
 		the rest of the result. The user commits that change: do not stage or commit it yourself. `start` accepts a
 		project whose only uncommitted change is those lines.

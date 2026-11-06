@@ -61,6 +61,20 @@ effort of a model that lists none. When that listing command is unavailable, cho
 the harness accepts, such as the ones this session runs under when it runs the same harness. State the model and the
 effort that you chose with the run's evidence.
 
+A session may need a write outside its run folder or a host that its harness's own needs do not cover, such as a
+package registry or a cache outside the project. Name them in a JSON file that you write with a file-writing tool, and
+pass `--extra-permissions <file>` to the launcher:
+
+```json
+{"format_version":1,"writes":["<absolute path>"],"hosts":["<host name>"]}
+```
+
+Either list may be left out. Each write is an absolute path, each host is a host name or an IP address without a `*`
+pattern, and the file has no other field. Without the option the session asks for nothing extra. The session gets
+them only when the sandbox of the session that starts it allows them; otherwise the launch is refused before the
+harness starts, with a reason that lists each missing write and host and the settings entry that grants it. Report
+that reason and do not change sandbox settings yourself.
+
 ### Inside a run
 
 Run the `claude-runner` or `codex-runner` launcher whose absolute path this session's instructions name; the plugin's
@@ -71,7 +85,7 @@ the limits, so pass only these options, which do not include `--agent`:
 
 ```text
 --project <project> --input <records> --model <model> --effort <effort> [--plugin <plugin>]...
-[--install-cat] [--session-transcripts] [--output <transcript>] [--receipt <receipt>]
+[--install-cat] [--session-transcripts] [--extra-permissions <file>] [--output <transcript>] [--receipt <receipt>]
 ```
 
 The project and each plugin must contain no symbolic links. Inside a run, the launcher leaves out the files that the
@@ -84,7 +98,7 @@ into its own file inside your project, and pass the model and the effort as abov
 
 ```text
 --harness <claude|codex> --project <project> --prompt <file> [--prompt <file>]... --model <model> --effort <effort>
-[--plugin <plugin>]... [--install-cat] [--session-transcripts]
+[--plugin <plugin>]... [--install-cat] [--session-transcripts] [--extra-permissions <file>]
 ```
 
 The launcher waits up to 300 seconds. When the session ends, it prints the path of the response, a JSON file whose

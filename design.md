@@ -2486,7 +2486,12 @@ wants a prompt file improved until it is certified. The host agent:
 	([§5](#5-measurement-identity-and-applicability)), applicability and limitations.
 
 The harness-specific `prompt-optimizer` launcher provides `start`, `run`, `status`, `confirm`, `revise`, `choose` and
-`cancel`. `start` takes the target prompt file and, optionally, the user's goal; it refuses a directory, naming it.
+`cancel`. `start` takes the target prompt file and, optionally, the user's goal and a file of extra permissions
+(`--extra-permissions <file>`, the format of the runner launchers' option); it refuses a directory, naming it, and a
+missing or invalid file. A new campaign reads the file once and records its contents in the campaign's header, and
+applies them to every session it starts, the contract author's and judges' included; a resumed campaign keeps the
+permissions it started with, and a campaign that named no file asks for none. A session whose parent's sandbox lacks
+a listed write or host is refused as any requested session is.
 It reads the prompt test configuration from the target's test directory (below) and refuses a target without one, naming
 the file to write ([§4.4](#44-trial-staging)).
 Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for the user
@@ -2643,7 +2648,16 @@ and host and, for the requesting session's harness, the settings entry that gran
 network domain entries), and says to start a new session, because a running session keeps the policy it started with.
 A write inside a path that the requesting session's sandbox denies is listed with that denial, which the user removes,
 since allowing the folder would not help. The run folder stays allowed, and read denials only narrow the requested
-session (user ruling, 2026-11-06).
+session (user ruling, 2026-11-06). A caller that knows its task needs more, such as a package registry's host or a
+cache outside the project, names a JSON file with `--extra-permissions <file>` on either runner launcher or on
+`request-session`: `{"format_version": 1, "writes": ["<absolute path>"], "hosts": ["<host name>"]}`, where either list
+may be left out and no other field is allowed. It rejects a relative path and a `*` host pattern, as the child's own
+needs do. The writes and hosts join the requested session's needs on every path that starts it (through the session
+launcher, through a run's broker, and in place in the runner that serves it), so the same rule applies: the session gets
+them when the requesting session's sandbox allows them and otherwise is refused, with each one named and the settings
+entry that grants it. A caller that names no file requests nothing extra; the file's contents travel inside the request,
+so the runner never opens a path that the requesting session chose (user ruling, 2026-11-06: a file that describes
+what the child needs, optional).
 It takes its own slot of its harness's shared
 capacity and honours its hold, but waits at most 10 minutes for a slot, because the requesting session keeps its own
 slot while it waits; a request that times out fails with the reason `capacity`. Ending the run or interrupting its turn

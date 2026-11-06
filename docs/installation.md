@@ -417,6 +417,14 @@ your settings; in Codex, to the filesystem and network domain entries of your pe
 a new session, because a running session keeps the policy it started with. When a path lies inside a path that your
 sandbox denies writing, the message names that denial: remove it, because allowing the folder would not help.
 
+A launch may ask for more than a session's own needs, such as the host of a package registry or a cache outside your
+project, with `--extra-permissions <file>`, where the file is JSON like
+`{"format_version": 1, "writes": ["/home/me/.cache/pip"], "hosts": ["pypi.org"]}`. Either list may be left out, every
+write is an absolute path, and a host is a name or an IP address, never a pattern. Without the option nothing extra is
+requested. The extra writes and hosts are treated like the session's own: when your sandbox does not allow them, the
+launch is refused with the message above, which lists them. The prompt optimizer's `start` takes the same option and
+applies the file to every session of the campaign.
+
 Earlier versions of this guide told you to exempt the two runner launchers from your harness's sandbox. They no longer
 need that exception, so `install` removes it and reports each removal: in Claude Code, the
 runner entries in `sandbox.excludedCommands` and `permissions.allow` of your user settings; in Codex, the file
