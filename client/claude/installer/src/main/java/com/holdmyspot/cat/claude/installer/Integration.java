@@ -93,15 +93,6 @@ public final class Integration implements HarnessIntegration
 	 */
 	private static final String USER_SCOPE = "user";
 	/**
-	 * Claude Code 2.1.318's answer, with exit status 1, to {@code plugin uninstall cat@cat} when CAT is not installed.
-	 */
-	private static final String PLUGIN_NOT_FOUND = "Plugin \"cat@cat\" not found";
-	/**
-	 * Claude Code 2.1.318's answer, with exit status 1, to {@code plugin marketplace remove cat} when the marketplace
-	 * is not added.
-	 */
-	private static final String MARKETPLACE_NOT_FOUND = "Marketplace 'cat' not found";
-	/**
 	 * Reads settings, refusing duplicate members, whose rewrite would silently drop all but one.
 	 */
 	private static final JsonMapper MAPPER = JsonMapper.builder().
@@ -325,8 +316,31 @@ public final class Integration implements HarnessIntegration
 	@Override
 	public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
-		requireThat(version, "version").isNotNull();
 		requireThat(cli, "cli").isNotNull();
+		writeMarketplaceManifest(home, version, replacer);
+		PluginCommand.addMarketplace(new ClaudeInstallation(home).marketplaceRoot()).run(cli);
+		PluginCommand command = registrationCommand(home);
+		command.run(cli);
+		requireSwitched(home, version, command);
+	}
+
+	/**
+	 * Writes the marketplace manifest that names a plugin version's folder as CAT's source, unless the manifest already
+	 * holds exactly that content. The folder's marketplace metadata, which the plugin archive ships, supplies the rest
+	 * of the manifest.
+	 *
+	 * @param home     the absolute Claude Code configuration directory recorded in policy
+	 * @param version  the plugin version, whose version folder install has written
+	 * @param replacer replaces the marketplace manifest
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the version folder lacks its marketplace metadata, the metadata is not a JSON
+	 *                                  object with a {@code cat} plugin entry, or a path component is a symbolic link
+	 */
+	public static void writeMarketplaceManifest(Path home, PluginVersion version, FileReplacer replacer)
+		throws IOException
+	{
+		requireThat(version, "version").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		ClaudeInstallation installation = new ClaudeInstallation(home);
 		Path root = installation.marketplaceRoot();
@@ -343,19 +357,45 @@ public final class Integration implements HarnessIntegration
 		{
 			replace(manifest, content, replacer);
 		}
+	}
 
-		require(cli, List.of("plugin", "marketplace", "add", root.toString()), "");
-		String operation;
-		if (installedVersion(home).isPresent())
-			operation = "update";
-		else
-			operation = "install";
-		require(cli, List.of("plugin", operation, "cat@cat"), "");
+	/**
+	 * Returns the command that makes Claude Code load CAT from the marketplace.
+	 *
+	 * @param home the absolute Claude Code configuration directory recorded in policy
+	 * @return {@code plugin update cat@cat} when Claude Code records a CAT installation in the user scope, otherwise
+	 * 	{@code plugin install cat@cat}
+	 * @throws NullPointerException     if {@code home} is null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the record is a symbolic link, cannot be read or is not a JSON object
+	 */
+	public static PluginCommand registrationCommand(Path home) throws IOException
+	{
+		return PluginCommand.registerPlugin(installedVersion(home).isPresent());
+	}
+
+	/**
+	 * Requires Claude Code to record a plugin version as CAT's installed version, so that registration does not report
+	 * a version that Claude Code does not load.
+	 *
+	 * @param home    the absolute Claude Code configuration directory recorded in policy
+	 * @param version the plugin version that registration asked Claude Code to load
+	 * @param command the command that Claude Code ran to load it
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative
+	 * @throws IOException              if the record cannot be read, or records another version or none; the message
+	 *                                  names {@code command}, {@code version} and the recorded version
+	 */
+	public static void requireSwitched(Path home, PluginVersion version, PluginCommand command) throws IOException
+	{
+		requireThat(version, "version").isNotNull();
+		requireThat(command, "command").isNotNull();
 		Optional<String> installed = installedVersion(home);
 		if (!installed.equals(Optional.of(version.toString())))
 		{
-			throw new IOException("claude plugin " + operation + " cat@cat did not switch CAT to " + version + ": " +
-				installation.installedPlugins() + " records " + installed.orElse("no CAT installation") + ".");
+			throw new IOException("claude " + String.join(" ", command.arguments()) + " did not switch CAT to " + version +
+				": " + new ClaudeInstallation(home).installedPlugins() + " records " + installed.orElse("no CAT installation") +
+				".");
 		}
 	}
 
@@ -436,25 +476,6 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Runs a {@code claude} command and refuses its failure.
-	 *
-	 * @param cli       runs the recorded program
-	 * @param arguments the command's arguments
-	 * @param absence   the answer that means the command had nothing to do, or empty if every failure counts
-	 * @throws IOException if the command fails with another answer
-	 */
-	private static void require(HarnessCli cli, List<String> arguments, String absence) throws IOException
-	{
-		CommandResult result = cli.run(arguments);
-		if (result.exitCode() == 0)
-			return;
-		if (!absence.isEmpty() && result.output().contains(absence))
-			return;
-		throw new IOException("claude " + String.join(" ", arguments) + " failed with exit status " +
-			result.exitCode() + ": " + result.output().strip());
-	}
-
-	/**
 	 * Uninstalls CAT and then removes its marketplace. Claude Code's answers that either is absent are success. Claude
 	 * Code's uninstall deletes the plugin's data directory unless it is given {@code --keep-data}.
 	 *
@@ -470,12 +491,8 @@ public final class Integration implements HarnessIntegration
 	{
 		requireThat(home, "home").isAbsolute();
 		requireThat(cli, "cli").isNotNull();
-		List<String> uninstall = new ArrayList<>(List.of("plugin", "uninstall"));
-		if (keepData)
-			uninstall.add("--keep-data");
-		uninstall.add("cat@cat");
-		require(cli, uninstall, PLUGIN_NOT_FOUND);
-		require(cli, List.of("plugin", "marketplace", "remove", "cat"), MARKETPLACE_NOT_FOUND);
+		for (PluginCommand command : PluginCommand.unregistration(keepData))
+			command.run(cli);
 	}
 
 	/**

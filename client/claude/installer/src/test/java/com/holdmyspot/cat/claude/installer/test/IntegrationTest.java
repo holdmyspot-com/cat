@@ -3,6 +3,7 @@ package com.holdmyspot.cat.claude.installer.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.installer.Integration;
+import com.holdmyspot.cat.claude.installer.PluginCommand;
 import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.FileReplacer;
@@ -23,12 +24,13 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.StringJoiner;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests Claude Code's {@link HarnessIntegration} service.
@@ -46,6 +48,7 @@ public final class IntegrationTest
 	 * the marketplace was not added.
 	 */
 	private static final String MARKETPLACE_NOT_FOUND = "✘ Failed to remove marketplace: Marketplace 'cat' not found\n";
+	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	private static final String SETTINGS_KEY_EXCLUDED = "settings.json#sandbox.excludedCommands";
 	private static final String SETTINGS_KEY_ALLOW = "settings.json#permissions.allow";
 	private static final String SETTINGS_KEY_DENY_WRITE = "settings.json#sandbox.filesystem.denyWrite";
@@ -205,82 +208,35 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * A first registration points the marketplace manifest at the new version folder, adds the marketplace and
-	 * installs CAT, so that Claude Code loads the plugin in place from that version folder.
+	 * The marketplace manifest names the folder of the version that registration is asked for as CAT's source, although
+	 * another version's folder is also present, so that Claude Code loads the plugin in place from the folder of the
+	 * version that was registered. Claude Code 2.1.318 loads a directory marketplace's plugin in place from the folder
+	 * that the manifest's source names.
 	 *
-	 * @throws IOException if the fixture cannot be created or registration fails
+	 * @param other      the version whose folder is also present
+	 * @param registered the version to register
+	 * @throws IOException if the fixture cannot be created or the manifest cannot be written
 	 */
-	@Test
-	public void registerInstallsFromVersionFolder() throws IOException
+	@Test(dataProvider = "buildPairs")
+	public void manifestNamesRegisteredVersionFolder(PluginVersion other, PluginVersion registered) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			Path versionFolder = writeVersionFolder(home, VERSION);
-			FakeClaude claude = new FakeClaude(home);
+			writeVersionFolder(home, other);
+			Path registeredFolder = writeVersionFolder(home, registered);
 
-			integration().register(home, VERSION, claude, replacer());
+			Integration.writeMarketplaceManifest(home, registered, replacer());
 
-			ClaudeInstallation installation = new ClaudeInstallation(home);
-			requireThat(claude.calls(), "calls").isEqualTo(List.of(
-				List.of("plugin", "marketplace", "add", installation.marketplaceRoot().toString()),
-				List.of("plugin", "install", "cat@cat")));
-			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(versionFolder));
+			requireThat(manifestSource(home), "source").isEqualTo(registeredFolder);
 		}
 	}
 
 	/**
-	 * Registering a new version of an installed CAT points the marketplace manifest at the new version folder and
-	 * updates CAT, because Claude Code's install leaves an installed plugin unchanged.
+	 * Supplies two builds of one release, in both orders: the build whose folder is also present and the build that
+	 * registration names.
 	 *
-	 * @throws IOException if the fixture cannot be created or registration fails
-	 */
-	@Test
-	public void registerUpdatesToNewVersionFolder() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			writeVersionFolder(home, VERSION);
-			FakeClaude.recordInstalled(home, VERSION.toString());
-			Path newFolder = writeVersionFolder(home, NEW_VERSION);
-			FakeClaude claude = new FakeClaude(home);
-
-			integration().register(home, NEW_VERSION, claude, replacer());
-
-			requireThat(claude.calls().getLast(), "lastCall").isEqualTo(List.of("plugin", "update", "cat@cat"));
-			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(newFolder));
-		}
-	}
-
-	/**
-	 * Registration fails, naming both versions, when Claude Code answers success but still records another version, so
-	 * that install does not report a version that Claude Code does not load.
-	 *
-	 * @throws IOException if the fixture cannot be created or the failure is returned
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*1\\.0\\+bfedcba987654.*1\\.0\\+b0123456789ab.*")
-	public void registerRefusesUnswitchedVersion() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			writeVersionFolder(home, VERSION);
-			FakeClaude.recordInstalled(home, VERSION.toString());
-			writeVersionFolder(home, NEW_VERSION);
-			// Claude Code answers success without switching versions, as it would for a plugin it read elsewhere.
-			RecordingCli claude = new RecordingCli(List.of(new CommandResult(0, "ok"), new CommandResult(0, "ok")));
-
-			integration().register(home, NEW_VERSION, claude, replacer());
-		}
-	}
-
-	/**
-	 * Returns two builds of one release, in both orders: the build that Claude Code records as installed and the build
-	 * that registration names.
-	 *
-	 * @return the installed and the registered version
+	 * @return the other and the registered version
 	 */
 	@DataProvider
 	public Object[][] buildPairs()
@@ -293,29 +249,19 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * With two version folders of one release present, registration through the harness integration switches Claude
-	 * Code to the folder of the version that it names, whichever of the two is installed or was written first.
+	 * Registration refuses a version folder that lacks the marketplace metadata which the manifest is written from.
 	 *
-	 * @param installed  the version that Claude Code records as installed, whose folder is written first
-	 * @param registered the version to register
-	 * @throws IOException if the fixture cannot be created or registration fails
+	 * @throws IOException if the fixture cannot be created or the failure is returned
 	 */
-	@Test(dataProvider = "buildPairs")
-	public void registerChoosesNamedVersionFolder(PluginVersion installed, PluginVersion registered)
-		throws IOException
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "The plugin version folder lacks its marketplace metadata: .*")
+	public void manifestRequiresMetadata() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			writeVersionFolder(home, installed);
-			FakeClaude.recordInstalled(home, installed.toString());
-			Path registeredFolder = writeVersionFolder(home, registered);
-			FakeClaude claude = new FakeClaude(home);
-			HarnessIntegration integration = integration();
 
-			integration.register(home, registered, claude, replacer());
-
-			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(registeredFolder));
+			Integration.writeMarketplaceManifest(home, VERSION, replacer());
 		}
 	}
 
@@ -323,10 +269,10 @@ public final class IntegrationTest
 	 * Registration replaces an outdated marketplace manifest although the file system refuses the first attempt, as
 	 * Windows does while another process reads the file.
 	 *
-	 * @throws IOException if the fixture cannot be created or registration fails
+	 * @throws IOException if the fixture cannot be created or the manifest cannot be written
 	 */
 	@Test
-	public void registerRetriesRefusedManifest() throws IOException
+	public void manifestRetriesRefusedReplacement() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -336,12 +282,101 @@ public final class IntegrationTest
 				resolve(".claude-plugin")).resolve("marketplace.json");
 			Files.writeString(manifest, "{\"name\": \"outdated\"}\n");
 			TransientRefusal refusal = new TransientRefusal(manifest);
-			FakeClaude claude = new FakeClaude(home);
 
-			integration().register(home, VERSION, claude, refusal.replacer());
+			Integration.writeMarketplaceManifest(home, VERSION, refusal.replacer());
 
-			requireThat(claude.loadedFrom(), "loadedFrom").isEqualTo(Optional.of(versionFolder));
+			requireThat(manifestSource(home), "source").isEqualTo(versionFolder);
 			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Registration adds CAT's marketplace, the directory that holds the manifest, to Claude Code.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void addsMarketplaceFromItsRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path root = new ClaudeInstallation(home).marketplaceRoot();
+
+			requireThat(PluginCommand.addMarketplace(root).arguments(), "arguments").
+				isEqualTo(List.of("plugin", "marketplace", "add", root.toString()));
+		}
+	}
+
+	/**
+	 * A first registration installs CAT, because Claude Code records no CAT installation.
+	 *
+	 * @throws IOException if the fixture cannot be created or the command cannot be chosen
+	 */
+	@Test
+	public void firstRegistrationInstalls() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+
+			requireThat(Integration.registrationCommand(home).arguments(), "arguments").
+				isEqualTo(List.of("plugin", "install", "cat@cat"));
+		}
+	}
+
+	/**
+	 * Registering a new version of an installed CAT updates CAT, because Claude Code's install leaves an installed
+	 * plugin unchanged.
+	 *
+	 * @throws IOException if the fixture cannot be created or the command cannot be chosen
+	 */
+	@Test
+	public void laterRegistrationUpdates() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			InstalledPluginRecord.write(home, VERSION.toString());
+
+			requireThat(Integration.registrationCommand(home).arguments(), "arguments").
+				isEqualTo(List.of("plugin", "update", "cat@cat"));
+		}
+	}
+
+	/**
+	 * Registration succeeds when Claude Code records the registered version as CAT's installed version.
+	 *
+	 * @throws IOException if the fixture cannot be created or the check fails
+	 */
+	@Test
+	public void acceptsSwitchedVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			InstalledPluginRecord.write(home, NEW_VERSION.toString());
+
+			Integration.requireSwitched(home, NEW_VERSION, PluginCommand.registerPlugin(true));
+		}
+	}
+
+	/**
+	 * Registration fails, naming both versions, when Claude Code answers success but still records another version, so
+	 * that install does not report a version that Claude Code does not load.
+	 *
+	 * @throws IOException if the fixture cannot be created or the failure is returned
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*1\\.0\\+bfedcba987654.*1\\.0\\+b0123456789ab.*")
+	public void refusesUnswitchedVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			InstalledPluginRecord.write(home, VERSION.toString());
+
+			Integration.requireSwitched(home, NEW_VERSION, PluginCommand.registerPlugin(true));
 		}
 	}
 
@@ -377,110 +412,116 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Registration accepts Claude Code's answers to its commands when they succeed. The answers are those that Claude
+	 * Code 2.1.318 printed.
+	 *
+	 * @param command the registration command
+	 * @param answer  Claude Code's answer, with exit status 0
+	 * @throws IOException if the answer is refused
+	 */
+	@Test(dataProvider = "registrationSuccesses")
+	public void acceptsRegistrationSuccess(PluginCommand command, String answer) throws IOException
+	{
+		command.requireAccepted(new CommandResult(0, answer));
+	}
+
+	/**
+	 * Supplies each registration command with the answer that Claude Code 2.1.318 printed when it succeeded.
+	 *
+	 * @return each command and its answer
+	 */
+	@DataProvider
+	public Object[][] registrationSuccesses()
+	{
+		Path root = absoluteTestPath("marketplace");
+		return new Object[][]
+		{
+			{PluginCommand.addMarketplace(root), "✔ Successfully added marketplace: cat (declared in user settings)\n"},
+			{PluginCommand.registerPlugin(false), "✔ Successfully installed plugin: cat@cat (scope: user)\n"},
+			{PluginCommand.registerPlugin(true), "✔ Plugin \"cat\" updated. Restart to apply changes.\n"}
+		};
+	}
+
+	/**
 	 * Registration fails, naming Claude Code's answer, when a command fails.
 	 *
-	 * @param refused the subcommand that Claude Code refuses
-	 * @param earlier the version that Claude Code has installed, or empty
-	 * @throws IOException if the fixture cannot be created or the failure is returned
+	 * @param command the registration command that Claude Code refuses
+	 * @throws IOException if the failure is returned
 	 */
-	@Test(dataProvider = "registrationCalls", expectedExceptions = IOException.class,
+	@Test(dataProvider = "registrationCommands", expectedExceptions = IOException.class,
 		expectedExceptionsMessageRegExp = "(?s).*network unavailable.*")
-	public void registerFailsOnRefusal(String refused, String earlier) throws IOException
+	public void registrationFailsOnRefusal(PluginCommand command) throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			writeVersionFolder(home, VERSION);
-			if (!earlier.isEmpty())
-				FakeClaude.recordInstalled(home, earlier);
-
-			integration().register(home, VERSION, new FakeClaude(home, refused), replacer());
-		}
+		command.requireAccepted(new CommandResult(1, "✘ network unavailable\n"));
 	}
 
 	/**
 	 * Supplies the registration commands that can fail.
 	 *
-	 * @return each refused subcommand and the version installed before registration
+	 * @return each command
 	 */
 	@DataProvider
-	public Object[][] registrationCalls()
+	public Object[][] registrationCommands()
 	{
-		return new Object[][] {{"add", ""}, {"install", ""}, {"update", NEW_VERSION.toString()}};
+		return new Object[][]
+		{
+			{PluginCommand.addMarketplace(absoluteTestPath("marketplace"))},
+			{PluginCommand.registerPlugin(false)},
+			{PluginCommand.registerPlugin(true)}
+		};
 	}
 
 	/**
 	 * Unregistration uninstalls CAT and then removes its marketplace, treating Claude Code's not-found answers as
 	 * success.
 	 *
-	 * @throws IOException if the fixture cannot be created or unregistration fails
+	 * @throws IOException if an answer is refused
 	 */
 	@Test
 	public void unregisterAcceptsAbsence() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			RecordingCli cli = new RecordingCli(List.of(new CommandResult(1, PLUGIN_NOT_FOUND),
-				new CommandResult(1, MARKETPLACE_NOT_FOUND)));
+		List<PluginCommand> commands = PluginCommand.unregistration(false);
 
-			integration().unregister(home, cli, false);
-
-			requireThat(cli.calls(), "calls").isEqualTo(List.of(List.of("plugin", "uninstall", "cat@cat"),
-				List.of("plugin", "marketplace", "remove", "cat")));
-		}
+		requireThat(commands.stream().map(PluginCommand::arguments).toList(), "arguments").isEqualTo(List.of(
+			List.of("plugin", "uninstall", "cat@cat"), List.of("plugin", "marketplace", "remove", "cat")));
+		commands.get(0).requireAccepted(new CommandResult(1, PLUGIN_NOT_FOUND));
+		commands.get(1).requireAccepted(new CommandResult(1, MARKETPLACE_NOT_FOUND));
 	}
 
 	/**
 	 * Unregistration that keeps the data asks Claude Code to keep the plugin's data directory, which its uninstall
 	 * deletes otherwise.
-	 *
-	 * @throws IOException if the fixture cannot be created or unregistration fails
 	 */
 	@Test
-	public void unregisterKeepsData() throws IOException
+	public void unregisterKeepsData()
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			RecordingCli cli = new RecordingCli(List.of(new CommandResult(0, ""), new CommandResult(0, "")));
-
-			integration().unregister(home, cli, true);
-
-			requireThat(cli.calls(), "calls").isEqualTo(List.of(List.of("plugin", "uninstall", "--keep-data", "cat@cat"),
+		requireThat(PluginCommand.unregistration(true).stream().map(PluginCommand::arguments).toList(), "arguments").
+			isEqualTo(List.of(List.of("plugin", "uninstall", "--keep-data", "cat@cat"),
 				List.of("plugin", "marketplace", "remove", "cat")));
-		}
 	}
 
 	/**
 	 * Unregistration fails on any other refusal, so uninstall does not report a registration it left behind.
 	 *
-	 * @param answers Claude Code's answers to the two commands
-	 * @throws IOException if the fixture cannot be created or the failure is returned
+	 * @param index the position of the refused command among the unregistration commands
+	 * @throws IOException if the failure is returned
 	 */
-	@Test(dataProvider = "unregistrationFailures", expectedExceptions = IOException.class,
+	@Test(dataProvider = "unregistrationCommands", expectedExceptions = IOException.class,
 		expectedExceptionsMessageRegExp = "(?s).*settings are locked.*")
-	public void unregisterFailsOnRefusal(List<CommandResult> answers) throws IOException
+	public void unregisterFailsOnRefusal(int index) throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-
-			integration().unregister(home, new RecordingCli(answers), false);
-		}
+		PluginCommand.unregistration(false).get(index).requireAccepted(new CommandResult(1, "✘ settings are locked"));
 	}
 
 	/**
-	 * Supplies a refusal of each unregistration command.
+	 * Supplies the position of each unregistration command.
 	 *
-	 * @return the answers to both commands
+	 * @return the uninstall command's and the marketplace removal's position
 	 */
 	@DataProvider
-	public Object[][] unregistrationFailures()
+	public Object[][] unregistrationCommands()
 	{
-		CommandResult refusal = new CommandResult(1, "✘ settings are locked");
-		return new Object[][] {{List.of(refusal, new CommandResult(0, ""))},
-			{List.of(new CommandResult(0, ""), refusal)}};
+		return new Object[][] {{0}, {1}};
 	}
 
 	/**
@@ -1391,6 +1432,26 @@ public final class IntegrationTest
 			"version": "%s"}]}
 			""".formatted(version));
 		return versionFolder;
+	}
+
+	/**
+	 * Returns the folder that the marketplace manifest names as CAT's source.
+	 *
+	 * @param home the configuration directory
+	 * @return the absolute folder: the manifest's source for the {@code cat} plugin, resolved against the marketplace
+	 * 	directory
+	 * @throws IOException if the manifest cannot be read or has no {@code cat} plugin
+	 */
+	private static Path manifestSource(Path home) throws IOException
+	{
+		ClaudeInstallation installation = new ClaudeInstallation(home);
+		JsonNode manifest = MAPPER.readTree(Files.readString(installation.marketplaceManifest()));
+		for (JsonNode plugin : manifest.path("plugins"))
+		{
+			if (plugin.path("name").asString().equals("cat"))
+				return installation.marketplaceRoot().resolve(plugin.path("source").asString()).normalize();
+		}
+		throw new AssertionError("The marketplace manifest has no cat plugin: " + manifest);
 	}
 
 	/**

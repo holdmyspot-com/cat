@@ -176,7 +176,7 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			FakeClaude.recordInstalled(home, VERSION);
+			InstalledPluginRecord.write(home, VERSION);
 			writeVersionFolder(home, NEW_VERSION, NEW_VERSION);
 			if (folderVersion != null)
 				writeVersionFolder(home, VERSION, folderVersion);
@@ -330,7 +330,7 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(testDirectory());
-			FakeClaude.recordInstalled(home, VERSION);
+			InstalledPluginRecord.write(home, VERSION);
 			Path manifest = home.resolve(VERSION_FOLDERS).resolve(VERSION).resolve(".claude-plugin/plugin.json");
 			Files.createDirectories(manifest.getParent());
 			Files.writeString(manifest, "invalid JSON");
@@ -349,7 +349,7 @@ public final class ActivationTest
 	private static void install(Path home, String version) throws IOException
 	{
 		writeVersionFolder(home, version, version);
-		FakeClaude.recordInstalled(home, version);
+		InstalledPluginRecord.write(home, version);
 	}
 
 	/**
