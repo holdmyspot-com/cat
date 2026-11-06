@@ -2,11 +2,15 @@ package com.holdmyspot.cat.common.optimizer.campaign.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
+import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
@@ -92,5 +96,57 @@ public final class RoundTest
 	public void unknownReservationHasNoApproach()
 	{
 		new Round(Map.of("safety", 0)).approach(1, 0);
+	}
+
+	/**
+	 * A sequential round offers its cell's next attempt only once the reserved attempt's edits have been received, so
+	 * that one prompt author works on a cell at a time.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void sequentialWaitsForReservedEdits()
+	{
+		Sha256 snapshot = Builder.snapshot("candidate-2");
+		Round reserved = new Round(Map.of("safety", 1), false, Map.of(12, "safety"), List.of());
+		requireThat(reserved.nextCell(), "whileReserved").isEqualTo(Optional.empty());
+
+		PromptAuthorAttempt received = new PromptAuthorAttempt(12, "safety", snapshot, List.of(),
+			Minimality.start(List.of(), snapshot));
+		Round submitted = new Round(Map.of("safety", 1), false, Map.of(12, "safety"), List.of(received));
+		requireThat(submitted.nextCell(), "afterEditsArrive").isEqualTo(Optional.of("safety"));
+	}
+
+	/**
+	 * A weak round offers each addressed cell's slots until all of them are reserved, without waiting for the edits of
+	 * the sessions already reserved, so that its attempts run at the same time.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void weakReservesAllSlotsAtOnce()
+	{
+		Map<Integer, String> reservations = new LinkedHashMap<>();
+		reservations.put(7, "safety");
+		reservations.put(8, "safety");
+		Round twoReserved = new Round(Map.of("safety", 0), true, reservations, List.of());
+		requireThat(twoReserved.nextCell(), "twoReserved").isEqualTo(Optional.of("safety"));
+
+		reservations.put(9, "safety");
+		Round allReserved = new Round(Map.of("safety", 0), true, reservations, List.of());
+		requireThat(allReserved.nextCell(), "allReserved").isEqualTo(Optional.empty());
+	}
+
+	/**
+	 * A round offers the first addressed cell that still has an attempt slot, skipping a cell whose slots are used.
+	 */
+	// Requirement: R-D3
+	@Test
+	public void roundSkipsCellWithoutSlots()
+	{
+		Map<String, Integer> attempts = new LinkedHashMap<>();
+		attempts.put("formatting", Round.ATTEMPTS);
+		attempts.put("safety", 0);
+		requireThat(new Round(attempts).nextCell(), "next").isEqualTo(Optional.of("safety"));
+		attempts.put("safety", Round.ATTEMPTS);
+		requireThat(new Round(attempts).nextCell(), "exhausted").isEqualTo(Optional.empty());
 	}
 }
