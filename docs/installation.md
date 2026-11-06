@@ -388,25 +388,22 @@ the session runs under the model and the reasoning effort that the definition na
 together with `--model` or `--effort`, and an agent definition that does not name both a model and an effort. A session
 that a runner started cannot pass `--agent`.
 
-The runners need no configuration. When a Claude Code or Codex session starts, CAT's SessionStart hook starts a session
-launcher for it: a process outside the session's sandbox that serves that session until it ends. A runner launcher that
-the session runs asks its session launcher to start the new session, and the session launcher starts it inside that
-harness's own sandbox, so that the new session can read, write and reach no more than the session that asked for it.
-The session launcher reads the asking session's sandbox policy from that harness's own settings and command line, never
-from the request. A launcher always runs its own CAT artifact and the `claude` or `codex` command that your `PATH`
-finds: a launch that names `--artifact` exits with status 2 and starts nothing. Run the launchers from a Claude Code or
-Codex session in which CAT is installed; the runners start no session for a command run anywhere else.
+The runners need no configuration. A runner launcher that a Claude Code or Codex session runs starts the new session
+itself, inside that harness's own sandbox and inside the sandbox of the session that runs it, so that the new session
+can read, write and reach no more than the session that asked for it. The launcher reads the asking session's sandbox
+policy from that harness's settings files, and assumes that the session was started without sandbox options on its
+command line; in Codex, it also narrows the policy to the one that the session's own record of its current turn names.
+It never takes the policy from the request. A launcher always runs its own CAT artifact and the `claude` or `codex`
+command that your `PATH` finds: a launch that names `--artifact` exits with status 2 and starts nothing. A command that
+no harness sandbox confines, such as one that you run in a terminal, gives the new session exactly what it needs.
+Each harness's CAT plugin provides both launchers: its launcher for the other harness reads the asking session's policy
+in the same way and hands the bound to the other harness's runner. A runner launcher run by the harness whose plugin did
+not provide it starts nothing and names the plugin to use instead.
 
-A session that was already running when you installed or updated CAT has no session launcher, so its runner launchers
-start nothing and print: "No CAT session launcher serves this session. CAT starts one when a session starts; sessions
-started before CAT was installed or updated have none. Start a new Claude Code session and run the command again." (or
-"Codex session" in Codex). Start a new session and run the task there.
-
-When CAT cannot read a session's sandbox policy safely, its runner launchers start nothing either. The message begins
+When CAT cannot read a session's sandbox policy safely, its runner launchers start nothing. The message begins
 "CAT cannot start the session: it cannot read this Claude Code session's sandbox policy safely:" (or "this Codex
-session's") and goes on to say what failed and how to fix it: for example, a settings file that cannot be parsed, a
-settings file that the session's sandbox lets its commands write, or a harness option that CAT does not know. Make the
-fix that the message names, then start a new session.
+session's") and goes on to say what failed and how to fix it: for example, a settings file that cannot be parsed, or a
+Codex session whose record CAT cannot find. Make the fix that the message names, then start a new session.
 
 A session that you ask a runner to start needs a few writes outside its run folder, such as its dependency caches, and
 the host of its model. When the session that asks does not allow all of them in its sandbox, the launcher starts nothing.
@@ -433,7 +430,9 @@ runner entries in `sandbox.excludedCommands` and `permissions.allow` of your use
 
 Sessions that a runner starts need no configuration either. When you pass `--session-requests <count>`, and
 `--request-depth <levels>` for deeper levels, such a session runs the same launchers, which ask the runner that started
-it to start the session outside its sandbox. Without `--session-requests`, it cannot start sessions.
+it to start the session, so that the run counts the session's requests and keeps their evidence. Without
+`--session-requests`, it cannot start sessions: its runner launchers exit with status 2 and say that its run lets it
+request no sessions.
 
 Runner sessions need Linux or macOS, in both harnesses. On native Windows, the runner launchers refuse to start a
 session, exit with status 2 and tell you to install your harness and CAT inside WSL2, because Claude Code has no

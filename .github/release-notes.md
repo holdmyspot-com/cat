@@ -21,12 +21,11 @@ afterwards, and that make the harness ask you before it uninstalls CAT. Run the 
 Each harness gets its own installation of CAT, and the two may run different CAT releases. Claude Code on Windows can
 also use the POSIX command in Git Bash; Codex on Windows needs the PowerShell command. CAT's runners and prompt
 optimization are not available on native Windows; to use them, run your harness and CAT inside WSL2. If the command
-cannot write a required path, run it outside the agent sandbox. Restart the harness: a session that was already running
-has no CAT session launcher, so it cannot start runner sessions or prompt optimization trials.
+cannot write a required path, run it outside the agent sandbox. Restart the harness.
 
-CAT's runners need no sandbox exception: each session's CAT session launcher starts runner sessions inside their
-harness's own sandbox, never wider than the session that asked for them. The command removes the runner exceptions that
-earlier installation instructions asked you to add, and reports each removal.
+CAT's runners need no sandbox exception: a runner starts its session inside its harness's own sandbox, within the
+sandbox of the session that asked for it, so never wider than that session. The command removes the runner exceptions
+that earlier installation instructions asked you to add, and reports each removal.
 
 ## Install another release, check CAT and uninstall with your agent
 
