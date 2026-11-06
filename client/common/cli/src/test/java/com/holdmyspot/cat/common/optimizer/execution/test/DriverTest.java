@@ -109,6 +109,8 @@ import com.holdmyspot.cat.common.optimizer.execution.Step;
 import com.holdmyspot.cat.common.optimizer.execution.fixture.test.FaultingFileChannel;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
+import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
+import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -119,6 +121,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.inventory.Operation;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
+import com.holdmyspot.cat.common.optimizer.inventory.PathChange;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
@@ -6702,122 +6705,61 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns the ways that a delivery stops for the user's direction, each with the type of result it ends in.
+	 * Returns delivery results that stop before the delivery completes, one of each kind.
 	 *
-	 * @return the stops and their result types
+	 * @return the results
 	 */
 	@DataProvider
 	public static Object[][] stoppedDeliveries()
 	{
+		RegularFile file = new RegularFile(Sha256.of("fork".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"));
 		return new Object[][]
 		{
-			{Stop.UNOWNED_CHANGE, DeliveryResult.UnownedChange.class},
-			{Stop.CONFLICT, DeliveryResult.Conflicted.class},
-			{Stop.CONCURRENT_EDIT, DeliveryResult.ConcurrentEdit.class},
-			{Stop.VERIFICATION_FAILURE, DeliveryResult.VerificationFailed.class}
+			{new DeliveryResult.UnownedChange(List.of(new PathChange.Added(Path.of("notes.md"), file)))},
+			{new DeliveryResult.Conflicted(List.of(new DeliveryConflict(DeliveryConflict.Kind.BOTH_CHANGED,
+				DriverHarness.PROMPT, DriverHarness.PROMPT)))},
+			{new DeliveryResult.ConcurrentEdit(new DeliveryChange.Delete(0, DriverHarness.PROMPT, file), 0)},
+			{new DeliveryResult.VerificationFailed(List.of(DriverHarness.PROMPT))}
 		};
 	}
 
 	/**
-	 * A way to make a delivery stop, by changing what the delivery reads or writes as a user would.
-	 */
-	enum Stop
-	{
-		/**
-		 * The optimization worktree holds a file that CAT did not record.
-		 */
-		UNOWNED_CHANGE
-		{
-			@Override
-			void induce(DriverHarness harness) throws IOException
-			{
-				Map<Path, FileEntry> entries = new HashMap<>(harness.workspace().scanWorktree().entries());
-				entries.put(Path.of("notes.md"), new RegularFile(Sha256.of("notes".getBytes(UTF_8)),
-					PosixFilePermissions.fromString("rw-r--r--")));
-				harness.workspace().changeWorktree(new FileInventory(harness.base(), entries));
-			}
-		},
-		/**
-		 * The user edits the prompt in the base worktree, which the candidate also edits.
-		 */
-		CONFLICT
-		{
-			@Override
-			void induce(DriverHarness harness) throws IOException
-			{
-				Files.writeString(harness.base().resolve(DriverHarness.PROMPT), "edited by the user", UTF_8);
-			}
-		},
-		/**
-		 * The user creates the certification history after the delivery wrote its first change and before it writes the
-		 * history.
-		 */
-		CONCURRENT_EDIT
-		{
-			@Override
-			void induce(DriverHarness harness)
-			{
-				Path history = harness.base().resolve(PromptTestLocations.certificationHistory(DriverHarness.PROMPT));
-				harness.afterWrite(change ->
-				{
-					if (change.sequence() != 0)
-						return;
-					try
-					{
-						Files.createDirectories(history.getParent());
-						Files.writeString(history, "edited by the user", UTF_8);
-					}
-					catch (IOException e)
-					{
-						throw new UncheckedIOException(e);
-					}
-				});
-			}
-		},
-		/**
-		 * The user edits the prompt after the delivery wrote it, before the delivery verifies it.
-		 */
-		VERIFICATION_FAILURE
-		{
-			@Override
-			void induce(DriverHarness harness)
-			{
-				Path history = PromptTestLocations.certificationHistory(DriverHarness.PROMPT);
-				harness.afterWrite(change ->
-				{
-					if (!change.target().equals(history))
-						return;
-					try
-					{
-						Files.writeString(harness.base().resolve(DriverHarness.PROMPT), "edited by the user", UTF_8);
-					}
-					catch (IOException e)
-					{
-						throw new UncheckedIOException(e);
-					}
-				});
-			}
-		};
-
-		/**
-		 * Prepares the harness so that the delivery stops.
-		 *
-		 * @param harness the harness whose driver is open
-		 * @throws IOException if the harness cannot be changed
-		 */
-		abstract void induce(DriverHarness harness) throws IOException;
-	}
-
-	/**
-	 * Verifies that a delivery that stops reports the campaign as waiting for the user, never as delivered, and
-	 * describes the stop to the user.
+	 * Verifies that a slice whose delivery stopped reports the campaign as waiting for the user, never as delivered, and
+	 * describes the stop instead of a revision that waits.
 	 *
-	 * @param stop how the delivery stops
-	 * @param expected the type of result that the delivery returns
-	 * @throws IOException if the test directory cannot be used
+	 * @param stopped the delivery's result
 	 */
 	@Test(dataProvider = "stoppedDeliveries")
-	public void deliveryStopsForUserDirection(Stop stop, Class<? extends DeliveryResult> expected) throws IOException
+	public void stoppedDeliveryAwaitsUser(DeliveryResult stopped)
+	{
+		StatusReport report = StatusReport.of(new Builder().confirmed().working(1).build(), ReportEvidence.NONE);
+		StatusReport slice = SliceReports.ofSlice(report, stopped, true);
+		requireThat(slice.status(), "status").isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
+		requireThat(slice.pending(), "pending").isEqualTo(SliceReports.describe(stopped));
+	}
+
+	/**
+	 * Verifies that a slice without a stopped delivery waits for the user only while a revision waits for
+	 * confirmation.
+	 */
+	@Test
+	public void revisionPendingAwaitsUser()
+	{
+		StatusReport report = StatusReport.of(new Builder().confirmed().working(1).build(), ReportEvidence.NONE);
+		StatusReport waiting = SliceReports.ofSlice(report, null, true);
+		requireThat(waiting.status(), "status").isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
+		requireThat(waiting.pending(), "pending").isEqualTo(SliceReports.REVISION_PENDING);
+		requireThat(SliceReports.ofSlice(report, null, false), "unchanged").isEqualTo(report);
+	}
+
+	/**
+	 * Verifies that a slice whose delivery stops, here because the user edited a file that the candidate also edits,
+	 * reports the campaign as waiting for the user and describes the stop.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void deliveryStopsForUserDirection() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -6829,9 +6771,9 @@ public final class DriverTest
 					delivery(new DeliveryRequest(working, 1, Outcome.CERTIFIED)).build());
 			try (Driver driver = harness.open())
 			{
-				stop.induce(harness);
+				Files.writeString(harness.base().resolve(DriverHarness.PROMPT), "edited by the user", UTF_8);
 				SliceResult result = harness.runSlice(driver);
-				requireThat(result.delivery().result(), "delivery").isInstanceOf(expected);
+				requireThat(result.delivery().result(), "delivery").isInstanceOf(DeliveryResult.Conflicted.class);
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
 				requireThat(result.status().pending(), "pending").

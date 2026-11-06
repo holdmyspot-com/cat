@@ -1,10 +1,13 @@
 package com.holdmyspot.cat.common.optimizer.execution;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.PathChange;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
+import com.holdmyspot.cat.common.optimizer.report.Status;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 
 import java.nio.file.Path;
@@ -47,6 +50,28 @@ public final class SliceReports
 			report.concurrency(), report.assumptions(), report.attempts(), report.keepOffers(), report.claim(),
 			report.limitations(), report.conditions(), report.optimization(), report.reverts(), report.addedTestCases(),
 			report.certifiedEnvironment());
+	}
+
+	/**
+	 * Returns the report of a slice, which waits for the user if its delivery stopped before it completed, or else if
+	 * a contract revision waits for confirmation.
+	 *
+	 * @param report the campaign's report
+	 * @param delivery the slice's delivery result, or {@code null} if the slice delivered nothing
+	 * @param revisionPending {@code true} if an active campaign's revision request waits for confirmation and no trial
+	 *   runs
+	 * @return the report
+	 * @throws NullPointerException if {@code report} is null
+	 */
+	public static StatusReport ofSlice(StatusReport report, DeliveryResult delivery, boolean revisionPending)
+	{
+		requireThat(report, "report").isNotNull();
+		ReportStatus awaiting = new ReportStatus.Active(Status.AWAITING_USER);
+		if (delivery != null && !(delivery instanceof DeliveryResult.Delivered))
+			return awaiting(report, awaiting, describe(delivery));
+		if (revisionPending)
+			return awaiting(report, awaiting, REVISION_PENDING);
+		return report;
 	}
 
 	/**

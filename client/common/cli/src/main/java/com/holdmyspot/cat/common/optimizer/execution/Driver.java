@@ -2253,12 +2253,12 @@ public final class Driver implements AutoCloseable
 		StatusReport report = StatusReport.of(campaign,
 			evidence.toReportEvidence(symbolicLinks, interrupted, infrastructureFailure).
 				withSharedHoldUntil(sharedHoldUntil).withCertifiedEnvironment(environment));
-		ReportStatus awaiting = new ReportStatus.Active(Status.AWAITING_USER);
-		if (delivery != null && !(delivery.result() instanceof DeliveryResult.Delivered))
-			report = SliceReports.awaiting(report, awaiting, SliceReports.describe(delivery.result()));
-		else if (campaign.lifecycle() == Lifecycle.ACTIVE && campaign.revisionRequested() && isDrained())
-			report = SliceReports.awaiting(report, awaiting, SliceReports.REVISION_PENDING);
-		return new SliceResult(report, delivery);
+		DeliveryResult delivered = null;
+		if (delivery != null)
+			delivered = delivery.result();
+		boolean revisionPending = campaign.lifecycle() == Lifecycle.ACTIVE && campaign.revisionRequested() &&
+			isDrained();
+		return new SliceResult(SliceReports.ofSlice(report, delivered, revisionPending), delivery);
 	}
 
 	/**
