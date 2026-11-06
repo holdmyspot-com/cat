@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
@@ -43,8 +44,10 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
-import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
-import com.holdmyspot.cat.common.optimizer.store.test.InMemoryOverlays;
+import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
+import com.holdmyspot.cat.common.optimizer.store.test.AliasedOverlays;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
 import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
@@ -120,12 +123,12 @@ public final class DriverHarness
 	private final FileLocks fileLocks = new FileLocks();
 	private final Path directory;
 	private final ManualClock clock = new ManualClock(START);
-	private final InMemoryCampaignStore store = new InMemoryCampaignStore();
-	private final CrashingStore crashingStore = new CrashingStore(store);
+	private final CampaignStore store;
+	private final CrashingStore crashingStore;
 	private final FakeSessionPort sessions;
 	private final FakeWorkspacePort fakeWorkspace;
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
-	private final InMemoryOverlays overlays = new InMemoryOverlays();
+	private final AliasedOverlays overlays;
 	private final RecordingPromptAuthorProtocol promptAuthor = new RecordingPromptAuthorProtocol();
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final JudgePrompt judge;
@@ -224,6 +227,11 @@ public final class DriverHarness
 		this.sessions = new FakeSessionPort(login, null,
 			List.of(directory.resolve("runs"), directory.resolve("runs-held_out")));
 		this.fork = fork;
+		this.store = new FileCampaignStore(Files.createDirectories(directory.resolve("campaigns")), json,
+			Yielding.fileReplacer());
+		this.crashingStore = new CrashingStore(store);
+		this.overlays = new AliasedOverlays(new FileCandidateOverlays(FileCampaignStore.directory(
+			directory.resolve("campaigns"), CAMPAIGN), fork, json, Yielding.fileReplacer()));
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
 		this.triage = new TriagePrompt(json, Files.createDirectories(directory.resolve("triage")));
 		this.values = new ValuesPrompt(json, new ProposalSchema(json), Files.createDirectories(
@@ -1042,7 +1050,7 @@ public final class DriverHarness
 	 *
 	 * @return the store
 	 */
-	public InMemoryCampaignStore store()
+	public CampaignStore store()
 	{
 		return store;
 	}
@@ -1092,7 +1100,7 @@ public final class DriverHarness
 	 *
 	 * @return the overlays
 	 */
-	public InMemoryOverlays overlays()
+	public AliasedOverlays overlays()
 	{
 		return overlays;
 	}

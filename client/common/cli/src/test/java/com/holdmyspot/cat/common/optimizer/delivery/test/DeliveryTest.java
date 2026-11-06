@@ -56,7 +56,6 @@ import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
-import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.test.FileTrees;
@@ -84,7 +83,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Tests {@link Delivery} against a test-owned base worktree and a test-owned external directory that holds a read-only
  * external participant. The optimization worktree is the in-memory {@link FakeWorkspacePort}. The base worktree is a
  * real Git repository only for the no-commit check; every other test reports the delivered diff through
- * {@link InMemoryForks}, from a patch that the test supplies for each file that could change.
+ * {@link InMemoryForks}, from a patch that the test supplies for each file that could change. The delivery journal is
+ * kept by a {@link FileCampaignStore} in the fixture's directory.
  * <p>
  * Every test starts from the same fork: the base holds the prompt sources {@code rules/main.md},
  * {@code rules/style.md} and {@code rules/old.md} and the non-prompt file {@code README.md}, and the external directory
@@ -168,7 +168,7 @@ public final class DeliveryTest
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.base().resolve("README.md"), "readme edited by the user\n", UTF_8);
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of());
 
@@ -200,7 +200,7 @@ public final class DeliveryTest
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.base().resolve("rules/main.md"), "main edited by the user\n", UTF_8);
-			CampaignStore store = new InMemoryCampaignStore();
+			CampaignStore store = fixture.store();
 			List<DeliveryChange> writes = new ArrayList<>();
 
 			DeliveryResult result = fixture.delivery(store, candidate, writes::add).
@@ -316,7 +316,7 @@ public final class DeliveryTest
 				if (change.sequence() == 0)
 					write(editedByUser, "edited by the user during delivery\n");
 			};
-			CampaignStore store = new InMemoryCampaignStore();
+			CampaignStore store = fixture.store();
 			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 
 			DeliveryResult result = fixture.delivery(store, candidate, userEdit).
@@ -350,7 +350,7 @@ public final class DeliveryTest
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.base().resolve("rules/style.md"), "style edited by the user\n", UTF_8);
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of());
 
@@ -382,7 +382,7 @@ public final class DeliveryTest
 			Overlay candidate = fixture.candidate();
 			Files.writeString(fixture.shared(), "shared edited by the user\n", UTF_8);
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.NOT_CERTIFIED), candidate, candidate,
 					fixture.promptSources(), null, List.of());
 
@@ -411,7 +411,7 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate().write(fixture.shared(), content("shared v2\n"), READ_WRITE);
-			CampaignStore store = new InMemoryCampaignStore();
+			CampaignStore store = fixture.store();
 			List<DeliveryChange> writes = new ArrayList<>();
 
 			try
@@ -450,7 +450,7 @@ public final class DeliveryTest
 			Overlay working = kept.write(Path.of("rules/main.md"), content("main v3\n"), READ_WRITE);
 			FakeWorkspacePort workspace = new FakeWorkspacePort(fixture.root().resolve("workspace"),
 				working.snapshot());
-			Delivery delivery = new Delivery(new InMemoryCampaignStore(), workspace, fixture.forks(),
+			Delivery delivery = new Delivery(fixture.store(), workspace, fixture.forks(),
 				JSON, Yielding.fileReplacer(), NO_HOOK);
 
 			DeliveryResult result = delivery.deliver(CAMPAIGN,
@@ -483,7 +483,7 @@ public final class DeliveryTest
 			List<String> commitsBefore = git.lines("rev-list", "--all");
 			String headBefore = git.run("rev-parse", "HEAD");
 
-			requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of()));
 
@@ -515,7 +515,7 @@ public final class DeliveryTest
 			files.put(Path.of("rules/stray.md"), stray);
 			FakeWorkspacePort workspace = new FakeWorkspacePort(fixture.root().resolve("workspace"),
 				new FileInventory(fixture.base(), files));
-			CampaignStore store = new InMemoryCampaignStore();
+			CampaignStore store = fixture.store();
 
 			DeliveryResult result = new Delivery(store, workspace, fixture.forks(), JSON,
 				Yielding.fileReplacer(), NO_HOOK).deliver(CAMPAIGN,
@@ -545,7 +545,7 @@ public final class DeliveryTest
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN,
 					new DeliveryRequest(new Candidate(2, candidate.identity()), 0, Outcome.NOT_CERTIFIED),
 					candidate, candidate, fixture.promptSources(), null, List.of());
@@ -570,7 +570,7 @@ public final class DeliveryTest
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 
-			fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.BELOW_MINIMUM), candidate, candidate,
 					fixture.promptSources(), null, List.of());
 		}
@@ -589,7 +589,7 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
-			CampaignStore store = new InMemoryCampaignStore();
+			CampaignStore store = fixture.store();
 			DeliveryRequest request = request(candidate, Outcome.CERTIFIED);
 			DeliveryResult first = fixture.delivery(store, candidate, NO_HOOK).
 				deliver(CAMPAIGN, request, candidate, candidate, fixture.promptSources(), RECORD, List.of());
@@ -619,7 +619,7 @@ public final class DeliveryTest
 			Overlay candidate = fixture.candidate();
 			Overlay other = Overlay.of(fixture.fork()).write(Path.of("rules/style.md"), content("style v2\n"),
 				READ_WRITE);
-			CampaignStore store = new InMemoryCampaignStore();
+			CampaignStore store = fixture.store();
 			store.writeJournal(CAMPAIGN, new DeliveryJournal(other.identity(), List.of(), 0));
 
 			fixture.delivery(store, candidate, NO_HOOK).
@@ -643,7 +643,7 @@ public final class DeliveryTest
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
 
-			Delivered delivered = requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			Delivered delivered = requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of()));
 
@@ -675,7 +675,7 @@ public final class DeliveryTest
 			Fixture fixture = Fixture.create(cleanup).recordFile(RECORD_FILE, earlier);
 			Overlay candidate = fixture.candidate();
 
-			Delivered delivered = requireDelivered(fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			Delivered delivered = requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of()));
 
@@ -708,7 +708,7 @@ public final class DeliveryTest
 			IOException failure = null;
 			try
 			{
-				fixture.delivery(new InMemoryCampaignStore(), candidate, writes::add).
+				fixture.delivery(fixture.store(), candidate, writes::add).
 					deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate,
 						fixture.promptSources(), RECORD, List.of());
 			}
@@ -756,7 +756,7 @@ public final class DeliveryTest
 			Files.writeString(recordFile.resolve("occupied/file.txt"), "user data\n", UTF_8);
 			List<DeliveryChange> writes = new ArrayList<>();
 
-			DeliveryResult conflicted = fixture.delivery(new InMemoryCampaignStore(), candidate, writes::add).
+			DeliveryResult conflicted = fixture.delivery(fixture.store(), candidate, writes::add).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of());
 
@@ -787,7 +787,7 @@ public final class DeliveryTest
 				}
 			};
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, userEdit).
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, userEdit).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of());
 
@@ -811,7 +811,7 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
-			Delivery delivery = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK);
+			Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK);
 
 			try
 			{
@@ -857,7 +857,7 @@ public final class DeliveryTest
 			DeliveredTest created = promptTest("created_summary", true);
 			DeliveredTest edited = promptTest("release_notes", false);
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK,
 				recordedScenario()).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, List.of(created, edited));
@@ -902,7 +902,7 @@ public final class DeliveryTest
 				new WorkspaceFile("docs/{{notes}}", notes));
 			DeliveredTest test = withWorkspaceFiles(promptTest("release_notes", false), workspaceFiles);
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK,
 				Map.of(notesFile, content(notes), agentsFile, content("Reply briefly.\n"), EDITED_SCENARIO,
 					content(RECORDED_SCENARIO))).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
@@ -967,7 +967,7 @@ public final class DeliveryTest
 
 			Fixture fixture = Fixture.create(cleanup).recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
 			Overlay candidate = fixture.candidate();
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK,
 				recordedScenario()).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, tests);
@@ -1031,7 +1031,7 @@ public final class DeliveryTest
 				subList(0, 2);
 
 			Overlay candidate = fixture.candidate();
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK,
 				recordedScenario()).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, tests);
@@ -1089,7 +1089,7 @@ public final class DeliveryTest
 				subList(0, 1);
 
 			Overlay candidate = fixture.candidate();
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK,
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK,
 				recordedScenario()).
 				deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate, fixture.promptSources(),
 					RECORD, tests);
@@ -1144,7 +1144,7 @@ public final class DeliveryTest
 			Overlay candidate = fixture.candidate();
 			DeliveredTest created = promptTest("created_summary", true);
 
-			DeliveryResult result = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK).
+			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, null, Overlay.of(fixture.fork()), candidate, fixture.promptSources(),
 					null, List.of(created));
 
@@ -1179,7 +1179,7 @@ public final class DeliveryTest
 			Files.createDirectories(fixture.resolve(createdDirectory));
 			Files.writeString(fixture.resolve(occupant), "written by the user\n", UTF_8);
 			Files.writeString(fixture.resolve(EDITED_SCENARIO), "edited by the user\n", UTF_8);
-			CampaignStore store = new InMemoryCampaignStore();
+			CampaignStore store = fixture.store();
 			List<DeliveryChange> writes = new ArrayList<>();
 
 			DeliveryResult result = fixture.delivery(store, candidate, writes::add, recordedScenario()).
@@ -1285,7 +1285,7 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(cleanup);
 			Overlay candidate = fixture.candidate();
-			Delivery delivery = fixture.delivery(new InMemoryCampaignStore(), candidate, NO_HOOK);
+			Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK);
 			List<DeliveredTest> tests = List.of(promptTest("created_summary", true));
 
 			try
@@ -1680,6 +1680,16 @@ public final class DeliveryTest
 		private Set<PosixFilePermission> recordedPermissions(Path path)
 		{
 			return ((RegularFile) fork.entry(path).orElseThrow()).permissions();
+		}
+
+		/**
+		 * Returns the campaign store, which keeps its files in the fixture's {@code campaigns} directory.
+		 *
+		 * @return the store
+		 */
+		CampaignStore store()
+		{
+			return new FileCampaignStore(root.resolve("campaigns"), JSON, Yielding.fileReplacer());
 		}
 
 		/**

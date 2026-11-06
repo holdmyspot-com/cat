@@ -191,7 +191,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Covers campaign scenarios from builder state, through the in-memory store, the
+ * Covers campaign scenarios from builder state, through the file campaign store and file candidate overlays, the
  * fake session and workspace ports and a manual clock.
  */
 public final class DriverTest
