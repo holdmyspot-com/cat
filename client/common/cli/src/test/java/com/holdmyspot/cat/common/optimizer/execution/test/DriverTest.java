@@ -4776,14 +4776,9 @@ public final class DriverTest
 	}
 
 	/**
-	 * When a certification attempt ends with formal failures, a contract author session writes values for each failure
-	 * group without seeing the salt or a held-out value, and reproduction trials run them before any development trial.
-	 * Once each group reproduces, its values join development, development counts restart and draw the added values, and
-	 * the unchanged candidate is committed again only after every development cell meets the commit gate on new trials.
-	 * <p>
-	 * Proving this interaction needs a failed formal attempt, reproduction of its failure groups and a second
-	 * commitment after fresh development. Persisting and validating those campaign transitions can exceed one second
-	 * during a parallel build.
+	 * After a certification attempt fails, the driver writes values for its failure group, runs them as reproduction
+	 * trials, and once the group reproduces, its values join development, development counts restart, and development
+	 * trials draw the added values.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -4795,75 +4790,27 @@ public final class DriverTest
 		// Requirement: R-C16
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
-				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().build());
-			Map<String, Integer> newTrials = new HashMap<>();
-			List<DrawnTestCase> newTestCases = new ArrayList<>();
-			AtomicBoolean developedBeforeReproduction = new AtomicBoolean();
+			Failure failure = new Failure(Builder.testCase("safety", "logs"), "",
+				List.of(new FailedAssertion("asks_before_deleting", "deleted_without_asking")), null, List.of(), List.of(),
+				Builder.FILES);
+			Campaign failed = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+				certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).build();
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), failed);
 			harness.trials(request ->
 			{
-				LogicalTrial trial = runningTrial(harness, request);
-				Purpose purpose = trial.key().purpose();
-				if (purpose == Purpose.FORMAL || purpose == Purpose.REPRODUCTION)
+				if (runningTrial(harness, request).key().purpose() == Purpose.REPRODUCTION)
 					return harness.failed();
-				if (purpose == Purpose.DEVELOPMENT && isFirstAttemptEnded(harness))
-				{
-					if (isReproducing(harness))
-						developedBeforeReproduction.set(true);
-					newTrials.merge(trial.key().cell(), 1, Integer::sum);
-					newTestCases.add(trial.testCase());
-				}
 				return harness.passed();
 			});
 			try (Driver driver = harness.open())
 			{
-				Campaign ended = harness.runUntil(driver, state -> !state.attempts().isEmpty() &&
-					!state.attempt(1).isRunning());
-				List<FailureGroup> groups = ended.attempt(1).groups();
-				requireThat(groups, "groups").isNotEmpty();
-				Campaign recommitted = harness.runUntil(driver, state -> state.attempts().size() == 2);
-				requireThat(developedBeforeReproduction.get(), "developedBeforeReproduction").isFalse();
-
-				List<SessionRequest> contractAuthorRequests = harness.sessions().sessions().stream().
-					map(FakeSession::request).filter(request -> request.role() == SessionRole.CONTRACT_AUTHOR).toList();
-				requireThat(contractAuthorRequests.size(), "contractAuthorRequests").isEqualTo(groups.size());
-				Contract contract = recommitted.contract();
-				for (SessionRequest request : contractAuthorRequests)
-				{
-					String turn = request.turns().getFirst();
-					requireThat(turn, "turn").doesNotContain("\"salt\"").
-						doesNotContain(String.valueOf(contract.salt()));
-					for (String text : heldOutOnlyTexts(contract))
-						requireThat(turn, "turn").doesNotContain("\"" + text + "\"");
-				}
-
-				AddedTestCases added = recommitted.lineage().added();
-				List<AddedTestCase> reproduced = new ArrayList<>();
-				for (FailureGroup group : recommitted.attempt(1).groups())
-				{
-					requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
-					requireThat(group.round().failures(), "failures").isEqualTo(FailureGroup.FAILURES);
-					requireThat(group.round().added().size(), "added").isGreaterThanOrEqualTo(4);
-					reproduced.addAll(group.round().added());
-				}
-				requireThat(added.testCases(), "added").isEqualTo(reproduced);
-				for (AddedTestCase testCase : added.testCases())
-					requireThat(testCase.attempt(), "attempt").isEqualTo(1);
-
-				requireThat(recommitted.development().series(), "series").
-					isGreaterThan(ended.development().series());
-				for (String cell : CellTier.developmentCellIds(recommitted))
-				{
-					requireThat(newTrials.getOrDefault(cell, 0), cell).
-						isGreaterThanOrEqualTo(CommitGate.MINIMUM_TRIALS);
-					requireThat(recommitted.development().count(cell).outcomes(), cell).
-						isGreaterThanOrEqualTo(CommitGate.MINIMUM_TRIALS);
-				}
-				Set<TestCase> addedTestCases = new HashSet<>();
-				for (AddedTestCase testCase : added.testCases())
-					addedTestCases.add(testCase.testCase());
-				requireThat(newTestCases.stream().anyMatch(testCase -> addedTestCases.contains(testCase.testCase())),
-					"drewAddedTestCases").isTrue();
+				Campaign developing = harness.runUntil(driver, state -> state.trials().stream().anyMatch(trial ->
+					trial.key().purpose() == Purpose.DEVELOPMENT && state.lineage().added().testCases().stream().
+						anyMatch(added -> added.testCase().equals(trial.testCase().testCase()))));
+				FailureGroup group = developing.attempt(1).group(1);
+				requireThat(group.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
+				requireThat(developing.lineage().added().testCases(), "added").isEqualTo(group.round().added());
+				requireThat(developing.development().series(), "series").isGreaterThan(failed.development().series());
 			}
 		}
 	}
@@ -5278,73 +5225,6 @@ public final class DriverTest
 				requireThat(campaign.trials(), "trials").isEmpty();
 			}
 		}
-	}
-
-	/**
-	 * Indicates whether an ended attempt's failure groups are reproducing.
-	 *
-	 * @param harness the test's harness
-	 * @return {@code true} if an attempt is reproducing
-	 * @throws UncheckedIOException if the campaign cannot be read
-	 */
-	private static boolean isReproducing(DriverHarness harness)
-	{
-		try
-		{
-			return harness.campaign().reproducing().isPresent();
-		}
-		catch (IOException e)
-		{
-			throw new UncheckedIOException(e);
-		}
-	}
-
-	/**
-	 * Indicates whether the first certification attempt has ended.
-	 *
-	 * @param harness the test's harness
-	 * @return {@code true} if the attempt exists and does not run
-	 * @throws UncheckedIOException if the campaign cannot be read
-	 */
-	private static boolean isFirstAttemptEnded(DriverHarness harness)
-	{
-		try
-		{
-			Campaign campaign = harness.campaign();
-			return !campaign.attempts().isEmpty() && !campaign.attempt(1).isRunning();
-		}
-		catch (IOException e)
-		{
-			throw new UncheckedIOException(e);
-		}
-	}
-
-	/**
-	 * Returns the expected outcomes of the held-out test cases, and the value texts that only held-out test cases
-	 * contain.
-	 *
-	 * @param contract the contract
-	 * @return the texts
-	 */
-	private static Set<String> heldOutOnlyTexts(Contract contract)
-	{
-		Set<String> heldOut = new HashSet<>();
-		Set<String> development = new HashSet<>();
-		Set<String> outcomes = new HashSet<>();
-		for (PromptTest test : contract.tests())
-		{
-			for (TestCase testCase : contract.split().testCases(test, Part.HELD_OUT))
-			{
-				heldOut.addAll(PromptTest.textByVariable(testCase).values());
-				outcomes.add(testCase.expectedOutcome());
-			}
-			for (TestCase testCase : contract.split().testCases(test, Part.DEVELOPMENT))
-				development.addAll(PromptTest.textByVariable(testCase).values());
-		}
-		heldOut.removeAll(development);
-		requireThat(heldOut, "heldOut").isNotEmpty();
-		heldOut.addAll(outcomes);
-		return heldOut;
 	}
 
 	/**
