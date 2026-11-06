@@ -69,6 +69,11 @@ revised plugin lifecycle and distribution work, which has not been implemented.
 - **Next release, also:** fix the intermittent "Text file busy" in `CodexPluginHooksTest`; Windows terminal detection
   and `cat.ps1` pass-through of the installer's text report are unverified; `CodexSessionLauncherCli` and
   `CodexInstallation.resolveHome` still read `user.home` (the first deliberately, for account system files).
+  Committed after the release (2026-11-06): both runner launchers refuse invalid options with a one-line message and
+  status 2 instead of a stack trace (`0860996f04`, `b0feb51b7a`), and a regression test covers the hook-results
+  folder of a project path past the file-name limit (`7281023b60`). Still open: `OptimizerCore.derive` says "Run
+  `start` again to retry" for every failed session, including errors that a retry cannot fix, because
+  `SessionResult.Failed` carries only free text.
 - **Optimizer work resumed (2026-11-06):** delegation and campaigns run in Codex first, then Claude (user ruling,
   2026-11-06). design.md's G4 wording is committed (`4822df6e78`). Codex E5 campaign `20261021T142441Z-30f739`
   resumed as `continue52` on the installed release, which carries the round-129 stall fix (`744af7e126`,
