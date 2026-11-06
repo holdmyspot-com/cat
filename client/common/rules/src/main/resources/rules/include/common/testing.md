@@ -9,9 +9,10 @@
 - Make application behavior directly and safely testable in the same process by passing environmental dependencies
 	explicitly when shared process state would otherwise prevent isolation.
 - Prove each claim that application code in the test's own process decides with a unit test of the production method
-	that makes the decision, not with a test that runs or fakes an executable, network service, or operating-system
-	facility. Keep integration tests only for claims about the boundary's own behavior and one end-to-end check per
-	boundary, and lose no claim when converting an existing test.
+	that makes the decision, extracting that method from the code that performs the interaction when the two are mixed, not
+	with a test that runs or fakes an executable, network service, or operating-system facility. Keep integration tests
+	only for claims about the boundary's own behavior and one end-to-end check per boundary, and lose no claim when
+	converting an existing test.
 - Verify meaningful changes efficiently with the narrowest relevant test and the complete suite before handoff.
 
 ## Guidance
@@ -50,18 +51,22 @@ test creates and passes in as input is test data, not a boundary. Classify each 
 	the code does with it. When a boundary claim needs a stand-in process, write the smallest one in the project's
 	primary language unless the claim is about the shell.
 
-To make a decided claim unit-testable, split the decision from the interaction. The production code calls a method that
-returns the decision as a value: the command and arguments to run, the request to send, or its interpretation of a given
-output, response, or status. The production entry point performs the interaction with that value and passes the result
-back for interpretation. Reuse an existing operation when it already owns the decision. Pass the current time, the
-environment, and other shared process state to the method as parameters, so that a deadline decision is tested with a
-given time instead of a real wait. Give the method an in-memory collaborator instead of having it return a value only
-when the code exchanges several messages with the boundary and a later message depends on an earlier reply. The method
-is a real production responsibility that the entry point uses, not a test-only path.
+To make a decided claim unit-testable, split the decision from the interaction; when the code that decides also performs
+the interaction, extract the decision into a method before writing the test. The method takes plain inputs, such as the
+request, a snapshot of the process table, or the captured output of a program, and returns the decision as a value: the
+command and arguments to run, the processes to stop, the request to send, the next state, or its interpretation of a
+given output, response, or status. The production entry point gathers the inputs, always passes them through the method,
+performs the interaction with the returned value, and passes the result back for interpretation. Reuse an existing
+operation when it already owns the decision. Pass the current time, the environment, and other shared process state to
+the method as parameters, so that a deadline decision is tested with a given time instead of a real wait. Give the
+method an in-memory collaborator instead of having it return a value only when the code exchanges several messages with
+the boundary and a later message depends on an earlier reply. The method is a real production responsibility that the
+entry point uses, not a test-only path.
 
-A unit test of that method asserts the outcome that the requirement names, as the method's result shows it. For
-example, the method behind a search that must skip hidden files returns a command that excludes them, and the method
-that reads an HTTP 503 response reports a retryable failure. The test does not assert that the method was called, how
+A unit test of that method asserts the outcome that the requirement names, as the method's result shows it. For example,
+the method behind a search that must skip hidden files returns a command that excludes them, the method that reads an
+HTTP 503 response reports a retryable failure, and the method behind stopping a child's process tree takes the child and
+a process-table snapshot and returns the processes to stop. The test does not assert that the method was called, how
 often, or how it assembles its result.
 
 Keep one end-to-end check per boundary: an integration test that runs the production entry point across the real
