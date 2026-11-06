@@ -9,6 +9,7 @@ module com.holdmyspot.cat.common.installer.test
 	requires tools.jackson.databind;
 
 	exports com.holdmyspot.cat.common.installer.engine.test to org.testng;
+	exports com.holdmyspot.cat.common.installer.engine.internal.test to org.testng;
 	exports com.holdmyspot.cat.common.installer.cli.internal.test to org.testng;
 	exports com.holdmyspot.cat.common.installer.trust.test to org.testng;
 }

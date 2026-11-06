@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.installer.engine.internal.LockPause;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.LinkOption;
@@ -30,10 +31,6 @@ final class OperationLock
 	 * How long an operation waits for the harness lock while another operation holds it.
 	 */
 	static final Duration WAIT = Duration.ofMinutes(10);
-	/**
-	 * The longest pause between lock attempts; the deadline limits the final pause further.
-	 */
-	private static final Duration POLL_INTERVAL = Duration.ofMillis(50);
 
 	/**
 	 * Prevents instantiation.
@@ -65,18 +62,13 @@ final class OperationLock
 			ExclusiveFileLock lock = LOCKS.tryLock(state.lock(), OperationLock::open).orElse(null);
 			if (lock != null)
 				return Optional.of(lock);
-			Duration clockRemaining = Duration.between(clock.instant(), deadline);
-			Duration elapsedRemaining = wait.minusNanos(System.nanoTime() - started);
-			Duration remaining = elapsedRemaining;
-			if (clockRemaining.compareTo(remaining) < 0)
-				remaining = clockRemaining;
-			if (remaining.isNegative() || remaining.isZero())
+			Optional<Duration> pause = LockPause.next(clock.instant(), deadline, wait,
+				Duration.ofNanos(System.nanoTime() - started));
+			if (pause.isEmpty())
 				return Optional.empty();
-			if (remaining.compareTo(POLL_INTERVAL) > 0)
-				remaining = POLL_INTERVAL;
 			try
 			{
-				waiting.every(remaining).pause();
+				waiting.every(pause.get()).pause();
 			}
 			catch (IOException e)
 			{

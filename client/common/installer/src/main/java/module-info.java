@@ -13,6 +13,7 @@ module com.holdmyspot.cat.common.installer
 
 	exports com.holdmyspot.cat.common.installer.activation;
 	exports com.holdmyspot.cat.common.installer.engine;
+	exports com.holdmyspot.cat.common.installer.engine.internal to com.holdmyspot.cat.common.installer.test;
 	exports com.holdmyspot.cat.common.installer.secrets to com.holdmyspot.cat.common.installer.test;
 	exports com.holdmyspot.cat.common.installer.trust;
 	exports com.holdmyspot.cat.common.installer.cli.internal to com.holdmyspot.cat.common.installer.test,

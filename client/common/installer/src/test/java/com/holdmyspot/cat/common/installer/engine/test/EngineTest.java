@@ -17,9 +17,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -28,7 +25,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -324,23 +320,16 @@ public final class EngineTest
 				requireThat(entered.await(2, TimeUnit.SECONDS), "enteredTransport").isTrue();
 				requireThat(second.install("v1.1", fixture.request(image)).result(), "contendingResult").
 					isEqualTo(Result.LOCKED);
-				AtomicReference<Instant> now = new AtomicReference<>(Instant.EPOCH);
-				Clock clock = new LockClock(now, ZoneOffset.UTC);
 				List<Duration> pauses = new ArrayList<>();
-				Duration deadline = Duration.ofMinutes(5);
-				UpdateEngine timed = fixture.engine(release, clock, interval -> () ->
-				{
-					pauses.add(interval);
-					if (pauses.size() == 2)
-						now.set(Instant.EPOCH.plus(deadline).minusMillis(20));
-					else
-						now.updateAndGet(time -> time.plus(interval));
-				}, deadline, false);
+				Duration deadline = Duration.ofMillis(120);
+				UpdateEngine timed = fixture.engine(release, Clock.systemUTC(), interval -> () -> pauses.add(interval),
+					deadline, false);
 				requireThat(timed.install("v1.1", fixture.request(image)).result(), "deadlineResult").
 					isEqualTo(Result.LOCKED);
-				requireThat(pauses, "lockPauses").isEqualTo(List.of(Duration.ofMillis(50), Duration.ofMillis(50),
-					Duration.ofMillis(20)));
-				UpdateEngine interrupted = fixture.engine(release, clock, interval -> Pause.interruptible(() ->
+				requireThat(pauses, "lockPauses").isNotEmpty();
+				requireThat(pauses.stream().allMatch(pause -> pause.compareTo(Duration.ofMillis(50)) <= 0),
+					"pausesWithinPollInterval").isTrue();
+				UpdateEngine interrupted = fixture.engine(release, Clock.systemUTC(), interval -> Pause.interruptible(() ->
 				{
 					throw new InterruptedException("Interrupted lock wait");
 				}), deadline, false);
@@ -361,45 +350,6 @@ public final class EngineTest
 				releaseFirst.countDown();
 			}
 			requireThat(running.get(2, TimeUnit.SECONDS).result(), "firstResult").isEqualTo(Result.INSTALLED);
-		}
-	}
-
-	/**
-	 * Shares manually advanced instants across zone views so lock deadlines require no wall-clock wait.
-	 */
-	private static final class LockClock extends Clock
-	{
-		private final AtomicReference<Instant> now;
-		private final ZoneId zone;
-
-		/**
-		 * Creates a view of the controlled instant.
-		 *
-		 * @param now  the shared instant
-		 * @param zone the view's zone
-		 */
-		private LockClock(AtomicReference<Instant> now, ZoneId zone)
-		{
-			this.now = now;
-			this.zone = zone;
-		}
-
-		@Override
-		public ZoneId getZone()
-		{
-			return zone;
-		}
-
-		@Override
-		public Clock withZone(ZoneId zone)
-		{
-			return new LockClock(now, zone);
-		}
-
-		@Override
-		public Instant instant()
-		{
-			return now.get();
 		}
 	}
 }
