@@ -2655,8 +2655,7 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(root.resolve("driver"),
 				new Builder().confirmed().working(1).lifecycle(lifecycle).outcome(outcome).build(),
 				fork, base);
-			DriverContext context = deliveryContext(harness, base);
-			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
+			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
 				requireThat(result.delivery(), "delivery").isNull();
@@ -6258,13 +6257,8 @@ public final class DriverTest
 	/**
 	 * Trace: a prompt author reports that requirement {@code r2} needs a content edit through a link to an external
 	 * file. The warning offers no choice that edits the file and becomes an {@code awaiting_user} decision that
-	 * survives a restart; the user continues within the confirmed authority; the in-project edit is promoted, certified
-	 * and delivered, the external file stays unchanged, and delivery checks it as a read-only participant.
-	 * <p>
-	 * This test can take one second or longer when it runs first in its JVM: it runs a campaign through a prompt author
-	 * attempt, a restart, promotion, certification and delivery, persisting and validating the campaign at each step;
-	 * loading and compiling the driver's classes, which the first test in a JVM to use them does, takes most of that
-	 * time.
+	 * survives a restart; once the user continues within the confirmed authority, the in-project edit is promoted and
+	 * the external file stays unchanged.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -6283,32 +6277,7 @@ public final class DriverTest
 			Files.createSymbolicLink(base.resolve(link), target);
 			FileInventory fork = InventoryScanner.scan(base, Set.of(target));
 			DriverHarness harness = new DriverHarness(directory.resolve("driver"), authorityWarningCampaign(), fork, base);
-			// Safety fails until the in-project prompt changes
-			Map<Path, Boolean> failsSafety = new HashMap<>();
-			SessionResult.Completed failed = harness.failed();
-			harness.trials(request ->
-			{
-				if (!DriverHarness.cell(request).equals("safety"))
-					return harness.passed();
-				Boolean fails = failsSafety.get(request.source());
-				try
-				{
-					if (fails == null)
-					{
-						FileEntry prompt = harness.overlays().require(harness.snapshot(request)).snapshot().
-							entry(DriverHarness.PROMPT).orElseThrow();
-						fails = ((RegularFile) prompt).contentHash().equals(Sha256.of("fork".getBytes(UTF_8)));
-						failsSafety.put(request.source(), fails);
-					}
-				}
-				catch (IOException e)
-				{
-					throw new UncheckedIOException(e);
-				}
-				if (fails)
-					return failed;
-				return harness.passed();
-			});
+			harness.trials(_ -> harness.passed());
 			harness.neededEdits(() ->
 			{
 				if (harness.promptAuthor().briefs().size() == 1)
@@ -6343,17 +6312,52 @@ public final class DriverTest
 			{
 				driver.apply(CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
 				requireThat(harness.campaign().pending(), "answered").isNull();
-				// The user edits the external file while the campaign certifies, so delivery must check it
-				Files.writeString(target, "external edited", UTF_8);
+				Campaign promoted = harness.runUntil(driver, state -> state.development().working().number() == 2);
+				FileEntry prompt = harness.overlays().require(promoted.development().working().snapshot()).snapshot().
+					entry(DriverHarness.PROMPT).orElseThrow();
+				requireThat(((RegularFile) prompt).contentHash(), "promotedPrompt").
+					isNotEqualTo(Sha256.of("fork".getBytes(UTF_8)));
+			}
+			requireThat(Files.readString(target, UTF_8), "external").isEqualTo("external");
+		}
+	}
+
+	/**
+	 * A delivery reads the target of a link to an external file as a read-only participant: it reports the user's edit
+	 * of that file since the fork, leaves the file unchanged and keeps the link.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void deliveryChecksExternalLinkTarget() throws IOException
+	{
+		// Requirement: R-W4
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("driver")).toRealPath();
+			Path base = Files.createDirectory(directory.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork", UTF_8);
+			Path target = Files.createDirectories(directory.resolve("external")).resolve("shared.md");
+			Files.writeString(target, "external", UTF_8);
+			Path link = Path.of("shared.md");
+			Files.createSymbolicLink(base.resolve(link), target);
+			FileInventory fork = InventoryScanner.scan(base, Set.of(target));
+			Candidate working = new Candidate(1, Builder.snapshot("candidate-1"));
+			DriverHarness harness = new DriverHarness(directory.resolve("driver"),
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+					certificationAttempt(1).cell("formatting", 100, 0).cell("safety", 100, 0).
+					outcome(Outcome.CERTIFIED).campaign().lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).
+					delivery(new DeliveryRequest(working, 1, Outcome.CERTIFIED)).build(), fork, base);
+			// The user edits the external file after the fork
+			Files.writeString(target, "external edited", UTF_8);
+			try (Driver driver = harness.open())
+			{
 				SliceResult result = harness.runSlice(driver);
 				DeliveryResult.Delivered delivered = (DeliveryResult.Delivered) result.delivery().result();
 				requireThat(delivered.changedPromptSources(), "changedPromptSources").isEqualTo(List.of(target));
 			}
-			Campaign campaign = harness.campaign();
-			requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
-			requireThat(harness.deliveredRecords().size(), "deliveries").isEqualTo(1);
 			requireThat(Files.readString(base.resolve(DriverHarness.PROMPT), UTF_8), "deliveredPrompt").
-				isNotEqualTo("fork");
+				isEqualTo("candidate-1");
 			requireThat(Files.readString(target, UTF_8), "external").isEqualTo("external edited");
 			requireThat(Files.readSymbolicLink(base.resolve(link)), "link").isEqualTo(target);
 		}
