@@ -2,12 +2,13 @@ package com.holdmyspot.cat.codex.installer.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.installer.CodexIntegration;
+import com.holdmyspot.cat.codex.installer.CodexPluginCommand;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
-import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -143,29 +144,36 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Registration writes the marketplace metadata from the activated release, adds the marketplace and the plugin
-	 * through Codex, and accepts a cache copy equal to the marketplace source.
+	 * Registration adds the marketplace, then the plugin, through Codex.
+	 *
+	 * @throws IOException if the test directory cannot be created
+	 */
+	@Test
+	public void registrationAddsMarketplaceThenPlugin() throws IOException
+	{
+		Path root = testRoot().resolve("marketplace");
+
+		List<CodexPluginCommand> commands = CodexPluginCommand.registration(root);
+
+		requireThat(commands.stream().map(CodexPluginCommand::arguments).toList(), "arguments").isEqualTo(List.of(
+			List.of("plugin", "marketplace", "add", root.toString()), List.of("plugin", "add", "cat@cat")));
+	}
+
+	/**
+	 * Registration writes the marketplace metadata from the activated release.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void registersThroughCodex() throws IOException
+	public void preparationWritesMarketplaceMetadata() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			activate(home);
-			FakeCli cli = new FakeCli(arguments ->
-			{
-				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
-					codexCopiesPlugin(home, "");
-				return new CommandResult(0, "");
-			});
 
-			provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
-			requireThat(cli.calls, "calls").isEqualTo(List.of(
-				List.of("plugin", "marketplace", "add", home.resolve("plugins/cat-marketplace").toString()),
-				List.of("plugin", "add", "cat@cat")));
+			CodexIntegration.prepareRegistration(home, PluginVersion.parse(VERSION), replacer());
+
 			requireThat(Files.readString(home.resolve("plugins/cat-marketplace/.agents/plugins/marketplace.json")),
 				"marketplace").isEqualTo(METADATA);
 		}
@@ -178,7 +186,7 @@ public final class IntegrationTest
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void registerRetriesRefusedManifest() throws IOException
+	public void preparationRetriesRefusedManifest() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -187,179 +195,11 @@ public final class IntegrationTest
 			Path manifest = home.resolve("plugins/cat-marketplace/.agents/plugins/marketplace.json");
 			write(manifest, "{\"name\": \"outdated\"}\n");
 			TransientRefusal refusal = new TransientRefusal(manifest);
-			FakeCli cli = new FakeCli(arguments ->
-			{
-				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
-					codexCopiesPlugin(home, "");
-				return new CommandResult(0, "");
-			});
 
-			provider().register(home, PluginVersion.parse(VERSION), cli, refusal.replacer());
+			CodexIntegration.prepareRegistration(home, PluginVersion.parse(VERSION), refusal.replacer());
 
 			requireThat(Files.readString(manifest), "marketplace").isEqualTo(METADATA);
 			requireThat(refusal.pauses(), "pauses").isEqualTo(1);
-		}
-	}
-
-	/**
-	 * Registration fails when Codex's cache copy differs from the validated release, and leaves unregistering CAT to
-	 * the installer, which does so only when the failed registration was part of an install.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void refusesDivergentCache() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			activate(home);
-			FakeCli cli = new FakeCli(arguments ->
-			{
-				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
-					codexCopiesPlugin(home, "skills/added-by-codex/SKILL.md");
-				return new CommandResult(0, "");
-			});
-
-			try
-			{
-				provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
-				throw new AssertionError("Registration accepted a divergent cache");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains("differs from the validated release");
-			}
-			requireThat(cli.calls, "calls").isEqualTo(List.of(
-				List.of("plugin", "marketplace", "add", home.resolve("plugins/cat-marketplace").toString()),
-				List.of("plugin", "add", "cat@cat")));
-		}
-	}
-
-	/**
-	 * A failed marketplace registration reports Codex's output and runs nothing else.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void reportsFailedMarketplaceAdd() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			activate(home);
-			FakeCli cli = new FakeCli(_ -> new CommandResult(1, "config.toml is read-only"));
-
-			try
-			{
-				provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
-				throw new AssertionError("Registration ignored a failed marketplace add");
-			}
-			catch (IOException e)
-			{
-				requireThat(e.getMessage(), "message").contains("config.toml is read-only");
-			}
-			requireThat(cli.calls.size(), "calls").isEqualTo(1);
-		}
-	}
-
-	/**
-	 * Unregistration removes the plugin, then the marketplace, and treats Codex's "not installed" and "not
-	 * configured" answers as success.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void unregistersAbsentPlugin() throws IOException
-	{
-		Path home = testRoot().resolve("fake-home");
-		FakeCli cli = new FakeCli(arguments ->
-		{
-			if (arguments.contains("marketplace"))
-				return new CommandResult(1, "Error: marketplace `cat` is not configured or installed");
-			return new CommandResult(1, "Error: plugin `cat@cat` is not installed");
-		});
-
-		provider().unregister(home, cli, false);
-		requireThat(cli.calls, "calls").isEqualTo(List.of(List.of("plugin", "remove", "cat@cat"),
-			List.of("plugin", "marketplace", "remove", "cat")));
-	}
-
-	/**
-	 * Uninstall that keeps CAT's data runs Codex's plain {@code plugin remove}, which keeps the plugin data directory.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void unregisterKeepsData() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path data = home.resolve("plugins/data/cat-cat/policy.json");
-			write(data, "{}");
-			FakeCli cli = new FakeCli(_ -> new CommandResult(0, ""));
-
-			provider().unregister(home, cli, true);
-			requireThat(cli.calls, "calls").isEqualTo(List.of(List.of("plugin", "remove", "cat@cat"),
-				List.of("plugin", "marketplace", "remove", "cat")));
-			requireThat(Files.readString(data), "data").isEqualTo("{}");
-		}
-	}
-
-	/**
-	 * Registering a new build over an earlier one accepts the version folder that {@code codex plugin add} created in
-	 * place of the earlier folder.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test
-	public void registersNewVersionFolder() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			activate(home);
-			Path versions = home.resolve("plugins/cache/cat/cat");
-			TemporaryDirectories.deleteRecursively(versions.resolve(VERSION));
-			write(versions.resolve(EARLIER_VERSION).resolve(".codex-plugin/plugin.json"),
-				"{\"name\":\"cat\",\"version\":\"" + EARLIER_VERSION + "\"}\n");
-			FakeCli cli = new FakeCli(arguments ->
-			{
-				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
-					codexCopiesPlugin(home, "");
-				return new CommandResult(0, "");
-			});
-
-			provider().register(home, PluginVersion.parse(VERSION), cli, replacer());
-			try (Stream<Path> folders = Files.list(versions))
-			{
-				requireThat(folders.toList(), "versionFolders").isEqualTo(List.of(versions.resolve(VERSION)));
-			}
-		}
-	}
-
-	/**
-	 * Registration fails when {@code codex plugin add} leaves the earlier build's version folder in place of the new
-	 * one.
-	 *
-	 * @throws IOException if a fixture cannot be written or read
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = ".*does not load CAT 1\\.0\\+b0123456789ab.*")
-	public void refusesKeptEarlierVersion() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			activate(home);
-			Path versions = home.resolve("plugins/cache/cat/cat");
-			TemporaryDirectories.deleteRecursively(versions.resolve(VERSION));
-			write(versions.resolve(EARLIER_VERSION).resolve(".codex-plugin/plugin.json"),
-				"{\"name\":\"cat\",\"version\":\"" + EARLIER_VERSION + "\"}\n");
-
-			provider().register(home, PluginVersion.parse(VERSION), new FakeCli(_ -> new CommandResult(0, "")),
-				replacer());
 		}
 	}
 
@@ -376,18 +216,139 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			activate(home);
-			FakeCli cli = new FakeCli(_ -> new CommandResult(0, ""));
 
 			try
 			{
-				provider().register(home, PluginVersion.parse(EARLIER_VERSION), cli, replacer());
+				CodexIntegration.prepareRegistration(home, PluginVersion.parse(EARLIER_VERSION), replacer());
 				throw new AssertionError("Registration accepted a source of another version");
 			}
 			catch (IOException e)
 			{
 				requireThat(e.getMessage(), "message").contains(EARLIER_VERSION).contains(VERSION);
 			}
-			requireThat(cli.calls, "calls").isEmpty();
+		}
+	}
+
+	/**
+	 * Registration accepts a cache copy that equals the marketplace source.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void acceptsCacheEqualToSource() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			activate(home);
+			cacheAsCodexLeavesIt(home, "");
+
+			CodexIntegration.requireLoaded(home, PluginVersion.parse(VERSION));
+		}
+	}
+
+	/**
+	 * Registration fails when Codex's cache copy differs from the validated release, and leaves unregistering CAT to
+	 * the installer, which does so only when the failed registration was part of an install.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void refusesDivergentCache() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			activate(home);
+			cacheAsCodexLeavesIt(home, "skills/added-by-codex/SKILL.md");
+
+			try
+			{
+				CodexIntegration.requireLoaded(home, PluginVersion.parse(VERSION));
+				throw new AssertionError("Registration accepted a divergent cache");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("differs from the validated release");
+			}
+		}
+	}
+
+	/**
+	 * A failed registration command reports Codex's output.
+	 *
+	 * @param index the position of the failed command among the registration commands
+	 * @throws IOException if Codex's failure is reported
+	 */
+	@Test(dataProvider = "commandPositions", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*config.toml is read-only.*")
+	public void reportsFailedRegistrationCommand(int index) throws IOException
+	{
+		CodexPluginCommand.registration(testRoot().resolve("marketplace")).get(index).
+			requireAccepted(new CommandResult(1, "config.toml is read-only"));
+	}
+
+	/**
+	 * Supplies the position of each of the two commands that register or unregister CAT.
+	 *
+	 * @return the first and the second command's position
+	 */
+	@DataProvider
+	public Object[][] commandPositions()
+	{
+		return new Object[][] {{0}, {1}};
+	}
+
+	/**
+	 * Unregistration removes the plugin, then the marketplace, and treats Codex's "not installed" and "not
+	 * configured" answers as success. Codex's plain {@code plugin remove} keeps the plugin's data directory, so the
+	 * commands are the same when the data is kept.
+	 *
+	 * @throws IOException if an answer is refused
+	 */
+	@Test
+	public void unregistersAbsentPlugin() throws IOException
+	{
+		List<CodexPluginCommand> commands = CodexPluginCommand.unregistration();
+
+		requireThat(commands.stream().map(CodexPluginCommand::arguments).toList(), "arguments").isEqualTo(List.of(
+			List.of("plugin", "remove", "cat@cat"), List.of("plugin", "marketplace", "remove", "cat")));
+		commands.get(0).requireAccepted(new CommandResult(1, "Error: plugin `cat@cat` is not installed"));
+		commands.get(1).requireAccepted(new CommandResult(1, "Error: marketplace `cat` is not configured or installed"));
+	}
+
+	/**
+	 * Unregistration reports any other Codex failure.
+	 *
+	 * @param index the position of the failed command among the unregistration commands
+	 * @throws IOException if Codex's failure is reported
+	 */
+	@Test(dataProvider = "commandPositions", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*permission denied.*")
+	public void reportsFailedUnregistration(int index) throws IOException
+	{
+		CodexPluginCommand.unregistration().get(index).requireAccepted(new CommandResult(1, "permission denied"));
+	}
+
+	/**
+	 * Registration fails when Codex leaves the earlier build's version folder in place of the new one.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*does not load CAT 1\\.0\\+b0123456789ab.*")
+	public void refusesKeptEarlierVersion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			activate(home);
+			Path versions = home.resolve("plugins/cache/cat/cat");
+			TemporaryDirectories.deleteRecursively(versions.resolve(VERSION));
+			write(versions.resolve(EARLIER_VERSION).resolve(".codex-plugin/plugin.json"),
+				"{\"name\":\"cat\",\"version\":\"" + EARLIER_VERSION + "\"}\n");
+
+			CodexIntegration.requireLoaded(home, PluginVersion.parse(VERSION));
 		}
 	}
 
@@ -404,8 +365,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * When {@code codex plugin add} keeps another build's folder beside the registered build's, registration accepts
-	 * the result only when Codex loads the registered build, and never reports the other build as registered.
+	 * When Codex keeps another build's folder beside the registered build's, registration accepts the result only when
+	 * Codex loads the registered build, and never reports the other build as registered.
 	 *
 	 * @param registered the build to register
 	 * @param kept       the other build, whose folder Codex keeps
@@ -425,16 +386,11 @@ public final class IntegrationTest
 			Path versions = home.resolve("plugins/cache/cat/cat");
 			write(versions.resolve(kept).resolve(".codex-plugin/plugin.json"),
 				"{\"name\":\"cat\",\"version\":\"" + kept + "\"}\n");
-			FakeCli cli = new FakeCli(arguments ->
-			{
-				if (arguments.equals(List.of("plugin", "add", "cat@cat")))
-					copy(plugin, versions.resolve(registered));
-				return new CommandResult(0, "");
-			});
+			copy(plugin, versions.resolve(registered));
 
 			try
 			{
-				provider().register(home, PluginVersion.parse(registered), cli, replacer());
+				CodexIntegration.requireLoaded(home, PluginVersion.parse(registered));
 				requireThat(loaded, "loaded").isTrue();
 			}
 			catch (IOException e)
@@ -443,18 +399,6 @@ public final class IntegrationTest
 				requireThat(e.getMessage(), "message").contains("does not load CAT " + registered);
 			}
 		}
-	}
-
-	/**
-	 * Unregistration reports any other Codex failure.
-	 *
-	 * @throws IOException if Codex's failure is reported
-	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*permission denied.*")
-	public void reportsFailedUnregistration() throws IOException
-	{
-		provider().unregister(testRoot().resolve("fake-home"),
-			new FakeCli(_ -> new CommandResult(1, "permission denied")), false);
 	}
 
 	/**
@@ -1111,13 +1055,14 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Models {@code codex plugin add}: it replaces the plugin's cache directory with a copy of the marketplace source.
+	 * Writes the cache that {@code codex plugin add} leaves: it replaces the plugin's cache directory with a copy of
+	 * the marketplace source.
 	 *
 	 * @param home  the harness home
 	 * @param extra a relative file that the copy adds, or empty for an exact copy
 	 * @throws IOException if the copy fails
 	 */
-	private static void codexCopiesPlugin(Path home, String extra) throws IOException
+	private static void cacheAsCodexLeavesIt(Path home, String extra) throws IOException
 	{
 		Path cache = home.resolve("plugins/cache/cat/cat");
 		TemporaryDirectories.deleteRecursively(cache);
@@ -1237,53 +1182,5 @@ public final class IntegrationTest
 		return ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).
 			filter(provider -> provider.harness().equals("codex")).findFirst().
 			orElseThrow(() -> new AssertionError("The Codex harness integration service is missing"));
-	}
-
-	/**
-	 * Answers one Codex command in a test.
-	 */
-	@FunctionalInterface
-	private interface Answer
-	{
-		/**
-		 * Answers a command.
-		 *
-		 * @param arguments the arguments after the program
-		 * @return the outcome
-		 * @throws IOException if the modelled program's file changes fail
-		 */
-		CommandResult answer(List<String> arguments) throws IOException;
-	}
-
-	/**
-	 * Records the argument vectors that the integration runs and answers them from a script.
-	 */
-	private static final class FakeCli implements HarnessCli
-	{
-		/**
-		 * The argument vectors in the order they ran.
-		 */
-		private final List<List<String>> calls = new ArrayList<>();
-		/**
-		 * Answers each command.
-		 */
-		private final Answer answer;
-
-		/**
-		 * Creates a fake.
-		 *
-		 * @param answer answers each command
-		 */
-		private FakeCli(Answer answer)
-		{
-			this.answer = answer;
-		}
-
-		@Override
-		public CommandResult run(List<String> arguments) throws IOException
-		{
-			calls.add(List.copyOf(arguments));
-			return answer.answer(arguments);
-		}
 	}
 }

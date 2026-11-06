@@ -30,7 +30,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -95,18 +94,6 @@ public final class CodexIntegration implements HarnessIntegration
 	 * its own profile in its place.
 	 */
 	private static final String SELECTION_KEY = CONFIGURATION_KEY + BuiltInProfile.SELECTION;
-	/**
-	 * The plugin as Codex identifies it: the plugin name, then the marketplace name.
-	 */
-	private static final String PLUGIN_ID = "cat@cat";
-	/**
-	 * The marketplace name in CAT's marketplace metadata.
-	 */
-	private static final String MARKETPLACE_NAME = "cat";
-	/**
-	 * Matches Codex's answers that CAT's plugin or marketplace is not registered.
-	 */
-	private static final Pattern NOT_REGISTERED = Pattern.compile("(?i)\\bnot (installed|configured|found)\\b");
 	/**
 	 * Bounds a plugin manifest or marketplace metadata file to 1 MiB.
 	 */
@@ -313,8 +300,31 @@ public final class CodexIntegration implements HarnessIntegration
 	@Override
 	public void register(Path home, PluginVersion version, HarnessCli cli, FileReplacer replacer) throws IOException
 	{
-		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(cli, "cli").isNotNull();
+		prepareRegistration(home, version, replacer);
+		for (CodexPluginCommand command : CodexPluginCommand.registration(new CodexInstallation(home).marketplaceRoot()))
+			command.run(cli);
+		requireLoaded(home, version);
+	}
+
+	/**
+	 * Requires the marketplace source to hold a plugin version, and writes the marketplace metadata from it, unless the
+	 * metadata is already there. Registration does this before it runs Codex, because Codex copies the source into the
+	 * folder of the version that the source states.
+	 *
+	 * @param home     the absolute, normalized Codex home
+	 * @param version  the plugin version to register
+	 * @param replacer replaces the marketplace metadata, retrying while Windows refuses the replacement
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
+	 * @throws IOException              if a path component is a symbolic link, the marketplace source is not activated,
+	 *                                  holds another version than {@code version} or lacks its marketplace metadata, or
+	 *                                  the metadata cannot be written
+	 */
+	public static void prepareRegistration(Path home, PluginVersion version, FileReplacer replacer) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(version, "version").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		CodexInstallation installation = new CodexInstallation(home);
 		Path plugin = installation.marketplacePlugin();
@@ -331,10 +341,6 @@ public final class CodexIntegration implements HarnessIntegration
 				" in the marketplace source: " + plugin);
 		}
 		writeMetadata(plugin.resolve(RELEASE_METADATA), metadata, replacer);
-
-		run(cli, List.of("plugin", "marketplace", "add", installation.marketplaceRoot().toString()));
-		run(cli, List.of("plugin", "add", PLUGIN_ID));
-		requireCacheMatches(installation, version);
 	}
 
 	/**
@@ -350,8 +356,8 @@ public final class CodexIntegration implements HarnessIntegration
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(cli, "cli").isNotNull();
-		runUnlessAbsent(cli, List.of("plugin", "remove", PLUGIN_ID));
-		runUnlessAbsent(cli, List.of("plugin", "marketplace", "remove", MARKETPLACE_NAME));
+		for (CodexPluginCommand command : CodexPluginCommand.unregistration())
+			command.run(cli);
 	}
 
 	/**
@@ -935,58 +941,23 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Runs one Codex command and requires it to succeed.
-	 *
-	 * @param cli       runs the recorded Codex program
-	 * @param arguments the arguments
-	 * @throws IOException if the command cannot run or exits with a status other than 0
-	 */
-	private static void run(HarnessCli cli, List<String> arguments) throws IOException
-	{
-		CommandResult result = cli.run(arguments);
-		if (result.exitCode() != 0)
-			throw failure(arguments, result);
-	}
-
-	/**
-	 * Runs one Codex removal command, accepting Codex's answer that there is nothing to remove.
-	 *
-	 * @param cli       runs the recorded Codex program
-	 * @param arguments the arguments
-	 * @throws IOException if the command cannot run or fails for another reason
-	 */
-	private static void runUnlessAbsent(HarnessCli cli, List<String> arguments) throws IOException
-	{
-		CommandResult result = cli.run(arguments);
-		if (result.exitCode() != 0 && !NOT_REGISTERED.matcher(result.output()).find())
-			throw failure(arguments, result);
-	}
-
-	/**
-	 * Describes a failed Codex command.
-	 *
-	 * @param arguments the arguments after the program
-	 * @param result    the command's outcome
-	 * @return the exception
-	 */
-	private static IOException failure(List<String> arguments, CommandResult result)
-	{
-		return new IOException("\"codex " + String.join(" ", arguments) + "\" failed with status " +
-			result.exitCode() + ": " + result.output().strip());
-	}
-
-	/**
 	 * Requires Codex to load exactly the validated marketplace source from the version folder that {@code version}
 	 * names.
 	 *
-	 * @param installation where Codex keeps CAT's installation
-	 * @param version      the registered plugin version
-	 * @throws IOException if Codex loads another version folder or its cache copy differs from the source
+	 * @param home    the absolute, normalized Codex home
+	 * @param version the registered plugin version
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
+	 * @throws IOException              if Codex loads another version folder or its cache copy differs from the source;
+	 *                                  the message of the second failure names the first path that differs
 	 */
-	private static void requireCacheMatches(CodexInstallation installation, PluginVersion version) throws IOException
+	public static void requireLoaded(Path home, PluginVersion version) throws IOException
 	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(version, "version").isNotNull();
+		CodexInstallation installation = new CodexInstallation(home);
 		Path plugin = installation.marketplacePlugin();
-		InstalledState state = new CodexActivation().installed(installation.home());
+		InstalledState state = new CodexActivation().installed(home);
 		if (!state.equals(new InstalledState(Optional.of(version.toString()), true)))
 		{
 			throw new IOException("After \"codex plugin add\", Codex does not load CAT " + version + " consistently: " +
