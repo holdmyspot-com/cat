@@ -151,13 +151,11 @@ writes. The runner tells it how. Add `--request-depth <levels>` when those sessi
 level below may request as many sessions, one level less deep. Without `--session-requests`, the session may start
 none. The receipt lists each requested session and its response path.
 
-Outside a run, the launcher does not start the harness itself. It asks the session launcher that CAT's
-SessionStart hook started for this session, outside this session's sandbox, to start the session inside its harness's
-own sandbox, and waits until it ends. It exits with `0` when the session completed, `75` when no capacity was free, `2`
-when CAT refused to start the session, and `1` otherwise, and prints the reason for any status other than `0`. Report
-that reason to the user. When it asks the user to start a new session, as it does when no CAT session launcher serves
-this session, ask the user to start a new session and run the task there. Do not start the run any other way, and do
-not change sandbox settings yourself.
+Outside a run, the launcher starts the session inside its harness's own sandbox, within this session's sandbox, and
+waits until it ends. It exits with `0` when the session completed, `75` when no capacity was free, `2` when CAT refused
+to start the session, and `1` otherwise, and prints the reason for any status other than `0`. Report that reason to the
+user. When it asks the user to start a new session, ask the user to start a new session and run the task there. Do not
+start the run any other way, and do not change sandbox settings yourself.
 
 ### Replies
 
