@@ -112,6 +112,9 @@ Before counting a conclusion drawn from two or more separate runs, such as a res
 resumed, timings before and after a change, or the results of two prompt or configuration variants, including an
 ad-hoc comparison that is neither test nor build evidence, lazy load `../include/common/run-comparisons.md`.
 
+Before applying a change, or adding functionality, that is meant to improve the performance of a program or build,
+lazy load `../include/common/performance-changes.md`.
+
 When a failure, a compiler, linter, or static-analysis warning or finding, a scope violation, a misapplied instruction,
 an apparently absent condition or apparent limitation, or an incorrect or unavailable workflow dependency arises or is
 reported; when an external defect makes you consider a workaround; when adding, catching, translating, reporting,

@@ -281,6 +281,42 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that is about to apply a change meant to improve the performance of a program or build can
+	 * reach the packaged rule for that decision: the rule routing that every agent of either harness receives at
+	 * startup routes to the performance-change rule, whose guidance tells the reader to measure the change before and
+	 * after on the same machine and input, to proceed on a meaningful improvement, to ask the user on a small one, and
+	 * to leave the change unmade on a degradation.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void performanceChangeRuleIsRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+
+			String rule = Files.readString(plugin.resolve("rules/include/common/performance-changes.md")).
+				replaceAll("\\s+", " ");
+			requireThat(rule, "performanceChanges").startsWith("# Performance Changes ").
+				contains("same machine, the same input").contains("Ask the user whether to proceed").
+				contains("Do not make the change.");
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			for (String harness : List.of("claude", "codex"))
+			{
+				requireThat(loader.loadForMainAgent(plugin, project, harness), harness + "Main").
+					contains("include/common/performance-changes.md`").doesNotContain("# Performance Changes");
+				requireThat(loader.loadForSubagent(plugin, project, harness, "cat:reviewer"), harness + "Subagent").
+					contains("include/common/performance-changes.md`").doesNotContain("# Performance Changes");
+			}
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 */
 	@Test
