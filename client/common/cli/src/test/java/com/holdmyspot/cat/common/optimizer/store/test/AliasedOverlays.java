@@ -16,7 +16,9 @@ import java.util.Optional;
  * Candidate overlays that a real store holds, which a test can also look up under the snapshot that a campaign builder
  * fabricated for them. A campaign built by {@code Builder} records snapshots that are not the identity of any
  * overlay, while the real store finds an overlay only by its identity. The test names each fabricated snapshot
- * with {@link #put(Sha256, Overlay)}; every other lookup and save goes to the real store unchanged.
+ * with {@link #put(Sha256, Overlay)}; every other lookup and save goes to the real store unchanged. The store forces
+ * every file to the storage device, so an overlay that {@code put} names reaches the store when it is first looked up:
+ * most tests look up few of the candidates that their fixture names.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -25,6 +27,7 @@ public final class AliasedOverlays implements CandidateOverlays
 	private final CandidateOverlays store;
 	private final Object lock = new Object();
 	private final Map<Sha256, Sha256> identities = new HashMap<>();
+	private final Map<Sha256, Overlay> unsaved = new HashMap<>();
 
 	/**
 	 * Creates overlays over a store.
@@ -39,21 +42,20 @@ public final class AliasedOverlays implements CandidateOverlays
 	}
 
 	/**
-	 * Saves an overlay and makes it findable under a snapshot that a campaign records for it.
+	 * Makes an overlay findable under a snapshot that a campaign records for it.
 	 *
 	 * @param snapshot the snapshot that a campaign records, which may differ from the overlay's identity
 	 * @param overlay the overlay
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if the overlay cannot be saved
 	 */
-	public void put(Sha256 snapshot, Overlay overlay) throws IOException
+	public void put(Sha256 snapshot, Overlay overlay)
 	{
 		requireThat(snapshot, "snapshot").isNotNull();
 		requireThat(overlay, "overlay").isNotNull();
-		store.save(overlay);
 		synchronized (lock)
 		{
 			identities.put(snapshot, overlay.identity());
+			unsaved.put(overlay.identity(), overlay);
 		}
 	}
 
@@ -81,10 +83,14 @@ public final class AliasedOverlays implements CandidateOverlays
 	{
 		requireThat(snapshot, "snapshot").isNotNull();
 		Sha256 identity;
+		Overlay pending;
 		synchronized (lock)
 		{
 			identity = identities.getOrDefault(snapshot, snapshot);
+			pending = unsaved.remove(identity);
 		}
+		if (pending != null)
+			store.save(pending);
 		return store.find(identity);
 	}
 

@@ -44,10 +44,10 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
-import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.AliasedOverlays;
+import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
 import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
@@ -123,8 +123,8 @@ public final class DriverHarness
 	private final FileLocks fileLocks = new FileLocks();
 	private final Path directory;
 	private final ManualClock clock = new ManualClock(START);
-	private final CampaignStore store;
-	private final CrashingStore crashingStore;
+	private final InMemoryCampaignStore store = new InMemoryCampaignStore();
+	private final CrashingStore crashingStore = new CrashingStore(store);
 	private final FakeSessionPort sessions;
 	private final FakeWorkspacePort fakeWorkspace;
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
@@ -227,9 +227,6 @@ public final class DriverHarness
 		this.sessions = new FakeSessionPort(login, null,
 			List.of(directory.resolve("runs"), directory.resolve("runs-held_out")));
 		this.fork = fork;
-		this.store = new FileCampaignStore(Files.createDirectories(directory.resolve("campaigns")), json,
-			Yielding.fileReplacer());
-		this.crashingStore = new CrashingStore(store);
 		this.overlays = new AliasedOverlays(new FileCandidateOverlays(FileCampaignStore.directory(
 			directory.resolve("campaigns"), CAMPAIGN), fork, json, Yielding.fileReplacer()));
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
@@ -1050,7 +1047,7 @@ public final class DriverHarness
 	 *
 	 * @return the store
 	 */
-	public CampaignStore store()
+	public InMemoryCampaignStore store()
 	{
 		return store;
 	}
