@@ -4,8 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
-import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
@@ -31,6 +29,7 @@ import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
 import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
@@ -53,6 +52,8 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -60,13 +61,13 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,11 +82,12 @@ import java.util.function.Function;
 /**
  * Tests the guard pilot: the control trials that run before CAT presents a proposal.
  * <p>
- * The sessions and the judge are test doubles. A trial's reply is the text that the test's script chooses; the judge
- * double receives that reply and returns the verdict that it names: {@code pass} passes every judged assertion,
- * {@code fail:<assertion>} fails that assertion, and {@code invalid} is output that does not match the judge's result
- * schema. The tests assert what the pilot decides from those inputs: the cell, part, source and test cases of its
- * trials, its per-assertion tallies, and when it reuses, reruns or stops.
+ * The sessions are test doubles; the judge prompt is the production {@link JudgePrompt}. A trial's reply is the text
+ * that the test's script chooses. The judge session replies, in the result schema's format, with the verdict that the
+ * trial's reply names: {@code pass} passes every judged assertion, {@code fail:<assertion>} fails that assertion, and
+ * {@code invalid} is output that does not match the judge's result schema. The tests assert what the pilot decides
+ * from those inputs: the cell, part, source and test cases of its trials, its per-assertion tallies, and when it
+ * reuses, reruns or stops.
  */
 public final class GuardPilotTest
 {
@@ -269,8 +271,8 @@ public final class GuardPilotTest
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
 				SELECTION, Map.of(), new SplittableRandom(3)).get("safety");
 
-			requireThat(sessions.requests(SessionRole.JUDGE).stream().
-				filter(request -> request.turns().getFirst().equals(BROKEN)).count(), "safetyJudges").isEqualTo(0L);
+			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals(BROKEN)).count(),
+				"safetyJudges").isEqualTo(0L);
 			requireThat(safety.decided("reply_intact"), "checkDecided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("reply_intact"), "checkPasses").isEqualTo(0);
 			requireThat(safety.decided("asks_before_deleting"), "judgedDecided").isEqualTo(0);
@@ -309,9 +311,8 @@ public final class GuardPilotTest
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
 				SELECTION, Map.of(), new SplittableRandom(3)).get("safety");
 
-			requireThat(sessions.requests(SessionRole.JUDGE).stream().
-				filter(request -> request.turns().getFirst().equals(BROKEN)).count(), "safetyJudges").
-				isEqualTo((long) GuardPilot.TRIALS);
+			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals(BROKEN)).count(),
+				"safetyJudges").isEqualTo((long) GuardPilot.TRIALS);
 			requireThat(safety.decided("reply_intact"), "toolDecided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("reply_intact"), "toolPasses").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.decided("asks_before_deleting"), "judgedDecided").isEqualTo(GuardPilot.TRIALS);
@@ -347,8 +348,7 @@ public final class GuardPilotTest
 			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
 				"The judge failed " + Driver.JUDGE_ATTEMPTS + " times. Last failure: The judge's output does not match " +
 					"its result schema"));
-			requireThat(sessions.requests(SessionRole.JUDGE).stream().
-				filter(request -> request.turns().getFirst().equals("invalid")).count(), "judges").
+			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals("invalid")).count(), "judges").
 				isEqualTo((long) GuardPilot.TRIALS * Driver.JUDGE_ATTEMPTS);
 		}
 	}
@@ -755,7 +755,7 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * Returns a pilot whose judge is the double that returns the verdict named by the trial's reply.
+	 * Returns a pilot whose judge session replies with the verdict named by the trial's reply.
 	 *
 	 * @param sessions the session port
 	 * @param workspace the workspace port
@@ -764,7 +764,7 @@ public final class GuardPilotTest
 	 */
 	private GuardPilot pilot(ScriptedPort sessions, FakeWorkspacePort workspace, int ceiling)
 	{
-		return new GuardPilot(sessions, workspace, new ScriptedJudge(), new ProposalSchema(json), json,
+		return new GuardPilot(sessions, workspace, sessions.judge(), new ProposalSchema(json), json,
 			ceiling);
 	}
 
@@ -867,8 +867,10 @@ public final class GuardPilotTest
 
 	/**
 	 * A session port whose sessions end as soon as they start. A trial replies with the text that the test's script
-	 * chooses for its request; a judge replies with the trial reply that its request carries, so that
-	 * {@link ScriptedJudge} reads the verdict that the script chose.
+	 * chooses for its request; a judge replies, in the format of the judge's result schema, with the verdict that the
+	 * reply of the trial under evidence names. The judge reads that trial from the evidence directory of its request.
+	 * The port's {@link #judge() judge} is the production {@link JudgePrompt}, which also records the assertions that
+	 * it asks each judge session to decide.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
@@ -878,6 +880,10 @@ public final class GuardPilotTest
 		private final Function<SessionRequest, String> replies;
 		private final List<SessionRequest> requests = new ArrayList<>();
 		private final List<SessionResult.Completed> trials = new ArrayList<>();
+		private final Map<Path, String> trialReplies = new HashMap<>();
+		private final Map<Path, List<JudgedAssertion>> judged = new HashMap<>();
+		private final List<String> judgedReplies = new ArrayList<>();
+		private final JudgePrompt judgePrompt;
 		private final Map<SessionRole, Deque<SessionResult>> rejections = new EnumMap<>(SessionRole.class);
 		private volatile int sessionEnvironmentVersion = 1;
 		private volatile int judgeVersion = 1;
@@ -892,6 +898,58 @@ public final class GuardPilotTest
 		{
 			this.directory = directory;
 			this.replies = replies;
+			Path judgeDirectory = directory.resolve("judge");
+			try
+			{
+				Files.createDirectories(judgeDirectory);
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+			this.judgePrompt = new JudgePrompt(JsonMapper.builder().build(), judgeDirectory);
+		}
+
+		/**
+		 * Returns the production judge prompt, which records the assertions of each judge request.
+		 *
+		 * @return the judge
+		 */
+		JudgeProtocol judge()
+		{
+			return new JudgeProtocol()
+			{
+				@Override
+				public SessionRequest request(JudgeProfile profile, DrawnTestCase testCase,
+					SessionResult.Completed evidence, List<JudgedAssertion> assertions, List<BuiltInToolResult> results,
+					String evidenceSection)
+				{
+					synchronized (requests)
+					{
+						judged.put(evidence.effects(), assertions);
+					}
+					return judgePrompt.request(profile, testCase, evidence, assertions, results, evidenceSection);
+				}
+
+				@Override
+				public Optional<Judgment> judgment(SessionResult.Completed result, List<JudgedAssertion> decided)
+				{
+					return judgePrompt.judgment(result, decided);
+				}
+			};
+		}
+
+		/**
+		 * Returns the reply of the trial that each judge session read.
+		 *
+		 * @return the replies, in the order that the judge sessions started
+		 */
+		List<String> judgedReplies()
+		{
+			synchronized (requests)
+			{
+				return List.copyOf(judgedReplies);
+			}
 		}
 
 		/**
@@ -980,11 +1038,12 @@ public final class GuardPilotTest
 				synchronized (requests)
 				{
 					trials.add(trial);
+					trialReplies.put(trial.effects(), trial.responses().getFirst().getFirst());
 				}
 				result = trial;
 			}
 			else
-				result = completed(number, request.turns().getFirst());
+				result = completed(number, judgeReply(request));
 			return new SessionHandle()
 			{
 				@Override
@@ -998,6 +1057,51 @@ public final class GuardPilotTest
 				{
 				}
 			};
+		}
+
+		/**
+		 * Returns what the judge replies after reading the trial that a judge request names as its evidence.
+		 *
+		 * @param request the judge session's request
+		 * @return a result in the format of the judge's result schema that fails the assertion named by a
+		 *   {@code fail:<assertion>} trial reply, or the trial reply itself if it is {@code invalid}; otherwise a
+		 *   result that passes every assertion
+		 */
+		private String judgeReply(SessionRequest request)
+		{
+			Path evidence = request.readOnly().getFirst();
+			String trialReply;
+			List<JudgedAssertion> decided;
+			synchronized (requests)
+			{
+				trialReply = trialReplies.get(evidence);
+				decided = judged.get(evidence);
+				judgedReplies.add(trialReply);
+			}
+			if (trialReply.equals("invalid"))
+				return trialReply;
+			String failedId = null;
+			if (trialReply.startsWith("fail:"))
+				failedId = trialReply.substring("fail:".length());
+			ArrayNode items = JsonMapper.builder().build().createArrayNode();
+			boolean failedDecided = false;
+			for (JudgedAssertion assertion : decided)
+			{
+				ObjectNode item = items.addObject().put("id", assertion.assertion().id());
+				if (assertion.assertion().id().equals(failedId))
+				{
+					failedDecided = true;
+					item.put("verdict", "fail").put("rationale", "The assistant deleted without asking.").
+						put("behavior", assertion.behaviors().getFirst());
+				}
+				else
+					item.put("verdict", "pass").put("rationale", "The assertion holds.").putNull("behavior");
+			}
+			if (failedId != null && !failedDecided)
+				throw new IllegalStateException("The judge does not decide " + failedId);
+			ObjectNode reply = JsonMapper.builder().build().createObjectNode();
+			reply.set("assertions", items);
+			return reply.toString();
 		}
 
 		/**
@@ -1108,37 +1212,6 @@ public final class GuardPilotTest
 		public List<String> installedPluginNames()
 		{
 			return List.of();
-		}
-	}
-
-	/**
-	 * A judge whose request carries the trial's reply and whose verdict is the one that the reply names.
-	 * <p>
-	 * <b>Thread Safety:</b> This class is thread-safe.
-	 */
-	private static final class ScriptedJudge implements JudgeProtocol
-	{
-		@Override
-		public SessionRequest request(JudgeProfile profile, DrawnTestCase testCase, SessionResult.Completed evidence,
-			List<JudgedAssertion> assertions, List<BuiltInToolResult> results, String evidenceSection)
-		{
-			return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, evidence.effects(),
-				List.of(evidence.responses().getFirst().getFirst()), List.of(), Duration.ofMinutes(1), profile.profile());
-		}
-
-		@Override
-		public Optional<Judgment> judgment(SessionResult.Completed result, List<JudgedAssertion> decided)
-		{
-			String reply = result.responses().getFirst().getFirst();
-			if (reply.equals("invalid"))
-				return Optional.empty();
-			if (!reply.startsWith("fail:"))
-				return Optional.of(new Judgment(Verdict.PASS, "Every assertion holds.", List.of()));
-			String assertionId = reply.substring("fail:".length());
-			JudgedAssertion failed = decided.stream().filter(judged -> judged.assertion().id().equals(assertionId)).
-				findFirst().orElseThrow();
-			return Optional.of(new Judgment(Verdict.FAIL, "The assistant deleted without asking.",
-				List.of(new FailedAssertion(assertionId, failed.behaviors().getFirst()))));
 		}
 	}
 }
