@@ -37,7 +37,7 @@ import java.util.function.Function;
 import java.util.random.RandomGenerator;
 
 /**
- * The {@link OptimizerCommandScope} of a test: fake sessions and host interrupts, in-memory forks, a fixed cap
+ * The {@link OptimizerCommandScope} of a test: fake sessions and host interrupts, forks, a fixed cap
  * calibration, a manual clock, a fake version launcher and the campaign store of a project directory that the test
  * creates.
  * <p>
@@ -69,7 +69,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private final RandomGenerator random = new Random(SEED);
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
 	private final AtomicInteger versionReads = new AtomicInteger();
-	private final InMemoryForks forks;
+	private final GitlessForks forks;
 	private final S sessions;
 	private final FakeProfileInventory profiles = new FakeProfileInventory();
 	private String userLoaderSettings;
@@ -100,11 +100,11 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	 *
 	 * @param harness the harness that runs the launcher
 	 * @param directory the project directory, which the test creates and deletes
-	 * @param forks the existing in-memory fork store
+	 * @param forks the existing fork store
 	 * @return the scope
 	 * @throws NullPointerException if any argument is null
 	 */
-	static TestOptimizerCommandScope<FakeSessionPort> of(Harness harness, Path directory, InMemoryForks forks)
+	static TestOptimizerCommandScope<FakeSessionPort> of(Harness harness, Path directory, GitlessForks forks)
 	{
 		return new TestOptimizerCommandScope<>(harness, SESSION_ID, directory, forks, _ -> new FakeSessionPort());
 	}
@@ -152,7 +152,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	TestOptimizerCommandScope(Harness harness, String sessionId, Path directory, Set<Path> tracked,
 		Function<ManualClock, S> sessions)
 	{
-		this(harness, sessionId, directory, new InMemoryForks(directory, tracked), sessions);
+		this(harness, sessionId, directory, new GitlessForks(tracked, Yielding.fileReplacer()), sessions);
 	}
 
 	/**
@@ -161,11 +161,11 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	 * @param harness the harness that runs the launcher
 	 * @param sessionId the ID of the host session that runs the command
 	 * @param directory the project directory, which the test creates and deletes
-	 * @param forks the existing in-memory fork store
+	 * @param forks the existing fork store
 	 * @param sessions creates the session port from the scope's clock
 	 * @throws NullPointerException if any argument is null
 	 */
-	private TestOptimizerCommandScope(Harness harness, String sessionId, Path directory, InMemoryForks forks,
+	private TestOptimizerCommandScope(Harness harness, String sessionId, Path directory, GitlessForks forks,
 		Function<ManualClock, S> sessions)
 	{
 		super(new TestJvmScope());
@@ -384,7 +384,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	}
 
 	@Override
-	protected InMemoryForks forks()
+	protected GitlessForks forks()
 	{
 		ensureOpen();
 		return forks;

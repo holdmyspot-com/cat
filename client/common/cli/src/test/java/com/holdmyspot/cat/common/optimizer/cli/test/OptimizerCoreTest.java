@@ -743,7 +743,8 @@ public final class OptimizerCoreTest
 		private final Function<SessionRequest, SessionResult> script;
 		private final Map<SessionRole, List<TokenUsage>> usage = new java.util.EnumMap<>(SessionRole.class);
 		/**
-		 * The hooks that {@link #unapprovedHooks(Path)} returns for each plugin directory, by the directory's name.
+		 * The hooks that {@link #unapprovedHooks(Path)} returns for each plugin directory, by the end of the
+		 * directory's name.
 		 */
 		private final Map<String, List<String>> unapprovedHooks = new HashMap<>();
 		/**
@@ -987,7 +988,9 @@ public final class OptimizerCoreTest
 		@Override
 		public List<String> unapprovedHooks(Path plugin)
 		{
-			return unapprovedHooks.getOrDefault(plugin.getFileName().toString(), List.of());
+			String name = plugin.getFileName().toString();
+			return unapprovedHooks.entrySet().stream().filter(entry -> name.endsWith(entry.getKey())).
+				flatMap(entry -> entry.getValue().stream()).toList();
 		}
 
 		@Override
@@ -1075,7 +1078,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * A project directory that holds a tracked prompt and ignored files, with in-memory forks and the core that
+	 * A project directory that holds a tracked prompt and ignored files, with forks and the core that
 	 * runs on it.
 	 *
 	 * @param root the project directory
@@ -1095,11 +1098,11 @@ public final class OptimizerCoreTest
 		}
 
 		/**
-		 * Returns the in-memory forks.
+		 * Returns the forks.
 		 *
 		 * @return the forks
 		 */
-		InMemoryForks forks()
+		GitlessForks forks()
 		{
 			return scope.forks();
 		}
@@ -3601,17 +3604,23 @@ public final class OptimizerCoreTest
 			Path worktree = repository.directory(id).toAbsolutePath().resolve("worktree");
 			Path pluginBase = repository.forks().open(root, repository.directory(id)).workspace().
 				pluginBase(plugin.baseDigest());
-			Map<String, String> built = contents(worktree.resolve("out"));
-			requireThat(contents(pluginBase), "builtPluginBase").isEqualTo(built);
-			Files.writeString(worktree.resolve("out/.claude-plugin/plugin.json"), "Changed build output.\n");
+			// The build wrote the plugin into the optimization worktree, and the base is a copy of what it wrote
+			Path manifest = Path.of(".claude-plugin/plugin.json");
+			String builtManifest = Files.readString(pluginBase.resolve(manifest));
+			requireThat(builtManifest, "builtManifest").contains("\"name\": \"cat\"");
+			Map<String, String> built = contents(pluginBase);
+			Path output = worktree.resolve("out");
+			Files.createDirectories(output.resolve(manifest).getParent());
+			Files.writeString(output.resolve(manifest), "Changed build output.\n");
 
 			repository.core().revise(id, "cover the formal tone");
 
 			requireThat(contents(pluginBase), "retainedPluginBase").isEqualTo(built);
 			requireThat(repository.load(id).plugins().orElseThrow().getFirst().baseDigest(), "retainedBaseDigest").
 				isEqualTo(plugin.baseDigest());
-			requireThat(Files.readString(worktree.resolve("out/.claude-plugin/plugin.json")), "unchangedBuildOutput").
-				isEqualTo("Changed build output.\n");
+			// A rebuild would have written the built manifest again
+			requireThat(Files.exists(output.resolve(manifest)) &&
+				Files.readString(output.resolve(manifest)).equals(builtManifest), "rebuilt").isFalse();
 			requireThat(Files.readString(stale), "stale").isEqualTo("The user's own build output.\n");
 			requireThat(Files.exists(root.resolve("out/.claude-plugin")), "baseManifest").isFalse();
 			List<TrialPlugin> plugins = repository.load(id).plugins().orElseThrow();
@@ -3818,7 +3827,7 @@ public final class OptimizerCoreTest
 			Files.createDirectories(installed.resolve(".claude-plugin"));
 			Files.writeString(installed.resolve(".claude-plugin/plugin.json"), "{\"name\": \"tools\"}\n");
 			repository.sessions().install("tools@market", List.of(installed));
-			// The base copy is named by its digest in the fake workspace
+			// The workspace names the base copy after its digest
 			repository.sessions().unapprovedHooks(InventoryScanner.scan(installed, Set.of()).identity().hex(),
 				List.of("tools@market SessionStart `./start.sh`"));
 
@@ -5478,15 +5487,21 @@ public final class OptimizerCoreTest
 			configure(repository.root(), rule, NO_PLUGINS);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			FileCampaignStore.recordRemoval(repository.campaigns(), id, Yielding.fileReplacer());
-			Path worktree = repository.directory(id).resolve("worktree");
-			repository.forks().denyRemoval();
-			String warning = "Could not remove the files of campaign " + id + ": " + worktree +
-				": Permission denied. The next command retries the removal.";
+			// Git fails in a base whose ".git" is not a Git file, after the removal deleted the optimization worktree
+			Path git = repository.root().resolve(".git");
+			Files.delete(git);
+			Files.writeString(git, "not a Git file\n");
+			repository.forks().removeThroughGit();
+			String warningStart = "Could not remove the files of campaign " + id + ": ";
+			String warningEnd = ". The next command retries the removal.";
 
 			ObjectNode started = output(repository, List.of("start", PortablePaths.text(rule)));
 
 			requireThat(started.get("proposal").isNull(), "proposalIsNull").isFalse();
-			requireThat(started.get("summary").asString(), "summary").endsWith("\n" + warning);
+			String summary = started.get("summary").asString();
+			requireThat(summary, "summary").contains("\n" + warningStart).endsWith(warningEnd);
+			String warning = summary.substring(summary.indexOf(warningStart));
+			requireThat(warning, "warning").contains("git worktree prune");
 			// The host shows the proposal instead of the summary, so the warning is in the message too
 			requireThat(started.get("message").asString(), "message").endsWith(warning);
 			String message = refusal(() -> repository.core().cancel("no-such-campaign"));
@@ -5682,7 +5697,8 @@ public final class OptimizerCoreTest
 			requireThat(waiting.attempt(1).outcome(), "attemptOutcome").isEqualTo(Outcome.CERTIFIED);
 			requireThat(DecisionTable.attemptDecision(waiting.attempt(1)), "attemptDecision").
 				isEqualTo(DecisionTable.AttemptDecision.CERTIFIED_PROVEN_WORSE);
-			requireThat(fork.workspace().scanWorktree(), "candidateWorktree").isEqualTo(changed.snapshot());
+			requireThat(fork.workspace().scanWorktree().entries(), "candidateWorktree").
+				isEqualTo(changed.snapshot().entries());
 			requireThat(waiting.choices(), "choices").contains(Choice.RETAIN_INCUMBENT);
 
 			CommandResult result = repository.core().choose(id, Choice.RETAIN_INCUMBENT, 0, 0);
@@ -5815,11 +5831,10 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			if (brokenLink)
 			{
+				// A link that the user added after the start, and that the fork now records, points at no file
+				Files.createSymbolicLink(repository.root().resolve("broken.md"), Path.of("missing.md"));
 				ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
-				Map<Path, FileEntry> entries = new TreeMap<>(fork.inventory().entries());
-				entries.put(Path.of("broken.md"), new FileEntry.SymbolicLink(Path.of("missing.md")));
-				repository.forks().setInventory(repository.directory(id), new FileInventory(repository.root(),
-					entries));
+				fork.extend(repository.root(), Set.of(Path.of("broken.md"))).adopt();
 			}
 			Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
 			String before = Files.readString(snapshot);

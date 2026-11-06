@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Creates and opens the forks of campaigns, so that a test replaces Git with an in-memory fork.
+ * Creates and opens the forks of campaigns, so that a test can fork a project that is no Git repository.
  */
 public interface Forks
 {
