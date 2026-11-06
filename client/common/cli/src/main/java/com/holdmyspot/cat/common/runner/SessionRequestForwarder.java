@@ -92,11 +92,11 @@ public final class SessionRequestForwarder
 			String option = args[index];
 			if (PARENT_OPTIONS.contains(option))
 			{
-				throw new IllegalArgumentException("Inside a run, the parent runner chooses " + option +
+				throw new InvalidArgumentsException("Inside a run, the parent runner chooses " + option +
 					" for the sessions it starts");
 			}
 			if (!option.equals("--plugin") && !scalars.add(option))
-				throw new IllegalArgumentException("Repeated option: " + option);
+				throw new InvalidArgumentsException("Repeated option: " + option);
 			switch (option)
 			{
 				case "--keep-run" ->
@@ -118,9 +118,9 @@ public final class SessionRequestForwarder
 				}
 			}
 			if (!VALUE_OPTIONS.contains(option))
-				throw new IllegalArgumentException("Unsupported option: " + option);
+				throw new InvalidArgumentsException("Unsupported option: " + option);
 			if (index + 1 == args.length)
-				throw new IllegalArgumentException("Missing value for " + option);
+				throw new InvalidArgumentsException("Missing value for " + option);
 			index += 1;
 			String value = args[index];
 			if (IGNORED_OPTIONS.contains(option))
@@ -133,7 +133,7 @@ public final class SessionRequestForwarder
 				case "--input" -> records = Path.of(value);
 				case "--output" -> transcript = Path.of(value);
 				case "--receipt" -> receipt = Path.of(value);
-				default -> throw new IllegalArgumentException("Unsupported option: " + option);
+				default -> throw new InvalidArgumentsException("Unsupported option: " + option);
 			}
 		}
 		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),

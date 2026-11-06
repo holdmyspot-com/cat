@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Request;
 import com.holdmyspot.cat.common.runner.launcher.client.RequestExchange.Destinations;
@@ -230,7 +231,7 @@ public final class SessionLauncherClient
 			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 		LaunchOptions options = LaunchOptions.parse(args, workingDirectory);
 		if (options.receipt.isPresent() && (!options.keepRun || options.output.isEmpty()))
-			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
+			throw new InvalidArgumentsException("--receipt requires --keep-run and --output");
 		Optional<Outcome> refusal = exchange.refusal();
 		if (refusal.isPresent())
 			return report(refusal.get(), errors);

@@ -69,7 +69,8 @@ public final class HarnessRunnerOptionsTest
 		StringWriter errors = new StringWriter();
 		int status = HarnessRunnerOptions.refusingInvalidArguments(() ->
 		{
-			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
+			HarnessRunnerOptions.parse(launch("--receipt", absolute("receipt")), "claude", SESSION);
+			return 0;
 		}, new PrintWriter(errors, true));
 		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 		requireThat(errors.toString(), "errors").isEqualTo("--receipt requires --keep-run and --output" +
@@ -89,7 +90,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that an unexpected failure is not reported as a refusal.
+	 * Verifies that a failure inside the running launch, including an {@link IllegalArgumentException}, is not reported
+	 * as a refusal.
 	 */
 	@Test
 	public void unexpectedFailuresPropagate() throws IOException
@@ -112,11 +114,11 @@ public final class HarnessRunnerOptionsTest
 		{
 			HarnessRunnerOptions.refusingInvalidArguments(() ->
 			{
-				throw new IllegalStateException("broken");
+				throw new IllegalArgumentException("broken");
 			}, writer);
-			throw new AssertionError("Expected an IllegalStateException");
+			throw new AssertionError("Expected an IllegalArgumentException");
 		}
-		catch (IllegalStateException e)
+		catch (IllegalArgumentException e)
 		{
 			requireThat(e.getMessage(), "message").isEqualTo("broken");
 		}

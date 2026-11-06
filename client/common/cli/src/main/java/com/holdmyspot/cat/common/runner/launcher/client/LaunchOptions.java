@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner.launcher.client;
 
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.nio.file.Path;
@@ -142,7 +144,7 @@ final class LaunchOptions
 	 * @param workingDirectory the absolute directory against which relative paths resolve
 	 * @return the options
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if an option is unknown, repeated or lacks its value, or a count is invalid
+	 * @throws InvalidArgumentsException if an option is unknown, repeated or lacks its value, or a count is invalid
 	 */
 	static LaunchOptions parse(String[] args, Path workingDirectory)
 	{
@@ -154,16 +156,16 @@ final class LaunchOptions
 		{
 			String option = args[index];
 			if (!REPEATED.contains(option) && !seen.add(option))
-				throw new IllegalArgumentException("Repeated option: " + option);
+				throw new InvalidArgumentsException("Repeated option: " + option);
 			if (FLAGS.contains(option))
 			{
 				options.flag(option);
 				continue;
 			}
 			if (!REPEATED.contains(option) && !SINGLE.contains(option))
-				throw new IllegalArgumentException("Unsupported option: " + option);
+				throw new InvalidArgumentsException("Unsupported option: " + option);
 			if (index + 1 == args.length || args[index + 1].startsWith("--"))
-				throw new IllegalArgumentException("Missing value for " + option);
+				throw new InvalidArgumentsException("Missing value for " + option);
 			index += 1;
 			options.value(option, args[index]);
 		}
@@ -191,7 +193,7 @@ final class LaunchOptions
 	 *
 	 * @param option the option
 	 * @param value  its value
-	 * @throws IllegalArgumentException if a count is not a number
+	 * @throws InvalidArgumentsException if a count is not a number
 	 */
 	private void value(String option, String value)
 	{
@@ -211,13 +213,39 @@ final class LaunchOptions
 			case "--plugin" -> plugins.add(path(value));
 			case "--deny-read" -> deniedReads.add(path(value));
 			case "--read-only-evidence" -> readOnlyEvidence.add(path(value));
-			case "--session-requests" -> sessionRequests = Integer.parseInt(value);
-			case "--request-depth" -> requestDepth = Integer.parseInt(value);
-			case "--capacity-wait" -> capacityWait = Optional.of(Duration.ofSeconds(Long.parseLong(value)));
-			case "--max-concurrency" -> maximumConcurrency = Optional.of(Integer.parseInt(value));
-			case "--tool-output-token-limit" -> toolOutputTokenLimit = Optional.of(Integer.parseInt(value));
+			case "--session-requests" -> sessionRequests = count(option, value);
+			case "--request-depth" -> requestDepth = count(option, value);
+			case "--capacity-wait" -> capacityWait = Optional.of(Duration.ofSeconds(seconds(option, value)));
+			case "--max-concurrency" -> maximumConcurrency = Optional.of(count(option, value));
+			case "--tool-output-token-limit" -> toolOutputTokenLimit = Optional.of(count(option, value));
 			default -> throw new AssertionError(option);
 		}
+	}
+
+	/**
+	 * Parses the whole-number value of an option.
+	 *
+	 * @param option the option
+	 * @param value  its value
+	 * @return the number
+	 * @throws InvalidArgumentsException if {@code value} is not a whole number
+	 */
+	private static int count(String option, String value)
+	{
+		return HarnessRunnerOptions.parseInteger(option, value);
+	}
+
+	/**
+	 * Parses the whole-number value of an option.
+	 *
+	 * @param option the option
+	 * @param value  its value
+	 * @return the number
+	 * @throws InvalidArgumentsException if {@code value} is not a whole number
+	 */
+	private static long seconds(String option, String value)
+	{
+		return HarnessRunnerOptions.parseLong(option, value);
 	}
 
 	/**

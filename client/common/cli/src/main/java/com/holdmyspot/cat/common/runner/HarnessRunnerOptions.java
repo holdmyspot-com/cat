@@ -91,7 +91,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(args, "args").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		if (args.length == 0 || !args[0].equals("serve"))
-			throw new IllegalArgumentException("Usage: <runner> serve --artifact <path> [options]");
+			throw new InvalidArgumentsException("Usage: <runner> serve --artifact <path> [options]");
 		return parse(Arrays.copyOfRange(args, 1, args.length), harness, temporaryRoot);
 	}
 
@@ -147,44 +147,44 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			if (option.equals("--max-concurrency"))
 			{
 				if (index + 1 >= args.length)
-					throw new IllegalArgumentException("Missing value for --max-concurrency");
-				options.maximumConcurrency = Integer.parseInt(args[index + 1]);
+					throw new InvalidArgumentsException("Missing value for --max-concurrency");
+				options.maximumConcurrency = parseInteger(option, args[index + 1]);
 				if (options.maximumConcurrency < 1 ||
 					options.maximumConcurrency > HarnessCapacity.MAXIMUM_CONCURRENCY)
-					throw new IllegalArgumentException("--max-concurrency must be between 1 and " +
+					throw new InvalidArgumentsException("--max-concurrency must be between 1 and " +
 						HarnessCapacity.MAXIMUM_CONCURRENCY);
 				index += 2;
 				continue;
 			}
 			if (!VALUE_OPTIONS.contains(option))
-				throw new IllegalArgumentException("Unsupported option: " + option);
+				throw new InvalidArgumentsException("Unsupported option: " + option);
 			if (option.equals("--read-only-evidence") &&
 				(index + 1 >= args.length || args[index + 1].startsWith("--")))
-				throw new IllegalArgumentException("Missing path after --read-only-evidence");
+				throw new InvalidArgumentsException("Missing path after --read-only-evidence");
 			if (index + 1 >= args.length)
-				throw new IllegalArgumentException("Missing value for " + option);
+				throw new InvalidArgumentsException("Missing value for " + option);
 			String value = args[index + 1];
 			if (option.equals("--session-requests"))
 			{
-				options.sessionRequests = Integer.parseInt(value);
+				options.sessionRequests = parseInteger(option, value);
 				if (options.sessionRequests < 0)
-					throw new IllegalArgumentException("--session-requests must not be negative: " + value);
+					throw new InvalidArgumentsException("--session-requests must not be negative: " + value);
 				index += 2;
 				continue;
 			}
 			if (option.equals("--request-depth"))
 			{
-				options.requestDepth = Integer.parseInt(value);
+				options.requestDepth = parseInteger(option, value);
 				if (options.requestDepth < 0)
-					throw new IllegalArgumentException("--request-depth must not be negative: " + value);
+					throw new InvalidArgumentsException("--request-depth must not be negative: " + value);
 				index += 2;
 				continue;
 			}
 			if (option.equals("--capacity-wait"))
 			{
-				long seconds = Long.parseLong(value);
+				long seconds = parseLong(option, value);
 				if (seconds < 1)
-					throw new IllegalArgumentException("--capacity-wait must be at least 1 second: " + value);
+					throw new InvalidArgumentsException("--capacity-wait must be at least 1 second: " + value);
 				options.capacityWait = Duration.ofSeconds(seconds);
 				index += 2;
 				continue;
@@ -222,13 +222,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			index += 2;
 		}
 		if (options.artifact == null)
-			throw new IllegalArgumentException("Missing --artifact");
+			throw new InvalidArgumentsException("Missing --artifact");
 		if (options.receipt != null && (!options.keepRun || options.output == null))
-			throw new IllegalArgumentException("--receipt requires --keep-run and --output");
+			throw new InvalidArgumentsException("--receipt requires --keep-run and --output");
 		if (options.sessionTranscripts && !options.keepRun)
-			throw new IllegalArgumentException("--session-transcripts requires --keep-run");
+			throw new InvalidArgumentsException("--session-transcripts requires --keep-run");
 		if (options.requestDepth > 0 && options.sessionRequests == 0)
-			throw new IllegalArgumentException("--request-depth requires --session-requests");
+			throw new InvalidArgumentsException("--request-depth requires --session-requests");
 		requireProfile(harness, model, effort);
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, model, effort, options.output,
@@ -236,6 +236,46 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.policyBound, options.capacityHeld,
 			options.gitName, options.gitEmail);
+	}
+
+	/**
+	 * Parses the whole-number value of an option.
+	 *
+	 * @param option the option
+	 * @param value  the option's value
+	 * @return the number
+	 * @throws InvalidArgumentsException if {@code value} is not a whole number
+	 */
+	public static int parseInteger(String option, String value)
+	{
+		try
+		{
+			return Integer.parseInt(value);
+		}
+		catch (NumberFormatException _)
+		{
+			throw new InvalidArgumentsException(option + " requires a whole number: " + value);
+		}
+	}
+
+	/**
+	 * Parses the whole-number value of an option.
+	 *
+	 * @param option the option
+	 * @param value  the option's value
+	 * @return the number
+	 * @throws InvalidArgumentsException if {@code value} is not a whole number
+	 */
+	public static long parseLong(String option, String value)
+	{
+		try
+		{
+			return Long.parseLong(value);
+		}
+		catch (NumberFormatException _)
+		{
+			throw new InvalidArgumentsException(option + " requires a whole number: " + value);
+		}
 	}
 
 	/**
@@ -248,8 +288,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		 * Runs the launch.
 		 *
 		 * @return the launch's exit status
-		 * @throws IllegalArgumentException if the launch's options are invalid
-		 * @throws IOException              if the launch fails
+		 * @throws InvalidArgumentsException if the launch's options are invalid
+		 * @throws IOException                if the launch fails
 		 */
 		int run() throws IOException;
 	}
@@ -257,7 +297,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	/**
 	 * Runs a runner launcher's launch. A launch whose options are invalid is refused: only the reason is printed, as
 	 * one line without a stack trace, and the launch ends with status {@value #REFUSED_LAUNCH_STATUS}, as every other
-	 * refused launch does.
+	 * refused launch does. Any other failure, including an {@link IllegalArgumentException} that the running launch
+	 * raises, propagates.
 	 *
 	 * @param launch the launch
 	 * @param errors receives the reason for a refusal
@@ -273,7 +314,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		{
 			return launch.run();
 		}
-		catch (IllegalArgumentException e)
+		catch (InvalidArgumentsException e)
 		{
 			errors.println(e.getMessage());
 			return REFUSED_LAUNCH_STATUS;
@@ -347,7 +388,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		{
 			if (arg.equals("--model") || arg.equals("--effort"))
 			{
-				throw new IllegalArgumentException("--agent cannot be combined with --model or --effort: the CAT agent " +
+				throw new InvalidArgumentsException("--agent cannot be combined with --model or --effort: the CAT agent " +
 					"definition supplies the model and the effort.");
 			}
 		}
@@ -423,7 +464,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			case "codex" -> " `codex debug models` lists the models and the reasoning efforts that each accepts.";
 			default -> "";
 		};
-		throw new IllegalArgumentException("Missing " + missing + ". A run requires both --model and --effort." +
+		throw new InvalidArgumentsException("Missing " + missing + ". A run requires both --model and --effort." +
 			values);
 	}
 

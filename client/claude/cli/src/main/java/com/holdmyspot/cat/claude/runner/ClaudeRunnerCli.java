@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -421,7 +422,7 @@ public final class ClaudeRunnerCli
 			if (!args[index].equals("--agent"))
 				continue;
 			if (index + 1 == args.length || args[index + 1].startsWith("--"))
-				throw new IllegalArgumentException("Missing value for --agent");
+				throw new InvalidArgumentsException("Missing value for --agent");
 			return args[index + 1];
 		}
 		return "";
@@ -480,7 +481,7 @@ public final class ClaudeRunnerCli
 			if (!args[index].equals("--instruction-files"))
 				continue;
 			if (index + 1 == args.length || args[index + 1].startsWith("--"))
-				throw new IllegalArgumentException("Missing value for --instruction-files");
+				throw new InvalidArgumentsException("Missing value for --instruction-files");
 			return args[index + 1];
 		}
 		return "";
