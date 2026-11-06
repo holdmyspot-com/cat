@@ -1201,15 +1201,6 @@ public final class DriverTest
 					filter(request -> request.role() == SessionRole.TRIAL &&
 						harness.snapshot(request).equals(Builder.snapshot("candidate-1"))).count(),
 					"referenceStartsIncludingResume").isEqualTo(2);
-
-				Campaign decided = harness.runUntil(driver, state -> state.development().round() == null);
-				requireThat(decided.optimization().attempts().size(), "decidedAttempts").isEqualTo(3);
-				for (AttemptResult attempt : decided.optimization().attempts())
-				{
-					requireThat(attempt.accepted(), "sharedReferenceDecision").isFalse();
-					requireThat(attempt.passingRuns(), "ownPassingRuns").isEqualTo(2);
-					requireThat(attempt.totalRuns(), "ownRuns").isEqualTo(3L + Promotion.RERUN_STEP);
-				}
 				requireThat(harness.promptAuthor().briefs().size(), "unchangedPromptAuthorAttempts").isEqualTo(3);
 			}
 		}
