@@ -12,23 +12,25 @@ import java.util.List;
  * installations, which the harness's sandbox entries name, and whether the user allows a change that needs their
  * permission.
  *
- * @param session  the harness that installs the plugin
- * @param image    the plugin folder that the running installer runs from
- * @param others   the CAT installations of the other harnesses
- * @param catLocks the directory of the capacity locks, which the sandbox entries name
- * @param consent  decides whether the user allows a change that needs their permission
+ * @param session       the harness that installs the plugin
+ * @param image         the plugin folder that the running installer runs from
+ * @param others        the CAT installations of the other harnesses
+ * @param catLocks      the directory of the capacity locks, which the sandbox entries name
+ * @param launcherState the directory that holds the session launcher's state, which the sandbox entries name
+ * @param consent       decides whether the user allows a change that needs their permission
  */
 public record InstallRequest(HarnessSession session, Path image, List<HarnessInstallation> others, Path catLocks,
-	Consent consent)
+	Path launcherState, Consent consent)
 {
 	/**
 	 * Creates the request.
 	 *
-	 * @param session  the harness that installs the plugin
-	 * @param image    the plugin folder that the running installer runs from
-	 * @param others   the CAT installations of the other harnesses
-	 * @param catLocks the directory of the capacity locks, which the sandbox entries name
-	 * @param consent  decides whether the user allows a change that needs their permission
+	 * @param session       the harness that installs the plugin
+	 * @param image         the plugin folder that the running installer runs from
+	 * @param others        the CAT installations of the other harnesses
+	 * @param catLocks      the directory of the capacity locks, which the sandbox entries name
+	 * @param launcherState the directory that holds the session launcher's state, which the sandbox entries name
+	 * @param consent       decides whether the user allows a change that needs their permission
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public InstallRequest
@@ -37,6 +39,7 @@ public record InstallRequest(HarnessSession session, Path image, List<HarnessIns
 		requireThat(image, "image").isNotNull();
 		others = List.copyOf(others);
 		requireThat(catLocks, "catLocks").isNotNull();
+		requireThat(launcherState, "launcherState").isNotNull();
 		requireThat(consent, "consent").isNotNull();
 	}
 }

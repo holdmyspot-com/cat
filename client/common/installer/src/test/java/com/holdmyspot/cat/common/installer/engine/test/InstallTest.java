@@ -119,7 +119,7 @@ public final class InstallTest
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
-				question ->
+				fixture.root.resolve("user/.cat/sessions"), question ->
 				{
 					questions.add(question);
 					return false;
@@ -154,7 +154,7 @@ public final class InstallTest
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
-				_ -> true));
+				fixture.root.resolve("user/.cat/sessions"), _ -> true));
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UPDATED);
@@ -187,7 +187,7 @@ public final class InstallTest
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
-				_ -> true));
+				fixture.root.resolve("user/.cat/sessions"), _ -> true));
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UPDATED);
@@ -221,7 +221,8 @@ public final class InstallTest
 			}, Duration.ZERO, _ -> false, new RecordingMigrations());
 
 			UpdateResult result = engine.install("v1.1", new InstallRequest(integration.session(),
-				root.resolve("download/plugin"), List.of(), root.resolve("user/.cat/locks"), _ -> false));
+				root.resolve("download/plugin"), List.of(), root.resolve("user/.cat/locks"),
+				root.resolve("user/.cat/sessions"), _ -> false));
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.INSTALLED);

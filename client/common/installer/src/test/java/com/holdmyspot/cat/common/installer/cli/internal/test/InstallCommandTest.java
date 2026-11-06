@@ -276,7 +276,8 @@ public final class InstallCommandTest
 			Install.Outcome outcome = fixture.install();
 
 			requireThat(fixture.integration.callsWithSubjects(), "calls").contains("installSandboxEntries " +
-				fixture.user.resolve("harness-b-home") + " " + fixture.user.resolve(".cat/locks"));
+				fixture.user.resolve("harness-b-home") + " " + fixture.user.resolve(".cat/locks") + " " +
+				fixture.user.resolve(".cat/sessions"));
 			requireThat(outcome.entries().recorded(), "permissions").
 				isEqualTo(Map.of("settings.json#sandbox", List.of("other")));
 		}

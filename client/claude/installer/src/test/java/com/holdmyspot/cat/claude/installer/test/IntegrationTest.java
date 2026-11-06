@@ -760,17 +760,21 @@ public final class IntegrationTest
 			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of("CODEX_HOME", codexHome.toString()),
 				userHome);
 			Path catLocks = userHome.resolve(".cat/locks");
+			Path launcherState = userHome.resolve(".cat/sessions");
 			Integration integration = integration();
 
-			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, replacer());
-			Map<String, List<String>> repeated = integration.installSandboxEntries(home, codex, catLocks, replacer());
+			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, launcherState,
+				replacer());
+			Map<String, List<String>> repeated = integration.installSandboxEntries(home, codex, catLocks,
+				launcherState, replacer());
 
 			List<String> denied = List.of(codexHome.resolve("plugins/cat-marketplace").toString(),
 				codexHome.resolve("plugins/cache/cat/cat").toString(), codexHome.resolve("plugins/data/cat-cat").toString());
 			Map<String, List<String>> expected = Map.of(SETTINGS_KEY_DENY_WRITE, denied, SETTINGS_KEY_ALLOW_WRITE,
 				List.of(catLocks.toString()));
 			requireThat(added, "added").isEqualTo(expected);
-			requireThat(integration.sandboxEntries(home, codex, catLocks), "maintained").isEqualTo(expected);
+			requireThat(integration.sandboxEntries(home, codex, catLocks, launcherState),
+				"maintained").isEqualTo(expected);
 			requireThat(repeated, "repeated").isEmpty();
 			StringJoiner deniedLines = new StringJoiner(",\n", "", "\n");
 			for (String entry : denied)
@@ -804,12 +808,14 @@ public final class IntegrationTest
 			Path home = Files.createDirectories(userHome.resolve(".claude"));
 			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of(), userHome);
 			Path catLocks = userHome.resolve(".cat/locks");
+			Path launcherState = userHome.resolve(".cat/sessions");
 			String userSettings = "{\"sandbox\":{\"enabled\":true,\"filesystem\":{\"allowWrite\":[" +
 				json(userHome.toString()) + "," + json(catLocks.toString()) + "],\"denyWrite\":[\"/etc\"]}}}";
 			Path settings = Files.writeString(home.resolve("settings.json"), userSettings);
 			Integration integration = integration();
 
-			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, replacer());
+			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, launcherState,
+				replacer());
 			integration.removePermissions(home, added, replacer());
 
 			requireThat(added.keySet(), "addedKeys").isEqualTo(Set.of(SETTINGS_KEY_DENY_WRITE));
@@ -852,11 +858,12 @@ public final class IntegrationTest
 			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
 				json(userEntry.toString()) + "]}}}");
 			PluginInstall install = new PluginInstall(integration(), _ -> new CommandResult(0, ""), replacer());
-			install.installEntries(home, launcher(home), claude, List.of(codex), wrongLocks, false);
+			install.installEntries(home, launcher(home), claude, List.of(codex), wrongLocks,
+				userHome.resolve("account/.cat/sessions"), false);
 			requireThat(Files.readString(home.resolve("settings.json")), "granted").contains(json(wrongLocks.toString()));
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
-				List.of(codex), catLocks, false);
+				List.of(codex), catLocks, userHome.resolve(".cat/sessions"), false);
 
 			requireThat(Files.readString(home.resolve("settings.json")), "settings").
 				contains(json(userEntry.toString())).contains(json(catLocks.toString())).
@@ -1250,7 +1257,7 @@ public final class IntegrationTest
 			requireRefusal(() -> integration.validateConfiguration(home));
 			requireRefusal(() -> integration.installPermissions(home, launcher(home), replacer()));
 			requireRefusal(() -> integration.installSandboxEntries(home, new CodexInstallation(home.resolve("codex")),
-				home.resolve("locks"), replacer()));
+				home.resolve("locks"), home.resolve("sessions"), replacer()));
 			requireThat(Files.readString(settings), "settings").isEqualTo(content);
 		}
 	}

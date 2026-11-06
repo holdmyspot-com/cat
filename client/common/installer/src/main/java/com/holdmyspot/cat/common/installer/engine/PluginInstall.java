@@ -122,25 +122,27 @@ public final class PluginInstall
 	 * integration no longer maintains and the runner entries that CAT's installation guide told the user to add, then
 	 * adds the permission entries and the sandbox entries and records the added ones.
 	 *
-	 * @param home         the harness home
-	 * @param installer    the installer launcher in the version folder
-	 * @param installation the harness's CAT installation
-	 * @param others       the CAT installations of the other harnesses
-	 * @param catLocks     the directory of the capacity locks
-	 * @param consented    true if the user allowed the change that {@link HarnessIntegration#consentRequest} asks
-	 *                     about
+	 * @param home          the harness home
+	 * @param installer     the installer launcher in the version folder
+	 * @param installation  the harness's CAT installation
+	 * @param others        the CAT installations of the other harnesses
+	 * @param catLocks      the directory of the capacity locks
+	 * @param launcherState the directory that holds the session launcher's state
+	 * @param consented     true if the user allowed the change that {@link HarnessIntegration#consentRequest} asks
+	 *                      about
 	 * @return the recorded entries, and what the user needs to know about the entries that this call removed and added
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if an entry or the record cannot be read or written
 	 */
 	public InstalledEntries installEntries(Path home, Path installer, HarnessInstallation installation,
-		List<HarnessInstallation> others, Path catLocks, boolean consented) throws IOException
+		List<HarnessInstallation> others, Path catLocks, Path launcherState, boolean consented) throws IOException
 	{
 		requireThat(home, "home").isNotNull();
 		requireThat(installer, "installer").isNotNull();
 		requireThat(installation, "installation").isNotNull();
 		requireThat(others, "others").isNotNull();
 		requireThat(catLocks, "catLocks").isNotNull();
+		requireThat(launcherState, "launcherState").isNotNull();
 		Path record = InstallerState.of(installation.dataDirectory(), integration.harness()).permissions();
 		Map<String, List<String>> added = new LinkedHashMap<>();
 		if (consented)
@@ -148,7 +150,7 @@ public final class PluginInstall
 
 		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(installer));
 		for (HarnessInstallation other : others)
-			merge(maintained, integration.sandboxEntries(home, other, catLocks));
+			merge(maintained, integration.sandboxEntries(home, other, catLocks, launcherState));
 		Map<String, List<String>> obsolete = PermissionRecord.obsolete(record, maintained);
 		if (!obsolete.isEmpty())
 		{
@@ -158,7 +160,8 @@ public final class PluginInstall
 		List<String> notices = new ArrayList<>(integration.removeRunnerExceptions(home, replacer));
 		merge(added, integration.installPermissions(home, installer, replacer));
 		for (HarnessInstallation other : others)
-			merge(added, integration.installSandboxEntries(home, other, catLocks, replacer));
+			merge(added, integration.installSandboxEntries(home, other, catLocks, launcherState,
+				replacer));
 		Map<String, List<String>> recorded = PermissionRecord.add(record, added);
 		notices.addAll(integration.describeAdded(home, added));
 		return new InstalledEntries(recorded, notices);

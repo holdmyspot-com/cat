@@ -46,7 +46,7 @@ public final class SandboxEntriesTest
 		Path home = testRoot().resolve("custom codex home");
 		Path locks = testRoot().resolve("user/.cat/locks");
 
-		requireThat(provider().sandboxEntries(home, other(), locks), "entries").
+		requireThat(sandboxEntries(home, locks), "entries").
 			isEqualTo(Map.of(KEY, List.of(locks.toString())));
 	}
 
@@ -70,10 +70,10 @@ public final class SandboxEntriesTest
 			Files.writeString(configuration, original);
 
 			provider().validateConfiguration(home);
-			Map<String, List<String>> added = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> added = installSandboxEntries(home, locks);
 			requireThat(added, "added").isEqualTo(Map.of(KEY, List.of(locks.toString())));
 			requireThat(Files.readString(configuration), "edited").isEqualTo(edited.formatted(quote(locks)));
-			requireThat(provider().installSandboxEntries(home, other(), locks, replacer()), "repeated").isEmpty();
+			requireThat(installSandboxEntries(home, locks), "repeated").isEmpty();
 
 			provider().removePermissions(home, added, replacer());
 			requireThat(Files.readString(configuration), "removed").isEqualTo(removed);
@@ -132,7 +132,7 @@ public final class SandboxEntriesTest
 			Path locks = home.resolveSibling("user/.cat/locks");
 			Path configuration = home.resolve("config.toml");
 
-			Map<String, List<String>> added = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> added = installSandboxEntries(home, locks);
 			requireThat(added, "added").isEqualTo(Map.of(KEY, List.of(locks.toString())));
 			requireThat(Files.readString(configuration), "created").
 				isEqualTo("[sandbox_workspace_write]\nwritable_roots = [" + quote(locks) + "]\n");
@@ -157,7 +157,7 @@ public final class SandboxEntriesTest
 			Path locks = home.resolveSibling("user/.cat/locks");
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, "[sandbox_workspace_write]\nwritable_roots = [\"/data\"]\n");
-			Map<String, List<String>> added = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> added = installSandboxEntries(home, locks);
 			Files.writeString(configuration, "# mine\n[sandbox_workspace_write]\nwritable_roots = [\"/before\", " +
 				quote(locks) + ", \"/data\"]\n");
 
@@ -183,7 +183,7 @@ public final class SandboxEntriesTest
 			String original = "[sandbox_workspace_write]\nwritable_roots = [" + quote(locks) + "]\n";
 			Files.writeString(configuration, original);
 
-			requireThat(provider().installSandboxEntries(home, other(), locks, replacer()), "added").isEmpty();
+			requireThat(installSandboxEntries(home, locks), "added").isEmpty();
 			requireThat(Files.readString(configuration), "content").isEqualTo(original);
 		}
 	}
@@ -213,7 +213,7 @@ public final class SandboxEntriesTest
 					if (attempt == 0)
 						provider().validateConfiguration(home);
 					else
-						provider().installSandboxEntries(home, other(), locks, replacer());
+						installSandboxEntries(home, locks);
 					throw new AssertionError("Accepted a config.toml that CAT cannot edit safely");
 				}
 				catch (IOException e)
@@ -262,7 +262,7 @@ public final class SandboxEntriesTest
 			Files.writeString(home.resolve("config.toml"), "default_permissions = \"cat\"\n\n[permissions.cat]\n" +
 				"extends = \":workspace\"\n");
 
-			requireThat(provider().sandboxEntries(home, other(), locks), "entries").
+			requireThat(sandboxEntries(home, locks), "entries").
 				isEqualTo(Map.of("config.toml#permissions.cat.filesystem", List.of(locks.toString())));
 		}
 	}
@@ -290,10 +290,10 @@ public final class SandboxEntriesTest
 			Files.writeString(configuration, original);
 
 			provider().validateConfiguration(home);
-			Map<String, List<String>> added = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> added = installSandboxEntries(home, locks);
 			requireThat(added, "added").isEqualTo(Map.of(key, List.of(locks.toString())));
 			requireThat(Files.readString(configuration), "edited").isEqualTo(edited.formatted(quote(locks)));
-			requireThat(provider().installSandboxEntries(home, other(), locks, replacer()), "repeated").isEmpty();
+			requireThat(installSandboxEntries(home, locks), "repeated").isEmpty();
 			requireThat(Files.readString(configuration), "repeated").isEqualTo(edited.formatted(quote(locks)));
 
 			provider().removePermissions(home, added, replacer());
@@ -364,7 +364,7 @@ public final class SandboxEntriesTest
 			Path locks = home.resolveSibling("user/.cat/locks");
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, "default_permissions = \"cat\"\n[permissions.cat.filesystem]\n");
-			Map<String, List<String>> added = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> added = installSandboxEntries(home, locks);
 			Files.writeString(configuration, "default_permissions = \"cat\"\n# mine\n[permissions.cat.filesystem]\n" +
 				"\"/before\" = \"write\"\n" + quote(locks) + " = \"write\"\n\"/after\" = \"none\"\n");
 
@@ -393,7 +393,7 @@ public final class SandboxEntriesTest
 				" = \"" + access + "\"\n";
 			Files.writeString(configuration, original);
 
-			requireThat(provider().installSandboxEntries(home, other(), locks, replacer()), "added").isEmpty();
+			requireThat(installSandboxEntries(home, locks), "added").isEmpty();
 			requireThat(Files.readString(configuration), "content").isEqualTo(original);
 		}
 	}
@@ -425,12 +425,12 @@ public final class SandboxEntriesTest
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, "default_permissions = \"a\"\n[permissions.a.filesystem]\n" +
 				"[permissions.b.filesystem]\n");
-			Map<String, List<String>> earlier = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> earlier = installSandboxEntries(home, locks);
 			String selectsB = "default_permissions = \"b\"\n[permissions.a.filesystem]\n" + quote(locks) +
 				" = \"write\"\n[permissions.b.filesystem]\n";
 			Files.writeString(configuration, selectsB);
 
-			requireThat(provider().sandboxEntries(home, other(), locks), "entries").
+			requireThat(sandboxEntries(home, locks), "entries").
 				isEqualTo(Map.of("config.toml#permissions.b.filesystem", List.of(locks.toString())));
 			provider().removePermissions(home, earlier, replacer());
 			requireThat(Files.readString(configuration), "removed").
@@ -478,11 +478,12 @@ public final class SandboxEntriesTest
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
 			HarnessInstallation installation = provider.installation(home);
-			install.installEntries(home, launcher, installation, List.of(other()), wrongLocks, false);
+			install.installEntries(home, launcher, installation, List.of(other()), wrongLocks,
+				launcherState(wrongLocks), false);
 			requireThat(Files.readString(configuration), "granted").contains(quote(wrongLocks));
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, installation,
-				List.of(other()), locks, false);
+				List.of(other()), locks, launcherState(locks), false);
 
 			requireThat(Files.readString(configuration), "reinstalled").contains(quote(locks)).
 				doesNotContain(quote(wrongLocks)).contains(kept);
@@ -549,6 +550,43 @@ public final class SandboxEntriesTest
 	private static String quote(Path path)
 	{
 		return MAPPER.writeValueAsString(path.toString());
+	}
+
+	/**
+	 * Returns the folder that holds the session launcher's state, beside the lock folder.
+	 *
+	 * @param locks the capacity lock folder
+	 * @return the folder
+	 */
+	private static Path launcherState(Path locks)
+	{
+		return locks.resolveSibling("sessions");
+	}
+
+	/**
+	 * Adds the sandbox entries for the lock folder and the launcher's state.
+	 *
+	 * @param home  the Codex home
+	 * @param locks the capacity lock folder
+	 * @return the entries that the call added
+	 * @throws IOException if the configuration cannot be changed
+	 */
+	private static Map<String, List<String>> installSandboxEntries(Path home, Path locks) throws IOException
+	{
+		return provider().installSandboxEntries(home, other(), locks, launcherState(locks), replacer());
+	}
+
+	/**
+	 * Returns the sandbox entries for the lock folder and the launcher's state.
+	 *
+	 * @param home  the Codex home
+	 * @param locks the capacity lock folder
+	 * @return the entries
+	 * @throws IOException if the other harness's installation cannot be located
+	 */
+	private static Map<String, List<String>> sandboxEntries(Path home, Path locks) throws IOException
+	{
+		return provider().sandboxEntries(home, other(), locks, launcherState(locks));
 	}
 
 	/**

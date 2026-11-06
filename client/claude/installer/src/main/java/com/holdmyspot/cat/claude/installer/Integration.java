@@ -866,19 +866,20 @@ public final class Integration implements HarnessIntegration
 	 * Merges the sandbox entries into {@code sandbox.filesystem.denyWrite} and {@code sandbox.filesystem.allowWrite}
 	 * of {@code settings.json}, creating the file and members when absent.
 	 *
-	 * @param home     the absolute Claude Code configuration directory
-	 * @param other    the other harness's CAT installation
-	 * @param catLocks the absolute capacity lock directory
-	 * @param replacer replaces {@code settings.json}
+	 * @param home          the absolute Claude Code configuration directory
+	 * @param other         the other harness's CAT installation
+	 * @param catLocks      the absolute capacity lock directory
+	 * @param launcherState the absolute directory that holds the session launcher's state
+	 * @param replacer      replaces {@code settings.json}
 	 * @return the added entries, keyed {@code settings.json#sandbox.filesystem.denyWrite} and
 	 * 	{@code settings.json#sandbox.filesystem.allowWrite}; a key is absent when nothing was added to it
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative
 	 * @throws IOException              if the settings cannot be changed safely
 	 */
 	@Override
 	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		FileReplacer replacer) throws IOException
+		Path launcherState, FileReplacer replacer) throws IOException
 	{
 		requireThat(replacer, "replacer").isNotNull();
 		return addEntries(home, filesystemEntries(home, other, catLocks), replacer);
@@ -890,16 +891,18 @@ public final class Integration implements HarnessIntegration
 	 * that harness installs, its CAT version folders, from which it runs CAT, and CAT's data directory there, which
 	 * holds the installer's policy. Claude Code's sandbox already denies writes below its own {@code plugins} folder.
 	 *
-	 * @param home     the absolute Claude Code configuration directory
-	 * @param other    the other harness's CAT installation
-	 * @param catLocks the absolute capacity lock directory
+	 * @param home          the absolute Claude Code configuration directory
+	 * @param other         the other harness's CAT installation
+	 * @param catLocks      the absolute capacity lock directory
+	 * @param launcherState the absolute directory that holds the session launcher's state
 	 * @return the entries, keyed {@code settings.json#sandbox.filesystem.denyWrite} and
 	 * 	{@code settings.json#sandbox.filesystem.allowWrite}
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
+	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative
 	 */
 	@Override
-	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
+	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks,
+		Path launcherState)
 	{
 		return keyed(filesystemEntries(home, other, catLocks));
 	}

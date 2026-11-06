@@ -34,6 +34,7 @@ import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
+import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.AccessDeniedException;
@@ -664,7 +665,8 @@ public final class Invocation
 		List<HarnessInstallation> others = integrations.stream().
 			filter(provider -> !provider.harness().equals(harness)).
 			map(provider -> provider.installation(environment, userHome)).toList();
-		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome), consent);
+		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome),
+			new SessionLauncherChannel(userHome).stateRoot(), consent);
 	}
 
 	/**

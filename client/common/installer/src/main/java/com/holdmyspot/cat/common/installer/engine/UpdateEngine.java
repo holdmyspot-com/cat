@@ -492,7 +492,7 @@ public final class UpdateEngine
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
-				request.others(), request.catLocks(), consentRequest.isPresent());
+				request.others(), request.catLocks(), request.launcherState(), consentRequest.isPresent());
 		}
 		catch (IOException e)
 		{
@@ -578,7 +578,7 @@ public final class UpdateEngine
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			startupCache = trainer.train(versionFolder);
 			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
-				request.others(), request.catLocks(), consentRequest.isPresent());
+				request.others(), request.catLocks(), request.launcherState(), consentRequest.isPresent());
 		}
 		catch (IOException e)
 		{

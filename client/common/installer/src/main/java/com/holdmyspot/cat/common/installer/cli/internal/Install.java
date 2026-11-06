@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -200,8 +201,9 @@ public final class Install
 		Path installer = PluginInstall.installer(versionFolder, platform.isWindows());
 		List<HarnessInstallation> otherInstallations = others.stream().
 			map(other -> other.installation(environment, userHome)).toList();
+		Path launcherState = new SessionLauncherChannel(userHome).stateRoot();
 		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
-			consentRequest.isPresent());
+			launcherState, consentRequest.isPresent());
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}
 

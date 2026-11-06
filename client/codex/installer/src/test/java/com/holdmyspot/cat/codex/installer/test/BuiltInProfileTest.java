@@ -152,10 +152,10 @@ public final class BuiltInProfileTest
 				"CAT set default_permissions in " + configuration + " to its permission profile \"cat-workspace\", " +
 					"which extends \":workspace\" and lets sandboxed commands take CAT's capacity locks; " +
 					"uninstalling CAT sets it back to \":workspace\"."));
-			requireThat(provider().sandboxEntries(home, other(), locks), "maintained").isEqualTo(recorded);
+			requireThat(sandboxEntries(home, locks), "maintained").isEqualTo(recorded);
 
 			requireThat(provider().consentRequest(home, locks), "repeatedQuestion").isEmpty();
-			Map<String, List<String>> repeated = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> repeated = installSandboxEntries(home, locks);
 			requireThat(repeated, "repeated").isEmpty();
 			requireThat(provider().describeAdded(home, repeated), "repeatedNotices").isEmpty();
 			requireThat(Files.readString(configuration), "repeated").isEqualTo(edited.formatted(quote(locks)));
@@ -316,13 +316,13 @@ public final class BuiltInProfileTest
 			Files.writeString(configuration, "default_permissions = \"mine\"\n\n[permissions.mine]\n" +
 				"extends = \":workspace\"\n");
 
-			Map<String, List<String>> added = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> added = installSandboxEntries(home, locks);
 
 			requireThat(provider().describeAdded(home, added), "notices").isEqualTo(List.of(
 				"CAT added " + quote(locks) + " = \"write\" to the Codex permission profile \"mine\" in " +
 					configuration + ", so that sandboxed commands can take CAT's capacity locks; every project that " +
 					"uses this profile can now write that folder too."));
-			Map<String, List<String>> repeated = provider().installSandboxEntries(home, other(), locks, replacer());
+			Map<String, List<String>> repeated = installSandboxEntries(home, locks);
 			requireThat(provider().describeAdded(home, repeated), "repeated").isEmpty();
 		}
 	}
@@ -340,7 +340,7 @@ public final class BuiltInProfileTest
 		provider().validateConfiguration(home);
 		requireThat(provider().consentRequest(home, locks).isPresent(), "asked").isTrue();
 		Map<String, List<String>> recorded = new HashMap<>(provider().installConsentedEntries(home, replacer()));
-		recorded.putAll(provider().installSandboxEntries(home, other(), locks, replacer()));
+		recorded.putAll(installSandboxEntries(home, locks));
 		return recorded;
 	}
 
@@ -353,6 +353,43 @@ public final class BuiltInProfileTest
 	private static String quote(Path path)
 	{
 		return MAPPER.writeValueAsString(path.toString());
+	}
+
+	/**
+	 * Returns the folder that holds the session launcher's state, beside the lock folder.
+	 *
+	 * @param locks the capacity lock folder
+	 * @return the folder
+	 */
+	private static Path launcherState(Path locks)
+	{
+		return locks.resolveSibling("sessions");
+	}
+
+	/**
+	 * Adds the sandbox entries for the lock folder and the launcher's state.
+	 *
+	 * @param home  the Codex home
+	 * @param locks the capacity lock folder
+	 * @return the entries that the call added
+	 * @throws IOException if the configuration cannot be changed
+	 */
+	private static Map<String, List<String>> installSandboxEntries(Path home, Path locks) throws IOException
+	{
+		return provider().installSandboxEntries(home, other(), locks, launcherState(locks), replacer());
+	}
+
+	/**
+	 * Returns the sandbox entries for the lock folder and the launcher's state.
+	 *
+	 * @param home  the Codex home
+	 * @param locks the capacity lock folder
+	 * @return the entries
+	 * @throws IOException if the other harness's installation cannot be located
+	 */
+	private static Map<String, List<String>> sandboxEntries(Path home, Path locks) throws IOException
+	{
+		return provider().sandboxEntries(home, other(), locks, launcherState(locks));
 	}
 
 	/**

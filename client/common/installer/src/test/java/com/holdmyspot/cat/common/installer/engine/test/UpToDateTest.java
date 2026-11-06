@@ -134,6 +134,6 @@ public final class UpToDateTest
 	private static InstallRequest request(EngineFixture fixture, boolean consent)
 	{
 		return new InstallRequest(fixture.integration.session(), fixture.root.resolve("download/plugin"), List.of(),
-			fixture.root.resolve("user/.cat/locks"), _ -> consent);
+			fixture.root.resolve("user/.cat/locks"), fixture.root.resolve("user/.cat/sessions"), _ -> consent);
 	}
 }

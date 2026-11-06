@@ -208,7 +208,8 @@ public final class OtherHarnessInstallTest
 			requireThat(run.status, "status").withContext(run.output, "output").
 				withContext(run.diagnostics, "diagnostics").isEqualTo(0);
 			requireThat(fixture.otherIntegration.callsWithSubjects(), "calls").contains("installSandboxEntries " +
-				fixture.user.resolve("harness-a-home") + " " + fixture.user.resolve(".cat/locks"));
+				fixture.user.resolve("harness-a-home") + " " + fixture.user.resolve(".cat/locks") + " " +
+				fixture.user.resolve(".cat/sessions"));
 			requireThat(Files.isRegularFile(fixture.otherVersionFolder(Fixture.RUNNING).resolve("bin/VERSION")),
 				"installed").isTrue();
 		}
