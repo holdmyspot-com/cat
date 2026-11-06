@@ -52,6 +52,75 @@ public final class FakeWorkspaceContractTest
 	}
 
 	/**
+	 * Verifies that the fake reads the files of a saved candidate.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void readsFilesOfASavedCandidate() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, true)).readsFilesOfASavedCandidate();
+		}
+	}
+
+	/**
+	 * Verifies that the fake copies a plugin base by the digest of its files.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void copiesAPluginBaseByTheDigestOfItsFiles(boolean stagedFiles) throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				copiesAPluginBaseByTheDigestOfItsFiles();
+		}
+	}
+
+	/**
+	 * Verifies that the fake names a plugin copy per staged source and set of removals.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void copiesAPluginPerStagedSourceAndRemovals(boolean stagedFiles) throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				copiesAPluginPerStagedSourceAndRemovals();
+		}
+	}
+
+	/**
+	 * Verifies that the fake's worktree is an absolute directory.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "modes")
+	public void locatesTheWorktree(boolean stagedFiles) throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).locatesTheWorktree();
+		}
+	}
+
+	/**
 	 * Verifies that a staged source with a selection holds only the selected files.
 	 *
 	 * @throws IOException if the fixture or check fails

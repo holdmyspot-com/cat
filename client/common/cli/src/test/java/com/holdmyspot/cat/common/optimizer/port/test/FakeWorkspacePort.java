@@ -42,7 +42,9 @@ import java.util.stream.Stream;
  * Each authoring copy scans as the working candidate's snapshot rooted at the copy. Prompt author edits are supplied
  * with {@link #editAuthoringCopy(Path, FileInventory)}; an inventory rooted at a session's effects directory changes
  * those effects independently of the source copy. {@link WorkspaceContract} checks these operations against
- * {@link Workspace}.
+ * {@link Workspace}: reading a saved candidate's files, staging, plugin bases and the naming of plugin copies,
+ * authoring copies, the worktree and materialization. {@link #staged()} and {@link #stagedSources()} report which
+ * of those directories the fake holds, for the tests of its callers.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -235,8 +237,10 @@ public final class FakeWorkspacePort implements WorkspacePort
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The fake names the copy after the staged source and the plugin under {@code plugins}, with the suffix
-	 * {@code -without-dependents} when there are removals, and creates nothing.
+	 * The fake returns the base of a plugin that the project does not build. For a plugin that the project builds it
+	 * names the copy after the staged source and the plugin under {@code plugins}, with the suffix
+	 * {@code -without-dependents} when there are removals, and creates nothing. Unlike the real workspace, it does not
+	 * refuse a plugin whose base was not copied, and its copy holds no files.
 	 */
 	@Override
 	public Path pluginCopy(TrialPlugin plugin, Path source, PluginRemovals removals)
@@ -244,6 +248,8 @@ public final class FakeWorkspacePort implements WorkspacePort
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(source, "source").isNotNull();
 		requireThat(removals, "removals").isNotNull();
+		if (!plugin.isProjectBuilt())
+			return pluginBase(plugin.baseDigest());
 		String name = plugin.name();
 		if (!removals.isEmpty())
 			name += "-without-dependents";

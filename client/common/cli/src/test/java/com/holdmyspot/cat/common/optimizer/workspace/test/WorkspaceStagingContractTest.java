@@ -40,6 +40,72 @@ public final class WorkspaceStagingContractTest
 	}
 
 	/**
+	 * Verifies that the workspace reads the files of a saved candidate.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void readsFilesOfASavedCandidate() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).readsFilesOfASavedCandidate();
+		}
+	}
+
+	/**
+	 * Verifies that the workspace copies a plugin base by the digest of its files.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void copiesAPluginBaseByTheDigestOfItsFiles() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				copiesAPluginBaseByTheDigestOfItsFiles();
+		}
+	}
+
+	/**
+	 * Verifies that the workspace copies a plugin per staged source and set of removals.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void copiesAPluginPerStagedSourceAndRemovals() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).
+				copiesAPluginPerStagedSourceAndRemovals();
+		}
+	}
+
+	/**
+	 * Verifies that the workspace's worktree is an absolute directory.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void locatesTheWorktree() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, false, true)).locatesTheWorktree();
+		}
+	}
+
+	/**
 	 * Verifies that a staged source with a selection holds only the selected files.
 	 *
 	 * @throws IOException if the fixture or check fails

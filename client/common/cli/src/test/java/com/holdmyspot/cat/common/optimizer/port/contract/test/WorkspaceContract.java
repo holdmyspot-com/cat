@@ -3,19 +3,26 @@ package com.holdmyspot.cat.common.optimizer.port.contract.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.optimizer.contract.Dependent;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Shared checks for {@link WorkspacePort}, called by the fake and file-system adapter's test methods.
@@ -110,6 +117,14 @@ public final class WorkspaceContract
 		 * @throws IOException if the worktree cannot be changed
 		 */
 		void changeWorktree() throws IOException;
+
+		/**
+		 * Returns a plugin directory that holds a manifest and the script {@code bin/read-part}.
+		 *
+		 * @return the directory, which exists for the subject's lifetime
+		 * @throws IOException if the plugin cannot be created
+		 */
+		Path pluginDirectory() throws IOException;
 	}
 
 	/**
@@ -313,5 +328,108 @@ public final class WorkspaceContract
 	{
 		return new RegularFile(Sha256.of(content.getBytes(UTF_8)),
 			PosixFilePermissions.fromString("rw-r--r--"));
+	}
+
+	/**
+	 * Checks that a saved candidate's file is read as the candidate holds it: written and created files as written,
+	 * untouched files as recorded, and deleted or absent files as empty.
+	 *
+	 * @throws IOException if a file cannot be read
+	 */
+	public void readsFilesOfASavedCandidate() throws IOException
+	{
+		WorkspacePort port = subject.port();
+		Overlay candidate = candidate();
+
+		requireThat(read(port, candidate, "prompt.md"), "written").isEqualTo(Optional.of("edited"));
+		requireThat(read(port, candidate, "new.md"), "created").isEqualTo(Optional.of("created"));
+		requireThat(read(port, candidate, "keep.md"), "untouched").isEqualTo(Optional.of("keep"));
+		requireThat(read(port, candidate, "deleted.md"), "deleted").isEqualTo(Optional.empty());
+		requireThat(read(port, candidate, "absent.md"), "absent").isEqualTo(Optional.empty());
+	}
+
+	/**
+	 * Reads a file of a saved candidate as UTF-8 text.
+	 *
+	 * @param port      the workspace
+	 * @param candidate the candidate
+	 * @param file      the inventory path
+	 * @return the text, or empty if the candidate holds no regular file at the path
+	 * @throws IOException if the file cannot be read
+	 */
+	private static Optional<String> read(WorkspacePort port, Overlay candidate, String file) throws IOException
+	{
+		Optional<FileContent> content = port.readFile(candidate, Path.of(file));
+		if (content.isEmpty())
+			return Optional.empty();
+		return Optional.of(new String(content.get().bytes(), UTF_8));
+	}
+
+	/**
+	 * Checks that a plugin directory is copied into a base named by the digest of its files, once per set of files,
+	 * and that a change to the directory makes a base of its own.
+	 *
+	 * @throws IOException if a copy fails
+	 */
+	public void copiesAPluginBaseByTheDigestOfItsFiles() throws IOException
+	{
+		WorkspacePort port = subject.port();
+		Path directory = subject.pluginDirectory();
+
+		String digest = port.copyPluginBase(directory);
+
+		requireThat(digest, "digest").isNotBlank();
+		Path base = port.pluginBase(digest);
+		requireThat(base, "base").isAbsolute();
+		requireThat(Files.readString(base.resolve("bin/read-part"), UTF_8), "copiedScript").
+			isEqualTo(Files.readString(directory.resolve("bin/read-part"), UTF_8));
+		requireThat(port.copyPluginBase(directory), "repeatedDigest").isEqualTo(digest);
+		Files.writeString(directory.resolve("bin/read-part"), "#!/bin/sh\necho changed\n", UTF_8);
+		String changed = port.copyPluginBase(directory);
+		requireThat(changed, "changedDigest").isNotEqualTo(digest);
+		requireThat(port.pluginBase(changed), "changedBase").isNotEqualTo(base);
+		requireThat(Files.readString(base.resolve("bin/read-part"), UTF_8), "firstBase").isEqualTo("#!/bin/sh\n");
+	}
+
+	/**
+	 * Checks that a plugin that the project does not build is installed from its base, and that a plugin that the
+	 * project builds has a copy of its own for each staged source and each set of removals, which deleting the
+	 * candidate removes.
+	 *
+	 * @throws IOException if a copy fails
+	 */
+	public void copiesAPluginPerStagedSourceAndRemovals() throws IOException
+	{
+		WorkspacePort port = subject.port();
+		String digest = port.copyPluginBase(subject.pluginDirectory());
+		TrialPlugin installed = new TrialPlugin("tools", digest, new TrialPlugin.Installed(), List.of(), null);
+		TrialPlugin built = new TrialPlugin("cat", digest, new TrialPlugin.Build(List.of("build"), Path.of("out")),
+			List.of(), null);
+		Overlay candidate = candidate();
+		Path source = port.stage(candidate, Set.of());
+		Path otherSource = port.stage(Overlay.of(subject.fork()), Set.of());
+		PluginRemovals removals = PluginRemovals.of(List.of(new Dependent(Dependent.Location.PLUGIN, "cat",
+			Path.of("bin/read-part"), new Dependent.WholeFile(), "Reads the part that the rule names.")),
+			JsonMapper.builder().build());
+
+		requireThat(port.pluginCopy(installed, source, PluginRemovals.NONE), "installedCopy").
+			isEqualTo(port.pluginBase(digest));
+		Path copy = port.pluginCopy(built, source, PluginRemovals.NONE);
+		requireThat(copy, "builtCopy").isNotEqualTo(port.pluginBase(digest));
+		requireThat(port.pluginCopy(built, source, PluginRemovals.NONE), "repeatedCopy").isEqualTo(copy);
+		requireThat(port.pluginCopy(built, otherSource, PluginRemovals.NONE), "otherSourceCopy").isNotEqualTo(copy);
+		Path withoutDependents = port.pluginCopy(built, source, removals);
+		requireThat(withoutDependents, "copyWithRemovals").isNotEqualTo(copy);
+		port.deleteStaged(candidate.identity());
+		requireThat(Files.exists(copy), "copyAfterDeletion").isFalse();
+		requireThat(Files.exists(withoutDependents), "copyWithRemovalsAfterDeletion").isFalse();
+	}
+
+	/**
+	 * Checks that the optimization worktree is an absolute directory.
+	 */
+	public void locatesTheWorktree()
+	{
+		requireThat(subject.port().worktree(), "worktree").isAbsolute();
 	}
 }

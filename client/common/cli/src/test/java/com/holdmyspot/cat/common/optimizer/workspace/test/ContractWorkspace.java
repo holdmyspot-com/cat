@@ -154,6 +154,15 @@ public final class ContractWorkspace implements WorkspaceContract.Subject
 			write(worktree.resolve("prompt.md"), "outside edit");
 	}
 
+	@Override
+	public Path pluginDirectory() throws IOException
+	{
+		Path plugin = Files.createDirectories(root.resolve("plugin"));
+		write(plugin.resolve(".codex-plugin/plugin.json"), "{\"name\": \"cat\"}");
+		write(plugin.resolve("bin/read-part"), "#!/bin/sh\n");
+		return plugin;
+	}
+
 	/**
 	 * Builds an inventory with a changed prompt.
 	 *
@@ -179,6 +188,7 @@ public final class ContractWorkspace implements WorkspaceContract.Subject
 	 */
 	private static void write(Path file, String content) throws IOException
 	{
+		Files.createDirectories(file.getParent());
 		Files.writeString(file, content, UTF_8);
 		PortableFiles.setMode(file, PosixFilePermissions.fromString("rw-r--r--"));
 	}
