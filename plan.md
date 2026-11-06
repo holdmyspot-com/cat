@@ -26,14 +26,22 @@ This section supersedes historical statements below about the current release, r
 The optimizer design remains authoritative for optimizer behavior; the latest user requirements below govern the
 revised plugin lifecycle and distribution work, which has not been implemented.
 
-### Status at 2026-11-05 (supersedes the release facts below)
+### Status at 2026-11-06 (supersedes the release facts below)
 
-- **Republished v1.0:** tag `v1.0` = `27df4a011f` (force-pushed after deleting the previous GitHub release). Release
-  workflow run 42107426336 passed on all five platforms. Native Build on the v1.0 branch, run 42105928931, passed on all
-  five; a local whole-reactor `clean verify` at `27df4a011f` passed (java.io.tmpdir outside any Git repo, 0 failures).
-  15 release assets; the signed manifest (`build` `27df4a011f1d`) verifies against the `cat-release` ed25519 key that
-  the archives embed, and all 10 archives match `SHA256SUMS.txt` and the manifest digests. The release omits the
-  uncommitted design.md (G4 wording) and plan.md edits, by the user's ruling.
+- **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
+  release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
+  passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
+  with "Text file busy" (an intermittent failure in an unchanged test). A local whole-reactor `clean verify` at
+  `a1b815560b` passed (4,548 tests, 0 failures; java.io.tmpdir outside any Git repo); `eb0776e896` changes only
+  `HumanReportTest`. 15 release assets; the signed manifest (`build` `eb0776e89628`) verifies against the `cat-release`
+  ed25519 key that the archives embed, and all 10 archives match `SHA256SUMS.txt` and the manifest digests. The release
+  omits the uncommitted design.md (G4 wording) edit and `goal.md`, by the user's ruling.
+- **Installer changes in this republish:** a first install takes the harness program from PATH as it is, with no folder
+  excluded; every later install reuses the recorded program after its identity check, or refuses before any write and
+  says to delete the policy file and install by hand. The installer takes the user's home from `HOME` (`USERPROFILE` on
+  Windows), like the runtime, and refuses when it is unset or not absolute; a reinstall replaces its own earlier grant of
+  the wrong locks folder. At a person's terminal the installer prints a plain-text report (outcome, next step, entries
+  added); piped output, `--json`, or an agent session (`CLAUDE_CODE_SESSION_ID`, `CODEX_THREAD_ID`) get the JSON line.
 - **In this release, beyond the earlier lifecycle work:** session launcher (children run inside the child harness's own
   sandbox, never wider than the parent); LP2-1 (a Codex child's commands can no longer write `config.toml`,
   `hooks.json` or `plugins/` in its isolated `CODEX_HOME`, which its app server runs outside the command sandbox);
@@ -42,10 +50,10 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   `skipped_copy_paths`); native-platform fixes, including two product fixes: a Codex child on macOS could read a denied
   file nested under a write grant (the other harness's `.claude/.credentials.json`), and Windows self-uninstall no
   longer holds the caller's pipe for up to 60 s.
-- **Self-install is pending the user** (cannot run from inside the agent sandbox: Claude's `~/.claude/plugins` is
-  write-denied, and the Codex wrapper needs nvm under the real HOME). The user runs, outside the sandbox:
-  `curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude` and the
-  same with `--harness codex`; then verify each installed `bin/plugin-info` reports the new build.
+- **Self-install:** build `1.0+b015b4f093740` (a local tree of the installer PATH fix) is installed in both harnesses
+  (2026-11-06, verified by each `bin/plugin-info`). It still grants `/home/gili/.cat/locks`; the user reinstalls from
+  the release, outside the sandbox, with `HOME=/home/gili/cat/home` (the `.nvm` link in that home serves the Codex
+  `node` wrapper), then restarts both harnesses; verify each reports `eb0776e89628` and the locks grant moved.
 - **Known defect in the previously installed build:** its `install/cat.sh` downloads `bootstrap.sh` from
   `client/common/lifecycle/src/main/resources/install/` on the default branch, which no longer exists (404). Updating
   from that build needs the release's own `cat.sh` (above).
@@ -58,9 +66,10 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   cooperative hosted checks that the launcher's fakes model the real OS; brief `unit-u10c.md`, on branch `srl-u10`);
   Windows launcher; one shared managed-settings list (three copies today); `ClaudeConnectionSettings.candidates`
   reading `//c/...` as POSIX on Windows; the deleter waiting on a possibly reused PID.
-- **Done 2026-11-05 (local v1.0, not pushed, not in the published release):** `srl-rd` then `srl-da` integrated, and
-  the "Subagent tiers" table matches the shipped agent definitions. **After self-install:** resume the optimizer work
-  in `goal.md`.
+- **Next release, also:** fix the intermittent "Text file busy" in `CodexPluginHooksTest`; Windows terminal detection
+  and `cat.ps1` pass-through of the installer's text report are unverified; `CodexSessionLauncherCli` and
+  `CodexInstallation.resolveHome` still read `user.home` (the first deliberately, for account system files).
+- **After self-install:** resume the optimizer work in `goal.md`.
 
 ### Latest authorized requirements
 
