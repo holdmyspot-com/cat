@@ -109,8 +109,6 @@ import com.holdmyspot.cat.common.optimizer.execution.Step;
 import com.holdmyspot.cat.common.optimizer.execution.fixture.test.FaultingFileChannel;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
-import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
-import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -121,7 +119,6 @@ import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.inventory.Operation;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
-import com.holdmyspot.cat.common.optimizer.inventory.PathChange;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
@@ -2409,9 +2406,10 @@ public final class DriverTest
 	 * not this test's.
 	 *
 	 * @throws IOException if the test directory cannot be used
+	 * @throws ScenarioFormatException if a delivered scenario cannot be parsed
 	 */
 	@Test
-	public void certify() throws IOException
+	public void certify() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-E1
 		Contract contract = ContractFixtures.contract();
@@ -2438,14 +2436,13 @@ public final class DriverTest
 				requireThat(campaign.lifecycle(), "lifecycle").isEqualTo(Lifecycle.FINISHED);
 				requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
 				requireThat(campaign.delivery().label(), "label").isEqualTo(Outcome.CERTIFIED);
-				requireThat(harness.deliverer().calls().size(), "deliveries").isEqualTo(1);
+				requireThat(harness.deliveredRecords().size(), "deliveries").isEqualTo(1);
 				CertificationAttempt certified = campaign.attempt(campaign.delivery().attempt());
 				requireThat(trialSnapshots, "trialSnapshots").contains(certified.control());
-				CertificationRecord record = harness.deliverer().calls().getFirst().record().orElseThrow();
+				CertificationRecord record = harness.deliveredRecords().getFirst();
 				requireThat(record.certificationIndex(), "certificationIndex").isEqualTo(certified.index());
 				// Requirement: R-W11
-				requireThat(harness.deliverer().calls().getFirst().tests().stream().map(DeliveredTest::id).toList(),
-					"tests").isEqualTo(campaign.contract().tests().stream().map(PromptTest::id).toList());
+				requirePromptTestsDelivered(harness, campaign);
 				requireThat(record.identity(), "identity").isEqualTo(certified.identity());
 				requireThat(result.delivery().result(), "delivery").isInstanceOf(DeliveryResult.Delivered.class);
 				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Ended(Outcome.CERTIFIED));
@@ -2508,7 +2505,7 @@ public final class DriverTest
 				requireThat(incumbentCells, "incumbentCells").isEqualTo(new HashSet<>(contract.cellIds()));
 				requireThat(incumbentSnapshots, "incumbentSnapshots").isEqualTo(Set.of(Builder.INCUMBENT));
 				SignificanceLevel level = boundaries.level();
-				CertificationRecord record = harness.deliverer().calls().getFirst().record().orElseThrow();
+				CertificationRecord record = harness.deliveredRecords().getFirst();
 				for (CertificationRecord.CellResult cell : record.cells())
 				{
 					requireThat(cell.incumbentComparisons().keySet(), cell.cell() + ".incumbentComparisons").
@@ -2558,7 +2555,7 @@ public final class DriverTest
 				Campaign campaign = harness.campaign();
 				requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
 				requireThat(purposes, "purposes").doesNotContain(Purpose.CONTROL).doesNotContain(Purpose.INCUMBENT);
-				CertificationRecord record = harness.deliverer().calls().getFirst().record().orElseThrow();
+				CertificationRecord record = harness.deliveredRecords().getFirst();
 				for (CertificationRecord.CellResult cell : record.cells())
 				{
 					requireThat(cell.controlComparisons(), cell.cell() + ".controlComparisons").isEmpty();
@@ -2760,9 +2757,44 @@ public final class DriverTest
 	private static DriverHarness runningAttemptHarness(TemporaryDirectories cleanup, Campaign campaign)
 		throws IOException
 	{
-		DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
+		DriverHarness harness = deliveringHarness(cleanup.add(Files.createTempDirectory("driver")), campaign);
 		harness.overlays().put(Builder.CONTROL, harness.candidate(""));
 		return harness;
+	}
+
+	/**
+	 * Returns ports for a campaign whose deliveries write a base worktree that holds the fork's prompt file.
+	 *
+	 * @param root the directory that the test owns
+	 * @param campaign the campaign
+	 * @return the ports
+	 * @throws IOException if the base worktree or the ports cannot be created
+	 */
+	private static DriverHarness deliveringHarness(Path root, Campaign campaign) throws IOException
+	{
+		Path base = Files.createDirectory(root.resolve("base"));
+		Files.writeString(base.resolve(DriverHarness.PROMPT), "fork", UTF_8);
+		return new DriverHarness(root.resolve("driver"), campaign, InventoryScanner.scan(base, Set.of()), base);
+	}
+
+	/**
+	 * Requires a campaign's delivery to have written every prompt test of its contract.
+	 *
+	 * @param harness the ports whose base worktree the delivery wrote
+	 * @param campaign the delivered campaign
+	 * @throws IOException if a delivered file cannot be read
+	 * @throws ScenarioFormatException if a delivered scenario cannot be parsed
+	 */
+	private static void requirePromptTestsDelivered(DriverHarness harness, Campaign campaign)
+		throws IOException, ScenarioFormatException
+	{
+		DeliveredTestContract contract = new DeliveredTestContract(harness.base(), JsonMapper.builder().build());
+		List<DeliveredTest> tests = DeliveredTest.of(campaign.contract(), campaign.developmentTestCases(),
+			DriverHarness.PROMPT);
+		requireThat(tests.stream().map(DeliveredTest::id).toList(), "tests").
+			isEqualTo(campaign.contract().tests().stream().map(PromptTest::id).toList());
+		for (DeliveredTest test : tests)
+			contract.delivered(test);
 	}
 
 	/**
@@ -6353,16 +6385,14 @@ public final class DriverTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("driver")).toRealPath();
+			Path base = Files.createDirectory(directory.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork", UTF_8);
 			Path target = Files.createDirectories(directory.resolve("external")).resolve("shared.md");
 			Files.writeString(target, "external", UTF_8);
 			Path link = Path.of("shared.md");
-			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
-			RegularFile externalFile = new RegularFile(Sha256.of("external".getBytes(UTF_8)), permissions);
-			FileInventory fork = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
-				DriverHarness.PROMPT, new RegularFile(Sha256.of("fork".getBytes(UTF_8)), permissions),
-				link, new FileEntry.SymbolicLink(target),
-				target, externalFile));
-			DriverHarness harness = new DriverHarness(directory, authorityWarningCampaign(), fork);
+			Files.createSymbolicLink(base.resolve(link), target);
+			FileInventory fork = InventoryScanner.scan(base, Set.of(target));
+			DriverHarness harness = new DriverHarness(directory.resolve("driver"), authorityWarningCampaign(), fork, base);
 			// Safety fails until the in-project prompt changes
 			Map<Path, Boolean> failsSafety = new HashMap<>();
 			SessionResult.Completed failed = harness.failed();
@@ -6423,16 +6453,19 @@ public final class DriverTest
 			{
 				driver.apply(CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
 				requireThat(harness.campaign().pending(), "answered").isNull();
-				harness.runSlice(driver);
+				// The user edits the external file while the campaign certifies, so delivery must check it
+				Files.writeString(target, "external edited", UTF_8);
+				SliceResult result = harness.runSlice(driver);
+				DeliveryResult.Delivered delivered = (DeliveryResult.Delivered) result.delivery().result();
+				requireThat(delivered.changedPromptSources(), "changedPromptSources").isEqualTo(List.of(target));
 			}
 			Campaign campaign = harness.campaign();
 			requireThat(campaign.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
-			RecordingDeliverer.Call delivery = harness.deliverer().calls().getLast();
-			requireThat(delivery.selected().snapshot().entry(target), "deliveredTarget").
-				isEqualTo(Optional.of(externalFile));
-			requireThat(delivery.selected().entries().keySet(), "deliveredChanges").
-				isEqualTo(Set.of(DriverHarness.PROMPT));
-			requireThat(delivery.promptSources(), "promptSources").contains(target);
+			requireThat(harness.deliveredRecords().size(), "deliveries").isEqualTo(1);
+			requireThat(Files.readString(base.resolve(DriverHarness.PROMPT), UTF_8), "deliveredPrompt").
+				isNotEqualTo("fork");
+			requireThat(Files.readString(target, UTF_8), "external").isEqualTo("external edited");
+			requireThat(Files.readSymbolicLink(base.resolve(link)), "link").isEqualTo(target);
 		}
 	}
 
@@ -6775,51 +6808,140 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns the delivery results that stop for the user's direction.
+	 * Returns the ways that a delivery stops for the user's direction, each with the type of result it ends in.
 	 *
-	 * @return the results
+	 * @return the stops and their result types
 	 */
 	@DataProvider
 	public static Object[][] stoppedDeliveries()
 	{
-		RegularFile file = new RegularFile(Sha256.of("base".getBytes(UTF_8)),
-			PosixFilePermissions.fromString("rw-r--r--"));
-		Path target = Path.of("/project/CLAUDE.md").toAbsolutePath();
 		return new Object[][]
 		{
-			{new DeliveryResult.UnownedChange(List.of(new PathChange.Added(Path.of("notes.md"), file)))},
-			{new DeliveryResult.Conflicted(List.of(new DeliveryConflict(DeliveryConflict.Kind.BOTH_CHANGED, target,
-				DriverHarness.PROMPT)))},
-			{new DeliveryResult.ConcurrentEdit(new DeliveryChange.Delete(1, target, file), 0)},
-			{new DeliveryResult.VerificationFailed(List.of(target))}
+			{Stop.UNOWNED_CHANGE, DeliveryResult.UnownedChange.class},
+			{Stop.CONFLICT, DeliveryResult.Conflicted.class},
+			{Stop.CONCURRENT_EDIT, DeliveryResult.ConcurrentEdit.class},
+			{Stop.VERIFICATION_FAILURE, DeliveryResult.VerificationFailed.class}
 		};
 	}
 
 	/**
-	 * Verifies that a delivery that stops reports the campaign as waiting for the user, never as delivered.
+	 * A way to make a delivery stop, by changing what the delivery reads or writes as a user would.
+	 */
+	enum Stop
+	{
+		/**
+		 * The optimization worktree holds a file that CAT did not record.
+		 */
+		UNOWNED_CHANGE
+		{
+			@Override
+			void induce(DriverHarness harness) throws IOException
+			{
+				Map<Path, FileEntry> entries = new HashMap<>(harness.workspace().scanWorktree().entries());
+				entries.put(Path.of("notes.md"), new RegularFile(Sha256.of("notes".getBytes(UTF_8)),
+					PosixFilePermissions.fromString("rw-r--r--")));
+				harness.workspace().changeWorktree(new FileInventory(harness.base(), entries));
+			}
+		},
+		/**
+		 * The user edits the prompt in the base worktree, which the candidate also edits.
+		 */
+		CONFLICT
+		{
+			@Override
+			void induce(DriverHarness harness) throws IOException
+			{
+				Files.writeString(harness.base().resolve(DriverHarness.PROMPT), "edited by the user", UTF_8);
+			}
+		},
+		/**
+		 * The user creates the certification history after the delivery wrote its first change and before it writes the
+		 * history.
+		 */
+		CONCURRENT_EDIT
+		{
+			@Override
+			void induce(DriverHarness harness)
+			{
+				Path history = harness.base().resolve(PromptTestLocations.certificationHistory(DriverHarness.PROMPT));
+				harness.afterWrite(change ->
+				{
+					if (change.sequence() != 0)
+						return;
+					try
+					{
+						Files.createDirectories(history.getParent());
+						Files.writeString(history, "edited by the user", UTF_8);
+					}
+					catch (IOException e)
+					{
+						throw new UncheckedIOException(e);
+					}
+				});
+			}
+		},
+		/**
+		 * The user edits the prompt after the delivery wrote it, before the delivery verifies it.
+		 */
+		VERIFICATION_FAILURE
+		{
+			@Override
+			void induce(DriverHarness harness)
+			{
+				Path history = PromptTestLocations.certificationHistory(DriverHarness.PROMPT);
+				harness.afterWrite(change ->
+				{
+					if (!change.target().equals(history))
+						return;
+					try
+					{
+						Files.writeString(harness.base().resolve(DriverHarness.PROMPT), "edited by the user", UTF_8);
+					}
+					catch (IOException e)
+					{
+						throw new UncheckedIOException(e);
+					}
+				});
+			}
+		};
+
+		/**
+		 * Prepares the harness so that the delivery stops.
+		 *
+		 * @param harness the harness whose driver is open
+		 * @throws IOException if the harness cannot be changed
+		 */
+		abstract void induce(DriverHarness harness) throws IOException;
+	}
+
+	/**
+	 * Verifies that a delivery that stops reports the campaign as waiting for the user, never as delivered, and
+	 * describes the stop to the user.
 	 *
-	 * @param stopped the delivery's result
+	 * @param stop how the delivery stops
+	 * @param expected the type of result that the delivery returns
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test(dataProvider = "stoppedDeliveries")
-	public void deliveryStopsForUserDirection(DeliveryResult stopped) throws IOException
+	public void deliveryStopsForUserDirection(Stop stop, Class<? extends DeliveryResult> expected) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Candidate working = new Candidate(1, Builder.snapshot("candidate-1"));
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+			DriverHarness harness = deliveringHarness(cleanup.add(Files.createTempDirectory("driver")),
 				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 					certificationAttempt(1).cell("formatting", 100, 0).cell("safety", 100, 0).
 					outcome(Outcome.CERTIFIED).campaign().lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).
 					delivery(new DeliveryRequest(working, 1, Outcome.CERTIFIED)).build());
-			harness.deliverer().respond(stopped);
 			try (Driver driver = harness.open())
 			{
+				stop.induce(harness);
 				SliceResult result = harness.runSlice(driver);
-				requireThat(result.delivery().result(), "delivery").isEqualTo(stopped);
+				requireThat(result.delivery().result(), "delivery").isInstanceOf(expected);
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
-				requireThat(result.status().pending(), "pending").isEqualTo(SliceReports.describe(stopped));
+				requireThat(result.status().pending(), "pending").
+					isEqualTo(SliceReports.describe(result.delivery().result()));
 			}
 		}
 	}

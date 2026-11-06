@@ -6,6 +6,9 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
@@ -13,6 +16,10 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
+import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
+import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
+import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
 import com.holdmyspot.cat.common.optimizer.execution.NeededEdit;
@@ -27,7 +34,9 @@ import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPromp
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
+import com.holdmyspot.cat.common.optimizer.cli.test.InMemoryForks;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
+import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
@@ -43,6 +52,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
+import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.AliasedOverlays;
@@ -70,6 +80,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -134,9 +145,15 @@ public final class DriverHarness
 	private final TriagePrompt triage;
 	private final ValuesPrompt values;
 	private final Map<Path, Verdict> judgments = new HashMap<>();
-	private final RecordingDeliverer deliverer = new RecordingDeliverer();
 	private final RecordingTerminator terminator = new RecordingTerminator();
 	private final FileInventory fork;
+	/**
+	 * The base worktree that deliveries write, or {@code null} if the harness has none.
+	 */
+	private final Path base;
+	private Consumer<DeliveryChange> afterWrite = _ ->
+	{
+	};
 	private Function<SessionRequest, SessionResult> trials = _ -> passed();
 	private Function<SessionRequest, SessionResult> promptAuthors = request -> edit(request, PROMPT);
 	private Supplier<Optional<List<NeededEdit>>> neededEdits = () -> Optional.of(List.of());
@@ -227,6 +244,7 @@ public final class DriverHarness
 		this.fork = fork;
 		this.overlays = new AliasedOverlays(new FileCandidateOverlays(FileCampaignStore.directory(
 			directory.resolve("campaigns"), CAMPAIGN), fork, json, Yielding.fileReplacer()));
+		this.base = project;
 		this.judge = new JudgePrompt(json, Files.createDirectories(directory.resolve("judge")));
 		this.triage = new TriagePrompt(json, Files.createDirectories(directory.resolve("triage")));
 		this.values = new ValuesPrompt(json, new ProposalSchema(json), Files.createDirectories(
@@ -268,8 +286,8 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
 		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
-			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, deliverer, MemoizedCalibration.INSTANCE,
-			terminator,
+			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, this::deliver,
+			MemoizedCalibration.INSTANCE, terminator,
 			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);
@@ -1101,13 +1119,74 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Returns the deliverer.
+	 * Replaces the hook that receives each change that a delivery writes, after its file is written and before the
+	 * delivery journal records it. A hook may edit the base worktree, as a user would, or throw.
 	 *
-	 * @return the deliverer
+	 * @param value the hook
 	 */
-	public RecordingDeliverer deliverer()
+	public void afterWrite(Consumer<DeliveryChange> value)
 	{
-		return deliverer;
+		this.afterWrite = value;
+	}
+
+	/**
+	 * Returns the base worktree that deliveries write.
+	 *
+	 * @return the base worktree
+	 * @throws IllegalStateException if the harness has no base worktree
+	 */
+	public Path base()
+	{
+		if (base == null)
+			throw new IllegalStateException("The harness has no base worktree.");
+		return base;
+	}
+
+	/**
+	 * Returns the certification records that deliveries wrote for the prompt, oldest first.
+	 *
+	 * @return the records
+	 * @throws IOException if the history cannot be read
+	 */
+	public List<CertificationRecord> deliveredRecords() throws IOException
+	{
+		Path history = base.resolve(PromptTestLocations.certificationHistory(PROMPT));
+		return new CertificationHistoryJson(json).read(history).records();
+	}
+
+	/**
+	 * Delivers a candidate to the base worktree that the harness was created with, using the delivery that production
+	 * uses. The campaign builder names a candidate's snapshot by a label instead of by its content, so the request
+	 * names the candidate by the selected overlay's identity, which {@link Delivery} requires.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param request what the campaign decided to deliver, or null if the user kept the incumbent
+	 * @param selected the overlay of the candidate that the request names, or the incumbent's
+	 * @param working the working candidate's overlay
+	 * @param promptSources the participating prompt sources
+	 * @param record the certification record to write, or null
+	 * @param tests the prompt tests to write
+	 * @return the result
+	 * @throws IllegalStateException if the harness has no base worktree
+	 * @throws IOException if a file cannot be read or written
+	 */
+	private DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
+		Set<Path> promptSources, CertificationRecord record, List<DeliveredTest> tests) throws IOException
+	{
+		if (base == null)
+		{
+			throw new IllegalStateException("The harness has no base worktree to deliver to. Create it with the " +
+				"project directory that holds the fork's files.");
+		}
+		DeliveryRequest named = request;
+		if (request != null)
+		{
+			named = new DeliveryRequest(new Candidate(request.candidate().number(), selected.identity()),
+				request.attempt(), request.label());
+		}
+		Delivery delivery = new Delivery(crashingStore, fakeWorkspace, new InMemoryForks(base, Set.of(PROMPT)), json,
+			Yielding.fileReplacer(), afterWrite);
+		return delivery.deliver(campaignId, named, selected, working, promptSources, record, tests);
 	}
 
 	/**
