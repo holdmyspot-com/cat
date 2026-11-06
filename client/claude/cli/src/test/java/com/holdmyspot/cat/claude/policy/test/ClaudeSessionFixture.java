@@ -1,34 +1,21 @@
 package com.holdmyspot.cat.claude.policy.test;
 
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
-import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
-import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * A Claude Code session whose files lie in a temporary folder that stands for the user's file system, and whose
- * process is a fake that reports a command line that the test chooses.
+ * A Claude Code session whose files lie in a temporary folder that stands for the user's file system.
  */
 final class ClaudeSessionFixture implements AutoCloseable
 {
-	/**
-	 * The ID of the fake Claude Code process.
-	 */
-	static final long PROCESS_ID = 4242;
-	/**
-	 * The instant that the fake process started.
-	 */
-	static final Instant START = Instant.parse("2026-11-05T12:00:00Z");
 	/**
 	 * The temporary folders.
 	 */
@@ -61,18 +48,6 @@ final class ClaudeSessionFixture implements AutoCloseable
 	 * A file that may hold managed settings in a form that CAT cannot read.
 	 */
 	final Path unreadableManaged;
-	/**
-	 * The arguments of the fake process.
-	 */
-	final List<String> arguments = new ArrayList<>();
-	/**
-	 * The instant that the fake process reports as its start.
-	 */
-	Instant reportedStart = START;
-	/**
-	 * Whether the fake process is running.
-	 */
-	boolean running = true;
 
 	/**
 	 * Creates a fixture.
@@ -144,36 +119,24 @@ final class ClaudeSessionFixture implements AutoCloseable
 	 */
 	ClaudeSession session()
 	{
-		return new ClaudeSession(PROCESS_ID, project, home, configuration, Optional.empty(), managed,
-			List.of(otherManaged), List.of(unreadableManaged));
+		return new ClaudeSession(project, home, configuration, Optional.empty(), managed, List.of(otherManaged),
+			List.of(unreadableManaged));
 	}
 
 	/**
-	 * Returns a reader whose processes are the fake process.
+	 * Writes the record that Claude Code keeps of a session in its configuration folder, under the ID of the session's
+	 * process.
 	 *
-	 * @return the reader
+	 * @param processId the ID of the session's Claude Code process
+	 * @param sessionId the session's identifier
+	 * @param cwd       the folder that the session started in
+	 * @throws IOException if the file cannot be written
 	 */
-	ClaudePolicyReader reader()
+	void sessionRecord(long processId, String sessionId, Path cwd) throws IOException
 	{
-		return new ClaudePolicyReader(processId ->
-		{
-			if (processId != PROCESS_ID || !running)
-				return Optional.empty();
-			return Optional.of(new ProcessDescription(processId, Optional.of(reportedStart),
-				Optional.of("/usr/local/bin/claude"), Optional.of(arguments)));
-		});
-	}
-
-	/**
-	 * Reads the session's policy.
-	 *
-	 * @return the reading
-	 * @throws IOException   if a file cannot be read
-	 * @throws PolicyRefusal if the policy is refused
-	 */
-	ClaudePolicyReading read() throws IOException, PolicyRefusal
-	{
-		return reader().read(session());
+		write(configuration.resolve("sessions/" + processId + ".json"), """
+			{"pid": %d, "sessionId": "%s", "cwd": "%s", "startedAt": 1793966400000}""".formatted(processId, sessionId,
+			cwd));
 	}
 
 	/**
@@ -185,7 +148,7 @@ final class ClaudeSessionFixture implements AutoCloseable
 	 */
 	ParentPolicy policy() throws IOException, PolicyRefusal
 	{
-		return read().policy();
+		return new ClaudePolicyReader().read(session());
 	}
 
 	/**

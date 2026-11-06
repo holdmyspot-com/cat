@@ -456,7 +456,7 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-local-binding-"));
 			Path destination = root.resolve("isolated/config.toml");
 			ParentPolicy parent = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
-				HostAccess.ALL, parentBinds, List.of());
+				HostAccess.ALL, parentBinds);
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(),
 				Set.of("localhost")));
 
@@ -484,7 +484,7 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-macos-binding-"));
 			Path destination = root.resolve("isolated/config.toml");
 			ParentPolicy parent = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
-				HostAccess.ALL, true, List.of());
+				HostAccess.ALL, true);
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(),
 				Set.of("localhost")));
 
@@ -516,7 +516,7 @@ public final class CodexConnectionConfigurationTest
 				""");
 			Path destination = root.resolve("isolated/config.toml");
 			ParentPolicy parent = new ParentPolicy(true, List.of(root), List.of(), List.of(), List.of(),
-				HostAccess.NONE, false, List.of());
+				HostAccess.NONE, false);
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(root, List.of(), List.of(), Set.of()));
 
 			copy(source, destination, root.resolve("project"), policy);
@@ -711,7 +711,7 @@ public final class CodexConnectionConfigurationTest
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(keptCache), Map.of());
 			ParentPolicy parent = new ParentPolicy(true, List.of(parentWrites, runFolder), List.of(protectedFolder),
-				List.of(secret), List.of(), HostAccess.NONE, false, List.of());
+				List.of(secret), List.of(), HostAccess.NONE, false);
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, caches.directories(),
 				List.of(), Set.of()));
 			Path destination = runFolder.resolve("home/config.toml");
@@ -743,7 +743,7 @@ public final class CodexConnectionConfigurationTest
 			Path runFolder = Files.createDirectories(root.resolve("run"));
 			Path registry = Files.createDirectories(root.resolve("registry cache"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder, registry), List.of(), List.of(), List.of(),
-				HostAccess.listed(Set.of("api.example", "registry.example")), false, List.of());
+				HostAccess.listed(Set.of("api.example", "registry.example")), false);
 			ExtraPermissions extra = new ExtraPermissions(List.of(registry), Set.of("registry.example"));
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
 				Set.of("api.example")).with(extra));
@@ -814,7 +814,7 @@ public final class CodexConnectionConfigurationTest
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			Path inner = Files.writeString(secret.resolve("hidden.txt"), "private");
 			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder), List.of(), List.of(inner, secret),
-				List.of(), HostAccess.NONE, false, List.of());
+				List.of(), HostAccess.NONE, false);
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
 				Set.of()));
 			Path destination = runFolder.resolve("home/config.toml");
@@ -848,7 +848,7 @@ public final class CodexConnectionConfigurationTest
 			Path login = Files.writeString(Files.createDirectories(home.resolve(".claude")).
 				resolve(".credentials.json"), "{}");
 			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder), List.of(), List.of(secret, login),
-				List.of(), HostAccess.NONE, false, List.of());
+				List.of(), HostAccess.NONE, false);
 			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
 				Set.of()));
 			Path destination = home.resolve("config.toml");

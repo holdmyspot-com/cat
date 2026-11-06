@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -23,17 +22,17 @@ import tools.jackson.dataformat.toml.TomlMapper;
 /**
  * The configuration layers of a Codex 0.160.0 session, merged the way Codex merges them.
  * <p>
- * From lowest to highest: the machine's {@code config.toml}, the user's {@code config.toml}, the profile file that
- * {@code -p} selects, the {@code .codex/config.toml} files of trusted project folders from the project root down to
- * the working directory, the {@code -c} overrides, and the machine's {@code managed_config.toml}. Tables merge key by
+ * From lowest to highest: the machine's {@code config.toml}, the user's {@code config.toml}, the
+ * {@code .codex/config.toml} files of trusted project folders from the project root down to the working directory,
+ * and the machine's {@code managed_config.toml}. A command cannot see the Codex process, so the layers that Codex's
+ * command line adds, such as {@code -p} and {@code -c}, are taken to be absent. Tables merge key by
  * key; other values replace those of lower layers.
  *
  * @param layers        the layers that exist, the lowest first
  * @param merged        the merged values
  * @param trustDecision {@code true} if the user's configuration trusts or distrusts the working directory
- * @param sources       the files that the layers and the requirements come from
  */
-public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean trustDecision, List<Path> sources)
+public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean trustDecision)
 {
 	private static final TomlMapper TOML = TomlMapper.builder().build();
 	/**
@@ -42,10 +41,6 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 	private static final Set<String> SANDBOX_REQUIREMENTS = Set.of("allowed_sandbox_modes",
 		"allowed_permission_profiles", "default_permissions", "remote_sandbox_config", "experimental_network",
 		"permissions");
-	/**
-	 * The names that {@code -p} accepts.
-	 */
-	private static final Pattern PROFILE_NAME = Pattern.compile("[A-Za-z0-9_-]+");
 
 	/**
 	 * Creates a configuration.
@@ -53,29 +48,25 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 	 * @param layers        the layers that exist, the lowest first
 	 * @param merged        the merged values
 	 * @param trustDecision {@code true} if the user's configuration trusts or distrusts the working directory
-	 * @param sources       the files that the layers and the requirements come from
 	 * @throws NullPointerException if any argument is null
 	 */
 	public CodexConfiguration
 	{
 		layers = List.copyOf(layers);
 		requireThat(merged, "merged").isNotNull();
-		sources = List.copyOf(sources);
 	}
 
 	/**
 	 * A configuration layer.
 	 *
 	 * @param values the layer's values, with relative paths resolved
-	 * @param flags  {@code true} if the layer holds the {@code -c} overrides
 	 */
-	public record Layer(ObjectNode values, boolean flags)
+	public record Layer(ObjectNode values)
 	{
 		/**
 		 * Creates a layer.
 		 *
 		 * @param values the layer's values, with relative paths resolved
-		 * @param flags  {@code true} if the layer holds the {@code -c} overrides
 		 * @throws NullPointerException if {@code values} is null
 		 */
 		public Layer
@@ -90,39 +81,24 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 	 * @param systemFiles the machine-wide files
 	 * @param codexHome   Codex's home
 	 * @param cwd         the session's working directory
-	 * @param launch      the session's command line
 	 * @return the configuration
 	 * @throws IOException   if a file cannot be read
 	 * @throws PolicyRefusal if a file cannot be parsed, an override is malformed, or the requirements constrain the
 	 *                       sandbox in a way that the reader does not interpret
 	 */
-	public static CodexConfiguration load(CodexSystemFiles systemFiles, Path codexHome, Path cwd, CodexLaunch launch)
+	public static CodexConfiguration load(CodexSystemFiles systemFiles, Path codexHome, Path cwd)
 		throws IOException, PolicyRefusal
 	{
-		List<Path> sources = new ArrayList<>();
 		Path requirements = systemFiles.folder().resolve("requirements.toml");
-		Optional<ObjectNode> requirementValues = readFile(requirements, sources);
+		Optional<ObjectNode> requirementValues = readFile(requirements);
 		if (requirementValues.isPresent())
 			requireUninterpretedRequirements(requirements, requirementValues.get());
 
 		List<Layer> lower = new ArrayList<>();
-		addFileLayer(systemFiles.folder().resolve("config.toml"), systemFiles.folder(), lower, sources);
-		if (!launch.ignoreUserConfig())
-			addFileLayer(codexHome.resolve("config.toml"), codexHome, lower, sources);
-		if (launch.profile().isPresent())
-		{
-			String profile = launch.profile().get();
-			if (!PROFILE_NAME.matcher(profile).matches())
-			{
-				throw new PolicyRefusal("Codex runs with the profile \"" + profile + "\", whose file CAT cannot " +
-					"find", "Name a profile of letters, digits, \"_\" and \"-\", then start a new Codex session");
-			}
-			addFileLayer(codexHome.resolve(profile + ".config.toml"), codexHome, lower, sources);
-		}
-		Layer flags = new Layer(overrideLayer(launch.overrides(), cwd), true);
+		addFileLayer(systemFiles.folder().resolve("config.toml"), systemFiles.folder(), lower);
+		addFileLayer(codexHome.resolve("config.toml"), codexHome, lower);
 		List<Layer> upper = new ArrayList<>();
-		upper.add(flags);
-		addFileLayer(systemFiles.folder().resolve("managed_config.toml"), systemFiles.folder(), upper, sources);
+		addFileLayer(systemFiles.folder().resolve("managed_config.toml"), systemFiles.folder(), upper);
 
 		List<Layer> withoutProjects = new ArrayList<>(lower);
 		withoutProjects.addAll(upper);
@@ -135,14 +111,14 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 			if (!Files.isDirectory(dotCodex) || sameFile(dotCodex, codexHome) || !trust.trusts(folder))
 				continue;
 			Path file = dotCodex.resolve("config.toml");
-			Optional<ObjectNode> values = readFile(file, sources);
+			Optional<ObjectNode> values = readFile(file);
 			if (values.isEmpty())
 				continue;
 			resolveRelativePaths(values.get(), dotCodex);
-			layers.add(new Layer(values.get(), false));
+			layers.add(new Layer(values.get()));
 		}
 		layers.addAll(upper);
-		return new CodexConfiguration(layers, merge(layers), trust.decides(cwd), sources);
+		return new CodexConfiguration(layers, merge(layers), trust.decides(cwd));
 	}
 
 	/**
@@ -171,37 +147,34 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 	/**
 	 * Adds the layer of a configuration file if the file exists.
 	 *
-	 * @param file    the file
-	 * @param base    the folder that the file's relative paths are relative to
-	 * @param layers  the layers to add to
-	 * @param sources the source files to add to
+	 * @param file   the file
+	 * @param base   the folder that the file's relative paths are relative to
+	 * @param layers the layers to add to
 	 * @throws IOException   if the file cannot be read
 	 * @throws PolicyRefusal if the file cannot be parsed
 	 */
-	private static void addFileLayer(Path file, Path base, List<Layer> layers, List<Path> sources)
+	private static void addFileLayer(Path file, Path base, List<Layer> layers)
 		throws IOException, PolicyRefusal
 	{
-		Optional<ObjectNode> values = readFile(file, sources);
+		Optional<ObjectNode> values = readFile(file);
 		if (values.isEmpty())
 			return;
 		resolveRelativePaths(values.get(), base);
-		layers.add(new Layer(values.get(), false));
+		layers.add(new Layer(values.get()));
 	}
 
 	/**
 	 * Reads a TOML file if it exists.
 	 *
-	 * @param file    the file
-	 * @param sources the source files, which the file joins if it exists
+	 * @param file the file
 	 * @return the file's values, or empty if it does not exist
 	 * @throws IOException   if the file cannot be read
 	 * @throws PolicyRefusal if the file cannot be parsed
 	 */
-	private static Optional<ObjectNode> readFile(Path file, List<Path> sources) throws IOException, PolicyRefusal
+	private static Optional<ObjectNode> readFile(Path file) throws IOException, PolicyRefusal
 	{
 		if (!Files.exists(file))
 			return Optional.empty();
-		sources.add(file);
 		String text = Files.readString(file);
 		try
 		{
@@ -215,92 +188,6 @@ public record CodexConfiguration(List<Layer> layers, ObjectNode merged, boolean 
 			throw new PolicyRefusal("CAT cannot parse the Codex configuration file " + file + ": " +
 				e.getOriginalMessage(), "Fix the file so that it is valid TOML, then start a new Codex session");
 		}
-	}
-
-	/**
-	 * Builds the layer of the {@code -c} overrides.
-	 *
-	 * @param overrides the overrides, in {@code key=value} form
-	 * @param cwd       the folder that relative paths are relative to
-	 * @return the layer's values
-	 * @throws PolicyRefusal if an override has no {@code =} or no key
-	 */
-	private static ObjectNode overrideLayer(List<String> overrides, Path cwd) throws PolicyRefusal
-	{
-		ObjectNode root = JsonNodeFactory.instance.objectNode();
-		for (String override : overrides)
-		{
-			int equals = override.indexOf('=');
-			String key;
-			if (equals < 0)
-				key = "";
-			else
-				key = override.substring(0, equals).strip();
-			if (key.isEmpty())
-			{
-				throw new PolicyRefusal("Codex runs with the override \"-c " + override + "\", which is not " +
-					"key=value", "Start Codex without that override, then start a new Codex session");
-			}
-			if (key.equals("use_legacy_landlock"))
-				key = "features.use_legacy_landlock";
-			applyOverride(root, key, overrideValue(override.substring(equals + 1).strip()));
-		}
-		resolveRelativePaths(root, cwd);
-		return root;
-	}
-
-	/**
-	 * Parses an override's value the way Codex does: as a TOML value, or else as a string without its quotes.
-	 *
-	 * @param raw the text after the {@code =}
-	 * @return the value
-	 */
-	private static JsonNode overrideValue(String raw)
-	{
-		try
-		{
-			JsonNode wrapped = TOML.readTree("_x_ = " + raw);
-			JsonNode value = wrapped.get("_x_");
-			if (value != null)
-				return value;
-		}
-		catch (JacksonException _)
-		{
-			// Codex reads a value that is not TOML as a string
-		}
-		String trimmed = raw.replaceAll("^[\"']+|[\"']+$", "");
-		return JsonNodeFactory.instance.stringNode(trimmed);
-	}
-
-	/**
-	 * Sets a dotted key, creating the tables on its way. A feature that is a table takes a {@code true} or
-	 * {@code false} value as its {@code enabled} key.
-	 *
-	 * @param root  the layer
-	 * @param key   the dotted key
-	 * @param value the value
-	 */
-	private static void applyOverride(ObjectNode root, String key, JsonNode value)
-	{
-		String[] segments = key.split("\\.", -1);
-		ObjectNode current = root;
-		for (int index = 0; index < segments.length - 1; ++index)
-		{
-			JsonNode next = current.get(segments[index]);
-			if (next instanceof ObjectNode table)
-				current = table;
-			else
-				current = current.putObject(segments[index]);
-		}
-		String last = segments[segments.length - 1];
-		JsonNode existing = current.get(last);
-		boolean feature = segments.length == 2 && segments[0].equals("features");
-		if (feature && existing instanceof ObjectNode table && value.isBoolean())
-		{
-			table.set("enabled", value);
-			return;
-		}
-		current.set(last, value);
 	}
 
 	/**

@@ -1,15 +1,13 @@
-package com.holdmyspot.cat.common.runner.launcher;
+package com.holdmyspot.cat.common.runner.policy;
 
-import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
-import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
 /**
- * Reads the sandbox policy of the harness session that a session launcher serves, from that harness's own settings
- * and command line.
+ * Reads the sandbox policy of the harness session whose command starts a runner in place, from that harness's own
+ * settings and the records that it keeps of the session.
  * <p>
  * <b>Thread Safety:</b> Implementations must be thread-safe.
  */

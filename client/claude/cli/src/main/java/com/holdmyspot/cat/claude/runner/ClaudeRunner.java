@@ -346,7 +346,8 @@ public final class ClaudeRunner
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
-		// Set after the caller's settings too, so that the session's SessionStart hook starts no session launcher
+		// Set after the caller's settings too, so that a runner that the session's commands start knows that it runs
+		// inside a CAT run, where it starts sessions only as requests to this run's runner
 		isolatedEnvironment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
 		// Claude Code passes these to the commands that it starts
 		if (requestAccess != null)
@@ -355,11 +356,11 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns what a Claude child session needs beyond its run folder, as a session launcher asks for it before it
-	 * starts the child: the shared dependency caches, which the child writes; the host of the model provider that the
-	 * child's Claude Code connects to, which its commands reach; and the caller's login file when the child's isolated
-	 * home copies it, which happens when the caller's environment holds no Claude authentication variable and the
-	 * file exists.
+	 * Returns what a Claude child session needs beyond its run folder, as the runner of the other harness asks for it
+	 * before it starts the child: the shared dependency caches, which the child writes; the host of the model provider
+	 * that the child's Claude Code connects to, which its commands reach; and the caller's login file when the child's
+	 * isolated home copies it, which happens when the caller's environment holds no Claude authentication variable and
+	 * the file exists.
 	 *
 	 * @param scope       services shared for the runner process lifetime
 	 * @param environment the caller's environment

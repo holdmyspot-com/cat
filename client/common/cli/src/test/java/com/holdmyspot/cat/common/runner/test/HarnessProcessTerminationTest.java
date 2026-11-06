@@ -3,17 +3,13 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
-import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.time.Instant;
-import java.util.concurrent.TimeUnit;
+import java.util.List;
+import java.util.Map;
 
 /**
- * Tests that a terminated run's process tree stops without starting processes.
+ * Tests which processes stopping a child's process tree stops, from a snapshot of the process table.
  */
 public final class HarnessProcessTerminationTest
 {
@@ -25,119 +21,38 @@ public final class HarnessProcessTerminationTest
 	}
 
 	/**
-	 * Verifies that ending a run stops its process, children and grandchildren.
-	 *
-	 * @throws IOException if termination fails
+	 * Verifies that stopping a child stops the child, its children and their children, each after its parent, and no
+	 * process outside its tree: not its parent, its siblings, or their children.
 	 */
 	@Test
-	public void terminatesVisibleChildren() throws IOException
+	public void stopsChildAndItsDescendantsOnly()
 	{
-		FakeProcessHandle grandchild = new FakeProcessHandle(3, Instant.EPOCH, true);
-		FakeProcessHandle child = new FakeProcessHandle(2, Instant.EPOCH, true, grandchild);
-		FakeProcessHandle parent = new FakeProcessHandle(1, Instant.EPOCH, true, child);
+		// 1 runs the run's runner, which started the requested runner 2 and its sibling 5
+		Map<Long, Long> parents = Map.of(2L, 1L, 3L, 2L, 4L, 3L, 5L, 1L, 6L, 5L, 7L, 2L);
 
-		HarnessProcessTermination.terminate(new FakeProcess(parent), "harness");
+		List<Long> tree = HarnessProcessTermination.tree(2, parents);
 
-		requireThat(parent.isAlive(), "parent.alive").isFalse();
-		requireThat(child.isAlive(), "child.alive").isFalse();
-		requireThat(grandchild.isAlive(), "grandchild.alive").isFalse();
+		requireThat(tree.getFirst(), "first").isEqualTo(2L);
+		requireThat(tree, "tree").containsExactly(List.of(2L, 3L, 4L, 7L));
+		requireThat(tree.indexOf(4L), "grandchild").isGreaterThan(tree.indexOf(3L));
 	}
 
 	/**
-	 * Verifies that shutdown stops the run's process, children and grandchildren.
+	 * Verifies that a child without descendants stops alone.
 	 */
 	@Test
-	public void immediatelyTerminatesVisibleChildren()
+	public void stopsLoneChild()
 	{
-		FakeProcessHandle grandchild = new FakeProcessHandle(3, Instant.EPOCH, true);
-		FakeProcessHandle child = new FakeProcessHandle(2, Instant.EPOCH, true, grandchild);
-		FakeProcessHandle parent = new FakeProcessHandle(1, Instant.EPOCH, true, child);
-
-		HarnessProcessTermination.terminateImmediately(new FakeProcess(parent));
-
-		requireThat(parent.isAlive(), "parent.alive").isFalse();
-		requireThat(child.isAlive(), "child.alive").isFalse();
-		requireThat(grandchild.isAlive(), "grandchild.alive").isFalse();
+		requireThat(HarnessProcessTermination.tree(9, Map.of(9L, 1L, 2L, 1L)), "tree").isEqualTo(List.of(9L));
 	}
 
 	/**
-	 * Supplies a process whose lifecycle is represented by its in-memory handle.
+	 * Verifies that a snapshot whose reused identifiers link a process back to the child's tree still names each
+	 * process once.
 	 */
-	private static final class FakeProcess extends Process
+	@Test
+	public void namesEachProcessOnceWhenSnapshotLoops()
 	{
-		private final FakeProcessHandle handle;
-
-		/**
-		 * Creates a process backed by the supplied handle.
-		 *
-		 * @param handle the process identity and lifecycle
-		 */
-		private FakeProcess(FakeProcessHandle handle)
-		{
-			this.handle = handle;
-		}
-
-		@Override
-		public ProcessHandle toHandle()
-		{
-			return handle;
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return handle.isAlive();
-		}
-
-		@Override
-		public void destroy()
-		{
-			handle.destroy();
-		}
-
-		@Override
-		public Process destroyForcibly()
-		{
-			handle.destroyForcibly();
-			return this;
-		}
-
-		@Override
-		public int waitFor()
-		{
-			return exitValue();
-		}
-
-		@Override
-		public boolean waitFor(long timeout, TimeUnit unit)
-		{
-			return !isAlive();
-		}
-
-		@Override
-		public int exitValue()
-		{
-			if (isAlive())
-				throw new IllegalThreadStateException("Process is still running");
-			return 0;
-		}
-
-		@Override
-		public OutputStream getOutputStream()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public InputStream getInputStream()
-		{
-			throw new UnsupportedOperationException();
-		}
-
-		@Override
-		public InputStream getErrorStream()
-		{
-			throw new UnsupportedOperationException();
-		}
+		requireThat(HarnessProcessTermination.tree(2, Map.of(2L, 3L, 3L, 2L)), "tree").isEqualTo(List.of(2L, 3L));
 	}
 }

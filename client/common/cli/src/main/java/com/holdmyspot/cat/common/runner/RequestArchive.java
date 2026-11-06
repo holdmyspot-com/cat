@@ -17,7 +17,6 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -36,11 +35,9 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.node.ArrayNode;
 
 /**
- * The archive in which a sandboxed session sends a session request: its manifest format, which both request channels
- * share, and the operations that pack a request inside the sender's sandbox and copy, extract and read it on the
- * receiver's side. A request made inside a run, through {@link SessionRequestAccess}, may choose fewer fields than a
- * request made at session level, through {@link SessionLauncherChannel}; each refuses a field that its level does not
- * allow by name.
+ * The archive in which a sandboxed session of a run sends a session request through {@link SessionRequestAccess}:
+ * its manifest format, and the operations that pack a request inside the sender's sandbox and copy, extract and read
+ * it on the receiver's side. A manifest that chooses a field that a request may not choose is refused by name.
  * <p>
  * A sender packs only what its sandbox lets it read, without following links and leaving out the null-device
  * placeholders of files that it may not read. A receiver has the user's permissions, so it opens only the one archive,
@@ -57,11 +54,11 @@ public final class RequestArchive
 	static final String EXTENSION = ".tar";
 	static final String MANIFEST = "request.json";
 	/**
-	 * The version of the manifest, which both levels share.
+	 * The version of the manifest.
 	 */
 	static final int VERSION = 3;
 	/**
-	 * The most bytes of a manifest at every level, which a receiver reads into memory.
+	 * The most bytes of a manifest, which a receiver reads into memory.
 	 */
 	static final int MAXIMUM_MANIFEST_BYTES = 65_536;
 	/**
@@ -82,10 +79,10 @@ public final class RequestArchive
 	static final String EXTRA_PERMISSIONS = "extra_permissions";
 	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS);
-	private static final Set<String> SESSION_FIELDS = Set.of("format_version", "harness", "model", "effort", "agent",
-		"turns", "input", "project", "plugins", "workspace", "read_only_evidence", "install_cat", "session_transcripts",
-		"keep_run", "session_requests", "request_depth", "capacity_wait", "max_concurrency", "capacity",
-		"instruction_files", "tool_output_token_limit", "deny_read", EXTRA_PERMISSIONS, "git_name", "git_email");
+	/**
+	 * The start of the name of a request file that its sender is still writing.
+	 */
+	private static final String TEMPORARY_PREFIX = ".tmp-";
 	private static final Set<PosixFilePermission> FILE_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> PROGRAM_MODE = PosixFilePermissions.fromString("rwxr-xr-x");
 
@@ -140,98 +137,6 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Publishes a session-level request, packing every file and directory that it names as its session sees them.
-	 *
-	 * @param json        the manifest mapper
-	 * @param destination the final request file, whose directory also receives the temporary file that is renamed
-	 *                    into place
-	 * @param request     the request, naming files and directories that the sender's session can read
-	 * @param nullDevice  the null device, which a sandbox mounts over each file that the session may not read; the
-	 *                    request leaves those files out of the trees that it carries
-	 * @param limits      the bounds that the archive must stay within
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if an input is linked, special, of the wrong type or beyond {@code limits}, or the
-	 *                              archive cannot be written
-	 */
-	public static void packSession(JsonMapper json, Path destination, SessionLauncherChannel.Request request,
-		Path nullDevice, RequestLimits limits) throws IOException
-	{
-		requireThat(json, "json").isNotNull();
-		requireThat(destination, "destination").isNotNull();
-		requireThat(request, "request").isNotNull();
-		requireThat(nullDevice, "nullDevice").isNotNull();
-		requireThat(limits, "limits").isNotNull();
-		publish(json, destination, limits, (archive, budget) ->
-		{
-			ObjectNode manifest = json.createObjectNode().put("format_version", VERSION).
-				put("harness", request.harness());
-			putText(manifest, "model", request.model());
-			putText(manifest, "effort", request.effort());
-			putText(manifest, "agent", request.agent());
-			if (request.turns().isPresent())
-			{
-				packFile(archive, request.turns().get(), "turns", limits.entryBytes(), budget);
-				manifest.put("turns", "turns");
-			}
-			else
-				manifest.put("input", "stream");
-			packTree(archive, request.project(), "project", budget, nullDevice);
-			manifest.put("project", "project");
-			ArrayNode plugins = manifest.putArray("plugins");
-			for (Path plugin : request.plugins())
-			{
-				String name = "plugins/" + plugins.size();
-				packTree(archive, plugin, name, budget, nullDevice);
-				plugins.add(name);
-			}
-			if (request.workspace().isPresent())
-			{
-				packTree(archive, request.workspace().get(), "workspace", budget, nullDevice);
-				manifest.put("workspace", "workspace");
-			}
-			ArrayNode evidence = manifest.putArray("read_only_evidence");
-			for (Path source : request.readOnlyEvidence())
-			{
-				String name = "read_only_evidence/" + evidence.size();
-				if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
-					packTree(archive, source, name, budget, nullDevice);
-				else
-					packFile(archive, source, name, limits.entryBytes(), budget);
-				evidence.add(name);
-			}
-			manifest.put("install_cat", request.installCat()).put("session_transcripts", request.sessionTranscripts()).
-				put("keep_run", request.keepRun()).put("session_requests", request.sessionRequests()).
-				put("request_depth", request.requestDepth());
-			request.capacityWait().ifPresent(value -> manifest.put("capacity_wait", value.toSeconds()));
-			request.maximumConcurrency().ifPresent(value -> manifest.put("max_concurrency", value));
-			if (request.capacityHeld())
-				manifest.put("capacity", "held");
-			putText(manifest, "instruction_files", request.instructionFiles());
-			request.toolOutputTokenLimit().ifPresent(value -> manifest.put("tool_output_token_limit", value));
-			ArrayNode deniedReads = manifest.putArray("deny_read");
-			for (Path denied : request.deniedReads())
-				deniedReads.add(denied.toString());
-			if (!request.extraPermissions().isEmpty())
-				manifest.set(EXTRA_PERMISSIONS, request.extraPermissions().toDocument(json));
-			putText(manifest, "git_name", request.gitName());
-			putText(manifest, "git_email", request.gitEmail());
-			return manifest;
-		});
-	}
-
-	/**
-	 * Adds an optional text field to a manifest.
-	 *
-	 * @param manifest the manifest
-	 * @param field    the field's name
-	 * @param value    its value, or empty to leave it out
-	 */
-	private static void putText(ObjectNode manifest, String field, Optional<String> value)
-	{
-		value.ifPresent(text -> manifest.put(field, text));
-	}
-
-	/**
 	 * Writes an archive beside its destination, checks it as its receiver will, and renames it into place.
 	 *
 	 * @param json        the manifest mapper
@@ -243,7 +148,7 @@ public final class RequestArchive
 	private static void publish(JsonMapper json, Path destination, RequestLimits limits, Contents contents)
 		throws IOException
 	{
-		Path temporary = Files.createTempFile(destination.getParent(), SessionLauncherChannel.TEMPORARY_PREFIX,
+		Path temporary = Files.createTempFile(destination.getParent(), TEMPORARY_PREFIX,
 			EXTENSION);
 		try
 		{
@@ -291,25 +196,23 @@ public final class RequestArchive
 	 * still writing.
 	 *
 	 * @param directory the directory that senders publish request archives to
-	 * @param prefix    the start of a request archive's name before its identifier
-	 * @return the identifier of each file named {@code <prefix><id>.tar} whose identifier could name a directory, in
+	 * @return the identifier of each file named {@code <id>.tar} whose identifier could name a directory, in
 	 *   ascending order; names that start with a period are skipped
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the directory cannot be listed
 	 */
-	public static List<String> pendingIds(Path directory, String prefix) throws IOException
+	public static List<String> pendingIds(Path directory) throws IOException
 	{
 		requireThat(directory, "directory").isNotNull();
-		requireThat(prefix, "prefix").isNotNull();
 		List<String> ids = new ArrayList<>();
 		try (DirectoryStream<Path> files = Files.newDirectoryStream(directory))
 		{
 			for (Path file : files)
 			{
 				String name = file.getFileName().toString();
-				if (name.startsWith(".") || !name.startsWith(prefix) || !name.endsWith(EXTENSION))
+				if (name.startsWith(".") || !name.endsWith(EXTENSION))
 					continue;
-				String id = name.substring(prefix.length(), name.length() - EXTENSION.length());
+				String id = name.substring(0, name.length() - EXTENSION.length());
 				try
 				{
 					SessionRequestCli.validateId(id);
@@ -686,72 +589,6 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Reads the manifest of an extracted session-level request.
-	 *
-	 * @param json   the manifest mapper
-	 * @param inputs the private directory that {@link #unpack(Path, Path, RequestLimits)} extracted the request into
-	 * @return the request, whose files and directories lie in {@code inputs}
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the manifest is malformed, chooses a field that a session-level request may not
-	 *                              choose, names an entry that is missing or of the wrong type, or makes a choice that
-	 *                              {@link SessionLauncherChannel.Request} refuses; the message names the field
-	 */
-	public static SessionLauncherChannel.Request readSession(JsonMapper json, Path inputs) throws IOException
-	{
-		requireThat(json, "json").isNotNull();
-		requireThat(inputs, "inputs").isNotNull();
-		JsonNode value = manifest(json, inputs, SESSION_FIELDS, "A session request");
-		String harness = harness(value);
-		Optional<Path> turns = Optional.empty();
-		if (value.has("turns"))
-			turns = Optional.of(entry(value, inputs, "turns", Kind.FILE));
-		if (value.has("input") == turns.isPresent())
-			throw new IOException("A session request requires either turns or input \"stream\"");
-		if (value.has("input") && !value.path("input").stringValue("").equals("stream"))
-			throw new IOException("A session request's input must be \"stream\"");
-		Path project = entry(value, inputs, "project", Kind.DIRECTORY);
-		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, Integer.MAX_VALUE);
-		Optional<Path> workspace = Optional.empty();
-		if (value.has("workspace"))
-			workspace = Optional.of(entry(value, inputs, "workspace", Kind.DIRECTORY));
-		List<Path> evidence = namedEntries(value, inputs, "read_only_evidence", Kind.ANY, Integer.MAX_VALUE);
-		Optional<Duration> capacityWait = Optional.empty();
-		if (value.has("capacity_wait"))
-		{
-			if (!value.path("capacity_wait").canConvertToLong())
-				throw new IOException("capacity_wait must be a whole number of seconds");
-			capacityWait = Optional.of(Duration.ofSeconds(value.path("capacity_wait").longValue()));
-		}
-		boolean capacityHeld = value.has("capacity");
-		if (capacityHeld && !value.path("capacity").stringValue("").equals("held"))
-			throw new IOException("capacity must be \"held\"");
-		List<Path> deniedReads = new ArrayList<>();
-		JsonNode denied = value.path("deny_read");
-		if (value.has("deny_read") && !denied.isArray())
-			throw new IOException("deny_read must be an array of absolute paths");
-		try
-		{
-			for (JsonNode element : denied)
-			{
-				if (!element.isString())
-					throw new IOException("deny_read must be an array of absolute paths");
-				deniedReads.add(Path.of(element.asString()));
-			}
-			return new SessionLauncherChannel.Request(harness, optionalText(value, "model"),
-				optionalText(value, "effort"), optionalText(value, "agent"), turns, project, plugins, workspace,
-				evidence, flag(value, "install_cat"), flag(value, "session_transcripts"), flag(value, "keep_run"),
-				count(value, "session_requests").orElse(0), count(value, "request_depth").orElse(0), capacityWait,
-				count(value, "max_concurrency"), capacityHeld, optionalText(value, "instruction_files"),
-				count(value, "tool_output_token_limit"), deniedReads, extraPermissions(value),
-				optionalText(value, "git_name"), optionalText(value, "git_email"));
-		}
-		catch (IllegalArgumentException e)
-		{
-			throw new IOException(e.getMessage(), e);
-		}
-	}
-
-	/**
 	 * Reads the extra permissions that a manifest asks for.
 	 *
 	 * @param value the manifest
@@ -853,23 +690,6 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Reads an optional integer field.
-	 *
-	 * @param value the manifest
-	 * @param field the field
-	 * @return its value, or empty when the field is absent
-	 * @throws IOException if the field is present but not an {@code int}
-	 */
-	private static Optional<Integer> count(JsonNode value, String field) throws IOException
-	{
-		if (!value.has(field))
-			return Optional.empty();
-		if (!value.path(field).isInt())
-			throw new IOException(field + " must be an integer");
-		return Optional.of(value.path(field).intValue());
-	}
-
-	/**
 	 * Resolves a field that must name the archive entry of the same name.
 	 *
 	 * @param value  the manifest
@@ -939,7 +759,6 @@ public final class RequestArchive
 		{
 			case DIRECTORY -> directory;
 			case FILE -> file;
-			case ANY -> directory || file;
 		};
 		if (!matches)
 			throw new IOException("Request archive input is missing or has the wrong type: " + name);
@@ -958,11 +777,7 @@ public final class RequestArchive
 		/**
 		 * A regular file.
 		 */
-		FILE,
-		/**
-		 * A directory or a regular file.
-		 */
-		ANY
+		FILE
 	}
 
 	/**

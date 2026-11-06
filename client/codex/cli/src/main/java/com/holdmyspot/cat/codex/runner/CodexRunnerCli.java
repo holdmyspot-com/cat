@@ -5,6 +5,9 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.policy.CodexParentPolicy;
+import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
+import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
@@ -19,6 +22,7 @@ import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
@@ -32,10 +36,10 @@ import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.InPlaceBound;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
-import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -82,14 +86,13 @@ public final class CodexRunnerCli
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
-	 * receipt. Outside a run, the launch becomes a request to the session launcher of the harness process that runs
-	 * the command, which starts the session outside the command's sandbox, unless a session launcher started the
-	 * launch itself: that launch names {@value SessionLauncherClient#POLICY_BOUND_OPTION} and serves the session in
-	 * place.
+	 * receipt. Inside a run that lets its session request no sessions, the launch is refused. Outside a run, the
+	 * session starts in place, inside the sandbox of the command that runs this launcher, as
+	 * {@link #serve(JvmScope, Path, String[], Reader, Writer, Map, IntFunction, InPlaceBound)} describes.
 	 * <p>
-	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, it writes what a Codex child session needs to
-	 * that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the session launcher that asks before it
-	 * starts the child, and starts nothing.
+	 * With {@value ChildNeedsReport#OPTION} and a file, with or without {@code serve} before them, it writes what a
+	 * Codex child session needs to that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the runner of
+	 * another harness that asks before it starts the child, and starts nothing.
 	 *
 	 * @param args the command and its options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -110,14 +113,14 @@ public final class CodexRunnerCli
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
 			return;
 		}
-		if (args.length == 3 && args[0].equals("serve") && args[1].equals(ChildNeedsReport.OPTION))
-		{
-			CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(args[2]));
-			return;
-		}
 		String[] launch = args;
 		if (launch.length > 0 && launch[0].equals("serve"))
 			launch = Arrays.copyOfRange(launch, 1, launch.length);
+		if (launch.length == 2 && launch[0].equals(ChildNeedsReport.OPTION))
+		{
+			CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(launch[1]));
+			return;
+		}
 		String[] serveArguments = launch;
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
@@ -125,12 +128,6 @@ public final class CodexRunnerCli
 			System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> SessionRequestForwarder.forward(
 				HARNESS_ID, serveArguments, new InputStreamReader(System.in, UTF_8), Path.of(requests),
 				Pause.sleeping(Duration.ofMillis(100)), System.out, errors()), errors()));
-		}
-		if (SessionLauncherClient.serves(Platform.current(), args))
-		{
-			System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> SessionLauncherClient.launchFromMain(
-				HARNESS_ID, serveArguments, environment, Pause::sleeping, new InputStreamReader(System.in, UTF_8),
-				System.out, errors()), errors()));
 		}
 		String[] bridgeArguments = args;
 		int status = HarnessRunnerOptions.refusingInvalidArguments(
@@ -167,7 +164,7 @@ public final class CodexRunnerCli
 		{
 			serve(process, Path.of(""), args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 				new OutputStreamWriter(System.out, UTF_8), environment, maximum -> HarnessCapacity.forHome(
-					process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()));
+					process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()), inPlaceBound(environment));
 			return 0;
 		}
 		catch (HarnessCapacityWaitExpiredException e)
@@ -272,7 +269,34 @@ public final class CodexRunnerCli
 	}
 
 	/**
+	 * Returns the bound of a Codex session that a command of the harness session that runs this process starts in
+	 * place: the policy of that harness session, as {@link CodexParentPolicy} reads it from the command's environment,
+	 * and what a Codex child needs, as {@link CodexRunner#childNeeds(Map)} reports it.
+	 *
+	 * @param environment the environment of the command that runs this process
+	 * @return the bound
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static InPlaceBound inPlaceBound(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		String userName = System.getProperty("user.name", "");
+		return new InPlaceBound(new CodexParentPolicy(new CodexPolicyReader(CodexSystemFiles.ofThisMachine(userName)),
+			environment, Path.of(System.getProperty("user.home")).toAbsolutePath(), Path.of("").toAbsolutePath()),
+			(harness, runFolder, deniedReads, bound) -> CodexRunner.childNeeds(environment).needs(harness, runFolder,
+				deniedReads, bound));
+	}
+
+	/**
 	 * Serves one Codex bridge using caller-provided streams and environment.
+	 * <p>
+	 * {@code --policy-bound} names the file of the policy that bounds the session's sandbox policy, which the runner
+	 * that starts a requested session writes. A launch without it starts the session in place, inside the sandbox of
+	 * the command that runs it: {@code inPlace} bounds the session by that command's policy, and the launch is refused
+	 * before it takes a capacity slot or creates a run if the policy cannot be read or does not allow what the
+	 * session needs. A launch from a session of a CAT run is refused, since such a session starts sessions only as
+	 * requests to the run's own runner. A session that the bounded session requests is bounded in turn by the
+	 * bounded session's policy.
 	 *
 	 * @param process the process scope, whose lock coordinator and waiting the bridge uses
 	 * @param workingDirectory the directory from which the command was invoked
@@ -283,15 +307,17 @@ public final class CodexRunnerCli
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
 	 *   command selected. The bridge waits for a permit before it starts Codex, unless the command names
 	 *   {@code --capacity-held}.
+	 * @param inPlace bounds a session that starts in place
 	 * @throws NullPointerException    if any argument is null
-	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, or the session's sandbox would
-	 *                                 not confine it as its policy requires
+	 * @throws SessionRefusedException if the launch comes from a session of a CAT run, or the session's sandbox would
+	 *                                 not confine it as its bound requires; the message says how to allow it
 	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
 	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
 	 *                                 I/O fails
 	 */
 	public static void serve(JvmScope process, Path workingDirectory, String[] args, Reader input, Writer output,
-		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
+		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum, InPlaceBound inPlace)
+		throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
@@ -299,6 +325,10 @@ public final class CodexRunnerCli
 		requireThat(environment, "environment").isNotNull();
 		requireThat(process, "process").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
+		requireThat(inPlace, "inPlace").isNotNull();
+		Optional<String> inRun = HarnessEnvironment.inRunRefusal(HARNESS_ID, environment);
+		if (inRun.isPresent())
+			throw new SessionRefusedException(inRun.get());
 		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
 			String agentName = agentName(args);
@@ -306,9 +336,9 @@ public final class CodexRunnerCli
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			Path cat = options.catArtifact(CodexRunner.MANIFEST);
 			CodexAgentDefinition agent = loadAgent(cat, agentName);
-			ParentPolicy bound = policyBound(scope.json(), options);
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
+			ParentPolicy bound = policyBound(scope.json(), options, extraPermissions, inPlace);
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
@@ -373,22 +403,25 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Reads the policy that bounds the session's sandbox policy, as the policy of the session's parent.
+	 * Returns the policy that bounds the session's sandbox policy, as the policy of the session's parent.
 	 *
-	 * @param json    the JSON mapper
-	 * @param options the launch's options
-	 * @return the bound
-	 * @throws SessionRefusedException if the launch names no bound
-	 * @throws IOException             if the bound's file cannot be read or is not a bound
+	 * @param json             the JSON mapper
+	 * @param options          the launch's options
+	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Codex needs
+	 * @param inPlace          bounds a session that starts in place
+	 * @return the bound that the launch's {@code --policy-bound} names, or else the bound of a session that starts in
+	 *         place
+	 * @throws SessionRefusedException if the session starts in place and its bound cannot be established
+	 * @throws IOException             if the bound's file cannot be read or is not a bound, or what the session needs
+	 *                                 cannot be determined
 	 */
-	private static ParentPolicy policyBound(JsonMapper json, HarnessRunnerOptions options) throws IOException
+	private static ParentPolicy policyBound(JsonMapper json, HarnessRunnerOptions options,
+		ExtraPermissions extraPermissions, InPlaceBound inPlace) throws IOException
 	{
 		if (options.policyBound() == null)
 		{
-			throw new SessionRefusedException("codex-runner starts a session only through CAT's session launcher, " +
-				"which names the policy that bounds the session's sandbox with " + PolicyBoundFile.OPTION + ", and " +
-				"this launch names none, so CAT does not start the session. Start the session from a Claude Code or " +
-				"Codex session in which CAT is installed");
+			return inPlace.bound(HARNESS_ID, options.runRoot(), options.deniedReads(), extraPermissions).
+				asParentPolicy();
 		}
 		return PolicyBoundFile.read(json, options.policyBound().toAbsolutePath()).asParentPolicy();
 	}

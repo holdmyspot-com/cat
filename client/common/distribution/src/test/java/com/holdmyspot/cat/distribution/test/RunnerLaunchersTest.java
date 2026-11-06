@@ -107,22 +107,6 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
-	 * Verifies that each plugin's {@code bin/} holds the {@code session-launcher} that its SessionStart hook starts,
-	 * which serves the sessions that its harness's sessions request. The table is the same on every platform.
-	 */
-	@Test
-	public void bothPluginsHoldSessionLauncher()
-	{
-		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
-		requireThat(access.claudeLaunchers(), "claudeLaunchers").
-			contains(new Launcher("session-launcher", CLAUDE_MODULE,
-				"com.holdmyspot.cat.claude.runner.ClaudeSessionLauncherCli"));
-		requireThat(access.codexLaunchers(), "codexLaunchers").
-			contains(new Launcher("session-launcher", CODEX_MODULE,
-				"com.holdmyspot.cat.codex.runner.CodexSessionLauncherCli"));
-	}
-
-	/**
 	 * Supplies each plugin's harness with the launchers that the plugin holds in {@code bin/}.
 	 *
 	 * @return the harness's name and its plugin's launchers

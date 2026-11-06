@@ -43,7 +43,7 @@ public record ExtraPermissions(List<Path> writes, Set<String> hosts)
 	 */
 	public static final String OPTION = "--extra-permissions";
 	/**
-	 * The name of a launcher's copy of the file in a request's directory.
+	 * The name of a runner's copy of the file in the folder of a session that it starts.
 	 */
 	public static final String FILE_NAME = "extra-permissions.json";
 	/**

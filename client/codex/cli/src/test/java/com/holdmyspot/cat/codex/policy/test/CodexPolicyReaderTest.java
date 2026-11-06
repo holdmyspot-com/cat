@@ -15,8 +15,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Verifies that {@link CodexPolicyReader} rebuilds a Codex session's sandbox policy from Codex's command line and
- * configuration files the way Codex 0.160.0 resolves them.
+ * Verifies that {@link CodexPolicyReader} rebuilds a Codex session's sandbox policy from Codex's configuration files
+ * the way Codex 0.160.0 resolves them for a Codex process whose command line sets no sandbox option.
  */
 public final class CodexPolicyReaderTest
 {
@@ -47,7 +47,7 @@ public final class CodexPolicyReaderTest
 			Path extra = session.folder("other/extra");
 			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK + "writable_roots = [" + toml(extra) + "]\n");
 
-			ParentPolicy policy = session.read("exec", "--skip-git-repo-check", "summarize");
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.sandboxed(), "sandboxed").isTrue();
 			requireThat(policy.writeRoots(), "writeRoots").contains(session.project()).contains(extra);
@@ -79,7 +79,7 @@ public final class CodexPolicyReaderTest
 				enabled = true
 				""".formatted(toml(secret), toml(extra)));
 
-			ParentPolicy policy = session.read("exec", "summarize");
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.writeRoots(), "writeRoots").contains(session.project()).contains(extra);
 			requireThat(policy.writeDenials(), "writeDenials").contains(secret);
@@ -136,7 +136,7 @@ public final class CodexPolicyReaderTest
 				domains = { "api.example.com" = "allow", %s }
 				""".formatted(binds, localHosts));
 
-			ParentPolicy policy = session.read("exec", "summarize");
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.hosts().allows("api.example.com"), "public").isTrue();
 			for (String entry : localHosts.split(", "))
@@ -149,149 +149,36 @@ public final class CodexPolicyReaderTest
 	}
 
 	/**
-	 * Verifies that {@code -c} overrides whose values are inline tables select and define the permissions profile,
-	 * in the form that CAT's runners start Codex with.
-	 */
-	@Test
-	public void inlineTableOverride() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			Path hidden = session.folder("other/hidden");
-			Path locks = session.folder("other/locks");
-
-			ParentPolicy policy = session.read("exec", "--skip-git-repo-check", "--dangerously-bypass-hook-trust", "-c",
-				"default_permissions=\"parent\"", "-c", "permissions.parent={extends=\":workspace\",filesystem={" +
-					toml(hidden) + "=\"none\"," + toml(locks) + "=\"write\"},network={enabled=true}}", "summarize");
-
-			requireThat(policy.readDenials(), "readDenials").contains(hidden);
-			requireThat(policy.writeRoots(), "writeRoots").contains(locks).contains(session.project());
-			requireThat(policy.hosts(), "hosts").isEqualTo(HostAccess.ALL);
-		}
-	}
-
-	/**
-	 * Verifies that {@code -p} layers the named profile file over the user's configuration.
-	 */
-	@Test
-	public void profileFileSelection() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			Path userRoot = session.folder("other/user");
-			Path profileRoot = session.folder("other/profile");
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK + "writable_roots = [" + toml(userRoot) +
-				"]\n");
-			session.write("home/.codex/work.config.toml", "[sandbox_workspace_write]\nwritable_roots = [" +
-				toml(profileRoot) + "]\n");
-
-			ParentPolicy policy = session.read("-p", "work");
-
-			requireThat(policy.writeRoots(), "writeRoots").contains(profileRoot).doesNotContain(userRoot);
-		}
-	}
-
-	/**
-	 * Verifies that {@code --add-dir} lets the commands write another folder.
-	 */
-	@Test
-	public void addDirIsWritable() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			Path added = session.folder("other/added");
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
-
-			ParentPolicy policy = session.read("--add-dir", added.toString());
-
-			requireThat(policy.writeRoots(), "writeRoots").contains(added);
-			requireThat(policy.writeDenials(), "writeDenials").contains(added.resolve(".git"));
-		}
-	}
-
-	/**
-	 * Returns command lines that run the session without a sandbox.
+	 * Returns configurations that run the session's commands without a sandbox.
 	 *
-	 * @return the arguments of each command line
+	 * @return the text of each configuration
 	 */
 	@DataProvider
-	public Object[][] unsandboxedCommandLines()
+	public Object[][] unsandboxedConfigurations()
 	{
 		return new Object[][]
 			{
-				{new String[]{"-s", "danger-full-access"}},
-				{new String[]{"exec", "--sandbox=danger-full-access", "summarize"}},
-				{new String[]{"--dangerously-bypass-approvals-and-sandbox"}},
-				{new String[]{"exec", "--yolo", "summarize"}},
-				{new String[]{"-c", "default_permissions=\":danger-full-access\""}}
+				{"sandbox_mode = \"danger-full-access\"\n"},
+				{"default_permissions = \":danger-full-access\"\n"}
 			};
 	}
 
 	/**
-	 * Verifies that {@code danger-full-access} and the bypass flag make the session unsandboxed.
+	 * Verifies that a configuration that selects {@code danger-full-access} makes the session unsandboxed.
 	 *
-	 * @param arguments the arguments of the Codex process
+	 * @param configuration the user's {@code config.toml}
 	 */
-	@Test(dataProvider = "unsandboxedCommandLines")
-	public void dangerFullAccessUnsandboxed(String[] arguments) throws IOException, PolicyRefusal
+	@Test(dataProvider = "unsandboxedConfigurations")
+	public void dangerFullAccessUnsandboxed(String configuration) throws IOException, PolicyRefusal
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+			session.write("home/.codex/config.toml", configuration);
 
-			ParentPolicy policy = session.read(arguments);
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.sandboxed(), "sandboxed").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies that a session that runs against a remote server is refused.
-	 */
-	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*--remote.*")
-	public void remoteRefused() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
-
-			session.read("--remote", "ws://127.0.0.1:4500");
-		}
-	}
-
-	/**
-	 * Verifies that a hook that Codex's shared background server runs is refused, and that the fix names
-	 * {@code --no-daemon}. The server's command line is the one that Codex 0.160.0 starts it with.
-	 */
-	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*shared.*--no-daemon.*")
-	public void sharedServerRefused() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
-
-			session.read("app-server", "--listen", "unix://", "--managed-daemon");
-		}
-	}
-
-	/**
-	 * Verifies that an option that the reader does not know is refused by name.
-	 */
-	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*--frobnicate.*")
-	public void unknownOptionRefused() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
-
-			session.read("exec", "--frobnicate", "summarize");
 		}
 	}
 
@@ -307,7 +194,7 @@ public final class CodexPolicyReaderTest
 			Path projectRoot = session.folder("other/project-root");
 			trustProject(session, "trusted", projectRoot);
 
-			ParentPolicy policy = session.read("exec", "summarize");
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.writeRoots(), "writeRoots").contains(projectRoot);
 		}
@@ -325,7 +212,7 @@ public final class CodexPolicyReaderTest
 			Path projectRoot = session.folder("other/project-root");
 			trustProject(session, "untrusted", projectRoot);
 
-			ParentPolicy policy = session.read("exec", "summarize");
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.writeRoots(), "writeRoots").doesNotContain(projectRoot);
 		}
@@ -374,7 +261,7 @@ public final class CodexPolicyReaderTest
 			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
 			session.writeSystem(name, "sandbox_mode = [unterminated\n");
 
-			session.read("exec", "summarize");
+			session.read();
 		}
 	}
 
@@ -390,7 +277,7 @@ public final class CodexPolicyReaderTest
 			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
 			session.write("managed.plist", "<plist/>");
 
-			session.read("exec", "summarize");
+			session.read();
 		}
 	}
 
@@ -407,26 +294,7 @@ public final class CodexPolicyReaderTest
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
 			session.write("home/.codex/config.toml", "sandbox_mode = \"workspace-write\"\n");
 
-			session.read("exec", "summarize");
-		}
-	}
-
-	/**
-	 * Verifies that a configuration file below the machine's {@code /tmp}, which the {@code workspace-write} mode lets
-	 * the session's commands write, is refused.
-	 */
-	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*lets its commands write.*" +
-		"config\\.toml.*")
-	public void configurationBelowSlashTmpRefused() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
-			// The folder that holds the session's files, as the machine's temporary folder holds a test's files
-			session.slashTmp(session.project().getParent());
-
-			session.read("exec", "summarize");
+			session.read();
 		}
 	}
 }

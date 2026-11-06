@@ -1,20 +1,22 @@
 package com.holdmyspot.cat.codex.policy.test;
 
+import com.holdmyspot.cat.codex.policy.CodexParentPolicy;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
+import com.holdmyspot.cat.codex.policy.CodexRollout;
 import com.holdmyspot.cat.codex.policy.CodexSession;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
-import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * The files and processes of a Codex session whose hook asks {@link CodexPolicyReader} for the session's policy.
+ * The files of a Codex session whose command asks {@link CodexPolicyReader} for the policy of the thread that runs it.
  * <p>
  * The session runs in {@code project}, a Git checkout, with its home in {@code home} and Codex's home in
  * {@code home/.codex}. Its temporary folder, {@code tmp}, the folder {@code other} and the folder {@code slash-tmp},
@@ -23,7 +25,7 @@ import java.util.Optional;
 public final class CodexParentSession
 {
 	/**
-	 * The session's identifier.
+	 * The identifier of the session's main thread.
 	 */
 	public static final String SESSION_ID = "01a1a8eb-3d83-7d73-b243-c636c2041ee1";
 	private final Path root;
@@ -32,7 +34,7 @@ public final class CodexParentSession
 	private final Path project;
 	private final Path system;
 	private Path slashTmp;
-	private Optional<Path> transcript = Optional.empty();
+	private Optional<Path> rollout = Optional.empty();
 
 	/**
 	 * Creates the session's folders.
@@ -73,6 +75,16 @@ public final class CodexParentSession
 	public Path project()
 	{
 		return project;
+	}
+
+	/**
+	 * Returns the user's home folder.
+	 *
+	 * @return the folder
+	 */
+	public Path home()
+	{
+		return home;
 	}
 
 	/**
@@ -123,13 +135,33 @@ public final class CodexParentSession
 	}
 
 	/**
-	 * Names the rollout file that the hook's input names.
+	 * Names the rollout of the main thread, in place of one that records no turn yet.
 	 *
 	 * @param file the rollout file
 	 */
-	public void transcript(Path file)
+	public void rollout(Path file)
 	{
-		this.transcript = Optional.of(file);
+		this.rollout = Optional.of(file);
+	}
+
+	/**
+	 * Writes a thread's rollout in Codex's home, as Codex 0.160.0 names and starts it.
+	 *
+	 * @param threadId the thread
+	 * @param records  the records that follow the rollout's {@code session_meta} record, each with its line
+	 *                 terminator
+	 * @return the rollout
+	 * @throws IOException if the file cannot be written
+	 */
+	public Path writeRollout(String threadId, String records) throws IOException
+	{
+		String meta = """
+			{"timestamp":"2026-11-05T12:00:00.000Z","type":"session_meta","payload":{"session_id":"%s","id":"%s",\
+			"cwd":%s,"originator":"codex_exec","cli_version":"0.160.0","source":"exec"}}
+			""".formatted(SESSION_ID, threadId, json(project));
+		Path folder = Files.createDirectories(codexHome.resolve("sessions/2026/11/05"));
+		return Files.writeString(folder.resolve("rollout-2026-11-05T12-00-00-" + threadId + ".jsonl"),
+			meta + records);
 	}
 
 	/**
@@ -144,39 +176,68 @@ public final class CodexParentSession
 	}
 
 	/**
-	 * Reads the policy of the session's main thread when Codex runs with some arguments.
+	 * Returns a path as a JSON string.
 	 *
-	 * @param arguments the arguments of the Codex process after its executable
-	 * @return the policy
-	 * @throws IOException   if a file cannot be read
-	 * @throws PolicyRefusal if the reader refuses
+	 * @param path a path
+	 * @return the string
 	 */
-	public ParentPolicy read(String... arguments) throws IOException, PolicyRefusal
+	public static String json(Path path)
 	{
-		return readThread(Optional.empty(), arguments);
+		return "\"" + path.toString().replace("\\", "\\\\") + "\"";
 	}
 
 	/**
-	 * Reads the policy of one of the session's threads when Codex runs with some arguments.
+	 * Returns the environment of a command that one of the session's threads runs.
 	 *
-	 * @param threadId  the thread that asks, or empty for the main thread
-	 * @param arguments the arguments of the Codex process after its executable
+	 * @param threadId the thread
+	 * @return the environment
+	 */
+	public Map<String, String> environment(String threadId)
+	{
+		Map<String, String> environment = new HashMap<>(Map.of("HOME", home.toString(), "TMPDIR",
+			root.resolve("tmp").toString()));
+		environment.put(CodexParentPolicy.THREAD_VARIABLE, threadId);
+		return environment;
+	}
+
+	/**
+	 * Returns the reader of the session's policies.
+	 *
+	 * @return the reader
+	 */
+	public CodexPolicyReader reader()
+	{
+		return new CodexPolicyReader(new CodexSystemFiles(system, List.of(root.resolve("managed.plist")),
+			slashTmp));
+	}
+
+	/**
+	 * Reads the policy of the session's main thread.
+	 *
 	 * @return the policy
 	 * @throws IOException   if a file cannot be read
 	 * @throws PolicyRefusal if the reader refuses
 	 */
-	public ParentPolicy readThread(Optional<String> threadId, String... arguments) throws IOException, PolicyRefusal
+	public ParentPolicy read() throws IOException, PolicyRefusal
 	{
-		List<ProcessDescription> ancestors = List.of(
-			new ProcessDescription(101, Optional.empty(), Optional.of("/bin/sh"),
-				Optional.of(List.of("-c", "hook"))),
-			new ProcessDescription(102, Optional.empty(), Optional.of("/opt/codex/vendor/bin/codex"),
-				Optional.of(List.of(arguments))),
-			new ProcessDescription(103, Optional.empty(), Optional.of("/usr/bin/node"),
-				Optional.of(List.of("/opt/codex/bin/codex.js"))));
-		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
-		CodexSession session = new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);
-		CodexSystemFiles systemFiles = new CodexSystemFiles(system, List.of(root.resolve("managed.plist")), slashTmp);
-		return new CodexPolicyReader(systemFiles).read(session, threadId);
+		Path file;
+		if (rollout.isPresent())
+			file = rollout.get();
+		else
+			file = writeRollout(SESSION_ID, "");
+		return reader().read(new CodexSession(environment(SESSION_ID), home, CodexRollout.cwd(file), file));
+	}
+
+	/**
+	 * Reads the policy of the thread that runs a command, as a runner that the command runs finds it.
+	 *
+	 * @param threadId the thread, as the command's environment names it
+	 * @return the policy
+	 * @throws IOException   if a file cannot be read
+	 * @throws PolicyRefusal if the reader refuses
+	 */
+	public ParentPolicy readThread(String threadId) throws IOException, PolicyRefusal
+	{
+		return new CodexParentPolicy(reader(), environment(threadId), home, project).read();
 	}
 }

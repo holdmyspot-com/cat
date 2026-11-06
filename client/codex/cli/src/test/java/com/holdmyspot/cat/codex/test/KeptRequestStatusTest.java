@@ -299,10 +299,7 @@ public final class KeptRequestStatusTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(writeJson(event).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			environment, project, Yielding.waiting(), GitProjects.IGNORING, Platform.current(), List::of, (_, _) ->
-			{
-				throw new AssertionError("The hook started a session launcher");
-			});
+			environment, project, Yielding.waiting(), GitProjects.IGNORING);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

@@ -20,6 +20,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public record RequestedRunner(JvmScope scope, Path launcher, List<String> prefix)
 {
 	/**
+	 * The file in the runner's folder that receives its standard output.
+	 */
+	public static final String STDOUT_FILE = "runner.stdout";
+	/**
+	 * The file in the runner's folder that receives its standard error.
+	 */
+	public static final String STDERR_FILE = "runner.stderr";
+
+	/**
 	 * Creates a runner target.
 	 *
 	 * @param scope    the borrowed process scope, which the caller closes
@@ -91,8 +100,8 @@ public record RequestedRunner(JvmScope scope, Path launcher, List<String> prefix
 		command.addAll(prefix);
 		command.addAll(arguments);
 		ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).
-			redirectOutput(directory.resolve("runner.stdout").toFile()).
-			redirectError(directory.resolve("runner.stderr").toFile());
+			redirectOutput(directory.resolve(STDOUT_FILE).toFile()).
+			redirectError(directory.resolve(STDERR_FILE).toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);
 		return scope.executableFiles().run(builder);

@@ -1,27 +1,13 @@
 package com.holdmyspot.cat.claude.policy;
 
-import com.holdmyspot.cat.claude.policy.ClaudeOption.Arity;
-import com.holdmyspot.cat.claude.policy.ClaudeOption.Effect;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
-
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Arity.FLAG;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Arity.OPTIONAL_VALUE;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Arity.VALUE;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Arity.VARIADIC;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.ADD_DIRECTORIES;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.DENIED_TOOLS;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.NONE;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.RESTRICTED;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.SETTINGS;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.SETTING_SOURCES;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.UNSUPPORTED;
 
 /**
- * The facts about the Claude Code release that CAT reads a session's sandbox policy for: its command-line options,
- * where it looks for settings, and what its sandbox lets commands write without any setting. Each fact was read from
- * that release's {@code --help} output or its bundled program. A later release may change them; correct them here.
+ * The facts about the Claude Code release that CAT reads a session's sandbox policy for: what it tells the commands
+ * that it runs, where it looks for settings, and what its sandbox lets commands write without any setting. Each fact
+ * was read from that release's bundled program or observed in the commands that it runs. A later release may change
+ * them; correct them here.
  */
 final class ClaudeRelease
 {
@@ -29,92 +15,6 @@ final class ClaudeRelease
 	 * The Claude Code release that the facts describe.
 	 */
 	static final String VERSION = "2.1.318";
-	/**
-	 * The command-line options. Each option of the release's {@code --help} output is listed, followed by the hidden
-	 * options that hosts of the Claude Agent SDK pass.
-	 */
-	static final List<ClaudeOption> OPTIONS = List.of(
-		option(VARIADIC, ADD_DIRECTORIES, "--add-dir"),
-		option(VALUE, NONE, "--agent"),
-		option(VALUE, NONE, "--agents"),
-		option(FLAG, NONE, "--allow-dangerously-skip-permissions"),
-		option(VARIADIC, NONE, "--allowedTools", "--allowed-tools"),
-		option(VALUE, NONE, "--append-system-prompt"),
-		option(VALUE, NONE, "--autocompact"),
-		option(FLAG, NONE, "--ax-screen-reader"),
-		option(FLAG, NONE, "--bg", "--background"),
-		// Skips hooks and changes which settings load in ways the help text does not fully state
-		option(FLAG, UNSUPPORTED, "--bare"),
-		option(VARIADIC, NONE, "--betas"),
-		option(FLAG, NONE, "--brief"),
-		option(FLAG, NONE, "--chrome"),
-		// Runs the session somewhere else, under a sandbox that this computer's settings do not describe
-		option(OPTIONAL_VALUE, UNSUPPORTED, "--cloud"),
-		option(FLAG, NONE, "-c", "--continue"),
-		option(FLAG, NONE, "--dangerously-skip-permissions"),
-		option(OPTIONAL_VALUE, NONE, "-d", "--debug"),
-		option(VALUE, NONE, "--debug-file"),
-		option(FLAG, UNSUPPORTED, "--desktop"),
-		option(FLAG, NONE, "--disable-slash-commands"),
-		option(VARIADIC, DENIED_TOOLS, "--disallowedTools", "--disallowed-tools"),
-		option(VALUE, NONE, "--effort"),
-		option(VALUE, UNSUPPORTED, "--environment"),
-		option(FLAG, NONE, "--exclude-dynamic-system-prompt-sections"),
-		option(VALUE, NONE, "--fallback-model"),
-		option(VARIADIC, NONE, "--file"),
-		option(FLAG, NONE, "--fork-session"),
-		option(FLAG, NONE, "--forward-subagent-text"),
-		option(OPTIONAL_VALUE, NONE, "--from-pr"),
-		option(FLAG, NONE, "-h", "--help"),
-		option(FLAG, NONE, "--ide"),
-		option(FLAG, NONE, "--include-hook-events"),
-		option(FLAG, NONE, "--include-partial-messages"),
-		option(VALUE, NONE, "--input-format"),
-		option(VALUE, NONE, "--json-schema"),
-		option(VALUE, NONE, "--max-budget-usd"),
-		option(VARIADIC, NONE, "--mcp-config"),
-		option(VALUE, NONE, "--model"),
-		option(VALUE, NONE, "-n", "--name"),
-		option(FLAG, NONE, "--no-chrome"),
-		option(FLAG, NONE, "--no-session-persistence"),
-		option(VALUE, NONE, "--output-format"),
-		option(VALUE, NONE, "--permission-mode"),
-		option(VALUE, NONE, "--permission-prompts"),
-		option(VALUE, NONE, "--plugin-dir"),
-		option(VALUE, NONE, "--plugin-url"),
-		option(FLAG, NONE, "-p", "--print"),
-		option(OPTIONAL_VALUE, NONE, "--prompt-suggestions"),
-		option(OPTIONAL_VALUE, NONE, "--remote-control"),
-		option(VALUE, NONE, "--remote-control-session-name-prefix"),
-		option(FLAG, NONE, "--replay-user-messages"),
-		option(FLAG, RESTRICTED, "--restricted"),
-		option(OPTIONAL_VALUE, NONE, "-r", "--resume"),
-		// Disables customizations; whether the user's sandbox settings still apply is not stated
-		option(FLAG, UNSUPPORTED, "--safe-mode"),
-		option(VALUE, NONE, "--session-id"),
-		option(VALUE, SETTING_SOURCES, "--setting-sources"),
-		option(VALUE, SETTINGS, "--settings"),
-		option(FLAG, NONE, "--strict-mcp-config"),
-		option(VALUE, NONE, "--system-prompt"),
-		option(VALUE, NONE, "--system-prompt-snapshot"),
-		option(OPTIONAL_VALUE, UNSUPPORTED, "--teleport"),
-		option(FLAG, UNSUPPORTED, "--tmux"),
-		option(VARIADIC, NONE, "--tools"),
-		option(FLAG, NONE, "--verbose"),
-		option(FLAG, NONE, "-v", "--version"),
-		// Moves the session into a new folder that the hook environment may not name
-		option(OPTIONAL_VALUE, UNSUPPORTED, "-w", "--worktree"),
-		// Hidden options
-		option(FLAG, NONE, "-d2e", "--debug-to-stderr"),
-		option(FLAG, NONE, "--enable-auth-status"),
-		option(VALUE, NONE, "--max-thinking-tokens"),
-		option(VALUE, NONE, "--max-turns"),
-		option(VALUE, NONE, "--permission-prompt-tool"),
-		option(VALUE, NONE, "--resume-session-at"),
-		option(VALUE, NONE, "--system-prompt-file"),
-		option(VALUE, NONE, "--append-system-prompt-file"),
-		option(VALUE, UNSUPPORTED, "--managed-settings"),
-		option(VALUE, UNSUPPORTED, "--project-config-root"));
 	/**
 	 * The folder of the managed settings on Linux.
 	 */
@@ -168,28 +68,32 @@ final class ClaudeRelease
 	 */
 	static final List<String> BUILT_IN_WRITE_DENIALS = List.of(".claude", ".git/hooks", ".git/config");
 	/**
-	 * The settings of each scope that Claude Code loads, by the name that {@code --setting-sources} gives it.
+	 * The environment variable that Claude Code sets to {@code 1} in every command that it runs.
 	 */
-	static final Map<String, SettingsScope> SETTING_SOURCE_NAMES = Map.of("user", SettingsScope.USER, "project",
-		SettingsScope.PROJECT, "local", SettingsScope.LOCAL);
+	static final String HARNESS_VARIABLE = "CLAUDECODE";
+	/**
+	 * The environment variable that Claude Code sets to {@code 1} in a command that its sandbox runs.
+	 */
+	static final String SANDBOX_VARIABLE = "SANDBOX_RUNTIME";
+	/**
+	 * The environment variable that names the ID of the Claude Code process in the commands that it runs.
+	 */
+	static final String PROCESS_ID_VARIABLE = "CLAUDE_PID";
+	/**
+	 * The environment variable that names the session's identifier in the commands that Claude Code runs.
+	 */
+	static final String SESSION_ID_VARIABLE = "CLAUDE_CODE_SESSION_ID";
+	/**
+	 * The folder, inside Claude Code's configuration folder, that holds a record of each running session, in a file
+	 * named after the ID of its Claude Code process with the suffix {@code .json}. The record's {@code sessionId} is the
+	 * session's identifier and its {@code cwd} is the folder that the session started in.
+	 */
+	static final String SESSION_RECORDS = "sessions";
 
 	/**
 	 * Prevents instantiation.
 	 */
 	private ClaudeRelease()
 	{
-	}
-
-	/**
-	 * Returns an option.
-	 *
-	 * @param arity  how many of the following arguments the option takes
-	 * @param effect what the option does to the session's sandbox policy
-	 * @param names  the spellings of the option
-	 * @return the option
-	 */
-	private static ClaudeOption option(Arity arity, Effect effect, String... names)
-	{
-		return new ClaudeOption(List.of(names), arity, effect);
 	}
 }

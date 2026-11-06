@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.fakes.test.InPlaceBounds;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
@@ -24,6 +25,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
@@ -250,7 +252,8 @@ public final class CodexRunnerCliTest
 					"5", "--model", "gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity);
+					CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ -> capacity,
+						InPlaceBounds.unused());
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
 				catch (HarnessCapacityWaitExpiredException _)
@@ -341,7 +344,7 @@ public final class CodexRunnerCliTest
 			CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 			{
 				throw new IllegalStateException("Capacity requested");
-			});
+			}, InPlaceBounds.unused());
 			throw new AssertionError("The launch did not ask for capacity");
 		}
 		catch (IllegalStateException e)
@@ -390,7 +393,7 @@ public final class CodexRunnerCliTest
 						Map.of(), _ ->
 						{
 							throw new AssertionError("The launch took a capacity slot");
-						});
+						}, InPlaceBounds.unused());
 					throw new AssertionError("The launch was not refused");
 				}
 				catch (IllegalArgumentException e)
@@ -544,7 +547,7 @@ public final class CodexRunnerCliTest
 			Map.of(), _ ->
 		{
 			throw new AssertionError("The launch took a capacity slot");
-		});
+		}, InPlaceBounds.unused());
 	}
 
 	/**
@@ -778,13 +781,14 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
-	 * run, since only the session launcher starts a session and it always bounds the session's policy.
+	 * Verifies that a launch without {@code --policy-bound} starts its session in place, bounded by the policy of the
+	 * session whose command runs the launch, and is refused with the reason that policy cannot be read before it takes
+	 * a capacity slot or creates a run.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void refusesLaunchWithoutPolicyBound() throws IOException
+	public void refusesInPlaceLaunchWhoseBoundIsRefused() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -793,17 +797,19 @@ public final class CodexRunnerCliTest
 			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
 				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model",
 				"gpt-6-luna", "--effort", "low"};
+			PolicyRefusal refusal = new PolicyRefusal("the settings file /p/settings.json cannot be parsed",
+				"Fix the file, then start a new session");
 			try
 			{
 				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
-				});
+				}, InPlaceBounds.refusing("Codex", refusal));
 				throw new AssertionError("The launch was not refused");
 			}
 			catch (SessionRefusedException e)
 			{
-				requireThat(e.getMessage(), "message").contains("--policy-bound");
+				requireThat(e.getMessage(), "message").isEqualTo(refusal.messageFor("Codex"));
 			}
 			requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
 		}
@@ -834,7 +840,7 @@ public final class CodexRunnerCliTest
 					new StringWriter(), Map.of(), _ ->
 				{
 					throw new IllegalStateException("Capacity requested");
-				});
+				}, InPlaceBounds.unused());
 				throw new AssertionError("The launch did not ask for capacity");
 			}
 			catch (IllegalStateException e)
@@ -868,7 +874,7 @@ public final class CodexRunnerCliTest
 				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
-				}));
+				}, InPlaceBounds.unused()));
 
 			requireThat(refusal.getMessage(), "message").contains("*.example").contains(extra.toString());
 		}
@@ -895,7 +901,7 @@ public final class CodexRunnerCliTest
 				CodexRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
-				});
+				}, InPlaceBounds.unused());
 				throw new AssertionError("The launch started a session without a CAT artifact");
 			}
 			catch (IOException _)

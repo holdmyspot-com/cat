@@ -1,13 +1,8 @@
-package com.holdmyspot.cat.common.runner.launcher;
+package com.holdmyspot.cat.common.runner.policy;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
+import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
-import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
-import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
-import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
-import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -19,10 +14,13 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import tools.jackson.databind.json.JsonMapper;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 /**
  * Learns a child's needs from the runner of the child's harness, which alone knows the harness's model host, its
  * dependency caches and the login that its isolated home copies. The runner runs with
- * {@link ChildNeedsReport#OPTION} in the request's directory and writes {@link ChildNeedsReport#FILE_NAME} there.
+ * {@link ChildNeedsReport#OPTION} in a private folder inside the run folder, writes {@link ChildNeedsReport#FILE_NAME}
+ * there, and the folder is deleted once the report is read.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -54,7 +52,7 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The child needs its run folder, the request's denied reads, and the writes and hosts that its harness's runner
+	 * The child needs its run folder, the launch's denied reads, and the writes and hosts that its harness's runner
 	 * reports. A child whose isolated home would copy a login file that {@code bound} denies reading is refused.
 	 *
 	 * @throws IOException if the runner cannot start, does not report within 60 seconds, fails, or writes an invalid
@@ -68,24 +66,23 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 		requireThat(runFolder, "runFolder").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(bound, "bound").isNotNull();
-		Path directory = runFolder.toAbsolutePath().getParent();
-		Path file = directory.resolve(ChildNeedsReport.FILE_NAME);
-		try (Process process = starter.start(harness, List.of(ChildNeedsReport.OPTION, file.toString()), directory))
+		Path absoluteRunFolder = runFolder.toAbsolutePath();
+		Files.createDirectories(absoluteRunFolder);
+		Path directory = Files.createTempDirectory(absoluteRunFolder, ".child-needs-");
+		try
 		{
-			awaitSuccess(harness, process, directory);
-		}
-		ChildNeedsReport report = ChildNeedsReport.read(json, file);
-		Files.deleteIfExists(file);
-		for (Path login : report.logins())
-		{
-			if (!bound.mayRead(login))
+			Path file = directory.resolve(ChildNeedsReport.FILE_NAME);
+			try (Process process = starter.start(harness, List.of(ChildNeedsReport.OPTION, file.toString()),
+				directory))
 			{
-				throw new PolicyRefusal("its sandbox denies its commands reading " + login + ", the login that a " +
-					"requested " + harness + " session copies into its run folder, where the commands could read it",
-					"Let the session's sandbox read " + login + ", then start a new session");
+				awaitSuccess(harness, process, directory);
 			}
+			return ChildNeedsReport.read(json, file).needs(harness, runFolder, deniedReads, bound);
 		}
-		return new ChildNeeds(runFolder, report.writes(), deniedReads, report.hosts());
+		finally
+		{
+			TemporaryDirectories.deleteRecursively(directory);
+		}
 	}
 
 	/**
@@ -93,7 +90,7 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 	 *
 	 * @param harness   the child's harness identifier
 	 * @param process   the runner
-	 * @param directory the request's directory, which holds the runner's error output
+	 * @param directory the runner's folder, which holds its error output
 	 * @throws IOException if the runner does not exit in time, or exits with another status
 	 */
 	private static void awaitSuccess(String harness, Process process, Path directory) throws IOException
@@ -123,13 +120,13 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 	/**
 	 * Returns the end of the runner's error output.
 	 *
-	 * @param directory the request's directory
+	 * @param directory the runner's folder
 	 * @return at most the last {@value #STDERR_TAIL_BYTES} bytes, stripped
 	 * @throws IOException if the output cannot be read
 	 */
 	private static String stderrTail(Path directory) throws IOException
 	{
-		Path stderr = directory.resolve(SessionLauncherChannel.RUNNER_STDERR_FILE);
+		Path stderr = directory.resolve(RequestedRunner.STDERR_FILE);
 		if (!Files.isRegularFile(stderr, LinkOption.NOFOLLOW_LINKS))
 			return "";
 		long size = Files.size(stderr);

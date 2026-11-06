@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.policy.test;
 
+import static com.holdmyspot.cat.codex.policy.test.CodexParentSession.json;
 import static com.holdmyspot.cat.codex.policy.test.CodexParentSession.toml;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -10,12 +11,11 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
  * Verifies that {@link CodexPolicyReader} narrows a Codex session's policy by the resolved policy that Codex records
- * in the rollout of the session and of the thread that asks.
+ * in the rollout of the thread that runs the command, which the command's {@code CODEX_THREAD_ID} names.
  * <p>
  * The rollout records follow those of Codex 0.160.0 ({@code codex exec}, Linux), with the instructions left out.
  */
@@ -40,10 +40,10 @@ public final class CodexRolloutPolicyTest
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
 			Path extra = configureExtraRoot(session);
-			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
-				projectOnlyEntries(session)));
+			session.rollout(session.writeRollout(CodexParentSession.SESSION_ID, turnContext(session,
+				projectOnlyEntries(session))));
 
-			ParentPolicy policy = session.read("exec", "summarize");
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.writeRoots(), "writeRoots").contains(session.project()).doesNotContain(extra);
 		}
@@ -61,12 +61,12 @@ public final class CodexRolloutPolicyTest
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
 			configureExtraRoot(session);
 			Path secret = session.folder("project/secret");
-			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
+			session.rollout(session.writeRollout(CodexParentSession.SESSION_ID, turnContext(session,
 				projectOnlyEntries(session) + """
 					,
-					{"path":{"type":"path","path":%s},"access":"deny"}""".formatted(json(secret))));
+					{"path":{"type":"path","path":%s},"access":"deny"}""".formatted(json(secret)))));
 
-			ParentPolicy policy = session.read("exec", "summarize");
+			ParentPolicy policy = session.read();
 
 			requireThat(policy.readDenials(), "readDenials").contains(secret);
 			requireThat(policy.writeDenials(), "writeDenials").contains(secret);
@@ -86,27 +86,10 @@ public final class CodexRolloutPolicyTest
 			String entries = """
 				{"path":{"type":"special","value":{"kind":"root"}},"access":"read"},
 				{"path":{"type":"special","value":{"kind":"home_directory"}},"access":"write"}""";
-			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
-				entries));
+			session.rollout(session.writeRollout(CodexParentSession.SESSION_ID, turnContext(session,
+				entries)));
 
-			session.read("exec", "summarize");
-		}
-	}
-
-	/**
-	 * Verifies that a rollout that the session's commands may write is refused.
-	 */
-	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*lets its commands write.*")
-	public void rolloutInsideWritesRefused() throws IOException, PolicyRefusal
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			configureExtraRoot(session);
-			Path rollout = session.write("project/rollout.jsonl", turnContext(session, projectOnlyEntries(session)));
-			session.transcript(rollout);
-
-			session.read("exec", "summarize");
+			session.read();
 		}
 	}
 
@@ -120,38 +103,38 @@ public final class CodexRolloutPolicyTest
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
 			Path extra = configureExtraRoot(session);
-			writeRollout(session, SUBAGENT_THREAD, CodexParentSession.SESSION_ID, projectOnlyEntries(session));
+			session.writeRollout(SUBAGENT_THREAD, turnContext(session, projectOnlyEntries(session)));
 
-			ParentPolicy policy = session.readThread(Optional.of(SUBAGENT_THREAD), "exec", "summarize");
+			ParentPolicy policy = session.readThread(SUBAGENT_THREAD);
 
 			requireThat(policy.writeRoots(), "writeRoots").contains(session.project()).doesNotContain(extra);
 		}
 	}
 
 	/**
-	 * Verifies that a thread identifier that names another session's thread, or no thread, cannot widen the policy.
+	 * Verifies that a command whose {@code CODEX_THREAD_ID} is not a thread identifier, or names a thread whose rollout
+	 * Codex does not keep, is refused rather than given the policy of another thread.
 	 */
 	@Test
-	public void forgedThreadCannotWiden() throws IOException, PolicyRefusal
+	public void unknownThreadRefused() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
-			Path extra = configureExtraRoot(session);
-			Path wider = session.folder("other/wider");
-			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
-				projectOnlyEntries(session)));
-			String widerEntries = projectOnlyEntries(session) + """
-				,
-				{"path":{"type":"path","path":%s},"access":"write"}""".formatted(json(wider));
-			writeRollout(session, SUBAGENT_THREAD, "01a1a8f0-9999-7999-8999-999999999999", widerEntries);
+			configureExtraRoot(session);
+			session.writeRollout(CodexParentSession.SESSION_ID, turnContext(session, projectOnlyEntries(session)));
 
-			for (String threadId : new String[]{SUBAGENT_THREAD, "../../config", "01a1a8f0-0000-7000-8000-000000000000"})
+			for (String threadId : new String[]{"../../config", "01a1a8f0-0000-7000-8000-000000000000"})
 			{
-				ParentPolicy policy = session.readThread(Optional.of(threadId), "exec", "summarize");
-
-				requireThat(policy.writeRoots(), "writeRoots").withContext(threadId, "threadId").
-					doesNotContain(extra).doesNotContain(wider);
+				try
+				{
+					ParentPolicy policy = session.readThread(threadId);
+					throw new AssertionError("The thread " + threadId + " was not refused: " + policy);
+				}
+				catch (PolicyRefusal e)
+				{
+					requireThat(e.reason(), "reason").withContext(threadId, "threadId").contains(threadId);
+				}
 			}
 		}
 	}
@@ -189,28 +172,6 @@ public final class CodexRolloutPolicyTest
 	}
 
 	/**
-	 * Writes a thread's rollout in Codex's home.
-	 *
-	 * @param session   the session
-	 * @param threadId  the thread
-	 * @param sessionId the session that the rollout's {@code session_meta} names
-	 * @param entries   the {@code permission_profile} entries of the rollout's turn, as JSON array elements
-	 * @return the rollout
-	 * @throws IOException if the file cannot be written
-	 */
-	private static Path writeRollout(CodexParentSession session, String threadId, String sessionId, String entries)
-		throws IOException
-	{
-		String meta = """
-			{"timestamp":"2026-11-05T12:00:00.000Z","type":"session_meta","payload":{"session_id":"%s","id":"%s",\
-			"cwd":%s,"originator":"codex_exec","cli_version":"0.160.0","source":"exec"}}
-			""".formatted(sessionId, threadId, json(session.project()));
-		Path folder = Files.createDirectories(session.codexHome().resolve("sessions/2026/11/05"));
-		return Files.writeString(folder.resolve("rollout-2026-11-05T12-00-00-" + threadId + ".jsonl"),
-			meta + turnContext(session, entries));
-	}
-
-	/**
 	 * Returns a rollout's {@code turn_context} record.
 	 *
 	 * @param session the session
@@ -226,16 +187,5 @@ public final class CodexRolloutPolicyTest
 			"permission_profile":{"type":"managed","file_system":{"type":"restricted","entries":[%s]},\
 			"network":"enabled"},"model":"gpt-6.1-sol"}}
 			""".formatted(json(session.project()), json(session.project()), entries.replace("\n", ""));
-	}
-
-	/**
-	 * Returns a path as a JSON string.
-	 *
-	 * @param path a path
-	 * @return the string
-	 */
-	private static String json(Path path)
-	{
-		return "\"" + path.toString().replace("\\", "\\\\") + "\"";
 	}
 }

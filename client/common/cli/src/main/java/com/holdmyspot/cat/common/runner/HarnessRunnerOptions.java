@@ -40,8 +40,8 @@ import tools.jackson.databind.json.JsonMapper;
  * @param requestDepth how many levels of requested sessions below the session may request sessions in turn, each
  *   with the session's own {@code sessionRequests}; {@code 0} lets the session's requested sessions request none
  * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
- * @param policyBound the file of the policy that bounds the session's sandbox policy, which the session launcher
- *   writes, or {@code null} if the launch names none
+ * @param policyBound the file of the policy that bounds the session's sandbox policy, which a runner of the other
+ *   harness or the runner of a CAT run writes, or {@code null} if the launch names none
  * @param capacityHeld indicates whether the requester holds the session's capacity slot itself, so that the runner
  *   takes none
  * @param gitName the Git user name of the copied project, or {@code null} to read the source project's
@@ -65,8 +65,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 */
 	public static final int REFUSED_LAUNCH_STATUS = 2;
 	/**
-	 * The option that chooses the CAT artifact that a bridge runs. A runner launcher refuses it, since it runs outside
-	 * the sandbox of the agent that starts it.
+	 * The option that chooses the CAT artifact that a bridge runs. A runner launcher refuses it, since the sessions that
+	 * it starts run the CAT artifact that holds it, which the user installed.
 	 */
 	private static final String OVERRIDE_OPTION = "--artifact";
 	/**
@@ -354,9 +354,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
-	 * Refuses a runner launcher's launch that names {@code --artifact}. A runner launcher runs outside the sandbox of
-	 * the agent that starts it, so it always runs its own CAT artifact: the option would let the agent run code of its
-	 * choice outside its sandbox.
+	 * Refuses a runner launcher's launch that names {@code --artifact}. A runner launcher always runs its own CAT
+	 * artifact, which the user installed, so that the sessions that it starts run that CAT and no artifact of the
+	 * agent's choice.
 	 *
 	 * @param harness the harness whose runner the launcher runs, such as {@code claude} or {@code codex}
 	 * @param args    the launch's arguments

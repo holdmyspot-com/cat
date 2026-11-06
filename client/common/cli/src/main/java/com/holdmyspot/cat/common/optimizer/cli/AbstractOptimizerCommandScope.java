@@ -153,16 +153,6 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract HarnessSandbox trialSandbox();
 
 	/**
-	 * Returns why the session launcher that starts this command's nested sessions would refuse every session, found
-	 * without sending a request or starting a session.
-	 *
-	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions
-	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException           if the launchers' state cannot be listed
-	 */
-	protected abstract Optional<String> launchRefusal() throws IOException;
-
-	/**
 	 * Returns the source of campaign identifiers and draw seeds.
 	 *
 	 * @return the source

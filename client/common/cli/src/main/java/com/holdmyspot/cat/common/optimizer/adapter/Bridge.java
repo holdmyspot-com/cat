@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.adapter;
 
-import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -22,8 +22,8 @@ public interface Bridge
 	 * @param arguments the runner's command-line options
 	 * @param input the requests, one JSON object per line
 	 * @param output where the responses are written, one JSON object per line
-	 * @throws LaunchRefusedException if no session started because the session launcher refused it; the same launch
-	 *   is refused again until the user acts on the message
+	 * @throws SessionRefusedException if the runner refused to start the session; the same launch is refused again
+	 *   until the user acts on the message
 	 * @throws IOException if the runner or its harness fails
 	 */
 	void serve(List<String> arguments, Reader input, Writer output) throws IOException;

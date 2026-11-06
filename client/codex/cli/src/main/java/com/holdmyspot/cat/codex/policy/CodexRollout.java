@@ -38,32 +38,37 @@ public final class CodexRollout
 	}
 
 	/**
-	 * Returns the identifier of the session that a rollout belongs to, from its {@code session_meta} record. A
-	 * subagent thread's rollout names the session of the thread that started it.
+	 * Returns the working directory of the thread that a rollout records, from its {@code session_meta} record.
 	 *
 	 * @param rollout the rollout file
-	 * @return the session's identifier, or empty if the rollout's first record names none
-	 * @throws IOException if the file cannot be read
+	 * @return the absolute folder
+	 * @throws IOException   if the file cannot be read
+	 * @throws PolicyRefusal if the rollout's first record is not a {@code session_meta} record that names an absolute
+	 *                       working directory
 	 */
-	public static Optional<String> sessionId(Path rollout) throws IOException
+	public static Path cwd(Path rollout) throws IOException, PolicyRefusal
 	{
 		try (BufferedReader reader = Files.newBufferedReader(rollout))
 		{
 			String line = reader.readLine();
-			if (line == null)
-				return Optional.empty();
-			JsonNode record = JSON.readTree(line);
-			if (!record.path("type").asString("").equals("session_meta"))
-				return Optional.empty();
-			JsonNode id = record.path("payload").path("session_id");
-			if (!id.isString())
-				return Optional.empty();
-			return Optional.of(id.stringValue());
+			if (line != null)
+			{
+				JsonNode record = JSON.readTree(line);
+				JsonNode cwd = record.path("payload").path("cwd");
+				if (record.path("type").asString("").equals("session_meta") && cwd.isString())
+				{
+					Path folder = Path.of(cwd.stringValue());
+					if (folder.isAbsolute())
+						return folder.normalize();
+				}
+			}
 		}
-		catch (JacksonException _)
+		catch (JacksonException | InvalidPathException _)
 		{
-			return Optional.empty();
+			// Refused below
 		}
+		throw new PolicyRefusal("the first record of the rollout " + rollout + " names no absolute working " +
+			"directory", FIX);
 	}
 
 	/**

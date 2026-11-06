@@ -41,7 +41,6 @@ public final class CodexPermissions
 	 */
 	private static final int DEFAULT_GLOB_DEPTH = 64;
 	private final CodexConfiguration configuration;
-	private final CodexLaunch launch;
 	private final Path cwd;
 	private final Map<String, String> environment;
 	private final Path slashTmp;
@@ -51,16 +50,14 @@ public final class CodexPermissions
 	 * Creates a resolver.
 	 *
 	 * @param configuration the session's configuration
-	 * @param launch        the session's command line
 	 * @param cwd           the session's working directory
 	 * @param environment   the environment of the session's Codex process
 	 * @param slashTmp      the folder that Codex's {@code :slash_tmp} names, or {@code null} if the machine has none
 	 */
-	private CodexPermissions(CodexConfiguration configuration, CodexLaunch launch, Path cwd,
-		Map<String, String> environment, Path slashTmp)
+	private CodexPermissions(CodexConfiguration configuration, Path cwd, Map<String, String> environment,
+		Path slashTmp)
 	{
 		this.configuration = configuration;
-		this.launch = launch;
 		this.cwd = cwd;
 		this.environment = environment;
 		this.slashTmp = slashTmp;
@@ -70,7 +67,6 @@ public final class CodexPermissions
 	 * Resolves a session's sandbox.
 	 *
 	 * @param configuration the session's configuration
-	 * @param launch        the session's command line
 	 * @param cwd           the session's working directory
 	 * @param environment   the environment of the session's Codex process
 	 * @param slashTmp      the folder that Codex's {@code :slash_tmp} names, or {@code null} if the machine has none
@@ -79,10 +75,10 @@ public final class CodexPermissions
 	 * @throws PolicyRefusal if the configuration names a sandbox mode or profile that the reader does not know, or a
 	 *                       path that it cannot resolve
 	 */
-	public static Resolved resolve(CodexConfiguration configuration, CodexLaunch launch, Path cwd,
-		Map<String, String> environment, Path slashTmp) throws IOException, PolicyRefusal
+	public static Resolved resolve(CodexConfiguration configuration, Path cwd, Map<String, String> environment,
+		Path slashTmp) throws IOException, PolicyRefusal
 	{
-		return new CodexPermissions(configuration, launch, cwd, environment, slashTmp).resolve();
+		return new CodexPermissions(configuration, cwd, environment, slashTmp).resolve();
 	}
 
 	/**
@@ -105,16 +101,12 @@ public final class CodexPermissions
 	 */
 	private Resolved resolve() throws IOException, PolicyRefusal
 	{
-		if (launch.bypassSandbox())
-			return new Resolved(CodexSandbox.UNSANDBOXED, Optional.empty());
 		ObjectNode merged = configuration.merged();
 		workspaceRoots.add(cwd);
-		for (String added : launch.addDirs())
-			workspaceRoots.add(cwd.resolve(path(added, "--add-dir")).normalize());
 
 		if (usesLegacySyntax())
 		{
-			String mode = launch.sandboxMode().orElse(merged.path("sandbox_mode").asString(""));
+			String mode = merged.path("sandbox_mode").asString("");
 			if (mode.isEmpty())
 			{
 				if (configuration.trustDecision())
@@ -156,13 +148,6 @@ public final class CodexPermissions
 	 */
 	private boolean usesLegacySyntax()
 	{
-		if (launch.sandboxMode().isPresent())
-			return true;
-		for (Layer layer : configuration.layers())
-		{
-			if (layer.flags() && layer.values().has("default_permissions"))
-				return false;
-		}
 		boolean legacy = false;
 		for (Layer layer : configuration.layers())
 		{

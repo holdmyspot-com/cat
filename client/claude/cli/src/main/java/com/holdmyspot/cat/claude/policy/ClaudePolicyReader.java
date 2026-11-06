@@ -1,22 +1,16 @@
 package com.holdmyspot.cat.claude.policy;
 
 import com.holdmyspot.cat.common.BoundedInput;
-import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
-import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -24,8 +18,9 @@ import tools.jackson.databind.json.JsonMapper;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Reads the sandbox policy of a Claude Code session from its process's command line and the settings files that the
- * session loads.
+ * Reads the sandbox policy of a Claude Code session from the settings files that the session loads. A command of the
+ * session cannot see the session's Claude Code process, so the reader assumes that the session's command line sets no
+ * sandbox option.
  * <p>
  * Each source that CAT cannot read is refused. A source whose effect on the session is uncertain, such as a settings
  * file that appeared after the session started, contributes only the entries that narrow the policy.
@@ -49,95 +44,29 @@ public final class ClaudePolicyReader
 	 */
 	private static final String FILE_FIX = "Correct or remove that file, then start a new session";
 	/**
-	 * The fix of a refusal that the session's process causes.
-	 */
-	private static final String PROCESS_FIX = "Start a new Claude Code session";
-	/**
-	 * The running processes.
-	 */
-	private final HarnessProcesses processes;
-	/**
 	 * The JSON parser.
 	 */
 	private final JsonMapper json = JsonMapper.builder().build();
 
 	/**
 	 * Creates a reader.
-	 *
-	 * @param processes the running processes
-	 * @throws NullPointerException if {@code processes} is null
 	 */
-	public ClaudePolicyReader(HarnessProcesses processes)
+	public ClaudePolicyReader()
 	{
-		requireThat(processes, "processes").isNotNull();
-		this.processes = processes;
-	}
-
-	/**
-	 * Reads a session's policy when CAT first meets the session.
-	 *
-	 * @param session the session
-	 * @return the reading
-	 * @throws NullPointerException if {@code session} is null
-	 * @throws IOException          if a file cannot be read
-	 * @throws PolicyRefusal        if CAT cannot read the policy safely
-	 */
-	public ClaudePolicyReading read(ClaudeSession session) throws IOException, PolicyRefusal
-	{
-		requireThat(session, "session").isNotNull();
-		return read(session, null);
-	}
-
-	/**
-	 * Reads a session's policy again, for a child session that the parent requests.
-	 *
-	 * @param session  the session
-	 * @param snapshot the reading of the session when CAT first met it
-	 * @return the accesses that both readings give
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if a file cannot be read
-	 * @throws PolicyRefusal        if CAT cannot read the policy safely, or the session's process is not the one of
-	 *                              {@code snapshot}
-	 */
-	public ParentPolicy reread(ClaudeSession session, ClaudePolicyReading snapshot) throws IOException, PolicyRefusal
-	{
-		requireThat(session, "session").isNotNull();
-		requireThat(snapshot, "snapshot").isNotNull();
-		ClaudePolicyReading current = read(session, snapshot);
-		return snapshot.policy().intersect(current.policy());
 	}
 
 	/**
 	 * Reads a session's policy.
 	 *
-	 * @param session  the session
-	 * @param snapshot the earlier reading, or null if there is none
-	 * @return the reading
-	 * @throws IOException   if a file cannot be read
-	 * @throws PolicyRefusal if CAT cannot read the policy safely
+	 * @param session the session
+	 * @return the policy
+	 * @throws NullPointerException if {@code session} is null
+	 * @throws IOException          if a file cannot be read
+	 * @throws PolicyRefusal        if CAT cannot read the policy safely
 	 */
-	private ClaudePolicyReading read(ClaudeSession session, ClaudePolicyReading snapshot)
-		throws IOException, PolicyRefusal
+	public ParentPolicy read(ClaudeSession session) throws IOException, PolicyRefusal
 	{
-		long processId = session.processId();
-		ProcessDescription process = processes.find(processId).orElseThrow(() -> new PolicyRefusal("the Claude Code " +
-			"process " + processId + " that the hook environment's CLAUDE_PID names is not running", PROCESS_FIX));
-		Instant start = process.start().orElseThrow(() -> new PolicyRefusal("the operating system does not report " +
-			"when the Claude Code process " + processId + " started, so CAT cannot tell it from a later process " +
-			"with the same ID", PROCESS_FIX));
-		if (snapshot != null && !start.equals(snapshot.processStart()))
-		{
-			throw new PolicyRefusal("the process " + processId + " started at " + start + ", not at " +
-				snapshot.processStart() + " like the session's Claude Code process, so it is another process",
-				PROCESS_FIX);
-		}
-		if (process.command().isEmpty() || process.arguments().isEmpty())
-		{
-			throw new PolicyRefusal("the operating system does not report the command line of the Claude Code " +
-				"process " + processId, PROCESS_FIX);
-		}
-		ClaudeCommandLine commandLine = ClaudeCommandLine.parse(process.arguments().get());
-
+		requireThat(session, "session").isNotNull();
 		for (Path source : session.unreadableManagedSources())
 		{
 			if (Files.exists(source))
@@ -171,33 +100,12 @@ public final class ClaudePolicyReader
 				uncertain.add(fileManaged);
 			uncertain.addAll(otherManaged);
 		}
-		certain.addAll(scopedLayers(session, commandLine));
-
-		Set<Path> sources = new LinkedHashSet<>();
-		for (SettingsLayer layer : certain)
-			layer.file().ifPresent(sources::add);
-		for (List<SettingsLayer> group : uncertain)
-		{
-			for (SettingsLayer layer : group)
-				layer.file().ifPresent(sources::add);
-		}
-		if (snapshot != null)
-		{
-			// The session may not have loaded a settings file that appeared after CAT first read its policy
-			for (SettingsLayer layer : List.copyOf(certain))
-			{
-				if (layer.file().isPresent() && !snapshot.sources().contains(layer.file().get()))
-				{
-					certain.remove(layer);
-					uncertain.add(List.of(layer));
-				}
-			}
-		}
+		certain.addAll(scopedLayers(session));
 		if (uncertain.size() > MAXIMUM_UNCERTAIN_SOURCES)
 		{
-			throw new PolicyRefusal(uncertain.size() + " of the session's settings sources may or may not apply " +
-				"to it, more than CAT combines", "Remove the settings files that appeared after the session " +
-				"started, then start a new session");
+			throw new PolicyRefusal(uncertain.size() + " of the session's managed settings sources may or may not " +
+				"apply to it, more than CAT combines", "Remove the managed settings sources that do not apply, then " +
+				"start a new session");
 		}
 
 		ParentPolicy policy = null;
@@ -211,16 +119,14 @@ public final class ClaudePolicyReader
 			}
 			// A stable sort keeps the order of the layers within a scope
 			layers.sort(Comparator.comparing(SettingsLayer::scope));
-			ParentPolicy candidate = ClaudePolicyComputation.compute(layers, commandLine, session);
+			ParentPolicy candidate = ClaudePolicyComputation.compute(layers, session);
 			if (policy == null)
 				policy = candidate;
 			else
 				policy = policy.intersect(candidate);
 		}
 		assert policy != null;
-		for (Path source : sources)
-			policy.requireTrusted(source);
-		return new ClaudePolicyReading(policy, start, sources);
+		return policy;
 	}
 
 	/**
@@ -255,54 +161,22 @@ public final class ClaudePolicyReader
 	}
 
 	/**
-	 * Returns the settings of the command line and of the user, project and local scopes that the session loads.
+	 * Returns the settings of the local, project and user scopes.
 	 *
-	 * @param session     the session
-	 * @param commandLine the command line
+	 * @param session the session
 	 * @return the settings, from the highest precedence to the lowest
 	 * @throws IOException   if a file cannot be read
-	 * @throws PolicyRefusal if a file cannot be read or parsed
+	 * @throws PolicyRefusal if a file cannot be parsed
 	 */
-	private List<SettingsLayer> scopedLayers(ClaudeSession session, ClaudeCommandLine commandLine)
-		throws IOException, PolicyRefusal
+	private List<SettingsLayer> scopedLayers(ClaudeSession session) throws IOException, PolicyRefusal
 	{
 		List<SettingsLayer> layers = new ArrayList<>();
 		Path project = session.projectDirectory();
-		if (commandLine.settings().isPresent())
-		{
-			String value = commandLine.settings().get();
-			if (value.strip().startsWith("{"))
-			{
-				layers.add(new SettingsLayer(SettingsScope.FLAG, "the settings of Claude Code's option --settings",
-					Optional.empty(), parse(value, "the settings of Claude Code's option --settings",
-						"Correct the JSON of Claude Code's option --settings, then start a new session"),
-					project));
-			}
-			else
-			{
-				Path file = project.resolve(value).normalize();
-				if (!Files.isRegularFile(file))
-				{
-					throw new PolicyRefusal("the settings file " + file + " of Claude Code's option --settings " +
-						"does not exist", "Start Claude Code with an existing settings file, then start a new session");
-				}
-				layers.add(fileLayer(SettingsScope.FLAG, file, file.getParent()));
-			}
-		}
-		Set<SettingsScope> scopes = EnumSet.of(SettingsScope.LOCAL, SettingsScope.PROJECT, SettingsScope.USER);
-		if (commandLine.restricted())
-			scopes.clear();
-		commandLine.settingSources().ifPresent(scopes::retainAll);
 		Path projectSettings = project.resolve(".claude");
-		if (scopes.contains(SettingsScope.LOCAL))
-			optionalLayer(layers, SettingsScope.LOCAL, projectSettings.resolve("settings.local.json"), project);
-		if (scopes.contains(SettingsScope.PROJECT))
-			optionalLayer(layers, SettingsScope.PROJECT, projectSettings.resolve("settings.json"), project);
-		if (scopes.contains(SettingsScope.USER))
-		{
-			Path configuration = session.configurationDirectory();
-			optionalLayer(layers, SettingsScope.USER, configuration.resolve("settings.json"), configuration);
-		}
+		optionalLayer(layers, SettingsScope.LOCAL, projectSettings.resolve("settings.local.json"), project);
+		optionalLayer(layers, SettingsScope.PROJECT, projectSettings.resolve("settings.json"), project);
+		Path configuration = session.configurationDirectory();
+		optionalLayer(layers, SettingsScope.USER, configuration.resolve("settings.json"), configuration);
 		return layers;
 	}
 

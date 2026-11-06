@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
 
@@ -20,8 +21,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessEnvironment
 {
 	/**
-	 * The variable that marks a harness process as a session of a CAT run, so that CAT's hooks in it start no session
-	 * launcher. A runner sets it to {@value #RUN_VALUE} in the environment of every harness process that it starts.
+	 * The variable that marks a harness process as a session of a CAT run. A runner sets it to {@value #RUN_VALUE} in
+	 * the environment of every harness process that it starts, and the session's commands inherit it, so that a runner
+	 * that one of them runs starts no session in place: inside a run, a session starts only as a request to the run's
+	 * own runner, which counts and limits the sessions that the run requests.
 	 */
 	public static final String RUN_VARIABLE = "CAT_RUN";
 	/**
@@ -37,6 +40,32 @@ public final class HarnessEnvironment
 	 * The names of the variables that list the hosts that a child connects to without a proxy.
 	 */
 	private static final List<String> EXCLUSION_VARIABLES = List.of("NO_PROXY", "no_proxy");
+
+	/**
+	 * Returns why a runner refuses to start a session in place from the command that it runs in. A command of a CAT
+	 * run's session may start sessions only as requests to the run's own runner, which it reaches through
+	 * {@link SessionRequestAccess#REQUESTS_VARIABLE} when the run lets its session request sessions; without that
+	 * variable, the run lets the session start none.
+	 *
+	 * @param harness     the harness whose runner the launcher stands for
+	 * @param environment the launcher's environment
+	 * @return the reason, or empty if the command is not part of a CAT run or the run lets its session request sessions
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code harness} is blank
+	 */
+	public static Optional<String> inRunRefusal(String harness, Map<String, String> environment)
+	{
+		requireThat(harness, "harness").isNotBlank();
+		requireThat(environment, "environment").isNotNull();
+		if (!RUN_VALUE.equals(environment.get(RUN_VARIABLE)))
+			return Optional.empty();
+		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
+		if (requests != null && !requests.isBlank())
+			return Optional.empty();
+		return Optional.of(harness + "-runner refuses to start a session: this command runs in a session of a CAT " +
+			"run whose runner lets it request no sessions. Start the run with --session-requests to let its session " +
+			"request sessions.");
+	}
 
 	/**
 	 * Copies only generic operating-system variables and removes CAT/harness home state.

@@ -5,6 +5,8 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.claude.policy.ClaudeParentPolicy;
+import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
@@ -14,6 +16,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessRunStarter;
@@ -29,12 +32,12 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.policy.InPlaceBound;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
-import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -69,14 +72,13 @@ public final class ClaudeRunnerCli
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
-	 * receipt. Outside a run, the launch becomes a request to the session launcher of the harness process that runs
-	 * the command, which starts the session outside the command's sandbox, unless a session launcher started the
-	 * launch itself: that launch names {@value SessionLauncherClient#POLICY_BOUND_OPTION} and serves the session in
-	 * place.
+	 * receipt. Inside a run that lets its session request no sessions, the launch is refused. Outside a run, the
+	 * session starts in place, inside the sandbox of the command that runs this launcher, as
+	 * {@link #serve(JvmScope, Path, String[], Reader, Writer, Map, IntFunction, InPlaceBound)} describes.
 	 * <p>
 	 * With {@value ChildNeedsReport#OPTION} and a file, it writes what a Claude child session needs to that file, as
-	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it, for the session launcher that asks before
-	 * it starts the child, and starts nothing.
+	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it, for the runner of another harness that asks
+	 * before it starts the child, and starts nothing.
 	 *
 	 * @param args the command's options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -113,12 +115,6 @@ public final class ClaudeRunnerCli
 				HARNESS_ID, launch, new InputStreamReader(System.in, UTF_8), Path.of(requests),
 				Pause.sleeping(Duration.ofMillis(100)), System.out, errors()), errors()));
 		}
-		if (SessionLauncherClient.serves(Platform.current(), args))
-		{
-			System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> SessionLauncherClient.launchFromMain(
-				HARNESS_ID, launch, environment, Pause::sleeping, new InputStreamReader(System.in, UTF_8), System.out,
-				errors()), errors()));
-		}
 		int status = HarnessRunnerOptions.refusingInvalidArguments(
 			() -> serveInProcess(launch, environment, Pause::sleeping), errors());
 		if (status != 0)
@@ -153,7 +149,8 @@ public final class ClaudeRunnerCli
 		{
 			serve(process, Path.of(""), args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
 				new OutputStreamWriter(System.out, UTF_8), environment, maximum -> HarnessCapacity.forHome(
-					process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()));
+					process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()),
+				inPlaceBound(environment, waiting));
 			return 0;
 		}
 		catch (HarnessCapacityWaitExpiredException e)
@@ -220,11 +217,41 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
+	 * Returns the bound of a Claude session that a command of the harness session that runs this process starts in
+	 * place: the policy of that harness session, as {@link ClaudeParentPolicy} reads it from the command's
+	 * environment, and what a Claude child needs, as {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports
+	 * it.
+	 *
+	 * @param environment the environment of the command that runs this process
+	 * @param waiting     the process's waiting
+	 * @return the bound
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the environment names no home folder
+	 */
+	public static InPlaceBound inPlaceBound(Map<String, String> environment, Waiting waiting) throws IOException
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
+		Path home = Platform.current().homeDirectory(environment);
+		return new InPlaceBound(new ClaudeParentPolicy(new ClaudePolicyReader(), environment, home,
+			System.getProperty("user.name", "")), (harness, runFolder, deniedReads, bound) ->
+		{
+			try (HarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting))
+			{
+				return ClaudeRunner.childNeeds(scope, environment).needs(harness, runFolder, deniedReads, bound);
+			}
+		});
+	}
+
+	/**
 	 * Serves one Claude bridge using caller-provided streams and environment.
 	 * <p>
-	 * {@code --policy-bound} names the file of the policy that bounds the session's sandbox policy, which the session
-	 * launcher writes. Every session starts through the session launcher, so a launch without it is refused before
-	 * it takes a capacity slot or creates a run. A session that the bounded session requests is bounded in turn by the
+	 * {@code --policy-bound} names the file of the policy that bounds the session's sandbox policy, which the runner
+	 * that starts a requested session writes. A launch without it starts the session in place, inside the sandbox of
+	 * the command that runs it: {@code inPlace} bounds the session by that command's policy, and the launch is refused
+	 * before it takes a capacity slot or creates a run if the policy cannot be read or does not allow what the
+	 * session needs. A launch from a session of a CAT run is refused, since such a session starts sessions only as
+	 * requests to the run's own runner. A session that the bounded session requests is bounded in turn by the
 	 * bounded session's policy.
 	 *
 	 * @param process            the process scope, whose lock coordinator and waiting the bridge uses
@@ -235,15 +262,17 @@ public final class ClaudeRunnerCli
 	 * @param environment        the host environment
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
 	 *                           command selected
-	 * @throws NullPointerException    if any argument is null
-	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, or the session's sandbox would
-	 *                                 not confine it as its policy requires
+	 * @param inPlace            bounds a session that starts in place
+	 * @throws NullPointerException      if any argument is null
+	 * @throws SessionRefusedException   if the launch comes from a session of a CAT run, or the session's sandbox
+	 *                                   would not confine it as its bound requires; the message says how to allow it
 	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
-	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
-	 *                                 I/O fails
+	 * @throws IOException               if the policy bound cannot be read, or runner startup, the harness, or bridge
+	 *                                   I/O fails
 	 */
 	public static void serve(JvmScope process, Path workingDirectory, String[] args, Reader input, Writer output,
-		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum) throws IOException
+		Map<String, String> environment, IntFunction<HarnessCapacity> capacityForMaximum, InPlaceBound inPlace)
+		throws IOException
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
@@ -251,6 +280,10 @@ public final class ClaudeRunnerCli
 		requireThat(environment, "environment").isNotNull();
 		requireThat(process, "process").isNotNull();
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
+		requireThat(inPlace, "inPlace").isNotNull();
+		Optional<String> inRun = HarnessEnvironment.inRunRefusal(HARNESS_ID, environment);
+		if (inRun.isPresent())
+			throw new SessionRefusedException(inRun.get());
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
 			process.waiting()))
 		{
@@ -258,9 +291,9 @@ public final class ClaudeRunnerCli
 			ClaudeAgentDefinition agent = loadAgent(options.catArtifact(ClaudeRunner.MANIFEST), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
-			ChildPolicy bound = policyBound(scope.json(), options);
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
+			ChildPolicy bound = policyBound(scope.json(), options, extraPermissions, inPlace);
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
@@ -515,23 +548,23 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Reads the policy that bounds the session's sandbox policy.
+	 * Returns the policy that bounds the session's sandbox policy.
 	 *
-	 * @param json    the JSON mapper
-	 * @param options the launch's options
-	 * @return the bound
-	 * @throws SessionRefusedException if the launch names no bound
-	 * @throws IOException             if the bound's file cannot be read or is not a bound
+	 * @param json             the JSON mapper
+	 * @param options          the launch's options
+	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
+	 * @param inPlace          bounds a session that starts in place
+	 * @return the bound that the launch's {@code --policy-bound} names, or else the bound of a session that starts in
+	 *         place
+	 * @throws SessionRefusedException if the session starts in place and its bound cannot be established
+	 * @throws IOException             if the bound's file cannot be read or is not a bound, or what the session needs
+	 *                                 cannot be determined
 	 */
-	private static ChildPolicy policyBound(JsonMapper json, HarnessRunnerOptions options) throws IOException
+	private static ChildPolicy policyBound(JsonMapper json, HarnessRunnerOptions options,
+		ExtraPermissions extraPermissions, InPlaceBound inPlace) throws IOException
 	{
 		if (options.policyBound() == null)
-		{
-			throw new SessionRefusedException("claude-runner starts a session only " +
-				"through CAT's session launcher, which names the policy that bounds the session's sandbox with " +
-				PolicyBoundFile.OPTION + ", and this launch names none, so CAT does not start the session. Start the " +
-				"session from a Claude Code or Codex session in which CAT is installed");
-		}
+			return inPlace.bound(HARNESS_ID, options.runRoot(), options.deniedReads(), extraPermissions);
 		return PolicyBoundFile.read(json, options.policyBound().toAbsolutePath());
 	}
 }

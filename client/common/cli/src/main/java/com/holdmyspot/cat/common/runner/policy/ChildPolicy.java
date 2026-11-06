@@ -162,7 +162,7 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 		else
 			access = HostAccess.listed(hosts);
 		return new ParentPolicy(true, writeRoots, writeDenials, readDenials, readReallowances, access,
-			allowLocalBinding, List.of());
+			allowLocalBinding);
 	}
 
 	/**
