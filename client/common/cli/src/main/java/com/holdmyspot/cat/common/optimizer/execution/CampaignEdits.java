@@ -21,7 +21,7 @@ import java.util.TreeSet;
 /**
  * Compares the saved confirmed and working prompt files for a prompt author brief.
  */
-final class CampaignEdits
+public final class CampaignEdits
 {
 	/**
 	 * Prevents instantiation.
@@ -40,7 +40,7 @@ final class CampaignEdits
 	 * @return the unified diff, empty for unchanged prompt content
 	 * @throws IOException if snapshot bytes cannot be read or differ from their recorded hashes
 	 */
-	static String of(WorkspacePort workspace, Overlay incumbent, Overlay working, Set<Path> sources)
+	public static String of(WorkspacePort workspace, Overlay incumbent, Overlay working, Set<Path> sources)
 		throws IOException
 	{
 		if (incumbent.equals(working))
