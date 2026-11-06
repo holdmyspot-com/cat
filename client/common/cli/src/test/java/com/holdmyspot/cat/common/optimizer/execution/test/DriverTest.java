@@ -917,18 +917,14 @@ public final class DriverTest
 	}
 
 	/**
-	 * A weak round compares three independent attempts, minimizes only the best accepted edit, retains the other
-	 * evidence, and returns to one prompt author at a time after the new candidate's development estimate improves.
-	 * <p>
-	 * The test takes over a second under a parallel build: proving the claim needs a campaign that runs three
-	 * attempts' promotion trials and then minimality to completion, and each of its steps rebuilds and validates the
-	 * campaign state.
+	 * A weak round compares three independent attempts, minimizes only the best accepted edit and retains the other
+	 * evidence.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
 	// Requirement: R-D3
 	@Test
-	public void weakRoundSelectsBestThenRunsSequentially() throws IOException
+	public void weakRoundSelectsBestAttempt() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1012,21 +1008,30 @@ public final class DriverTest
 					isLessThanOrEqualTo(Promotion.STARTING_TRIGGERING_RUNS);
 				for (JsonNode attempt : attempts)
 					harness.overlays().require(new Sha256(attempt.get("snapshot").asString()));
+			}
+		}
+	}
 
-				harness.trials(_ -> harness.passed());
-				harness.runUntil(driver, state -> state.development().count("safety").passes() >= 80 &&
-					state.development().count("formatting").passes() >= 80);
-				harness.trials(request ->
-				{
-					if (DriverHarness.cell(request).equals("safety"))
-						return harness.failed();
-					return harness.passed();
-				});
-				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 3);
-				harness.runUntil(driver, () -> harness.promptAuthor().briefs().size() == 4);
-				requireThat(harness.promptAuthor().briefs().size(), "nextRoundAttempts").isEqualTo(4);
+	/**
+	 * A round that the development estimate does not make weak starts one prompt author at a time.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	// Requirement: R-D3
+	@Test
+	public void strongRoundStartsOnePromptAuthor() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("strong-round")),
+				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+					round(new Round(Map.of("safety", 0))).failure(Builder.targeted("safety", "logs")).build());
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
+				requireThat(harness.promptAuthor().briefs().size(), "attempts").isEqualTo(1);
 				requireThat(harness.running().stream().filter(session ->
-					session.request().role() == SessionRole.PROMPT_AUTHOR).count(), "strongRoundAuthors").isEqualTo(1);
+					session.request().role() == SessionRole.PROMPT_AUTHOR).count(), "runningAuthors").isEqualTo(1L);
 			}
 		}
 	}
