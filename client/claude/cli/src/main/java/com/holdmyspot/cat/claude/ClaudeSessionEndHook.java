@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
@@ -62,7 +63,8 @@ public final class ClaudeSessionEndHook
 	public static void run(String[] args, InputStream input, PrintStream error, Map<String, String> environment,
 		Path workingDirectory, Waiting waiting)
 	{
-		run(args, input, error, environment, workingDirectory, waiting, HarnessProcesses.system());
+		run(args, input, error, environment, workingDirectory, waiting, HarnessProcesses.system(),
+			SessionIgnore.GIT_PROCESS);
 	}
 
 	/**
@@ -76,10 +78,12 @@ public final class ClaudeSessionEndHook
 	 * @param workingDirectory a non-null process working directory
 	 * @param waiting          how the hook waits between the attempts of a retried operation
 	 * @param processes        the operating system's processes, which report when Claude Code's process started
+	 * @param git              answers what Git ignores in the project when the event creates the session's CAT session
+	 *                         directory
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static void run(String[] args, InputStream input, PrintStream error, Map<String, String> environment,
-		Path workingDirectory, Waiting waiting, HarnessProcesses processes)
+		Path workingDirectory, Waiting waiting, HarnessProcesses processes, SessionIgnore.GitQueries git)
 	{
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
@@ -88,7 +92,8 @@ public final class ClaudeSessionEndHook
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
 		requireThat(processes, "processes").isNotNull();
-		try (HookScope scope = ClaudeHookScope.open(environment, waiting))
+		requireThat(git, "git").isNotNull();
+		try (HookScope scope = ClaudeHookScope.open(environment, waiting, git))
 		{
 			if (args.length != 0)
 				throw new IllegalArgumentException("SessionEnd accepts no arguments");

@@ -228,7 +228,8 @@ public final class ClaudeSessionLauncherHookTest
 			"hook_event_name", "SessionEnd", "reason", reason);
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		ClaudeSessionEndHook.run(new String[0], new ByteArrayInputStream(json.writeValueAsBytes(event)),
-			new PrintStream(error, true, UTF_8), fixture.environment(), fixture.project, Yielding.waiting(), PROCESSES);
+			new PrintStream(error, true, UTF_8), fixture.environment(), fixture.project, Yielding.waiting(), PROCESSES,
+			GitAnswers.IGNORED);
 		return error.toString(UTF_8);
 	}
 
