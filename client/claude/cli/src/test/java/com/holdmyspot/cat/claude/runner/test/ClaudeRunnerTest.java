@@ -555,6 +555,32 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies that a run whose project path maps to a name of more than 255 characters, which a file system cannot
+	 * hold as one folder name, still gets its hook-results folder.
+	 *
+	 * @throws IOException if the run directory cannot be created
+	 */
+	@Test
+	public void createsHookResultsForLongPath() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
+			Path directory = Files.createDirectories(capture.resolve("a".repeat(100)).resolve("b".repeat(100)).
+				resolve("c".repeat(100)).resolve("runs/claude/abc123-def456"));
+			HarnessRun run = new HarnessRun("claude", "abc123-def456", directory);
+			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
+			requireThat(worktree.toString().length(), "projectPathLength").isGreaterThan(260);
+
+			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), run);
+
+			Path projectFolder = hookResults.resolve(ClaudeRunner.claudeProjectDirectory(worktree));
+			requireThat(projectFolder.getFileName().toString().length(), "folderNameLength").isLessThanOrEqualTo(255);
+			requireThat(Files.isDirectory(projectFolder), "projectFolderExists").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies a Claude worktree subagent can resolve its reported spill-context path without access beyond hook results.
 	 */
 	@Test
