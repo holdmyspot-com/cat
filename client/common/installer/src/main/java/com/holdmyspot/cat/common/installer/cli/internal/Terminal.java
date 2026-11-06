@@ -18,4 +18,16 @@ public interface Terminal
 	 * @throws IOException          if the terminal cannot be read or written
 	 */
 	Optional<String> ask(String question) throws IOException;
+
+	/**
+	 * Returns whether the installer's standard output shows on this terminal, so that a person reads what the
+	 * installer prints there. A terminal that cannot tell reports {@code false}, which makes the installer print its
+	 * machine-readable result.
+	 *
+	 * @return {@code true} if the person who runs the installer reads its standard output on this terminal
+	 */
+	default boolean isStdoutTerminal()
+	{
+		return false;
+	}
 }

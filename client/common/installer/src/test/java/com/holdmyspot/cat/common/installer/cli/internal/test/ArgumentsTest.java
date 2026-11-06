@@ -132,6 +132,53 @@ public final class ArgumentsTest
 	}
 
 	/**
+	 * Every operation accepts a request for the JSON result before the operation, in any order with the options
+	 * that only install takes; without it, the user has not asked for JSON.
+	 */
+	@Test
+	public void parsesJsonRequest()
+	{
+		Path home = Path.of(System.getProperty("cat.installer.test.directory")).resolve("harness-home");
+		Set<String> harnesses = Set.of("harness-a");
+		Arguments install = Arguments.parse(new String[]{"--json", "install", "--harness", "harness-a", "v1.2"},
+			harnesses);
+		Arguments installWithOptions = Arguments.parse(new String[]{"--create-profile", "--json", "--home",
+			home.toString(), "install", "--harness", "harness-a"}, harnesses);
+		Arguments status = Arguments.parse(new String[]{"--json", "status"}, harnesses);
+		Arguments uninstall = Arguments.parse(new String[]{"--json", "uninstall", "--harness", "harness-a",
+			"--delete-data"}, harnesses);
+		Arguments without = Arguments.parse(new String[]{"install", "--harness", "harness-a"}, harnesses);
+		requireThat(install.json(), "install").isTrue();
+		requireThat(install.tag(), "installTag").isEqualTo("v1.2");
+		requireThat(installWithOptions.json(), "installWithOptions").isTrue();
+		requireThat(installWithOptions.createProfile(), "createProfile").isTrue();
+		requireThat(installWithOptions.home(), "home").isEqualTo(home);
+		requireThat(status.json(), "status").isTrue();
+		requireThat(status.operation(), "statusOperation").isEqualTo(Operation.STATUS);
+		requireThat(uninstall.json(), "uninstall").isTrue();
+		requireThat(uninstall.deleteData(), "deleteData").isTrue();
+		requireThat(without.json(), "without").isFalse();
+	}
+
+	/**
+	 * The usage diagnostic names the option that asks for the JSON result.
+	 */
+	@Test
+	public void usageNamesJsonOption()
+	{
+		try
+		{
+			Arguments.parse(new String[]{"rollback"}, Set.of("harness-a"));
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").contains("[--json]");
+			return;
+		}
+		throw new AssertionError("rollback was accepted");
+	}
+
+	/**
 	 * Supplies install commands that give the profile permission or the harness home after the operation, with the
 	 * form that the installer accepts.
 	 *
@@ -212,6 +259,10 @@ public final class ArgumentsTest
 			{new String[]{"--create-profile", "status"}},
 			{new String[]{"--create-profile", "uninstall", "--harness", "harness-a"}},
 			{new String[]{"--delete-data", "uninstall", "--harness", "harness-a"}},
+			{new String[]{"--json"}},
+			{new String[]{"--json", "--json", "install", "--harness", "harness-a"}},
+			{new String[]{"install", "--harness", "harness-a", "--json"}},
+			{new String[]{"status", "--json"}},
 			{new String[]{"rollback", "--harness", "harness-a"}},
 			{new String[]{"rollback", "--harness", "harness-a", "v1.0"}},
 			{new String[]{"status", "extra"}},

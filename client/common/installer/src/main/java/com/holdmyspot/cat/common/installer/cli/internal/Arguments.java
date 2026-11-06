@@ -23,9 +23,11 @@ import java.util.Set;
  * @param deleteData    true if uninstall also deletes the harness's plugin data
  * @param createProfile true if the user allows install to create a permission profile for CAT, when the harness
  *                      configuration needs one
+ * @param json          true if the user asks for the machine-readable JSON result even where the installer would
+ *                      describe the result to a person
  */
 public record Arguments(Operation operation, String harness, String tag, Path home, boolean deleteData,
-	boolean createProfile)
+	boolean createProfile, boolean json)
 {
 	/**
 	 * The complete operations exposed by the installer.
@@ -37,6 +39,9 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 
 	/**
 	 * Parses the complete argument vector, refusing unknown, repeated, reordered or operation-inapplicable inputs.
+	 * <p>
+	 * {@code --json} comes before the operation as well and applies to every operation: it asks for the
+	 * machine-readable result where the installer would describe the result to a person.
 	 * <p>
 	 * The options that give the user's permission or redirect the installation, {@code --home} and
 	 * {@code --create-profile}, come before the operation. Claude Code and Codex allow an agent to run the commands that
@@ -57,6 +62,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 		requireThat(harnesses, "harnesses").isNotNull();
 		Path home = null;
 		boolean createProfile = false;
+		boolean json = false;
 		int next = 0;
 		while (next < args.length && args[next].startsWith("--"))
 		{
@@ -76,6 +82,13 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 					createProfile = true;
 					next += 1;
 				}
+				case "--json" ->
+				{
+					if (json)
+						throw usage();
+					json = true;
+					next += 1;
+				}
 				default -> throw usage();
 			}
 		}
@@ -83,7 +96,8 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 		Arguments parsed = parseOperation(command, harnesses, home, createProfile);
 		if ((home != null || createProfile) && parsed.operation() != Operation.INSTALL)
 			throw usage();
-		return parsed;
+		return new Arguments(parsed.operation(), parsed.harness(), parsed.tag(), parsed.home(), parsed.deleteData(),
+			parsed.createProfile(), json);
 	}
 
 	/**
@@ -108,12 +122,12 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			default -> throw usage();
 		};
 		if (operation == Operation.STATUS && args.length == 1)
-			return new Arguments(operation, "", null, null, false, false);
+			return new Arguments(operation, "", null, null, false, false, false);
 		if (operation == Operation.UNINSTALL && args.length <= 2)
 		{
 			if (args.length == 2 && !args[1].equals("--delete-data"))
 				throw usage();
-			return new Arguments(operation, "", null, null, args.length == 2, false);
+			return new Arguments(operation, "", null, null, args.length == 2, false, false);
 		}
 		if (args.length < 3 || !args[1].equals("--harness") || !harnesses.contains(args[2]))
 			throw usage();
@@ -125,13 +139,13 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			{
 				if (args.length > 4 || (args.length == 4 && !args[3].equals("--delete-data")))
 					throw usage();
-				yield new Arguments(operation, harness, null, null, args.length == 4, false);
+				yield new Arguments(operation, harness, null, null, args.length == 4, false, false);
 			}
 			case STATUS ->
 			{
 				if (args.length != 3)
 					throw usage();
-				yield new Arguments(operation, harness, null, null, false, false);
+				yield new Arguments(operation, harness, null, null, false, false, false);
 			}
 		};
 	}
@@ -160,7 +174,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			tag = parseTag(args[3]);
 		else if (args.length != 3)
 			throw usage();
-		return new Arguments(Operation.INSTALL, harness, tag, home, false, createProfile);
+		return new Arguments(Operation.INSTALL, harness, tag, home, false, createProfile, false);
 	}
 
 	/**
@@ -267,6 +281,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 * @param home          the harness home that install names, or null
 	 * @param deleteData    true if uninstall also deletes the harness's plugin data
 	 * @param createProfile true if the user allows install to create a permission profile for CAT
+	 * @param json          true if the user asks for the JSON result
 	 * @throws NullPointerException if {@code operation} or {@code harness} are null
 	 */
 	public Arguments
@@ -282,8 +297,8 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 */
 	private static IllegalArgumentException usage()
 	{
-		return new IllegalArgumentException("Usage: installer [--home <absolute dir>] [--create-profile] install " +
-			"--harness <id> [vX.Y[.Z]|latest]; installer status [--harness <id>]; installer uninstall [--harness <id>] " +
-			"[--delete-data]");
+		return new IllegalArgumentException("Usage: installer [--home <absolute dir>] [--create-profile] [--json] " +
+			"install --harness <id> [vX.Y[.Z]|latest]; installer status [--harness <id>]; installer uninstall " +
+			"[--harness <id>] [--delete-data]");
 	}
 }

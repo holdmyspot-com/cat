@@ -42,6 +42,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -95,6 +96,14 @@ public final class Invocation
 	 * runtime; known once install has checked that the environment sets it.
 	 */
 	private Path userHome;
+	/**
+	 * The harness home that the install which just ran put its permission entries in, once it is known.
+	 */
+	private Path resolvedHome;
+	/**
+	 * Whether the result is described to a person instead of printed as JSON.
+	 */
+	private boolean describesToPerson;
 
 	/**
 	 * Creates one process invocation that downloads releases over HTTPS, with its other boundaries explicit.
@@ -109,10 +118,11 @@ public final class Invocation
 	 * @param clock        supplies UTC diagnostic times
 	 * @param waiting      creates pauses between installer lock attempts
 	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
-	 * @param terminal     asks the user whether they allow a change that needs their permission
+	 * @param terminal     asks the user whether they allow a change that needs their permission, and tells whether the
+	 *                     user reads the standard output
 	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
 	 *                     it cannot delete while it runs
-	 * @param stdout       receives exactly one JSON result
+	 * @param stdout       receives exactly one JSON result, or a report to a person where the terminal shows it
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -139,11 +149,12 @@ public final class Invocation
 	 * @param clock        supplies UTC diagnostic times
 	 * @param waiting      creates pauses between installer lock attempts
 	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
-	 * @param terminal     asks the user whether they allow a change that needs their permission
+	 * @param terminal     asks the user whether they allow a change that needs their permission, and tells whether the
+	 *                     user reads the standard output
 	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
 	 *                     it cannot delete while it runs
 	 * @param sources      opens the release source at a policy's release location
-	 * @param stdout       receives exactly one JSON result
+	 * @param stdout       receives exactly one JSON result, or a report to a person where the terminal shows it
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -180,7 +191,8 @@ public final class Invocation
 	}
 
 	/**
-	 * Runs one complete command, reporting every operational failure as one JSON result.
+	 * Runs one complete command, reporting every operational failure as one JSON result, or as a report to a person
+	 * where the terminal shows the standard output and the command does not ask for {@code --json}.
 	 *
 	 * @param args the complete argument vector
 	 * @return the documented shell exit status
@@ -192,9 +204,11 @@ public final class Invocation
 		try
 		{
 			arguments = Arguments.parse(args, harnesses);
+			describesToPerson = !arguments.json() && terminal.isStdoutTerminal();
 		}
 		catch (IllegalArgumentException e)
 		{
+			describesToPerson = !Arrays.asList(args).contains("--json") && terminal.isStdoutTerminal();
 			return print(failure(Result.USAGE, "unknown", e.getMessage(), List.of()), null, null);
 		}
 		try
@@ -709,6 +723,7 @@ public final class Invocation
 		HarnessInstallation installation = integration.installation(outcome.policy().harnesses().get(harness));
 		resolvedData = installation.dataDirectory();
 		resolvedHarness = harness;
+		resolvedHome = installation.home();
 		FolderRetention retention = new InstallCompletion(integration, installation).completeLocked(outcome.version(),
 			outcome.before(), image, clock, waiting);
 		UpdateResult result = new UpdateResult(Result.INSTALLED, harness, Optional.of(outcome.version().release()),
@@ -807,13 +822,30 @@ public final class Invocation
 	{
 		if (result.result().exitStatus() != 0)
 		{
-			stderr.println(result.message());
+			// The report to a person holds the message
+			if (!describesToPerson)
+				stderr.println(result.message());
 			appendDiagnostic(arguments, locations, result.message());
 		}
-		stdout.println(mapper.writeValueAsString(object));
+		String text = mapper.writeValueAsString(object);
+		if (describesToPerson)
+			text = HumanReport.render(object, productName(result.harness()), Optional.ofNullable(resolvedHome));
+		stdout.println(text);
 		stdout.flush();
 		new ExitDeletion(platform, environment, starter, stderr).delete(result.exitDeletions());
 		return result.result().exitStatus();
+	}
+
+	/**
+	 * Returns the name by which the users of a harness know it.
+	 *
+	 * @param harness the harness
+	 * @return the product name, or empty if this installer has no integration for the harness
+	 */
+	private Optional<String> productName(String harness)
+	{
+		return integrations.stream().filter(integration -> integration.harness().equals(harness)).findFirst().
+			map(HarnessIntegration::productName);
 	}
 
 	/**
