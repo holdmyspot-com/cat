@@ -539,7 +539,7 @@ public final class ClaudePolicyReaderTest
 	 * @throws PolicyRefusal if the policy is refused
 	 */
 	@Test
-	public void launcherStateIsTrustedWithInstalledDenial() throws IOException, PolicyRefusal
+	public void trustsLauncherStateWithDenial() throws IOException, PolicyRefusal
 	{
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{

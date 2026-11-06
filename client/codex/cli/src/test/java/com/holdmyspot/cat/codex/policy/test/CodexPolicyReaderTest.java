@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -427,6 +428,48 @@ public final class CodexPolicyReaderTest
 			session.slashTmp(session.project().getParent());
 
 			session.read("exec", "summarize");
+		}
+	}
+
+	/**
+	 * Verifies that the session launcher's state folder is trusted by a session whose permission profile lets its
+	 * commands write the user's home, once the installer's {@code "read"} entry for the folder is in the profile, and is
+	 * refused before.
+	 */
+	@Test
+	public void trustsLauncherStateWithReadEntry() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path home = session.folder("home");
+			Path locks = session.folder("home/.cat/locks");
+			Path state = new SessionLauncherChannel(home).stateRoot();
+			String profile = """
+				default_permissions = "cat"
+				[permissions.cat]
+				extends = ":workspace"
+				[permissions.cat.filesystem]
+				%s
+				%s = "write"
+				%s = "write"
+				[permissions.cat.network]
+				enabled = true
+				""";
+			session.write("home/.codex/config.toml", profile.formatted("", toml(locks), toml(home)));
+			try
+			{
+				session.read("exec", "summarize").requireTrusted(state);
+				throw new AssertionError("The home's write entry must make " + state + " untrusted");
+			}
+			catch (PolicyRefusal e)
+			{
+				requireThat(e.getMessage(), "refusal").contains(state.toString());
+			}
+
+			session.write("home/.codex/config.toml", profile.formatted(toml(state) + " = \"read\"", toml(locks),
+				toml(home)));
+			session.read("exec", "summarize").requireTrusted(state);
 		}
 	}
 }
