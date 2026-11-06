@@ -169,8 +169,6 @@ public final class TestabilityAuditTest
 		"common/cli/src/test/java/com/holdmyspot/cat/common/optimizer/workspace/test/StagedSourceTest.java|.",
 		// The plugin directory that a fake reports before a test sets one; only its text reaches the hooks
 		"common/cli/src/test/java/com/holdmyspot/cat/common/optimizer/cli/test/OptimizerCoreTest.java|",
-		// A gate command run in its own process, whose working directory the gate runner sets to the worktree
-		"common/cli/src/test/java/com/holdmyspot/cat/common/git/replay/test/GateCommandFixture.java|.",
 		// A fake harness program that reports the working directory its caller started it in
 		"common/installer/src/test/java/com/holdmyspot/cat/common/installer/cli/internal/test/FakeHarnessProgram.java|");
 
