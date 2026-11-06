@@ -786,6 +786,31 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that the measurement refuses a staged target prompt file whose bytes differ from the snapshot, and
+	 * reports the measurement as unavailable instead of the size of the wrong bytes.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void sizeRefusesAlteredStagedBytes() throws IOException
+	{
+		// Requirement: R-E18
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path staged = Files.createDirectories(cleanup.add(Files.createTempDirectory("prompt-sizes")).
+				resolve("project"));
+			Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
+			Files.writeString(staged.resolve(DriverHarness.PROMPT), "edited after staging\n", UTF_8);
+			FileInventory inventory = new FileInventory(staged, Map.of(DriverHarness.PROMPT,
+				new RegularFile(Sha256.of("short prompt\n".getBytes(UTF_8)), permissions)));
+			PromptSize size = PromptMeasurements.measure(staged, inventory, DriverHarness.PROMPT);
+			requireThat(size.bytes(), "bytes").isNull();
+			requireThat(size.words(), "words").isNull();
+			requireThat(size.unavailable(), "unavailable").isNotBlank();
+		}
+	}
+
+	/**
 	 * Verifies that medians use observed samples, with zero distinguished from missing usage.
 	 */
 	@Test
