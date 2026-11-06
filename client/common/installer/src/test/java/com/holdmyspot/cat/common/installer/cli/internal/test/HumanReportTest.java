@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.cli.internal.HumanReport;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
-import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
+import com.holdmyspot.cat.common.installer.cli.internal.ProcessTerminal;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -51,104 +50,22 @@ public final class HumanReportTest
 	}
 
 	/**
-	 * A person at a terminal reads, after a first install, which product CAT is installed for, the installed version,
-	 * that the product must be restarted, and each permission and sandbox entry that install added with the file that
-	 * holds it. The report is not JSON.
+	 * A reader that is not a terminal, as the update skill is, reads one line of JSON and the exit status of the
+	 * result. Under the test runner the installer's standard output is a pipe, which the process's own terminal
+	 * reports.
 	 *
 	 * @throws IOException    if the fixture cannot be created
 	 * @throws TrustException if the release's policy is invalid
 	 */
 	@Test
-	public void terminalReadsInstalledReport() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Fixture fixture = new Fixture(cleanup.add(testDirectory("human-report-installed-")));
-			RecordingIntegration integration = new RecordingIntegration().
-				adding(Map.of("settings.json#permissions.allow", List.of("Bash(entry-one)", "Bash(entry-two)")));
-
-			Run run = fixture.run(integration, terminal(), "install", "--harness", "harness-a");
-
-			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
-			requireThat(run.output, "output").contains("Product harness-a").contains("1.2").
-				contains("Start a new Product harness-a session").contains("restart Product harness-a").
-				contains(fixture.home.resolve("settings.json").toString()).contains("permissions.allow").
-				contains("Bash(entry-one)").contains("Bash(entry-two)").doesNotContain("{").doesNotContain("\"result\"");
-			requireThat(run.diagnostics, "diagnostics").isEmpty();
-		}
-	}
-
-	/**
-	 * A person at a terminal who gives a command line that the installer rejects reads what is wrong and what to run
-	 * instead, not JSON, and the exit status is the one that the machine-readable result has.
-	 *
-	 * @throws IOException    if the fixture cannot be created
-	 * @throws TrustException if the release's policy is invalid
-	 */
-	@Test
-	public void terminalReadsUsageReport() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Fixture fixture = new Fixture(cleanup.add(testDirectory("human-report-usage-")));
-
-			Run text = fixture.run(new RecordingIntegration(), terminal(), "rollback", "--harness", "harness-a");
-			Run machine = fixture.run(new RecordingIntegration(), pipe(), "rollback", "--harness", "harness-a");
-
-			requireThat(text.status, "status").withContext(text.output, "output").isEqualTo(2);
-			requireThat(text.status, "status").isEqualTo(machine.status);
-			requireThat(text.output, "output").contains("Next step:").contains("install --harness").
-				doesNotContain("{").doesNotContain("\"result\"");
-		}
-	}
-
-	/**
-	 * A person at a terminal who does not allow a change that install asks to make reads that CAT changed nothing and
-	 * how to allow the change, not JSON, and the exit status is the one that the machine-readable result has.
-	 *
-	 * @throws IOException    if the fixture cannot be created
-	 * @throws TrustException if the release's policy is invalid
-	 */
-	@Test
-	public void terminalReadsRefusalReport() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Fixture fixture = new Fixture(cleanup.add(testDirectory("human-report-refused-")));
-			RecordingIntegration integration = new RecordingIntegration().
-				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
-
-			Run text = fixture.run(integration, terminal(), "install", "--harness", "harness-a");
-			Run machine = fixture.run(integration, pipe(), "install", "--harness", "harness-a");
-
-			requireThat(text.status, "status").withContext(text.output, "output").isEqualTo(3);
-			requireThat(text.status, "status").isEqualTo(machine.status);
-			requireThat(text.output, "output").contains("May CAT change the shared setting?").contains("Next step:").
-				doesNotContain("{").doesNotContain("\"result\"");
-			requireThat(text.diagnostics, "diagnostics").isEmpty();
-		}
-	}
-
-	/**
-	 * A reader that is not a terminal, as the update skill is, reads one line of JSON, which does not depend on the
-	 * terminal's presence otherwise: the same command prints the same line with {@code --json} at a terminal.
-	 *
-	 * @throws IOException    if the fixture cannot be created
-	 * @throws TrustException if the release's policy is invalid
-	 */
-	@Test
-	public void pipeAndJsonOptionReadMachineResult() throws IOException, TrustException
+	public void pipeReadsMachineResult() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture piped = new Fixture(cleanup.add(testDirectory("human-report-pipe-")));
-			Fixture json = new Fixture(cleanup.add(testDirectory("human-report-json-")));
 			Map<String, List<String>> entries = Map.of("settings.json", List.of("entry"));
 
-			Run machine = piped.run(new RecordingIntegration().adding(entries), pipe(), "install", "--harness",
-				"harness-a");
-			Run option = json.run(new RecordingIntegration().adding(entries), terminal(), "--json", "install",
-				"--harness", "harness-a");
+			Run machine = piped.run(new RecordingIntegration().adding(entries), "install", "--harness", "harness-a");
 
 			requireThat(machine.status, "status").withContext(machine.output, "output").isEqualTo(0);
 			requireThat(machine.output, "output").startsWith("{\"result\":\"installed\",\"harness\":\"harness-a\"," +
@@ -156,83 +73,29 @@ public final class HumanReportTest
 			requireThat(machine.output.lines().count(), "lines").isEqualTo(1L);
 			requireThat(machine.result().path("permissions").path("settings.json").get(0).stringValue(), "entry").
 				isEqualTo("entry");
-			requireThat(option.status, "status").isEqualTo(0);
-			requireThat(normalize(option.output, json.root), "jsonOption").
-				isEqualTo(normalize(machine.output, piped.root));
+			requireThat(machine.diagnostics, "diagnostics").isEmpty();
 		}
 	}
 
 	/**
-	 * An agent that runs the installer in a terminal that its harness allocates reads the same JSON line as a reader
-	 * that is not a terminal, because the agent parses the result.
+	 * A command line that the installer rejects prints one line of JSON and the usage exit status to a reader that is
+	 * not a terminal.
 	 *
 	 * @throws IOException    if the fixture cannot be created
 	 * @throws TrustException if the release's policy is invalid
 	 */
 	@Test
-	public void agentSessionAtTerminalReadsMachineResult() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Map<String, List<String>> entries = Map.of("settings.json", List.of("entry"));
-			String harness = "harness-a";
-			Fixture piped = new Fixture(cleanup.add(testDirectory("human-report-agent-pipe-")));
-			Fixture agent = new Fixture(cleanup.add(testDirectory("human-report-agent-")));
-			Run machine = piped.run(new RecordingIntegration(harness).adding(entries), pipe(), Map.of(), "install",
-				"--harness", harness);
-
-			Run run = agent.run(new RecordingIntegration(harness).adding(entries), terminal(),
-				Map.of(RecordingIntegration.agentSessionVariable(harness), "1"), "install", "--harness", harness);
-
-			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
-			requireThat(normalize(run.output, agent.root), "output").
-				isEqualTo(normalize(machine.output, piped.root));
-			requireThat(run.output.lines().count(), "lines").isEqualTo(1L);
-		}
-	}
-
-	/**
-	 * A harness's agent variable that is set to an empty value does not mark an agent session, so a person at a
-	 * terminal still reads the report.
-	 *
-	 * @throws IOException    if the fixture cannot be created
-	 * @throws TrustException if the release's policy is invalid
-	 */
-	@Test
-	public void emptyAgentVariableLeavesPersonReport() throws IOException, TrustException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Fixture fixture = new Fixture(cleanup.add(testDirectory("human-report-empty-agent-")));
-
-			Run run = fixture.run(new RecordingIntegration(), terminal(),
-				Map.of(RecordingIntegration.agentSessionVariable("harness-a"), ""), "install", "--harness", "harness-a");
-
-			requireThat(run.output, "output").contains("Product harness-a").doesNotContain("{");
-		}
-	}
-
-	/**
-	 * A command line that the installer rejects prints the same JSON line to a terminal that asked for {@code --json}
-	 * as to a reader that is not a terminal.
-	 *
-	 * @throws IOException    if the fixture cannot be created
-	 * @throws TrustException if the release's policy is invalid
-	 */
-	@Test
-	public void jsonOptionKeepsFailureJson() throws IOException, TrustException
+	public void pipeReadsFailureJson() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("human-report-usage-json-")));
 
-			Run machine = fixture.run(new RecordingIntegration(), pipe(), "rollback", "--harness", "harness-a");
-			Run option = fixture.run(new RecordingIntegration(), terminal(), "--json", "rollback", "--harness",
-				"harness-a");
+			Run machine = fixture.run(new RecordingIntegration(), "rollback", "--harness", "harness-a");
 
 			requireThat(machine.output, "output").startsWith("{\"result\":\"usage\"");
-			requireThat(option.output, "output").isEqualTo(machine.output);
-			requireThat(option.status, "status").isEqualTo(machine.status);
+			requireThat(machine.output.lines().count(), "lines").isEqualTo(1L);
+			requireThat(machine.status, "status").isEqualTo(Result.USAGE.exitStatus());
 		}
 	}
 
@@ -415,62 +278,6 @@ public final class HumanReportTest
 	}
 
 	/**
-	 * Replaces a fixture's root in output with {@code ROOT}, both in the plain form and in the form that JSON writes,
-	 * where each backslash is escaped.
-	 *
-	 * @param output the output to normalize
-	 * @param root   the fixture's root
-	 * @return the normalized output
-	 */
-	private static String normalize(String output, Path root)
-	{
-		String plain = root.toString();
-		String escaped = plain.replace("\\", "\\\\");
-		return output.replace(escaped, "ROOT").replace(plain, "ROOT");
-	}
-
-	/**
-	 * Returns a terminal on which the person reads the installer's standard output and answers no to every question.
-	 *
-	 * @return the terminal
-	 */
-	private static Terminal terminal()
-	{
-		return new TestTerminal(true, _ -> Optional.of("n"));
-	}
-
-	/**
-	 * Returns a terminal whose standard output is redirected, as when the update skill runs the installer.
-	 *
-	 * @return the terminal
-	 */
-	private static Terminal pipe()
-	{
-		return new TestTerminal(false, _ -> Optional.of("n"));
-	}
-
-	/**
-	 * A terminal with a given answer to every question.
-	 *
-	 * @param stdoutTerminal whether the person reads the standard output
-	 * @param answers        the answer to a question
-	 */
-	private record TestTerminal(boolean stdoutTerminal, Function<String, Optional<String>> answers) implements Terminal
-	{
-		@Override
-		public Optional<String> ask(String question)
-		{
-			return answers.apply(question);
-		}
-
-		@Override
-		public boolean isStdoutTerminal()
-		{
-			return stdoutTerminal;
-		}
-	}
-
-	/**
 	 * The outcome of one invocation.
 	 *
 	 * @param status      the exit status
@@ -495,7 +302,6 @@ public final class HumanReportTest
 	 */
 	private static final class Fixture
 	{
-		private final Path root;
 		private final Path plugin;
 		private final Path home;
 		private final Map<String, String> environment;
@@ -509,7 +315,7 @@ public final class HumanReportTest
 		 */
 		private Fixture(Path directory) throws IOException, TrustException
 		{
-			this.root = directory.toRealPath();
+			Path root = directory.toRealPath();
 			this.plugin = PluginArchive.create(root.resolve("download"), List.of(trusted("release-key", keyPair())));
 			this.home = Files.createDirectory(root.resolve("home"));
 			Path user = Files.createDirectory(root.resolve("user"));
@@ -522,32 +328,14 @@ public final class HumanReportTest
 		}
 
 		/**
-		 * Runs the installer from the archive into the harness home.
+		 * Runs the installer from the archive into the harness home, with the terminal of the test runner's process.
 		 *
 		 * @param integration the harness integration
-		 * @param terminal    the user's terminal
 		 * @param operation   the operation and its options, after the harness home
 		 * @return the outcome
 		 */
-		private Run run(RecordingIntegration integration, Terminal terminal, String... operation)
+		private Run run(RecordingIntegration integration, String... operation)
 		{
-			return run(integration, terminal, Map.of(), operation);
-		}
-
-		/**
-		 * Runs the installer from the archive into the harness home, with more variables in its environment.
-		 *
-		 * @param integration the harness integration
-		 * @param terminal    the user's terminal
-		 * @param extra       the variables to add to the environment
-		 * @param operation   the operation and its options, after the harness home
-		 * @return the outcome
-		 */
-		private Run run(RecordingIntegration integration, Terminal terminal, Map<String, String> extra,
-			String... operation)
-		{
-			Map<String, String> variables = new HashMap<>(environment);
-			variables.putAll(extra);
 			List<String> arguments = new ArrayList<>();
 			// An option that precedes the operation goes before the harness home
 			int start = 0;
@@ -566,12 +354,12 @@ public final class HumanReportTest
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
 				Invocation invocation = new Invocation(plugin, Platform.current(),
-					variables, List.of(new LiveProvider()), List.of(integration),
+					environment, List.of(new LiveProvider()), List.of(integration),
 					(command, harnessHome) -> RecordingIntegration.cli(), Clock.systemUTC(), interval -> () ->
 					{
 					}, new FileReplacer(Platform.current(), () ->
 					{
-					}, Clock.systemUTC()), terminal, command ->
+					}, Clock.systemUTC()), new ProcessTerminal(Platform.current()), command ->
 					{
 						throw new AssertionError("Started " + command);
 					}, stdout, stderr);

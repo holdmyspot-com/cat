@@ -204,11 +204,11 @@ public final class Invocation
 		try
 		{
 			arguments = Arguments.parse(args, harnesses);
-			describesToPerson = !arguments.json() && readerIsPerson();
+			describesToPerson = readerIsPerson(arguments.json());
 		}
 		catch (IllegalArgumentException e)
 		{
-			describesToPerson = !Arrays.asList(args).contains("--json") && readerIsPerson();
+			describesToPerson = readerIsPerson(Arrays.asList(args).contains("--json"));
 			return print(failure(Result.USAGE, "unknown", e.getMessage(), List.of()), null, null);
 		}
 		try
@@ -827,9 +827,8 @@ public final class Invocation
 				stderr.println(result.message());
 			appendDiagnostic(arguments, locations, result.message());
 		}
-		String text = mapper.writeValueAsString(object);
-		if (describesToPerson)
-			text = HumanReport.render(object, productName(result.harness()), Optional.ofNullable(resolvedHome));
+		String text = ReportAudience.text(object, describesToPerson, productName(result.harness()),
+			Optional.ofNullable(resolvedHome));
 		stdout.println(text);
 		stdout.flush();
 		new ExitDeletion(platform, environment, starter, stderr).delete(result.exitDeletions());
@@ -837,16 +836,15 @@ public final class Invocation
 	}
 
 	/**
-	 * Returns whether a person, not a program, reads the standard output: it shows on a terminal and no installed
-	 * harness's agent session runs the installer. An agent parses the result even where its harness gives the command
-	 * a terminal.
+	 * Returns whether a person, not a program, reads the standard output.
 	 *
+	 * @param json {@code true} if the command line asks for {@code --json}
 	 * @return {@code true} if the result is described to a person
 	 */
-	private boolean readerIsPerson()
+	private boolean readerIsPerson(boolean json)
 	{
-		return terminal.isStdoutTerminal() && integrations.stream().map(HarnessIntegration::agentSessionVariable).
-			allMatch(variable -> environment.getOrDefault(variable, "").isEmpty());
+		return ReportAudience.isPerson(json, terminal::isStdoutTerminal, environment,
+			integrations.stream().map(HarnessIntegration::agentSessionVariable).toList());
 	}
 
 	/**
@@ -974,16 +972,13 @@ public final class Invocation
 			requireThat(request, "request").isNotNull();
 			if (given)
 				return true;
-			Optional<String> answer = terminal.ask(request + " Allow this change? [y/N] ");
-			if (answer.isEmpty())
-			{
-				unasked = true;
-				return false;
-			}
-			String reply = answer.get().strip().toLowerCase(Locale.ROOT);
-			if (reply.equals("y") || reply.equals("yes"))
+			ConsentReply reply = ConsentReply.of(terminal.ask(request + " Allow this change? [y/N] "));
+			if (reply == ConsentReply.ALLOWED)
 				return true;
-			declined = true;
+			if (reply == ConsentReply.DECLINED)
+				declined = true;
+			else
+				unasked = true;
 			return false;
 		}
 

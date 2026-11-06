@@ -829,14 +829,13 @@ public final class InvocationTest
 
 	/**
 	 * When the integration needs the user's permission and the user answers yes in the terminal, install makes the
-	 * change and installs CAT.
+	 * change and installs CAT. The answers that mean yes are those that {@code ConsentReplyTest} lists.
 	 *
-	 * @param answer the user's answer
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the release's policy is invalid
 	 */
-	@Test(dataProvider = "yes")
-	public void installMakesChangeThatUserAllows(String answer) throws IOException, TrustException
+	@Test
+	public void installMakesChangeThatUserAllows() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -848,7 +847,7 @@ public final class InvocationTest
 			Run run = archive.run(integration, question ->
 			{
 				questions.add(question);
-				return Optional.of(answer);
+				return Optional.of("y");
 			});
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
@@ -862,29 +861,14 @@ public final class InvocationTest
 	}
 
 	/**
-	 * Supplies the answers that mean yes.
+	 * When the user does not answer yes in the terminal, install refuses with the question and changes nothing. The
+	 * answers that do not mean yes are those that {@code ConsentReplyTest} lists.
 	 *
-	 * @return each answer
-	 */
-	@DataProvider
-	public Object[][] yes()
-	{
-		return new Object[][]
-			{
-				{"y"},
-				{" YES "}
-			};
-	}
-
-	/**
-	 * When the user does not answer yes in the terminal, install refuses with the question and changes nothing.
-	 *
-	 * @param answer the user's answer, where an empty answer takes the default, no
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the release's policy is invalid
 	 */
-	@Test(dataProvider = "no")
-	public void installChangesNothingWhenUserDeclines(String answer) throws IOException, TrustException
+	@Test
+	public void installChangesNothingWhenUserDeclines() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -893,7 +877,7 @@ public final class InvocationTest
 				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
 			Map<String, String> before = Releases.snapshot(archive.root);
 
-			Run run = archive.run(integration, _ -> Optional.of(answer));
+			Run run = archive.run(integration, _ -> Optional.of("n"));
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
@@ -904,22 +888,6 @@ public final class InvocationTest
 				doesNotContain("register");
 			requireThat(Releases.snapshot(archive.root), "after").isEqualTo(before);
 		}
-	}
-
-	/**
-	 * Supplies the answers that do not mean yes.
-	 *
-	 * @return each answer
-	 */
-	@DataProvider
-	public Object[][] no()
-	{
-		return new Object[][]
-			{
-				{""},
-				{"n"},
-				{"sure"}
-			};
 	}
 
 	/**
