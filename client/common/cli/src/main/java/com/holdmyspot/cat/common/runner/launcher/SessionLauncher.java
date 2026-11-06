@@ -15,13 +15,10 @@ import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Request;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Response;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
-import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
-import com.holdmyspot.cat.common.runner.policy.MissingPermissionsException;
-import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
-import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -92,7 +89,7 @@ public final class SessionLauncher implements Closeable
 	private final ProcessIdentity harnessProcess;
 	private final ProcessTable processes;
 	private final ParentPolicySource policy;
-	private final ChildNeedsSource needs;
+	private final ChildBound bound;
 	private final RequestedSessionStarter starter;
 	private final FileLocks fileLocks;
 	private final Clock clock;
@@ -109,7 +106,10 @@ public final class SessionLauncher implements Closeable
 	private boolean started;
 	private volatile boolean ended;
 	private Instant lastHeartbeat = Instant.MIN;
-	private ParentPolicy snapshot;
+	/**
+	 * The bound of every child, taken when the launcher starts, or {@code null} before that or if it was refused.
+	 */
+	private ChildBound snapshot;
 	private String startRefusal = "";
 
 	/**
@@ -145,7 +145,7 @@ public final class SessionLauncher implements Closeable
 		this.harnessProcess = harnessProcess;
 		this.processes = processes;
 		this.policy = policy;
-		this.needs = needs;
+		this.bound = new ChildBound(policy, needs);
 		this.starter = starter;
 		this.fileLocks = fileLocks;
 		this.clock = clock;
@@ -296,30 +296,12 @@ public final class SessionLauncher implements Closeable
 	{
 		try
 		{
-			ParentPolicy initial = policy.read();
-			initial.requireTrusted(channel.stateRoot());
-			snapshot = initial;
+			snapshot = bound.snapshot(channel.stateRoot());
 		}
-		catch (PolicyRefusal e)
+		catch (SessionRefusedException e)
 		{
-			startRefusal = e.messageFor(policy.harnessName());
+			startRefusal = e.getMessage();
 		}
-		catch (IOException e)
-		{
-			startRefusal = unreadablePolicy(e);
-		}
-	}
-
-	/**
-	 * Returns the reason for refusing a request whose session's policy cannot be read.
-	 *
-	 * @param failure the failure to read it
-	 * @return the reason
-	 */
-	private String unreadablePolicy(IOException failure)
-	{
-		return "CAT cannot start the session: it cannot read this " + policy.harnessName() + " session's sandbox " +
-			"policy: " + failure.getMessage();
 	}
 
 	/**
@@ -958,27 +940,16 @@ public final class SessionLauncher implements Closeable
 		ChildPolicy child;
 		try
 		{
-			ParentPolicy current = policy.read();
-			current.requireTrusted(channel.stateRoot());
-			ParentPolicy bound = snapshot.intersect(current);
-			ChildNeeds childNeeds = needs.needs(choices.harness(), runRoot, choices.deniedReads(), bound).
-				with(choices.extraPermissions());
-			child = ChildPolicy.intersect(bound, childNeeds);
+			child = snapshot.bound(choices.harness(), runRoot, choices.deniedReads(), choices.extraPermissions());
 		}
-		catch (PolicyRefusal e)
+		catch (SessionRefusedException e)
 		{
-			return request.answer(Status.REFUSED, e.messageFor(policy.harnessName()));
-		}
-		catch (MissingPermissionsException e)
-		{
-			String entries = "";
-			if (!e.writes().isEmpty() || !e.hosts().isEmpty())
-				entries = policy.permissionEntries(e.writes(), e.hosts());
-			return request.answer(Status.REFUSED, e.messageFor(policy.harnessName(), entries));
+			return request.answer(Status.REFUSED, e.getMessage());
 		}
 		catch (IOException e)
 		{
-			return request.answer(Status.REFUSED, unreadablePolicy(e));
+			// What the child needs, or a path in its bound, cannot be determined, so its policy is unknown
+			return request.answer(Status.REFUSED, ChildBound.unreadablePolicy(policy.harnessName(), e));
 		}
 		Files.createDirectories(runRoot);
 		Path policyBound = request.directory.resolve(PolicyBoundFile.FILE_NAME);
