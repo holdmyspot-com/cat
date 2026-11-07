@@ -78,7 +78,9 @@ public final class SessionLauncherStartTest
 			requireThat(started, "started").isTrue();
 			requireThat(starter.commands, "commands").isEqualTo(List.of(List.of(
 				plugin.resolve("bin").resolve("session-launcher").toString(), folder.toString())));
-			requireThat(starter.logs, "logs").isEqualTo(List.of(folder.resolve(SessionLauncherChannel.LOG_FILE)));
+			Path log = channel.logFile("claude", 4242, record.process().start());
+			requireThat(starter.logs, "logs").isEqualTo(List.of(log));
+			requireThat(log.getParent(), "logsDirectory").isDirectory();
 			requireThat(LauncherRecord.read(json, folder.resolve(SessionLauncherChannel.LAUNCHER_FILE)), "written").
 				isEqualTo(record);
 		}
@@ -239,7 +241,7 @@ public final class SessionLauncherStartTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();
-			Path log = root.resolve(SessionLauncherChannel.LOG_FILE);
+			Path log = root.resolve("launcher.log");
 			Path pidFile = root.resolve("launcher.pid");
 			Path java = Path.of(System.getProperty("java.home"), "bin", "java");
 			String classes = System.getProperty("jdk.module.path", System.getProperty("java.class.path"));

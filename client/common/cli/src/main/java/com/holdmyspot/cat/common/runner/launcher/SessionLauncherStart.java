@@ -28,11 +28,11 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Starts the session launcher of a harness process from CAT's SessionStart hook. The hook writes its data to the
  * launcher's folder and starts the plugin's {@value #PROGRAM} launcher on that folder, without waiting for it: the
- * launcher reads the null device, appends its output and error output to the folder's
- * {@link SessionLauncherChannel#LOG_FILE}, and runs in a session of its own when {@code setsid} is on the hook's
- * {@code PATH}, so that the hook can end while the launcher serves the harness. The hook starts no launcher on native
- * Windows, in a session that CAT's runner started, or while a live launcher holds the folder's
- * {@link SessionLauncherChannel#LOCK_FILE}.
+ * launcher reads the null device, appends its output and error output to its
+ * {@link SessionLauncherChannel#logFile log}, which stays when the launcher ends, and runs in a session of its own
+ * when {@code setsid} is on the hook's {@code PATH}, so that the hook can end while the launcher serves the harness.
+ * The hook starts no launcher on native Windows, in a session that CAT's runner started, or while a live launcher
+ * holds the folder's {@link SessionLauncherChannel#LOCK_FILE}.
  */
 public final class SessionLauncherStart
 {
@@ -204,7 +204,8 @@ public final class SessionLauncherStart
 	 * folder's {@link SessionLauncherChannel#LAUNCHER_FILE} before the launcher starts. The
 	 * {@link SessionLauncherChannel#inbox() inbox} exists when this method returns, since a sandbox that can let a
 	 * command write only folders that exist when the command starts would leave the session's commands unable to
-	 * create it.
+	 * create it. The folder of the launcher's {@link SessionLauncherChannel#logFile log} exists too, because the
+	 * launcher's output goes there from its first moment.
 	 *
 	 * @param channel     the locations that the launcher shares with its senders
 	 * @param record      the hook's data, which names the harness process
@@ -240,6 +241,8 @@ public final class SessionLauncherStart
 			return false;
 		free.get().close();
 		Files.createDirectories(channel.inbox());
+		Path log = channel.logFile(record.harness(), record.process().pid(), record.process().start());
+		Files.createDirectories(log.getParent());
 		record.write(JsonMapper.builder().build(), directory.resolve(SessionLauncherChannel.LAUNCHER_FILE));
 		List<String> command = new ArrayList<>();
 		String setsid = platform.findProgram(SETSID, environment);
@@ -247,7 +250,7 @@ public final class SessionLauncherStart
 			command.add(setsid);
 		command.add(pluginRoot.resolve("bin").resolve(PROGRAM).toString());
 		command.add(directory.toString());
-		starter.start(command, directory.resolve(SessionLauncherChannel.LOG_FILE));
+		starter.start(command, log);
 		return true;
 	}
 }

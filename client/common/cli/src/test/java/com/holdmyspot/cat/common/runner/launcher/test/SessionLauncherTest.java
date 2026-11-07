@@ -134,7 +134,7 @@ public final class SessionLauncherTest
 			fixture.starter.awaitRunner();
 			fixture.executor.awaitIdle();
 
-			List<String> log = Files.readAllLines(launcher.directory().resolve(SessionLauncherChannel.LOG_FILE));
+			List<String> log = Files.readAllLines(fixture.log(fixture.harness));
 			List<String> acceptances = log.stream().filter(line -> line.contains("claude")).toList();
 			requireThat(acceptances, "acceptances").size().isEqualTo(1);
 			requireThat(acceptances.get(0), "line").contains(accepted.toString()).contains(id);
@@ -196,7 +196,7 @@ public final class SessionLauncherTest
 			fixture.executor.awaitIdle();
 
 			Response response = fixture.response(id);
-			List<String> log = Files.readAllLines(launcher.directory().resolve(SessionLauncherChannel.LOG_FILE));
+			List<String> log = Files.readAllLines(fixture.log(fixture.harness));
 			List<String> answers = log.stream().
 				filter(line -> line.contains(id) && line.contains(response.status().value())).toList();
 			requireThat(answers, "answers").size().isEqualTo(1);
@@ -204,6 +204,75 @@ public final class SessionLauncherTest
 			String oneLine = response.reason().replaceAll("\\R", " ");
 			if (!response.reason().isEmpty())
 				requireThat(answers.get(0), "answer").contains(oneLine);
+		}
+	}
+
+	/**
+	 * Verifies that the launcher's log outlives the launcher: after the harness process ends and the launcher deletes
+	 * its own directory and its request's directory, the log is still readable and holds the line that records the
+	 * {@code stopped} answer to the request, which the requester that already ended could no longer read from the
+	 * request's directory.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void logOutlivesLauncher() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(true));
+			ProcessIdentity holder = fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+			requireThat(launcher.poll(), "acceptingPoll").isTrue();
+			fixture.starter.awaitRunner();
+
+			fixture.processes.end(fixture.harness);
+			fixture.processes.end(holder);
+			requireThat(launcher.poll(), "endingPoll").isFalse();
+
+			requireThat(Files.exists(launcher.directory()), "launcherDirectory").isFalse();
+			requireThat(Files.exists(fixture.channel.requestDirectory(id)), "requestDirectory").isFalse();
+			Path log = fixture.channel.logFile("harness-a", fixture.harness.pid(), fixture.harness.start());
+			requireThat(log, "log").isRegularFile();
+			requireThat(log.startsWith(fixture.channel.stateRoot()), "insideStateRoot").isTrue();
+			List<String> answers = Files.readAllLines(log).stream().
+				filter(line -> line.contains("Answered request " + id + ": stopped")).toList();
+			requireThat(answers, "answers").size().isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that a launcher's start deletes the logs of ended launchers that were last written more than the
+	 * retention ago, so that logs do not accumulate, and keeps a log that was written within the retention, a log whose
+	 * launcher still has its directory, and its own log.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void startDeletesOldLogsOfEndedLaunchers() throws IOException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			Duration old = SessionLauncherChannel.LOG_RETENTION.plusMinutes(1);
+			Duration recent = SessionLauncherChannel.LOG_RETENTION.minusMinutes(1);
+			ProcessIdentity endedOld = fixture.processes.start(901, Optional.empty(), List.of("harness-a"));
+			ProcessIdentity endedRecent = fixture.processes.start(902, Optional.empty(), List.of("harness-a"));
+			ProcessIdentity running = fixture.processes.start(903, Optional.empty(), List.of("harness-a"));
+			Path oldLog = fixture.logAged(endedOld, old);
+			Path recentLog = fixture.logAged(endedRecent, recent);
+			Path runningLog = fixture.logAged(running, old);
+			Files.createDirectories(fixture.channel.launcherDirectory("harness-a", running.pid(), running.start()));
+			Path ownLog = fixture.logAged(fixture.harness, old);
+
+			requireThat(launcher.start(), "start").isTrue();
+
+			requireThat(Files.exists(oldLog), "oldLog").isFalse();
+			requireThat(recentLog, "recentLog").isRegularFile();
+			requireThat(runningLog, "runningLog").isRegularFile();
+			requireThat(ownLog, "ownLog").isRegularFile();
 		}
 	}
 
@@ -1145,6 +1214,34 @@ public final class SessionLauncherTest
 			Files.writeString(directory.resolve(SessionLauncherChannel.LOCK_FILE), "");
 			Files.writeString(directory.resolve(SessionLauncherChannel.HEARTBEAT_FILE), "");
 			return directory;
+		}
+
+		/**
+		 * Returns the log of the launcher that serves a harness process.
+		 *
+		 * @param harnessProcess the harness process
+		 * @return the log's path
+		 */
+		private Path log(ProcessIdentity harnessProcess)
+		{
+			return channel.logFile("harness-a", harnessProcess.pid(), harnessProcess.start());
+		}
+
+		/**
+		 * Creates the log of a launcher that was last written some time ago.
+		 *
+		 * @param harnessProcess the harness process that the launcher served
+		 * @param age            how long ago
+		 * @return the log
+		 * @throws IOException if it cannot be created
+		 */
+		private Path logAged(ProcessIdentity harnessProcess, Duration age) throws IOException
+		{
+			Path file = log(harnessProcess);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, "log bytes\n");
+			Files.setLastModifiedTime(file, FileTime.from(clock.instant().minus(age)));
+			return file;
 		}
 
 		/**

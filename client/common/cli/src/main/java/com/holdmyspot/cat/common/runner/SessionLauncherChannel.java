@@ -43,10 +43,14 @@ import tools.jackson.databind.node.ObjectNode;
  *   <li>{@link #stateRoot()}, {@link SessionDirectory#ROOT} below the user's home directory, beside the inbox on
  *     the same file system, which only launchers write and no parent session may write. It holds
  *     {@link #launcherDirectory(String, long, Instant)} for each harness process, with {@link #LAUNCHER_FILE},
- *     {@link #LOCK_FILE}, {@link #HEARTBEAT_FILE}, {@link #STOP_FILE} and {@link #LOG_FILE}, and
+ *     {@link #LOCK_FILE}, {@link #HEARTBEAT_FILE} and {@link #STOP_FILE}, and
  *     {@link #requestDirectory(String)} for each accepted request, with
  *     {@link #ACCEPTED_FILE}, {@link #TURNS_FILE}, {@link #TRANSCRIPT_FILE}, {@link #RUNNER_STDERR_FILE},
- *     {@link #RESPONSE_FILE} and {@link #RUN_DIRECTORY}.</li>
+ *     {@link #RESPONSE_FILE} and {@link #RUN_DIRECTORY}. It also holds {@link #logFile(String, long, Instant)} for
+ *     each harness process in {@link #logs()}, outside the launcher's directory, so that the log, which records each
+ *     launch that the launcher accepts and each answer that it gives, stays readable after the launcher ends and
+ *     deletes its directory. A later launcher's start deletes the logs of ended launchers that were last written
+ *     more than {@link #LOG_RETENTION} ago.</li>
  * </ul>
  * <p>
  * <b>Requester proof.</b> Before it publishes message {@code n} of request {@code id}, where {@code n} is
@@ -110,9 +114,14 @@ public final class SessionLauncherChannel
 	 */
 	public static final String STOP_FILE = "stop";
 	/**
-	 * The launcher's standard output and standard error.
+	 * The end of the name of a launcher's log, which {@link #logFile(String, long, Instant)} gives.
 	 */
-	public static final String LOG_FILE = "launcher.log";
+	public static final String LOG_SUFFIX = ".log";
+	/**
+	 * How old the log of an ended launcher must be before a later launcher's start deletes it. A log's age is the time
+	 * since it was last written.
+	 */
+	public static final Duration LOG_RETENTION = Duration.ofDays(7);
 	/**
 	 * The file whose appearance tells a sender that a launcher accepted its request.
 	 */
@@ -202,10 +211,58 @@ public final class SessionLauncherChannel
 	 */
 	public Path launcherDirectory(String harness, long pid, Instant start)
 	{
+		return launchers().resolve(launcherName(harness, pid, start));
+	}
+
+	/**
+	 * Returns the directory that holds the log of each launcher, which outlives the launcher's own directory. Only
+	 * launchers write it, because it is below {@link #stateRoot()}.
+	 *
+	 * @return {@code logs} below {@link #stateRoot()}
+	 */
+	public Path logs()
+	{
+		return stateRoot().resolve("logs");
+	}
+
+	/**
+	 * Returns the log of the launcher that serves one harness process. The launcher appends a line for each launch
+	 * that it accepts and each answer that it gives, and its output and error output go there too. The log stays when
+	 * the launcher ends, so that the answer to a request whose requester has ended stays readable. A later launcher's
+	 * start deletes the logs older than {@link #LOG_RETENTION} whose launchers have ended, so the logs of ended
+	 * launchers do not accumulate without limit.
+	 *
+	 * @param harness the harness identifier
+	 * @param pid     the harness process's identifier
+	 * @param start   the instant at which the harness process started
+	 * @return {@code <harness>-<pid>-<start in milliseconds since the epoch>.log} below {@link #logs()}, named like
+	 *   {@link #launcherDirectory(String, long, Instant)} with {@link #LOG_SUFFIX} added
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code harness} is not lower-case letters, digits and hyphens starting with
+	 *                                  a letter, or {@code pid} is not positive
+	 */
+	public Path logFile(String harness, long pid, Instant start)
+	{
+		return logs().resolve(launcherName(harness, pid, start) + LOG_SUFFIX);
+	}
+
+	/**
+	 * Returns the name that identifies the launcher of one harness process.
+	 *
+	 * @param harness the harness identifier
+	 * @param pid     the harness process's identifier
+	 * @param start   the instant at which the harness process started
+	 * @return {@code <harness>-<pid>-<start in milliseconds since the epoch>}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code harness} is not lower-case letters, digits and hyphens starting with
+	 *                                  a letter, or {@code pid} is not positive
+	 */
+	private static String launcherName(String harness, long pid, Instant start)
+	{
 		requireThat(harness, "harness").matches("[a-z][a-z0-9-]*");
 		requireThat(pid, "pid").isPositive();
 		requireThat(start, "start").isNotNull();
-		return launchers().resolve(harness + "-" + pid + "-" + start.toEpochMilli());
+		return harness + "-" + pid + "-" + start.toEpochMilli();
 	}
 
 	/**

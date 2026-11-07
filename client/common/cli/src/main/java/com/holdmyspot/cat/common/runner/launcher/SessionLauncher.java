@@ -68,16 +68,18 @@ import tools.jackson.databind.json.JsonMapper;
  * Each accepted request runs on its own task of the executor. The task records the request's identifier, the
  * requested harness and the time in the launcher's log, starts the requested harness's runner within the parent's
  * sandbox policy, feeds it the request's records, and publishes its {@link Response}. It then records the request's
- * identifier, the response's status and reason and the time in the log, so that the answer stays readable for as long
- * as the launcher runs, after the request's folder is gone. When the holder of a request ends before the request is
- * answered, the launcher stops the runner and its descendants; once the request is answered and its holder has
- * ended, it deletes the request's folder.
+ * identifier, the response's status and reason and the time in the log, so that the answer stays readable after the
+ * request's folder is gone and after the launcher ends: the log is a file of its own in
+ * {@link SessionLauncherChannel#logs()}, outside the launcher's folder. A launcher's start deletes the logs of ended
+ * launchers that were last written more than {@link SessionLauncherChannel#LOG_RETENTION} ago. When the holder of a
+ * request ends before the request is answered, the launcher stops the runner and its descendants; once the request is
+ * answered and its holder has ended, it deletes the request's folder.
  * <p>
  * The launcher ends when its harness process ends, when another process reuses that process's identifier, or when
  * its folder's {@link SessionLauncherChannel#STOP_FILE} appears. It then stops every child, and deletes its requests'
- * inbox files, the folders of the requests whose holders have ended, and its own folder. The folder of a request whose
- * holder still lives stays, with the response that says why the session stopped, for the process that sent the request
- * to read; a launcher's next start deletes it.
+ * inbox files, the folders of the requests whose holders have ended, and its own folder, but not its log. The folder
+ * of a request whose holder still lives stays, with the response that says why the session stopped, for the process
+ * that sent the request to read; a launcher's next start deletes it.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -101,6 +103,7 @@ public final class SessionLauncher implements Closeable
 	private final ExecutorService executor;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final Path directory;
+	private final Path log;
 	/**
 	 * Serializes {@link #start()}, {@link #poll()} and {@link #close()}.
 	 */
@@ -156,10 +159,11 @@ public final class SessionLauncher implements Closeable
 		this.clock = clock;
 		this.executor = executor;
 		this.directory = channel.launcherDirectory(harness, harnessProcess.pid(), harnessProcess.start());
+		this.log = channel.logFile(harness, harnessProcess.pid(), harnessProcess.start());
 	}
 
 	/**
-	 * Returns the launcher's folder, which holds its lock, heartbeat, stop file and log.
+	 * Returns the launcher's folder, which holds its lock, heartbeat and stop file.
 	 *
 	 * @return the folder below {@link SessionLauncherChannel#launchers()}
 	 */
@@ -197,8 +201,10 @@ public final class SessionLauncher implements Closeable
 			if (Files.exists(staging, LinkOption.NOFOLLOW_LINKS))
 				TemporaryDirectories.deleteRecursively(staging);
 			Files.createDirectories(channel.requests());
+			Files.createDirectories(channel.logs());
 			readSnapshot();
 			sweepLaunchers();
+			sweepLogs();
 			sweepRequests();
 			sweepInbox();
 			return true;
@@ -344,6 +350,40 @@ public final class SessionLauncher implements Closeable
 			{
 				TemporaryDirectories.deleteRecursively(entry);
 			}
+		}
+	}
+
+	/**
+	 * Deletes the logs of ended launchers that were last written more than
+	 * {@link SessionLauncherChannel#LOG_RETENTION} ago. A log whose launcher folder exists, including this launcher's
+	 * own, stays, because that launcher may still write it.
+	 *
+	 * @throws IOException if the logs' folder cannot be read
+	 */
+	private void sweepLogs() throws IOException
+	{
+		Instant oldest = clock.instant().minus(SessionLauncherChannel.LOG_RETENTION);
+		for (Path entry : list(channel.logs()))
+		{
+			String name = entry.getFileName().toString();
+			if (!name.endsWith(SessionLauncherChannel.LOG_SUFFIX))
+				continue;
+			String launcherName = name.substring(0, name.length() - SessionLauncherChannel.LOG_SUFFIX.length());
+			BasicFileAttributes attributes;
+			try
+			{
+				attributes = Files.readAttributes(entry, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+			}
+			catch (NoSuchFileException _)
+			{
+				continue;
+			}
+			if (!attributes.isRegularFile() || attributes.lastModifiedTime().toInstant().isAfter(oldest) ||
+				Files.exists(channel.launchers().resolve(launcherName), LinkOption.NOFOLLOW_LINKS))
+			{
+				continue;
+			}
+			Files.deleteIfExists(entry);
 		}
 	}
 
@@ -883,7 +923,7 @@ public final class SessionLauncher implements Closeable
 	 */
 	private void log(String line) throws IOException
 	{
-		Files.writeString(directory.resolve(SessionLauncherChannel.LOG_FILE), clock.instant() + " " + line + "\n",
+		Files.writeString(log, clock.instant() + " " + line + "\n",
 			UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 	}
 
