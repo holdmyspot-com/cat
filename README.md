@@ -23,7 +23,8 @@ Add an assignment after the pipe, before `sh`, in only these cases:
 	`getent passwd "$(id -un)" | cut -d: -f6`. On macOS, run `printenv HOME` and
 	`dscl . -read "/Users/$(id -un)" NFSHomeDirectory`, which prints the folder after `NFSHomeDirectory:`.
 - `CLAUDE_CONFIG_DIR=<value>` for Claude Code, or `CODEX_HOME=<value>` for Codex, when your session sets that variable
-	to a value other than `.claude` or `.codex` in your session's `HOME`.
+	to a value other than `.claude` or `.codex` in your session's `HOME`. When your session leaves it unset, say in one
+	sentence beside the command that the user should unset it first if their terminal exports it.
 
 Write no other variable. On Windows, the entry scripts take the user's home from the user profile, so write no `HOME`
 there; in PowerShell, write only the harness variable, as `$env:CODEX_HOME='<value>'; ` before the command. After the
