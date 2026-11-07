@@ -5,19 +5,22 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.runner.HeartbeatTicker;
 
 import java.io.Closeable;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * A {@link HeartbeatTicker} that runs its action only when a test runs it.
+ * A {@link HeartbeatTicker} that runs its actions only when a test runs them.
+ * <p>
+ * Like the scope's real ticker, it runs each started action apart from the others, until the action's handle closes.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class ManualTicker implements HeartbeatTicker
 {
-	private final AtomicReference<Runnable> tick = new AtomicReference<>();
+	private final List<Runnable> running = new CopyOnWriteArrayList<>();
 
 	/**
-	 * Creates a ticker that has no action.
+	 * Creates a ticker that runs no action.
 	 */
 	public ManualTicker()
 	{
@@ -26,19 +29,22 @@ public final class ManualTicker implements HeartbeatTicker
 	@Override
 	public Closeable start(Runnable tick)
 	{
-		this.tick.set(tick);
-		return () -> this.tick.set(null);
+		requireThat(tick, "tick").isNotNull();
+		// A start of its own, so that closing it leaves another start of the same action running
+		Runnable started = tick::run;
+		running.add(started);
+		return () -> running.remove(started);
 	}
 
 	/**
-	 * Runs the action once.
+	 * Runs each running action once, as one period of the real ticker does.
 	 *
 	 * @throws IllegalArgumentException if no action is running
 	 */
 	public void tick()
 	{
-		Runnable current = tick.get();
-		requireThat(current, "tick").isNotNull();
-		current.run();
+		requireThat(running, "running").isNotEmpty();
+		for (Runnable action : running)
+			action.run();
 	}
 }
