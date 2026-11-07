@@ -4,7 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installation.test.GenericInstallation;
 import com.holdmyspot.cat.common.release.EntryCommand;
 import com.holdmyspot.cat.common.release.OtherHarnessPlugin;
 import java.io.IOException;
@@ -112,7 +112,7 @@ public final class OtherHarnessPluginTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-release-")), "plugin");
-			HarnessB other = new HarnessB(plugin.getParent().resolve("harness-b"));
+			GenericInstallation other = new GenericInstallation(plugin.getParent().resolve("harness-b"));
 			String installed = "0.9+b0123456789ab";
 			Path folder = Files.createDirectories(other.versionFolders().resolve(installed));
 
@@ -141,7 +141,7 @@ public final class OtherHarnessPluginTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-entry-")), "plugin");
-			HarnessB other = new HarnessB(plugin.getParent().resolve("harness-b"));
+			GenericInstallation other = new GenericInstallation(plugin.getParent().resolve("harness-b"));
 
 			String message = refusal(plugin, other, List.of("0.9+b0123456789ab"), Platform.LINUX_X64);
 
@@ -175,7 +175,7 @@ public final class OtherHarnessPluginTest
 	 */
 	private static String refusal(Path plugin, Platform platform)
 	{
-		return refusal(plugin, new HarnessB(plugin.getParent().resolve("harness-b")), List.of(), platform);
+		return refusal(plugin, new GenericInstallation(plugin.getParent().resolve("harness-b")), List.of(), platform);
 	}
 
 	/**
@@ -189,7 +189,7 @@ public final class OtherHarnessPluginTest
 	 * @return the message
 	 * @throws AssertionError if the lookup does not refuse
 	 */
-	private static String refusal(Path plugin, HarnessB other, List<String> installed, Platform platform)
+	private static String refusal(Path plugin, GenericInstallation other, List<String> installed, Platform platform)
 	{
 		try
 		{
@@ -201,44 +201,6 @@ public final class OtherHarnessPluginTest
 		catch (IOException e)
 		{
 			return e.getMessage();
-		}
-	}
-
-	/**
-	 * A generic harness's layout.
-	 *
-	 * @param home the configuration directory
-	 */
-	private record HarnessB(Path home) implements HarnessInstallation
-	{
-		@Override
-		public Path marketplaceRoot()
-		{
-			return home.resolve("marketplace");
-		}
-
-		@Override
-		public Path marketplacePlugin()
-		{
-			return marketplaceRoot().resolve("plugin");
-		}
-
-		@Override
-		public Path cacheRoot()
-		{
-			return home.resolve("cache");
-		}
-
-		@Override
-		public Path versionFolders()
-		{
-			return home.resolve("versions");
-		}
-
-		@Override
-		public Path dataDirectory()
-		{
-			return home.resolve("data");
 		}
 	}
 }

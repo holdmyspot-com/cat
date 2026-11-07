@@ -1,6 +1,7 @@
 module com.holdmyspot.cat.common.installer.test
 {
 	requires com.holdmyspot.cat.common.cli;
+	requires com.holdmyspot.cat.common.cli.test;
 	requires com.holdmyspot.cat.common.installer;
 	requires io.github.cowwoc.requirements13.java;
 	requires org.testng;

@@ -26,6 +26,12 @@
 			<artifactId>requirements-java</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-common-cli</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
 			<groupId>org.testng</groupId>
 			<artifactId>testng</artifactId>
 		</dependency>

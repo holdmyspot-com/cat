@@ -13,6 +13,8 @@ module com.holdmyspot.cat.common.cli.test
 		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.distribution.test;
 	exports com.holdmyspot.cat.common.git.test to org.testng;
 	exports com.holdmyspot.cat.common.history.test to org.testng;
+	exports com.holdmyspot.cat.common.installation.contract.test to com.holdmyspot.cat.claude.layout.test,
+		com.holdmyspot.cat.codex.layout.test, com.holdmyspot.cat.common.installer.test;
 	exports com.holdmyspot.cat.common.installation.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.adapter.contract.test to com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test;

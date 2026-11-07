@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
-import com.holdmyspot.cat.common.installation.PluginVersion;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -76,66 +75,6 @@ public final class HarnessInstallationTest
 			Path user = cleanup.add(Files.createTempDirectory("cat-user-"));
 			HarnessInstallation.resolveHome(Map.of(HOME_VARIABLE, "relative"), HOME_VARIABLE, user,
 				Path.of(".harness-a"));
-		}
-	}
-
-	/**
-	 * A version folder is named after the full plugin version, and the policy, state and release cache are in the data
-	 * directory.
-	 *
-	 * @throws IOException if the temporary home cannot be created
-	 */
-	@Test
-	public void derivedFoldersFollowTheLayout() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-harness-a-"));
-			HarnessInstallation installation = new HarnessA(home);
-
-			requireThat(installation.versionFolder(PluginVersion.parse("1.0+b0123456789ab")), "versionFolder").
-				isEqualTo(home.resolve("versions/1.0+b0123456789ab"));
-			requireThat(installation.policy(), "policy").isEqualTo(home.resolve("data/policy.json"));
-			requireThat(installation.stateDirectory(), "stateDirectory").isEqualTo(home.resolve("data/state"));
-			requireThat(installation.releases(), "releases").isEqualTo(home.resolve("data/releases"));
-		}
-	}
-
-	/**
-	 * A generic harness's layout.
-	 *
-	 * @param home the configuration directory
-	 */
-	private record HarnessA(Path home) implements HarnessInstallation
-	{
-		@Override
-		public Path marketplaceRoot()
-		{
-			return home.resolve("marketplace");
-		}
-
-		@Override
-		public Path marketplacePlugin()
-		{
-			return marketplaceRoot().resolve("plugin");
-		}
-
-		@Override
-		public Path cacheRoot()
-		{
-			return home.resolve("cache");
-		}
-
-		@Override
-		public Path versionFolders()
-		{
-			return home.resolve("versions");
-		}
-
-		@Override
-		public Path dataDirectory()
-		{
-			return home.resolve("data");
 		}
 	}
 }
