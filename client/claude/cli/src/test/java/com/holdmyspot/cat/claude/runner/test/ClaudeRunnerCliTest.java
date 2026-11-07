@@ -651,7 +651,8 @@ public final class ClaudeRunnerCliTest
 					throw new AssertionError("The launch took a capacity slot");
 				}));
 
-			requireThat(refusal.getMessage(), "message").contains("relative/cache").contains(extra.toString());
+			requireThat(refusal.getMessage(), "message").contains(Path.of("relative/cache").toString()).
+				contains(extra.toString());
 		}
 	}
 
