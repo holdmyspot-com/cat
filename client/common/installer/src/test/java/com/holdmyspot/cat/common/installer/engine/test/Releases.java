@@ -6,14 +6,12 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.tru
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.installation.PluginVersion;
-import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -32,10 +30,10 @@ import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.archivers.tar.TarConstants;
 
 /**
- * Supplies signed releases and small gzip-compressed tar archives to the real engine. The source only writes supplied
- * bytes; signature, length, digest, extraction and installation decisions belong to production code.
+ * Builds a signed release with a small gzip-compressed tar archive, whose files a {@link ReleaseCatalog} publishes.
+ * Signature, length, digest, extraction and installation decisions belong to production code.
  */
-public final class Releases implements ReleaseSource
+public final class Releases
 {
 	private final KeyPair key;
 	private final String version;
@@ -135,18 +133,6 @@ public final class Releases implements ReleaseSource
 	}
 
 	/**
-	 * Creates a policy that trusts this fixture's key and records only the supplied home.
-	 *
-	 * @param home the test-owned harness home
-	 * @return the policy
-	 * @throws TrustException if the policy is invalid
-	 */
-	public TrustPolicy policy(Path home) throws TrustException
-	{
-		return policy(home, "1.0");
-	}
-
-	/**
 	 * Creates a policy that trusts this fixture's key, approves releases from a minimum version and records only the
 	 * supplied home.
 	 *
@@ -157,9 +143,8 @@ public final class Releases implements ReleaseSource
 	 */
 	TrustPolicy policy(Path home, String minimum) throws TrustException
 	{
-		return TrustPolicy.of(List.of(trusted("test-key", key)),
-			URI.create("https://releases.example/cat/releases/download"), ReleaseVersion.parse(minimum), 1,
-			Map.of("harness-a", home));
+		return TrustPolicy.of(List.of(trusted("test-key", key)), ReleaseFixtures.RELEASE_BASE_URL,
+			ReleaseVersion.parse(minimum), 1, Map.of("harness-a", home));
 	}
 
 	/**
@@ -212,28 +197,16 @@ public final class Releases implements ReleaseSource
 		return entries;
 	}
 
-	@Override
-	public String latestTag()
+	/**
+	 * Returns the files that the release publishes in its download directory: its signed manifest, the manifest's
+	 * signature and its plugin archive.
+	 *
+	 * @return each file's content, by the file's name
+	 */
+	public Map<String, byte[]> files()
 	{
-		return "v" + version;
-	}
-
-	@Override
-	public byte[] manifest(String tag)
-	{
-		return manifest.clone();
-	}
-
-	@Override
-	public byte[] signature(String tag)
-	{
-		return signature.clone();
-	}
-
-	@Override
-	public void download(String tag, String assetName, long expectedSize, Path destination) throws IOException
-	{
-		Files.write(destination, archive);
+		return Map.of("cat-release-manifest.json", manifest.clone(), "cat-release-manifest.json.sig",
+			signature.clone(), "cat-harness-a-linux-x64-v" + version + ".tar.gz", archive.clone());
 	}
 
 	/**

@@ -5,18 +5,35 @@ import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse.BodySubscriber;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.Optional;
 
 /**
- * Exposes the decisions of {@link HttpsReleaseSource} to its tests: which request it sends, what it makes of the
- * response, and how it writes a download. Each operation takes the plain values that the transport would deliver, so
- * that a test needs no network.
+ * Exposes {@link HttpsReleaseSource} to its tests: a source that sends its requests through an HTTP client that the
+ * test supplies, and the source's decisions: which request it sends, what it makes of the response, and how it writes
+ * a download. Each decision takes the plain values that the transport would deliver, so that a test needs no network.
  */
 public interface HttpsSourceAccess
 {
+	/**
+	 * Creates a release source that sends every request through an HTTP client instead of one that it builds itself.
+	 *
+	 * @param releaseBaseUrl absolute HTTPS URL below which releases have tag-named directories; no login, query or
+	 *                       fragment is allowed
+	 * @param requestLimit   positive HTTP request timeout
+	 * @param client         the HTTP client, which closing the source closes
+	 * @return the source
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code requestLimit} is not positive
+	 * @throws TrustException           if the base URL is not an absolute HTTPS location without login, query or
+	 *                                  fragment
+	 */
+	HttpsReleaseSource create(URI releaseBaseUrl, Duration requestLimit, HttpClient client) throws TrustException;
+
 	/**
 	 * Returns the location that a source requests to learn the latest release.
 	 *

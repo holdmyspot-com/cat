@@ -219,6 +219,10 @@ public final class KeylessPolicyTest
 		 * The identifier of the key that signs release 1.2.
 		 */
 		private static final String RELEASE_KEY_ID = "cat-release";
+		/**
+		 * The location of the policy's release source, which differs from that of the entry command's archive.
+		 */
+		private static final URI RELEASE_BASE_URL = URI.create("https://mirror.example/cat/releases/download");
 		private final Path root;
 		private final Path home;
 		private final Path policyFile;
@@ -255,7 +259,7 @@ public final class KeylessPolicyTest
 			KeyPair key = keyPair();
 			this.releaseKey = trusted(RELEASE_KEY_ID, key);
 			Path published = PluginArchive.create(root.resolve("published"), List.of(releaseKey));
-			this.source = new PluginRelease(published, "harness-a", key);
+			this.source = new PluginRelease(published, "harness-a", key, RELEASE_BASE_URL);
 		}
 
 		/**
@@ -268,8 +272,8 @@ public final class KeylessPolicyTest
 		 */
 		private TrustPolicy policy(List<TrustedKey> keys) throws TrustException
 		{
-			return TrustPolicy.of(keys, URI.create("https://mirror.example/cat/releases/download"),
-				ReleaseVersion.parse("1.1"), 1, Map.of("harness-a", home), Map.of("harness-a", command));
+			return TrustPolicy.of(keys, RELEASE_BASE_URL, ReleaseVersion.parse("1.1"), 1, Map.of("harness-a", home),
+				Map.of("harness-a", command));
 		}
 
 		/**
@@ -343,7 +347,7 @@ public final class KeylessPolicyTest
 					_ -> Optional.empty(), command ->
 				{
 					throw new AssertionError("Started " + command);
-				}, _ -> source, stdout, stderr);
+				}, source::open, stdout, stderr);
 				status = invocation.run(arguments);
 			}
 			return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));

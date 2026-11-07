@@ -68,15 +68,15 @@ public final class EngineTest
 				}
 
 				@Override
-				public byte[] manifest(String tag) throws IOException
+				public byte[] manifest(String tag) throws IOException, TrustException
 				{
-					return fixture.catalog.manifest("v1.1");
+					return fixture.catalog.source().manifest("v1.1");
 				}
 
 				@Override
-				public byte[] signature(String tag) throws IOException
+				public byte[] signature(String tag) throws IOException, TrustException
 				{
-					return fixture.catalog.signature("v1.1");
+					return fixture.catalog.source().signature("v1.1");
 				}
 
 				@Override
@@ -154,27 +154,32 @@ public final class EngineTest
 	}
 
 	/**
-	 * Supplies defects in authenticated metadata, archive structure and staged plugin metadata.
+	 * Supplies defects in authenticated metadata, archive structure and staged plugin metadata, each with the outcome
+	 * of an install of a release that has it. An archive whose length differs from its signed size fails to download,
+	 * because the release source refuses it; every other defect is refused once the release is downloaded.
 	 *
-	 * @return archive defect names
+	 * @return archive defect names and install outcomes
 	 */
 	@DataProvider
 	public Object[][] defects()
 	{
-		return new Object[][]{{"digest"}, {"size"}, {"unknownKey"}, {"manifest"}, {"truncated"}, {"top"},
-			{"pluginVersion"}, {"binVersion"}, {"missingBinary"}, {"missingRegistry"},
-			{"traversal"}, {"symlink"}, {"hardLink"}};
+		return new Object[][]{{"digest", Result.REFUSED}, {"size", Result.DOWNLOAD_FAILED},
+			{"unknownKey", Result.REFUSED}, {"manifest", Result.REFUSED}, {"truncated", Result.DOWNLOAD_FAILED},
+			{"top", Result.REFUSED}, {"pluginVersion", Result.REFUSED}, {"binVersion", Result.REFUSED},
+			{"missingBinary", Result.REFUSED}, {"missingRegistry", Result.REFUSED}, {"traversal", Result.REFUSED},
+			{"symlink", Result.REFUSED}, {"hardLink", Result.REFUSED}};
 	}
 
 	/**
-	 * A refused release is never installed: the harness keeps its active version and its data migration version.
+	 * An unsafe release is never installed: the harness keeps its active version and its data migration version.
 	 *
-	 * @param defect the release defect
+	 * @param defect  the release defect
+	 * @param outcome the install's outcome
 	 * @throws IOException    if fixture I/O fails
 	 * @throws TrustException if policy construction fails
 	 */
 	@Test(dataProvider = "defects")
-	public void refusesUnsafeRelease(String defect) throws IOException, TrustException
+	public void refusesUnsafeRelease(String defect, Result outcome) throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -187,7 +192,7 @@ public final class EngineTest
 			UpdateResult result = fixture.install("v1.1");
 
 			requireThat(result.result(), "resultFor" + defect).withContext(result.message(), "message").
-				isEqualTo(Result.REFUSED);
+				isEqualTo(outcome);
 			InstalledState installed = fixture.provider.installed(fixture.home);
 			requireThat(installed.version(), "installed").isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
 			requireThat(fixture.integration.registered(), "registered").isEmpty();
@@ -265,7 +270,7 @@ public final class EngineTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-lock-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
-			ReleaseCatalog release = fixture.catalog;
+			ReleaseSource release = fixture.catalog.source();
 			CountDownLatch entered = new CountDownLatch(1);
 			CountDownLatch releaseFirst = new CountDownLatch(1);
 			ReleaseSource blocking = new ReleaseSource()
@@ -277,7 +282,7 @@ public final class EngineTest
 				}
 
 				@Override
-				public byte[] manifest(String tag) throws IOException
+				public byte[] manifest(String tag) throws IOException, TrustException
 				{
 					entered.countDown();
 					try
@@ -294,13 +299,14 @@ public final class EngineTest
 				}
 
 				@Override
-				public byte[] signature(String tag) throws IOException
+				public byte[] signature(String tag) throws IOException, TrustException
 				{
 					return release.signature(tag);
 				}
 
 				@Override
-				public void download(String tag, String name, long size, Path destination) throws IOException
+				public void download(String tag, String name, long size, Path destination) throws IOException,
+					TrustException
 				{
 					release.download(tag, name, size, destination);
 				}

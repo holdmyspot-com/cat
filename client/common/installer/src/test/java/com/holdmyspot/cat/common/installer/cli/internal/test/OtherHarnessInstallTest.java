@@ -19,10 +19,10 @@ import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
+import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
@@ -341,7 +341,7 @@ public final class OtherHarnessInstallTest
 			KeyPair key = keyPair();
 			List<TrustedKey> keys = List.of(trusted("release-key", key));
 			Path plugin = PluginArchive.create(root.resolve("published"), keys, "harness-b");
-			this.source = new PluginRelease(plugin, "harness-b", key);
+			this.source = new PluginRelease(plugin, "harness-b", key, ReleaseFixtures.RELEASE_BASE_URL);
 			writePolicy(keys);
 		}
 
@@ -355,7 +355,7 @@ public final class OtherHarnessInstallTest
 		private void writePolicy(List<TrustedKey> trusted) throws IOException, TrustException
 		{
 			Files.createDirectories(policyFile.getParent());
-			TrustPolicy.of(trusted, URI.create("https://releases.example/cat/releases/download"),
+			TrustPolicy.of(trusted, ReleaseFixtures.RELEASE_BASE_URL,
 				ReleaseVersion.parse("1.0"), 1, Map.of("harness-a", home), Map.of("harness-a", command)).
 				write(policyFile, replacer());
 		}
@@ -417,7 +417,7 @@ public final class OtherHarnessInstallTest
 					_ -> Optional.empty(), command ->
 				{
 					throw new AssertionError("Started " + command);
-				}, _ -> source, stdout, stderr);
+				}, source::open, stdout, stderr);
 				status = invocation.run(arguments.toArray(String[]::new));
 			}
 			return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));

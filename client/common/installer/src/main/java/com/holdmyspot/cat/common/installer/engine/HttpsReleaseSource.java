@@ -27,6 +27,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * Downloads release metadata and archives from a policy's fixed HTTPS location. Every redirect is checked before a
@@ -46,6 +47,16 @@ public final class HttpsReleaseSource implements ReleaseConnection
 	{
 		HttpsSourceSecrets.setHttpsSourceAccess(new HttpsSourceAccess()
 		{
+			@Override
+			public HttpsReleaseSource create(URI releaseBaseUrl, Duration requestLimit, HttpClient client)
+				throws TrustException
+			{
+				requireThat(releaseBaseUrl, "releaseBaseUrl").isNotNull();
+				requireThat(requestLimit, "requestLimit").isGreaterThan(Duration.ZERO);
+				requireThat(client, "client").isNotNull();
+				return new HttpsReleaseSource(releaseBase(releaseBaseUrl), requestLimit, () -> client);
+			}
+
 			@Override
 			public URI latestLocation(HttpsReleaseSource source)
 			{
@@ -108,9 +119,9 @@ public final class HttpsReleaseSource implements ReleaseConnection
 
 	private final URI baseUrl;
 	/**
-	 * Builds the HTTP client on its first request.
+	 * Creates the HTTP client on the first request.
 	 */
-	private final HttpClient.Builder clientBuilder;
+	private final Supplier<HttpClient> clientFactory;
 	private final Duration requestLimit;
 	/**
 	 * The HTTP client, or {@code null} until the first request.
@@ -142,14 +153,26 @@ public final class HttpsReleaseSource implements ReleaseConnection
 		requireThat(environment, "environment").isNotNull();
 		requireThat(connectLimit, "connectLimit").isGreaterThan(Duration.ZERO);
 		requireThat(requestLimit, "requestLimit").isGreaterThan(Duration.ZERO);
-		requireHttps(releaseBaseUrl);
-		if (releaseBaseUrl.getRawQuery() != null)
-			throw new TrustException(Reason.MALFORMED_POLICY, "The release base URL must not contain a query");
+		URI base = releaseBase(releaseBaseUrl);
 		ProxyConfiguration proxy = new ProxyConfiguration(environment);
-		this.baseUrl = withoutTrailingSlash(releaseBaseUrl);
-		this.requestLimit = requestLimit;
-		this.clientBuilder = HttpClient.newBuilder().connectTimeout(connectLimit).
+		HttpClient.Builder clientBuilder = HttpClient.newBuilder().connectTimeout(connectLimit).
 			followRedirects(HttpClient.Redirect.NEVER).proxy(proxy).authenticator(proxy.authenticator());
+		this(base, requestLimit, clientBuilder::build);
+	}
+
+	/**
+	 * Creates a release source that sends its requests through the HTTP client that a factory creates on the first
+	 * request.
+	 *
+	 * @param baseUrl       the release base URL, which {@link #releaseBase(URI)} accepted
+	 * @param requestLimit  positive HTTP request timeout
+	 * @param clientFactory creates the HTTP client, which {@link #close()} releases
+	 */
+	private HttpsReleaseSource(URI baseUrl, Duration requestLimit, Supplier<HttpClient> clientFactory)
+	{
+		this.baseUrl = baseUrl;
+		this.requestLimit = requestLimit;
+		this.clientFactory = clientFactory;
 	}
 
 	@Override
@@ -201,7 +224,7 @@ public final class HttpsReleaseSource implements ReleaseConnection
 		synchronized (clientLock)
 		{
 			if (client == null)
-				client = clientBuilder.build();
+				client = clientFactory.get();
 			return client;
 		}
 	}
@@ -532,6 +555,21 @@ public final class HttpsReleaseSource implements ReleaseConnection
 			throw new TrustException(Reason.MALFORMED_POLICY,
 				"Release requests require an absolute HTTPS URL with a host and without login or fragment");
 		}
+	}
+
+	/**
+	 * Accepts a release base URL and removes its trailing slashes.
+	 *
+	 * @param releaseBaseUrl the release base URL
+	 * @return the base URL without trailing slashes
+	 * @throws TrustException if the URL is not an absolute HTTPS location without login, query or fragment
+	 */
+	private static URI releaseBase(URI releaseBaseUrl) throws TrustException
+	{
+		requireHttps(releaseBaseUrl);
+		if (releaseBaseUrl.getRawQuery() != null)
+			throw new TrustException(Reason.MALFORMED_POLICY, "The release base URL must not contain a query");
+		return withoutTrailingSlash(releaseBaseUrl);
 	}
 
 	/**

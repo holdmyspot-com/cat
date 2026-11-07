@@ -82,7 +82,7 @@ public final class InstallTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-uncached-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
-			UpdateEngine engine = fixture.engine(fixture.catalog, Clock.systemUTC(), interval -> () ->
+			UpdateEngine engine = fixture.engine(fixture.catalog.source(), Clock.systemUTC(), interval -> () ->
 			{
 			}, Duration.ZERO, true);
 
@@ -216,7 +216,7 @@ public final class InstallTest
 			RecordingIntegration integration = new RecordingIntegration();
 			RegisteredProvider provider = new RegisteredProvider();
 			UpdateEngine engine = new UpdateEngine(provider.dataDirectory(realHome), catalog.policy(home, "1.0"),
-				catalog, provider, "linux-x64", Clock.systemUTC(), interval -> () ->
+				catalog.source(), provider, "linux-x64", Clock.systemUTC(), interval -> () ->
 			{
 			}, Duration.ZERO, _ -> false, new RecordingMigrations());
 

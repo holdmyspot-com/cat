@@ -1,8 +1,10 @@
 package com.holdmyspot.cat.common.installer.engine.test;
 
+import com.holdmyspot.cat.common.installer.engine.ReleaseConnection;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
+import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,15 +15,16 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 
 /**
- * Serves several releases that one key signs, each with its own migration registry. After {@link #goOffline()} it
- * fails every request as an unreachable network does, so that a test can tell whether an operation needed the network.
+ * Publishes several releases that one key signs, each with its own migration registry, on a release host that CAT's
+ * real HTTPS release source reaches through a {@link ReleaseHostClient}. After {@link #goOffline()} the host fails
+ * every request as an unreachable network does, so that a test can tell whether an operation needed the network.
  */
-final class ReleaseCatalog implements ReleaseSource
+final class ReleaseCatalog
 {
 	private final Releases signer;
 	private final Map<String, Releases> releases = new HashMap<>();
-	private String latest;
-	private boolean offline;
+	private final ReleaseHostClient host = new ReleaseHostClient(ReleaseFixtures.RELEASE_BASE_URL);
+	private final ReleaseConnection source;
 
 	/**
 	 * Creates a catalog of one release.
@@ -33,6 +36,14 @@ final class ReleaseCatalog implements ReleaseSource
 	ReleaseCatalog(String version, String registry) throws IOException
 	{
 		this.signer = new Releases(version, "");
+		try
+		{
+			this.source = host.open(ReleaseFixtures.RELEASE_BASE_URL);
+		}
+		catch (TrustException e)
+		{
+			throw new AssertionError("The fixture's release location is an HTTPS URL", e);
+		}
 		add(version, registry);
 	}
 
@@ -46,9 +57,7 @@ final class ReleaseCatalog implements ReleaseSource
 	 */
 	ReleaseCatalog add(String version, String registry) throws IOException
 	{
-		releases.put("v" + version, new Releases(version, registry, signer));
-		latest = "v" + version;
-		return this;
+		return publish(version, new Releases(version, registry, signer));
 	}
 
 	/**
@@ -63,9 +72,7 @@ final class ReleaseCatalog implements ReleaseSource
 	 */
 	ReleaseCatalog republish(String version, String build, String registry) throws IOException
 	{
-		releases.put("v" + version, new Releases(version, build, registry, signer));
-		latest = "v" + version;
-		return this;
+		return publish(version, new Releases(version, build, registry, signer));
 	}
 
 	/**
@@ -78,9 +85,7 @@ final class ReleaseCatalog implements ReleaseSource
 	 */
 	ReleaseCatalog addDefective(String version, String defect) throws IOException
 	{
-		releases.put("v" + version, Releases.defective(version, defect, signer));
-		latest = "v" + version;
-		return this;
+		return publish(version, Releases.defective(version, defect, signer));
 	}
 
 	/**
@@ -91,7 +96,7 @@ final class ReleaseCatalog implements ReleaseSource
 	 */
 	ReleaseCatalog latest(String version)
 	{
-		latest = "v" + version;
+		host.latest("v" + version);
 		return this;
 	}
 
@@ -100,7 +105,17 @@ final class ReleaseCatalog implements ReleaseSource
 	 */
 	void goOffline()
 	{
-		offline = true;
+		host.goOffline();
+	}
+
+	/**
+	 * Returns CAT's release source of the host that publishes the catalog.
+	 *
+	 * @return the source
+	 */
+	ReleaseSource source()
+	{
+		return source;
 	}
 
 	/**
@@ -116,36 +131,8 @@ final class ReleaseCatalog implements ReleaseSource
 		return signer.policy(home, minimum);
 	}
 
-	@Override
-	public String latestTag() throws IOException
-	{
-		request("latest");
-		return latest;
-	}
-
-	@Override
-	public byte[] manifest(String tag) throws IOException
-	{
-		request("manifest " + tag);
-		return release(tag).manifest(tag);
-	}
-
-	@Override
-	public byte[] signature(String tag) throws IOException
-	{
-		request("signature " + tag);
-		return release(tag).signature(tag);
-	}
-
-	@Override
-	public void download(String tag, String assetName, long expectedSize, Path destination) throws IOException
-	{
-		request("download " + assetName);
-		release(tag).download(tag, assetName, expectedSize, destination);
-	}
-
 	/**
-	 * Extracts a release's plugin archive without recording a request.
+	 * Extracts a release's plugin archive without a request to the host.
 	 *
 	 * @param version the release version
 	 * @param parent  the directory that receives the archive's top directory
@@ -156,8 +143,7 @@ final class ReleaseCatalog implements ReleaseSource
 	{
 		String tag = "v" + version;
 		String top = "cat-harness-a-linux-x64-v" + version;
-		Path archive = parent.resolve(top + ".tar.gz");
-		release(tag).download(tag, archive.getFileName().toString(), 0, archive);
+		Path archive = Files.write(parent.resolve(top + ".tar.gz"), release(tag).files().get(top + ".tar.gz"));
 		try (TarArchiveInputStream tar = new TarArchiveInputStream(new GZIPInputStream(
 			Files.newInputStream(archive))))
 		{
@@ -183,7 +169,7 @@ final class ReleaseCatalog implements ReleaseSource
 
 	/**
 	 * Writes the files that an installation keeps of a release, as an install of that release leaves them: the signed
-	 * manifest, its signature and the plugin archive. Writing them records no request.
+	 * manifest, its signature and the plugin archive. Writing them sends no request to the host.
 	 *
 	 * @param version   the release version
 	 * @param directory the directory that receives the files
@@ -191,25 +177,27 @@ final class ReleaseCatalog implements ReleaseSource
 	 */
 	void writeKept(String version, Path directory) throws IOException
 	{
-		String tag = "v" + version;
-		String archive = "cat-harness-a-linux-x64-v" + version + ".tar.gz";
-		Releases release = release(tag);
 		Files.createDirectories(directory);
-		Files.write(directory.resolve("cat-release-manifest.json"), release.manifest(tag));
-		Files.write(directory.resolve("cat-release-manifest.json.sig"), release.signature(tag));
-		release.download(tag, archive, 0, directory.resolve(archive));
+		for (Map.Entry<String, byte[]> file : release("v" + version).files().entrySet())
+			Files.write(directory.resolve(file.getKey()), file.getValue());
 	}
 
 	/**
-	 * Fails a request while the catalog is offline.
+	 * Publishes a release under its tag, replacing the files of an earlier release of that tag, and makes it the latest
+	 * one.
 	 *
-	 * @param request the request
-	 * @throws IOException if the catalog is offline
+	 * @param version the release version
+	 * @param release the release
+	 * @return this catalog
 	 */
-	private void request(String request) throws IOException
+	private ReleaseCatalog publish(String version, Releases release)
 	{
-		if (offline)
-			throw new IOException("The network is unreachable: " + request);
+		String tag = "v" + version;
+		releases.put(tag, release);
+		for (Map.Entry<String, byte[]> file : release.files().entrySet())
+			host.publish(tag, file.getKey(), file.getValue());
+		host.latest(tag);
+		return this;
 	}
 
 	/**

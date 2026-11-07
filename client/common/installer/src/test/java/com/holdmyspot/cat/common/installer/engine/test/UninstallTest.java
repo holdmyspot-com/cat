@@ -288,12 +288,12 @@ public final class UninstallTest
 			Path program = Files.writeString(Files.createDirectories(root.resolve("bin")).resolve("harness-a"),
 				"#!/bin/sh\n");
 			requireThat(program.toFile().setExecutable(true), "executable").isTrue();
-			Releases source = new Releases("1.1", "");
-			TrustPolicy signed = source.policy(home);
+			ReleaseCatalog catalog = new ReleaseCatalog("1.1", "# No migration\n");
+			TrustPolicy signed = catalog.policy(home, "1.0");
 			TrustPolicy trust = TrustPolicy.of(signed.keys(), signed.releaseBaseUrl(), signed.minimum(),
 				signed.maximumMajor(), signed.harnesses(), Map.of("harness-a",
 					new HarnessCommand(List.of(program.toString()), Map.of())));
-			UpdateEngine engine = new UpdateEngine(data, trust, source, new RegisteredProvider(), "linux-x64",
+			UpdateEngine engine = new UpdateEngine(data, trust, catalog.source(), new RegisteredProvider(), "linux-x64",
 				Clock.systemUTC(), interval -> () -> {});
 			RecordingIntegration integration = new RecordingIntegration().
 				adding(Map.of("settings.json", List.of("entry"))).fail("unregister");

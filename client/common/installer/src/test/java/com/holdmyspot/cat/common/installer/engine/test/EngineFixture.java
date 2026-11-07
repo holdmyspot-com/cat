@@ -137,7 +137,7 @@ final class EngineFixture
 	 */
 	UpdateEngine engine() throws TrustException
 	{
-		return engine(catalog, Clock.systemUTC(), interval -> () ->
+		return engine(catalog.source(), Clock.systemUTC(), interval -> () ->
 		{
 		}, Duration.ZERO, false);
 	}
