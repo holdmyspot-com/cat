@@ -5547,10 +5547,8 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			FileCampaignStore.recordRemoval(repository.campaigns(), id, Yielding.fileReplacer());
 			// Git fails in a base whose ".git" is not a Git file, after the removal deleted the optimization worktree
-			Path git = repository.root().resolve(".git");
-			TemporaryDirectories.deleteRecursively(git);
-			Files.writeString(git, "not a Git file\n");
-			repository.forks().removeThroughGit();
+			String gitFailure = "Git command failed: git worktree prune: fatal: not a git repository: .git";
+			repository.forks().failRemovalWith(new IOException(gitFailure));
 			String warningStart = "Could not remove the files of campaign " + id + ": ";
 			String warningEnd = ". The next command retries the removal.";
 
@@ -5560,7 +5558,7 @@ public final class OptimizerCoreTest
 			String summary = started.get("summary").asString();
 			requireThat(summary, "summary").contains("\n" + warningStart).endsWith(warningEnd);
 			String warning = summary.substring(summary.indexOf(warningStart));
-			requireThat(warning, "warning").contains("git worktree prune");
+			requireThat(warning, "warning").contains(gitFailure);
 			// The host shows the proposal instead of the summary, so the warning is in the message too
 			requireThat(started.get("message").asString(), "message").endsWith(warning);
 			String message = refusal(() -> repository.core().cancel("no-such-campaign"));

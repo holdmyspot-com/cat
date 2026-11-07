@@ -1,6 +1,5 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
-import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -154,7 +153,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
-import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.optimizer.cli.test.GitlessForks;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -2581,7 +2580,7 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(root.resolve("driver"),
 				new Builder().confirmed().working(1).lifecycle(Lifecycle.FINISHED).outcome(Outcome.CERTIFIED).build(),
 				fork, base);
-			DriverContext context = deliveryContext(harness, base);
+			DriverContext context = deliveryContext(harness);
 			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -2655,20 +2654,17 @@ public final class DriverTest
 	}
 
 	/**
-	 * Returns the harness context with actual file delivery. The base worktree becomes a Git repository that records
-	 * its current files, so that delivery reads the diff from Git.
+	 * Returns the harness context with actual file delivery. Delivery gets the diff of {@link GitlessForks}, which is
+	 * empty because no Git records the base.
 	 *
 	 * @param harness the fixture whose existing services are borrowed
-	 * @param base the base worktree that delivery writes
 	 * @return a context that shares the fixture's stores, workspace and lock coordinator
-	 * @throws IOException if Git fails
 	 */
-	private static DriverContext deliveryContext(DriverHarness harness, Path base) throws IOException
+	private static DriverContext deliveryContext(DriverHarness harness)
 	{
-		GitWorkTrees.recordFiles(base);
 		DriverContext original = harness.context();
 		Delivery deliverer = new Delivery(original.store(), original.workspace(),
-			new GitForks(Yielding.fileReplacer()), original.json(), Yielding.fileReplacer());
+			new GitlessForks(Set.of(), Yielding.fileReplacer()), original.json(), Yielding.fileReplacer());
 		return new DriverContext(original.fileLocks(), original.store(), original.sessions(),
 			original.workspace(), original.interrupts(), original.clock(), original.overlays(), original.judge(),
 			original.triage(),
@@ -3886,7 +3882,7 @@ public final class DriverTest
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
 			}
-			DriverContext context = deliveryContext(harness, base);
+			DriverContext context = deliveryContext(harness);
 			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				requireThat(harness.campaign().pending(), "pending").
@@ -3962,7 +3958,7 @@ public final class DriverTest
 				harness.runUntil(driver, state -> state.attempts().size() >= 3 && !state.attempt(3).isRunning());
 				requireThat(harness.campaign().attempt(3).outcome(), "outcome").isEqualTo(Outcome.BELOW_MINIMUM);
 			}
-			DriverContext context = deliveryContext(harness, base);
+			DriverContext context = deliveryContext(harness);
 			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				driver.apply(new CampaignEvent.Cancel());

@@ -26,9 +26,9 @@ import java.util.Set;
 /**
  * {@link Forks} for a project that is no Git repository. Everything a fork does with files is real: {@link ForkTree}
  * records them, {@link Fork} holds them and the fork's workspace writes the optimization worktree. Only what Git
- * would answer is supplied by the test: the tracked files, the tracked symbolic links, whether the base is dirty and
- * the notice about the base's {@code .gitignore}. {@code ForkTest} and {@code GitTest} check how Git reports each of
- * these.
+ * would answer is supplied by the test: the tracked files, the tracked symbolic links, whether the base is dirty, the
+ * notice about the base's {@code .gitignore} and the failure of a removal. {@code ForkTest} and {@code GitTest} check
+ * how Git reports each of these.
  */
 public final class GitlessForks implements Forks
 {
@@ -37,7 +37,7 @@ public final class GitlessForks implements Forks
 	private Set<Path> trackedLinks = Set.of();
 	private boolean dirty;
 	private Optional<String> ignoreNotice = Optional.empty();
-	private boolean removalThroughGit;
+	private Optional<IOException> removalFailure = Optional.empty();
 
 	/**
 	 * Creates the forks of a project.
@@ -84,12 +84,24 @@ public final class GitlessForks implements Forks
 	}
 
 	/**
-	 * Makes every later {@code remove} run Git in the base, as it does outside a test. The caller breaks the base's
-	 * {@code .git}, so that Git fails and the removal fails after it deleted the optimization worktree.
+	 * Makes every later {@code remove} delete the optimization worktree and then fail with the given failure, as the
+	 * removal does when Git fails after it deleted the worktree, until {@link #stopFailingRemoval()}.
+	 *
+	 * @param failure the failure that Git's failure would cause
+	 * @throws NullPointerException if {@code failure} is null
 	 */
-	void removeThroughGit()
+	public void failRemovalWith(IOException failure)
 	{
-		removalThroughGit = true;
+		requireThat(failure, "failure").isNotNull();
+		removalFailure = Optional.of(failure);
+	}
+
+	/**
+	 * Makes every later {@code remove} succeed again, as when the base's Git works again.
+	 */
+	public void stopFailingRemoval()
+	{
+		removalFailure = Optional.empty();
 	}
 
 	@Override
@@ -149,10 +161,9 @@ public final class GitlessForks implements Forks
 	@Override
 	public void remove(Path base, Path campaign) throws IOException
 	{
-		if (removalThroughGit)
-			Fork.remove(base, campaign);
-		else
-			TemporaryDirectories.deleteRecursively(campaign.resolve("worktree"));
+		TemporaryDirectories.deleteRecursively(campaign.resolve("worktree"));
+		if (removalFailure.isPresent())
+			throw removalFailure.get();
 	}
 
 	/**
