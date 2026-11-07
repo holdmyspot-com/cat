@@ -1,10 +1,7 @@
 package com.holdmyspot.cat.common.installer.engine.test;
 
-import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.engine.MigrationRunner;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,7 +10,8 @@ import java.util.Map;
 
 /**
  * Stands in for the scripts of data migrations: it records each script that install runs, with the variables that
- * install passes, and succeeds unless a test makes a script fail.
+ * install passes, and succeeds unless a test makes a script fail. {@code RecordingMigrationsContractTest} runs on it
+ * the {@code MigrationRunnerContract} that {@code ProcessMigrationRunnerTest} runs on real scripts.
  */
 public final class RecordingMigrations implements MigrationRunner
 {
@@ -65,7 +63,6 @@ public final class RecordingMigrations implements MigrationRunner
 	@Override
 	public CommandResult run(Path script, Map<String, String> variables)
 	{
-		requireThat(Files.isRegularFile(script), "Files.isRegularFile(script)").isTrue();
 		runs.add(new Run(script, Map.copyOf(variables)));
 		return failures.getOrDefault(script.getFileName().toString(), new CommandResult(0, ""));
 	}
