@@ -831,8 +831,9 @@ public final class CodexConnectionConfiguration
 	 * harness sandbox uses it before the first shell command can run.
 	 * <p>
 	 * A thread that names a profile ignores {@code [sandbox_workspace_write]}, so the profile carries the session's
-	 * whole sandbox policy: the policy's write denials stay readable only, its read denials that exist are denied,
-	 * and its network rules apply, as {@link #appendNetwork(StringBuilder, Platform, ChildPolicy)} renders them. The
+	 * whole sandbox policy: the policy's write denials that exist stay readable only, its read denials that exist are
+	 * denied, and its network rules apply, as {@link #appendNetwork(StringBuilder, Platform, ChildPolicy)} renders them.
+	 * A denied path that is missing is left out, because Codex's Linux sandbox would create a placeholder there. The
 	 * files that the session's own Codex app server executes or trusts inside the home stay read-only to the commands,
 	 * as {@link #addIsolatedHomeProtections(Map, Path)} describes.
 	 *
@@ -868,7 +869,12 @@ public final class CodexConnectionConfiguration
 		addIsolatedHomeProtections(filesystem, isolatedHome);
 		addProjectGitPermissions(filesystem, project, platform);
 		for (Path denial : policy.writeDenials())
-			filesystem.put(toml(denial), "read");
+		{
+			// Codex's Linux sandbox creates an empty placeholder at a denied path that is missing, which would add an
+			// entry to a folder of the user's, such as a dependency cache
+			if (Files.exists(denial))
+				filesystem.put(toml(denial), "read");
+		}
 		// The project is the working directory, which the built-in workspace profile lets the session write
 		List<Path> grants = new ArrayList<>(List.of(isolatedHome, temporaryDirectory, project));
 		grants.addAll(writable);

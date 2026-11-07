@@ -17,10 +17,12 @@ import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -725,6 +727,58 @@ public final class CodexConnectionConfigurationTest
 			requireThat(filesystem.path(keptCache.toString()).asString(), "keptCache").isEqualTo("write");
 			requireThat(filesystem.path(protectedFolder.toString()).asString(), "protectedFolder").isEqualTo("read");
 			requireThat(filesystem.path(secret.toString()).asString(), "secret").isEqualTo("deny");
+		}
+	}
+
+	/**
+	 * Verifies that the runner profile denies writes only to the protected names that exist in a dependency cache.
+	 * Codex's Linux sandbox creates an empty placeholder at each denied path that is missing, so a denial of a missing
+	 * name would add entries to the user's own cache folder.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void cacheDenialsNameOnlyExistingPaths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-cache-denials-")).toRealPath();
+			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path emptyCache = Files.createDirectories(root.resolve("npm-cache"));
+			Path gitCache = Files.createDirectories(root.resolve("m2-cache"));
+			Path existingGit = Files.createDirectories(gitCache.resolve(".git"));
+			List<String> names = List.of(".git", ".codex", ".agents", ".aws");
+			List<Path> denials = new ArrayList<>();
+			for (Path cache : List.of(emptyCache, gitCache))
+			{
+				for (String name : names)
+					denials.add(cache.resolve(name));
+			}
+			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(emptyCache, gitCache), Map.of());
+			ParentPolicy parent = new ParentPolicy(true, List.of(emptyCache, gitCache, runFolder), denials, List.of(),
+				List.of(), HostAccess.NONE, false, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, caches.directories(),
+				List.of(), Set.of()));
+			Path destination = runFolder.resolve("home/config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				caches, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE,
+				policy);
+
+			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("filesystem");
+			requireThat(filesystem.path(emptyCache.toString()).asString(), "emptyCache").isEqualTo("write");
+			for (String name : names)
+			{
+				requireThat(filesystem.has(emptyCache.resolve(name).toString()), "emptyCache/" + name).isFalse();
+				if (!name.equals(".git"))
+					requireThat(filesystem.has(gitCache.resolve(name).toString()), "gitCache/" + name).isFalse();
+			}
+			requireThat(filesystem.path(existingGit.toString()).asString(), "existingGit").isEqualTo("read");
+			try (Stream<Path> entries = Files.list(emptyCache))
+			{
+				requireThat(entries.toList(), "emptyCacheEntries").isEmpty();
+			}
 		}
 	}
 
