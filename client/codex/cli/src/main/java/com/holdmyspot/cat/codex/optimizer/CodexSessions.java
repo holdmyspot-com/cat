@@ -7,7 +7,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
@@ -19,7 +18,6 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.RuleVariableResolver;
-import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
@@ -410,7 +408,7 @@ public final class CodexSessions extends RunnerSessions
 
 	/**
 	 * Creates the bridge that runs the real runner: each session is a request to the session launcher of the harness
-	 * process that runs the optimizer, which starts the runner of this plugin's CAT artifact outside the optimizer's
+	 * process that runs the optimizer, which starts the runner of the settings' CAT artifact outside the optimizer's
 	 * sandbox.
 	 *
 	 * @param settings how the runner is configured
@@ -421,6 +419,6 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(settings, "settings").isNotNull();
 		return (arguments, input, output) -> SessionLauncherClient.production(settings.environment(),
 			settings.scope().waiting()).bridge(HARNESS_ID,
-			PluginDirectory.of(CodexRunnerCli.class)).serve(arguments, input, output);
+			settings.artifact()).serve(arguments, input, output);
 	}
 }
