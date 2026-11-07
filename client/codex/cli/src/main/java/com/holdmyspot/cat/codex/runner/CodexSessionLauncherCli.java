@@ -90,8 +90,9 @@ public final class CodexSessionLauncherCli
 
 	/**
 	 * Returns the sandbox policy source of the Codex session that a hook described. Each reading takes the command
-	 * line of the Codex process that the hook named, and is refused once that process has ended. The session's
-	 * requests come from its main thread.
+	 * line of the Codex process that the hook named, and is refused once that process has ended. A reading for a
+	 * subagent thread of the session takes that thread's latest turn policy, so its child gets no more than the
+	 * thread may do.
 	 *
 	 * @param reader      reads the session's configuration
 	 * @param processes   the running processes
@@ -164,7 +165,7 @@ public final class CodexSessionLauncherCli
 				}
 				CodexSession session = new CodexSession(List.of(codex.get()), copy, accountHome, record.cwd(),
 					record.transcript(), record.sessionId());
-				return reader.read(session, Optional.empty());
+				return reader.read(session, askingThread);
 			}
 		};
 	}

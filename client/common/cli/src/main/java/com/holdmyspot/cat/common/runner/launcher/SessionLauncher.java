@@ -941,7 +941,7 @@ public final class SessionLauncher implements Closeable
 		try
 		{
 			child = snapshot.bound(choices.harness(), runRoot, choices.deniedReads(), choices.extraPermissions(),
-				Optional.empty());
+				choices.askingThread());
 		}
 		catch (SessionRefusedException e)
 		{

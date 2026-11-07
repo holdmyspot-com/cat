@@ -665,6 +665,41 @@ public final class SessionLauncherTest
 	}
 
 	/**
+	 * Verifies that the launcher bounds a child by the sandbox policy of the thread that sends the request: a thread
+	 * whose policy does not allow a write that the session's main thread allows has a request for that write refused,
+	 * and nothing starts.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void boundsChildByAskingThreadPolicy() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			Path work = fixture.home.resolve("work");
+			Path cache = Files.createDirectory(fixture.home.resolve("registry cache"));
+			fixture.policy.allow(new ParentPolicy(true, List.of(work, cache), List.of(), List.of(), List.of(),
+				HostAccess.listed(Set.of(MODEL_HOST)), false, List.of()));
+			fixture.policy.allowThread("thread-a", new ParentPolicy(true, List.of(work), List.of(), List.of(),
+				List.of(), HostAccess.listed(Set.of(MODEL_HOST)), false, List.of()));
+			ExtraPermissions extra = new ExtraPermissions(List.of(cache), Set.of());
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(false, extra, Optional.of("thread-a")));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+
+			requireThat(launcher.poll(), "poll").isTrue();
+			fixture.executor.awaitIdle();
+
+			Response response = fixture.response(id);
+			requireThat(response.status(), "status").isEqualTo(Status.REFUSED);
+			requireThat(response.reason(), "reason").contains(cache.toString());
+			requireThat(fixture.starter.runners(), "runners").isEmpty();
+		}
+	}
+
+	/**
 	 * Supplies runner exit statuses and the request status that each one gives.
 	 *
 	 * @return the exit status and the request status
@@ -711,6 +746,7 @@ public final class SessionLauncherTest
 	 */
 	private static final class Policy implements ParentPolicySource
 	{
+		private final Map<String, ParentPolicy> threads = new TreeMap<>();
 		private ParentPolicy current;
 		private PolicyRefusal refusal;
 
@@ -735,6 +771,20 @@ public final class SessionLauncherTest
 			{
 				current = policy;
 				refusal = null;
+			}
+		}
+
+		/**
+		 * Makes later reads for one asking thread return a policy of its own.
+		 *
+		 * @param thread the thread's identifier
+		 * @param policy the thread's policy
+		 */
+		private void allowThread(String thread, ParentPolicy policy)
+		{
+			synchronized (this)
+			{
+				threads.put(thread, policy);
 			}
 		}
 
@@ -770,7 +820,7 @@ public final class SessionLauncherTest
 			{
 				if (refusal != null)
 					throw refusal;
-				return current;
+				return threads.getOrDefault(askingThread.orElse(""), current);
 			}
 		}
 	}
@@ -873,13 +923,27 @@ public final class SessionLauncherTest
 		 */
 		private Request request(boolean streamed, ExtraPermissions extra)
 		{
+			return request(streamed, extra, Optional.empty());
+		}
+
+		/**
+		 * Returns a request for a Claude child that asks for extra permissions from a thread of the sender's session.
+		 *
+		 * @param streamed     {@code true} to stream the records as turn files, {@code false} to send them in the
+		 *                     request
+		 * @param extra        the writes and hosts that the child needs beyond its harness's
+		 * @param askingThread the identifier of the thread that sends the request, or empty if the sender gives none
+		 * @return the request, naming the sender's files
+		 */
+		private Request request(boolean streamed, ExtraPermissions extra, Optional<String> askingThread)
+		{
 			Optional<Path> records = Optional.of(turns);
 			if (streamed)
 				records = Optional.empty();
 			return new Request("claude", Optional.of("model-a"), Optional.of("effort-a"), Optional.empty(), records,
 				project, List.of(), Optional.empty(), List.of(), false, false, true, 0, 0, Optional.empty(),
 				Optional.empty(), false, Optional.empty(), Optional.empty(), List.of(), extra, Optional.empty(),
-				Optional.empty(), Optional.empty());
+				Optional.empty(), askingThread);
 		}
 
 		/**

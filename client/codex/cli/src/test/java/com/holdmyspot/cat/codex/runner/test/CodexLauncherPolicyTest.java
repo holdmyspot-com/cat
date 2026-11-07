@@ -28,12 +28,23 @@ import org.testng.annotations.Test;
 
 /**
  * Tests the sandbox policy that the Codex session launcher serves its session with: the policy that the command line
- * of the Codex process that the hook named and the session's configuration give.
+ * of the Codex process that the hook named and the session's configuration give, narrowed by the policy that Codex
+ * records for the subagent thread that asks.
+ * <p>
+ * The rollout records follow those of Codex 0.160.0 ({@code codex exec}, Linux), with the instructions left out.
  */
 public final class CodexLauncherPolicyTest
 {
 	private static final long CODEX_PID = 5151;
 	private static final Instant CODEX_START = Instant.parse("2026-11-05T12:00:00.456Z");
+	/**
+	 * The session that the hook described, which is also the identifier of its main thread.
+	 */
+	private static final String SESSION_ID = "01a1a8eb-3d83-7d73-b243-c636c2041ee1";
+	/**
+	 * A subagent thread.
+	 */
+	private static final String SUBAGENT_THREAD = "01a1a8f0-1111-7222-8333-444455556666";
 
 	/**
 	 * Creates the test.
@@ -91,6 +102,74 @@ public final class CodexLauncherPolicyTest
 					requireThat(e.getMessage(), "refusal").contains(String.valueOf(CODEX_PID));
 				}
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch that a subagent thread asks for, whose latest turn Codex records as read-only, gets a
+	 * policy without the writes that the session's main thread may make.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void readOnlySubagentNarrowsPolicy() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			fixture.readOnlyRollout(SUBAGENT_THREAD, SESSION_ID);
+			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
+
+			ParentPolicy policy = source.read(Optional.of(SUBAGENT_THREAD));
+
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+			requireThat(policy.writeRoots(), "writeRoots").doesNotContain(fixture.project);
+		}
+	}
+
+	/**
+	 * Verifies that a launch that names a thread of another session gets the policy of the session that the hook
+	 * described, even when that thread's latest turn is read-only.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void threadOfOtherSessionKeepsSessionPolicy() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			fixture.readOnlyRollout(SUBAGENT_THREAD, "01a1a8f0-9999-7999-8999-999999999999");
+			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
+
+			ParentPolicy policy = source.read(Optional.of(SUBAGENT_THREAD));
+
+			requireThat(policy.writeRoots(), "writeRoots").contains(fixture.project);
+		}
+	}
+
+	/**
+	 * Verifies that a launch that names a thread in a form that Codex never gives a thread gets the session's policy,
+	 * even when a read-only rollout of the session carries that name.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void malformedThreadIsIgnored() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			String malformed = "thread-a";
+			fixture.readOnlyRollout(malformed, SESSION_ID);
+			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
+
+			ParentPolicy policy = source.read(Optional.of(malformed));
+
+			requireThat(policy.writeRoots(), "writeRoots").contains(fixture.project);
 		}
 	}
 
@@ -175,6 +254,29 @@ public final class CodexLauncherPolicyTest
 		}
 
 		/**
+		 * Writes, in Codex's home, the rollout of a thread whose latest turn may read every file and write none.
+		 *
+		 * @param threadId  the thread
+		 * @param sessionId the session that the rollout's {@code session_meta} names
+		 * @throws IOException if the file cannot be written
+		 */
+		void readOnlyRollout(String threadId, String sessionId) throws IOException
+		{
+			String project = "\"" + this.project + "\"";
+			String records = """
+				{"timestamp":"2026-11-05T12:00:00.000Z","type":"session_meta","payload":{"session_id":"%s","id":"%s",\
+				"cwd":%s,"originator":"codex_exec","cli_version":"0.160.0","source":"exec"}}
+				{"timestamp":"2026-11-05T12:00:01.000Z","type":"turn_context","payload":{"turn_id":"t1","cwd":%s,\
+				"workspace_roots":[%s],"approval_policy":"never","sandbox_policy":{"type":"read-only",\
+				"network_access":true},"permission_profile":{"type":"managed","file_system":{"type":"restricted",\
+				"entries":[{"path":{"type":"special","value":{"kind":"root"}},"access":"read"}]},\
+				"network":"enabled"},"model":"gpt-6.1-sol"}}
+				""".formatted(sessionId, threadId, project, project, project);
+			Path folder = Files.createDirectories(home.resolve(".codex/sessions/2026/11/05"));
+			Files.writeString(folder.resolve("rollout-2026-11-05T12-00-00-" + threadId + ".jsonl"), records);
+		}
+
+		/**
 		 * Returns the launcher's policy source.
 		 *
 		 * @param reportedStart the start of the process with the hook's process identifier, or empty if none runs
@@ -190,7 +292,7 @@ public final class CodexLauncherPolicyTest
 					Optional.of(List.of())));
 			};
 			LauncherRecord record = new LauncherRecord("codex", new ProcessIdentity(CODEX_PID, CODEX_START),
-				"01a1a8eb-3d83-7d73-b243-c636c2041ee1", project, Optional.empty(), "startup", home.resolve(".codex"),
+				SESSION_ID, project, Optional.empty(), "startup", home.resolve(".codex"),
 				PluginInfo.CAT_VERSION);
 			CodexPolicyReader reader = new CodexPolicyReader(new CodexSystemFiles(system,
 				List.of(system.resolve("managed.plist")), slashTmp));
