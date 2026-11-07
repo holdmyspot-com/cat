@@ -57,9 +57,13 @@ import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.AliasedOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
-import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
-import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
+import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
+import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator.ProcessLookup;
+import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
+import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
+import com.holdmyspot.cat.common.secrets.ProcessHandleTerminatorSecrets;
+import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -83,6 +87,7 @@ import java.util.Set;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.LongFunction;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
@@ -146,7 +151,10 @@ public final class DriverHarness
 	private final TriagePrompt triage;
 	private final ValuesPrompt values;
 	private final Map<Path, Verdict> judgments = new HashMap<>();
-	private final RecordingTerminator terminator = new RecordingTerminator();
+	/**
+	 * The driver's own process, which no recorded run names and which the driver never terminates.
+	 */
+	private final FakeProcessHandle driver = new FakeProcessHandle(1, Instant.EPOCH, true);
 	private final FileInventory fork;
 	/**
 	 * The base worktree that deliveries write, or {@code null} if the harness has none.
@@ -164,7 +172,10 @@ public final class DriverHarness
 	private Function<SessionRequest, SessionResult> triages = _ -> triaged(Impact.SELF_RECOVERING);
 	private Function<SessionRequest, SessionResult> contractAuthors = this::newValues;
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
-	private HarnessProcessLiveness liveness = new FakeProcessLiveness();
+	/**
+	 * The live processes of the process table that stands in for the operating system's.
+	 */
+	private List<FakeProcessHandle> processes = List.of();
 	private SliceSettings settings = SliceSettings.DEFAULT;
 	private Set<Path> promptSources = Set.of(PROMPT);
 	private final List<Integer> openTrials = new ArrayList<>();
@@ -286,6 +297,24 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.REASONING);
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
+		LongFunction<Optional<ProcessHandle>> table = FakeProcessHandle.table(
+			processes.toArray(FakeProcessHandle[]::new));
+		ProcessHandleLiveness liveness = ProcessHandleLivenessSecrets.getProcessHandleLivenessAccess().create(table);
+		ProcessHandleTerminator terminator = ProcessHandleTerminatorSecrets.getProcessHandleTerminatorAccess().
+			create(new ProcessLookup()
+			{
+				@Override
+				public Optional<ProcessHandle> find(long pid)
+				{
+					return table.apply(pid);
+				}
+
+				@Override
+				public ProcessHandle current()
+				{
+					return driver;
+				}
+			});
 		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
 			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, this::deliver,
 			MemoizedCalibration.INSTANCE, terminator,
@@ -615,14 +644,14 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Replaces the process table that tells whether the owner process of a recorded run is alive. Until replaced, no
-	 * owner process is alive.
+	 * Replaces the live processes of the process table that the driver's real process checker and terminator read in
+	 * place of the operating system's. Until replaced, no process is alive.
 	 *
-	 * @param value the process table
+	 * @param value the live processes, each with its own identifier
 	 */
-	public void liveness(HarnessProcessLiveness value)
+	public void processes(FakeProcessHandle... value)
 	{
-		this.liveness = value;
+		this.processes = List.of(value);
 	}
 
 	/**
@@ -1224,15 +1253,5 @@ public final class DriverHarness
 		Delivery delivery = new Delivery(crashingStore, fakeWorkspace, new GitlessForks(Set.of(), Yielding.fileReplacer()),
 			json, Yielding.fileReplacer(), afterWrite);
 		return delivery.deliver(campaignId, named, selected, working, promptSources, record, tests);
-	}
-
-	/**
-	 * Returns the process terminator.
-	 *
-	 * @return the terminator
-	 */
-	public RecordingTerminator terminator()
-	{
-		return terminator;
 	}
 }

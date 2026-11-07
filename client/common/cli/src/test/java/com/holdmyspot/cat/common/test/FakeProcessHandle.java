@@ -5,23 +5,40 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.LongFunction;
 import java.util.stream.Stream;
 
 /**
  * Models the identity, liveness and descendants described by the JDK's {@link ProcessHandle} contract.
  * Both JDK termination operations record the same request; no operating-system process is created or stopped.
+ * <p>
+ * <b>Thread Safety:</b> This class is thread-safe, as the JDK's process handles are.
  */
 public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Info
 {
+	/**
+	 * Returns a process table that holds exactly the given processes: it finds each of them by its identifier, as
+	 * {@link ProcessHandle#of(long)} finds a process of the operating system, and finds no process for any other
+	 * identifier.
+	 *
+	 * @param processes the processes of the table, each with its own identifier
+	 * @return the lookup of a process by its identifier
+	 */
+	public static LongFunction<Optional<ProcessHandle>> table(FakeProcessHandle... processes)
+	{
+		List<FakeProcessHandle> table = List.of(processes);
+		return pid -> table.stream().filter(process -> process.pid == pid).map(ProcessHandle.class::cast).findFirst();
+	}
+
 	private final long pid;
 	private final Instant startedAt;
-	private boolean running;
+	private volatile boolean running;
 	private final List<FakeProcessHandle> children;
 
 	/**
 	 * Indicates whether the terminator asked this process to stop, without distinguishing the stopping mechanism.
 	 */
-	private boolean stopRequested;
+	private volatile boolean stopRequested;
 
 	/**
 	 * Creates a process with controlled identity and lifecycle inputs.

@@ -7,9 +7,10 @@ import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns.RecordedProces
 import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
-import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
-import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
+import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
+import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
+import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -23,8 +24,9 @@ import java.util.List;
 /**
  * Covers how the harness processes of leftover runner runs are found in the session port's run roots.
  * <p>
- * Except in {@link #readsOwnerLivenessFromProcessTable()}, a {@link FakeProcessLiveness} stands in for the operating
- * system's process table and reports which owner processes are alive.
+ * Except in {@link #readsOwnerLivenessFromProcessTable()}, the real {@link ProcessHandleLiveness} reads which owner
+ * processes are alive from a table of {@link FakeProcessHandle}s that stands in for the operating system's process
+ * table.
  */
 public final class LeftoverRunsTest
 {
@@ -113,7 +115,7 @@ public final class LeftoverRunsTest
 		{
 			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
 			writeManifest(runRoot.resolve("claude").resolve("run-1"), manifest);
-			requireThat(finder(new FakeProcessLiveness(), runRoot).find(), "find").isEqualTo(expected);
+			requireThat(finder(List.of(), runRoot).find(), "find").isEqualTo(expected);
 		}
 	}
 
@@ -132,7 +134,7 @@ public final class LeftoverRunsTest
 			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held_out"));
 			writeManifest(runRoot.resolve("claude").resolve("run-1"), running(4001, 4002));
 			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), running(5001, 5002));
-			requireThat(finder(new FakeProcessLiveness(), runRoot, heldOutRunRoot).find(), "find").isEqualTo(
+			requireThat(finder(List.of(), runRoot, heldOutRunRoot).find(), "find").isEqualTo(
 				List.of(new RecordedProcess(4002, HARNESS_START), new RecordedProcess(5002, HARNESS_START)));
 		}
 	}
@@ -152,13 +154,13 @@ public final class LeftoverRunsTest
 		{
 			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
 			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held_out"));
-			FakeProcessLiveness liveness = new FakeProcessLiveness().alive(6001, OWNER_START).
-				alive(7001, OWNER_START.plusSeconds(1));
+			List<FakeProcessHandle> processes = List.of(new FakeProcessHandle(6001, OWNER_START, true),
+				new FakeProcessHandle(7001, OWNER_START.plusSeconds(1), true));
 			writeManifest(runRoot.resolve("claude").resolve("run-1"), running(6001, 6002));
 			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), running(6001, 6003));
 			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-3"), running(5001, 5002));
 			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-4"), running(7001, 7002));
-			requireThat(finder(liveness, runRoot, heldOutRunRoot).find(), "find").isEqualTo(
+			requireThat(finder(processes, runRoot, heldOutRunRoot).find(), "find").isEqualTo(
 				List.of(new RecordedProcess(5002, HARNESS_START), new RecordedProcess(7002, HARNESS_START)));
 		}
 	}
@@ -200,8 +202,8 @@ public final class LeftoverRunsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("runs"));
-			requireThat(finder(new FakeProcessLiveness()).find(), "withoutRoots").isEmpty();
-			requireThat(finder(new FakeProcessLiveness(), directory.resolve("missing"),
+			requireThat(finder(List.of()).find(), "withoutRoots").isEmpty();
+			requireThat(finder(List.of(), directory.resolve("missing"),
 				directory.resolve("missing-held-out")).find(), "withMissingRoots").isEmpty();
 		}
 	}
@@ -209,12 +211,14 @@ public final class LeftoverRunsTest
 	/**
 	 * Creates a finder over the run roots of a session port.
 	 *
-	 * @param liveness the process table that tells whether each owner process is alive
-	 * @param runRoots the run roots that the port declares
+	 * @param processes the live processes of the operating system's process table
+	 * @param runRoots  the run roots that the port declares
 	 * @return the finder
 	 */
-	private static LeftoverRuns finder(HarnessProcessLiveness liveness, Path... runRoots)
+	private static LeftoverRuns finder(List<FakeProcessHandle> processes, Path... runRoots)
 	{
+		ProcessHandleLiveness liveness = ProcessHandleLivenessSecrets.getProcessHandleLivenessAccess().create(
+			FakeProcessHandle.table(processes.toArray(FakeProcessHandle[]::new)));
 		return LeftoverRunsSecrets.getLeftoverRunsAccess().create(
 			new FakeSessionPort(HostLogin.UNKNOWN, null, List.of(runRoots)), JsonMapper.builder().build(), liveness);
 	}

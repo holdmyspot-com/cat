@@ -22,12 +22,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
-import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns.RecordedProcess;
 import com.holdmyspot.cat.common.optimizer.execution.Reconciler;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
-import com.holdmyspot.cat.common.runner.test.FakeProcessLiveness;
+import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -473,8 +472,8 @@ public final class ReconciliationTest
 	/**
 	 * Verifies that reconciliation requests termination of the harness processes of runs, in each run root that the
 	 * session port declares, that are marked running and whose owner no longer exists, and leaves the processes of
-	 * runs that ended and of runs whose owner is alive. A fake process table reports which owners are alive, and the
-	 * recording terminator records requests without stopping real processes.
+	 * runs that ended and of runs whose owner is alive. The driver's real process checker and terminator read a table of
+	 * fake processes, which record termination requests without stopping real processes.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -489,7 +488,11 @@ public final class ReconciliationTest
 			List<Path> runRoots = harness.sessions().runRoots();
 			Instant ownerStart = Instant.parse("2026-10-01T11:00:00Z");
 			Instant harnessStart = Instant.parse("2026-10-01T11:00:01Z");
-			harness.liveness(new FakeProcessLiveness().alive(6001, ownerStart));
+			FakeProcessHandle orphan1 = new FakeProcessHandle(4002, harnessStart, true);
+			FakeProcessHandle orphan2 = new FakeProcessHandle(4004, harnessStart, true);
+			FakeProcessHandle completed = new FakeProcessHandle(5002, harnessStart, true);
+			FakeProcessHandle owned = new FakeProcessHandle(6002, harnessStart, true);
+			harness.processes(new FakeProcessHandle(6001, ownerStart, true), orphan1, orphan2, completed, owned);
 			writeManifest(runRoots.get(0).resolve("claude/run-1"), """
 				{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
 				"harness_pid": "4002", "harness_started_at": "2026-10-01T11:00:01Z"}""");
@@ -504,8 +507,10 @@ public final class ReconciliationTest
 				"harness_pid": 6002, "harness_started_at": "2026-10-01T11:00:01Z"}""");
 			try (Driver _ = harness.open())
 			{
-				requireThat(harness.terminator().terminated(), "terminated").isEqualTo(List.of(
-					new RecordedProcess(4002, harnessStart), new RecordedProcess(4004, harnessStart)));
+				requireThat(orphan1.stopRequested(), "orphan1.stopRequested").isTrue();
+				requireThat(orphan2.stopRequested(), "orphan2.stopRequested").isTrue();
+				requireThat(completed.stopRequested(), "completed.stopRequested").isFalse();
+				requireThat(owned.stopRequested(), "owned.stopRequested").isFalse();
 			}
 		}
 	}

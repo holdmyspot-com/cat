@@ -10,7 +10,7 @@ import org.testng.annotations.Test;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.stream.Stream;
+import java.util.function.LongFunction;
 
 /**
  * Covers requests to stop recorded processes using in-memory processes that spawn nothing.
@@ -120,13 +120,13 @@ public final class ProcessHandleTerminatorTest
 	 */
 	private static ProcessHandleTerminator terminator(FakeProcessHandle driver, FakeProcessHandle... processes)
 	{
+		LongFunction<Optional<ProcessHandle>> table = FakeProcessHandle.table(processes);
 		return ProcessHandleTerminatorSecrets.getProcessHandleTerminatorAccess().create(new ProcessLookup()
 		{
 			@Override
 			public Optional<ProcessHandle> find(long pid)
 			{
-				return Stream.of(processes).filter(process -> process.pid() == pid).
-					map(ProcessHandle.class::cast).findFirst();
+				return table.apply(pid);
 			}
 
 			@Override
