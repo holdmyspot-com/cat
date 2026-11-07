@@ -25,7 +25,9 @@ import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Tests the sandbox policy that the Codex session launcher serves its session with: the policy that the command line
@@ -189,14 +191,16 @@ public final class CodexLauncherPolicyTest
 			"sandbox_workspace_write.writable_roots";
 		Path m2 = Path.of("/data/m2");
 		Path gradle = Path.of("/data/gradle");
+		String quotedM2 = quoted(m2);
+		String quotedGradle = quoted(gradle);
 		return new Object[][]
 			{
 				{List.of(m2, gradle), Set.of("a.example.com", "b.example.com"),
-					"add \"" + m2 + "\" = \"write\" and \"" + gradle + "\" = \"write\" under " +
+					"add " + quotedM2 + " = \"write\" and " + quotedGradle + " = \"write\" under " +
 						"[permissions.<profile>.filesystem] and \"a.example.com\" = \"allow\" and " +
 						"\"b.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where + legacy},
 				{List.of(m2), Set.of(),
-					"add \"" + m2 + "\" = \"write\" under [permissions.<profile>.filesystem]" + where + legacy},
+					"add " + quotedM2 + " = \"write\" under [permissions.<profile>.filesystem]" + where + legacy},
 				{List.of(), Set.of("api.example.com"),
 					"add \"api.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where},
 				{List.of(), Set.of("localhost"),
@@ -228,6 +232,97 @@ public final class CodexLauncherPolicyTest
 
 			requireThat(source.permissionEntries(writes, hosts), "entries").isEqualTo(expected);
 		}
+	}
+
+	/**
+	 * Returns a path as the TOML basic string that names it in the instruction, for a path whose only characters that
+	 * TOML escapes are the separators of a Windows path.
+	 *
+	 * @param path a path
+	 * @return the string, with its quotes
+	 */
+	private static String quoted(Path path)
+	{
+		return "\"" + path.toString().replace("\\", "\\\\") + "\"";
+	}
+
+	/**
+	 * Supplies paths whose text is not a valid TOML basic string until it is escaped.
+	 *
+	 * @return the paths
+	 */
+	@DataProvider
+	public Object[][] pathsThatTomlEscapes()
+	{
+		return new Object[][]
+			{
+				{Path.of("C:\\Users\\gili\\.m2\\repository")},
+				{Path.of("/data/say \"hi\"/back\\slash")},
+				{Path.of("/data/two\nlines\tand\ttabs\001\177")}
+			};
+	}
+
+	/**
+	 * Verifies that the instruction names a missing write as a TOML string that Codex reads back as the path, so a
+	 * user who pastes it into config.toml gets a configuration that Codex accepts.
+	 *
+	 * @param write a path that the session's sandbox lacks
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "pathsThatTomlEscapes")
+	public void namesMissingWriteAsTomlString(Path write) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
+
+			String instruction = source.permissionEntries(List.of(write), Set.of());
+
+			JsonNode filesystem = TomlMapper.builder().build().
+				readTree(entriesUnder("permissions.<profile>.filesystem", instruction));
+			requireThat(filesystem.propertyNames(), "paths").containsExactly(Set.of(write.toString()));
+			requireThat(filesystem.path(write.toString()).asString(), "access").isEqualTo("write");
+		}
+	}
+
+	/**
+	 * Verifies that the instruction names a missing host as a TOML string that Codex reads back as the host.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void namesMissingHostAsTomlString() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
+			String host = "odd\"host\\name";
+
+			String instruction = source.permissionEntries(List.of(), Set.of(host));
+
+			JsonNode domains = TomlMapper.builder().build().
+				readTree(entriesUnder("permissions.<profile>.network.domains", instruction));
+			requireThat(domains.propertyNames(), "hosts").containsExactly(Set.of(host));
+			requireThat(domains.path(host).asString(), "access").isEqualTo("allow");
+		}
+	}
+
+	/**
+	 * Returns the entries that an instruction tells the user to add under one table.
+	 *
+	 * @param table       the name of the table
+	 * @param instruction the instruction
+	 * @return the entries, as the lines of a TOML document
+	 */
+	private static String entriesUnder(String table, String instruction)
+	{
+		String suffix = " under [" + table + "]";
+		int end = instruction.indexOf(suffix);
+		requireThat(end, "end").isNotNegative();
+		int start = instruction.lastIndexOf("add ", end) + "add ".length();
+		return instruction.substring(start, end).replace(" and ", System.lineSeparator());
 	}
 
 	/**

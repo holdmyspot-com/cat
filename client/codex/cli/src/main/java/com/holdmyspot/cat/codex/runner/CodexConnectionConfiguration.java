@@ -704,8 +704,8 @@ public final class CodexConnectionConfiguration
 		}
 		for (Entry<String, String> variable : commandEnvironment.entrySet())
 		{
-			copied.append(variable.getKey()).append(" = \"").append(toml(variable.getValue())).append('"').
-				append(System.lineSeparator());
+			String value = TomlStrings.escape(variable.getValue());
+			copied.append(variable.getKey()).append(" = \"").append(value).append('"').append(System.lineSeparator());
 		}
 		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
 		TomlMapper mapper = TomlMapper.builder().build();
@@ -928,7 +928,7 @@ public final class CodexConnectionConfiguration
 		}
 		StringJoiner domains = new StringJoiner(", ", "domains = { ", " }");
 		for (String host : new TreeSet<>(policy.hosts()))
-			domains.add('"' + toml(host) + "\" = \"allow\"");
+			domains.add('"' + TomlStrings.escape(host) + "\" = \"allow\"");
 		configuration.append(domains).append(System.lineSeparator());
 	}
 
@@ -987,19 +987,7 @@ public final class CodexConnectionConfiguration
 	private static String toml(Path path)
 	{
 		assert path != null;
-		return toml(path.toAbsolutePath().normalize().toString());
-	}
-
-	/**
-	 * Escapes one value for a TOML basic string.
-	 *
-	 * @param value the value to render
-	 * @return the TOML-safe value
-	 */
-	private static String toml(String value)
-	{
-		assert value != null;
-		return value.replace("\\", "\\\\").replace("\"", "\\\"");
+		return TomlStrings.escape(path.toAbsolutePath().normalize().toString());
 	}
 
 	/**

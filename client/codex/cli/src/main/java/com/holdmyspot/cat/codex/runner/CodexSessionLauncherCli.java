@@ -132,14 +132,14 @@ public final class CodexSessionLauncherCli
 				{
 					List<String> entries = new ArrayList<>();
 					for (Path write : writes)
-						entries.add("\"" + write + "\" = \"write\"");
+						entries.add("\"" + TomlStrings.escape(write.toString()) + "\" = \"write\"");
 					additions.add(String.join(" and ", entries) + " under [permissions.<profile>.filesystem]");
 				}
 				if (!hosts.isEmpty())
 				{
 					List<String> entries = new ArrayList<>();
 					for (String host : new TreeSet<>(hosts))
-						entries.add("\"" + host + "\" = \"allow\"");
+						entries.add("\"" + TomlStrings.escape(host) + "\" = \"allow\"");
 					additions.add(String.join(" and ", entries) + " under [permissions.<profile>.network.domains]");
 					// Codex's managed network proxy blocks these hosts unless the profile also lets commands bind local
 					// addresses, even when its domains allow them
