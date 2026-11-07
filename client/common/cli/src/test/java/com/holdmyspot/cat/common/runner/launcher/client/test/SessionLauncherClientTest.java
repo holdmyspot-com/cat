@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.expectThrows;
 
+import com.holdmyspot.cat.common.ExecutableFiles.ProcessLauncher;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
@@ -19,7 +20,6 @@ import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncher;
 import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
-import com.holdmyspot.cat.common.runner.launcher.client.HolderStarter;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeProcessTable;
@@ -30,10 +30,13 @@ import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.secrets.ProcessHolderStarterSecrets;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.StringReader;
@@ -56,6 +59,7 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -71,8 +75,9 @@ import tools.jackson.databind.json.JsonMapper;
  * process, through {@link SessionLauncherClient}.
  * <p>
  * Each test runs the real {@link SessionLauncher} in this process over a temporary channel folder. A
- * {@link FakeProcessTable} holds the harness process, its sandbox and the holders that the client starts below the
- * sandbox, and a {@link FakeStarter} starts a {@link FakeRunner} in place of the child's runner. Each pause of the
+ * {@link FakeProcessTable} holds the harness process, its sandbox and the holders that the client's real holder starter
+ * starts below the sandbox, where processes that play the holder shell stand in for the operating system's, and a
+ * {@link FakeStarter} starts a {@link FakeRunner} in place of the child's runner. Each pause of the
  * client advances the shared clock by the inbox poll and lets the launcher poll once.
  */
 public final class SessionLauncherClientTest
@@ -155,7 +160,7 @@ public final class SessionLauncherClientTest
 		private final TrackedExecutor executor = new TrackedExecutor();
 		private final Policy policy;
 		private final SessionLauncher launcher;
-		private final Holders holders;
+		private final HolderShells holders;
 		private final SessionLauncherClient client;
 		private final Path project;
 		private final Path cache;
@@ -188,7 +193,7 @@ public final class SessionLauncherClientTest
 			launcher = new SessionLauncher(channel, "claude", harness, processes, policy,
 				(_, runFolder, deniedReads, _) -> new ChildNeeds(runFolder, List.of(), deniedReads, Set.of(MODEL_HOST)),
 				starter, new FileLocks(), clock, executor);
-			holders = new Holders(channel, processes, sandbox);
+			holders = new HolderShells(channel, processes, sandbox);
 			GitIdentity git = new GitIdentity()
 			{
 				@Override
@@ -203,7 +208,8 @@ public final class SessionLauncherClientTest
 					return Optional.of("ada@example.com");
 				}
 			};
-			client = new SessionLauncherClient(channel, PRODUCT, holders, git, clock, this::step,
+			client = new SessionLauncherClient(channel, PRODUCT,
+				ProcessHolderStarterSecrets.getProcessHolderStarterAccess().create(holders), git, clock, this::step,
 				Map.of("claude", "thread-a", "codex", "thread-b"));
 			project = Files.createDirectory(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
@@ -428,28 +434,28 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
-	 * Starts each holder as a process of the fake table, below a parent that the test chooses: the session's sandbox,
-	 * or a process outside the served harness's tree. A holder starts before its message is published, and closing it
-	 * ends its process.
+	 * Plays the holder shell that the real holder starter runs, as processes of the fake table below a parent that the
+	 * test chooses: the session's sandbox, or a process outside the served harness's tree. A holder starts before its
+	 * message is published, and like the shell it reads its standard input and ends when that input closes.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
-	private static final class Holders implements HolderStarter
+	private static final class HolderShells implements ProcessLauncher
 	{
 		private final SessionLauncherChannel channel;
 		private final FakeProcessTable processes;
-		private final List<TestHolder> started = new CopyOnWriteArrayList<>();
+		private final List<HolderShell> started = new CopyOnWriteArrayList<>();
 		private final AtomicInteger nextPid = new AtomicInteger(1000);
 		private volatile ProcessIdentity parent;
 
 		/**
-		 * Creates a starter.
+		 * Creates the shells.
 		 *
 		 * @param channel   the channel whose inbox receives the messages
 		 * @param processes the table that holds the holders
 		 * @param parent    the holders' parent
 		 */
-		Holders(SessionLauncherChannel channel, FakeProcessTable processes, ProcessIdentity parent)
+		HolderShells(SessionLauncherChannel channel, FakeProcessTable processes, ProcessIdentity parent)
 		{
 			this.channel = channel;
 			this.processes = processes;
@@ -465,8 +471,11 @@ public final class SessionLauncherClientTest
 		}
 
 		@Override
-		public Holder start(List<String> arguments)
+		public Process start(ProcessBuilder builder)
 		{
+			List<String> command = builder.command();
+			requireThat(command.getFirst(), "shell").isEqualTo(SessionLauncherChannel.HOLDER_SHELL.toString());
+			List<String> arguments = List.copyOf(command.subList(1, command.size()));
 			String name;
 			if (arguments.get(4).equals("0"))
 				name = SessionLauncherChannel.requestFileName(arguments.get(3));
@@ -475,7 +484,7 @@ public final class SessionLauncherClientTest
 			if (Files.exists(channel.inbox().resolve(name)))
 				throw new AssertionError("The message was published before its holder started: " + name);
 			ProcessIdentity process = processes.start(nextPid.incrementAndGet(), Optional.of(parent), arguments);
-			TestHolder holder = new TestHolder(processes, process, List.copyOf(arguments));
+			HolderShell holder = new HolderShell(processes, process, arguments);
 			started.add(holder);
 			return holder;
 		}
@@ -485,7 +494,7 @@ public final class SessionLauncherClientTest
 		 *
 		 * @return the holders, in start order
 		 */
-		List<TestHolder> started()
+		List<HolderShell> started()
 		{
 			return List.copyOf(started);
 		}
@@ -495,21 +504,22 @@ public final class SessionLauncherClientTest
 		 *
 		 * @return the holder
 		 */
-		TestHolder request()
+		HolderShell request()
 		{
 			return started.stream().filter(holder -> holder.arguments.get(4).equals("0")).findFirst().orElseThrow();
 		}
 	}
 
 	/**
-	 * A holder process of the fake table.
+	 * A holder shell's process in the fake table, which ends when its standard input closes.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
-	private static final class TestHolder implements HolderStarter.Holder
+	private static final class HolderShell extends Process
 	{
 		private final FakeProcessTable processes;
 		private final ProcessIdentity process;
+		private final CountDownLatch ended = new CountDownLatch(1);
 		final List<String> arguments;
 		volatile boolean closed;
 
@@ -518,20 +528,74 @@ public final class SessionLauncherClientTest
 		 *
 		 * @param processes the table that holds its process
 		 * @param process   its process
-		 * @param arguments its process's arguments
+		 * @param arguments the arguments that follow the shell on its command line
 		 */
-		TestHolder(FakeProcessTable processes, ProcessIdentity process, List<String> arguments)
+		HolderShell(FakeProcessTable processes, ProcessIdentity process, List<String> arguments)
 		{
 			this.processes = processes;
 			this.process = process;
 			this.arguments = arguments;
 		}
 
-		@Override
-		public void close()
+		/**
+		 * Ends the shell's process.
+		 */
+		private void end()
 		{
 			processes.end(process);
 			closed = true;
+			ended.countDown();
+		}
+
+		@Override
+		public OutputStream getOutputStream()
+		{
+			return new OutputStream()
+			{
+				@Override
+				public void write(int value)
+				{
+				}
+
+				@Override
+				public void close()
+				{
+					end();
+				}
+			};
+		}
+
+		@Override
+		public InputStream getInputStream()
+		{
+			return InputStream.nullInputStream();
+		}
+
+		@Override
+		public InputStream getErrorStream()
+		{
+			return InputStream.nullInputStream();
+		}
+
+		@Override
+		public int waitFor() throws InterruptedException
+		{
+			ended.await();
+			return 0;
+		}
+
+		@Override
+		public int exitValue()
+		{
+			if (ended.getCount() != 0)
+				throw new IllegalThreadStateException("The holder has not ended");
+			return 0;
+		}
+
+		@Override
+		public void destroy()
+		{
+			end();
 		}
 	}
 
@@ -1587,7 +1651,7 @@ public final class SessionLauncherClientTest
 				int consumed = polled.turnsConsumed();
 				for (int turn = repliesAtConsume.size(); turn < consumed; ++turn)
 					repliesAtConsume.add(output.replies.size());
-				for (TestHolder holder : polled.holders.started())
+				for (HolderShell holder : polled.holders.started())
 				{
 					int turn = Integer.parseInt(holder.arguments.get(4));
 					if (turn > 0 && holder.closed && turn > consumed)
@@ -1606,7 +1670,7 @@ public final class SessionLauncherClientTest
 				"{\"type\":\"turn\",\"prompt\":\"follow-up\"}", "{\"type\":\"complete\"}"));
 			// The follow-up turn reached the launcher only after the first reply reached the optimizer
 			requireThat(repliesAtConsume, "repliesAtConsume").isEqualTo(List.of(0, 1, 2));
-			List<TestHolder> turnHolders = fixture.holders.started().stream().
+			List<HolderShell> turnHolders = fixture.holders.started().stream().
 				filter(holder -> !holder.arguments.get(4).equals("0")).toList();
 			requireThat(turnHolders.stream().map(holder -> holder.arguments.get(4)).toList(), "turnHolders").
 				isEqualTo(List.of("1", "2", "3"));

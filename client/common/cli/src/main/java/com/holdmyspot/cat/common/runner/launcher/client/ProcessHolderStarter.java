@@ -2,7 +2,9 @@ package com.holdmyspot.cat.common.runner.launcher.client;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ExecutableFiles.ProcessLauncher;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
+import com.holdmyspot.cat.common.secrets.ProcessHolderStarterSecrets;
 import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
 import java.util.ArrayList;
@@ -13,13 +15,36 @@ import java.util.List;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
-final class ProcessHolderStarter implements HolderStarter
+public final class ProcessHolderStarter implements HolderStarter
 {
+	static
+	{
+		ProcessHolderStarterSecrets.setProcessHolderStarterAccess(ProcessHolderStarter::new);
+	}
+
 	/**
-	 * Creates the starter.
+	 * Starts each configured holder process.
+	 */
+	private final ProcessLauncher launcher;
+
+	/**
+	 * Creates a starter of operating-system processes.
 	 */
 	ProcessHolderStarter()
 	{
+		this(ProcessBuilder::start);
+	}
+
+	/**
+	 * Creates a starter that starts each configured holder process through the supplied launcher.
+	 *
+	 * @param launcher starts the configured holder process
+	 * @throws NullPointerException if {@code launcher} is null
+	 */
+	private ProcessHolderStarter(ProcessLauncher launcher)
+	{
+		requireThat(launcher, "launcher").isNotNull();
+		this.launcher = launcher;
 	}
 
 	@Override
@@ -29,8 +54,8 @@ final class ProcessHolderStarter implements HolderStarter
 		List<String> command = new ArrayList<>();
 		command.add(SessionLauncherChannel.HOLDER_SHELL.toString());
 		command.addAll(arguments);
-		return new ProcessHolder(new ProcessBuilder(command).redirectOutput(Redirect.DISCARD).
-			redirectError(Redirect.DISCARD).start());
+		return new ProcessHolder(launcher.start(new ProcessBuilder(command).redirectOutput(Redirect.DISCARD).
+			redirectError(Redirect.DISCARD)));
 	}
 
 	/**
