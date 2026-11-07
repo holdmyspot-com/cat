@@ -1392,7 +1392,8 @@ public final class SessionLauncher implements Closeable
 		{
 			Optional<Path> transcript = existing(directory.resolve(SessionLauncherChannel.TRANSCRIPT_FILE));
 			Optional<Path> receipt = existing(directory.resolve(RunnerArguments.RECEIPT_FILE));
-			Path runRoot = directory.resolve(SessionLauncherChannel.RUN_DIRECTORY);
+			// The runner keeps each run in a folder of its harness below the run root
+			Path runRoot = directory.resolve(SessionLauncherChannel.RUN_DIRECTORY).resolve(harness);
 			Optional<Path> childRun = list(runRoot).stream().
 				filter(entry -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)).sorted().findFirst();
 			Optional<String> childRunId = childRun.map(entry -> entry.getFileName().toString());

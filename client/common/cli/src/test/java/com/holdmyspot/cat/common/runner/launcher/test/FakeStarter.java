@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner.launcher.test;
 
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -17,6 +18,7 @@ public final class FakeStarter implements RequestedSessionStarter
 	private static final Duration WAIT = Duration.ofSeconds(5);
 	private final List<FakeRunner> runners = new ArrayList<>();
 	private int exitStatus;
+	private List<String> runFiles = List.of();
 
 	/**
 	 * Creates a starter whose runners exit with status {@code 0}.
@@ -38,12 +40,25 @@ public final class FakeStarter implements RequestedSessionStarter
 		}
 	}
 
-	@Override
-	public Process start(String harness, List<String> arguments, Path directory)
+	/**
+	 * Sets the files that the runs of later runners hold.
+	 *
+	 * @param runFiles the files, relative to the run; each file holds its relative path
+	 */
+	public void runFiles(List<String> runFiles)
 	{
 		synchronized (this)
 		{
-			FakeRunner runner = new FakeRunner(harness, arguments, exitStatus);
+			this.runFiles = List.copyOf(runFiles);
+		}
+	}
+
+	@Override
+	public Process start(String harness, List<String> arguments, Path directory) throws IOException
+	{
+		synchronized (this)
+		{
+			FakeRunner runner = new FakeRunner(harness, arguments, directory, exitStatus, runFiles);
 			runners.add(runner);
 			notifyAll();
 			return runner.process();

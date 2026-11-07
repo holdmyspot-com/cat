@@ -104,11 +104,11 @@ public final class SessionLauncherTest
 			requireThat(response.status(), "status").isEqualTo(Status.COMPLETED);
 			requireThat(response.exitStatus(), "exitStatus").isEqualTo(Optional.of(0));
 			requireThat(Files.readAllLines(response.transcript().orElseThrow()), "transcript").
-				isEqualTo(FakeRunner.RECORDS);
+				isEqualTo(runner.output());
 			requireThat(response.receipt().orElseThrow(), "receipt").isRegularFile();
 			requireThat(response.childRunId(), "childRunId").isEqualTo(Optional.of(FakeRunner.RUN_ID));
 			requireThat(response.run(), "run").isEqualTo(Optional.of(directory.
-				resolve(SessionLauncherChannel.RUN_DIRECTORY).resolve(FakeRunner.RUN_ID)));
+				resolve(SessionLauncherChannel.RUN_DIRECTORY).resolve("claude").resolve(FakeRunner.RUN_ID)));
 		}
 	}
 
