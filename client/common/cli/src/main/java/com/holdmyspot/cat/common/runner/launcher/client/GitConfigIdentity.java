@@ -47,23 +47,29 @@ final class GitConfigIdentity implements GitIdentity
 	private static Optional<String> read(Path project, String key) throws IOException
 	{
 		requireThat(project, "project").isNotNull();
-		Process process = new ProcessBuilder("git", "-C", project.toString(), "config", "--get", key).
-			redirectError(Redirect.DISCARD).redirectInput(Redirect.from(Path.of("/dev/null").toFile())).start();
-		String value;
-		try (InputStream output = process.getInputStream())
+		ProcessBuilder builder = new ProcessBuilder("git", "-C", project.toString(), "config", "--get", key).
+			redirectError(Redirect.DISCARD);
+		try (Process process = builder.start())
 		{
-			value = new String(output.readAllBytes(), UTF_8).strip();
+			// Git reads no input here. Closing the pipe gives it an empty input on every platform, which a null
+			// device file would not: Windows names it NUL, not /dev/null.
+			process.getOutputStream().close();
+			String value;
+			try (InputStream output = process.getInputStream())
+			{
+				value = new String(output.readAllBytes(), UTF_8).strip();
+			}
+			try
+			{
+				if (process.waitFor() != 0 || value.isEmpty())
+					return Optional.empty();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while reading the Git identity of " + project, e);
+			}
+			return Optional.of(value);
 		}
-		try
-		{
-			if (process.waitFor() != 0 || value.isEmpty())
-				return Optional.empty();
-		}
-		catch (InterruptedException e)
-		{
-			Thread.currentThread().interrupt();
-			throw new IOException("Interrupted while reading the Git identity of " + project, e);
-		}
-		return Optional.of(value);
 	}
 }
