@@ -27,8 +27,10 @@ import java.util.Set;
  * {@link Forks} for a project that is no Git repository. Everything a fork does with files is real: {@link ForkTree}
  * records them, {@link Fork} holds them and the fork's workspace writes the optimization worktree. Only what Git
  * would answer is supplied by the test: the tracked files, the tracked symbolic links, whether the base is dirty, the
- * notice about the base's {@code .gitignore} and the failure of a removal. {@code ForkTest} and {@code GitTest} check
- * how Git reports each of these.
+ * notice about the base's {@code .gitignore} and the failure of a removal. {@code GitlessForksContractTest} runs on
+ * this class the {@code ForksContract} cases that {@code ForkTest} runs on {@code GitForks}, so each answer is one that
+ * Git gives. Its diff treats every path as unchanged since {@code HEAD}, because no Git records the base; tests that
+ * read a diff use {@code GitForks}.
  */
 public final class GitlessForks implements Forks
 {
@@ -84,8 +86,8 @@ public final class GitlessForks implements Forks
 	}
 
 	/**
-	 * Makes every later {@code remove} delete the optimization worktree and then fail with the given failure, as the
-	 * removal does when Git fails after it deleted the worktree, until {@link #stopFailingRemoval()}.
+	 * Makes every later {@code remove} fail with the given failure and leave the optimization worktree in place, as the
+	 * removal does when Git refuses it, until {@link #stopFailingRemoval()}.
 	 *
 	 * @param failure the failure that Git's failure would cause
 	 * @throws NullPointerException if {@code failure} is null
@@ -161,9 +163,9 @@ public final class GitlessForks implements Forks
 	@Override
 	public void remove(Path base, Path campaign) throws IOException
 	{
-		TemporaryDirectories.deleteRecursively(campaign.resolve("worktree"));
 		if (removalFailure.isPresent())
 			throw removalFailure.get();
+		TemporaryDirectories.deleteRecursively(campaign.resolve("worktree"));
 	}
 
 	/**

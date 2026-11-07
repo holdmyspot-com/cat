@@ -97,6 +97,41 @@ public final class ForksContract
 	}
 
 	/**
+	 * Verifies that the project's tracked files are the files that its Git index records, links and executables
+	 * included, and nothing that Git ignores or that is untracked.
+	 *
+	 * @param expected the files that the fixture's index records, relative to the project
+	 * @throws IOException if the adapter cannot inspect the project
+	 */
+	public void reportsTrackedFiles(Set<Path> expected) throws IOException
+	{
+		requireThat(forks.tracked(base), "tracked").isEqualTo(expected);
+	}
+
+	/**
+	 * Verifies that the project's tracked links are the files that its Git index records as symbolic links, without
+	 * its regular or executable files.
+	 *
+	 * @param expected the symbolic links that the fixture's index records, relative to the project
+	 * @throws IOException if the adapter cannot inspect the project
+	 */
+	public void reportsTrackedLinks(Set<Path> expected) throws IOException
+	{
+		requireThat(forks.trackedLinks(base), "trackedLinks").isEqualTo(expected);
+	}
+
+	/**
+	 * Verifies that a selection of files that the project has not changed since {@code HEAD} has an empty diff.
+	 *
+	 * @param unchanged files, relative to the project, that match {@code HEAD}
+	 * @throws IOException if the adapter cannot report the diff
+	 */
+	public void unchangedSelectionHasNoDiff(List<Path> unchanged) throws IOException
+	{
+		requireThat(forks.diff(base, unchanged), "diff").isEmpty();
+	}
+
+	/**
 	 * Verifies a project outside a Git repository reports no tracked symbolic links.
 	 *
 	 * @throws IOException if the adapter cannot inspect the project

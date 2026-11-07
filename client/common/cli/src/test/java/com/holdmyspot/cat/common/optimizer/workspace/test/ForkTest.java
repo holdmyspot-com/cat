@@ -839,8 +839,9 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that the tracked links are the files that the Git index records as symbolic links, without its
-	 * regular or executable files, and that a directory outside a Git work tree has none.
+	 * Verifies that the tracked files are the files that the Git index records, that the tracked links are those it
+	 * records as symbolic links, without its regular or executable files, that unchanged files have no diff, and that a
+	 * directory outside a Git work tree has no tracked links.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -853,7 +854,12 @@ public final class ForkTest
 			Path base = repository(root);
 			Path unmanaged = project(root);
 
-			requireThat(Fork.trackedLinks(base), "trackedLinks").isEqualTo(Set.of(Path.of("alias.md")));
+			ForksContract repositoryForks = new ForksContract(new GitForks(Yielding.fileReplacer()), base,
+				base.resolve(CAMPAIGNS + "/c1"));
+			repositoryForks.reportsTrackedFiles(Set.of(Path.of(".gitignore"), Path.of("prompt.md"),
+				Path.of(ProgramFixture.name("run")), Path.of("alias.md")));
+			repositoryForks.reportsTrackedLinks(Set.of(Path.of("alias.md")));
+			repositoryForks.unchangedSelectionHasNoDiff(List.of(Path.of("prompt.md")));
 			new ForksContract(new GitForks(Yielding.fileReplacer()), unmanaged, root.resolve("campaign")).
 				hasNoTrackedLinksOutsideRepository();
 		}

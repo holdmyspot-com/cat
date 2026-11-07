@@ -218,8 +218,8 @@ public final class CleanupTest
 		{
 			Fixture fixture = Fixture.create(cleanup);
 			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
-			// Git fails in a base whose ".git" is not a Git file, after the removal deleted the optimization worktree
-			String gitFailure = "Git command failed: git worktree prune: fatal: not a git repository: .git";
+			// Git refuses the removal in a base whose ".git" is not a Git file, and the optimization worktree stays
+			String gitFailure = "Git command failed: git worktree remove: fatal: not a git repository: .git";
 			fixture.forks().failRemovalWith(new IOException(gitFailure));
 
 			Cleanup.Removal removal = fixture.cleanup(NO_HOOK).end(campaign, delivered(Outcome.CERTIFIED));

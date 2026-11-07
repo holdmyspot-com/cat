@@ -5546,8 +5546,8 @@ public final class OptimizerCoreTest
 			configure(repository.root(), rule, NO_PLUGINS);
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			FileCampaignStore.recordRemoval(repository.campaigns(), id, Yielding.fileReplacer());
-			// Git fails in a base whose ".git" is not a Git file, after the removal deleted the optimization worktree
-			String gitFailure = "Git command failed: git worktree prune: fatal: not a git repository: .git";
+			// Git refuses the removal in a base whose ".git" is not a Git file, and the optimization worktree stays
+			String gitFailure = "Git command failed: git worktree remove: fatal: not a git repository: .git";
 			repository.forks().failRemovalWith(new IOException(gitFailure));
 			String warningStart = "Could not remove the files of campaign " + id + ": ";
 			String warningEnd = ". The next command retries the removal.";
