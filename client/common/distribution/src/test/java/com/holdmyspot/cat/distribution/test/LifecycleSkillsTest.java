@@ -125,9 +125,15 @@ public final class LifecycleSkillsTest
 				contains("releases/latest/download/cat.sh").
 				contains("releases/download/<tag>/cat.sh").contains("cat.ps1").contains("`-Harness <h>`").
 				contains("Reply at once with the command: do not download, read or run the release's files first").
-				contains("read this session's `HOME` and that variable").
+				contains("print this session's `HOME` and that variable in your shell").
+				contains("Write the command with no variable assignments except the following.").
 				contains("Write `HOME=<session HOME>` after the pipe, directly before `sh`").
-				contains("only when the session sets it to a value other than the default folder under that `HOME`").
+				contains("only when this session's `HOME` is not the account's home folder in the account database").
+				contains("the sixth field of the line that `getent passwd` prints for that name").
+				contains("the value that follows `NFSHomeDirectory:` in what `dscl . -read` prints").
+				contains("On Windows, write no `HOME`").
+				contains("only when the session sets it to a value other than the default folder under this " +
+					"session's `HOME`").
 				contains("check that a version folder of CAT's plugin under the session's harness home now holds the " +
 					"launcher").
 				contains("`aot_cache`").

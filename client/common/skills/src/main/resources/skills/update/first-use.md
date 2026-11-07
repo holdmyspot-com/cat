@@ -45,14 +45,22 @@
 	Reply at once with the command: do not download, read or run the release's files first. The entry script installs
 	into the harness home that the variable `CLAUDE_CONFIG_DIR` (for `claude`) or `CODEX_HOME` (for `codex`) names,
 	and otherwise into the folder `.claude` or `.codex` under `HOME`. The user's terminal can hold other values than
-	this session. So before you write the command, read this session's `HOME` and that variable by printing them in
-	your shell; an unset variable is a value.
-	- Write `HOME=<session HOME>` after the pipe, directly before `sh`, because only `sh` reads it.
+	this session, so the command carries a value only when it differs from what the account gives a terminal. Before you
+	write the command, print this session's `HOME` and that variable in your shell; an unset variable is a value. Write
+	the command with no variable assignments except the following.
+	- Write `HOME=<session HOME>` after the pipe, directly before `sh`, because only `sh` reads it, only when this
+		session's `HOME` is not the account's home folder in the account database, or you cannot determine that folder.
+		Print the account's home folder and compare it with the session's `HOME`, ignoring a trailing slash. For the
+		account name, run `id -un`. On Linux, the account's home folder is the sixth field of the line that `getent passwd`
+		prints for that name. On macOS, it is the value that follows `NFSHomeDirectory:` in what `dscl . -read` prints for
+		the path `/Users/` followed by that name. On Windows, write no `HOME`: the entry scripts take the user's home from
+		the user profile.
 	- Add the harness-home variable the same way, with its session value, only when the session sets it to a value
-		other than the default folder under that `HOME`. When the session leaves it unset, say in one sentence beside
-		the command that the user should unset it first if their terminal exports it.
+		other than the default folder under this session's `HOME`. When the session leaves it unset, say in one sentence
+		beside the command that the user should unset it first if their terminal exports it.
 	- In PowerShell, which reads no `HOME`, the user instead sets the harness-home variable, to the session's harness
-		home, before running the script block.
+		home, before running the script block, only when the session sets it to a value other than the default folder
+		under the user profile.
 
 	After the user says the command is done, and before you rely on it, check that a version folder of CAT's plugin
 	under the session's harness home now holds the launcher. When none does, the command acted on another harness
