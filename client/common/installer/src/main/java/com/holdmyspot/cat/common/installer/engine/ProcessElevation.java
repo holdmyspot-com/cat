@@ -10,8 +10,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,6 +43,10 @@ public final class ProcessElevation
 	 * The longest time that the program of a check may take.
 	 */
 	private static final Duration CHECK_LIMIT = Duration.ofSeconds(10);
+	/**
+	 * The longest time that a check waits for the processes that it stopped to end.
+	 */
+	private static final Duration STOP_LIMIT = Duration.ofSeconds(10);
 	/**
 	 * The form of a user ID.
 	 */
@@ -163,7 +171,8 @@ public final class ProcessElevation
 	 * Runs a check's program and returns what it printed.
 	 *
 	 * @param command   the program and its arguments
-	 * @param limit     the longest time that the program may take before it is stopped
+	 * @param limit     the longest time that the program may take before it is stopped, together with every
+	 *                  process that it started
 	 * @param directory the directory to write the program's output to, which is created when absent
 	 * @return the program's standard output and error, which programs of a check write in ASCII
 	 * @throws IOException          if the program cannot be run, fails or does not end in time
@@ -185,9 +194,7 @@ public final class ProcessElevation
 				boolean ended = process.waitFor(limit.toMillis(), TimeUnit.MILLISECONDS);
 				if (!ended)
 				{
-					process.descendants().forEach(ProcessHandle::destroyForcibly);
-					process.destroyForcibly();
-					process.waitFor();
+					stopWithDescendants(process);
 					throw new IOException(command.getFirst() + " did not end within " + limit);
 				}
 				// A program may write in the console's code page; the text that a check looks for is ASCII
@@ -199,7 +206,48 @@ public final class ProcessElevation
 		}
 		finally
 		{
-			Files.delete(output);
+			try
+			{
+				Files.deleteIfExists(output);
+			}
+			catch (IOException _)
+			{
+				// A file that another process still holds open, or that a virus scanner has locked, must not
+				// replace the check's own result or exception. The file is left in the check's own directory.
+			}
+		}
+	}
+
+	/**
+	 * Stops a process and every process that it started, and waits until all of them have ended or the stop limit
+	 * has passed. On Windows, a process that is still running keeps the file that received the program's output open,
+	 * so the file cannot be deleted before the processes have ended.
+	 *
+	 * @param process the process to stop
+	 * @throws InterruptedException if the thread is interrupted while waiting
+	 */
+	private static void stopWithDescendants(Process process) throws InterruptedException
+	{
+		// The descendants must be listed before their parent ends, because an orphaned process no longer
+		// belongs to its parent's tree
+		List<ProcessHandle> descendants = process.descendants().toList();
+		List<CompletableFuture<?>> exits = new ArrayList<>();
+		exits.add(process.onExit());
+		for (ProcessHandle descendant : descendants)
+		{
+			descendant.destroyForcibly();
+			exits.add(descendant.onExit());
+		}
+		process.destroyForcibly();
+		try
+		{
+			CompletableFuture.allOf(exits.toArray(CompletableFuture<?>[]::new)).
+				get(STOP_LIMIT.toMillis(), TimeUnit.MILLISECONDS);
+		}
+		catch (ExecutionException | TimeoutException _)
+		{
+			// The check reports the program's failure to end either way; a process that outlives the wait only
+			// leaves the output file behind
 		}
 	}
 }

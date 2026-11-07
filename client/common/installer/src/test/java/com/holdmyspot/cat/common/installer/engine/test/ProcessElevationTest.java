@@ -89,24 +89,105 @@ public final class ProcessElevationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(testDirectory("process-elevation-id-"));
-			Path id;
-			if (Platform.current().isWindows())
-			{
-				id = Files.writeString(directory.resolve("id.cmd"), "@if not \"%~1\"==\"-u\" exit /b 2\r\n" +
-					"@if not \"%~2\"==\"\" exit /b 2\r\n" + windows + "\r\n");
-			}
-			else
-			{
-				id = Files.writeString(directory.resolve("id"), "#!/bin/sh\n[ $# = 1 ] && [ \"$1\" = -u ] || exit 2\n" +
-					posix + "\n");
-				requireThat(id.toFile().setExecutable(true), "executable").isTrue();
-			}
+			Path id = fakeId(directory, posix, windows);
 
 			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id, limit,
 				directory.resolve("probe"));
 
 			requireThat(elevated, "elevated").isEqualTo(expected);
 		}
+	}
+
+	/**
+	 * The check stops every process that a program which does not end in time started, and waits until they have
+	 * ended, so that no process is left holding the check's output file. The fake {@code id} program starts a child
+	 * that holds the program's output and outlives the check's limit, as a batch file does with the {@code ping} that
+	 * it runs on Windows. A process that keeps a file open blocks the deletion of that file there, so the check
+	 * removes its output only after the child has ended. The check still reports administrative rights, because a
+	 * program that does not end in time never counts as unprivileged.
+	 *
+	 * @throws IOException if the fixture cannot be created or read
+	 */
+	@Test
+	public void stopsEveryProcessOfLateProgram() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(testDirectory("process-elevation-tree-"));
+			Path childIdFile = directory.resolve("child-id.txt");
+			Path id = fakeId(directory, "sleep 60 &\necho $! > '" + childIdFile + "'\nwait",
+				"@ping -n 60 127.0.0.1 >nul");
+
+			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
+				Duration.ofMillis(500), directory.resolve("probe"));
+
+			requireThat(elevated, "elevated").isTrue();
+			requireThat(directory.resolve("probe").toFile().list(), "probeEntries").isEmpty();
+			if (!Platform.current().isWindows())
+			{
+				long childId = Long.parseLong(Files.readString(childIdFile).strip());
+				boolean childRuns = ProcessHandle.of(childId).map(ProcessHandle::isAlive).orElse(false);
+				requireThat(childRuns, "childRuns").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * The check reports the user ID that the {@code id} program printed even when the check cannot delete the file
+	 * that received the program's output, so that a failure to clean up never turns an unprivileged user into
+	 * administrative rights. The fake program makes the deletion fail, as a virus scanner that holds a file open
+	 * does on Windows: on POSIX it removes write permission from the directory that holds the output file, and on
+	 * Windows it marks the output file read-only. Running as {@code root} ignores the missing permission, which
+	 * leaves the deletion to succeed and the result unchanged.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void reportsUserIdWhenOutputCannotBeDeleted() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(testDirectory("process-elevation-undeletable-"));
+			Path probe = directory.resolve("probe");
+			Path id = fakeId(directory, "chmod a-w '" + probe + "'\necho 1000",
+				"@attrib +r \"" + probe.resolve("check-*.txt") + "\"\r\n@echo 1000");
+			try
+			{
+				boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
+					Duration.ofSeconds(10), probe);
+
+				requireThat(elevated, "elevated").isFalse();
+			}
+			finally
+			{
+				// The directory must be writable again for the cleanup to delete its files
+				if (Files.isDirectory(probe))
+					requireThat(probe.toFile().setWritable(true), "writable").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Writes a fake {@code id} program that fails unless its single argument is {@code -u}, as the real program
+	 * prints the effective user ID only for that argument, and otherwise runs a body.
+	 *
+	 * @param directory the directory that receives the program
+	 * @param posix     the program's body on POSIX systems
+	 * @param windows   the program's body on Windows
+	 * @return the program
+	 * @throws IOException if the program cannot be written
+	 */
+	private static Path fakeId(Path directory, String posix, String windows) throws IOException
+	{
+		if (Platform.current().isWindows())
+		{
+			return Files.writeString(directory.resolve("id.cmd"), "@if not \"%~1\"==\"-u\" exit /b 2\r\n" +
+				"@if not \"%~2\"==\"\" exit /b 2\r\n" + windows + "\r\n");
+		}
+		Path id = Files.writeString(directory.resolve("id"), "#!/bin/sh\n[ $# = 1 ] && [ \"$1\" = -u ] || exit 2\n" +
+			posix + "\n");
+		requireThat(id.toFile().setExecutable(true), "executable").isTrue();
+		return id;
 	}
 
 	/**
