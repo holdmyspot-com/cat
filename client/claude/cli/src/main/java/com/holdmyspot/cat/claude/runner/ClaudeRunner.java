@@ -365,8 +365,8 @@ public final class ClaudeRunner
 	 * @param environment the caller's environment
 	 * @return the needs
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if the model provider's base URL names no host
-	 * @throws IOException              if a cache cannot be used or the caller's settings file cannot be read
+	 * @throws IOException              if a cache cannot be used, the caller's settings file cannot be read, or the model
+	 *                                  provider's base URL names no host
 	 */
 	public static ChildNeedsReport childNeeds(HarnessRunnerScope scope, Map<String, String> environment)
 		throws IOException
@@ -382,8 +382,18 @@ public final class ClaudeRunner
 		Path login = hostConfiguration.resolve(LOGIN).toAbsolutePath();
 		if (requiresCredentialFiles(isolatedEnvironment) && Files.isRegularFile(login))
 			logins.add(login);
-		return new ChildNeedsReport(caches.directories(),
-			Set.of(ClaudeConnectionSettings.modelHost(isolatedEnvironment)), logins);
+		String modelHost;
+		try
+		{
+			modelHost = ClaudeConnectionSettings.modelHost(isolatedEnvironment);
+		}
+		catch (IllegalArgumentException e)
+		{
+			// The caller's environment names a model provider that no session can reach, so what its session needs is
+			// unknown, as when a cache cannot be used
+			throw new IOException(e.getMessage(), e);
+		}
+		return new ChildNeedsReport(caches.directories(), Set.of(modelHost), logins);
 	}
 
 	/**

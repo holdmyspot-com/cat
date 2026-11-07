@@ -804,6 +804,74 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
+	 * Verifies that a launch that no harness runs is refused with the refusal status, as every launch is whose needs
+	 * cannot be determined, when its model provider's base URL names no host, and that the refusal names the setting
+	 * and starts nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesUnmarkedLaunchWithoutModelHost() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"ANTHROPIC_BASE_URL", "file:///no-host");
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
+				home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low"}, environment,
+				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").startsWith("CAT cannot start the session: it cannot read this " +
+				"Claude Code session's sandbox policy: ").contains("ANTHROPIC_BASE_URL names no host: file:///no-host");
+			requireThat(output.size(), "outputSize").isZero();
+		}
+	}
+
+	/**
+	 * Verifies that the runner that a session launcher asks for a child's needs writes them to the file it is given
+	 * and exits with status 0, and, when its model provider's base URL names no host, writes no file and exits with the
+	 * refusal status after one line that names the setting, without a stack trace.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void reportsChildNeedsOrRefuses() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path report = home.resolve("needs.json");
+			StringWriter errors = new StringWriter();
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
+
+			int status = ClaudeRunnerCli.reportChildNeeds(scope, environment, report, new PrintWriter(errors, true));
+
+			requireThat(status, "status").isZero();
+			requireThat(ChildNeedsReport.read(scope.json(), report).hosts(), "hosts").isEqualTo(Set.of(
+				"api.anthropic.com"));
+			requireThat(errors.toString(), "errors").isEmpty();
+
+			Path refused = home.resolve("refused.json");
+			Map<String, String> noHost = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"ANTHROPIC_BASE_URL", "file:///no-host");
+
+			status = ClaudeRunnerCli.reportChildNeeds(scope, noHost, refused, new PrintWriter(errors, true));
+
+			requireThat(status, "refusedStatus").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(Files.exists(refused), "refusedWritten").isFalse();
+			requireThat(errors.toString().strip(), "refusal").isEqualTo(
+				"ANTHROPIC_BASE_URL names no host: file:///no-host");
+		}
+	}
+
+	/**
 	 * Verifies that a launch from a command that Claude Code runs goes to the Claude Code process's session launcher,
 	 * and fails with the refusal status when no session launcher serves the session.
 	 *

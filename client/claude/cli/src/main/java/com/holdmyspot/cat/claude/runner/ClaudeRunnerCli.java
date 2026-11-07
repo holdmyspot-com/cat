@@ -94,7 +94,8 @@ public final class ClaudeRunnerCli
 	 * <p>
 	 * With {@value ChildNeedsReport#OPTION} and a file, it writes what a Claude child session needs to that file, as
 	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it, for the session launcher that asks before
-	 * it starts the child, and starts nothing.
+	 * it starts the child, and starts nothing. When it cannot determine them, it prints the reason and exits with status
+	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS}.
 	 *
 	 * @param args the command's options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -118,15 +119,52 @@ public final class ClaudeRunnerCli
 		}
 		if (args.length == 2 && args[0].equals(ChildNeedsReport.OPTION))
 		{
+			int status;
 			try (HarnessRunnerScope scope = new MainHarnessRunnerScope(environment, Pause::sleeping))
 			{
-				ClaudeRunner.childNeeds(scope, environment).write(scope.json(), Path.of(args[1]));
+				status = reportChildNeeds(scope, environment, Path.of(args[1]), errors());
 			}
+			if (status != 0)
+				System.exit(status);
 			return;
 		}
 		String[] launch = args;
 		System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> launch(launch, environment, Pause::sleeping,
 			new InputStreamReader(System.in, UTF_8), System.out, errors()), errors()));
+	}
+
+	/**
+	 * Writes what a Claude child session needs to a file, as
+	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it, or refuses when it cannot be determined.
+	 *
+	 * @param scope       the process scope
+	 * @param environment the caller's environment
+	 * @param file        the file to write
+	 * @param errors      receives the reason, as one line, when the needs cannot be determined
+	 * @return {@code 0} if the needs were written, or {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if they
+	 *   cannot be determined, in which case no file is written
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the file cannot be written
+	 */
+	public static int reportChildNeeds(HarnessRunnerScope scope, Map<String, String> environment, Path file,
+		PrintWriter errors) throws IOException
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(file, "file").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		ChildNeedsReport needs;
+		try
+		{
+			needs = ClaudeRunner.childNeeds(scope, environment);
+		}
+		catch (IOException e)
+		{
+			errors.println(e.getMessage());
+			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+		}
+		needs.write(scope.json(), file);
+		return 0;
 	}
 
 	/**
