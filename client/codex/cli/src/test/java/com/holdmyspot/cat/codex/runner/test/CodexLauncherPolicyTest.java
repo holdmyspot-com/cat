@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.codex.runner.CodexSessionLauncherCli;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.launcher.LauncherRecord;
@@ -247,13 +248,24 @@ public final class CodexLauncherPolicyTest
 	}
 
 	/**
-	 * Supplies paths whose text is not a valid TOML basic string until it is escaped.
+	 * Supplies paths whose text is not a valid TOML basic string until it is escaped. A path may contain only the
+	 * characters that its platform's file system accepts: Windows rejects {@code "} and control characters in a path
+	 * and treats a backslash as a separator, whereas a POSIX path may contain all of them.
 	 *
 	 * @return the paths
 	 */
 	@DataProvider
 	public Object[][] pathsThatTomlEscapes()
 	{
+		if (Platform.current().isWindows())
+		{
+			return new Object[][]
+				{
+					{Path.of("C:\\Users\\gili\\.m2\\repository")},
+					{Path.of("C:\\data\\say 'hi'\\back\\slash")},
+					{Path.of("C:\\data\\a#b=c[d]\\\177")}
+				};
+		}
 		return new Object[][]
 			{
 				{Path.of("C:\\Users\\gili\\.m2\\repository")},

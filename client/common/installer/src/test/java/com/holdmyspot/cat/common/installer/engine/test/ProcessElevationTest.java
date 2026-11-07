@@ -149,8 +149,9 @@ public final class ProcessElevationTest
 		{
 			Path directory = cleanup.add(testDirectory("process-elevation-undeletable-"));
 			Path probe = directory.resolve("probe");
+			// Windows rejects a path that contains a wildcard, so the pattern that attrib expands is plain text
 			Path id = fakeId(directory, "chmod a-w '" + probe + "'\necho 1000",
-				"@attrib +r \"" + probe.resolve("check-*.txt") + "\"\r\n@echo 1000");
+				"@attrib +r \"" + probe + "\\check-*.txt\"\r\n@echo 1000");
 			try
 			{
 				boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
