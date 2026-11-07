@@ -139,7 +139,7 @@ public final class ChildBound
 	 * @param failure     the failure to read the policy
 	 * @return the reason
 	 */
-	static String unreadablePolicy(String harnessName, IOException failure)
+	public static String unreadablePolicy(String harnessName, IOException failure)
 	{
 		return "CAT cannot start the session: it cannot read this " + harnessName + " session's sandbox policy: " +
 			failure.getMessage();

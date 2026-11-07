@@ -775,6 +775,35 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
+	 * Verifies that a launch that no harness runs is refused with the refusal status, and starts nothing, when what
+	 * its session needs cannot be determined: CAT cannot then read the session's sandbox policy.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesUnmarkedLaunchWithoutNeeds() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Files.writeString(home.resolve(".npm"), "not a folder");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
+				home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low"}, environment,
+				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").startsWith("CAT cannot start the session: it cannot read this " +
+				"Claude Code session's sandbox policy: ");
+			requireThat(output.size(), "outputSize").isZero();
+		}
+	}
+
+	/**
 	 * Verifies that a launch from a command that Claude Code runs goes to the Claude Code process's session launcher,
 	 * and fails with the refusal status when no session launcher serves the session.
 	 *

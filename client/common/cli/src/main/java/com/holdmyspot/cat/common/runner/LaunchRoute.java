@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -110,8 +111,9 @@ public sealed interface LaunchRoute
 		 *                                   outside a harness session
 		 * @throws InvalidArgumentsException if an option that bounds the session lacks its value, a denied read is
 		 *                                   not absolute, or the file of extra permissions is missing or invalid
-		 * @throws IOException               if what the session needs cannot be determined, or the bound cannot be
-		 *                                   written
+		 * @throws SessionRefusedException   if what the session needs cannot be determined; the message says that
+		 *                                   CAT cannot read the session's sandbox policy, and why
+		 * @throws IOException               if the bound cannot be written
 		 */
 		public static List<String> boundArguments(String harness, String[] args, HarnessTemporaryRoot temporaryRoot,
 			JsonMapper json, NeedsReport needs, TemporaryDirectories cleanup) throws IOException
@@ -124,9 +126,18 @@ public sealed interface LaunchRoute
 			requireThat(cleanup, "cleanup").isNotNull();
 			InPlaceOptions options = InPlaceOptions.parse(args, temporaryRoot);
 			ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, options.extraPermissions());
-			ChildBound bound = new ChildBound(unconfined(productName(harness)), (_, runFolder, deniedReads, _) ->
+			String harnessName = productName(harness);
+			ChildBound bound = new ChildBound(unconfined(harnessName), (_, runFolder, deniedReads, _) ->
 			{
-				ChildNeedsReport report = needs.report();
+				ChildNeedsReport report;
+				try
+				{
+					report = needs.report();
+				}
+				catch (IOException e)
+				{
+					throw new SessionRefusedException(ChildBound.unreadablePolicy(harnessName, e), e);
+				}
 				return new ChildNeeds(runFolder, report.writes(), deniedReads, report.hosts());
 			});
 			ChildPolicy policy = bound.bound(harness, options.runRoot(), options.deniedReads(), extra);
