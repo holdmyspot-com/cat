@@ -72,7 +72,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * The launcher ends when its harness process ends, when another process reuses that process's identifier, or when
  * its folder's {@link SessionLauncherChannel#STOP_FILE} appears. It then stops every child, and deletes its requests'
- * folders, their inbox files, and its own folder.
+ * inbox files, the folders of the requests whose holders have ended, and its own folder. The folder of a request whose
+ * holder still lives stays, with the response that says why the session stopped, for the process that sent the request
+ * to read; a launcher's next start deletes it.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -253,8 +255,8 @@ public final class SessionLauncher implements Closeable
 	}
 
 	/**
-	 * Ends a launcher that serves: stops its children, and deletes its requests' folders, their inbox files and its
-	 * own folder. Does nothing for a launcher that does not serve.
+	 * Ends a launcher that serves: stops its children, and deletes its requests' inbox files, the folders of the
+	 * requests whose holders have ended, and its own folder. Does nothing for a launcher that does not serve.
 	 *
 	 * @throws IOException if the launcher's state cannot be deleted
 	 */
@@ -828,8 +830,8 @@ public final class SessionLauncher implements Closeable
 	}
 
 	/**
-	 * Ends the launcher: stops every child, waits for their tasks, and deletes the requests' folders, their inbox
-	 * files and the launcher's folder.
+	 * Ends the launcher: stops every child, waits for their tasks, and deletes the requests' inbox files, the folders
+	 * of the requests whose holders have ended or whose task did not finish, and the launcher's folder.
 	 *
 	 * @throws IOException if the launcher's state cannot be deleted
 	 */
@@ -857,7 +859,10 @@ public final class SessionLauncher implements Closeable
 		deleteInboxFiles(served.keySet());
 		for (Served request : served.values())
 		{
-			if (Files.exists(request.directory, LinkOption.NOFOLLOW_LINKS))
+			// A sender that outlives the launcher still reads the response from the request's folder; the next
+			// launcher's sweep deletes the folder once the sender's holder has ended
+			boolean senderReads = processes.isAlive(request.holder) && request.task.isDone();
+			if (!senderReads && Files.exists(request.directory, LinkOption.NOFOLLOW_LINKS))
 				TemporaryDirectories.deleteRecursively(request.directory);
 		}
 		served.clear();

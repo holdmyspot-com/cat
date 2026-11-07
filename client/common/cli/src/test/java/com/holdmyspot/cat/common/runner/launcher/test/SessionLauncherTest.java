@@ -306,8 +306,8 @@ public final class SessionLauncherTest
 
 	/**
 	 * Verifies that the launcher ends when its harness process ends, when another process reuses the harness's
-	 * identifier, or when its stop file appears, and that it then stops its children's process trees and deletes its
-	 * requests' directories, the inbox files of its requests, and its own directory.
+	 * identifier, or when its stop file appears, and that it then stops its children's process trees and deletes the
+	 * directories of the requests whose holders have ended, the inbox files of its requests, and its own directory.
 	 *
 	 * @param event the event that ends the launcher
 	 * @throws IOException          if fixture I/O fails
@@ -321,7 +321,7 @@ public final class SessionLauncherTest
 		{
 			requireThat(launcher.start(), "start").isTrue();
 			String id = fixture.publish(fixture.request(true));
-			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+			ProcessIdentity holder = fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
 			requireThat(launcher.poll(), "acceptingPoll").isTrue();
 			FakeRunner runner = fixture.starter.awaitRunner();
 			Path waitingTurn = fixture.publishTurn(id, 2, COMPLETE);
@@ -334,11 +334,43 @@ public final class SessionLauncherTest
 				case "pid reused" -> fixture.processes.reuse(fixture.harness);
 				default -> Files.writeString(launcher.directory().resolve(SessionLauncherChannel.STOP_FILE), "");
 			}
+			fixture.processes.end(holder);
 			requireThat(launcher.poll(), "endingPoll").isFalse();
 
 			requireThat(runner.treeStopped(), "treeStopped").isTrue();
 			requireThat(Files.exists(fixture.channel.requestDirectory(id)), "requestDirectory").isFalse();
 			requireThat(Files.exists(waitingTurn, LinkOption.NOFOLLOW_LINKS), "waitingTurn").isFalse();
+			requireThat(Files.exists(launcher.directory()), "launcherDirectory").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launcher that ends while the process that holds a request still lives keeps the request's
+	 * directory, with the response that says the launcher stopped the session because the requesting session ended,
+	 * so that the sender reads why its session stopped; and that it deletes its own directory.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void endKeepsResponseForLiveHolder() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(true));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+			requireThat(launcher.poll(), "acceptingPoll").isTrue();
+			FakeRunner runner = fixture.starter.awaitRunner();
+
+			fixture.processes.end(fixture.harness);
+			requireThat(launcher.poll(), "endingPoll").isFalse();
+
+			requireThat(runner.treeStopped(), "treeStopped").isTrue();
+			Response response = fixture.response(id);
+			requireThat(response.status(), "status").isEqualTo(Status.STOPPED);
+			requireThat(response.reason(), "reason").contains("requesting session ended");
 			requireThat(Files.exists(launcher.directory()), "launcherDirectory").isFalse();
 		}
 	}
