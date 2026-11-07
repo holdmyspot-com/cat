@@ -83,9 +83,7 @@ public final class ClaudeSessionLauncherCli
 		int status;
 		try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
 		{
-			RequestedSessionStarter starter = (harness, arguments, directory) ->
-				ClaudeRunnerCli.requestedRunner(scope, artifact, harness, environment).start(arguments, directory,
-					environment);
+			RequestedSessionStarter starter = starter(scope, artifact, environment);
 			ParentPolicySource policy = policySource(new ClaudePolicyReader(processes),
 				() -> ClaudeSession.fromHookEnvironment(environment, home, user));
 			status = SessionLauncherService.serve(new SessionLauncherChannel(home), Path.of(args[0]), HARNESS_ID,
@@ -94,6 +92,27 @@ public final class ClaudeSessionLauncherCli
 				work -> Runtime.getRuntime().addShutdownHook(new Thread(work)), System.err);
 		}
 		System.exit(status);
+	}
+
+	/**
+	 * Returns the starter of the sessions that the launcher's harness session requests, which starts the runner of the
+	 * requested harness: the {@code claude-runner} of this plugin, or the {@code codex-runner} of the Codex
+	 * artifact that the {@code codex-artifact} launcher finds.
+	 *
+	 * @param scope       the borrowed process scope, which starts each runner
+	 * @param artifact    this plugin's folder
+	 * @param environment the host environment, which each runner receives
+	 * @return the starter
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static RequestedSessionStarter starter(JvmScope scope, Path artifact, Map<String, String> environment)
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(artifact, "artifact").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		Map<String, String> copy = Map.copyOf(environment);
+		return (harness, arguments, directory) -> ClaudeRunnerCli.requestedRunner(scope, artifact, harness, copy).
+			start(arguments, directory, copy);
 	}
 
 	/**

@@ -140,6 +140,16 @@ public final class FakeRunner
 	}
 
 	/**
+	 * Returns the folder that the runner was started in, which receives its standard error.
+	 *
+	 * @return the folder
+	 */
+	public Path directory()
+	{
+		return directory;
+	}
+
+	/**
 	 * Returns the value of one of the runner's options.
 	 *
 	 * @param option the option

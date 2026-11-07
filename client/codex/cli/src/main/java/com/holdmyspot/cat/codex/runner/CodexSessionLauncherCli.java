@@ -77,9 +77,7 @@ public final class CodexSessionLauncherCli
 		int status;
 		try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
 		{
-			RequestedSessionStarter starter = (harness, arguments, directory) ->
-				CodexRunnerCli.requestedRunner(scope, artifact, harness, environment).start(arguments, directory,
-					environment);
+			RequestedSessionStarter starter = starter(scope, artifact, environment);
 			status = SessionLauncherService.serve(new SessionLauncherChannel(home), Path.of(args[0]), HARNESS_ID,
 				record -> policySource(reader, processes, record, environment, accountHome), starter,
 				new ProcessHandleTable(processes), scope.fileLocks(), Clock.systemUTC(),
@@ -87,6 +85,27 @@ public final class CodexSessionLauncherCli
 				work -> Runtime.getRuntime().addShutdownHook(new Thread(work)), System.err);
 		}
 		System.exit(status);
+	}
+
+	/**
+	 * Returns the starter of the sessions that the launcher's harness session requests, which starts the runner of the
+	 * requested harness: the {@code codex-runner} of this plugin, or the {@code claude-runner} of the Claude
+	 * artifact that the {@code claude-artifact} launcher finds.
+	 *
+	 * @param scope       the borrowed process scope, which starts each runner
+	 * @param artifact    this plugin's folder
+	 * @param environment the host environment, which each runner receives
+	 * @return the starter
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static RequestedSessionStarter starter(JvmScope scope, Path artifact, Map<String, String> environment)
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(artifact, "artifact").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		Map<String, String> copy = Map.copyOf(environment);
+		return (harness, arguments, directory) -> CodexRunnerCli.requestedRunner(scope, artifact, harness, copy).
+			start(arguments, directory, copy);
 	}
 
 	/**

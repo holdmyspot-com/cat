@@ -9,12 +9,17 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Starts a {@link FakeRunner} for each requested session, in place of a child's runner process.
+ * Starts a {@link FakeRunner} for each requested session of the {@value #HARNESS} harness, in place of a child's
+ * runner process, and refuses a request for any other harness.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class FakeStarter implements RequestedSessionStarter
 {
+	/**
+	 * The identifier of the only harness whose runner the starter starts.
+	 */
+	public static final String HARNESS = "claude";
 	private static final Duration WAIT = Duration.ofSeconds(5);
 	private final List<FakeRunner> runners = new ArrayList<>();
 	private int exitStatus;
@@ -56,6 +61,8 @@ public final class FakeStarter implements RequestedSessionStarter
 	@Override
 	public Process start(String harness, List<String> arguments, Path directory) throws IOException
 	{
+		if (!harness.equals(HARNESS))
+			throw new IllegalArgumentException("Unsupported requested harness: " + harness);
 		synchronized (this)
 		{
 			FakeRunner runner = new FakeRunner(harness, arguments, directory, exitStatus, runFiles);
