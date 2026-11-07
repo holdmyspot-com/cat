@@ -206,10 +206,73 @@ ${RELEASE_DOWNLOAD_URL}/$(plugin_name claude).tar.gz" ]
 
 		[ "${status}" -eq 2 ]
 		[[ "${output}" == *"--harness claude or --harness codex"* ]]
-		[[ "${output}" == *"curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+		[[ "${output}" == *"curl -fsSL ${SINGLE_COMMAND_URL} | HOME='${HOME}' CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- --harness claude"* ]]
+		[[ "${output}" == *"curl -fsSL ${SINGLE_COMMAND_URL} | HOME='${HOME}' CODEX_HOME='${CODEX_HOME}' sh -s -- --harness codex"* ]]
 		[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}" ]
 	done
 	[ ! -e "${INSTALL_ARGUMENTS}" ]
+}
+
+# The commands that the entry script prints are for a terminal that may have another home than this process
+@test "entry script prints the plain entry command when HOME is the account's home and no harness home is set" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}"
+	export HOME
+	HOME="$(eval "printf '%s' ~$(id -un)")"
+	unset CLAUDE_CONFIG_DIR CODEX_HOME
+
+	run single_command
+
+	[ "${status}" -eq 2 ]
+	[[ "${output}" == *"  curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+	[[ "${output}" == *"  curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness codex"* ]]
+}
+
+@test "entry script omits a harness home that is the default one in HOME" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}"
+	export HOME CLAUDE_CONFIG_DIR CODEX_HOME
+	HOME="$(eval "printf '%s' ~$(id -un)")"
+	CLAUDE_CONFIG_DIR="${HOME}/.claude"
+	CODEX_HOME="${HOME}/.codex/"
+
+	run single_command
+
+	[ "${status}" -eq 2 ]
+	[[ "${output}" == *"  curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+	[[ "${output}" == *"  curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness codex"* ]]
+}
+
+@test "entry script sets only a harness home that is not the default one when HOME is the account's home" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}"
+	export HOME CLAUDE_CONFIG_DIR
+	HOME="$(eval "printf '%s' ~$(id -un)")"
+	CLAUDE_CONFIG_DIR="${TEST_ROOT}/elsewhere"
+	unset CODEX_HOME
+
+	run single_command
+
+	[ "${status}" -eq 2 ]
+	[[ "${output}" == *"  curl -fsSL ${SINGLE_COMMAND_URL} | CLAUDE_CONFIG_DIR='${CLAUDE_CONFIG_DIR}' sh -s -- --harness claude"* ]]
+	[[ "${output}" == *"  curl -fsSL ${SINGLE_COMMAND_URL} | sh -s -- --harness codex"* ]]
+}
+
+@test "entry script quotes a HOME with an apostrophe so that the shell passes it unchanged" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}"
+	export HOME="${TEST_ROOT}/it's home"
+	unset CLAUDE_CONFIG_DIR CODEX_HOME
+	mkdir -p "${HOME}"
+
+	run single_command
+
+	[ "${status}" -eq 2 ]
+	line="$(printf '%s\n' "${output}" | grep -F -- '--harness claude' | grep -F 'curl -fsSL')"
+	assignment="${line#*| }"
+	assignment="${assignment%% sh -s*}"
+	[[ "${assignment}" == HOME=* ]]
+	[ "$(eval "${assignment} sh -c 'printf %s \"\${HOME}\"'")" = "${HOME}" ]
 }
 
 @test "entry script refuses an unknown harness before downloading the plugin" {

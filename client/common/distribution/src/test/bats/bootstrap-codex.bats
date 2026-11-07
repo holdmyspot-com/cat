@@ -71,10 +71,22 @@ codex_hook()
 	run single_command --harness codex
 
 	[ "${status}" -eq 1 ]
-	[[ "${output}" == *"& ([scriptblock]::Create((irm ${RELEASE_DOWNLOAD_URL}/cat.ps1))) -Harness codex"* ]]
+	[[ "${output}" == *"  \$env:CODEX_HOME='${CODEX_HOME}'; & ([scriptblock]::Create((irm ${RELEASE_DOWNLOAD_URL}/cat.ps1))) -Harness codex"* ]]
 	[ "$(cat "${URL_LOG}")" = "${SINGLE_COMMAND_URL}" ]
 	[ ! -e "${INSTALL_ARGUMENTS}" ]
 	[ -z "$(ls -A "${TMPDIR}")" ]
+}
+
+@test "entry script's PowerShell command for Codex on Windows omits the default Codex home" {
+	create_fake_release
+	export PATH="${FAKE_BIN}:${PATH}"
+	create_fake_uname MINGW64_NT-10.0-26100 x86_64
+	export CODEX_HOME="${HOME}/.codex"
+
+	run single_command --harness codex
+
+	[ "${status}" -eq 1 ]
+	[[ "${output}" == *"  & ([scriptblock]::Create((irm ${RELEASE_DOWNLOAD_URL}/cat.ps1))) -Harness codex"* ]]
 }
 
 @test "generated Codex SessionStart launcher injects the packaged routing and the project's rules" {

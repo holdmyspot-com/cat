@@ -60,6 +60,113 @@ cat_refuse_retired_option()
 	exit 2
 }
 
+# Writes a word so that a POSIX shell passes it to a program unchanged.
+#
+# Arguments:
+#   $1 - The word.
+#
+# Output:
+#   Writes the word to standard output, in single quotes unless it holds only characters that the shell leaves alone.
+cat_quote_word()
+{
+	case "$1" in
+		''|*[!A-Za-z0-9_@%+=:,./-]*) printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\"'\"'/g")" ;;
+		*) printf '%s' "$1" ;;
+	esac
+}
+
+# Writes the home directory that the user database records for the account that runs this script.
+#
+# Output:
+#   Writes the directory to standard output, or nothing when it cannot be determined.
+cat_account_home()
+{
+	cat_account="$(id -un 2>/dev/null)" || return 0
+	case "${cat_account}" in
+		''|[!A-Za-z0-9_]*|*[!A-Za-z0-9._-]*) return 0 ;;
+	esac
+	# A tilde followed by the account's name expands from the user database, not from HOME
+	cat_account_directory="$(eval "printf '%s' ~${cat_account}")"
+	case "${cat_account_directory}" in
+		/*) printf '%s' "${cat_account_directory}" ;;
+	esac
+}
+
+# Writes the environment variable assignments that a copy of this script's entry command needs when the user runs it in
+# a terminal whose environment may differ from this one: HOME when it is not the account's home directory in the user
+# database or that directory cannot be determined, and the harness's home variable when it names a directory other
+# than the harness's default one in HOME. The entry script takes the harness home from those variables.
+#
+# Arguments:
+#   $1 - The harness, claude or codex.
+#
+# Environment:
+#   HOME - The home directory of this script's process.
+#   CLAUDE_CONFIG_DIR - The Claude Code home, when this script's process sets it.
+#   CODEX_HOME - The Codex home, when this script's process sets it.
+#
+# Output:
+#   Writes each assignment, quoted for a POSIX shell and followed by a space, to standard output.
+cat_command_environment()
+{
+	cat_session_home="${HOME:-}"
+	cat_account_directory="$(cat_account_home)"
+	if [ -n "${cat_session_home}" ] && [ "${cat_session_home%/}" != "${cat_account_directory%/}" ]; then
+		printf 'HOME=%s ' "$(cat_quote_word "${cat_session_home}")"
+	fi
+	cat_harness_home "$1"
+	cat_default_home="${cat_session_home%/}/${CAT_HARNESS_DEFAULT}"
+	if [ -n "${CAT_HARNESS_VALUE}" ] && [ "${CAT_HARNESS_VALUE%/}" != "${cat_default_home}" ]; then
+		printf '%s=%s ' "${CAT_HARNESS_VARIABLE}" "$(cat_quote_word "${CAT_HARNESS_VALUE}")"
+	fi
+}
+
+# Writes the environment variable assignment that the PowerShell form of this script's entry command needs for Codex
+# when the user runs it in a terminal whose environment may differ from this one. The PowerShell entry script takes the
+# user's home from the user profile, so only CODEX_HOME, when it names a directory other than the default one in HOME,
+# needs an assignment.
+#
+# Environment:
+#   HOME - The home directory of this script's process.
+#   CODEX_HOME - The Codex home, when this script's process sets it.
+#
+# Output:
+#   Writes the assignment as a PowerShell statement, followed by a space, to standard output, or nothing when it is
+#   not needed.
+cat_powershell_environment()
+{
+	cat_harness_home codex
+	cat_default_home="${HOME:-}/${CAT_HARNESS_DEFAULT}"
+	if [ -n "${CAT_HARNESS_VALUE}" ] && [ "${CAT_HARNESS_VALUE%/}" != "${cat_default_home}" ]; then
+		printf "\$env:%s='%s'; " "${CAT_HARNESS_VARIABLE}" "$(printf '%s' "${CAT_HARNESS_VALUE}" | sed "s/'/''/g")"
+	fi
+}
+
+# Looks up the variable that moves a harness's home, and the home's default location.
+#
+# Arguments:
+#   $1 - The harness, claude or codex.
+#
+# Environment:
+#   CLAUDE_CONFIG_DIR - The Claude Code home, when this script's process sets it.
+#   CODEX_HOME - The Codex home, when this script's process sets it.
+#
+# Side effects:
+#   Sets CAT_HARNESS_VARIABLE to the variable's name, CAT_HARNESS_VALUE to its value or the empty string, and
+#   CAT_HARNESS_DEFAULT to the harness's default home relative to HOME.
+cat_harness_home()
+{
+	if [ "$1" = claude ]; then
+		CAT_HARNESS_VARIABLE=CLAUDE_CONFIG_DIR
+		CAT_HARNESS_VALUE="${CLAUDE_CONFIG_DIR:-}"
+		CAT_HARNESS_DEFAULT=.claude
+	else
+		CAT_HARNESS_VARIABLE=CODEX_HOME
+		CAT_HARNESS_VALUE="${CODEX_HOME:-}"
+		CAT_HARNESS_DEFAULT=.codex
+	fi
+}
+
 # Deletes the temporary directory that this script created.
 #
 # Side effects:
@@ -241,7 +348,8 @@ case "${CAT_HARNESS}" in
 			echo "CAT cannot tell whether this shell belongs to Claude Code or Codex, so it changed nothing. Run the" \
 				"command again with --harness claude or --harness codex, such as:" >&2
 			echo >&2
-			echo "  curl -fsSL ${CAT_ENTRY_URL} | sh -s -- --harness claude" >&2
+			echo "  curl -fsSL ${CAT_ENTRY_URL} | $(cat_command_environment claude)sh -s -- --harness claude" >&2
+			echo "  curl -fsSL ${CAT_ENTRY_URL} | $(cat_command_environment codex)sh -s -- --harness codex" >&2
 			exit 2
 		fi
 		;;
@@ -262,7 +370,7 @@ CAT_PLATFORM="$(cat_detect_platform)"
 if [ "${CAT_HARNESS}" = codex ] && [ "${CAT_PLATFORM}" = windows-x64 ]; then
 	echo "On Windows, CAT installs Codex from PowerShell, so it changed nothing. In PowerShell, run:" >&2
 	echo >&2
-	echo "  & ([scriptblock]::Create((irm ${CAT_DOWNLOAD_URL}/cat.ps1))) -Harness codex" >&2
+	echo "  $(cat_powershell_environment)& ([scriptblock]::Create((irm ${CAT_DOWNLOAD_URL}/cat.ps1))) -Harness codex" >&2
 	exit 1
 fi
 trap cat_cleanup EXIT

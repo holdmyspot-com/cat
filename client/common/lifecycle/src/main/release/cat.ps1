@@ -32,7 +32,30 @@ $CatSha256Sums = @'
 @CAT_SHA256SUMS@
 '@
 $CatDownloadUrl = "https://github.com/holdmyspot-com/cat/releases/download/$CatReleaseTag"
-$CatEntryCommand = "& ([scriptblock]::Create((irm $CatDownloadUrl/cat.ps1))) -Harness codex"
+
+# Returns the entry command that installs a harness, for the user to run in a terminal whose environment may differ
+# from this one. The command sets the harness's home variable when this process sets it to a directory other than the
+# harness's default one in the user profile. This script takes the user's home from the user profile, so no other
+# variable needs setting.
+function Get-CatEntryCommand([string] $Name)
+{
+	$command = "& ([scriptblock]::Create((irm $CatDownloadUrl/cat.ps1))) -Harness $Name"
+	if ($Name -eq 'claude')
+	{
+		$variable = 'CLAUDE_CONFIG_DIR'
+		$defaultHome = '.claude'
+	}
+	else
+	{
+		$variable = 'CODEX_HOME'
+		$defaultHome = '.codex'
+	}
+	$value = [Environment]::GetEnvironmentVariable($variable)
+	if (-not $value) { return $command }
+	$default = Join-Path ([Environment]::GetFolderPath('UserProfile')) $defaultHome
+	if ($value.TrimEnd('\', '/') -ieq $default) { return $command }
+	return "`$env:$variable = '" + $value.Replace("'", "''") + "'; $command"
+}
 
 # Downloads one named release asset into WorkDirectory and returns its path only after its embedded SHA-256 matches.
 # Throws when the asset has no unique digest, the download fails, or its bytes differ from the published digest.
@@ -90,7 +113,8 @@ if (-not $Harness)
 	else
 	{
 		throw "CAT cannot tell whether this shell belongs to Claude Code or Codex, so it changed nothing. Run the " +
-			"command again with -Harness claude or -Harness codex, such as: $CatEntryCommand"
+			"command again with -Harness claude or -Harness codex, such as: $(Get-CatEntryCommand 'claude') or " +
+			"$(Get-CatEntryCommand 'codex')"
 	}
 }
 $architecture = $env:PROCESSOR_ARCHITEW6432
