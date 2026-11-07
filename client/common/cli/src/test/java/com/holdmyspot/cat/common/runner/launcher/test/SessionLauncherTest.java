@@ -113,6 +113,34 @@ public final class SessionLauncherTest
 	}
 
 	/**
+	 * Verifies that the launcher's log records each launch that it accepts with the request's identifier, the
+	 * requested harness and the time of the acceptance.
+	 *
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void logsAcceptedLaunch() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(false));
+			fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+			Instant accepted = fixture.clock.instant();
+
+			requireThat(launcher.poll(), "poll").isTrue();
+			fixture.starter.awaitRunner();
+			fixture.executor.awaitIdle();
+
+			List<String> log = Files.readAllLines(launcher.directory().resolve(SessionLauncherChannel.LOG_FILE));
+			requireThat(log, "log").size().isEqualTo(1);
+			requireThat(log.get(0), "line").contains(accepted.toString()).contains(id).contains("claude");
+		}
+	}
+
+	/**
 	 * Supplies the requests that a launcher must not serve: one whose holder runs in another harness's process tree,
 	 * one without a holder, and one whose holder names another file's digest.
 	 *

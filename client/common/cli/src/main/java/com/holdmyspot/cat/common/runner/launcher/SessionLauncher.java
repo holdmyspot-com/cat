@@ -65,10 +65,11 @@ import tools.jackson.databind.json.JsonMapper;
  * launcher on the holder's ancestry is the one that it serves, and its private copy of the file has that digest. It
  * never writes below the inbox: it reads and deletes there, and keeps its copies and answers in its state folder.
  * <p>
- * Each accepted request runs on its own task of the executor. The task starts the requested harness's runner within
- * the parent's sandbox policy, feeds it the request's records, and publishes its {@link Response}. When the holder of
- * a request ends before the request is answered, the launcher stops the runner and its descendants; once the request
- * is answered and its holder has ended, it deletes the request's folder.
+ * Each accepted request runs on its own task of the executor. The task records the request's identifier, the
+ * requested harness and the time in the launcher's log, starts the requested harness's runner within the parent's
+ * sandbox policy, feeds it the request's records, and publishes its {@link Response}. When the holder of a request
+ * ends before the request is answered, the launcher stops the runner and its descendants; once the request is
+ * answered and its holder has ended, it deletes the request's folder.
  * <p>
  * The launcher ends when its harness process ends, when another process reuses that process's identifier, or when
  * its folder's {@link SessionLauncherChannel#STOP_FILE} appears. It then stops every child, and deletes its requests'
@@ -914,7 +915,7 @@ public final class SessionLauncher implements Closeable
 	 *
 	 * @param request the request
 	 * @return its response
-	 * @throws IOException          if the request's files cannot be read or written
+	 * @throws IOException          if the request's files or the launcher's log cannot be read or written
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	private Response run(Served request) throws IOException, InterruptedException
@@ -936,6 +937,7 @@ public final class SessionLauncher implements Closeable
 			Files.deleteIfExists(archive);
 		}
 		request.harness = choices.harness();
+		log("Accepted request " + request.id + " to start a " + choices.harness() + " session");
 		if (request.cancelled())
 			return request.answer(Status.STOPPED, stopReason());
 		if (!startRefusal.isEmpty())
