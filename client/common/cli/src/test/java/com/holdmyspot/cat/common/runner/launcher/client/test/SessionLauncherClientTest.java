@@ -806,21 +806,6 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
-	 * Verifies that native Windows, which has no session launcher, and a launch that a session launcher started run
-	 * in place, while any other launch becomes a request.
-	 */
-	@Test
-	public void servesOutsideWindowsAndLauncherChildren()
-	{
-		String[] launch = {"--model", "m", "--effort", "e"};
-		requireThat(SessionLauncherClient.serves(Platform.LINUX_X64, launch), "linux").isTrue();
-		requireThat(SessionLauncherClient.serves(Platform.MACOS_ARM64, launch), "macos").isTrue();
-		requireThat(SessionLauncherClient.serves(Platform.WINDOWS_X64, launch), "windows").isFalse();
-		requireThat(SessionLauncherClient.serves(Platform.LINUX_X64, new String[]{"--model", "m", "--effort", "e",
-			SessionLauncherClient.POLICY_BOUND_OPTION, "policy.json"}), "launcherChild").isFalse();
-	}
-
-	/**
 	 * A writer that answers each reply that reaches the optimizer: a follow-up turn after the first reply, and the end of
 	 * the session after the second.
 	 */

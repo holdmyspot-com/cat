@@ -28,7 +28,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,8 +37,9 @@ import tools.jackson.databind.json.JsonMapper;
  * Starts a session by asking the session launcher of the harness process that runs this command, which runs outside
  * the command's sandbox, to start it.
  * <p>
- * A runner launcher that a sandboxed session runs cannot start a harness itself. Outside a run, and except on native
- * Windows, it sends its launch to the launcher as a session-level request instead: it packs the launch's project,
+ * A runner launcher that a sandboxed session runs cannot start a harness itself. When its own plugin's harness runs the
+ * command, outside a run, and except on native Windows, it sends its launch to the launcher as a session-level
+ * request instead, as its {@link com.holdmyspot.cat.common.runner.LaunchRoute} decides: it packs the launch's project,
  * plugins, workspace and evidence as the session sees them, proves with a holder process that the request comes from
  * the launcher's own session, and follows the child's records until the launcher answers. The launcher starts the
  * child's runner with {@value #POLICY_BOUND_OPTION}, and a launch that names that option runs in place.
@@ -133,22 +133,6 @@ public final class SessionLauncherClient
 				return Harness.fromCommandName(harness.id()).map(Harness::productName).orElse(harness.id());
 		}
 		return ANY_PRODUCT;
-	}
-
-	/**
-	 * Indicates whether a runner launch becomes a request to the session launcher.
-	 *
-	 * @param platform the platform that the launch runs on
-	 * @param args     the launch's options
-	 * @return {@code false} on native Windows, which has no session launcher, and for a launch that a session launcher
-	 *   started, which names {@value #POLICY_BOUND_OPTION}; {@code true} otherwise
-	 * @throws NullPointerException if any of the arguments are null
-	 */
-	public static boolean serves(Platform platform, String[] args)
-	{
-		requireThat(platform, "platform").isNotNull();
-		requireThat(args, "args").isNotNull();
-		return !platform.isWindows() && !Arrays.asList(args).contains(POLICY_BOUND_OPTION);
 	}
 
 	/**

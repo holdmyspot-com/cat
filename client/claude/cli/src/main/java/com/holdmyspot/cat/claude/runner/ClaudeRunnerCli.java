@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -25,6 +26,7 @@ import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -39,6 +41,7 @@ import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
@@ -47,9 +50,11 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntFunction;
 import tools.jackson.databind.json.JsonMapper;
@@ -60,6 +65,28 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeRunnerCli
 {
 	/**
+	 * The variable that Claude Code sets to {@value #CLAUDE_MARKER_VALUE} in the environment of the commands that it
+	 * runs.
+	 */
+	private static final String CLAUDE_MARKER = "CLAUDECODE";
+	/**
+	 * The value of {@link #CLAUDE_MARKER} in a command that Claude Code runs.
+	 */
+	private static final String CLAUDE_MARKER_VALUE = "1";
+	/**
+	 * The variable that Codex sets to the ID of the thread whose command it runs.
+	 */
+	private static final String CODEX_MARKER = "CODEX_THREAD_ID";
+	/**
+	 * The identifier of the Codex harness.
+	 */
+	private static final String CODEX_ID = "codex";
+	/**
+	 * How often a launch inside a run checks the requested session's progress.
+	 */
+	private static final Duration REQUEST_POLL = Duration.ofMillis(100);
+
+	/**
 	 * Prints the usage, verifies an artifact, or serves JSONL turns through one persistent isolated Claude process, as
 	 * the arguments select. The launcher always runs the artifact that holds it and the {@code claude} command that the
 	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
@@ -67,12 +94,8 @@ public final class ClaudeRunnerCli
 	 * refuses, with the same status, any launch that starts a session on a platform where Claude Code cannot sandbox
 	 * the session, or whose project is the user's home folder.
 	 * <p>
-	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
-	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
-	 * receipt. Outside a run, the launch becomes a request to the session launcher of the harness process that runs
-	 * the command, which starts the session outside the command's sandbox, unless a session launcher started the
-	 * launch itself: that launch names {@value SessionLauncherClient#POLICY_BOUND_OPTION} and serves the session in
-	 * place.
+	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
+	 * PrintWriter)} describes, and the launcher exits with the launch's status.
 	 * <p>
 	 * With {@value ChildNeedsReport#OPTION} and a file, it writes what a Claude child session needs to that file, as
 	 * {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it, for the session launcher that asks before
@@ -107,23 +130,133 @@ public final class ClaudeRunnerCli
 			return;
 		}
 		String[] launch = args;
-		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
-		if (requests != null && !requests.isBlank())
+		System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> launch(launch, environment, Pause::sleeping,
+			new InputStreamReader(System.in, UTF_8), System.out, errors()), errors()));
+	}
+
+	/**
+	 * Runs one launch along the route that {@link LaunchRoute#decide(String, String, Set, String[], Map)} gives it.
+	 * The launcher refuses what it must before it calls this method. The routes are:
+	 * <ul>
+	 *   <li>Inside a run whose runner lets its session request sessions, the launch becomes a session request: the
+	 *   run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
+	 *   receipt.</li>
+	 *   <li>Inside a run whose runner lets its session request none, the launch is refused.</li>
+	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as a session launcher or a run's runner names it,
+	 *   serves its session in this process within that bound.</li>
+	 *   <li>When Claude Code runs the command, the launch becomes a request to the session launcher of the Claude Code
+	 *   process, which starts the session outside the command's sandbox.</li>
+	 *   <li>When only Codex runs the command, the launch is refused: this plugin cannot read a Codex session's sandbox
+	 *   policy, and the message names the Codex plugin's runner instead.</li>
+	 *   <li>When no harness runs the command, no harness sandbox confines it, and the launch serves its session in
+	 *   this process within the bound that {@link #inPlaceArguments} gives it: exactly what the session needs.</li>
+	 * </ul>
+	 *
+	 * @param args        the launch's options
+	 * @param environment the launcher's environment
+	 * @param waiting     the process's waiting
+	 * @param input       the launch's records when it names no {@code --input}
+	 * @param output      receives the session's records when the launch names no {@code --output}
+	 * @param errors      receives why the launch was refused or did not complete
+	 * @return the launch's exit status: {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if it is refused, or no
+	 *   session launcher serves the session that runs the command
+	 * @throws NullPointerException      if any of the arguments are null
+	 * @throws InvalidArgumentsException if the launch's options are invalid
+	 * @throws IOException               if what the session needs cannot be determined, the launch cannot be
+	 *                                   forwarded or sent, or runner startup, the harness, or bridge I/O fails
+	 */
+	public static int launch(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
+		OutputStream output, PrintWriter errors) throws IOException
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
+		requireThat(input, "input").isNotNull();
+		requireThat(output, "output").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		return switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, runningHarnesses(environment), args, environment))
 		{
-			System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> SessionRequestForwarder.forward(
-				HARNESS_ID, launch, new InputStreamReader(System.in, UTF_8), Path.of(requests),
-				Pause.sleeping(Duration.ofMillis(100)), System.out, errors()), errors()));
-		}
-		if (SessionLauncherClient.serves(Platform.current(), args))
+			case LaunchRoute.Forward(Path requests) -> SessionRequestForwarder.forward(HARNESS_ID, args, input,
+				requests, waiting.every(REQUEST_POLL), output, errors);
+			case LaunchRoute.Refused(String reason) ->
+			{
+				errors.println(reason);
+				yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+			}
+			case LaunchRoute.Launcher _ -> SessionLauncherClient.launchFromMain(HARNESS_ID, args, environment,
+				waiting, input, output, errors);
+			case LaunchRoute.Bounded _ -> serveInProcess(args, environment, waiting, input, output, errors);
+			case LaunchRoute.InPlace _ ->
+			{
+				try (TemporaryDirectories cleanup = new TemporaryDirectories())
+				{
+					List<String> bounded;
+					try (HarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting))
+					{
+						bounded = inPlaceArguments(scope, Path.of(""), args, environment, cleanup);
+					}
+					catch (SessionRefusedException e)
+					{
+						errors.println(e.getMessage());
+						yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+					}
+					yield serveInProcess(bounded.toArray(String[]::new), environment, waiting, input, output, errors);
+				}
+			}
+		};
+	}
+
+	/**
+	 * Returns the harnesses whose sessions run a command, as their markers in the command's environment say: Claude
+	 * Code sets {@code CLAUDECODE} to {@code 1}, and Codex sets {@code CODEX_THREAD_ID} to the ID of the thread whose
+	 * command it is.
+	 *
+	 * @param environment the command's environment
+	 * @return the identifiers of the harnesses, empty if no harness runs the command
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static Set<String> runningHarnesses(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		Set<String> harnesses = new HashSet<>();
+		if (CLAUDE_MARKER_VALUE.equals(environment.get(CLAUDE_MARKER)))
+			harnesses.add(HARNESS_ID);
+		String thread = environment.get(CODEX_MARKER);
+		if (thread != null && !thread.isBlank())
+			harnesses.add(CODEX_ID);
+		return Set.copyOf(harnesses);
+	}
+
+	/**
+	 * Bounds a launch that no harness runs, as {@link LaunchRoute.InPlace#boundArguments} bounds it, with what a
+	 * Claude session needs, as {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it.
+	 *
+	 * @param scope            the process scope
+	 * @param workingDirectory the directory from which the command was invoked
+	 * @param args             the launch's options
+	 * @param environment      the launcher's environment
+	 * @param cleanup          receives the folder that holds the bound's file, which the session reads when it
+	 *                         starts
+	 * @return {@code args} followed by {@value PolicyBoundFile#OPTION} and the bound's file
+	 * @throws NullPointerException      if any of the arguments are null
+	 * @throws IllegalArgumentException  if the launch names no {@code --run-root} outside a harness session
+	 * @throws InvalidArgumentsException if an option that bounds the session lacks its value, a denied read is not
+	 *                                   absolute, or the file of extra permissions is missing or invalid
+	 * @throws IOException               if what the session needs cannot be determined, or the bound cannot be
+	 *                                   written
+	 */
+	public static List<String> inPlaceArguments(HarnessRunnerScope scope, Path workingDirectory, String[] args,
+		Map<String, String> environment, TemporaryDirectories cleanup) throws IOException
+	{
+		requireThat(scope, "scope").isNotNull();
+		requireThat(workingDirectory, "workingDirectory").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		try (ToolScope tools = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
+			scope.waiting()))
 		{
-			System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> SessionLauncherClient.launchFromMain(
-				HARNESS_ID, launch, environment, Pause::sleeping, new InputStreamReader(System.in, UTF_8), System.out,
-				errors()), errors()));
+			return LaunchRoute.InPlace.boundArguments(HARNESS_ID, args, HarnessTemporaryRoot.from(tools),
+				scope.json(), () -> ClaudeRunner.childNeeds(scope, environment), cleanup);
 		}
-		int status = HarnessRunnerOptions.refusingInvalidArguments(
-			() -> serveInProcess(launch, environment, Pause::sleeping), errors());
-		if (status != 0)
-			System.exit(status);
 	}
 
 	/**
@@ -142,29 +275,32 @@ public final class ClaudeRunnerCli
 	 * @param args        the command's options
 	 * @param environment the launcher's environment
 	 * @param waiting     the process's waiting
+	 * @param input       the bridge input
+	 * @param output      the bridge output
+	 * @param errors      receives why the session was refused or found no capacity
 	 * @return the exit status
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	private static int serveInProcess(String[] args, Map<String, String> environment, Waiting waiting)
-		throws IOException
+	private static int serveInProcess(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
+		OutputStream output, PrintWriter errors) throws IOException
 	{
 		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(ClaudeRunnerCli.class));
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, waiting))
 		{
-			serve(process, Path.of(""), args, new BufferedReader(new InputStreamReader(System.in, UTF_8)),
-				new OutputStreamWriter(System.out, UTF_8), environment, maximum -> HarnessCapacity.forHome(
-					process.fileLocks(), home, HARNESS_ID, maximum, process.waiting()));
+			serve(process, Path.of(""), args, new BufferedReader(input), new OutputStreamWriter(output, UTF_8),
+				environment, maximum -> HarnessCapacity.forHome(process.fileLocks(), home, HARNESS_ID, maximum,
+					process.waiting()));
 			return 0;
 		}
 		catch (HarnessCapacityWaitExpiredException e)
 		{
-			System.err.println(e.getMessage());
+			errors.println(e.getMessage());
 			return HarnessCapacityWaitExpiredException.EXIT_STATUS;
 		}
 		catch (SessionRefusedException e)
 		{
-			System.err.println(e.getMessage());
+			errors.println(e.getMessage());
 			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 		}
 	}
@@ -353,7 +489,7 @@ public final class ClaudeRunnerCli
 		{
 			case HARNESS_ID -> new RequestedRunner(scope, artifact.toAbsolutePath().resolve("bin/claude-runner"),
 				List.of());
-			case "codex" -> RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
+			case CODEX_ID -> RequestedRunner.resolved(scope, CodexArtifact.execute(environment), List.of("serve"));
 			default -> throw new IllegalArgumentException("Unsupported requested harness: " + harness);
 		};
 	}

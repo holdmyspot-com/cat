@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
@@ -17,7 +18,14 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
@@ -30,6 +38,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -690,6 +699,145 @@ public final class ClaudeRunnerCliTest
 			{"format_version": 1, "write_roots": [%s], "write_denials": [], "read_denials": [],
 			 "read_reallowances": [], "hosts": ["api.anthropic.com"], "allow_local_binding": false}
 			""".formatted(JsonMapper.builder().build().writeValueAsString(root.toAbsolutePath().toString())));
+	}
+
+	/**
+	 * Returns command environments and the harnesses whose markers they hold.
+	 *
+	 * @return the environments and the harnesses that run their commands
+	 */
+	@DataProvider
+	public static Object[][] markedEnvironments()
+	{
+		return new Object[][]
+		{
+			{Map.of(), Set.of()},
+			{Map.of("CLAUDECODE", "1"), Set.of("claude")},
+			{Map.of("CLAUDECODE", "0"), Set.of()},
+			{Map.of("CLAUDECODE", ""), Set.of()},
+			{Map.of("CODEX_THREAD_ID", "thread"), Set.of("codex")},
+			{Map.of("CODEX_THREAD_ID", " "), Set.of()},
+			{Map.of("CLAUDECODE", "1", "CODEX_THREAD_ID", "thread"), Set.of("claude", "codex")}
+		};
+	}
+
+	/**
+	 * Verifies that the launcher names a harness as running the command only when that harness's marker says so:
+	 * {@code CLAUDECODE} set to {@code 1}, or a {@code CODEX_THREAD_ID} that is not blank.
+	 *
+	 * @param environment the command's environment
+	 * @param expected    the harnesses that run the command
+	 */
+	@Test(dataProvider = "markedEnvironments")
+	public void readsHarnessMarkers(Map<String, String> environment, Set<String> expected)
+	{
+		Set<String> harnesses = ClaudeRunnerCli.runningHarnesses(environment);
+
+		requireThat(harnesses, "harnesses").withContext(environment, "environment").isEqualTo(expected);
+	}
+
+	/**
+	 * Verifies that a launch that no harness runs is bounded by exactly what a Claude session needs: its run folder
+	 * and the writes and hosts that the Claude runner reports, the reads that the launch denies, and nothing more.
+	 * The bounded launch then serves its session in place within that bound.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void boundsUnmarkedLaunchByNeeds() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Path runRoot = home.resolve("runs");
+			Path secret = Files.createDirectory(home.resolve("secret"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
+			String[] args = {"--project", project.toString(), "--run-root", runRoot.toString(), "--deny-read",
+				secret.toString(), "--model", "sonnet", "--effort", "low"};
+			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
+
+			List<String> bounded = ClaudeRunnerCli.inPlaceArguments(scope, project, args, environment, cleanup);
+
+			requireThat(bounded.subList(0, args.length), "options").isEqualTo(List.of(args));
+			requireThat(bounded.get(args.length), "option").isEqualTo(PolicyBoundFile.OPTION);
+			ChildPolicy policy = PolicyBoundFile.read(scope.json(), Path.of(bounded.get(args.length + 1)));
+			List<Path> writes = new ArrayList<>(List.of(runRoot));
+			writes.addAll(needs.writes());
+			requireThat(policy.writeRoots(), "writeRoots").isEqualTo(writes);
+			requireThat(policy.writeDenials(), "writeDenials").isEmpty();
+			requireThat(policy.readDenials(), "readDenials").isEqualTo(List.of(secret));
+			requireThat(policy.hosts(), "hosts").isEqualTo(needs.hosts());
+			requireThat(LaunchRoute.decide("claude", "claude", ClaudeRunnerCli.runningHarnesses(environment),
+				bounded.toArray(String[]::new), environment), "route").isEqualTo(new LaunchRoute.Bounded());
+		}
+	}
+
+	/**
+	 * Verifies that a launch from a command that Claude Code runs goes to the Claude Code process's session launcher,
+	 * and fails with the refusal status when no session launcher serves the session.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void sendsClaudeLaunchToLauncher() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CLAUDECODE", "1");
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
+				"--effort", "low"}, environment, Yielding.waiting(), new StringReader(""), output,
+				new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("No CAT session launcher serves this session");
+			requireThat(output.size(), "outputSize").isZero();
+		}
+	}
+
+	/**
+	 * Returns environments in which a launch is refused before it starts anything, and a part of the reason.
+	 *
+	 * @return the environments and the reasons
+	 */
+	@DataProvider
+	public static Object[][] refusedEnvironments()
+	{
+		return new Object[][]
+		{
+			{Map.of("CODEX_THREAD_ID", "thread"), "Codex runs this command, and CAT's Claude Code plugin cannot read " +
+				"a Codex session's sandbox policy. Run the runner of CAT's Codex plugin instead."},
+			{Map.of("CAT_RUN", "1", "CLAUDECODE", "1"), "claude-runner refuses to start a session"}
+		};
+	}
+
+	/**
+	 * Verifies that a launch from a command that only Codex runs, or from a run whose runner lets its session request
+	 * no sessions, is refused with the refusal status and the reason, and starts nothing.
+	 *
+	 * @param environment the command's environment
+	 * @param reason      a part of the reason
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "refusedEnvironments")
+	public void refusesLaunchOnItsRoute(Map<String, String> environment, String reason) throws IOException
+	{
+		StringWriter errors = new StringWriter();
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+		int status = ClaudeRunnerCli.launch(new String[]{"--project", "project", "--model", "sonnet", "--effort",
+			"low"}, environment, Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
+
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		requireThat(errors.toString(), "errors").contains(reason);
+		requireThat(output.size(), "outputSize").isZero();
 	}
 
 	/**

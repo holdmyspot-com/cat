@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.claude.runner;
 
+import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
@@ -15,9 +16,11 @@ import java.util.Map;
 
 /**
  * Runs {@code codex-runner} from the Claude plugin, so that a session can run Codex through the same launcher and
- * options as in the Codex plugin. Outside a run it runs the runner of the Codex CAT artifact that
- * {@code CodexArtifact} selects; inside a run that may request sessions, it requests a Codex session from the run's
- * runner.
+ * options as in the Codex plugin. Each launch goes along the route that
+ * {@link com.holdmyspot.cat.common.runner.LaunchRoute} gives it: inside a run that may request sessions, it requests a
+ * Codex session from the run's runner; when Claude Code runs the command, it sends the launch to the Claude Code
+ * process's session launcher; when only Codex runs it, it refuses the launch and names the Codex plugin's runner;
+ * and otherwise it runs the runner of the Codex CAT artifact that {@code CodexArtifact} selects.
  */
 public final class CodexRunnerRelay
 {
@@ -36,7 +39,8 @@ public final class CodexRunnerRelay
 			return;
 		}
 		Map<String, String> environment = Platform.current().environment(System.getenv());
-		System.exit(RunnerRelay.relay("codex", args, environment, () -> CodexArtifact.execute(environment),
+		System.exit(RunnerRelay.relay("codex", HARNESS_ID, ClaudeRunnerCli.runningHarnesses(environment),
+			args, environment, () -> CodexArtifact.execute(environment),
 			(command, runnerEnvironment) ->
 			{
 				ProcessBuilder builder = new ProcessBuilder(command).inheritIO();

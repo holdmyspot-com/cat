@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliAccess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
@@ -19,11 +20,14 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringReader;
@@ -951,6 +955,150 @@ public final class CodexRunnerCliTest
 				// The session starts without a slot, and fails only because the test runs no CAT artifact
 			}
 		}
+	}
+
+	/**
+	 * Returns command environments and the harnesses whose markers they hold.
+	 *
+	 * @return the environments and the harnesses that run their commands
+	 */
+	@DataProvider
+	public static Object[][] markedEnvironments()
+	{
+		return new Object[][]
+		{
+			{Map.of(), Set.of()},
+			{Map.of("CODEX_THREAD_ID", "thread"), Set.of("codex")},
+			{Map.of("CODEX_THREAD_ID", ""), Set.of()},
+			{Map.of("CODEX_THREAD_ID", " "), Set.of()},
+			{Map.of("CLAUDECODE", "1"), Set.of("claude")},
+			{Map.of("CLAUDECODE", "true"), Set.of()},
+			{Map.of("CODEX_THREAD_ID", "thread", "CLAUDECODE", "1"), Set.of("codex", "claude")}
+		};
+	}
+
+	/**
+	 * Verifies that the launcher names a harness as running the command only when that harness's marker says so: a
+	 * {@code CODEX_THREAD_ID} that is not blank, or {@code CLAUDECODE} set to {@code 1}.
+	 *
+	 * @param environment the command's environment
+	 * @param expected    the harnesses that run the command
+	 */
+	@Test(dataProvider = "markedEnvironments")
+	public void readsHarnessMarkers(Map<String, String> environment, Set<String> expected)
+	{
+		Set<String> harnesses = CodexRunnerCli.runningHarnesses(environment);
+
+		requireThat(harnesses, "harnesses").withContext(environment, "environment").isEqualTo(expected);
+	}
+
+	/**
+	 * Verifies that a launch that no harness runs is bounded by exactly what a Codex session needs: its run folder
+	 * and the writes and hosts that the Codex runner reports, the reads that the launch denies, and nothing more.
+	 * The bounded launch then serves its session in place within that bound.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void boundsUnmarkedLaunchByNeeds() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path codexHome = Files.createDirectory(home.resolve(".codex"));
+			Path project = Files.createDirectory(home.resolve("project"));
+			Path runRoot = home.resolve("runs");
+			Path secret = Files.createDirectory(home.resolve("secret"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CODEX_HOME", codexHome.toString(), "OPENAI_API_KEY", "credential");
+			String[] args = {"serve", "--project", project.toString(), "--run-root", runRoot.toString(), "--deny-read",
+				secret.toString(), "--model", "gpt-6-luna", "--effort", "low"};
+			ChildNeedsReport needs = CodexRunner.childNeeds(environment);
+
+			List<String> bounded = CodexRunnerCli.inPlaceArguments(project, args, environment, Yielding.waiting(),
+				cleanup);
+
+			requireThat(bounded.subList(0, args.length), "options").isEqualTo(List.of(args));
+			requireThat(bounded.get(args.length), "option").isEqualTo(PolicyBoundFile.OPTION);
+			ChildPolicy policy = PolicyBoundFile.read(JsonMapper.builder().build(),
+				Path.of(bounded.get(args.length + 1)));
+			List<Path> writes = new ArrayList<>(List.of(runRoot));
+			writes.addAll(needs.writes());
+			requireThat(policy.writeRoots(), "writeRoots").isEqualTo(writes);
+			requireThat(policy.writeDenials(), "writeDenials").isEmpty();
+			requireThat(policy.readDenials(), "readDenials").isEqualTo(List.of(secret));
+			requireThat(policy.hosts(), "hosts").isEqualTo(needs.hosts());
+			requireThat(LaunchRoute.decide("codex", "codex", CodexRunnerCli.runningHarnesses(environment),
+				bounded.toArray(String[]::new), environment), "route").isEqualTo(new LaunchRoute.Bounded());
+		}
+	}
+
+	/**
+	 * Verifies that a launch from a command that Codex runs goes to the Codex process's session launcher, and fails
+	 * with the refusal status when no session launcher serves the session.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void sendsCodexLaunchToLauncher() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID",
+				"019a0000-0000-7000-8000-000000000000");
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--model",
+				"gpt-6-luna", "--effort", "low"}, environment, Yielding.waiting(), new StringReader(""), output,
+				new PrintWriter(errors, true));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("No CAT session launcher serves this session");
+			requireThat(output.size(), "outputSize").isZero();
+		}
+	}
+
+	/**
+	 * Returns environments in which a launch is refused before it starts anything, and a part of the reason.
+	 *
+	 * @return the environments and the reasons
+	 */
+	@DataProvider
+	public static Object[][] refusedEnvironments()
+	{
+		return new Object[][]
+		{
+			{Map.of("CLAUDECODE", "1"), "Claude Code runs this command, and CAT's Codex plugin cannot read a Claude " +
+				"Code session's sandbox policy. Run the runner of CAT's Claude Code plugin instead."},
+			{Map.of("CAT_RUN", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session"}
+		};
+	}
+
+	/**
+	 * Verifies that a launch from a command that only Claude Code runs, or from a run whose runner lets its session
+	 * request no sessions, is refused with the refusal status and the reason, and starts nothing.
+	 *
+	 * @param environment the command's environment
+	 * @param reason      a part of the reason
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "refusedEnvironments")
+	public void refusesLaunchOnItsRoute(Map<String, String> environment, String reason) throws IOException
+	{
+		StringWriter errors = new StringWriter();
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+		int status = CodexRunnerCli.launch(new String[]{"serve", "--project", "project", "--model", "gpt-6-luna",
+			"--effort", "low"}, environment, Yielding.waiting(), new StringReader(""), output,
+			new PrintWriter(errors, true));
+
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		requireThat(errors.toString(), "errors").contains(reason);
+		requireThat(output.size(), "outputSize").isZero();
 	}
 
 	/**
