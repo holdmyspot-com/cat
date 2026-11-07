@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.cli.test.GitlessForks;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
+import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
 import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
@@ -172,6 +173,7 @@ public final class DriverHarness
 	private Function<SessionRequest, SessionResult> triages = _ -> triaged(Impact.SELF_RECOVERING);
 	private Function<SessionRequest, SessionResult> contractAuthors = this::newValues;
 	private final Map<MeasurementCondition, String> environmentChanges = new EnumMap<>(MeasurementCondition.class);
+	private final CapCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 	/**
 	 * The live processes of the process table that stands in for the operating system's.
 	 */
@@ -317,7 +319,7 @@ public final class DriverHarness
 			});
 		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
 			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, this::deliver,
-			MemoizedCalibration.INSTANCE, terminator,
+			calibrator, terminator,
 			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);

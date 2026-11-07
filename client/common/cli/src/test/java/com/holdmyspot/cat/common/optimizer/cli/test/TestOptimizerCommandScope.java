@@ -14,12 +14,12 @@ import com.holdmyspot.cat.common.optimizer.cli.OptimizerCommandScope;
 import com.holdmyspot.cat.common.optimizer.cli.AbstractOptimizerCommandScope;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
+import com.holdmyspot.cat.common.optimizer.execution.test.FixedCalibrator;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
-import com.holdmyspot.cat.common.optimizer.execution.test.MemoizedCalibration;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
@@ -68,6 +68,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private final ManualClock clock = new ManualClock(START);
 	private final RandomGenerator random = new Random(SEED);
 	private final FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
+	private final FixedCalibrator calibrator = new FixedCalibrator(FixedCalibrator.STANDARD_CAP);
 	private final AtomicInteger versionReads = new AtomicInteger();
 	private final GitlessForks forks;
 	private final S sessions;
@@ -417,7 +418,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	protected CapCalibrator calibrator()
 	{
 		ensureOpen();
-		return MemoizedCalibration.INSTANCE;
+		return calibrator;
 	}
 
 	/**

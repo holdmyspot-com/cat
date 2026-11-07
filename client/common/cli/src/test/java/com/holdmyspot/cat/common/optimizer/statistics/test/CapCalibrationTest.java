@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.optimizer.statistics.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
+import com.holdmyspot.cat.common.optimizer.execution.test.CapCalibratorContract;
 import com.holdmyspot.cat.common.optimizer.statistics.BettingProcess;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibrationException;
@@ -16,7 +18,9 @@ import java.math.BigInteger;
 import java.util.List;
 
 /**
- * Tests {@link CapCalibration}. This is the only test class that runs calibration.
+ * Tests {@link CapCalibration}. This is the only test class that runs calibration. It also runs
+ * {@link CapCalibratorContract} on the real calibration, which {@code FixedCalibratorTest} runs on the fixed cap that
+ * the other tests use.
  * <p>
  * The tests check these reference values. The probabilities were also computed by an independent script.
  * <table>
@@ -43,7 +47,7 @@ import java.util.List;
  * The single 99% bet and equal-weight mixture use different bets, which {@link BettingProcess} fixes, so this
  * class does not check them.
  */
-public final class CapCalibrationTest
+public final class CapCalibrationTest extends CapCalibratorContract
 {
 	/**
 	 * The campaign's minimum pass rate {@code p_min}.
@@ -55,6 +59,12 @@ public final class CapCalibrationTest
 	 */
 	public CapCalibrationTest()
 	{
+	}
+
+	@Override
+	protected CapCalibrator create()
+	{
+		return CapCalibration::calibrate;
 	}
 
 	/**

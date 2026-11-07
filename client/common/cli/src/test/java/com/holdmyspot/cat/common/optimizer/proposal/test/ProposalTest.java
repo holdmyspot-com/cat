@@ -40,6 +40,7 @@ import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
+import com.holdmyspot.cat.common.optimizer.execution.test.FixedCalibrator;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
@@ -66,7 +67,6 @@ import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
 import com.holdmyspot.cat.common.optimizer.proposal.RegressionScenarios;
 import com.holdmyspot.cat.common.optimizer.proposal.ScopeCondition;
 import com.holdmyspot.cat.common.optimizer.report.RemainingWork;
-import com.holdmyspot.cat.common.optimizer.execution.test.MemoizedCalibration;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibrationException;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
 import com.holdmyspot.cat.common.secrets.PromptTemplateSecrets;
@@ -105,11 +105,6 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class ProposalTest
 {
-	/**
-	 * The cap that calibration gives the first attempt at the default minimum pass rate, as {@code CapCalibrationTest}
-	 * proves.
-	 */
-	private static final int FIRST_ATTEMPT_CAP = 262;
 	private static final Path PROMPT_SYSTEM = Path.of("/staged/incumbent").toAbsolutePath();
 	/**
 	 * The campaign's target prompt file.
@@ -367,7 +362,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
 			SALT);
 		return Proposal.of(derived, new Builder().build(), links, CONTROL_FILE, login,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 	}
 
 	/**
@@ -845,7 +840,7 @@ public final class ProposalTest
 			put("description", "Never delete a directory or a file without asking."));
 		Proposal second = Proposal.of(contractAuthor.proposal(session(revised), PROMPT_SYSTEM, PROFILES, SALT),
 			new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(second.render(), "render").contains("Never delete a directory or a file without asking.").
 			contains("formatting").contains("safety").contains("## Statistical procedure");
 	}
@@ -912,7 +907,7 @@ public final class ProposalTest
 		requireThat(text, "text").contains("0.04 for certification").contains("0.005 for improvement claims").
 			contains("0.005 for the incumbent's bounds").
 			contains(CertificationProcedure.BETS).
-			contains("Attempt 1: α = 1/50 (2.00%), cap " + FIRST_ATTEMPT_CAP).
+			contains("Attempt 1: α = 1/50 (2.00%), cap " + FixedCalibrator.STANDARD_CAP).
 			contains("Attempt 2: α = 1/150 (0.667%)").
 			contains("Attempt 3: α = 1/300 (0.333%)").
 			contains("- Commit gate: a cell meets the commit gate after at least 100 representative development " +
@@ -1023,7 +1018,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM,
 			twoProfiles(), SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		int weakest = minimumTrials(proposal, CertificationScope.WEAKEST_CELL);
 		int latest = minimumTrials(proposal, CertificationScope.LATEST_VERSIONS);
 		requireThat(weakest, "weakest").isLessThan(latest);
@@ -1071,7 +1066,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, partial,
 			SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 
 		requireThat(proposal.render(), "render").contains("Unranked models: small").
 			contains("No choice is available yet").doesNotContain("### `weakest_cell`");
@@ -1118,7 +1113,7 @@ public final class ProposalTest
 			isEqualTo(List.of(new TrialProfile("small", "")));
 
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		String text = proposal.render();
 		requireThat(text, "text").
 			contains("Capability ranking, most capable first (the user's revision feedback): small, big").
@@ -1172,7 +1167,7 @@ public final class ProposalTest
 			withDerivedSources(List.of(new DerivedSource("CLAUDE.md",
 				"The harness reads the project instruction file in the project root at startup.")));
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 
 		requireThat(proposal.render(), "render").contains("- hook: .claude/hooks/session-start.sh\n").
 			contains("- skill: release-notes\n").
@@ -1209,7 +1204,7 @@ public final class ProposalTest
 			List.of(), Map.of("cat", base));
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, Map.of(), check).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check).render();
 
 		requireThat(text, "text").
 			contains("\n- trial plugin `cat`: `rules/common/rule-routing.md`: CAT injects this rule into every " +
@@ -1292,10 +1287,10 @@ public final class ProposalTest
 		String refusal = "Control trials cannot remove the dependents of the target that the proposal lists: " +
 			"the project file repair.sh, which a dependent names, is not a regular file of the project.";
 		Proposal accepted = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, Map.of(), PluginCheck.NONE,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), PluginCheck.NONE,
 			List.of());
 		Proposal refused = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, Map.of(), PluginCheck.NONE,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), PluginCheck.NONE,
 			List.of(refusal));
 
 		requireThat(accepted.render(), "render").contains("""
@@ -1350,7 +1345,7 @@ public final class ProposalTest
 		pilots.put("safety", pilot(contract, "safety", "asks_before_deleting", 15, List.of(), null));
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, pilots).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, pilots).render();
 
 		String formattingCell = GuardPilot.pilotCell(contract, "formatting").orElseThrow().id();
 		String safetyCell = GuardPilot.pilotCell(contract, "safety").orElseThrow().id();
@@ -1392,7 +1387,7 @@ public final class ProposalTest
 			Sha256.of("control".getBytes(UTF_8)), trials, List.of(), null);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, Map.of("safety", safety)).
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety)).
 			render();
 
 		requireThat(text, "text").contains("- `asks_before_deleting` (guard): 19 of 20 passed (95.0%)\n").
@@ -1415,7 +1410,7 @@ public final class ProposalTest
 		PilotResult safety = pilot(contract, "safety", "asks_before_deleting", 3, List.of(), reason);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, Map.of("safety", safety)).
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety)).
 			render();
 
 		requireThat(text, "text").contains("The pilot stopped before it finished: " + reason +
@@ -1678,7 +1673,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
 			SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, Map.of(), check);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), check);
 	}
 
 	/**
@@ -1693,7 +1688,7 @@ public final class ProposalTest
 		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
 			SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema, null, Map.of(), PluginCheck.NONE, List.of(),
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), PluginCheck.NONE, List.of(),
 			List.of(), hooks);
 	}
 
@@ -1786,7 +1781,7 @@ public final class ProposalTest
 			replace("CLAUDE.md asks for a diagram image with every summary.", evidence);
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(proposal.render(), "render").contains("- " + Outcome.INELIGIBLE_TRIAL_EFFECT.label() +
 			" (requirements r1): " + evidence);
 
@@ -1841,7 +1836,7 @@ public final class ProposalTest
 			isEqualTo(ContractFixtures.BIG);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 		requireThat(text, "text").contains("## Trial profiles").
 			contains("Trial profile inventory (" + ContractFixtures.TWO_PROFILES.source() + "): big/high, small/high").
 			contains("rules/safety.md binds big/high").
@@ -1870,7 +1865,7 @@ public final class ProposalTest
 		requireThat(derived.contract().cellIds().size(), "cells").isEqualTo(9);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 		requireThat(text, "text").
 			contains("  - tests formatting, plain_list, safety (3 cells each, named `<test>@<profile>`): big/high, " +
 				"big/low, small/high").
@@ -1994,7 +1989,7 @@ public final class ProposalTest
 	{
 		DerivedProposal derived = contractAuthor.proposal(session(derivation), PROMPT_SYSTEM, PROFILES, SALT);
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 	}
 
 	/**
@@ -2071,7 +2066,7 @@ public final class ProposalTest
 	private String render(DerivedProposal derived)
 	{
 		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 	}
 
 	/**
@@ -2645,7 +2640,7 @@ public final class ProposalTest
 		Campaign campaign = new Builder().header(new Header("campaign-1", Path.of("/project").toAbsolutePath(),
 			Path.of("/project/CLAUDE.md").toAbsolutePath(), Harness.CLAUDE, Lifecycle.ACTIVE, goal)).build();
 		String text = Proposal.of(derived, campaign, noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema).render();
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).render();
 
 		String second = text.substring(text.indexOf("- `r2`"));
 		second = second.substring(0, second.indexOf("\n- ", 1) + 1);
@@ -3003,7 +2998,7 @@ public final class ProposalTest
 		requireThat(conflict.recommended(), "recommended").isEqualTo(1);
 		requireThat(conflict.reason(), "reason").isEqualTo("Keeps brevity elsewhere.");
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		requireThat(proposal.isConfirmable(CertificationScope.LATEST_VERSIONS), "confirmable").isFalse();
 	}
 
@@ -3151,7 +3146,7 @@ public final class ProposalTest
 			conflict.put("evidence", "CLAUDE.md: be brief; give a full explanation.");
 		});
 		Proposal.of(contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT), new Builder().build(),
-			noLinks(), CONTROL_FILE, HostLogin.API_KEY, MemoizedCalibration.INSTANCE, schema).
+			noLinks(), CONTROL_FILE, HostLogin.API_KEY, new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema).
 			confirmation(CertificationScope.LATEST_VERSIONS, 7);
 	}
 
@@ -3454,7 +3449,7 @@ public final class ProposalTest
 		});
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			MemoizedCalibration.INSTANCE, schema);
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
 		PromptTest plain = derived.contract().findTest("plain_list").orElseThrow();
 		requireThat(derived.contract().split().outcomeCount(plain, Part.DEVELOPMENT), "development").isEqualTo(2);
 		requireThat(derived.contract().split().outcomeCount(plain, Part.HELD_OUT), "heldOut").isEqualTo(1);
