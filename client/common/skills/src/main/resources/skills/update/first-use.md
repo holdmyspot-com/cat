@@ -10,6 +10,8 @@
 - Leave setting up the trusted installer to the user, because that operation changes what the installer trusts.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
 - Give the user the exact command that a blocked change needs, so that they can apply it without asking for it.
+- Give the user an entry command that installs into this session's harness home, and rely on its effect only once
+	the session has confirmed it there.
 
 ## Guidance
 
@@ -39,6 +41,22 @@
 	installer, a Java runtime for it, CAT and the permissions that let you install, update and uninstall CAT afterwards,
 	so that the user runs it only this once for this harness, and that they ask you again once it is done. Do not run
 	another installer or the entry script yourself instead.
+
+	Reply at once with the command: do not download, read or run the release's files first. The entry script installs
+	into the harness home that the variable `CLAUDE_CONFIG_DIR` (for `claude`) or `CODEX_HOME` (for `codex`) names,
+	and otherwise into the folder `.claude` or `.codex` under `HOME`. The user's terminal can hold other values than
+	this session. So before you write the command, read this session's `HOME` and that variable by printing them in
+	your shell; an unset variable is a value.
+	- Write `HOME=<session HOME>` after the pipe, directly before `sh`, because only `sh` reads it.
+	- Add the harness-home variable the same way, with its session value, only when the session sets it to a value
+		other than the default folder under that `HOME`. When the session leaves it unset, say in one sentence beside
+		the command that the user should unset it first if their terminal exports it.
+	- In PowerShell, which reads no `HOME`, the user instead sets the harness-home variable, to the session's harness
+		home, before running the script block.
+
+	After the user says the command is done, and before you rely on it, check that a version folder of CAT's plugin
+	under the session's harness home now holds the launcher. When none does, the command acted on another harness
+	home: ask the user for the command's printed output instead of continuing.
 3. Run the launcher:
 	- When the user asks to install or update CAT to a release they name, run `<launcher> install --harness <h> <tag>`,
 		with the release's tag such as `v1.1`. This is also how to move to a release other than the one that the

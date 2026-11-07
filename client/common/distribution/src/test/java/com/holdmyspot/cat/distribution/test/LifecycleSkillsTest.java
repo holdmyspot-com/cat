@@ -124,6 +124,12 @@ public final class LifecycleSkillsTest
 				contains("`failed`: an unexpected error stopped the operation").
 				contains("releases/latest/download/cat.sh").
 				contains("releases/download/<tag>/cat.sh").contains("cat.ps1").contains("`-Harness <h>`").
+				contains("Reply at once with the command: do not download, read or run the release's files first").
+				contains("read this session's `HOME` and that variable").
+				contains("Write `HOME=<session HOME>` after the pipe, directly before `sh`").
+				contains("only when the session sets it to a value other than the default folder under that `HOME`").
+				contains("check that a version folder of CAT's plugin under the session's harness home now holds the " +
+					"launcher").
 				contains("`aot_cache`").
 				contains("Do not mention `aot_cache` to the user unless they ask about it").
 				contains("restart or resume the session").doesNotContain("--updater-only").
