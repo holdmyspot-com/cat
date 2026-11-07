@@ -86,6 +86,27 @@ the refusal carries the exact command that gives the permission: the same instal
 before `install`. The agent asks you first, and your harness asks you to approve that command, because it grants a
 permission.
 
+### Codex hook trust
+
+Codex runs a plugin's hook only after `config.toml` records the hash that Codex computes for the hook, which Codex
+records when you review and trust the hook. CAT's SessionStart hook starts the session launcher, and its other hooks
+serve the runners and subagents, so without the record a fresh Codex runs none of them and CAT's runners report that no
+session launcher is running. The Codex install therefore writes the record for each hook that it installs: a
+`[hooks.state."cat@cat:hooks/hooks.json:<event>:<group>:<handler>"]` table in `config.toml` that holds `trusted_hash`,
+the hash of that hook. With the record, Codex runs CAT's hooks without asking you, and the install result says so.
+
+An update to a release whose hooks differ replaces the hashes that went stale, including one that you recorded for an
+earlier version of CAT's hook, and removes the record of a hook that the release no longer has. The install leaves the
+records of other plugins' hooks and of your own hooks as they are, and so it leaves an `enabled = false` that you set on
+one of CAT's hooks, which keeps that hook off.
+
+Uninstalling CAT removes the hashes that the installs recorded, and the tables that held nothing else. It keeps a hash
+that you recorded yourself, because the install did not write it, and a hash that you changed after the install, which
+the uninstall result lists. The install computes the hashes the way Codex 0.160.0 does, for command hooks of the events
+`PreToolUse`, `PostToolUse`, `SessionStart` and `SubagentStart`; Codex asks you to review any other hook of CAT's
+plugin. An install refuses, changing nothing, a `config.toml` that holds the state of one of CAT's hooks in a form that
+it cannot edit, such as an inline table, and names the table to write.
+
 ### Installing a second harness, repairing, and changing what the installer trusts
 
 To use both harnesses, install CAT into the second harness with the installer of the first one's installed plugin. In
@@ -170,7 +191,8 @@ folder. Each harness's entries name that harness's own installer.
 	sandbox and without a prompt.
 - In Codex, the install writes the CAT-owned file `rules/cat-installer.rules` in your Codex home, which allows
 	`install --harness codex` and `status` and keeps Codex's prompt for `uninstall --harness codex`, and adds the lock
-	folder as described in [Codex permission profile](#codex-permission-profile).
+	folder as described in [Codex permission profile](#codex-permission-profile). It also trusts CAT's hooks, as
+	described in [Codex hook trust](#codex-hook-trust).
 
 An install refuses, before changing anything, a harness configuration that it cannot change safely, such as a malformed
 `settings.json` or a symbolic link in its place.
@@ -315,10 +337,10 @@ Each install that adds a plugin prepares a start-up cache for the runtime that t
 field says whether that succeeded, and `false` only means slower start-up.
 
 `status` reads the active version, whether the installation is consistent, and the policy key IDs, without creating
-state or recovering an unfinished install. Run `install` to finish one. Restart the harness after an install. A new or
-changed Codex hook command may also require your review before it runs. Plugin-loading behavior was checked with Claude
-Code 2.1.317 and Codex 0.160.0; whether a long-running shared Codex app-server notices an install without restart
-remains unverified.
+state or recovering an unfinished install. Run `install` to finish one. Restart the harness after an install. The Codex
+install trusts CAT's hooks, as [Codex hook trust](#codex-hook-trust) describes, so Codex runs them without your review.
+Plugin-loading behavior was checked with Claude Code 2.1.317 and Codex 0.160.0; whether a long-running shared Codex
+app-server notices an install without restart remains unverified.
 
 | Exit status | Meaning and next action |
 | --- | --- |
@@ -349,7 +371,7 @@ Uninstall removes this harness's CAT installation, and no other harness's, in th
 `state/uninstall.json` in the data directory:
 
 1. the permission entries that install added for this harness, and in Codex the profile selection and profile that
-	CAT added to `config.toml`;
+	CAT added to `config.toml` and the hook hashes that it recorded there;
 2. the plugin's registration in the harness;
 3. the plugin files: CAT's marketplace folder and every copy of the plugin that the harness keeps (in Codex,
 	`plugins/cache/cat`), with all version folders, and in Codex the custom agents that CAT owns, recorded in its
