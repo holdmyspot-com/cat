@@ -62,10 +62,11 @@ public final class ToolScopeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-project-"));
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
 			Files.createDirectories(root.resolve(".cat"));
 			Path nestedDirectory = Files.createDirectories(root.resolve("client/common"));
 
-			try (ToolScope scope = ToolScope.forSession(nestedDirectory, environment(HARNESS_A, SESSION_ID, root),
+			try (ToolScope scope = ToolScope.forSession(nestedDirectory, environment(HARNESS_A, SESSION_ID, home),
 				List.of(HARNESS_A, HARNESS_B), Yielding.waiting(), GitProjects.IGNORING))
 			{
 				requireThat(scope.isInProject(), "isInProject").isTrue();
@@ -89,7 +90,8 @@ public final class ToolScopeTest
 				resolve("outside-project.zip"), Map.of("create", "true")))
 		{
 			Path root = isolated.getPath("/");
-			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_B, SESSION_ID, root),
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
+			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_B, SESSION_ID, home),
 				List.of(HARNESS_A, HARNESS_B), Yielding.waiting(), GitProjects.IGNORING))
 			{
 				requireThat(scope.isInProject(), "isInProject").isFalse();
@@ -111,9 +113,10 @@ public final class ToolScopeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-project-"));
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
 			Files.createDirectories(root.resolve(".cat"));
 			Map<String, String> environment = Map.of(HARNESS_A.sessionVariable(), SESSION_ID,
-				HARNESS_B.sessionVariable(), OTHER_SESSION_ID, "HOME", root.toString(), "USERPROFILE", root.toString());
+				HARNESS_B.sessionVariable(), OTHER_SESSION_ID, "HOME", home.toString(), "USERPROFILE", home.toString());
 			try (ToolScope scope = ToolScope.forSession(root, environment, List.of(HARNESS_B, HARNESS_A), Yielding.waiting(),
 				GitProjects.IGNORING))
 			{
@@ -135,7 +138,9 @@ public final class ToolScopeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-project-"));
-			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_A, "session", root),
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
+			Files.createDirectories(root.resolve(".cat"));
+			try (ToolScope scope = ToolScope.forSession(root, environment(HARNESS_A, "session", home),
 				List.of(HARNESS_A), Yielding.waiting(), GitProjects.IGNORING))
 			{
 				scope.sessionDirectory();
@@ -145,6 +150,62 @@ public final class ToolScopeTest
 			{
 				requireThat(e.getMessage(), "message").contains("session");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a tool run below the home folder, with no folder closer than the home folder that holds
+	 * {@code .cat}, refuses to open a CAT session directory, because the folder that it takes as its project is the
+	 * home folder, and that it creates nothing in the home folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesHomeFolderAsProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
+			Files.createDirectories(home.resolve(".cat"));
+			Path workingDirectory = Files.createDirectories(home.resolve("notes"));
+			try (ToolScope scope = ToolScope.forSession(workingDirectory, environment(HARNESS_A, SESSION_ID, home),
+				List.of(HARNESS_A), Yielding.waiting(), GitProjects.IGNORING))
+			{
+				scope.sessionDirectory();
+				throw new AssertionError("Opened a CAT session directory in the home folder");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains(home.toString()).contains("cannot be a CAT project").
+					contains("Open a folder below the home folder");
+			}
+			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a tool run in a project below the home folder, which holds its own {@code .cat}, opens its CAT
+	 * session directory in that project even though the home folder also holds {@code .cat}.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void usesProjectBelowHome() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-")).toRealPath();
+			Files.createDirectories(home.resolve(".cat"));
+			Path project = Files.createDirectories(home.resolve("project"));
+			Files.createDirectories(project.resolve(".cat"));
+			Path workingDirectory = Files.createDirectories(project.resolve("module"));
+			try (ToolScope scope = ToolScope.forSession(workingDirectory, environment(HARNESS_A, SESSION_ID, home),
+				List.of(HARNESS_A), Yielding.waiting(), GitProjects.IGNORING))
+			{
+				requireThat(scope.requireSessionDirectory().directory(), "directory").
+					isEqualTo(project.resolve(".cat/sessions/" + SESSION_ID));
+			}
+			requireThat(Files.exists(home.resolve(".cat/sessions")), "homeSessionsRootExists").isFalse();
 		}
 	}
 

@@ -59,8 +59,9 @@ public interface ToolScope extends JvmScope
 	 *
 	 * @return the CAT session directory, or empty when no session variable is set
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException if the session variable is not a UUID in canonical form, if the harness's configuration
-	 *   directory cannot be found, or if the directory or its marker cannot be created
+	 * @throws IOException if the session variable is not a UUID in canonical form, if the folder that holds the
+	 *   directory is the user's home folder or contains it, if the harness's configuration directory cannot be found,
+	 *   or if the directory or its marker cannot be created
 	 */
 	Optional<SessionDirectory> sessionDirectory() throws IOException;
 

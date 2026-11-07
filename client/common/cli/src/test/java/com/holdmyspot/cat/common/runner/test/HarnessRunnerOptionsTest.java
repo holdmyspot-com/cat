@@ -552,9 +552,10 @@ public final class HarnessRunnerOptionsTest
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));
 			Files.createDirectories(project.resolve(".cat"));
+			Path home = cleanup.add(Files.createTempDirectory("cat-runner-home-"));
 			// Windows locates the harness's default configuration directory through USERPROFILE rather than HOME
 			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
-				"HOME", project.toString(), "USERPROFILE", project.toString()), List.of(HARNESS_A, HARNESS_B),
+				"HOME", home.toString(), "USERPROFILE", home.toString()), List.of(HARNESS_A, HARNESS_B),
 					Yielding.waiting(), GitProjects.IGNORING))
 			{
 				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch(), "harness", HarnessTemporaryRoot.from(scope));

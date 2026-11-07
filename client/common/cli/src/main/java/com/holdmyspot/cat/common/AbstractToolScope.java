@@ -13,7 +13,8 @@ import java.util.Optional;
 /**
  * Owns values and services shared while one CLI tool operation runs, including the CAT session directory of the session
  * whose tool shell runs the tool. The session is the one that a harness's session variable names, and its directory is
- * in the nearest enclosing CAT project.
+ * in the nearest enclosing CAT project. When that project is the user's home folder or contains it, which
+ * {@link HomeProject} refuses as a CAT project, the scope refuses to open the session's directory.
  */
 public abstract class AbstractToolScope extends AbstractJvmScope implements ToolScope
 {
@@ -115,6 +116,7 @@ public abstract class AbstractToolScope extends AbstractJvmScope implements Tool
 			String sessionId = environment.get(harness.sessionVariable());
 			if (sessionId == null || sessionId.isBlank())
 				continue;
+			requireUsableProject();
 			Path configurationDirectory = harness.configurationDirectory(environment,
 				Platform.current().homeVariable());
 			sessionDirectory = SessionDirectory.open(projectRoot, sessionId.strip(), harness,
@@ -147,5 +149,25 @@ public abstract class AbstractToolScope extends AbstractJvmScope implements Tool
 			case 2 -> "Neither " + variables.getFirst() + " nor " + variables.getLast() + " is set";
 			default -> "None of " + String.join(", ", variables) + " is set";
 		};
+	}
+
+	/**
+	 * Refuses the folder that this scope takes as the tool's project when it cannot be a CAT project. Without a home
+	 * folder in the tool's environment, every folder is accepted.
+	 *
+	 * @throws IOException if the folder is the user's home folder or contains it, with a message that names the folder
+	 *   and tells the user to open a folder below the home folder
+	 */
+	private void requireUsableProject() throws IOException
+	{
+		String home = environment.get(Platform.current().homeVariable());
+		if (home == null || home.isBlank())
+			return;
+		Optional<String> refusal = HomeProject.refusal(projectRoot, Path.of(home));
+		if (refusal.isPresent())
+		{
+			throw new IOException("A tool takes the nearest folder that holds .cat, at or above the folder it runs in, " +
+				"or else that folder, as its CAT project. " + refusal.get());
+		}
 	}
 }
