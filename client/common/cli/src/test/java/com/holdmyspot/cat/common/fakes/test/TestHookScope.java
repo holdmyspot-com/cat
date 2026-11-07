@@ -7,7 +7,8 @@ import java.nio.file.Path;
 
 /**
  * Supplies {@link HookScope} services with explicit harness directories and the build's temporary directory. A
- * session directory that it opens asks real Git about a project that ignores the CAT session directories.
+ * session directory that it opens gets the answers of {@link GitProjects} about a project that ignores the CAT session
+ * directories.
  */
 public final class TestHookScope extends AbstractHookScope
 {

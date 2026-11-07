@@ -42,8 +42,8 @@ import java.util.random.RandomGenerator;
  * creates.
  * <p>
  * The command runs in the host session {@link #SESSION_ID} unless the test names another one. Opening its CAT session
- * directory asks real Git about the project, which is a work tree that ignores the CAT session directories unless
- * the test names another kind.
+ * directory gets the answers of {@link GitProjects} about the project, which is a work tree that ignores the CAT
+ * session directories unless the test names another kind.
  * <p>
  * The launcher reports version {@code 1.0} and counts how often it runs. The clock starts at
  * {@code 2026-10-01T00:00:00Z}, and campaign identifiers, split salts and draw seeds come from a seeded generator.
@@ -240,7 +240,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 
 	/**
 	 * Sets the kind of Git work tree that the project is when a command opens the session's CAT session directory and
-	 * real Git is asked whether it ignores the CAT session directories.
+	 * {@link GitProjects} answers whether Git ignores the CAT session directories.
 	 *
 	 * @param git the kind of work tree
 	 * @throws NullPointerException if {@code git} is null

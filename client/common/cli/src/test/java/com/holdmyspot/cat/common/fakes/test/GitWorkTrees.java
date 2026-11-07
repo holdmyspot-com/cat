@@ -12,8 +12,8 @@ import java.nio.file.Path;
  * Creates Git work trees for tests whose outcome depends on what Git ignores.
  * <p>
  * {@link #create(Path)} runs {@code git init}. {@link #ignoring(Path)} and {@link #notIgnoring(Path)} write the
- * files that {@code git init --quiet} writes and Git needs to recognize a work tree, which is much faster, and leave
- * every question about the work tree to real Git.
+ * files that {@code git init --quiet} writes and Git needs to recognize a work tree, which is much faster, so that a
+ * test that starts Git in the work tree or answers for Git as {@link GitProjects} does does not run {@code git init}.
  */
 public final class GitWorkTrees
 {

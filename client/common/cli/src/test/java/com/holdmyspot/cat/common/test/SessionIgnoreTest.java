@@ -32,10 +32,10 @@ import tools.jackson.databind.json.JsonMapper;
  * Tests that creating a project's first CAT session directory keeps the CAT session directories out of Git through
  * the project's {@code .gitignore}.
  * <p>
- * Each test that opens a session directory asks real Git about a project that {@link GitProjects} makes a work tree,
- * and {@link #addsLinesInRealWorkTree()} uses a work tree that {@code git init} creates. The decision from Git's
- * exit status and output is tested by calling {@link SessionIgnore#decide(Integer, java.util.function.BooleanSupplier)}
- * with the statuses that Git gives.
+ * {@link #addsLinesInRealWorkTree()} asks real Git about a work tree that {@code git init} creates. Each other test
+ * that opens a session directory gets the answers of {@link GitProjects} about a project that it makes a work tree, or
+ * the answers that Git gives when it cannot decide. The decision from Git's exit status and output is tested by calling
+ * {@link SessionIgnore#decide(Integer, java.util.function.BooleanSupplier)} with the statuses that Git gives.
  */
 public final class SessionIgnoreTest
 {
@@ -178,7 +178,8 @@ public final class SessionIgnoreTest
 
 	/**
 	 * Verifies that a project that is the directory of a bare repository gets no {@code .gitignore} and no notice,
-	 * because Git cannot say what it ignores outside a work tree.
+	 * because Git, which then fails the check and says that the project is not in a work tree, cannot say what it
+	 * ignores outside a work tree.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -189,9 +190,8 @@ public final class SessionIgnoreTest
 		{
 			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
 				resolve("project"));
-			new Git(project).run("init", "--quiet", "--bare");
 
-			SessionDirectory session = open(project);
+			SessionDirectory session = open(project, GitProjects.reporting(128, false));
 
 			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
 			requireThat(session.ignoreNotice(), "ignoreNotice").isEmpty();
@@ -199,9 +199,9 @@ public final class SessionIgnoreTest
 	}
 
 	/**
-	 * Verifies that when Git fails to tell whether it ignores the CAT session directories in a work tree, here because
-	 * {@code .cat} is a symbolic link, CAT leaves {@code .gitignore} alone and tells the user that it could not add the
-	 * entry, naming Git's exit status.
+	 * Verifies that when Git fails to tell whether it ignores the CAT session directories in a work tree, here with exit
+	 * status 128, as when {@code .cat} is a symbolic link, CAT leaves {@code .gitignore} alone and tells the user that
+	 * it could not add the entry, naming Git's exit status.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -210,11 +210,10 @@ public final class SessionIgnoreTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-ignore-"));
-			Path project = GitWorkTrees.notIgnoring(root.resolve("project"));
-			Files.createSymbolicLink(project.resolve(".cat"), Files.createDirectories(root.resolve("elsewhere")));
+			Path project = Files.createDirectories(cleanup.add(Files.createTempDirectory("cat-ignore-")).
+				resolve("project"));
 
-			SessionDirectory session = open(project, GitProjects.NOT_IGNORING);
+			SessionDirectory session = open(project, GitProjects.reporting(128, true));
 
 			requireThat(Files.exists(project.resolve(".gitignore")), "gitignoreExists").isFalse();
 			SessionIgnore.IgnoreNotice notice = session.ignoreNotice().orElseThrow();
@@ -375,11 +374,11 @@ public final class SessionIgnoreTest
 	}
 
 	/**
-	 * Opens the CAT session directory of a new session, asking real Git about a project that becomes the given kind of
-	 * work tree.
+	 * Opens the CAT session directory of a new session, with the answers that the given questions give about the
+	 * project.
 	 *
 	 * @param project the project
-	 * @param git     the kind of work tree that the project is
+	 * @param git     the questions that answer for Git
 	 * @return the session directory
 	 * @throws IOException if the directory cannot be created
 	 */
