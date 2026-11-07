@@ -49,6 +49,12 @@
 		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-common-installer</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-plugin</artifactId>
 		</dependency>
 		<dependency>

@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
+import com.holdmyspot.cat.common.installer.secrets.ProcessHarnessCliSecrets;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -22,6 +23,11 @@ import java.util.concurrent.TimeUnit;
  */
 public final class ProcessHarnessCli implements HarnessCli
 {
+	static
+	{
+		ProcessHarnessCliSecrets.setProcessHarnessCliAccess(ProcessHarnessCli::new);
+	}
+
 	/**
 	 * The longest that one harness command may run.
 	 */
@@ -32,6 +38,10 @@ public final class ProcessHarnessCli implements HarnessCli
 	private static final int MAXIMUM_OUTPUT_BYTES = 1024 * 1024;
 	private final HarnessCommand command;
 	private final Path home;
+	/**
+	 * Starts the program that a process builder describes.
+	 */
+	private final Starter starter;
 
 	/**
 	 * Creates the runner.
@@ -42,10 +52,25 @@ public final class ProcessHarnessCli implements HarnessCli
 	 */
 	public ProcessHarnessCli(HarnessCommand command, Path home)
 	{
+		this(command, home, ProcessBuilder::start);
+	}
+
+	/**
+	 * Creates a runner that starts the program through the supplied starter instead of the operating system.
+	 *
+	 * @param command the recorded harness program and its environment
+	 * @param home    the harness home
+	 * @param starter starts the program that a process builder describes
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	private ProcessHarnessCli(HarnessCommand command, Path home, Starter starter)
+	{
 		requireThat(command, "command").isNotNull();
 		requireThat(home, "home").isNotNull();
+		requireThat(starter, "starter").isNotNull();
 		this.command = command;
 		this.home = home;
+		this.starter = starter;
 	}
 
 	/**
@@ -70,7 +95,7 @@ public final class ProcessHarnessCli implements HarnessCli
 		Process started;
 		try
 		{
-			started = builder.start();
+			started = starter.start(builder);
 		}
 		catch (IOException e)
 		{
@@ -138,5 +163,21 @@ public final class ProcessHarnessCli implements HarnessCli
 				failures.add(e);
 			}
 		}
+	}
+
+	/**
+	 * Starts the program that a process builder describes.
+	 */
+	@FunctionalInterface
+	public interface Starter
+	{
+		/**
+		 * Starts the program.
+		 *
+		 * @param builder the program's command line, working directory, environment and output redirection
+		 * @return the started process
+		 * @throws IOException if the program cannot be started
+		 */
+		Process start(ProcessBuilder builder) throws IOException;
 	}
 }

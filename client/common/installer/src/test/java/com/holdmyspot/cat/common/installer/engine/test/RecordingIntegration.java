@@ -6,14 +6,18 @@ import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
+import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.HarnessSession;
 import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.installer.engine.TreeCopy;
+import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
+import com.holdmyspot.cat.common.installer.secrets.ProcessHarnessCliSecrets;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
@@ -422,13 +426,17 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns a harness program that always succeeds without running anything.
+	 * Returns the runner of a {@code harness-a} program that exits with status 0 and no output for every command. The
+	 * runner is the installer's own, and only the program's process is a stand-in, so no program starts.
 	 *
-	 * @return the program
+	 * @return the runner
 	 */
 	public static HarnessCli cli()
 	{
-		return arguments -> new CommandResult(0, "");
+		Path root = FileSystems.getDefault().getRootDirectories().iterator().next();
+		return ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(new HarnessCommand(
+			List.of(root.resolve("harness-a").toString()), Map.of()), root, _ ->
+			new ExitedProgram(new CommandResult(0, "")));
 	}
 
 	@Override

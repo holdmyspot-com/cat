@@ -10,12 +10,15 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
+import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.HarnessCliFactory;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessHarnessCli;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
+import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
+import com.holdmyspot.cat.common.installer.secrets.ProcessHarnessCliSecrets;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
@@ -270,11 +273,17 @@ public final class InstallerActivationTest
 			FakeHarness fake = new FakeHarness(harness, platform, root);
 			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
 			String output = "";
+			String printed = "";
 			if (status == 127)
+			{
 				output = "node: nvm is not installed at " + fake.user.resolve(".nvm");
-			Path program = fake.program(output, status);
+				printed = output + "\n";
+			}
+			Path program = fake.program();
+			CommandResult answer = new CommandResult(status, printed);
 
-			JsonNode refused = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
+			JsonNode refused = fake.runStarting(first, _ -> new ExitedProgram(answer), "--home",
+				fake.home.toString(), "install", "--harness", harness);
 
 			String shown = "";
 			if (!output.isEmpty())
@@ -312,7 +321,7 @@ public final class InstallerActivationTest
 			Path empty = Files.createDirectories(root.resolve("empty"));
 			fake.environment.put("PATH", empty.toString());
 
-			JsonNode refused = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
+			JsonNode refused = fake.run(first, "--home", fake.home.toString(), "install", "--harness", harness);
 
 			requireThat(refused.path("result").asString(), "result").withContext(refused, "output").
 				isEqualTo("refused");
@@ -320,6 +329,40 @@ public final class InstallerActivationTest
 				integration.programName() + "\" was not found on PATH in the installer's environment (" + empty +
 				"). Install " + product + ", or run the installer with the PATH your " + product + " sessions use, " +
 				"then run the same command again.");
+		}
+	}
+
+	/**
+	 * A harness program on PATH that the operating system cannot launch in the installer's environment is reported as
+	 * a program that could not start there, with the launch failure and the environment to run the installer with.
+	 *
+	 * @param harness the packaged harness to exercise
+	 * @throws IOException if a fixture file cannot be written or read
+	 */
+	@Test(dataProvider = "harnesses")
+	public void unlaunchedProgramIsReported(String harness) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			Path root = cleanup.add(fixtureDirectory("installer-unlaunched-"));
+			Platform platform = Platform.current();
+			String product = provider(HarnessIntegration.class, harness).productName();
+			FakeHarness fake = new FakeHarness(harness, platform, root);
+			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
+			Path program = fake.program();
+			String failure = "Cannot run program \"" + program + "\": error=13, Permission denied";
+
+			JsonNode refused = fake.runStarting(first, _ ->
+			{
+				throw new IOException(failure);
+			}, "--home", fake.home.toString(), "install", "--harness", harness);
+
+			requireThat(refused.path("result").asString(), "result").withContext(refused, "output").
+				isEqualTo("refused");
+			requireThat(refused.path("message").asString(), "message").isEqualTo(product + " at " + program +
+				" could not start in this environment: " + failure + ". Run the installer with the environment your " +
+				product + " sessions use.");
 		}
 	}
 
@@ -340,9 +383,11 @@ public final class InstallerActivationTest
 			Platform platform = Platform.current();
 			FakeHarness fake = new FakeHarness(harness, platform, root);
 			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
-			Path program = fake.program("other 2.0: unknown option --version", 2);
+			Path program = fake.program();
 
-			JsonNode failed = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
+			JsonNode failed = fake.runStarting(first, _ -> new ExitedProgram(new CommandResult(2,
+				"other 2.0: unknown option --version\n")), "--home", fake.home.toString(), "install", "--harness",
+				harness);
 
 			requireThat(failed.path("result").asString(), "result").withContext(failed, "output").
 				isEqualTo("failed");
@@ -450,11 +495,12 @@ public final class InstallerActivationTest
 
 	/**
 	 * A harness home whose harness program is a fake: the program that install finds on PATH, and the commands that it
-	 * answers as the harness does. The Claude Code answers follow Claude Code 2.1.318, including that its uninstall
-	 * deletes the plugin's data directory unless it is told to keep it. The Codex answers are scripted from Codex's
-	 * documented behavior; no recording of Codex backs them.
+	 * answers as the harness does. The installer runs the program through its own runner, which this fake gives a
+	 * stand-in for the program's process, so no program starts. The Claude Code answers follow Claude Code 2.1.318,
+	 * including that its uninstall deletes the plugin's data directory unless it is told to keep it. The Codex answers
+	 * are scripted from Codex's documented behavior; no recording of Codex backs them.
 	 */
-	private static final class FakeHarness implements HarnessCli
+	private static final class FakeHarness
 	{
 		private final String harness;
 		private final Platform platform;
@@ -518,21 +564,24 @@ public final class InstallerActivationTest
 		 */
 		private JsonNode run(Path plugin, String... arguments) throws IOException
 		{
-			return json(output(plugin, _ -> Optional.empty(), (command, _) -> this, arguments));
+			return json(output(plugin, _ -> Optional.empty(), this::cli, arguments));
 		}
 
 		/**
-		 * Runs an installer command of a plugin folder that runs the harness program that install finds, instead of
-		 * this fake.
+		 * Runs an installer command of a plugin folder whose runner of the harness program that install finds starts
+		 * the program through a stand-in for the operating system's process start, instead of answering as this fake.
 		 *
 		 * @param plugin    the plugin folder that the installer belongs to
+		 * @param starter   stands in for the operating system's start of the program
 		 * @param arguments the command line
 		 * @return the printed result
 		 * @throws IOException if the output is not one JSON result
 		 */
-		private JsonNode runProgram(Path plugin, String... arguments) throws IOException
+		private JsonNode runStarting(Path plugin, ProcessHarnessCli.Starter starter, String... arguments)
+			throws IOException
 		{
-			return json(output(plugin, _ -> Optional.empty(), ProcessHarnessCli::new, arguments));
+			return json(output(plugin, _ -> Optional.empty(), (command, directory) ->
+				ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(command, directory, starter), arguments));
 		}
 
 		/**
@@ -577,7 +626,7 @@ public final class InstallerActivationTest
 				{
 					return true;
 				}
-			}, (command, _) -> this, arguments);
+			}, this::cli, arguments);
 			requireThat(printed.diagnostics(), "diagnostics").withContext(printed.output(), "output").isEmpty();
 			return printed.output();
 		}
@@ -614,29 +663,15 @@ public final class InstallerActivationTest
 		}
 
 		/**
-		 * Replaces the harness program that install finds with a program that prints a line and exits.
+		 * Returns the harness program that install finds on the search path.
 		 *
-		 * @param output the line, without quotes or shell metacharacters, or empty to print nothing
-		 * @param status the exit status
 		 * @return the program
-		 * @throws IOException if the program cannot be written
 		 */
-		private Path program(String output, int status) throws IOException
+		private Path program()
 		{
 			if (platform.isWindows())
-			{
-				String echo = "";
-				if (!output.isEmpty())
-					echo = "@echo " + output + "\r\n";
-				return Files.writeString(tools.resolve(harness + ".cmd"), echo + "@exit /b " + status + "\r\n");
-			}
-			String echo = "";
-			if (!output.isEmpty())
-				echo = "echo '" + output + "'\n";
-			Path program = Files.writeString(tools.resolve(harness), "#!/bin/sh\n" + echo + "exit " + status + "\n");
-			if (!program.toFile().setExecutable(true))
-				throw new IOException("Cannot make " + program + " executable");
-			return program;
+				return tools.resolve(harness + ".cmd");
+			return tools.resolve(harness);
 		}
 
 		/**
@@ -660,8 +695,32 @@ public final class InstallerActivationTest
 			requireThat(Files.exists(versionFolder), "versionFolderLeft").isFalse();
 		}
 
-		@Override
-		public CommandResult run(List<String> arguments) throws IOException
+		/**
+		 * Returns the installer's runner of the recorded harness program, which starts the stand-in for the program's
+		 * process instead of the program.
+		 *
+		 * @param command   the recorded program and its environment
+		 * @param directory the program's working directory
+		 * @return the runner
+		 */
+		private HarnessCli cli(HarnessCommand command, Path directory)
+		{
+			int prefix = command.command().size();
+			return ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(command, directory, builder ->
+			{
+				List<String> line = builder.command();
+				return new ExitedProgram(answer(line.subList(prefix, line.size())));
+			});
+		}
+
+		/**
+		 * Answers a command as the harness program does.
+		 *
+		 * @param arguments the arguments after the recorded program
+		 * @return the exit status and output
+		 * @throws IOException if the harness's files cannot be read or written
+		 */
+		private CommandResult answer(List<String> arguments) throws IOException
 		{
 			String command = String.join(" ", arguments);
 			if (command.equals("--version"))

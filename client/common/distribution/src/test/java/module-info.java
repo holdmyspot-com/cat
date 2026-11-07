@@ -6,6 +6,7 @@ module com.holdmyspot.cat.distribution.test
 	requires com.holdmyspot.cat.claude.installer;
 	requires com.holdmyspot.cat.codex.installer;
 	requires com.holdmyspot.cat.common.cli.test;
+	requires com.holdmyspot.cat.common.installer.test;
 	requires io.github.cowwoc.requirements13.java;
 	requires org.apache.commons.compress;
 	requires org.testng;
