@@ -479,15 +479,16 @@ public final class ClaudeSessionStartHookTest
 
 	/**
 	 * Verifies that SessionStart and SubagentStart refuse a session whose project folder is the user's home folder:
-	 * each injects no rules, reports that the home folder cannot be a CAT project, and creates no CAT session
-	 * directory in the home folder.
+	 * each injects no rules and creates no CAT session directory in the home folder, reports the refusal on stderr,
+	 * shows the user why through {@code systemMessage}, and tells the agent through {@code additionalContext} that CAT
+	 * is not active in this session, why, and that the user should open a folder below the home folder.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
 	public void refusesHomeFolderProject() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
@@ -498,11 +499,21 @@ public final class ClaudeSessionStartHookTest
 			HookResult session = invoke(input + "\"}", environment, home);
 			HookResult subagent = invokeSubagent(input + "\",\"agent_id\":\"a1b2c3\"}", environment, home);
 
-			for (HookResult result : List.of(session, subagent))
+			for (Map.Entry<String, HookResult> event : Map.of("SessionStart", session, "SubagentStart", subagent).
+				entrySet())
 			{
-				requireThat(result.output(), "output").isEqualTo("{}\n");
-				requireThat(result.error(), "error").contains("cannot be a CAT project").
-					contains("Open a folder below the home folder");
+				HookResult result = event.getValue();
+				requireThat(result.error(), "error").contains("CAT " + event.getKey() + ": ").
+					contains("cannot be a CAT project");
+				JsonNode response = scope.json().readTree(result.output());
+				requireThat(response.path("systemMessage").asString(), "systemMessage").
+					contains("CAT is not active in this session").contains(home.toString()).
+					contains("cannot be a CAT project").contains("Open a folder below the home folder");
+				JsonNode specific = response.path("hookSpecificOutput");
+				requireThat(specific.path("hookEventName").asString(), "hookEventName").isEqualTo(event.getKey());
+				requireThat(specific.path("additionalContext").asString(), "additionalContext").
+					contains("CAT is not active in this session").contains(home.toString()).
+					contains("cannot be a CAT project").contains("The user should open a folder below the home folder");
 			}
 			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}

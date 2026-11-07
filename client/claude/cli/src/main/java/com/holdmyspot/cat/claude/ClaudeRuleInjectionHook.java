@@ -60,8 +60,11 @@ final class ClaudeRuleInjectionHook
 	 * reference. When the event created the session's CAT session directory, the {@code systemMessage} also tells the
 	 * user that CAT added the CAT session directories to the project's {@code .gitignore}, or could not and why.
 	 * <p>
-	 * A session whose project directory is the user's home folder, which {@link HomeProject} refuses as a CAT project,
-	 * gets no rules and no CAT session directory; the hook reports the refusal as it reports every other failure.
+	 * A session whose project directory is the user's home folder or contains it, which {@link HomeProject} refuses as
+	 * a CAT project, gets no rules and no CAT session directory. Because the hook cannot stop the session, it reports
+	 * the refusal on {@code error} as it reports every other failure, shows the user the reason through the response's
+	 * {@code systemMessage}, and tells the agent through its {@code additionalContext} that CAT is not active in this
+	 * session, why, and that the user should open a folder below the home folder.
 	 *
 	 * @param eventName the Claude hook event name
 	 * @param args the hook command-line arguments
@@ -86,7 +89,12 @@ final class ClaudeRuleInjectionHook
 			Optional<String> homeRefusal = HomeProject.refusal(projectDir,
 				Platform.current().homeDirectory(environment));
 			if (homeRefusal.isPresent())
-				throw new IOException(homeRefusal.get());
+			{
+				error.println("CAT " + eventName + ": " + homeRefusal.get());
+				output.write(json.writeValueAsBytes(refusedProjectResponse(eventName, homeRefusal.get())));
+				output.write('\n');
+				return;
+			}
 			// A Claude Code subagent's input carries its parent's session_id, and its shells the parent's
 			// CLAUDE_CODE_SESSION_ID, so the subagent shares its parent's CAT session directory
 			SessionDirectory session = scope.sessionDirectory(projectDir, event, "session_id");
@@ -141,6 +149,23 @@ final class ClaudeRuleInjectionHook
 				// The host owns the output stream and no recovery is possible.
 			}
 		}
+	}
+
+	/**
+	 * Returns the response to an event whose project folder cannot be a CAT project.
+	 *
+	 * @param eventName the Claude hook event name
+	 * @param refusal   why the project folder cannot be a CAT project, as {@link HomeProject} states it to the user
+	 * @return a response that shows the user {@code refusal} and tells the agent that CAT is not active in this session
+	 */
+	private static Map<String, Object> refusedProjectResponse(String eventName, String refusal)
+	{
+		Map<String, Object> response = new LinkedHashMap<>();
+		response.put("hookSpecificOutput", Map.of("hookEventName", eventName, "additionalContext",
+			"CAT is not active in this session, so no CAT rules apply. CAT showed the user why: " + refusal +
+				" The user should open a folder below the home folder to use CAT."));
+		response.put("systemMessage", "CAT is not active in this session. " + refusal);
+		return response;
 	}
 
 	/**
