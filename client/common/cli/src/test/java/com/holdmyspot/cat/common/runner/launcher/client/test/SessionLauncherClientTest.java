@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.io.PrintWriter;
@@ -38,9 +39,11 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
@@ -1201,13 +1204,11 @@ public final class SessionLauncherClientTest
 	@Test
 	public void unreadableAcceptanceIsAwaited() throws IOException
 	{
-		if (Platform.current().isWindows())
-			throw new SkipException(NO_POSIX_PERMISSIONS);
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.serve();
 			AtomicInteger pollsSinceAcceptance = new AtomicInteger();
-			AtomicReference<Set<PosixFilePermission>> permissions = new AtomicReference<>();
+			AtomicReference<Closeable> refusal = new AtomicReference<>();
 			fixture.afterPoll(polled ->
 			{
 				List<Path> requests = polled.requests();
@@ -1215,16 +1216,13 @@ public final class SessionLauncherClientTest
 					return;
 				Path accepted = requests.getFirst().resolve(SessionLauncherChannel.ACCEPTED_FILE);
 				int poll = pollsSinceAcceptance.getAndIncrement();
+				// After the poll that accepts the request, the test refuses reads of the acceptance until the next
+				// poll. It stands for an acceptance that the sender finds but cannot open yet: on Windows, one that is
+				// still in use when the sender opens it.
 				if (poll == 0)
-				{
-					// After the poll that accepts the request, the test takes every permission from the acceptance
-					// until the next poll. It stands for an acceptance that the sender finds but cannot open yet: on
-					// Windows, one that is still in use when the sender opens it.
-					permissions.set(Files.getPosixFilePermissions(accepted));
-					Files.setPosixFilePermissions(accepted, Set.of());
-				}
+					refusal.set(refuseReads(accepted));
 				else if (poll == 1)
-					Files.setPosixFilePermissions(accepted, permissions.get());
+					refusal.get().close();
 			});
 
 			int status = fixture.launch(new StringWriter(), "--project", fixture.project.toString(), "--model", "m",
@@ -1236,6 +1234,37 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
+	 * Refuses every other read of a file until the returned value is closed. On native Windows the file stays locked,
+	 * so a read through another handle fails as it does while another process holds a lock on the file; elsewhere the
+	 * file loses every permission, because a lock there does not stop another reader.
+	 *
+	 * @param file the file
+	 * @return what lets the file be read again when it is closed
+	 * @throws IOException if the file cannot be locked or its permissions cannot be read or changed
+	 */
+	private static Closeable refuseReads(Path file) throws IOException
+	{
+		if (Platform.current().isWindows())
+		{
+			FileChannel channel = FileChannel.open(file, StandardOpenOption.READ, StandardOpenOption.WRITE);
+			try
+			{
+				channel.lock();
+			}
+			catch (IOException e)
+			{
+				channel.close();
+				throw e;
+			}
+			// Closing the channel releases its lock
+			return channel;
+		}
+		Set<PosixFilePermission> permissions = Files.getPosixFilePermissions(file);
+		Files.setPosixFilePermissions(file, Set.of());
+		return () -> Files.setPosixFilePermissions(file, permissions);
+	}
+
+	/**
 	 * Verifies that a request file that the launcher finds before it can read it is accepted at a later poll that can
 	 * read it, and the request completes.
 	 *
@@ -1244,17 +1273,15 @@ public final class SessionLauncherClientTest
 	@Test
 	public void unreadableRequestIsAcceptedLater() throws IOException
 	{
-		if (Platform.current().isWindows())
-			throw new SkipException(NO_POSIX_PERMISSIONS);
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.serve();
 			AtomicReference<Path> refused = new AtomicReference<>();
-			AtomicReference<Set<PosixFilePermission>> permissions = new AtomicReference<>();
-			// During the first poll that finds the request file, the test takes every permission from it. It stands
-			// for a request file that the launcher finds but cannot open yet: on Windows, one that is still in use
-			// when the launcher opens it. Permissions are not part of the file's content, size or modification time,
-			// so the next poll finds the same file, which it can read.
+			AtomicReference<Closeable> refusal = new AtomicReference<>();
+			// During the first poll that finds the request file, the test refuses reads of it. It stands for a request
+			// file that the launcher finds but cannot open yet: on Windows, one that is still in use when the launcher
+			// opens it. The refusal changes neither the file's content nor its size or modification time, so the next
+			// poll finds the same file, which it can read.
 			fixture.beforePoll(polled ->
 			{
 				if (refused.get() != null)
@@ -1264,8 +1291,7 @@ public final class SessionLauncherClientTest
 					if (name.startsWith(SessionLauncherChannel.REQUEST_PREFIX))
 					{
 						Path request = polled.channel.inbox().resolve(name);
-						permissions.set(Files.getPosixFilePermissions(request));
-						Files.setPosixFilePermissions(request, Set.of());
+						refusal.set(refuseReads(request));
 						refused.set(request);
 						return;
 					}
@@ -1273,9 +1299,9 @@ public final class SessionLauncherClientTest
 			});
 			fixture.afterPoll(_ ->
 			{
-				Set<PosixFilePermission> before = permissions.getAndSet(null);
-				if (before != null)
-					Files.setPosixFilePermissions(refused.get(), before);
+				Closeable pending = refusal.getAndSet(null);
+				if (pending != null)
+					pending.close();
 			});
 
 			int status = fixture.launch(new StringWriter(), "--project", fixture.project.toString(), "--model", "m",
