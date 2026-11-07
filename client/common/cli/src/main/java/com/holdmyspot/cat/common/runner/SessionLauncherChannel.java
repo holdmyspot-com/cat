@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,6 +17,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -347,16 +349,20 @@ public final class SessionLauncherChannel
 	 * Returns the message that a sender shows when no launcher serves its session.
 	 *
 	 * @param harness the name of the session's harness as its user knows it
-	 * @return a message that says why and that asks the user to start a new session
+	 * @return a message that says why, including the reason that is particular to the harness, and that asks the user
+	 *   to start a new session
 	 * @throws NullPointerException     if {@code harness} is null
 	 * @throws IllegalArgumentException if {@code harness} is blank
 	 */
 	public static String noLauncherMessage(String harness)
 	{
 		requireThat(harness, "harness").isNotBlank();
+		String particular = Arrays.stream(Harness.values()).
+			filter(candidate -> candidate.productName().equals(harness)).findFirst().
+			flatMap(Harness::noLauncherReason).map(reason -> " " + reason).orElse("");
 		return "No CAT session launcher serves this session. CAT starts one when a session starts; sessions started " +
-			"before CAT was installed or updated have none. Start a new " + harness + " session and run the command " +
-			"again.";
+			"before CAT was installed or updated have none." + particular + " Start a new " + harness +
+			" session and run the command again.";
 	}
 
 	/**

@@ -42,6 +42,16 @@ public final class CodexCommandLine
 		"that option, then start a new Codex session";
 
 	/**
+	 * Why the reader refuses a hook that runs in Codex's shared background server.
+	 */
+	private static final String SHARED_SERVER_REASON = "the hook runs in Codex's shared background server, which " +
+		"serves more than one session, so CAT cannot tell which session's sandbox applies";
+	/**
+	 * The fix of the refusal of a hook that runs in Codex's shared background server.
+	 */
+	private static final String SHARED_SERVER_FIX = "Start Codex with --no-daemon, then start a new Codex session";
+
+	/**
 	 * The number of values that an option takes.
 	 */
 	private enum Arity
@@ -92,6 +102,27 @@ public final class CodexCommandLine
 			options.put(name, Arity.FLAG);
 		}
 		return Map.copyOf(options);
+	}
+
+	/**
+	 * Indicates whether a command line runs Codex's shared background server, which serves more than one session
+	 * and outlives each of its clients.
+	 *
+	 * @param arguments the arguments of the Codex process after its executable
+	 * @return {@code true} if the reader refuses the command line because it runs the shared server; {@code false}
+	 *         if it reads, or refuses it for another reason
+	 */
+	public static boolean runsSharedServer(List<String> arguments)
+	{
+		try
+		{
+			parse(arguments);
+			return false;
+		}
+		catch (PolicyRefusal e)
+		{
+			return e.reason().equals(SHARED_SERVER_REASON);
+		}
 	}
 
 	/**
@@ -164,11 +195,7 @@ public final class CodexCommandLine
 		if (SESSION_COMMANDS.contains(argument))
 			return argument;
 		if (argument.equals(CodexAssumptions.SHARED_SERVER_SUBCOMMAND))
-		{
-			throw new PolicyRefusal("the hook runs in Codex's shared background server, which serves more than one " +
-				"session, so CAT cannot tell which session's sandbox applies",
-				"Start Codex with --no-daemon, then start a new Codex session");
-		}
+			throw new PolicyRefusal(SHARED_SERVER_REASON, SHARED_SERVER_FIX);
 		if (OTHER_COMMANDS.contains(argument))
 			throw unsupportedCommand(argument);
 		return "";

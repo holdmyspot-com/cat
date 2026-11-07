@@ -31,7 +31,8 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Tests the session launcher channel's request intake: a request that a sandboxed session packs reaches the launcher
- * with every choice that the session level allows, and a request that chooses anything else is refused by name.
+ * with every choice that the session level allows, and a request that chooses anything else is refused by name. A
+ * sender whose session has no launcher is told why it may have none.
  */
 public final class SessionLauncherChannelTest
 {
@@ -42,6 +43,23 @@ public final class SessionLauncherChannelTest
 	 */
 	public SessionLauncherChannelTest()
 	{
+	}
+
+	/**
+	 * Verifies that the message of a Codex session without a launcher names Codex's shared background server and
+	 * the option that keeps a session out of it, because CAT starts no launcher in that server, and that the message
+	 * of a Claude Code session does not.
+	 */
+	@Test
+	public void namesSharedServerWithoutLauncher()
+	{
+		String codex = SessionLauncherChannel.noLauncherMessage("Codex");
+		String claude = SessionLauncherChannel.noLauncherMessage("Claude Code");
+
+		requireThat(codex, "codex").contains("shared background server").contains("--no-daemon").
+			contains("Start a new Codex session");
+		requireThat(claude, "claude").doesNotContain("--no-daemon").doesNotContain("shared").
+			contains("Start a new Claude Code session");
 	}
 
 	/**

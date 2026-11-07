@@ -404,6 +404,12 @@ start nothing and print: "No CAT session launcher serves this session. CAT start
 started before CAT was installed or updated have none. Start a new Claude Code session and run the command again." (or
 "Codex session" in Codex). Start a new session and run the task there.
 
+A Codex session that runs in Codex's shared background server, which Codex uses unless it starts with `--no-daemon`,
+has no session launcher either, because the server outlives the session and would keep its launcher running after the
+session ends. Codex's message then adds: "A Codex session that runs in Codex's shared background server, which Codex
+uses unless it starts with --no-daemon, has none either; start Codex with --no-daemon." Start Codex with
+`--no-daemon`, then start a new session.
+
 When CAT cannot read a session's sandbox policy safely, its runner launchers start nothing either. The message begins
 "CAT cannot start the session: it cannot read this Claude Code session's sandbox policy safely:" (or "this Codex
 session's") and goes on to say what failed and how to fix it: for example, a settings file that cannot be parsed, a

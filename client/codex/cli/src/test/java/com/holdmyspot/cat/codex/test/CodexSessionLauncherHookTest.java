@@ -27,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -42,12 +43,23 @@ public final class CodexSessionLauncherHookTest
 	/**
 	 * The hook's ancestry, nearest first: the shell that runs the hook's command, then Codex.
 	 */
-	private static final List<ProcessDescription> ANCESTORS = List.of(
-		new ProcessDescription(6000, Optional.of(CODEX_START.plusSeconds(1)), Optional.of("/bin/sh"),
-			Optional.of(List.of("-c", "session-start"))),
-		new ProcessDescription(CODEX_PID, Optional.of(CODEX_START), Optional.of("/usr/lib/codex/bin/codex"),
-			Optional.of(List.of())));
+	private static final List<ProcessDescription> ANCESTORS = ancestry(List.of());
 	private final JsonMapper json = JsonMapper.builder().build();
+
+	/**
+	 * Returns the hook's ancestry, nearest first: the shell that runs the hook's command, then Codex.
+	 *
+	 * @param codexArguments the arguments of the Codex process
+	 * @return the ancestry
+	 */
+	private static List<ProcessDescription> ancestry(List<String> codexArguments)
+	{
+		return List.of(
+			new ProcessDescription(6000, Optional.of(CODEX_START.plusSeconds(1)), Optional.of("/bin/sh"),
+				Optional.of(List.of("-c", "session-start"))),
+			new ProcessDescription(CODEX_PID, Optional.of(CODEX_START), Optional.of("/usr/lib/codex/bin/codex"),
+				Optional.of(codexArguments)));
+	}
 
 	/**
 	 * Creates the test.
@@ -114,6 +126,52 @@ public final class CodexSessionLauncherHookTest
 	}
 
 	/**
+	 * Supplies the command lines of Codex processes and whether the hook starts a launcher for each: a session that
+	 * runs without Codex's shared background server, including one whose prompt is the server's name, and the shared
+	 * server as Codex 0.160.0 starts it and with an option before its subcommand.
+	 *
+	 * @return the arguments and whether a launcher starts
+	 */
+	@DataProvider
+	public Object[][] codexCommandLines()
+	{
+		return new Object[][]{
+			{List.of("--no-daemon"), true},
+			{List.of("exec", "--json", "hello"), true},
+			{List.of("exec", "app-server"), true},
+			{List.of("app-server", "--listen", "unix://", "--managed-daemon"), false},
+			{List.of("-c", "model=\"gpt\"", "app-server"), false}};
+	}
+
+	/**
+	 * Verifies that the hook starts no launcher for a session that runs in Codex's shared background server, which
+	 * outlives the session's client so that its launcher would never end, and that it starts one for every other
+	 * command line. The hook still injects the rules.
+	 *
+	 * @param arguments the arguments of the Codex process that runs the hook
+	 * @param starts    {@code true} if the hook starts a launcher
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(dataProvider = "codexCommandLines")
+	public void startsNoneInSharedServer(List<String> arguments, boolean starts) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-launcher-")).toRealPath();
+			Fixture fixture = new Fixture(root);
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			RecordingStarter starter = new RecordingStarter(output);
+
+			String error = runSessionStart(fixture, fixture.environment(), Platform.LINUX_X64, starter, output,
+				ancestry(arguments));
+
+			requireThat(error, "error").isEmpty();
+			requireThat(starter.commands.isEmpty(), "startsNone").isEqualTo(!starts);
+			requireThat(output.toString(UTF_8), "output").contains("additionalContext");
+		}
+	}
+
+	/**
 	 * Verifies that the hook starts no launcher on native Windows.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -148,6 +206,24 @@ public final class CodexSessionLauncherHookTest
 	private String runSessionStart(Fixture fixture, Map<String, String> environment, Platform platform,
 		DetachedStarter starter, ByteArrayOutputStream output) throws IOException
 	{
+		return runSessionStart(fixture, environment, platform, starter, output, ANCESTORS);
+	}
+
+	/**
+	 * Runs the SessionStart hook under the processes of an ancestry.
+	 *
+	 * @param fixture     the session's folders
+	 * @param environment the hook's environment
+	 * @param platform    the platform that the hook runs on
+	 * @param starter     starts the launcher
+	 * @param output      receives the hook's response
+	 * @param ancestors   the hook's ancestor processes, nearest first
+	 * @return the hook's error output
+	 * @throws IOException if the input cannot be written
+	 */
+	private String runSessionStart(Fixture fixture, Map<String, String> environment, Platform platform,
+		DetachedStarter starter, ByteArrayOutputStream output, List<ProcessDescription> ancestors) throws IOException
+	{
 		Map<String, Object> event = new HashMap<>();
 		event.put("session_id", SESSION_ID);
 		event.put("transcript_path", fixture.transcript.toString());
@@ -157,7 +233,7 @@ public final class CodexSessionLauncherHookTest
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(json.writeValueAsBytes(event)), output, new PrintStream(error, true, UTF_8),
-			environment, fixture.project, Yielding.waiting(), GitProjects.IGNORING, platform, () -> ANCESTORS, starter);
+			environment, fixture.project, Yielding.waiting(), GitProjects.IGNORING, platform, () -> ancestors, starter);
 		return error.toString(UTF_8);
 	}
 

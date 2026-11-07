@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.policy.CodexCommandLine;
 import com.holdmyspot.cat.codex.secrets.CodexSessionStartHookSecrets;
 import com.holdmyspot.cat.common.AbstractHookScope;
 import com.holdmyspot.cat.common.FileLocks;
@@ -31,7 +32,8 @@ import java.util.function.Supplier;
  * Implements the Codex SessionStart hook protocol for CAT project rules.
  * <p>
  * Before it injects the rules, the hook starts the session launcher of the nearest Codex process among its
- * ancestors, as {@link SessionLauncherStart} describes, and does not wait for it.
+ * ancestors, as {@link SessionLauncherStart} describes, and does not wait for it. It starts none when that process is
+ * Codex's shared background server.
  */
 public final class CodexSessionStartHook
 {
@@ -136,8 +138,9 @@ public final class CodexSessionStartHook
 
 	/**
 	 * Starts the session launcher of the Codex process that runs the hook. A hook without a Codex ancestor, one
-	 * whose input is too large, or one whose environment names no usable plugin root starts none; the hook's rule
-	 * injection reports the input and the environment.
+	 * whose nearest Codex ancestor is Codex's shared background server, one whose input is too large, or one whose
+	 * environment names no usable plugin root starts none; the hook's rule injection reports the input and the
+	 * environment.
 	 *
 	 * @param event            the hook input
 	 * @param environment      the process environment
@@ -169,7 +172,7 @@ public final class CodexSessionStartHook
 		try
 		{
 			Optional<ProcessDescription> codex = nearestCodex(ancestry.get());
-			if (codex.isEmpty())
+			if (codex.isEmpty() || runsSharedServer(codex.get()))
 				return;
 			Path codexHome = CodexInstallation.resolveHome(environment, platform.homeDirectory(environment),
 				workingDirectory.toAbsolutePath());
@@ -181,6 +184,19 @@ public final class CodexSessionStartHook
 		{
 			error.println("CAT could not start its session launcher: " + e.getMessage());
 		}
+	}
+
+	/**
+	 * Indicates whether a Codex process is Codex's shared background server. The server serves more than one
+	 * session and outlives the client of each, so a launcher that waits for it would never end, and CAT cannot tell
+	 * which session's sandbox applies to it.
+	 *
+	 * @param codex the Codex process
+	 * @return {@code true} if the process runs the shared server
+	 */
+	private static boolean runsSharedServer(ProcessDescription codex)
+	{
+		return codex.arguments().filter(CodexCommandLine::runsSharedServer).isPresent();
 	}
 
 	/**
