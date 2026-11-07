@@ -2761,7 +2761,9 @@ nothing, exit `2` and say to start a new session. A session launcher ends when i
 Claude Code's SessionEnd hook asks it to stop, or when it loses its lock, and it stops every session that it started
 and that still runs. Its log, which records each launch it accepts and each answer it gives, outlives it, so the
 answer to a request whose requester has already ended, such as `stopped` after the session ends, stays readable
-(user ruling, 2026-11-07).
+(user ruling, 2026-11-07). The log is a file of its own, one for each harness process, in the `logs` folder of
+`~/.cat/sessions`, outside the launcher's folder, so the write denial above covers it. A later launcher's start deletes
+the logs of ended launchers that were last written more than 7 days earlier.
 
 A command that no harness runs, such as one in a terminal, has no sandbox to bound the new session. Its runner
 launcher starts the session itself, inside that harness's own sandbox, with exactly what the session needs. Each
