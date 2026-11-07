@@ -1442,8 +1442,6 @@ public final class ClaudeSessionsTest
 		{
 			// Claude Code runs the command, so the session goes to the session launcher, and none serves the session
 			{Map.of("CLAUDECODE", "1"), "No CAT session launcher serves this session"},
-			// No harness runs the command, so the session starts in place within what it needs, which is unknown
-			{Map.of(), "CAT cannot start the session: it cannot read this Claude Code session's sandbox policy: "},
 			{Map.of("CODEX_THREAD_ID", "thread"), "CAT cannot start the session: Codex runs this command, and " +
 				"CAT's Claude Code plugin cannot read a Codex session's sandbox policy."},
 			{Map.of("CAT_RUN", "1", "CLAUDECODE", "1"), "claude-runner refuses to start a session"}
@@ -1452,10 +1450,10 @@ public final class ClaudeSessionsTest
 
 	/**
 	 * Verifies that each of the optimizer's sessions takes the route that {@code claude-runner} gives a launch from
-	 * the same command: to the Claude Code process's session launcher when Claude Code runs the command, in place
-	 * within what the session needs when no harness runs it, and refused when only Codex runs it or when it runs in
-	 * a CAT run that lets its session request no sessions. No route starts a harness here, so the session ends as a
-	 * launch refusal, which the optimizer does not retry, with the reason that {@code claude-runner} prints.
+	 * the same command: to the Claude Code process's session launcher when Claude Code runs the command, and refused
+	 * when only Codex runs it or when it runs in a CAT run that lets its session request no sessions. No route starts
+	 * a harness here, so the session ends as a launch refusal, which the optimizer does not retry, with the reason
+	 * that {@code claude-runner} prints.
 	 *
 	 * @param variables the harness and run variables of the command's environment
 	 * @param reason    the start of the reason on the route
@@ -1494,6 +1492,41 @@ public final class ClaudeSessionsTest
 			requireThat(errors.toString(), "errors").startsWith(reason);
 			requireThat(result, "result").isEqualTo(new SessionResult.LaunchRefused(errors.toString().strip(),
 				List.of()));
+		}
+	}
+
+	/**
+	 * Verifies that a session is refused, not started in place, when no harness runs the optimizer, whatever the
+	 * session needs.
+	 *
+	 * @throws IOException          if a fixture cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void noHarnessRefusesSession()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-no-harness-")).toRealPath();
+			Path source = Files.createDirectories(home.resolve("source"));
+			Path runRoot = home.resolve("runs");
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put(Platform.current().homeVariable(), home.toString());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
+				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+
+			SessionResult result = await(new ClaudeSessions(settings).start(new SessionRequest(SessionRole.JUDGE,
+				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
+				List.of())));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.LaunchRefused.class);
+			requireThat(((SessionResult.LaunchRefused) result).reason(), "reason").
+				contains("Run the prompt optimizer from a Claude Code or Codex session");
 		}
 	}
 
