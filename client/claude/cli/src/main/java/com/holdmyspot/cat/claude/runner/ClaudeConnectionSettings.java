@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
@@ -24,6 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -365,7 +367,7 @@ public final class ClaudeConnectionSettings
 			grants.add("Read(/" + rulePath(requestAccess.responses()) + "/**)");
 		}
 		grants.add(SANDBOXED_COMMAND_GRANT);
-		denyReadRules(settings, policy.readDenials());
+		denyReadRules(settings, policy.readDenials(), policy.writeRoots());
 		excludeInstructionsAbove(settings, isolationRoot);
 
 		Files.createDirectories(claudeTemporaryDirectory);
@@ -1004,18 +1006,42 @@ public final class ClaudeConnectionSettings
 	/**
 	 * Denies the isolated instance's file tools reading files and directories, in addition to any rule that the
 	 * parent's settings deny. Does nothing if {@code deniedReads} is empty.
+	 * <p>
+	 * A directory that holds one of {@code writeRoots}, such as the project that holds the run folder of a session that
+	 * runs in place, is denied as every file and directory in it except the write roots and the directories that lead
+	 * to them. A Read rule that covered a write root would stop the instance's Write tool there, since that tool also
+	 * refuses a path that a Read rule denies. A file or directory that appears in such a directory after this method
+	 * returns is not denied.
 	 *
 	 * @param settings    the isolated settings
 	 * @param deniedReads the existing files and directories to deny
+	 * @param writeRoots  the directories that the instance's commands may write
+	 * @throws IOException if a directory that holds a write root cannot be listed
 	 */
-	private static void denyReadRules(ObjectNode settings, List<Path> deniedReads)
+	private static void denyReadRules(ObjectNode settings, List<Path> deniedReads, List<Path> writeRoots)
+		throws IOException
 	{
 		assert settings != null;
 		assert deniedReads != null;
+		assert writeRoots != null;
 		if (deniedReads.isEmpty())
 			return;
-		ArrayNode permissionDenials = array(permissions(settings), "deny");
+		Set<Path> rulePaths = new LinkedHashSet<>();
 		for (Path deniedRead : deniedReads)
+		{
+			List<Path> inside = new ArrayList<>();
+			for (Path writeRoot : writeRoots)
+			{
+				if (writeRoot.startsWith(deniedRead) && !writeRoot.equals(deniedRead))
+					inside.add(writeRoot);
+			}
+			if (inside.isEmpty())
+				rulePaths.add(deniedRead);
+			else
+				rulePaths.addAll(HarnessRunManager.deniedReads(deniedRead, inside));
+		}
+		ArrayNode permissionDenials = array(permissions(settings), "deny");
+		for (Path deniedRead : rulePaths)
 		{
 			// A rule path that starts with "//" is absolute; "**" also matches everything below a directory.
 			String descendants;

@@ -850,6 +850,74 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
+	 * Verifies that when the bound denies reading a folder that holds the session's own write root, such as the
+	 * project that holds the run folder of a session that runs in place, the Read rules deny the rest of that folder
+	 * but not the write root, so the session's file tools can write there. A read that the session's own needs deny
+	 * inside the write root, and the sandbox's read denial of the folder, stay.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void readRulesLeaveSessionsWriteRootReadable() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-in-place-")).toRealPath();
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.writeString(project.resolve("notes.txt"), "notes");
+			Files.createDirectories(project.resolve("secrets"));
+			Path run = Files.createDirectories(project.resolve("runs/r1"));
+			Files.createDirectories(run.resolve("home"));
+			Path records = Files.createDirectories(run.resolve("records"));
+			Files.createDirectories(project.resolve("runs/r2"));
+			Path destination = root.resolve("isolated/settings.json");
+			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(project), List.of(),
+				Set.of("api.example"), false);
+
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(records), "", null, null, bound,
+				ExtraPermissions.NONE, "api.example");
+
+			JsonNode settings = scope.json().readTree(Files.readString(destination));
+			List<String> rules = strings(settings.path("permissions").path("deny"));
+			for (String writable : List.of("home/settings.json", "claude/stream.log", "draft/proposal.json"))
+			{
+				requireThat(denies(rules, run.resolve(writable)), "denied").withContext(writable, "path").
+					withContext(rules, "rules").isFalse();
+			}
+			for (Path denied : List.of(project.resolve("notes.txt"), project.resolve("secrets/key.txt"),
+				project.resolve("runs/r2/data.json"), records.resolve("evidence.json")))
+			{
+				requireThat(denies(rules, denied), "denied").withContext(denied, "path").withContext(rules, "rules").
+					isTrue();
+			}
+			requireThat(strings(settings.path("sandbox").path("filesystem").path("denyRead")), "denyRead").
+				contains(project.toString());
+		}
+	}
+
+	/**
+	 * Indicates whether Read rules deny reading a path.
+	 *
+	 * @param rules the rules
+	 * @param path  the path
+	 * @return {@code true} if a rule names the path or a folder that holds it
+	 */
+	private static boolean denies(List<String> rules, Path path)
+	{
+		String target = "Read(/" + ClaudeConnectionSettings.rulePath(path) + ")";
+		for (String rule : rules)
+		{
+			if (rule.equals(target))
+				return true;
+			if (rule.endsWith("/**)") && target.startsWith(rule.substring(0, rule.length() - "/**)".length()) + "/"))
+				return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Verifies that a session whose dependency cache lies outside every folder its bound lets the commands write is
 	 * refused, and the refusal names the cache and the host that the bound does not allow, before any settings file is
 	 * written.
