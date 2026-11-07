@@ -26,6 +26,7 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
@@ -33,8 +34,11 @@ import org.testng.annotations.Test;
 /**
  * Tests {@link WaitUntil}.
  * <p>
- * Every test except {@link #systemTimerRunsCheckAgain()} measures the wait's time through a {@link ManualTimer}, so
- * that a deadline or an interval passes when the wait would otherwise block, without waiting in real time.
+ * Every test of a wait except {@link #systemTimerRunsCheckAgain()} measures the wait's time through a
+ * {@link ManualTimer}, so that a deadline or an interval passes when the wait would otherwise block, without waiting in
+ * real time, and starts its commands through a {@link FakeStarter}. The {@link WaitUntilTimerContract} runs on both the
+ * manual timer and the timer of a real wait, and the {@link CommandStarterContract} on both the fake starter and the
+ * shell starter, whose shell process is replaced by one that has already exited.
  */
 public final class WaitUntilTest
 {
@@ -231,6 +235,115 @@ public final class WaitUntilTest
 				requireThat(output, "output").contains("version");
 			}
 		}
+	}
+
+	/**
+	 * Verifies that the manual timer of these tests hands a wait each run that ends and measures the wait's time as the
+	 * timer of a real wait does.
+	 *
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void manualTimerMeasuresWait() throws InterruptedException
+	{
+		ManualTimer timer = new ManualTimer();
+		verifyTimer(new WaitUntilTimerContract(new WaitUntilTimerContract.Subject()
+		{
+			@Override
+			public WaitUntilTimer timer()
+			{
+				return timer;
+			}
+
+			@Override
+			public void endAfter(BlockingQueue<String> ended, String run, Duration delay)
+			{
+				timer.schedule(delay, () -> ended.add(run));
+			}
+		}));
+	}
+
+	/**
+	 * Verifies that the timer of a real wait hands the wait each run that ends and measures the wait's time, waiting a
+	 * few milliseconds in real time.
+	 *
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void systemTimerMeasuresWait() throws InterruptedException
+	{
+		WaitUntilTimer timer = WaitUntilSecrets.getWaitUntilAccess().systemTimer();
+		verifyTimer(new WaitUntilTimerContract(new WaitUntilTimerContract.Subject()
+		{
+			@Override
+			public WaitUntilTimer timer()
+			{
+				return timer;
+			}
+
+			@Override
+			public void endAfter(BlockingQueue<String> ended, String run, Duration delay)
+			{
+				// The run ends on another thread, as a command's process exits while the wait blocks
+				CompletableFuture.delayedExecutor(delay.toNanos(), TimeUnit.NANOSECONDS).execute(() -> ended.add(run));
+			}
+		}));
+	}
+
+	/**
+	 * Verifies that the fake starter of these tests starts a command's process as the shell starter does.
+	 *
+	 * @throws IOException          if the command cannot start
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void fakeStarterStartsCommand() throws IOException, InterruptedException
+	{
+		new CommandStarterContract((command, status, stdout, stderr) ->
+		{
+			FakeStarter starter = new FakeStarter();
+			starter.add(command, FakeProcess.exits(status, stdout + stderr));
+			return starter;
+		}).startsCommand();
+	}
+
+	/**
+	 * Verifies that the shell starter runs a command in the shell, in its folder, with the shell's standard error
+	 * delivered with its standard output. The shell process is replaced by one that has already exited, so no shell
+	 * starts; a process that the starter configures any other way fails the test.
+	 *
+	 * @throws IOException          if the command cannot start
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void shellStarterStartsCommand() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path folder = cleanup.add(Files.createTempDirectory("wait-until-shell-")).toAbsolutePath();
+			new CommandStarterContract((command, status, stdout, stderr) -> WaitUntilSecrets.getWaitUntilAccess().
+				shellStarter(text -> List.of("sh", "-c", text), folder, builder ->
+				{
+					if (!builder.command().equals(List.of("sh", "-c", command)))
+						throw new AssertionError("Unexpected program: " + builder.command());
+					if (!folder.toFile().equals(builder.directory()))
+						throw new AssertionError("The shell runs in " + builder.directory() + " instead of " + folder);
+					return new ExitedProcess(builder, status, stdout, stderr);
+				})).startsCommand();
+		}
+	}
+
+	/**
+	 * Runs every case of the timer contract.
+	 *
+	 * @param contract the contract of one timer
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	private static void verifyTimer(WaitUntilTimerContract contract) throws InterruptedException
+	{
+		contract.returnsEndedRun();
+		contract.returnsRunThatEndsDuringWait();
+		contract.returnsNothingAfterTimeout();
 	}
 
 	/**

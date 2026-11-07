@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.secrets.WaitUntilAccess;
 import com.holdmyspot.cat.common.secrets.WaitUntilSecrets;
 import com.holdmyspot.cat.common.secrets.WaitUntilTimer;
 
@@ -56,7 +57,27 @@ public final class WaitUntil
 {
 	static
 	{
-		WaitUntilSecrets.setWaitUntilAccess(WaitUntil::new);
+		WaitUntilSecrets.setWaitUntilAccess(new WaitUntilAccess()
+		{
+			@Override
+			public WaitUntil create(CommandStarter starter, WaitUntilTimer timer, PrintStream output, PrintStream error)
+			{
+				return new WaitUntil(starter, timer, output, error);
+			}
+
+			@Override
+			public WaitUntilTimer systemTimer()
+			{
+				return SYSTEM_TIMER;
+			}
+
+			@Override
+			public CommandStarter shellStarter(Function<String, List<String>> shell, Path directory,
+				ExecutableFiles.ProcessLauncher launcher)
+			{
+				return WaitUntil.shellStarter(shell, directory, launcher);
+			}
+		});
 	}
 
 	/**
@@ -180,12 +201,28 @@ public final class WaitUntil
 	 */
 	public static CommandStarter shellStarter(Function<String, List<String>> shell, Path directory)
 	{
+		return shellStarter(shell, directory, ProcessBuilder::start);
+	}
+
+	/**
+	 * Returns a starter that runs each command in a shell, in a folder, starting each shell process through a launcher.
+	 *
+	 * @param shell     returns the program and arguments that run a command in the harness's shell
+	 * @param directory the folder that the commands run in
+	 * @param launcher  starts the configured shell process
+	 * @return the starter
+	 * @throws NullPointerException if any argument is null
+	 */
+	private static CommandStarter shellStarter(Function<String, List<String>> shell, Path directory,
+		ExecutableFiles.ProcessLauncher launcher)
+	{
 		requireThat(shell, "shell").isNotNull();
 		requireThat(directory, "directory").isNotNull();
+		requireThat(launcher, "launcher").isNotNull();
 		return command ->
 		{
-			Process process = new ProcessBuilder(shell.apply(command)).directory(directory.toFile()).
-				redirectErrorStream(true).start();
+			Process process = launcher.start(new ProcessBuilder(shell.apply(command)).directory(directory.toFile()).
+				redirectErrorStream(true));
 			process.getOutputStream().close();
 			return process;
 		};
