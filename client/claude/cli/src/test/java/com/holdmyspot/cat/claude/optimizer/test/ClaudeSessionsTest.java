@@ -12,6 +12,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.ClaudeSessionHarness;
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
+import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
@@ -40,11 +41,16 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -52,6 +58,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1419,6 +1426,74 @@ public final class ClaudeSessionsTest
 				new HookRegistration("tools@market", "extra/hooks.json", "SessionStart", "", "start.sh"),
 				new HookRegistration("tools@market", ".claude-plugin/plugin.json", "Stop", "", "prompt"),
 				new HookRegistration("", "plugin/hooks/hooks.json", "UserPromptSubmit", "", "mapped.sh")));
+		}
+	}
+
+	/**
+	 * Returns the environments of a command that runs the optimizer, one for each route on which a session is
+	 * refused here, and how the reason starts on that route.
+	 *
+	 * @return the harness and run variables of the environment, and the start of the reason
+	 */
+	@DataProvider
+	public static Object[][] launchRoutes()
+	{
+		return new Object[][]
+		{
+			// Claude Code runs the command, so the session goes to the session launcher, and none serves the session
+			{Map.of("CLAUDECODE", "1"), "No CAT session launcher serves this session"},
+			// No harness runs the command, so the session starts in place within what it needs, which is unknown
+			{Map.of(), "CAT cannot start the session: it cannot read this Claude Code session's sandbox policy: "},
+			{Map.of("CODEX_THREAD_ID", "thread"), "CAT cannot start the session: Codex runs this command, and " +
+				"CAT's Claude Code plugin cannot read a Codex session's sandbox policy."},
+			{Map.of("CAT_RUN", "1", "CLAUDECODE", "1"), "claude-runner refuses to start a session"}
+		};
+	}
+
+	/**
+	 * Verifies that each of the optimizer's sessions takes the route that {@code claude-runner} gives a launch from
+	 * the same command: to the Claude Code process's session launcher when Claude Code runs the command, in place
+	 * within what the session needs when no harness runs it, and refused when only Codex runs it or when it runs in
+	 * a CAT run that lets its session request no sessions. No route starts a harness here, so the session ends as a
+	 * launch refusal, which the optimizer does not retry, with the reason that {@code claude-runner} prints.
+	 *
+	 * @param variables the harness and run variables of the command's environment
+	 * @param reason    the start of the reason on the route
+	 * @throws IOException          if a fixture cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	@Test(dataProvider = "launchRoutes", timeOut = 120_000)
+	public void sessionsFollowLaunchRoute(Map<String, String> variables, String reason)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-routes-")).toRealPath();
+			Path source = Files.createDirectories(home.resolve("source"));
+			Path runRoot = home.resolve("runs");
+			// A file where the npm cache belongs keeps what a session needs unknown, so no route starts a harness
+			Files.writeString(home.resolve(".npm"), "not a folder");
+			Map<String, String> environment = new HashMap<>(variables);
+			environment.put("PATH", "");
+			environment.put(Platform.current().homeVariable(), home.toString());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
+				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			StringWriter errors = new StringWriter();
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", source.toString(), "--run-root",
+				runRoot.toString(), "--model", "sonnet", "--effort", "low"}, environment, jvm.waiting(),
+				new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
+
+			SessionResult result = await(new ClaudeSessions(settings).start(new SessionRequest(SessionRole.JUDGE,
+				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
+				List.of())));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").startsWith(reason);
+			requireThat(result, "result").isEqualTo(new SessionResult.LaunchRefused(errors.toString().strip(),
+				List.of()));
 		}
 	}
 

@@ -13,7 +13,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
+import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -39,11 +41,16 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
+import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -51,6 +58,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1273,6 +1281,75 @@ public final class CodexSessionsTest
 				new HookRegistration("tools@market", "extra/hooks.json", "SessionStart", "startup", "b.sh"),
 				new HookRegistration("tools@market", ".codex-plugin/plugin.json", "Stop", "", "stop.sh"),
 				new HookRegistration("", "plugin/hooks/hooks.json", "UserPromptSubmit", "", "mapped.sh")));
+		}
+	}
+
+	/**
+	 * Returns the environments of a command that runs the optimizer, one for each route on which a session is
+	 * refused here, and how the reason starts on that route.
+	 *
+	 * @return the harness and run variables of the environment, and the start of the reason
+	 */
+	@DataProvider
+	public static Object[][] launchRoutes()
+	{
+		return new Object[][]
+		{
+			// Codex runs the command, so the session goes to the session launcher, and none serves the session
+			{Map.of("CODEX_THREAD_ID", "thread"), "No CAT session launcher serves this session"},
+			// No harness runs the command, so the session starts in place within what it needs, which is unknown
+			{Map.of(), "CAT cannot start the session: it cannot read this Codex session's sandbox policy: "},
+			{Map.of("CLAUDECODE", "1"), "CAT cannot start the session: Claude Code runs this command, and CAT's " +
+				"Codex plugin cannot read a Claude Code session's sandbox policy."},
+			{Map.of("CAT_RUN", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session"}
+		};
+	}
+
+	/**
+	 * Verifies that each of the optimizer's sessions takes the route that {@code codex-runner} gives a launch from
+	 * the same command: to the Codex process's session launcher when Codex runs the command, in place
+	 * within what the session needs when no harness runs it, and refused when only Claude Code runs it or when it runs in
+	 * a CAT run that lets its session request no sessions. No route starts a harness here, so the session ends as a
+	 * launch refusal, which the optimizer does not retry, with the reason that {@code codex-runner} prints.
+	 *
+	 * @param variables the harness and run variables of the command's environment
+	 * @param reason    the start of the reason on the route
+	 * @throws IOException          if a fixture cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	@Test(dataProvider = "launchRoutes", timeOut = 120_000)
+	public void sessionsFollowLaunchRoute(Map<String, String> variables, String reason)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-routes-")).toRealPath();
+			Path source = Files.createDirectories(home.resolve("source"));
+			Path runRoot = home.resolve("runs");
+			// A file where the npm cache belongs keeps what a session needs unknown, so no route starts a harness
+			Files.writeString(home.resolve(".npm"), "not a folder");
+			Map<String, String> environment = new HashMap<>(variables);
+			environment.put("PATH", "");
+			environment.put(Platform.current().homeVariable(), home.toString());
+			environment.put("CODEX_HOME", home.resolve(".codex").toString());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
+				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			StringWriter errors = new StringWriter();
+			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", source.toString(), "--run-root",
+				runRoot.toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment, jvm.waiting(),
+				new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
+
+			SessionResult result = await(new CodexSessions(settings).start(new SessionRequest(SessionRole.JUDGE,
+				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
+				List.of())));
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").startsWith(reason);
+			requireThat(result, "result").isEqualTo(new SessionResult.LaunchRefused(errors.toString().strip(),
+				List.of()));
 		}
 	}
 

@@ -4,6 +4,8 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
 import com.holdmyspot.cat.common.optimizer.adapter.PluginFiles;
@@ -14,11 +16,19 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.RuleVariableResolver;
+import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 
 import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -721,9 +731,18 @@ public final class ClaudeSessions extends RunnerSessions
 	}
 
 	/**
-	 * Creates the bridge that runs the real runner: each session is a request to the session launcher of the harness
-	 * process that runs the optimizer, which starts the runner of the settings' CAT artifact outside the optimizer's
-	 * sandbox.
+	 * Creates the bridge that runs the real runner. Each session follows the route that the runner's own launch
+	 * takes from the settings' environment:
+	 * <ul>
+	 *   <li>When Claude Code runs the optimizer, the session is a request to the session launcher of the Claude Code
+	 *   process, which starts the runner of the settings' CAT artifact outside the optimizer's sandbox. A run whose
+	 *   runner lets its session request sessions sends the session there too.</li>
+	 *   <li>Inside a run whose runner lets its session request none, or when only Codex runs the optimizer, the
+	 *   session is refused with the reason that the runner's launch gives.</li>
+	 *   <li>When no harness runs the optimizer, no harness sandbox confines it, and the session is served in this
+	 *   process within exactly what it needs.</li>
+	 * </ul>
+	 * A refused session fails with a {@link LaunchRefusedException}.
 	 *
 	 * @param settings how the runner is configured
 	 * @return the bridge
@@ -731,8 +750,73 @@ public final class ClaudeSessions extends RunnerSessions
 	private static Bridge productionBridge(Settings settings)
 	{
 		requireThat(settings, "settings").isNotNull();
-		return (arguments, input, output) -> SessionLauncherClient.production(settings.environment(),
-			settings.scope().waiting()).bridge(HARNESS_ID,
-			settings.artifact()).serve(arguments, input, output);
+		return (arguments, input, output) ->
+		{
+			Map<String, String> environment = settings.environment();
+			String[] args = arguments.toArray(String[]::new);
+			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, ClaudeRunnerCli.runningHarnesses(environment), args,
+				environment))
+			{
+				case LaunchRoute.Launcher _, LaunchRoute.Forward _ -> SessionLauncherClient.production(environment,
+					settings.scope().waiting()).bridge(HARNESS_ID, settings.artifact()).serve(arguments, input, output);
+				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
+				case LaunchRoute.Bounded _ -> serveInPlace(settings, args, input, output);
+				case LaunchRoute.InPlace _ ->
+				{
+					try (TemporaryDirectories cleanup = new TemporaryDirectories())
+					{
+						List<String> bounded;
+						try (HarnessRunnerScope scope = new MainHarnessRunnerScope(environment,
+							settings.scope().waiting()))
+						{
+							bounded = ClaudeRunnerCli.inPlaceArguments(scope, Path.of(""), args, environment, cleanup);
+						}
+						catch (SessionRefusedException e)
+						{
+							throw refused(e);
+						}
+						serveInPlace(settings, bounded.toArray(String[]::new), input, output);
+					}
+				}
+			}
+		};
+	}
+
+	/**
+	 * Serves a session in this process within the bound that its arguments name. The optimizer holds the session's
+	 * share of the harness capacity, so the runner takes none.
+	 *
+	 * @param settings how the runner is configured
+	 * @param args     the session's runner arguments, which name its bound
+	 * @param input    the bridge input
+	 * @param output   the bridge output
+	 * @throws LaunchRefusedException if the session's sandbox would not confine it as its bound requires
+	 * @throws IOException            if runner startup, the harness, or bridge I/O fails
+	 */
+	private static void serveInPlace(Settings settings, String[] args, Reader input, Writer output)
+		throws IOException
+	{
+		try
+		{
+			ClaudeRunnerCli.serve(settings.scope(), Path.of(""), args, input, output, settings.environment(),
+				_ -> HarnessCapacity.unlimited());
+		}
+		catch (SessionRefusedException e)
+		{
+			throw refused(e);
+		}
+	}
+
+	/**
+	 * Returns the refusal of a session whose sandbox cannot confine it.
+	 *
+	 * @param reason why the session is refused
+	 * @return the refusal, with the same reason
+	 */
+	private static LaunchRefusedException refused(SessionRefusedException reason)
+	{
+		LaunchRefusedException refused = new LaunchRefusedException(reason.getMessage());
+		refused.initCause(reason);
+		return refused;
 	}
 }
