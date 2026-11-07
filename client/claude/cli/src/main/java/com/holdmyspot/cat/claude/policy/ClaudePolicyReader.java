@@ -201,6 +201,7 @@ public final class ClaudePolicyReader
 		}
 
 		ParentPolicy policy = null;
+		Set<String> portLimitedDomains = new LinkedHashSet<>();
 		for (int subset = 0; subset < 1 << uncertain.size(); ++subset)
 		{
 			List<SettingsLayer> layers = new ArrayList<>(certain);
@@ -211,16 +212,17 @@ public final class ClaudePolicyReader
 			}
 			// A stable sort keeps the order of the layers within a scope
 			layers.sort(Comparator.comparing(SettingsLayer::scope));
-			ParentPolicy candidate = ClaudePolicyComputation.compute(layers, commandLine, session);
+			ClaudePolicyComputation.Computed computed = ClaudePolicyComputation.compute(layers, commandLine, session);
+			portLimitedDomains.addAll(computed.portLimitedDomains());
 			if (policy == null)
-				policy = candidate;
+				policy = computed.policy();
 			else
-				policy = policy.intersect(candidate);
+				policy = policy.intersect(computed.policy());
 		}
 		assert policy != null;
 		for (Path source : sources)
 			policy.requireTrusted(source);
-		return new ClaudePolicyReading(policy, start, sources);
+		return new ClaudePolicyReading(policy, start, sources, portLimitedDomains);
 	}
 
 	/**

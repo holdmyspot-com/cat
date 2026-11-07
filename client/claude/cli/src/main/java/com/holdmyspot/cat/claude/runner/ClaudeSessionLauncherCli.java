@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessHandleTable;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncherService;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
@@ -166,7 +167,45 @@ public final class ClaudeSessionLauncherCli
 					quoted.add("\"" + host + "\"");
 				additions.add(String.join(", ", quoted) + " to sandbox.network.allowedDomains");
 			}
-			return "add " + String.join(" and ", additions) + " in your Claude Code settings";
+			String entries = "add " + String.join(" and ", additions) + " in your Claude Code settings";
+			List<String> limited = portLimitedEntries(hosts);
+			if (limited.isEmpty())
+				return entries;
+			// Without this, the user sees the entry that they wrote and the host that it names listed as missing
+			return entries + " (your " + String.join(", ", limited) + " does not allow it: it limits the host to " +
+				"one port, and the requested session's commands reach a host on every port)";
+		}
+
+		/**
+		 * Returns the allowed domains of the session's settings that limit a host to one port and name one of
+		 * {@code hosts}.
+		 *
+		 * @param hosts the hosts that the session's sandbox lacks
+		 * @return the entries as the settings spell them, each quoted, in alphabetical order; empty before the first
+		 *   reading
+		 */
+		private List<String> portLimitedEntries(Set<String> hosts)
+		{
+			Set<String> domains = Set.of();
+			synchronized (this)
+			{
+				if (snapshot != null)
+					domains = snapshot.portLimitedDomains();
+			}
+			List<String> entries = new ArrayList<>();
+			for (String entry : new TreeSet<>(domains))
+			{
+				HostAccess named = HostAccess.listed(Set.of(entry.substring(0, entry.lastIndexOf(':'))));
+				for (String host : hosts)
+				{
+					if (named.allows(host))
+					{
+						entries.add("\"" + entry + "\"");
+						break;
+					}
+				}
+			}
+			return entries;
 		}
 
 		/**

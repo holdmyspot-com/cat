@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -314,6 +315,34 @@ public final class ClaudePolicyReaderTest
 			HostAccess hosts = fixture.policy().hosts();
 			requireThat(hosts.allows("api.example.com"), "listedHost").isTrue();
 			requireThat(hosts.allows("other.example.org"), "otherHost").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that an allowed domain that limits a host to one port gives no host, since the commands that the policy
+	 * bounds reach a host on every port, and that the reading names the entry instead of dropping it unseen. A domain
+	 * without a port gives its host.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the policy is refused
+	 */
+	@Test
+	public void portLimitedDomainGivesNoHost() throws IOException, PolicyRefusal
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["gateway.example:2455", "*.Example.com:8443",
+				 "[::1]:443", "api.example.org"]}}}""");
+
+			ClaudePolicyReading reading = fixture.read();
+
+			HostAccess hosts = reading.policy().hosts();
+			requireThat(hosts.allows("gateway.example"), "limitedHost").isFalse();
+			requireThat(hosts.allows("a.example.com"), "subdomain").isFalse();
+			requireThat(hosts.allows("api.example.org"), "unlimitedHost").isTrue();
+			requireThat(reading.portLimitedDomains(), "portLimitedDomains").
+				isEqualTo(Set.of("gateway.example:2455", "*.Example.com:8443", "[::1]:443"));
 		}
 	}
 

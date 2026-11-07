@@ -128,4 +128,31 @@ public final class ClaudeLauncherPolicyTest
 			requireThat(source.permissionEntries(writes, hosts), "entries").isEqualTo(expected);
 		}
 	}
+
+	/**
+	 * Verifies that when a host is missing and the session's settings hold an allowed domain that limits that host to
+	 * one port, the instruction names that entry, and that an entry that names no missing host stays out of it.
+	 *
+	 * @throws IOException   if the fixture cannot be created
+	 * @throws PolicyRefusal if the first reading is refused
+	 */
+	@Test
+	public void namesPortLimitedEntryOfMissingHost() throws IOException, PolicyRefusal
+	{
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true,
+				 "network": {"allowedDomains": ["gateway.example:2455", "db.example.com:5432"]}}}""");
+			ParentPolicySource source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
+			source.read(Optional.empty());
+
+			requireThat(source.permissionEntries(List.of(), Set.of("gateway.example")), "entries").isEqualTo(
+				"add \"gateway.example\" to sandbox.network.allowedDomains in your Claude Code settings (your " +
+					"\"gateway.example:2455\" does not allow it: it limits the host to one port, and the requested " +
+					"session's commands reach a host on every port)");
+			requireThat(source.permissionEntries(List.of(), Set.of("other.example.com")), "unrelatedHost").
+				isEqualTo("add \"other.example.com\" to sandbox.network.allowedDomains in your Claude Code settings");
+		}
+	}
 }

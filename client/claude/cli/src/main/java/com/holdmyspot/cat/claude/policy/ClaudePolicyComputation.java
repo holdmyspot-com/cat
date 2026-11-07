@@ -37,6 +37,12 @@ final class ClaudePolicyComputation
 	 */
 	private static final Pattern HOST_PATTERN = Pattern.compile("(\\*\\.)?[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*");
 	/**
+	 * A host pattern that is limited to one port: a host name, optionally preceded by {@code *.}, or an IPv6 address in
+	 * brackets, followed by {@code :} and the port.
+	 */
+	private static final Pattern PORT_PATTERN = Pattern.compile(
+		"((?:\\*\\.)?[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*|\\[[0-9A-Fa-f:.]+\\]):[0-9]{1,5}");
+	/**
 	 * The fix of a refusal that a setting causes.
 	 */
 	private static final String SETTING_FIX = "Correct or remove that setting, then start a new session";
@@ -56,6 +62,11 @@ final class ClaudePolicyComputation
 	 * The path resolver of the session.
 	 */
 	private final ClaudePaths paths;
+	/**
+	 * The allowed domains that limit a host to one port, as the settings spell them. The settings give commands a host
+	 * on every port, so such an entry gives them no host.
+	 */
+	private final Set<String> portLimitedDomains = new LinkedHashSet<>();
 
 	/**
 	 * Creates a computation.
@@ -78,14 +89,27 @@ final class ClaudePolicyComputation
 	 * @param layers      the settings, from the highest precedence to the lowest
 	 * @param commandLine the command line
 	 * @param session     the session
-	 * @return the policy
+	 * @return the policy, and the allowed domains that it leaves out because they limit a host to one port
 	 * @throws IOException   if a folder cannot be listed while matching a denied pattern
 	 * @throws PolicyRefusal if a setting has a value that CAT cannot read safely
 	 */
-	static ParentPolicy compute(List<SettingsLayer> layers, ClaudeCommandLine commandLine, ClaudeSession session)
+	static Computed compute(List<SettingsLayer> layers, ClaudeCommandLine commandLine, ClaudeSession session)
 		throws IOException, PolicyRefusal
 	{
-		return new ClaudePolicyComputation(List.copyOf(layers), commandLine, session).compute();
+		ClaudePolicyComputation computation = new ClaudePolicyComputation(List.copyOf(layers), commandLine, session);
+		ParentPolicy policy = computation.compute();
+		return new Computed(policy, Set.copyOf(computation.portLimitedDomains));
+	}
+
+	/**
+	 * A computed policy.
+	 *
+	 * @param policy             the policy
+	 * @param portLimitedDomains the allowed domains that the policy leaves out because they limit a host to one port,
+	 *                           as the settings spell them
+	 */
+	record Computed(ParentPolicy policy, Set<String> portLimitedDomains)
+	{
 	}
 
 	/**
@@ -381,6 +405,12 @@ final class ClaudePolicyComputation
 		for (String pattern : allowed)
 		{
 			String host = pattern.strip().toLowerCase(Locale.ROOT);
+			// Commands that the policy bounds reach a host on every port, which this entry does not allow
+			if (PORT_PATTERN.matcher(host).matches())
+			{
+				portLimitedDomains.add(pattern.strip());
+				continue;
+			}
 			// "*" lets commands reach every host; a denial leaves an unknown subset of them, so it then gives none
 			if (host.equals("*"))
 			{
