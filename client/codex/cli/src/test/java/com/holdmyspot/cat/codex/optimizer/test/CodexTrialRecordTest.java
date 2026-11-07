@@ -13,6 +13,8 @@ import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.optimizer.execution.TrialEvidence;
+import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 
 import java.io.IOException;
@@ -22,7 +24,6 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
@@ -52,57 +53,6 @@ public final class CodexTrialRecordTest
 	}
 
 	/**
-	 * A trial record of recorded activity and of files as they were when the trial started.
-	 *
-	 * @param activity the activity read from the events
-	 * @param initial the text of each file when the trial started, by path
-	 */
-	private record Recorded(SessionEvidence activity, Map<String, String> initial) implements TrialRecord
-	{
-		@Override
-		public List<List<String>> replies()
-		{
-			return List.of();
-		}
-
-		@Override
-		public List<SessionEvidence.Tool> tools()
-		{
-			List<SessionEvidence.Tool> tools = new ArrayList<>();
-			for (SessionEvidence.Entry entry : activity.entries())
-			{
-				if (entry instanceof SessionEvidence.Tool tool)
-					tools.add(tool);
-			}
-			return tools;
-		}
-
-		@Override
-		public List<String> received()
-		{
-			return activity.received();
-		}
-
-		@Override
-		public boolean exists(String path)
-		{
-			return false;
-		}
-
-		@Override
-		public Optional<String> content(String path)
-		{
-			return Optional.empty();
-		}
-
-		@Override
-		public Optional<String> initial(String path)
-		{
-			return Optional.ofNullable(initial.get(path));
-		}
-	}
-
-	/**
 	 * Verifies that the record marks command executions, and only them, as commands with their reported exit statuses,
 	 * so that the exit status and tool checks decide, and that the port declares that Codex reports exit statuses.
 	 *
@@ -122,7 +72,7 @@ public final class CodexTrialRecordTest
 					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				CodexSessions sessions = new CodexSessions(settings);
 				Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1, SANDBOX_ERROR)));
-				Recorded record = new Recorded(sessions.readEvidence(transcript), Map.of());
+				TrialEvidence record = trial(root, sessions.readEvidence(transcript), Map.of());
 
 				requireThat(sessions.reportsExitStatus(), "reportsExitStatus").isTrue();
 				requireThat(record.tools(), "tools").isNotEmpty();
@@ -171,8 +121,10 @@ public final class CodexTrialRecordTest
 			requireThat(cutEvidence.render(), "cut.render()").
 				contains("Output: " + SANDBOX_ERROR.length() + " characters; the agent received only part of it").
 				doesNotContain("all of it");
-			requireThat(decide("read-in-full error.log", new Recorded(wholeEvidence, initial)), "wholeRead").isTrue();
-			requireThat(decide("read-in-full error.log", new Recorded(cutEvidence, initial)), "cutRead").isFalse();
+			TrialEvidence wholeTrial = trial(root.resolve("whole"), wholeEvidence, initial);
+			TrialEvidence cutTrial = trial(root.resolve("cut"), cutEvidence, initial);
+			requireThat(decide("read-in-full error.log", wholeTrial), "wholeRead").isTrue();
+			requireThat(decide("read-in-full error.log", cutTrial), "cutRead").isFalse();
 		}
 	}
 
@@ -194,7 +146,7 @@ public final class CodexTrialRecordTest
 				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = new CodexSessions(settings);
 			String facts = "# Acme facts\n\nAcme ships orders from Ghent.\n";
-			Recorded record = new Recorded(sessions.readEvidence(RUNNING), Map.of("docs/facts.md", facts));
+			TrialEvidence record = trial(root, sessions.readEvidence(RUNNING), Map.of("docs/facts.md", facts));
 
 			List<SessionEvidence.Tool> commands = new ArrayList<>();
 			for (SessionEvidence.Tool tool : record.tools())
@@ -225,5 +177,30 @@ public final class CodexTrialRecordTest
 	private static boolean decide(String line, TrialRecord record) throws IOException, UndecidableToolException
 	{
 		return BuiltInTool.parse(line).decide(record, Map.of()).passed();
+	}
+
+	/**
+	 * Creates the trial record of recorded activity, of a trial that left no files, and of files as they were when the
+	 * trial started.
+	 *
+	 * @param directory the directory that receives the trial's files
+	 * @param activity  the activity read from the events
+	 * @param initial   the text of each file when the trial started, by path
+	 * @return the record
+	 * @throws IOException if the trial's files cannot be written
+	 */
+	private static TrialEvidence trial(Path directory, SessionEvidence activity, Map<String, String> initial)
+		throws IOException
+	{
+		Path effects = Files.createDirectories(directory.resolve("effects"));
+		Path initialProject = Files.createDirectories(directory.resolve("initial-project"));
+		for (Map.Entry<String, String> file : initial.entrySet())
+		{
+			Path target = initialProject.resolve(file.getKey());
+			Files.createDirectories(target.getParent());
+			Files.writeString(target, file.getValue());
+		}
+		return new TrialEvidence(new SessionResult.Completed(directory.resolve("transcript.jsonl"), List.of(), effects,
+			initialProject, null, null, null, List.of(), "none", List.of()), activity);
 	}
 }

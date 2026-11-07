@@ -13,16 +13,16 @@ import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.optimizer.execution.TrialEvidence;
+import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 /**
@@ -40,57 +40,6 @@ public final class ClaudeTrialRecordTest
 	 */
 	public ClaudeTrialRecordTest()
 	{
-	}
-
-	/**
-	 * A trial record of recorded activity and of files as they were when the trial started.
-	 *
-	 * @param activity the activity read from the events
-	 * @param initial the text of each file when the trial started, by path
-	 */
-	private record Recorded(SessionEvidence activity, Map<String, String> initial) implements TrialRecord
-	{
-		@Override
-		public List<List<String>> replies()
-		{
-			return List.of();
-		}
-
-		@Override
-		public List<SessionEvidence.Tool> tools()
-		{
-			List<SessionEvidence.Tool> tools = new ArrayList<>();
-			for (SessionEvidence.Entry entry : activity.entries())
-			{
-				if (entry instanceof SessionEvidence.Tool tool)
-					tools.add(tool);
-			}
-			return tools;
-		}
-
-		@Override
-		public List<String> received()
-		{
-			return activity.received();
-		}
-
-		@Override
-		public boolean exists(String path)
-		{
-			return false;
-		}
-
-		@Override
-		public Optional<String> content(String path)
-		{
-			return Optional.empty();
-		}
-
-		@Override
-		public Optional<String> initial(String path)
-		{
-			return Optional.ofNullable(initial.get(path));
-		}
 	}
 
 	/**
@@ -112,7 +61,7 @@ public final class ClaudeTrialRecordTest
 				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root, List::of, false, Map.of(),
 					root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				ClaudeSessions sessions = new ClaudeSessions(settings);
-				Recorded record = new Recorded(sessions.readEvidence(EVENTS), Map.of("sample.txt", "sample\n"));
+				TrialEvidence record = trial(root, sessions.readEvidence(EVENTS), Map.of("sample.txt", "sample\n"));
 
 				requireThat(sessions.reportsExitStatus(), "reportsExitStatus").isFalse();
 				requireThat(record.tools().stream().map(SessionEvidence.Tool::command).toList(), "command").
@@ -138,5 +87,30 @@ public final class ClaudeTrialRecordTest
 	private static boolean decide(String line, TrialRecord record) throws IOException, UndecidableToolException
 	{
 		return BuiltInTool.parse(line).decide(record, Map.of()).passed();
+	}
+
+	/**
+	 * Creates the trial record of recorded activity, of a trial that left no files, and of files as they were when the
+	 * trial started.
+	 *
+	 * @param directory the directory that receives the trial's files
+	 * @param activity  the activity read from the events
+	 * @param initial   the text of each file when the trial started, by path
+	 * @return the record
+	 * @throws IOException if the trial's files cannot be written
+	 */
+	private static TrialEvidence trial(Path directory, SessionEvidence activity, Map<String, String> initial)
+		throws IOException
+	{
+		Path effects = Files.createDirectories(directory.resolve("effects"));
+		Path initialProject = Files.createDirectories(directory.resolve("initial-project"));
+		for (Map.Entry<String, String> file : initial.entrySet())
+		{
+			Path target = initialProject.resolve(file.getKey());
+			Files.createDirectories(target.getParent());
+			Files.writeString(target, file.getValue());
+		}
+		return new TrialEvidence(new SessionResult.Completed(directory.resolve("transcript.jsonl"), List.of(), effects,
+			initialProject, null, null, null, List.of(), "none", List.of()), activity);
 	}
 }

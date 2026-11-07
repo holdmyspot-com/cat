@@ -20,7 +20,8 @@ module com.holdmyspot.cat.common.cli
 	exports com.holdmyspot.cat.common.optimizer.evidence to com.holdmyspot.cat.claude.cli,
 		com.holdmyspot.cat.codex.cli, com.holdmyspot.cat.common.cli.test, com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test;
-	exports com.holdmyspot.cat.common.optimizer.execution to com.holdmyspot.cat.common.cli.test;
+	exports com.holdmyspot.cat.common.optimizer.execution to com.holdmyspot.cat.common.cli.test,
+		com.holdmyspot.cat.claude.cli.test, com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.execution.prompt;
 	exports com.holdmyspot.cat.common.optimizer.hooks to com.holdmyspot.cat.common.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.inventory to com.holdmyspot.cat.common.cli.test;
