@@ -67,9 +67,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * Each accepted request runs on its own task of the executor. The task records the request's identifier, the
  * requested harness and the time in the launcher's log, starts the requested harness's runner within the parent's
- * sandbox policy, feeds it the request's records, and publishes its {@link Response}. When the holder of a request
- * ends before the request is answered, the launcher stops the runner and its descendants; once the request is
- * answered and its holder has ended, it deletes the request's folder.
+ * sandbox policy, feeds it the request's records, and publishes its {@link Response}. It then records the request's
+ * identifier, the response's status and reason and the time in the log, so that the answer stays readable for as long
+ * as the launcher runs, after the request's folder is gone. When the holder of a request ends before the request is
+ * answered, the launcher stops the runner and its descendants; once the request is answered and its holder has
+ * ended, it deletes the request's folder.
  * <p>
  * The launcher ends when its harness process ends, when another process reuses that process's identifier, or when
  * its folder's {@link SessionLauncherChannel#STOP_FILE} appears. It then stops every child, and deletes its requests'
@@ -886,10 +888,10 @@ public final class SessionLauncher implements Closeable
 	}
 
 	/**
-	 * Serves an accepted request and publishes its response.
+	 * Serves an accepted request, publishes its response and records the answer in the launcher's log.
 	 *
 	 * @param request the request
-	 * @throws IOException if the response cannot be published
+	 * @throws IOException if the response cannot be published or logged
 	 */
 	private void serveRequest(Served request) throws IOException
 	{
@@ -908,6 +910,20 @@ public final class SessionLauncher implements Closeable
 			response = request.answer(Status.FAILED, "The session launcher failed to run the session: " + e);
 		}
 		response.write(json, request.directory.resolve(SessionLauncherChannel.RESPONSE_FILE));
+		log("Answered request " + request.id + ": " + response.status().value() + answerReason(response));
+	}
+
+	/**
+	 * Returns the reason of an answer as the launcher's log records it.
+	 *
+	 * @param response the answer
+	 * @return a colon, a space and the reason on one line, or an empty string if the answer has no reason
+	 */
+	private static String answerReason(Response response)
+	{
+		if (response.reason().isEmpty())
+			return "";
+		return ": " + response.reason().replaceAll("\\R", " ");
 	}
 
 	/**

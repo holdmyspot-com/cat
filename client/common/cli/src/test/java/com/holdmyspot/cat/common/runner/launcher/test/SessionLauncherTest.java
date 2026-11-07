@@ -135,8 +135,75 @@ public final class SessionLauncherTest
 			fixture.executor.awaitIdle();
 
 			List<String> log = Files.readAllLines(launcher.directory().resolve(SessionLauncherChannel.LOG_FILE));
-			requireThat(log, "log").size().isEqualTo(1);
-			requireThat(log.get(0), "line").contains(accepted.toString()).contains(id).contains("claude");
+			List<String> acceptances = log.stream().filter(line -> line.contains("claude")).toList();
+			requireThat(acceptances, "acceptances").size().isEqualTo(1);
+			requireThat(acceptances.get(0), "line").contains(accepted.toString()).contains(id);
+		}
+	}
+
+	/**
+	 * Supplies the ways that a launcher answers a request.
+	 *
+	 * @return the case names
+	 */
+	@DataProvider
+	public Object[][] answers()
+	{
+		return new Object[][]{{"completed"}, {"refused"}, {"stopped"}, {"refused with a multi-line reason"}};
+	}
+
+	/**
+	 * Verifies that the launcher's log records each answer that it writes, on one line with the request's identifier,
+	 * the status, the reason and the time, so that the answer stays observable after the sender and the request's
+	 * folder are gone.
+	 *
+	 * @param how the case
+	 * @throws IOException          if fixture I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(dataProvider = "answers")
+	public void logsEachAnswer(String how) throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionLauncher launcher = fixture.launcher(fixture.harness))
+		{
+			requireThat(launcher.start(), "start").isTrue();
+			String id = fixture.publish(fixture.request(how.equals("stopped")));
+			ProcessIdentity holder = fixture.hold(id, 0, fixture.requestFile(id), fixture.sandbox);
+			switch (how)
+			{
+				case "completed" ->
+				{
+					requireThat(launcher.poll(), "poll").isTrue();
+					fixture.starter.awaitRunner().awaitRecords(2);
+				}
+				case "stopped" ->
+				{
+					requireThat(launcher.poll(), "acceptingPoll").isTrue();
+					fixture.starter.awaitRunner();
+					fixture.processes.end(holder);
+					requireThat(launcher.poll(), "cancellingPoll").isTrue();
+				}
+				default ->
+				{
+					String reason = "the settings file cannot be parsed";
+					if (how.equals("refused with a multi-line reason"))
+						reason += ":\nline 3";
+					fixture.policy.refuse(new PolicyRefusal(reason, "Fix the file, then start a new session"));
+					requireThat(launcher.poll(), "poll").isTrue();
+				}
+			}
+			fixture.executor.awaitIdle();
+
+			Response response = fixture.response(id);
+			List<String> log = Files.readAllLines(launcher.directory().resolve(SessionLauncherChannel.LOG_FILE));
+			List<String> answers = log.stream().
+				filter(line -> line.contains(id) && line.contains(response.status().value())).toList();
+			requireThat(answers, "answers").size().isEqualTo(1);
+			requireThat(answers.get(0), "answer").contains(fixture.clock.instant().toString());
+			String oneLine = response.reason().replaceAll("\\R", " ");
+			if (!response.reason().isEmpty())
+				requireThat(answers.get(0), "answer").contains(oneLine);
 		}
 	}
 
