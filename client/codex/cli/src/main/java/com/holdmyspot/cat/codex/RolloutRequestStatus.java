@@ -26,8 +26,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * When Codex compacts a thread, it keeps the user's messages but drops every reply, so a kept message looks like a
  * request that nobody answered. The rollout still records every reply. The rollout records when each message was sent,
- * the final answer of its turn, and whether the turn completed or was aborted; whether the answer finished the
- * requested work stays the reader's judgement from the answer's text.
+ * the final answer of its turn, and whether the turn completed, was aborted, or ended without completing when a later
+ * turn started; whether the answer finished the requested work stays the reader's judgement from the answer's text.
  * <p>
  * A kept message matches a message the rollout recorded before the compaction when their texts are equal, when the
  * kept text is the start of the recorded one, or when the kept text is the start and end of the recorded one around
@@ -53,10 +53,15 @@ final class RolloutRequestStatus
 	 */
 	private static final Pattern TRUNCATION_MARKER = Pattern.compile("\\n?…\\d+ (?:tokens|chars) truncated…\\n?");
 	/**
+	 * The start of the developer message that Codex writes when the user interrupts a turn. Codex writes it even when it
+	 * writes no {@code turn_aborted} event for the turn.
+	 */
+	private static final String ABORT_NOTICE_PREFIX = "<turn_aborted";
+	/**
 	 * The starts of the user-role text that Codex adds to a conversation rather than the user typing it.
 	 */
 	private static final List<String> INJECTED_TEXT_PREFIXES = List.of("<environment_context", "<codex_internal_context",
-		"<goal_context", "# AGENTS.md instructions", "<user_instructions", "<user_shell_command", "<turn_aborted",
+		"<goal_context", "# AGENTS.md instructions", "<user_instructions", "<user_shell_command", ABORT_NOTICE_PREFIX,
 		"<subagent_notification", "<agent_message_board_notification", "<skill", "<recommended_plugins",
 		"<model_instructions", "<user_verification_notice", "<image_resize_notice", "<current_time");
 	/**
@@ -64,7 +69,7 @@ final class RolloutRequestStatus
 	 * spacing its JSON has.
 	 */
 	private static final List<String> RECORD_MARKERS = List.of("\"user\"", "\"final_answer\"", "\"task_started\"",
-		"\"task_complete\"", "\"turn_aborted\"", "\"compacted\"");
+		"\"task_complete\"", "\"turn_aborted\"", "\"compacted\"", ABORT_NOTICE_PREFIX + ">");
 
 	private final List<UserMessage> userMessages;
 	private final Map<String, TurnOutcome> outcomesByTurn;
@@ -134,7 +139,16 @@ final class RolloutRequestStatus
 					String turnId = payload.path("turn_id").asString("");
 					switch (payloadType)
 					{
-						case "task_started" -> currentTurn = turnId;
+						case "task_started" ->
+						{
+							if (!currentTurn.isEmpty() && !turnId.isEmpty() && !turnId.equals(currentTurn))
+							{
+								TurnOutcome previous = outcomesByTurn.computeIfAbsent(currentTurn, _ -> new TurnOutcome());
+								if (previous.superseded == null)
+									previous.superseded = new Event(position, time);
+							}
+							currentTurn = turnId;
+						}
 						case "task_complete" ->
 						{
 							TurnOutcome outcome = outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome());
@@ -161,6 +175,12 @@ final class RolloutRequestStatus
 				{
 					outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome()).finalAnswers.
 						add(new Answer(position, time, text(payload)));
+				}
+				else if (role.equals("developer") && text(payload).stripLeading().startsWith(ABORT_NOTICE_PREFIX))
+				{
+					TurnOutcome outcome = outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome());
+					if (outcome.aborted == null)
+						outcome.aborted = new Event(position, time);
 				}
 			}
 		}
@@ -276,11 +296,14 @@ final class RolloutRequestStatus
 		Answer answer = outcome.answerAfter(message.position());
 		Event aborted = outcome.endAfter(outcome.aborted, message.position());
 		Event completed = outcome.endAfter(outcome.completed, message.position());
+		Event superseded = outcome.endAfter(outcome.superseded, message.position());
 		String end;
 		if (aborted != null)
 			end = "turn aborted at " + format(aborted.time());
 		else if (completed != null)
 			end = "turn completed";
+		else if (superseded != null)
+			end = "turn ended without completing";
 		else
 			end = "turn not finished";
 		if (answer == null)
@@ -519,6 +542,7 @@ final class RolloutRequestStatus
 		private Answer lastAgentMessage;
 		private Event completed;
 		private Event aborted;
+		private Event superseded;
 
 		/**
 		 * Returns the turn's last final answer after a message.

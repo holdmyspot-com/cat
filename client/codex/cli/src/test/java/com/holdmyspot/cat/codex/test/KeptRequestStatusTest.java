@@ -89,6 +89,75 @@ public final class KeptRequestStatusTest
 	}
 
 	/**
+	 * Verifies a kept message whose turn the user interrupted is reported aborted when Codex recorded the interruption
+	 * only as its {@code <turn_aborted>} developer message, with no {@code turn_aborted} event, and that a later turn
+	 * that completed does not change this. The hook and the {@code get-history request-status} command report the same
+	 * end.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void reportsAbortedKeptMessageFromAbortNotice() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Rollout rollout = new Rollout();
+			rollout.add(Rollout.taskStarted("2026-10-31T17:00:00Z", "t1"));
+			rollout.add(Rollout.user("2026-10-31T17:00:00Z", "t1", "Run the campaign"));
+			rollout.add(Rollout.commentary("2026-10-31T17:01:00Z", "t1", "Starting the campaign"));
+			rollout.add(Rollout.abortNotice("2026-10-31T17:20:18Z", "t1"));
+			rollout.answeredTurn("t2", "2026-10-31T17:30:00Z", "Summarize the campaign", "2026-10-31T17:31:00Z",
+				"The campaign is running");
+			rollout.compacted("2026-10-31T18:00:00Z", Rollout.typed("Run the campaign"));
+			Path codexHome = project.resolve("codex-home");
+			Path transcript = rollout.write(Files.createDirectories(codexHome.resolve("sessions/2026/10/31")).
+				resolve("rollout-2026-10-31T17-00-00-" + SESSION_ID + ".jsonl"));
+
+			String context = context(invokeHook(project, transcript, "compact"));
+			String status = CodexGetHistorySecrets.getCodexGetHistoryAccess().execute(scope,
+				Map.of("CODEX_HOME", codexHome.toString()), new String[]{SESSION_ID, "request-status"},
+				new ByteArrayInputStream("Run the campaign".getBytes(UTF_8)));
+
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer, " +
+				"turn aborted at 2026-10-31T17:20:18Z");
+			requireThat(status, "status").contains("before_compaction: \"Run the campaign\" " +
+				"(sent 2026-10-31T17:00:00Z): no answer, turn aborted at 2026-10-31T17:20:18Z\n");
+		}
+	}
+
+	/**
+	 * Verifies a kept message whose turn left no end record, and with no abort notice, is reported as ended without
+	 * completing once a later turn started.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void reportsKeptMessageEndedByLaterTurn() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Rollout rollout = new Rollout();
+			rollout.add(Rollout.taskStarted("2026-10-31T17:00:00Z", "t1"));
+			rollout.add(Rollout.user("2026-10-31T17:00:00Z", "t1", "Run the campaign"));
+			rollout.add(Rollout.commentary("2026-10-31T17:01:00Z", "t1", "Starting the campaign"));
+			rollout.answeredTurn("t2", "2026-10-31T17:30:00Z", "Summarize the campaign", "2026-10-31T17:31:00Z",
+				"The campaign is running");
+			rollout.compacted("2026-10-31T18:00:00Z", Rollout.typed("Run the campaign"),
+				Rollout.typed("Summarize the campaign"));
+
+			String context = context(invokeHook(project, rollout.write(project), "compact"));
+
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer, " +
+				"turn ended without completing\n").
+				contains("- \"Summarize the campaign\" (sent 2026-10-31T17:30:00Z): answered at 2026-10-31T17:31:00Z, " +
+					"turn completed: \"The campaign is running\"");
+		}
+	}
+
+	/**
 	 * Verifies a kept message that no turn answered is reported unanswered.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
@@ -463,6 +532,20 @@ public final class KeptRequestStatusTest
 		{
 			return record(time, "event_msg", Map.of("type", "turn_aborted", "turn_id", turnId, "reason",
 				"interrupted"));
+		}
+
+		/**
+		 * Returns the developer message that Codex writes when the user interrupts a turn. Codex sometimes writes it
+		 * without a {@code turn_aborted} event.
+		 *
+		 * @param time the message's time
+		 * @param turnId the interrupted turn's ID
+		 * @return the record
+		 */
+		static Map<String, Object> abortNotice(String time, String turnId)
+		{
+			return message(time, turnId, "developer", "<turn_aborted>\nThe previous turn was interrupted on purpose.",
+				"generic.turn_aborted");
 		}
 
 		/**
