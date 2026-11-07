@@ -594,9 +594,7 @@ final class RolloutRequestStatus
 					{
 						throw new IOException("Line " + lineNumber + " of " + rollout + " is not JSON: " + e.getMessage(), e);
 					}
-					// Ordinals only grow, so the first record at or past the end ends the inherited part of the rollout
-					JsonNode ordinal = record.path("ordinal");
-					if (ordinal.isNumber() && ordinal.asLong(0) >= segment.endOrdinalExclusive())
+					if (segment.excludes(record))
 						break;
 					add(record);
 				}

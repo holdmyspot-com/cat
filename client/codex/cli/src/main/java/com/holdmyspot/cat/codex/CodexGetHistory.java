@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex;
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.rollout.RolloutLineage;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
@@ -71,6 +72,11 @@ public final class CodexGetHistory
 	 * whether a later turn answered it: the last matching message before the thread's latest compaction, which the
 	 * compaction may have kept, and each matching message after it, which is a new request. The text arrives on
 	 * standard input because a Windows batch launcher would alter it as an argument.
+	 * <p>
+	 * A thread that was forked from another has a rollout that holds only what the fork recorded itself. Every
+	 * operation reads the records of the rollouts that the fork inherited its history from, up to where it inherited
+	 * them, before the fork's own. A rollout that cannot be found or read leaves out its records and what it inherited
+	 * without failing the operation.
 	 *
 	 * @param scope the process scope
 	 * @param environment supplies {@code CODEX_HOME}, the directory that contains Codex rollouts, or {@code HOME},
@@ -96,7 +102,8 @@ public final class CodexGetHistory
 		if (operationArguments[0].equals("request-status"))
 			result = requestStatus(scope, transcript, operationArguments, input);
 		else
-			result = SessionHistory.execute(scope, transcript, operationArguments);
+			result = SessionHistory.execute(scope, transcript, file -> RolloutLineage.lines(scope.json(), file),
+				operationArguments);
 		return "transcript=" + transcript + "\n" + result;
 	}
 

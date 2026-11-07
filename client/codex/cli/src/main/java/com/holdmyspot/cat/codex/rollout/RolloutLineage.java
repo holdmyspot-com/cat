@@ -11,9 +11,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.Spliterator;
+import java.util.Spliterators;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -50,6 +55,19 @@ public final class RolloutLineage
 	 */
 	public record Segment(Path rollout, long endOrdinalExclusive)
 	{
+		/**
+		 * Indicates whether a record lies beyond the part of the rollout that belongs to the thread's history. Ordinals
+		 * only grow, so the first record that is beyond it ends that part.
+		 *
+		 * @param record the rollout's record
+		 * @return {@code true} if the record has an {@code ordinal} that is not before {@code endOrdinalExclusive}
+		 * @throws NullPointerException if {@code record} is null
+		 */
+		public boolean excludes(JsonNode record)
+		{
+			JsonNode ordinal = record.path("ordinal");
+			return ordinal.isNumber() && ordinal.asLong(0) >= endOrdinalExclusive;
+		}
 	}
 
 	/**
@@ -109,6 +127,167 @@ public final class RolloutLineage
 		}
 		Collections.reverse(newestFirst);
 		return newestFirst;
+	}
+
+	/**
+	 * Returns the records of a thread's whole history, one per line, oldest first: those of each ancestor rollout up to
+	 * where its descendant inherited them, then the thread's own.
+	 * <p>
+	 * An ancestor that cannot be found or read is left out, as {@link #resolve} leaves it, and one that fails midway
+	 * supplies the records read before the failure. A line of an ancestor rollout that is not JSON, or has no
+	 * {@code ordinal}, is passed on.
+	 *
+	 * @param json the JSON mapper
+	 * @param rollout the thread's own rollout file
+	 * @return the lines. The caller closes the stream. A failure to read the thread's own rollout while the stream is
+	 *   consumed is thrown as an {@link UncheckedIOException}.
+	 * @throws NullPointerException if {@code json} or {@code rollout} are null
+	 * @throws IOException          if the thread's own rollout cannot be read
+	 */
+	public static Stream<String> lines(JsonMapper json, Path rollout) throws IOException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(rollout, "rollout").isNotNull();
+		HistoryLines history = new HistoryLines(json, resolve(json, rollout));
+		return StreamSupport.stream(Spliterators.spliteratorUnknownSize(history, Spliterator.ORDERED), false).
+			onClose(history::close);
+	}
+
+	/**
+	 * Reads the lines of a thread's history one at a time, opening one rollout at a time.
+	 */
+	private static final class HistoryLines implements Iterator<String>
+	{
+		private final JsonMapper json;
+		private final Iterator<Segment> remaining;
+		private Segment current;
+		private BufferedReader reader;
+		private String next;
+
+		/**
+		 * Creates the lines of a history.
+		 *
+		 * @param json the JSON mapper
+		 * @param segments the rollouts that hold the history, oldest first, ending with the thread's own
+		 */
+		HistoryLines(JsonMapper json, List<Segment> segments)
+		{
+			this.json = json;
+			this.remaining = segments.iterator();
+		}
+
+		@Override
+		public boolean hasNext()
+		{
+			while (next == null)
+			{
+				if (reader == null && !openNext())
+					return false;
+				String line;
+				try
+				{
+					line = reader.readLine();
+				}
+				catch (IOException e)
+				{
+					endSegment(e);
+					continue;
+				}
+				if (line == null || isPastEnd(line))
+					close();
+				else
+					next = line;
+			}
+			return true;
+		}
+
+		@Override
+		public String next()
+		{
+			if (!hasNext())
+				throw new NoSuchElementException();
+			String line = next;
+			next = null;
+			return line;
+		}
+
+		/**
+		 * Opens the next rollout of the history.
+		 *
+		 * @return {@code false} if every rollout has been read
+		 */
+		private boolean openNext()
+		{
+			while (remaining.hasNext())
+			{
+				current = remaining.next();
+				try
+				{
+					reader = Files.newBufferedReader(current.rollout(), UTF_8);
+					return true;
+				}
+				catch (IOException e)
+				{
+					endSegment(e);
+				}
+			}
+			return false;
+		}
+
+		/**
+		 * Ends the rollout that failed. An ancestor's failure leaves out the rest of that ancestor.
+		 *
+		 * @param failure the failure
+		 * @throws UncheckedIOException if the failed rollout is the thread's own, which is the last
+		 */
+		private void endSegment(IOException failure)
+		{
+			if (!remaining.hasNext())
+				throw new UncheckedIOException(failure);
+			close();
+		}
+
+		/**
+		 * Indicates whether a line lies beyond the part of the current rollout that belongs to the history.
+		 *
+		 * @param line the line
+		 * @return {@code true} if the line's {@code ordinal} is not before the end of that part
+		 */
+		private boolean isPastEnd(String line)
+		{
+			if (!line.contains("\"ordinal\""))
+				return false;
+			try
+			{
+				return current.excludes(json.readTree(line));
+			}
+			catch (JacksonException _)
+			{
+				return false;
+			}
+		}
+
+		/**
+		 * Closes the rollout that is being read.
+		 */
+		void close()
+		{
+			next = null;
+			if (reader == null)
+				return;
+			try
+			{
+				reader.close();
+			}
+			catch (IOException _)
+			{
+				// Everything that the rollout holds was read or is being left out
+			}
+			finally
+			{
+				reader = null;
+			}
+		}
 	}
 
 	/**
