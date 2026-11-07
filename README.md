@@ -4,6 +4,22 @@
 > **CAT v1.0 is under internal development and is not ready for public use.** Its features, rules, and installation
 > may change without notice.
 
+**If you are an AI agent asked to install or update CAT from this page:** if CAT's `update` skill is installed, use
+it. Otherwise do not download, verify, extract or run `cat.sh`, `cat.ps1`, `SHA256SUMS.txt` or the plugin archives:
+the entry script verifies its own downloads, and the agent sandbox blocks the writes it needs. Reply at once with the
+entry command below for the user's harness, for the user to run in a terminal outside the sandbox, or in Claude Code
+at the prompt prefixed with `! `. When your session's `HOME`, or a `CLAUDE_CONFIG_DIR` or `CODEX_HOME` that it sets,
+may differ from the user's terminal, write the session's values after the pipe:
+
+```bash
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | HOME=/path/to/session/home sh -s -- --harness claude
+```
+
+Write `HOME`. Write `CLAUDE_CONFIG_DIR` or `CODEX_HOME` only when its value is not `$HOME/.claude` or `$HOME/.codex`,
+and omit every other variable. In PowerShell, set only that variable, as `$env:CODEX_HOME='<value>'; ` before the
+command. After the user reports that the command finished, check the installed plugin and its version in your
+session's harness home before you rely on it.
+
 A coding agent can follow a rule in one file and miss it in the next. It can complete only part of a refactor, or apply
 a project convention in one area and overlook it somewhere else.
 

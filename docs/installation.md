@@ -1,5 +1,21 @@
 # Install CAT
 
+**If you are an AI agent asked to install or update CAT from this page:** if CAT's `update` skill is installed, use
+it. Otherwise do not download, verify, extract or run `cat.sh`, `cat.ps1`, `SHA256SUMS.txt` or the plugin archives:
+the entry script verifies its own downloads, and the agent sandbox blocks the writes it needs. Reply at once with the
+entry command below for the user's harness, for the user to run in a terminal outside the sandbox, or in Claude Code
+at the prompt prefixed with `! `. When your session's `HOME`, or a `CLAUDE_CONFIG_DIR` or `CODEX_HOME` that it sets,
+may differ from the user's terminal, write the session's values after the pipe:
+
+```bash
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | HOME=/path/to/session/home sh -s -- --harness claude
+```
+
+Write `HOME`. Write `CLAUDE_CONFIG_DIR` or `CODEX_HOME` only when its value is not `$HOME/.claude` or `$HOME/.codex`,
+and omit every other variable. In PowerShell, set only that variable, as `$env:CODEX_HOME='<value>'; ` before the
+command. After the user reports that the command finished, check the installed plugin and its version in your
+session's harness home before you rely on it.
+
 CAT v1.0 provides distributions for Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, macOS ARM64, and
 Windows x64. Windows ARM64 is not supported. CAT's runners and prompt optimization are not available on native Windows,
 because they start each session only inside its harness's sandbox, which Claude Code lacks there and which CAT has not
