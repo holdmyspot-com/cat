@@ -39,8 +39,8 @@ record InPlaceOptions(Path runRoot, List<Path> deniedReads, Path extraPermission
 	 * @param temporaryRoot where the run is kept when the launch names no {@code --run-root}
 	 * @return the options
 	 * @throws NullPointerException      if any of the arguments are null
-	 * @throws InvalidArgumentsException if one of the options lacks its value, or a denied read is not absolute
-	 * @throws IllegalArgumentException  if the launch names no {@code --run-root} outside a harness session
+	 * @throws InvalidArgumentsException if one of the options lacks its value, a denied read is not absolute, or the
+	 *                                   launch names no {@code --run-root} outside a harness session
 	 */
 	static InPlaceOptions parse(String[] args, HarnessTemporaryRoot temporaryRoot)
 	{

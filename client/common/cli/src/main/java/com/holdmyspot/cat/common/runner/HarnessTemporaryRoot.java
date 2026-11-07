@@ -80,7 +80,7 @@ public final class HarnessTemporaryRoot
 	 * Returns the default root for isolated harness runs.
 	 *
 	 * @return {@code runner-runs} in the session's temporary directory
-	 * @throws IllegalArgumentException if there is no harness session, so the command line must name
+	 * @throws InvalidArgumentsException if there is no harness session, so the command line must name
 	 *   {@code --run-root}
 	 * @throws UncheckedIOException if the session variable is not a UUID in canonical form, or if the session's CAT
 	 *   session directory cannot be created
@@ -97,7 +97,7 @@ public final class HarnessTemporaryRoot
 			throw new UncheckedIOException(e);
 		}
 		if (temp.isEmpty())
-			throw new IllegalArgumentException("--run-root is required outside a harness session: " + missingSession);
+			throw new InvalidArgumentsException("--run-root is required outside a harness session: " + missingSession);
 		return temp.get().resolve("runner-runs");
 	}
 
@@ -106,7 +106,7 @@ public final class HarnessTemporaryRoot
 	 *
 	 * @param runRoot the {@code --run-root} value, or {@code null} when the command line names none
 	 * @return the normalized absolute run root
-	 * @throws IllegalArgumentException if {@code runRoot} is null and there is no harness session
+	 * @throws InvalidArgumentsException if {@code runRoot} is null and there is no harness session
 	 * @throws UncheckedIOException if {@code runRoot} is null and the session's CAT session directory cannot be opened
 	 */
 	Path runRoot(String runRoot)

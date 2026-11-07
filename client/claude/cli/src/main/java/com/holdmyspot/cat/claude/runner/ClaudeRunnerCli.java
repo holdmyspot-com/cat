@@ -251,9 +251,9 @@ public final class ClaudeRunnerCli
 	 *                         starts
 	 * @return {@code args} followed by {@value PolicyBoundFile#OPTION} and the bound's file
 	 * @throws NullPointerException      if any of the arguments are null
-	 * @throws IllegalArgumentException  if the launch names no {@code --run-root} outside a harness session
 	 * @throws InvalidArgumentsException if an option that bounds the session lacks its value, a denied read is not
-	 *                                   absolute, or the file of extra permissions is missing or invalid
+	 *                                   absolute, the file of extra permissions is missing or invalid, or the launch
+	 *                                   names no {@code --run-root} outside a harness session
 	 * @throws IOException               if what the session needs cannot be determined, or the bound cannot be
 	 *                                   written
 	 */

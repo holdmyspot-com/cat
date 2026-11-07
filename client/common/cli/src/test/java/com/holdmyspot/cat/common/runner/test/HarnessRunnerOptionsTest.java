@@ -78,6 +78,25 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
+	 * Verifies that a launch outside a harness session that names no {@code --run-root} prints only the reason, as
+	 * one line without a stack trace, and ends with the status of a refused launch.
+	 */
+	@Test
+	public void missingRunRootEndsAsRefusedLaunch() throws IOException
+	{
+		HarnessTemporaryRoot outsideSession = HarnessTemporaryRoot.withoutSession("CLAUDE_CODE_SESSION_ID is unset");
+		StringWriter errors = new StringWriter();
+		int status = HarnessRunnerOptions.refusingInvalidArguments(() ->
+		{
+			HarnessRunnerOptions.parse(launch(), "harness", outsideSession);
+			return 0;
+		}, new PrintWriter(errors, true));
+		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+		requireThat(errors.toString(), "errors").isEqualTo("--run-root is required outside a harness session: " +
+			"CLAUDE_CODE_SESSION_ID is unset" + System.lineSeparator());
+	}
+
+	/**
 	 * Verifies that a launch that does not refuse its arguments ends with its own status.
 	 */
 	@Test

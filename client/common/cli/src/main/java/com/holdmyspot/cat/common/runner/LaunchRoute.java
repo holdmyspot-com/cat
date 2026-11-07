@@ -107,10 +107,10 @@ public sealed interface LaunchRoute
 		 * @return {@code args} followed by {@value PolicyBoundFile#OPTION} and the bound's file, a launch that takes
 		 *   the {@link Bounded} route
 		 * @throws NullPointerException      if any of the arguments are null
-		 * @throws IllegalArgumentException  if {@code harness} is blank, or the launch names no {@code --run-root}
-		 *                                   outside a harness session
+		 * @throws IllegalArgumentException  if {@code harness} is blank
 		 * @throws InvalidArgumentsException if an option that bounds the session lacks its value, a denied read is
-		 *                                   not absolute, or the file of extra permissions is missing or invalid
+		 *                                   not absolute, the file of extra permissions is missing or invalid, or the
+		 *                                   launch names no {@code --run-root} outside a harness session
 		 * @throws SessionRefusedException   if what the session needs cannot be determined; the message says that
 		 *                                   CAT cannot read the session's sandbox policy, and why
 		 * @throws IOException               if the bound cannot be written
