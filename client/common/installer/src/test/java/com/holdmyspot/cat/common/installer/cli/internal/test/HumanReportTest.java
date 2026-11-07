@@ -208,9 +208,9 @@ public final class HumanReportTest
 		if (kind != Result.UNINSTALLED)
 			requireThat(report, "report").contains("2.3");
 		if (restart)
-			requireThat(report, "report").contains("Start a new Product A session");
+			requireThat(report, "report").contains("Restart Product A for changes to take effect.");
 		else
-			requireThat(report, "report").doesNotContain("Start a new");
+			requireThat(report, "report").doesNotContain("Restart");
 	}
 
 	/**

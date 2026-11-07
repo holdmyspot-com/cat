@@ -106,7 +106,7 @@ public final class ReportAudienceTest
 			Optional.of(Path.of("/user/home")));
 
 		requireThat(text, "text").contains("Product harness-a").contains("1.2").
-			contains("Start a new Product harness-a session").contains("restart Product harness-a").
+			contains("Restart Product harness-a for changes to take effect.").
 			contains(Path.of("/user/home/settings.json").toString()).contains("permissions.allow").
 			contains("Bash(entry-one)").contains("Bash(entry-two)").doesNotContain("{").doesNotContain("\"result\"");
 	}

@@ -69,10 +69,7 @@ public final class HumanReport
 		String installed = "CAT is installed for " + product + ".";
 		if (!version.isEmpty())
 			installed = "CAT " + version + " is installed for " + product + ".";
-		String restart = "Start a new " + product + " session, or restart " + product + " if it is running, so " +
-			"that it loads CAT.";
-		String stop = "Start a new " + product + " session, or restart " + product + " if it is running, so " +
-			"that it stops loading CAT.";
+		String restart = "Restart " + product + " for changes to take effect.";
 		String headline;
 		switch (kind)
 		{
@@ -94,7 +91,7 @@ public final class HumanReport
 				if (version.isEmpty())
 					headline = "CAT is already installed for " + product + " and up to date.";
 			}
-			case UNINSTALLED -> headline = "CAT is removed from " + product + "." + System.lineSeparator() + stop;
+			case UNINSTALLED -> headline = "CAT is removed from " + product + "." + System.lineSeparator() + restart;
 			default ->
 			{
 				// STATUS
