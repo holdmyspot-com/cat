@@ -24,7 +24,9 @@ Give the launcher one of these argument lists, where `<thread-id>` is the thread
 reports whether a later turn answered it: `compacted_at=` gives the time of the thread's latest compaction, the
 `before_compaction:` line describes the last matching message sent before it, which the compaction may have kept, and
 each `after_compaction:` line describes a matching message sent after it, which is a new request. Each description
-gives when the message was sent and either when it was answered, with the answer's opening text, or `no answer`, and
-whether its turn completed, was aborted, or has not finished.
+gives when the message was sent and either when it was answered, with the answer's opening text, or `no answer in its
+own turn`, and whether its turn completed, was aborted, ended without completing when a later turn started, or has not
+finished. A message with no answer in its own turn also lists, by completion time, the later turns that completed, so
+that you can check whether one of them finished the work.
 
 <!-- cat:include ../shared-first-use-route.md -->

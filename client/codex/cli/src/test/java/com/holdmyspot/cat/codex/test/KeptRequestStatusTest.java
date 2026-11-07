@@ -83,8 +83,8 @@ public final class KeptRequestStatusTest
 
 			String context = context(invokeHook(project, rollout.write(project), "compact"));
 
-			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer, " +
-				"turn aborted at 2026-10-31T17:20:18Z");
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer in its " +
+				"own turn, turn aborted at 2026-10-31T17:20:18Z\n");
 		}
 	}
 
@@ -120,10 +120,11 @@ public final class KeptRequestStatusTest
 				Map.of("CODEX_HOME", codexHome.toString()), new String[]{SESSION_ID, "request-status"},
 				new ByteArrayInputStream("Run the campaign".getBytes(UTF_8)));
 
-			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer, " +
-				"turn aborted at 2026-10-31T17:20:18Z");
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer in its " +
+				"own turn, turn aborted at 2026-10-31T17:20:18Z; later turns completed at 2026-10-31T17:31:00Z\n");
 			requireThat(status, "status").contains("before_compaction: \"Run the campaign\" " +
-				"(sent 2026-10-31T17:00:00Z): no answer, turn aborted at 2026-10-31T17:20:18Z\n");
+				"(sent 2026-10-31T17:00:00Z): no answer in its own turn, turn aborted at 2026-10-31T17:20:18Z; later " +
+				"turns completed at 2026-10-31T17:31:00Z\n");
 		}
 	}
 
@@ -150,10 +151,73 @@ public final class KeptRequestStatusTest
 
 			String context = context(invokeHook(project, rollout.write(project), "compact"));
 
-			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer, " +
-				"turn ended without completing\n").
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer in its " +
+				"own turn, turn ended without completing; later turns completed at 2026-10-31T17:31:00Z\n").
 				contains("- \"Summarize the campaign\" (sent 2026-10-31T17:30:00Z): answered at 2026-10-31T17:31:00Z, " +
 					"turn completed: \"The campaign is running\"");
+		}
+	}
+
+	/**
+	 * Verifies a kept message that its own turn did not answer is reported with every later turn that completed, oldest
+	 * first, so that the reader can check whether one of them finished the work, and that a later turn that did not
+	 * complete is not listed.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void listsLaterCompletedTurns() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Rollout rollout = new Rollout();
+			rollout.add(Rollout.taskStarted("2026-10-31T17:00:00Z", "t1"));
+			rollout.add(Rollout.user("2026-10-31T17:00:00Z", "t1", "Run the campaign"));
+			rollout.add(Rollout.turnAborted("2026-10-31T17:20:18Z", "t1"));
+			rollout.answeredTurn("t2", "2026-10-31T17:30:00Z", "Summarize the campaign", "2026-10-31T17:31:00Z",
+				"The campaign is running");
+			rollout.add(Rollout.taskStarted("2026-10-31T17:40:00Z", "t3"));
+			rollout.add(Rollout.user("2026-10-31T17:40:00Z", "t3", "Stop the campaign"));
+			rollout.add(Rollout.turnAborted("2026-10-31T17:41:00Z", "t3"));
+			rollout.answeredTurn("t4", "2026-10-31T17:50:00Z", "Restart the campaign", "2026-10-31T17:50:30Z",
+				"The campaign restarted");
+			rollout.compacted("2026-10-31T18:00:00Z", Rollout.typed("Run the campaign"),
+				Rollout.typed("Summarize the campaign"));
+
+			String context = context(invokeHook(project, rollout.write(project), "compact"));
+
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer in " +
+				"its own turn, turn aborted at 2026-10-31T17:20:18Z; later turns completed at 2026-10-31T17:31:00Z, " +
+				"2026-10-31T17:50:30Z\n").
+				contains("(sent 2026-10-31T17:30:00Z): answered at 2026-10-31T17:31:00Z, turn completed: " +
+					"\"The campaign is running\"\n");
+		}
+	}
+
+	/**
+	 * Verifies a kept message whose own turn completed without an answer is reported without any later turn, because a
+	 * turn's own completion is not a later turn's.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void ownCompletedTurnIsNotListedAsLater() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Rollout rollout = new Rollout();
+			rollout.add(Rollout.taskStarted("2026-10-31T17:00:00Z", "t1"));
+			rollout.add(Rollout.user("2026-10-31T17:00:00Z", "t1", "Run the campaign"));
+			rollout.add(Rollout.record("2026-10-31T17:05:00Z", "event_msg", Map.of("type", "task_complete", "turn_id",
+				"t1")));
+			rollout.compacted("2026-10-31T18:00:00Z", Rollout.typed("Run the campaign"));
+
+			String context = context(invokeHook(project, rollout.write(project), "compact"));
+
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer in " +
+				"its own turn, turn completed\n");
 		}
 	}
 
@@ -176,8 +240,8 @@ public final class KeptRequestStatusTest
 
 			String context = context(invokeHook(project, rollout.write(project), "compact"));
 
-			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer, " +
-				"turn not finished");
+			requireThat(context, "context").contains("- \"Run the campaign\" (sent 2026-10-31T17:00:00Z): no answer in its " +
+				"own turn, turn not finished\n");
 		}
 	}
 
@@ -213,8 +277,8 @@ public final class KeptRequestStatusTest
 			requireThat(status, "status").contains("compacted_at=2026-10-31T02:00:00Z\n").
 				contains("before_compaction: \"" + UPDATE_REQUEST + "\" (sent 2026-10-31T01:40:00Z): answered at " +
 					"2026-10-31T01:43:00Z, turn completed: \"" + UPDATE_ANSWER + "\"\n").
-				contains("after_compaction: \"" + UPDATE_REQUEST + "\" (sent 2026-10-31T09:00:00Z): no answer, " +
-					"turn not finished\n");
+				contains("after_compaction: \"" + UPDATE_REQUEST + "\" (sent 2026-10-31T09:00:00Z): no answer in its " +
+					"own turn, turn not finished\n");
 		}
 	}
 

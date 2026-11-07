@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,8 @@ import tools.jackson.databind.json.JsonMapper;
  * request that nobody answered. The rollout still records every reply. The rollout records when each message was sent,
  * the final answer of its turn, and whether the turn completed, was aborted, or ended without completing when a later
  * turn started; whether the answer finished the requested work stays the reader's judgement from the answer's text.
+ * A message whose own turn has no answer also lists the turns that completed after it, because one of them may have
+ * finished its work.
  * <p>
  * A kept message matches a message the rollout recorded before the compaction when their texts are equal, when the
  * kept text is the start of the recorded one, or when the kept text is the start and end of the recorded one around
@@ -307,8 +310,34 @@ final class RolloutRequestStatus
 		else
 			end = "turn not finished";
 		if (answer == null)
-			return sent + "no answer, " + end;
+			return sent + "no answer in its own turn, " + end + laterCompletedTurns(message);
 		return sent + "answered at " + format(answer.time()) + ", " + end + ": " + quote(answer.text());
+	}
+
+	/**
+	 * Lists the turns that completed after a message and are not its own turn, so that a reader can check whether one of
+	 * them finished the requested work.
+	 *
+	 * @param message the message
+	 * @return {@code "; later turns completed at "} followed by the completion times, oldest first, or an empty string if
+	 *   no other turn completed after the message
+	 */
+	private String laterCompletedTurns(UserMessage message)
+	{
+		List<Event> completions = new ArrayList<>();
+		for (Map.Entry<String, TurnOutcome> turn : outcomesByTurn.entrySet())
+		{
+			Event completed = turn.getValue().endAfter(turn.getValue().completed, message.position());
+			if (completed != null && !turn.getKey().equals(message.turnId()))
+				completions.add(completed);
+		}
+		if (completions.isEmpty())
+			return "";
+		completions.sort(Comparator.comparingLong(Event::position));
+		StringJoiner times = new StringJoiner(", ", "; later turns completed at ", "");
+		for (Event completed : completions)
+			times.add(format(completed.time()));
+		return times.toString();
 	}
 
 	/**
