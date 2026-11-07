@@ -203,26 +203,7 @@ public final class SessionLauncherServiceTest
 		{
 			ParentPolicy policy = new ParentPolicy(true, List.of(home), List.of(), List.of(), List.of(),
 				HostAccess.listed(Set.of("model.example")), false, List.of());
-			return new ParentPolicySource()
-			{
-				@Override
-				public String harnessName()
-				{
-					return "Harness A";
-				}
-
-				@Override
-				public String permissionEntries(List<Path> writes, Set<String> hosts)
-				{
-					return "add the entries to the settings of Harness A";
-				}
-
-				@Override
-				public ParentPolicy read(Optional<String> askingThread)
-				{
-					return policy;
-				}
-			};
+			return new FakeParentPolicySource("Harness A", policy);
 		}
 
 		/**

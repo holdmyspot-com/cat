@@ -5,13 +5,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.runner.ClaudeSessionLauncherCli;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.contract.test.ParentPolicySourceContract;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -19,18 +22,45 @@ import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests the sandbox policy that the Claude Code session launcher serves its session with: the policy that the
- * session's settings give when the launcher starts, and later the policy of that same Claude Code process only.
+ * session's settings give when the launcher starts, and later the policy of that same Claude Code process only. The
+ * {@link ParentPolicySource} contract runs against the same source, over the session's settings and a stand-in for
+ * the Claude Code process.
  */
-public final class ClaudeLauncherPolicyTest
+public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 {
 	/**
 	 * Creates the test.
 	 */
 	public ClaudeLauncherPolicyTest()
 	{
+	}
+
+	@Override
+	protected String harnessName()
+	{
+		return ClaudePolicyReader.HARNESS_NAME;
+	}
+
+	@Override
+	protected String quoted(String value)
+	{
+		return "\"" + value + "\"";
+	}
+
+	@Override
+	protected boolean followsWidenedSettings()
+	{
+		return false;
+	}
+
+	@Override
+	protected Session session() throws IOException
+	{
+		return new ClaudeContractSession();
 	}
 
 	/**
@@ -156,6 +186,70 @@ public final class ClaudeLauncherPolicyTest
 					"session's commands reach a host on every port)");
 			requireThat(source.permissionEntries(List.of(), Set.of("other.example.com")), "unrelatedHost").
 				isEqualTo("add \"other.example.com\" to sandbox.network.allowedDomains in your Claude Code settings");
+		}
+	}
+
+	/**
+	 * A Claude Code session for the {@link ParentPolicySource} contract, whose user settings enable the sandbox and
+	 * whose Claude Code process runs until the contract ends it.
+	 */
+	private static final class ClaudeContractSession implements Session
+	{
+		private final ClaudeSessionFixture fixture = new ClaudeSessionFixture();
+		private final Path folder;
+		private final ParentPolicySource source;
+
+		/**
+		 * Creates the session.
+		 *
+		 * @throws IOException if the session's files cannot be created
+		 */
+		ClaudeContractSession() throws IOException
+		{
+			this.folder = Files.createDirectory(fixture.root.resolve("outside"));
+			allowWrites(List.of());
+			this.source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
+		}
+
+		@Override
+		public ParentPolicySource source()
+		{
+			return source;
+		}
+
+		@Override
+		public Path folder()
+		{
+			return folder;
+		}
+
+		@Override
+		public void allowWrites(List<Path> writes) throws IOException
+		{
+			List<String> paths = new ArrayList<>();
+			for (Path write : writes)
+				paths.add(write.toString());
+			fixture.userSettings("""
+				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": %s}}}""".formatted(
+				JsonMapper.builder().build().writeValueAsString(paths)));
+		}
+
+		@Override
+		public Optional<String> readOnlyThread()
+		{
+			return Optional.empty();
+		}
+
+		@Override
+		public void end()
+		{
+			fixture.running = false;
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			fixture.close();
 		}
 	}
 }

@@ -16,12 +16,12 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
-import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncher;
 import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
+import com.holdmyspot.cat.common.runner.launcher.test.FakeParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeProcessTable;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeRunner;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeStarter;
@@ -57,7 +57,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -158,7 +157,7 @@ public final class SessionLauncherClientTest
 		private final ProcessIdentity sandbox = processes.start(150, Optional.of(harness), List.of("sandbox"));
 		private final FakeStarter starter = new FakeStarter();
 		private final TrackedExecutor executor = new TrackedExecutor();
-		private final Policy policy;
+		private final FakeParentPolicySource policy;
 		private final SessionLauncher launcher;
 		private final HolderShells holders;
 		private final SessionLauncherClient client;
@@ -188,8 +187,8 @@ public final class SessionLauncherClientTest
 			channel = new SessionLauncherChannel(Files.createDirectory(root.resolve("home")));
 			Path work = Files.createDirectory(root.resolve("work"));
 			cache = Files.createDirectory(root.resolve("registry cache"));
-			policy = new Policy(new ParentPolicy(true, List.of(work, cache), List.of(), List.of(), List.of(),
-				HostAccess.listed(Set.of(MODEL_HOST, REGISTRY_HOST)), false, List.of()));
+			policy = new FakeParentPolicySource(PRODUCT, new ParentPolicy(true, List.of(work, cache), List.of(),
+				List.of(), List.of(), HostAccess.listed(Set.of(MODEL_HOST, REGISTRY_HOST)), false, List.of()));
 			launcher = new SessionLauncher(channel, "claude", harness, processes, policy,
 				(_, runFolder, deniedReads, _) -> new ChildNeeds(runFolder, List.of(), deniedReads, Set.of(MODEL_HOST)),
 				starter, new FileLocks(), clock, executor);
@@ -596,56 +595,6 @@ public final class SessionLauncherClientTest
 		public void destroy()
 		{
 			end();
-		}
-	}
-
-	/**
-	 * A sandbox policy source whose answer the test sets, for the session and for its threads.
-	 * <p>
-	 * <b>Thread Safety:</b> This class is thread-safe.
-	 */
-	private static final class Policy implements ParentPolicySource
-	{
-		private final ParentPolicy session;
-		private final Map<String, ParentPolicy> threads = new ConcurrentHashMap<>();
-
-		/**
-		 * Creates a source.
-		 *
-		 * @param session the policy of the session's threads that have none of their own
-		 */
-		Policy(ParentPolicy session)
-		{
-			this.session = session;
-		}
-
-		/**
-		 * Gives one thread a policy of its own.
-		 *
-		 * @param thread the thread's identifier
-		 * @param policy the thread's policy
-		 */
-		void allowThread(String thread, ParentPolicy policy)
-		{
-			threads.put(thread, policy);
-		}
-
-		@Override
-		public String harnessName()
-		{
-			return PRODUCT;
-		}
-
-		@Override
-		public String permissionEntries(List<Path> writes, Set<String> hosts)
-		{
-			return "add " + writes + " and " + hosts + " to the settings of " + PRODUCT;
-		}
-
-		@Override
-		public ParentPolicy read(Optional<String> askingThread)
-		{
-			return threads.getOrDefault(askingThread.orElse(""), session);
 		}
 	}
 

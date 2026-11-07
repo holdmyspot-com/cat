@@ -5,9 +5,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.codex.runner.CodexSessionLauncherCli;
+import com.holdmyspot.cat.codex.runner.TomlStrings;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.contract.test.ParentPolicySourceContract;
 import com.holdmyspot.cat.common.runner.launcher.LauncherRecord;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
@@ -20,10 +22,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -35,9 +39,11 @@ import tools.jackson.dataformat.toml.TomlMapper;
  * of the Codex process that the hook named and the session's configuration give, narrowed by the policy that Codex
  * records for the subagent thread that asks.
  * <p>
- * The rollout records follow those of Codex 0.160.0 ({@code codex exec}, Linux), with the instructions left out.
+ * The rollout records follow those of Codex 0.160.0 ({@code codex exec}, Linux), with the instructions left out. The
+ * {@link ParentPolicySource} contract runs against the same source, over the session's configuration and a stand-in
+ * for the Codex process.
  */
-public final class CodexLauncherPolicyTest
+public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 {
 	private static final long CODEX_PID = 5151;
 	private static final Instant CODEX_START = Instant.parse("2026-11-05T12:00:00.456Z");
@@ -55,6 +61,30 @@ public final class CodexLauncherPolicyTest
 	 */
 	public CodexLauncherPolicyTest()
 	{
+	}
+
+	@Override
+	protected String harnessName()
+	{
+		return "Codex";
+	}
+
+	@Override
+	protected String quoted(String value)
+	{
+		return "\"" + TomlStrings.escape(value) + "\"";
+	}
+
+	@Override
+	protected boolean followsWidenedSettings()
+	{
+		return true;
+	}
+
+	@Override
+	protected Session session() throws IOException
+	{
+		return new CodexContractSession();
 	}
 
 	/**
@@ -379,6 +409,26 @@ public final class CodexLauncherPolicyTest
 		}
 
 		/**
+		 * Rewrites the session's configuration so that it lets the commands write some folders besides the working
+		 * directory.
+		 *
+		 * @param roots the folders
+		 * @throws IOException if the file cannot be written
+		 */
+		void writableRoots(List<Path> roots) throws IOException
+		{
+			List<String> quoted = new ArrayList<>();
+			for (Path root : roots)
+				quoted.add("\"" + TomlStrings.escape(root.toString()) + "\"");
+			Files.writeString(home.resolve(".codex/config.toml"), """
+				sandbox_mode = "workspace-write"
+				[sandbox_workspace_write]
+				network_access = true
+				writable_roots = [%s]
+				""".formatted(String.join(", ", quoted)));
+		}
+
+		/**
 		 * Writes, in Codex's home, the rollout of a thread whose latest turn may read every file and write none.
 		 *
 		 * @param threadId  the thread
@@ -409,11 +459,24 @@ public final class CodexLauncherPolicyTest
 		 */
 		ParentPolicySource source(Optional<Instant> reportedStart)
 		{
+			return source(() -> reportedStart);
+		}
+
+		/**
+		 * Returns the launcher's policy source.
+		 *
+		 * @param reportedStart returns the start of the process with the hook's process identifier at each reading, or
+		 *                      empty if none runs
+		 * @return the source
+		 */
+		ParentPolicySource source(Supplier<Optional<Instant>> reportedStart)
+		{
 			HarnessProcesses processes = pid ->
 			{
-				if (pid != CODEX_PID || reportedStart.isEmpty())
+				Optional<Instant> start = reportedStart.get();
+				if (pid != CODEX_PID || start.isEmpty())
 					return Optional.empty();
-				return Optional.of(new ProcessDescription(pid, reportedStart, Optional.of("/usr/lib/codex/bin/codex"),
+				return Optional.of(new ProcessDescription(pid, start, Optional.of("/usr/lib/codex/bin/codex"),
 					Optional.of(List.of())));
 			};
 			LauncherRecord record = new LauncherRecord("codex", new ProcessIdentity(CODEX_PID, CODEX_START),
@@ -423,6 +486,74 @@ public final class CodexLauncherPolicyTest
 				List.of(system.resolve("managed.plist")), slashTmp));
 			return CodexSessionLauncherCli.policySource(reader, processes, record, Map.of("HOME", home.toString()),
 				home);
+		}
+	}
+
+	/**
+	 * A Codex session for the {@link ParentPolicySource} contract, whose Codex process runs until the contract ends
+	 * it.
+	 */
+	private static final class CodexContractSession implements Session
+	{
+		private final TemporaryDirectories cleanup = new TemporaryDirectories();
+		private final Fixture fixture;
+		private final Path folder;
+		private final ParentPolicySource source;
+		private volatile boolean running = true;
+
+		/**
+		 * Creates the session.
+		 *
+		 * @throws IOException if the session's files cannot be created
+		 */
+		CodexContractSession() throws IOException
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-launcher-policy")).toRealPath();
+			this.fixture = new Fixture(root);
+			this.folder = Files.createDirectory(root.resolve("outside"));
+			this.source = fixture.source(() ->
+			{
+				if (running)
+					return Optional.of(CODEX_START);
+				return Optional.empty();
+			});
+		}
+
+		@Override
+		public ParentPolicySource source()
+		{
+			return source;
+		}
+
+		@Override
+		public Path folder()
+		{
+			return folder;
+		}
+
+		@Override
+		public void allowWrites(List<Path> writes) throws IOException
+		{
+			fixture.writableRoots(writes);
+		}
+
+		@Override
+		public Optional<String> readOnlyThread() throws IOException
+		{
+			fixture.readOnlyRollout(SUBAGENT_THREAD, SESSION_ID);
+			return Optional.of(SUBAGENT_THREAD);
+		}
+
+		@Override
+		public void end()
+		{
+			running = false;
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			cleanup.close();
 		}
 	}
 }

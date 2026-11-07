@@ -17,7 +17,6 @@ import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
 import com.holdmyspot.cat.common.runner.launcher.AcceptedRequest;
 import com.holdmyspot.cat.common.runner.launcher.ChildBound;
 import com.holdmyspot.cat.common.runner.launcher.ChildNeedsSource;
-import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncher;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
@@ -41,7 +40,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -854,7 +852,7 @@ public final class SessionLauncherTest
 			requireThat(launcher.poll(), "poll").isTrue();
 			fixture.executor.awaitIdle();
 
-			Policy replay = new Policy(atStart);
+			FakeParentPolicySource replay = new FakeParentPolicySource(HARNESS_NAME, atStart);
 			ChildBound snapshot = new ChildBound(replay, fixture.needs()).snapshot(fixture.channel.stateRoot());
 			replay.allow(atRequest);
 			Path runRoot = fixture.channel.requestDirectory(id).resolve(SessionLauncherChannel.RUN_DIRECTORY);
@@ -944,92 +942,6 @@ public final class SessionLauncherTest
 	}
 
 	/**
-	 * A sandbox policy source whose answer the test sets.
-	 * <p>
-	 * <b>Thread Safety:</b> This class is thread-safe.
-	 */
-	private static final class Policy implements ParentPolicySource
-	{
-		private final Map<String, ParentPolicy> threads = new TreeMap<>();
-		private ParentPolicy current;
-		private PolicyRefusal refusal;
-
-		/**
-		 * Creates a source.
-		 *
-		 * @param policy the policy that it reads
-		 */
-		private Policy(ParentPolicy policy)
-		{
-			this.current = policy;
-		}
-
-		/**
-		 * Makes later reads return a policy.
-		 *
-		 * @param policy the policy
-		 */
-		private void allow(ParentPolicy policy)
-		{
-			synchronized (this)
-			{
-				current = policy;
-				refusal = null;
-			}
-		}
-
-		/**
-		 * Makes later reads for one asking thread return a policy of its own.
-		 *
-		 * @param thread the thread's identifier
-		 * @param policy the thread's policy
-		 */
-		private void allowThread(String thread, ParentPolicy policy)
-		{
-			synchronized (this)
-			{
-				threads.put(thread, policy);
-			}
-		}
-
-		/**
-		 * Makes later reads refuse.
-		 *
-		 * @param refusal the refusal
-		 */
-		private void refuse(PolicyRefusal refusal)
-		{
-			synchronized (this)
-			{
-				this.refusal = refusal;
-			}
-		}
-
-		@Override
-		public String harnessName()
-		{
-			return HARNESS_NAME;
-		}
-
-		@Override
-		public String permissionEntries(List<Path> writes, Set<String> hosts)
-		{
-			return "add " + writes + " and " + new TreeSet<>(hosts) + " to the settings of " + HARNESS_NAME;
-		}
-
-		@Override
-		public ParentPolicy read(Optional<String> askingThread) throws PolicyRefusal
-		{
-			synchronized (this)
-			{
-				if (refusal != null)
-					throw refusal;
-				return threads.getOrDefault(askingThread.orElse(""), current);
-			}
-		}
-	}
-
-	/**
 	 * A user's home directory with the inbox, a sender's files, a harness process with a sandbox process below it,
 	 * and fakes for the processes, the clock and the child runners.
 	 */
@@ -1048,7 +960,7 @@ public final class SessionLauncherTest
 		private final Path project;
 		private final Path turns;
 		private final Path nullDevice;
-		private final Policy policy;
+		private final FakeParentPolicySource policy;
 		private long nextPid = 1000;
 
 		/**
@@ -1069,7 +981,7 @@ public final class SessionLauncherTest
 			Files.writeString(project.resolve("marker"), "project bytes");
 			turns = Files.writeString(work.resolve("turns.jsonl"), TURN + "\n" + COMPLETE + "\n");
 			nullDevice = Files.writeString(home.resolve("null-device"), "");
-			policy = new Policy(policyWriting(work));
+			policy = new FakeParentPolicySource(HARNESS_NAME, policyWriting(work));
 		}
 
 		/**
