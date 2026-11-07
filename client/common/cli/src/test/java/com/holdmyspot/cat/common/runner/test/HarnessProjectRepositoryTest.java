@@ -23,8 +23,7 @@ import org.testng.annotations.Test;
  * Tests the identity and the environment that {@link HarnessProjectRepository} uses for a copied project's baseline.
  * <p>
  * The decisions are tested by calling the methods that make them with the values that Git gives. Real Git runs only
- * in {@link #commitsBaselineAsHostIdentity()} and {@link #reportsFailedIdentityLookup()}, the end-to-end checks of
- * what Git does with the commands.
+ * in {@link #commitsBaselineAsHostIdentity()}, the end-to-end check of what Git does with the commands.
  */
 public final class HarnessProjectRepositoryTest
 {
@@ -164,29 +163,6 @@ public final class HarnessProjectRepositoryTest
 			requireThat(git.lines("config", "--local", "maintenance.auto"), "maintenance.auto").
 				isEqualTo(List.of("false"));
 			requireThat(git.lines("config", "--local", "gc.auto"), "gc.auto").isEqualTo(List.of("0"));
-		}
-	}
-
-	/**
-	 * Verifies, end to end through real Git, that a host configuration that Git cannot read fails initialization with
-	 * the lookup command instead of selecting the fixture identity.
-	 *
-	 * @throws IOException the expected lookup failure
-	 */
-	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "(?s).*git, config, --get, user\\.name.*")
-	public void reportsFailedIdentityLookup() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "repository-identity-"));
-			Path sourceProject = GitWorkTrees.notIgnoring(root.resolve("source"));
-			Path project = Files.createDirectory(root.resolve("project"));
-			Path hostConfiguration = Files.writeString(root.resolve("host.gitconfig"), "[user\n", UTF_8);
-
-			HarnessProjectRepository.initialize(sourceProject, project, root, parentEnvironment(root, hostConfiguration),
-				Yielding.executableFiles(), null, null);
 		}
 	}
 

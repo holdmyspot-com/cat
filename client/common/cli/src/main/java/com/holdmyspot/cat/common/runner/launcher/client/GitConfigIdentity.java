@@ -14,7 +14,7 @@ import java.util.Optional;
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
-final class GitConfigIdentity implements GitIdentity
+public final class GitConfigIdentity implements GitIdentity
 {
 	/**
 	 * Creates the reader.
@@ -36,6 +36,24 @@ final class GitConfigIdentity implements GitIdentity
 	}
 
 	/**
+	 * Interprets the result of {@code git config --get} for one key.
+	 *
+	 * @param status the command's exit status
+	 * @param output the command's standard output
+	 * @return the value without surrounding white space, or empty if the command failed, as it does when the key is not
+	 *   set or the directory is not in a repository, or printed nothing
+	 * @throws NullPointerException if {@code output} is null
+	 */
+	public static Optional<String> interpret(int status, String output)
+	{
+		requireThat(output, "output").isNotNull();
+		String value = output.strip();
+		if (status != 0 || value.isEmpty())
+			return Optional.empty();
+		return Optional.of(value);
+	}
+
+	/**
 	 * Reads one configuration value.
 	 *
 	 * @param project the project directory
@@ -54,22 +72,20 @@ final class GitConfigIdentity implements GitIdentity
 			// Git reads no input here. Closing the pipe gives it an empty input on every platform, which a null
 			// device file would not: Windows names it NUL, not /dev/null.
 			process.getOutputStream().close();
-			String value;
-			try (InputStream output = process.getInputStream())
+			String output;
+			try (InputStream stream = process.getInputStream())
 			{
-				value = new String(output.readAllBytes(), UTF_8).strip();
+				output = new String(stream.readAllBytes(), UTF_8);
 			}
 			try
 			{
-				if (process.waitFor() != 0 || value.isEmpty())
-					return Optional.empty();
+				return interpret(process.waitFor(), output);
 			}
 			catch (InterruptedException e)
 			{
 				Thread.currentThread().interrupt();
 				throw new IOException("Interrupted while reading the Git identity of " + project, e);
 			}
-			return Optional.of(value);
 		}
 	}
 }
