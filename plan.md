@@ -4587,11 +4587,16 @@ These rules restate `design.md` §10 as checks for reviewers:
 	JDK/OS-only demonstrations. Retain the smallest integration check when replacing the dependency would hide a
 	defect at the actual product boundary, including packaged scripts, launchers, installers and harness interaction.
 - The only test that runs `CapCalibration` is `CapCalibrationTest`.
-- The only tests that run real Git are `ForkTest`, `DeliveryTest` (final diff and no-commit check) and `GitTest` (the
-	process adapter's exit status and argument passing); `InventoryScannerTest` writes its `.git` files by hand. Outside
-	the optimizer, `SessionIgnoreTest.addsLinesInRealWorkTree` (the exclude file of a real linked worktree) and
-	`ReleaseBuildTest.usesHeadOfWorkingTree` (the release build reads the working tree's `HEAD`) run real Git, each
-	under 1 second. The git-replay tests this list once named were removed with that skill (`c249a62d2b`). Every other test
+- The only tests that run real Git are `ForkTest`, `DeliveryTest` (every method: the final diff and the no-commit
+	check run through real worktrees) and `GitTest` (the process adapter's exit status and argument passing);
+	`InventoryScannerTest` writes its `.git` files by hand. Outside the optimizer, `SessionIgnoreTest.addsLinesInRealWorkTree`
+	(the exclude file of a real linked worktree), `ReleaseBuildTest.usesHeadOfWorkingTree` (the release build reads the
+	working tree's `HEAD`), `GitIdentityTest.readsConfiguredIdentity` (the identity read through `git config --get`) and
+	`HarnessProjectRepositoryTest.commitsBaselineAsHostIdentity` (the run copy becomes a repository with one commit
+	authored by the host identity) run real Git, each under 1 second. The Bats tests of the packaged entry points in
+	`bootstrap-claude.bats`, `bootstrap-codex.bats` and `codex-plugin-launchers.bats` reach Git only through the
+	production code that opens a session directory and assert nothing about Git's answer. Other tests take Git's answers
+	from `GitProjects`, `GitlessForks` or captured output (verified 2026-11-07 with a logging `git` first on `PATH`). The git-replay tests this list once named were removed with that skill (`c249a62d2b`). Every other test
 	asserts the commands CAT builds or its decisions from captured Git output (user ruling, 2026-10-02: assume Git works
 	as documented).
 - No Java test starts a runner, a harness process or a model. Only the WI-15 end-to-end runs start nested sessions.
