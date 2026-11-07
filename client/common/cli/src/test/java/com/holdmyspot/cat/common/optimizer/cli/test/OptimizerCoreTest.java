@@ -2044,10 +2044,9 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			Path cache = Path.of("/home/user/.cache/npm").toAbsolutePath();
-			Path file = scope.add(Files.createTempDirectory("cat-extra-")).resolve("needs.json");
-			Files.writeString(file, "{\"format_version\": 1, \"writes\": [\"" + cache + "\"], " +
-				"\"hosts\": [\"registry.example.com\"]}");
+			Path cache = cachePath("npm");
+			Path file = extraPermissionsFile(scope.add(Files.createTempDirectory("cat-extra-")), "needs.json",
+				List.of(cache), "[\"registry.example.com\"]");
 			ExtraPermissions expected = new ExtraPermissions(List.of(cache), Set.of("registry.example.com"));
 
 			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, file).status().
@@ -2134,9 +2133,9 @@ public final class OptimizerCoreTest
 			{
 			}));
 			Path directory = scope.add(Files.createTempDirectory("cat-extra-"));
-			Path recorded = extraPermissionsFile(directory, "recorded.json", "[\"/cache/kept\", \"/cache/removed\"]",
+			Path recorded = extraPermissionsFile(directory, "recorded.json", List.of(cachePath("kept"), cachePath("removed")),
 				"[\"kept.example.com\", \"removed.example.com\"]");
-			Path changed = extraPermissionsFile(directory, "changed.json", "[\"/cache/kept\", \"/cache/added\"]",
+			Path changed = extraPermissionsFile(directory, "changed.json", List.of(cachePath("kept"), cachePath("added")),
 				"[\"kept.example.com\", \"added.example.com\"]");
 			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, recorded).
 				status().campaignId();
@@ -2146,9 +2145,10 @@ public final class OptimizerCoreTest
 			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
 				null, changed));
 
-			requireThat(refusal, "refusal").contains(changed.toString()).contains("/cache/added").
-				contains("added.example.com").contains("/cache/removed").contains("removed.example.com").
-				doesNotContain("/cache/kept").doesNotContain("kept.example.com").contains("start a new campaign");
+			requireThat(refusal, "refusal").contains(changed.toString()).contains(cachePath("added").toString()).
+				contains("added.example.com").contains(cachePath("removed").toString()).contains("removed.example.com").
+				doesNotContain(cachePath("kept").toString()).doesNotContain("kept.example.com").
+				contains("start a new campaign");
 			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
 			requireThat(repository.load(id).header(), "header").isEqualTo(before);
 		}
@@ -2169,13 +2169,13 @@ public final class OptimizerCoreTest
 			{
 			}));
 			Path file = extraPermissionsFile(scope.add(Files.createTempDirectory("cat-extra-")), "file.json",
-				"[\"/cache/one\"]", "[\"one.example.com\"]");
+				List.of(cachePath("one")), "[\"one.example.com\"]");
 			repository.core().start(Path.of("CLAUDE.md"));
 
 			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
 				null, file));
 
-			requireThat(refusal, "refusal").contains("/cache/one").contains("one.example.com").
+			requireThat(refusal, "refusal").contains(cachePath("one").toString()).contains("one.example.com").
 				contains("start a new campaign");
 		}
 	}
@@ -2195,15 +2195,15 @@ public final class OptimizerCoreTest
 			{
 			}));
 			Path directory = scope.add(Files.createTempDirectory("cat-extra-"));
-			Path recorded = extraPermissionsFile(directory, "recorded.json", "[\"/cache/one\"]",
+			Path recorded = extraPermissionsFile(directory, "recorded.json", List.of(cachePath("one")),
 				"[\"one.example.com\"]");
-			Path empty = extraPermissionsFile(directory, "empty.json", "[]", "[]");
+			Path empty = extraPermissionsFile(directory, "empty.json", List.of(), "[]");
 			repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, recorded);
 
 			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
 				null, empty));
 
-			requireThat(refusal, "refusal").contains("/cache/one").contains("one.example.com").
+			requireThat(refusal, "refusal").contains(cachePath("one").toString()).contains("one.example.com").
 				contains("start a new campaign");
 		}
 	}
@@ -2223,9 +2223,9 @@ public final class OptimizerCoreTest
 			{
 			}));
 			Path directory = scope.add(Files.createTempDirectory("cat-extra-"));
-			Path recorded = extraPermissionsFile(directory, "recorded.json", "[\"/cache/a\", \"/cache/b\"]",
+			Path recorded = extraPermissionsFile(directory, "recorded.json", List.of(cachePath("a"), cachePath("b")),
 				"[\"a.example.com\", \"b.example.com\"]");
-			Path reordered = extraPermissionsFile(directory, "reordered.json", "[\"/cache/b\", \"/cache/a\"]",
+			Path reordered = extraPermissionsFile(directory, "reordered.json", List.of(cachePath("b"), cachePath("a")),
 				"[\"B.example.com\", \"a.example.com\"]");
 			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, recorded).
 				status().campaignId();
@@ -2252,7 +2252,7 @@ public final class OptimizerCoreTest
 			{
 			}));
 			Path file = extraPermissionsFile(scope.add(Files.createTempDirectory("cat-extra-")), "file.json",
-				"[\"/cache/a\"]", "[\"a.example.com\"]");
+				List.of(cachePath("a")), "[\"a.example.com\"]");
 			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, file).status().
 				campaignId();
 			Header before = repository.load(id).header();
@@ -2412,14 +2412,14 @@ public final class OptimizerCoreTest
 			{
 			}));
 			Path file = extraPermissionsFile(scope.add(Files.createTempDirectory("cat-extra-")), "file.json",
-				"[\"/cache/one\"]", "[]");
+				List.of(cachePath("one")), "[]");
 			repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, "Replies stay brief.");
 
 			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
 				"Replies cite their sources.", file));
 
 			requireThat(refusal, "refusal").contains("Replies stay brief.").contains("Replies cite their sources.").
-				contains("/cache/one");
+				contains(cachePath("one").toString());
 		}
 	}
 
@@ -2428,16 +2428,30 @@ public final class OptimizerCoreTest
 	 *
 	 * @param directory the directory that receives the file
 	 * @param name      the file's name
-	 * @param writes    the JSON array of the writes
+	 * @param writes    the paths that the file lists, written as the JSON text of each path's platform form
 	 * @param hosts     the JSON array of the hosts
 	 * @return the file
 	 * @throws IOException if the file cannot be written
 	 */
-	private static Path extraPermissionsFile(Path directory, String name, String writes, String hosts)
+	private static Path extraPermissionsFile(Path directory, String name, List<Path> writes, String hosts)
 		throws IOException
 	{
+		String writeTexts = JSON.writeValueAsString(writes.stream().map(Path::toString).toList());
 		return Files.writeString(directory.resolve(name),
-			"{\"format_version\": 1, \"writes\": " + writes + ", \"hosts\": " + hosts + "}");
+			"{\"format_version\": 1, \"writes\": " + writeTexts + ", \"hosts\": " + hosts + "}");
+	}
+
+	/**
+	 * Returns an absolute path below a {@code cache} folder at the root of the working directory's file store, which
+	 * is {@code /cache/<name>} on Linux and macOS and {@code C:\cache\<name>} on Windows, where a path that starts with
+	 * a separator is not absolute.
+	 *
+	 * @param name the name of the entry in the cache folder
+	 * @return the absolute path
+	 */
+	private static Path cachePath(String name)
+	{
+		return Path.of("").toAbsolutePath().getRoot().resolve("cache").resolve(name);
 	}
 
 	/**

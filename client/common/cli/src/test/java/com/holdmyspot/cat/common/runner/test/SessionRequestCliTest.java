@@ -169,8 +169,9 @@ public final class SessionRequestCliTest
 				Files.writeString(project.resolve("marker"), "project bytes");
 				Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
 				Path cache = root.resolve("cache");
-				Path needs = Files.writeString(root.resolve("needs.json"), "{\"format_version\": 1, \"writes\": [\"" +
-					cache + "\"], \"hosts\": [\"registry.example.com\"]}");
+				Path needs = Files.writeString(root.resolve("needs.json"), "{\"format_version\": 1, \"writes\": [" +
+					JsonMapper.builder().build().writeValueAsString(cache.toString()) +
+					"], \"hosts\": [\"registry.example.com\"]}");
 				Path invalid = Files.writeString(root.resolve("invalid.json"), "{\"format_version\": 1, \"logins\": []}");
 				ManualClock time = new ManualClock(Instant.EPOCH);
 				List<String> base = List.of("--harness", "harness-a", "--project", project.toString(), "--prompt",

@@ -175,7 +175,8 @@ public final class SessionRequestForwarderTest
 			}
 			catch (InvalidArgumentsException e)
 			{
-				requireThat(e.getMessage(), "message").contains("relative/cache").contains(file.toString());
+				requireThat(e.getMessage(), "message").contains(Path.of("relative/cache").toString()).
+					contains(file.toString());
 			}
 			try (Stream<Path> files = Files.list(fixture.requests))
 			{

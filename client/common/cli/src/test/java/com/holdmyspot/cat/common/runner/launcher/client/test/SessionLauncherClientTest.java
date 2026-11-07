@@ -106,6 +106,18 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
+	 * Returns a path as the JSON text that a file of extra permissions holds, which escapes the backslashes of a
+	 * Windows path.
+	 *
+	 * @param path the path
+	 * @return the path as a quoted JSON string
+	 */
+	private static String jsonText(Path path)
+	{
+		return JsonMapper.builder().build().writeValueAsString(path.toString());
+	}
+
+	/**
 	 * Runs after each poll of the launcher, on the thread that sends the request.
 	 */
 	@FunctionalInterface
@@ -717,8 +729,8 @@ public final class SessionLauncherClientTest
 			fixture.policy.allowThread("thread-a", new ParentPolicy(true, List.of(fixture.root.resolve("work")),
 				List.of(), List.of(), List.of(), HostAccess.listed(Set.of(MODEL_HOST)), false, List.of()));
 			Files.writeString(fixture.root.resolve("needs.json"), """
-				{"format_version": 1, "writes": ["%s"], "hosts": []}
-				""".formatted(fixture.cache));
+				{"format_version": 1, "writes": [%s], "hosts": []}
+				""".formatted(jsonText(fixture.cache)));
 			StringWriter errors = new StringWriter();
 
 			int status = fixture.launch(errors, "--project", fixture.project.toString(), "--model", "m", "--effort",
@@ -1121,8 +1133,8 @@ public final class SessionLauncherClientTest
 		{
 			fixture.serve();
 			Files.writeString(fixture.root.resolve("needs.json"), """
-				{"format_version": 1, "writes": ["%s"], "hosts": ["Registry.Example"]}
-				""".formatted(fixture.cache));
+				{"format_version": 1, "writes": [%s], "hosts": ["Registry.Example"]}
+				""".formatted(jsonText(fixture.cache)));
 
 			int asking = fixture.launch(new StringWriter(), "--project", fixture.project.toString(), "--model", "m",
 				"--effort", "e", "--input", fixture.records().toString(), "--extra-permissions", "needs.json");

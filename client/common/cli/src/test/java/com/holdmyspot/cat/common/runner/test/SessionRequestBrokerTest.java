@@ -303,7 +303,7 @@ public final class SessionRequestBrokerTest
 			broker.scan();
 			JsonNode response = fixture.await("bad");
 			requireThat(response.path("status").asString(), "status").isEqualTo("refused");
-			requireThat(response.path("reason").asString(), "reason").contains("relative/cache");
+			requireThat(response.path("reason").asString(), "reason").contains(Path.of("relative/cache").toString());
 		}
 	}
 

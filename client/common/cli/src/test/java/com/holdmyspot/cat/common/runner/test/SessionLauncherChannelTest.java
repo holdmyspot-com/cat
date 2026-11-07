@@ -235,7 +235,9 @@ public final class SessionLauncherChannelTest
 	@DataProvider
 	public Object[][] invalidExtraPermissions()
 	{
-		return new Object[][]{{"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}", "relative/cache"},
+		// The refusal names a path in the form of the platform's separators
+		return new Object[][]{{"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}",
+			Path.of("relative/cache").toString()},
 			{"{\"format_version\": 1, \"hosts\": [\"*.example\"]}", "*.example"},
 			{"{\"format_version\": 1, \"logins\": []}", "logins"},
 			{"{\"format_version\": 2}", "format_version"}, {"[]", "extra_permissions"}};

@@ -61,8 +61,8 @@ public final class ExtraPermissionsTest
 			Path directory = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
 			Path cache = directory.resolve("npm-cache");
 			Path file = file(directory, """
-				{"format_version": 1, "writes": ["%s"], "hosts": ["Registry.Example.com"]}
-				""".formatted(cache));
+				{"format_version": 1, "writes": [%s], "hosts": ["Registry.Example.com"]}
+				""".formatted(json.writeValueAsString(cache.toString())));
 
 			ExtraPermissions permissions = ExtraPermissions.read(json, file);
 
@@ -103,7 +103,8 @@ public final class ExtraPermissionsTest
 		return new Object[][]
 			{
 				{"{\"format_version\": 1, \"writes\": [], \"hosts\": [], \"logins\": []}", "logins"},
-				{"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}", "relative/cache"},
+				// The rejection names a path in the form of the platform's separators
+				{"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}", Path.of("relative/cache").toString()},
 				{"{\"format_version\": 1, \"hosts\": [\"*.example.com\"]}", "*.example.com"},
 				{"{\"format_version\": 1, \"hosts\": [\" \"]}", "host"},
 				{"{\"format_version\": 2, \"hosts\": []}", "format_version"},
