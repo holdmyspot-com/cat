@@ -2714,7 +2714,9 @@ outside a run does not start the session itself. When a Claude Code or Codex ses
 hook, which the harness runs outside the session's sandbox, starts a session launcher for it. The session launcher
 is one process per harness process, outside the sandbox. It serves only that session, and it starts each session
 that the session asks for inside that session's harness's own sandbox. The hook starts none in a CAT run, whose
-launches the run's runner serves, and none on native Windows, where the runner launchers refuse every launch.
+launches the run's runner serves, none on native Windows, where the runner launchers refuse every launch, and none in
+a Codex session that runs on Codex's shared background server (started without `--no-daemon`), which outlives the
+session, so a launcher there would outlive it too; a runner launcher there says to start Codex with `--no-daemon`.
 
 The session launcher keeps its state in a folder below the user's home that only session launchers write,
 `~/.cat/sessions`. The asking command writes the launch, packed into one archive with its options and inputs, to an
