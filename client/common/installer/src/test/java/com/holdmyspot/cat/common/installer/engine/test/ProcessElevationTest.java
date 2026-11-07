@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
 import com.holdmyspot.cat.common.installer.secrets.ProcessElevationSecrets;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -161,9 +162,33 @@ public final class ProcessElevationTest
 			}
 			finally
 			{
-				// The directory must be writable again for the cleanup to delete its files
 				if (Files.isDirectory(probe))
-					requireThat(probe.toFile().setWritable(true), "writable").isTrue();
+					restoreDeletable(probe);
+			}
+		}
+	}
+
+	/**
+	 * Undoes what the fake program did to make the deletion fail, so that the cleanup can delete the fixture. On POSIX
+	 * the directory is writable again. On Windows the read-only attribute of a directory does not stop deletion of its
+	 * files, so the attribute is cleared from each file in the directory instead.
+	 *
+	 * @param probe the directory that received the program's output file
+	 * @throws IOException if the directory cannot be listed or an attribute cannot be changed
+	 */
+	private static void restoreDeletable(Path probe) throws IOException
+	{
+		if (!Platform.current().isWindows())
+		{
+			requireThat(probe.toFile().setWritable(true), "writable").isTrue();
+			return;
+		}
+		try (DirectoryStream<Path> files = Files.newDirectoryStream(probe))
+		{
+			for (Path file : files)
+			{
+				Files.setAttribute(file, "dos:readonly", false);
+				requireThat(Files.getAttribute(file, "dos:readonly"), "readOnly").isEqualTo(false);
 			}
 		}
 	}
