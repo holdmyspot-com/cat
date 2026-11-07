@@ -4,15 +4,19 @@ import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.FakeProcessLauncher;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.launcher.LauncherRecord;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncherStart;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncherStart.DetachedStarter;
+import com.holdmyspot.cat.common.secrets.SessionLauncherStartSecrets;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.lang.ProcessBuilder.Redirect;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,7 +25,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,7 +59,8 @@ public final class SessionLauncherStartTest
 
 	/**
 	 * Verifies that the hook writes its data to the launcher's folder and starts the plugin's launcher on that
-	 * folder, with the launcher's output going to the folder's log.
+	 * folder, reading the null device and with its output and error output appended to the folder's log. A stand-in
+	 * for the operating system records the process that the real starter starts.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -70,17 +74,20 @@ public final class SessionLauncherStartTest
 			SessionLauncherChannel channel = new SessionLauncherChannel(root.resolve("home"));
 			LauncherRecord record = record(root);
 			Path plugin = root.resolve("plugin");
-			RecordingStarter starter = new RecordingStarter();
+			FakeProcessLauncher processes = new FakeProcessLauncher();
 
 			boolean started = SessionLauncherStart.start(channel, record, plugin, Platform.LINUX_X64,
-				Map.of("PATH", ""), new FileLocks(), starter);
+				Map.of("PATH", ""), new FileLocks(), starter(processes));
 
 			Path folder = channel.launcherDirectory("claude", 4242, record.process().start());
 			requireThat(started, "started").isTrue();
-			requireThat(starter.commands, "commands").isEqualTo(List.of(List.of(
+			requireThat(commands(processes), "commands").isEqualTo(List.of(List.of(
 				plugin.resolve("bin").resolve("session-launcher").toString(), folder.toString())));
 			Path log = channel.logFile("claude", 4242, record.process().start());
-			requireThat(starter.logs, "logs").isEqualTo(List.of(log));
+			ProcessBuilder launcher = processes.started().getFirst();
+			requireThat(launcher.redirectInput(), "input").isEqualTo(Redirect.from(new File("/dev/null")));
+			requireThat(launcher.redirectOutput(), "output").isEqualTo(Redirect.appendTo(log.toFile()));
+			requireThat(launcher.redirectError(), "error").isEqualTo(Redirect.appendTo(log.toFile()));
 			requireThat(log.getParent(), "logsDirectory").isDirectory();
 			requireThat(LauncherRecord.read(json, folder.resolve(SessionLauncherChannel.LAUNCHER_FILE)), "written").
 				isEqualTo(record);
@@ -103,7 +110,7 @@ public final class SessionLauncherStartTest
 			SessionLauncherChannel channel = new SessionLauncherChannel(root.resolve("home"));
 
 			boolean started = SessionLauncherStart.start(channel, record(root), root.resolve("plugin"),
-				Platform.LINUX_X64, Map.of("PATH", ""), new FileLocks(), new RecordingStarter());
+				Platform.LINUX_X64, Map.of("PATH", ""), new FileLocks(), starter(new FakeProcessLauncher()));
 
 			requireThat(started, "started").isTrue();
 			requireThat(channel.inbox(), "inbox").isDirectory();
@@ -133,13 +140,13 @@ public final class SessionLauncherStartTest
 			SessionLauncherChannel channel = new SessionLauncherChannel(root.resolve("home"));
 			LauncherRecord record = record(root);
 			Path plugin = root.resolve("plugin");
-			RecordingStarter starter = new RecordingStarter();
+			FakeProcessLauncher processes = new FakeProcessLauncher();
 
 			SessionLauncherStart.start(channel, record, plugin, Platform.LINUX_X64,
-				Map.of("PATH", programs.toString()), new FileLocks(), starter);
+				Map.of("PATH", programs.toString()), new FileLocks(), starter(processes));
 
 			Path folder = channel.launcherDirectory("claude", 4242, record.process().start());
-			requireThat(starter.commands, "commands").isEqualTo(List.of(List.of(setsid.toString(),
+			requireThat(commands(processes), "commands").isEqualTo(List.of(List.of(setsid.toString(),
 				plugin.resolve("bin").resolve("session-launcher").toString(), folder.toString())));
 		}
 	}
@@ -156,13 +163,13 @@ public final class SessionLauncherStartTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();
 			SessionLauncherChannel channel = new SessionLauncherChannel(root.resolve("home"));
-			RecordingStarter starter = new RecordingStarter();
+			FakeProcessLauncher processes = new FakeProcessLauncher();
 
 			boolean started = SessionLauncherStart.start(channel, record(root), root.resolve("plugin"),
-				Platform.WINDOWS_X64, Map.of(), new FileLocks(), starter);
+				Platform.WINDOWS_X64, Map.of(), new FileLocks(), starter(processes));
 
 			requireThat(started, "started").isFalse();
-			requireThat(starter.commands, "commands").isEmpty();
+			requireThat(commands(processes), "commands").isEmpty();
 			requireThat(Files.exists(channel.launchers(), LinkOption.NOFOLLOW_LINKS), "launchers").isFalse();
 		}
 	}
@@ -180,14 +187,14 @@ public final class SessionLauncherStartTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();
 			SessionLauncherChannel channel = new SessionLauncherChannel(root.resolve("home"));
-			RecordingStarter starter = new RecordingStarter();
+			FakeProcessLauncher processes = new FakeProcessLauncher();
 
 			boolean started = SessionLauncherStart.start(channel, record(root), root.resolve("plugin"),
 				Platform.LINUX_X64, Map.of(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE),
-				new FileLocks(), starter);
+				new FileLocks(), starter(processes));
 
 			requireThat(started, "started").isFalse();
-			requireThat(starter.commands, "commands").isEmpty();
+			requireThat(commands(processes), "commands").isEmpty();
 			requireThat(Files.exists(channel.launchers(), LinkOption.NOFOLLOW_LINKS), "launchers").isFalse();
 		}
 	}
@@ -210,16 +217,16 @@ public final class SessionLauncherStartTest
 				record.process().start()));
 			Files.writeString(folder.resolve(SessionLauncherChannel.LAUNCHER_FILE), "running launcher's data");
 			FileLocks fileLocks = new FileLocks();
-			RecordingStarter starter = new RecordingStarter();
+			FakeProcessLauncher processes = new FakeProcessLauncher();
 			Optional<ExclusiveFileLock> held = fileLocks.tryLock(folder.resolve(SessionLauncherChannel.LOCK_FILE),
 				file -> FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE));
 			try (ExclusiveFileLock _ = held.orElseThrow())
 			{
 				boolean started = SessionLauncherStart.start(channel, record, root.resolve("plugin"),
-					Platform.LINUX_X64, Map.of(), fileLocks, starter);
+					Platform.LINUX_X64, Map.of(), fileLocks, starter(processes));
 
 				requireThat(started, "started").isFalse();
-				requireThat(starter.commands, "commands").isEmpty();
+				requireThat(commands(processes), "commands").isEmpty();
 				requireThat(Files.readString(folder.resolve(SessionLauncherChannel.LAUNCHER_FILE)), "data").
 					isEqualTo("running launcher's data");
 			}
@@ -341,6 +348,28 @@ public final class SessionLauncherStartTest
 	}
 
 	/**
+	 * Returns the real starter of launcher processes, which starts them through a stand-in for the operating system.
+	 *
+	 * @param processes the stand-in for the operating system's process start
+	 * @return the starter
+	 */
+	private static DetachedStarter starter(FakeProcessLauncher processes)
+	{
+		return SessionLauncherStartSecrets.getSessionLauncherStartAccess().processes(processes);
+	}
+
+	/**
+	 * Returns the command lines of the processes that were started.
+	 *
+	 * @param processes the stand-in for the operating system's process start
+	 * @return the command lines, in start order
+	 */
+	private static List<List<String>> commands(FakeProcessLauncher processes)
+	{
+		return processes.started().stream().map(builder -> List.copyOf(builder.command())).toList();
+	}
+
+	/**
 	 * Returns the hook data of a Claude Code session.
 	 *
 	 * @param root the test's folder
@@ -351,22 +380,5 @@ public final class SessionLauncherStartTest
 		return new LauncherRecord("claude", new ProcessIdentity(4242, Instant.parse("2026-11-05T12:00:00.123Z")),
 			"session-1", root.resolve("project"), Optional.of(root.resolve("transcript.jsonl")), "startup",
 			root.resolve("home/.claude"), "1.0");
-	}
-
-	/**
-	 * Records the launchers that the hook starts.
-	 */
-	private static final class RecordingStarter implements DetachedStarter
-	{
-		private final List<List<String>> commands = new ArrayList<>();
-		private final List<Path> logs = new ArrayList<>();
-
-		@Override
-		public ProcessHandle start(List<String> command, Path log)
-		{
-			commands.add(List.copyOf(command));
-			logs.add(log);
-			return ProcessHandle.current();
-		}
 	}
 }

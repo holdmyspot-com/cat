@@ -3,12 +3,14 @@ package com.holdmyspot.cat.common.runner.launcher;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.ExecutableFiles.ProcessLauncher;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
+import com.holdmyspot.cat.common.secrets.SessionLauncherStartSecrets;
 import java.io.File;
 import java.io.IOException;
 import java.lang.ProcessBuilder.Redirect;
@@ -68,21 +70,40 @@ public final class SessionLauncherStart
 	/**
 	 * Starts operating-system processes, which inherit the starter's environment and working directory.
 	 */
-	public static final DetachedStarter PROCESSES = (command, log) ->
+	public static final DetachedStarter PROCESSES = processes(ProcessBuilder::start);
+
+	static
 	{
-		File logFile = log.toFile();
-		ProcessBuilder builder = new ProcessBuilder(command).
-			redirectInput(Redirect.from(new File("/dev/null"))).
-			redirectOutput(Redirect.appendTo(logFile)).
-			redirectError(Redirect.appendTo(logFile));
-		return builder.start().toHandle();
-	};
+		SessionLauncherStartSecrets.setSessionLauncherStartAccess(SessionLauncherStart::processes);
+	}
 
 	/**
 	 * Prevents instantiation.
 	 */
 	private SessionLauncherStart()
 	{
+	}
+
+	/**
+	 * Returns a starter of processes that the supplied launcher starts, which inherit the starter's environment and
+	 * working directory.
+	 *
+	 * @param launcher starts each configured process
+	 * @return the starter
+	 * @throws NullPointerException if {@code launcher} is null
+	 */
+	private static DetachedStarter processes(ProcessLauncher launcher)
+	{
+		requireThat(launcher, "launcher").isNotNull();
+		return (command, log) ->
+		{
+			File logFile = log.toFile();
+			ProcessBuilder builder = new ProcessBuilder(command).
+				redirectInput(Redirect.from(new File("/dev/null"))).
+				redirectOutput(Redirect.appendTo(logFile)).
+				redirectError(Redirect.appendTo(logFile));
+			return launcher.start(builder).toHandle();
+		};
 	}
 
 	/**
