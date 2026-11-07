@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -23,6 +24,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -36,6 +38,8 @@ public final class ClaudePromptOptimizerTest
 	private static final Path FIXTURE = Path.of("../../common/cli/src/test/resources/optimizer/cli/campaign.json");
 	private static final String CAMPAIGN = "fixture-campaign";
 	private static final String SESSION_ID = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
+	private static final String LAUNCH_REFUSAL = "No CAT session launcher serves this session";
+	private static final String MISSING_TARGET = "The target does not exist: ";
 
 	/**
 	 * Creates the test.
@@ -263,6 +267,57 @@ public final class ClaudePromptOptimizerTest
 			StringBuilder output = new StringBuilder();
 			int exit = run(setup, Map.of(), List.of("frobnicate"), output);
 			requireThat(exit, "exit").isEqualTo(2);
+		}
+	}
+
+	/**
+	 * Returns environments of {@code start}, each with how its refusal begins when no session launcher serves the
+	 * session that runs it.
+	 *
+	 * @return the environments and the beginnings of the refusals
+	 */
+	@DataProvider
+	public static Object[][] launchRoutes()
+	{
+		return new Object[][]
+		{
+			// Claude Code runs the command, so its sessions go to the session launcher, and none serves the session
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"), LAUNCH_REFUSAL},
+			// No harness runs the command, so its sessions start in place, and no launcher needs to serve it
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID), MISSING_TARGET},
+			// Only Codex runs the command, so each of its sessions is refused, with the reason, when it starts
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CODEX_THREAD_ID", "thread"), MISSING_TARGET},
+			// A run whose runner lets its session request no sessions refuses each session when it starts
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1", "CAT_RUN", "1"), MISSING_TARGET}
+		};
+	}
+
+	/**
+	 * Verifies that {@code start} is refused, before it starts any session, for want of a session launcher only when
+	 * its sessions go to the session launcher. On every other route the command goes on, here to refuse the target
+	 * that does not exist.
+	 *
+	 * @param variables the environment's variables, besides the home folder
+	 * @param refusal   how the refusal begins
+	 * @throws IOException if a file cannot be written
+	 */
+	@Test(dataProvider = "launchRoutes")
+	public void startNeedsLauncherOnLauncherRoute(Map<String, String> variables, String refusal)
+		throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			Map<String, String> environment = new HashMap<>(variables);
+			environment.put(Platform.current().homeVariable(), setup.home().toString());
+			StringBuilder output = new StringBuilder();
+
+			int exit = run(setup, environment, List.of("start", "prompts/missing.md"), output);
+
+			requireThat(exit, "exit").isEqualTo(1);
+			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(json.get("message").asString(), "message").startsWith(refusal);
 		}
 	}
 }

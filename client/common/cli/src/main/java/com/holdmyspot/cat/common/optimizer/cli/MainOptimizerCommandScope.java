@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import io.github.cowwoc.pouch10.core.LazyReference;
@@ -21,9 +22,11 @@ import io.github.cowwoc.pouch10.core.Reference;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.random.RandomGenerator;
 
 /**
@@ -38,6 +41,18 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * The launcher's name in the runtime image's {@code bin} directory.
 	 */
 	private static final String LAUNCHER = "prompt-optimizer";
+	/**
+	 * The variable that Claude Code sets in the environment of its sessions' commands.
+	 */
+	private static final String CLAUDE_MARKER = "CLAUDECODE";
+	/**
+	 * The value of {@link #CLAUDE_MARKER} in a Claude Code session's command.
+	 */
+	private static final String CLAUDE_MARKER_VALUE = "1";
+	/**
+	 * The variable that Codex sets, in the environment of its sessions' commands, to the ID of the command's thread.
+	 */
+	private static final String CODEX_MARKER = "CODEX_THREAD_ID";
 	private final Harness harness;
 	private final HarnessSandbox trialSandbox;
 	private final SessionHarness sessionHarness;
@@ -156,11 +171,48 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		return trialSandbox;
 	}
 
+	/**
+	 * Returns why the session launcher would refuse every session, but only when this command's sessions go to the
+	 * session launcher, as their bridge decides from the environment: when this scope's harness runs the command, or
+	 * a run whose runner lets its session request sessions does. On every other route no launcher needs to serve the
+	 * host session: sessions that start in place need none, and a route that refuses its sessions refuses each of
+	 * them, with its reason, when it starts.
+	 *
+	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions or
+	 *   the sessions do not go to a session launcher
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException           if the launchers' state cannot be listed
+	 */
 	@Override
 	protected final Optional<String> launchRefusal() throws IOException
 	{
 		ensureOpen();
-		return SessionLauncherClient.production(environment, waiting()).refusal();
+		String id = harness.commandName();
+		return switch (LaunchRoute.decide(id, id, runningHarnesses(environment), new String[0], environment))
+		{
+			case LaunchRoute.Launcher _, LaunchRoute.Forward _ ->
+				SessionLauncherClient.production(environment, waiting()).refusal();
+			case LaunchRoute.Refused _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> Optional.empty();
+		};
+	}
+
+	/**
+	 * Returns the harnesses whose sessions run a command, as their markers in the command's environment say: Claude
+	 * Code sets {@value #CLAUDE_MARKER} to {@value #CLAUDE_MARKER_VALUE}, and Codex sets {@value #CODEX_MARKER} to
+	 * the ID of the thread whose command it is.
+	 *
+	 * @param environment the command's environment
+	 * @return the command names of the harnesses, empty if no harness runs the command
+	 */
+	private static Set<String> runningHarnesses(Map<String, String> environment)
+	{
+		Set<String> harnesses = new HashSet<>();
+		if (CLAUDE_MARKER_VALUE.equals(environment.get(CLAUDE_MARKER)))
+			harnesses.add(Harness.CLAUDE.commandName());
+		String thread = environment.get(CODEX_MARKER);
+		if (thread != null && !thread.isBlank())
+			harnesses.add(Harness.CODEX.commandName());
+		return Set.copyOf(harnesses);
 	}
 
 	@Override

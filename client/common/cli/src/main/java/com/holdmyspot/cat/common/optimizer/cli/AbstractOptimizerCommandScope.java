@@ -155,9 +155,10 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 
 	/**
 	 * Returns why the session launcher that starts this command's nested sessions would refuse every session, found
-	 * without sending a request or starting a session.
+	 * without sending a request or starting a session. Only sessions that go to a session launcher need one.
 	 *
-	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions
+	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions or
+	 *   the sessions do not go to a session launcher
 	 * @throws IllegalStateException if this scope is closed
 	 * @throws IOException           if the launchers' state cannot be listed
 	 */
