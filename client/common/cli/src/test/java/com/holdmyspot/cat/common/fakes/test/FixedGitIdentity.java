@@ -8,6 +8,8 @@ import java.util.Optional;
 
 /**
  * A Git identity that answers with the same values for every project, so that a test never starts Git to read it.
+ * {@code FixedGitIdentityContractTest} runs on it the {@code GitIdentityContract} that {@code GitIdentityTest} runs on
+ * Git's reader.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */

@@ -15,7 +15,8 @@ import org.testng.annotations.Test;
 
 /**
  * Tests {@link GitIdentity#fromGit()}. Real Git runs only in {@link #readsConfiguredIdentity()}, the end-to-end check
- * of the {@code git config --get} reads; what the reader makes of the status and output of a read is tested by calling
+ * of the {@code git config --get} reads, which runs the {@link GitIdentityContract} that the tests' fixed identity also
+ * passes; what the reader makes of the status and output of a read is tested by calling
  * {@link GitConfigIdentity#interpret(int, String)} with the results that Git gives.
  */
 public final class GitIdentityTest
@@ -42,13 +43,9 @@ public final class GitIdentityTest
 			Path configuration = project.resolve(".git/config");
 			Files.writeString(configuration, Files.readString(configuration, UTF_8) +
 				"[user]\n\tname = Test\n\temail = test@example.com\n", UTF_8);
-			GitIdentity git = GitIdentity.fromGit();
 
-			Optional<String> name = git.name(project);
-			Optional<String> email = git.email(project);
-
-			requireThat(name, "name").isEqualTo(Optional.of("Test"));
-			requireThat(email, "email").isEqualTo(Optional.of("test@example.com"));
+			new GitIdentityContract(GitIdentity.fromGit()).readsConfiguredIdentity(project, "Test",
+				"test@example.com");
 		}
 	}
 
