@@ -67,6 +67,10 @@ When changing a plugin-facing skill's description, or what a hook, launcher, or 
 including its output, response, or exit code, lazy load
 `${CAT_PROJECT_ROOT}/.cat/rules/include/plugin-artifacts/harness-contracts.md`.
 
+When telling the user to run a command in their own terminal or in any other shell outside this session's tool shell,
+whether in a reply, a document, a skill, or a rule, lazy load
+`${CAT_PROJECT_ROOT}/.cat/rules/include/user-run-commands.md`.
+
 When writing code, a command, a hook, or a skill or rule instruction that passes an argument to a CAT launcher, lazy
 load `${CAT_PROJECT_ROOT}/.cat/rules/include/jlink-launchers/launcher-arguments.md`.
 
