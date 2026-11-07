@@ -243,4 +243,60 @@ public final class ExtraPermissionsTest
 			requireThat(refusal.getMessage(), "message").contains(registry.toString()).contains("npm.example");
 		}
 	}
+
+	/**
+	 * Verifies that the refusal of a session that a run's session requested tells the caller to name the missing write
+	 * and host with {@code --extra-permissions} on the runner launcher command that started the requesting session,
+	 * and does not send it to sandbox settings, which would change nothing for that session.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void refusalNamesExtraPermissionsOption() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
+			Path run = Files.createDirectory(root.resolve("run"));
+			Path registry = Files.createDirectory(root.resolve("registry"));
+			ParentPolicy parent = new ParentPolicy(true, List.of(run), List.of(), List.of(), List.of(),
+				HostAccess.NONE, false, List.of());
+			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
+				with(new ExtraPermissions(List.of(registry), Set.of("npm.example")));
+
+			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
+				() -> ChildPolicy.intersect(parent, needs));
+
+			requireThat(refusal.getMessage(), "message").contains(ExtraPermissions.OPTION).
+				contains("runner launcher").doesNotContain("sandbox settings");
+		}
+	}
+
+	/**
+	 * Verifies that the refusal for a write inside a path that the requesting session's sandbox denies says that
+	 * {@code --extra-permissions} does not lift the denial, and names the denied path.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void denialNotLiftedByExtraPermissions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
+			Path run = Files.createDirectory(root.resolve("run"));
+			Path registry = Files.createDirectory(root.resolve("registry"));
+			Path denied = Files.createDirectory(registry.resolve("secret"));
+			ParentPolicy parent = new ParentPolicy(true, List.of(run, registry), List.of(denied), List.of(),
+				List.of(), HostAccess.NONE, false, List.of());
+			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
+				with(new ExtraPermissions(List.of(denied.resolve("cache")), Set.of()));
+
+			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
+				() -> ChildPolicy.intersect(parent, needs));
+
+			requireThat(refusal.getMessage(), "message").contains(denied.toString()).
+				contains(ExtraPermissions.OPTION + " does not lift");
+		}
+	}
 }

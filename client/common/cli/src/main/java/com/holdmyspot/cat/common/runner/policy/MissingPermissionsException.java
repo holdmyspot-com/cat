@@ -16,8 +16,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Signals that the runner refuses to start a session because the session needs writes or hosts that the sandbox of the
  * session that requested it does not allow. The session's commands never run.
  * <p>
- * The message of the exception names every missing write and host, for a caller that does not know the requesting
- * session's harness. {@link #messageFor(String, String)} also tells the user which settings to change.
+ * The message of the exception names every missing write and host for a requesting session that is a run's session,
+ * and says to name them with {@code --extra-permissions} on the runner launcher command that started that session.
+ * {@link #messageFor(String, String)} instead tells the user which settings of a harness session to change.
  */
 public final class MissingPermissionsException extends SessionRefusedException
 {
@@ -48,12 +49,47 @@ public final class MissingPermissionsException extends SessionRefusedException
 	public MissingPermissionsException(List<Path> missingWrites, Map<Path, Path> deniedWrites,
 		Set<String> missingHosts)
 	{
-		super("The requested session needs to " + needs(missingWrites, deniedWrites, missingHosts) + ", which this " +
-			"session's sandbox does not allow. Allow them in the sandbox settings of the session that started this " +
-			"one, then start a new session.");
+		super(message(missingWrites, deniedWrites, missingHosts));
 		this.missingWrites = List.copyOf(missingWrites);
 		this.deniedWrites = Collections.unmodifiableMap(new LinkedHashMap<>(deniedWrites));
 		this.missingHosts = Set.copyOf(missingHosts);
+	}
+
+	/**
+	 * Returns the message for a requesting session that is a run's session, whose sandbox CAT wrote from the options
+	 * of the runner launcher command that started the run. The user changes it only through that command's
+	 * {@code --extra-permissions}.
+	 *
+	 * @param missingWrites the writes that no folder the requesting session may write contains
+	 * @param deniedWrites  the writes inside a path that the requesting session may not write, each with that path
+	 * @param missingHosts  the hosts that the requesting session may not reach
+	 * @return the message
+	 * @throws NullPointerException     if any of the arguments are null, or a collection contains null
+	 * @throws IllegalArgumentException if all three arguments are empty
+	 */
+	private static String message(List<Path> missingWrites, Map<Path, Path> deniedWrites, Set<String> missingHosts)
+	{
+		List<String> sentences = new ArrayList<>();
+		sentences.add("The requested session needs to " + needs(missingWrites, deniedWrites, missingHosts) +
+			", which the requesting session's sandbox does not allow.");
+		if (!missingWrites.isEmpty() || !missingHosts.isEmpty())
+		{
+			String listed = "them";
+			if (!deniedWrites.isEmpty())
+				listed = "the writes and hosts not marked denied";
+			sentences.add("List " + listed + " in the file that " + ExtraPermissions.OPTION + " names, on the " +
+				"runner launcher command that started the requesting session, then run that command again.");
+		}
+		if (!deniedWrites.isEmpty())
+		{
+			List<String> denials = new ArrayList<>();
+			for (Path denial : new LinkedHashSet<>(deniedWrites.values()))
+				denials.add(denial.toString());
+			sentences.add(ExtraPermissions.OPTION + " does not lift a denial: remove the denial of " +
+				String.join(", ", denials) + " from the sandbox settings of the session that started the " +
+				"requesting session's run.");
+		}
+		return String.join(" ", sentences);
 	}
 
 	/**
