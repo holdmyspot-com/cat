@@ -88,6 +88,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck;
 import com.holdmyspot.cat.common.optimizer.proposal.OutputFile;
 import com.holdmyspot.cat.common.optimizer.proposal.test.DraftFixtures;
 import com.holdmyspot.cat.common.optimizer.proposal.test.ProposalTest;
+import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
 import com.holdmyspot.cat.common.optimizer.report.Status;
 import com.holdmyspot.cat.common.optimizer.report.TokenStatistics;
@@ -2361,6 +2362,39 @@ public final class OptimizerCoreTest
 
 			requireThat(resumed, "resumed").isEqualTo(id);
 			requireThat(repository.load(id).header().goal(), "goal").isEqualTo(goal);
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} after {@code cancel}, while the cancelled campaign still waits for its contract to be
+	 * confirmed, names the cancelled campaign and offers its resume, and neither crashes nor presents the campaign's
+	 * held proposal nor starts a session nor changes the campaign.
+	 *
+	 * @throws Exception if the project cannot be written or a command fails
+	 */
+	@Test
+	public void startAfterCancelNamesCancellation() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().cancel(id);
+			int requests = repository.sessions().requests.size();
+			Campaign before = repository.load(id);
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(result.status().campaignId(), "campaignId").isEqualTo(id);
+			requireThat(result.status().lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
+			requireThat(result.message(), "message").contains(id).contains("cancelled").contains("resume");
+			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.status().choices().stream().map(ChoiceItem::choice).toList(), "choices").
+				contains(Choice.RESUME);
+			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+			requireThat(repository.load(id), "stored").isEqualTo(before);
 		}
 	}
 

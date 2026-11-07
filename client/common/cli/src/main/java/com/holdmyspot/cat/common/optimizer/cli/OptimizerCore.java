@@ -96,6 +96,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.Proposal;
 import com.holdmyspot.cat.common.optimizer.proposal.TestRevisionProtocol;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
+import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
@@ -593,7 +594,8 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Resumes a campaign that this harness started.
+	 * Resumes a campaign that this harness started. A cancelled campaign stays cancelled: the result reports it, names
+	 * it and tells the user to choose its resume, and nothing is presented or started.
 	 *
 	 * @param root the project root
 	 * @param store the store
@@ -608,6 +610,12 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Campaign campaign = require(store, header.id(), true);
+		if (campaign.lifecycle() == Lifecycle.CANCELLED)
+		{
+			String id = header.id();
+			return report(root, campaign, null, "The campaign " + id + " was cancelled, so start did not continue " +
+				"it. To continue it, run `choose " + id + " " + new ChoiceItem(Choice.RESUME, 0, false, 0).id() + "`.");
+		}
 		if (campaign.isConfirmed() && !campaign.revisionRequested())
 			return report(root, campaign, null, null);
 		try (CampaignLock _ = lock(header.id()))
