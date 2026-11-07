@@ -215,6 +215,10 @@ public final class SessionHistory
 				}
 			}
 		}
+		catch (UncheckedIOException e)
+		{
+			throw e.getCause();
+		}
 		StringJoiner typeCounts = new StringJoiner(",");
 		for (Map.Entry<String, Integer> entry : types.entrySet())
 			typeCounts.add(entry.getKey() + ":" + entry.getValue());

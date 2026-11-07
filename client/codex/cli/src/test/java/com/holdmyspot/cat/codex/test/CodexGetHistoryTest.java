@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.testng.annotations.Test;
@@ -267,6 +269,42 @@ public final class CodexGetHistoryTest
 			String result = history(scope, codexHome, "analyze");
 
 			requireThat(result, "result").contains("records=2\n");
+		}
+	}
+
+	/**
+	 * Verifies that a thread forked from a readable parent whose own rollout cannot be read fails, rather than reporting
+	 * the parent's records as if they were its whole history.
+	 *
+	 * @throws IOException if a fixture cannot be written
+	 */
+	@Test
+	public void unreadableOwnRolloutFails() throws IOException
+	{
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
+			writeForkedThread(codexHome);
+			Path own = rolloutOf(codexHome, FORK_ID);
+			// Long enough that the failure comes after the first block of the rollout, which is read to find its parent
+			Files.writeString(own, record(5, "event_msg", message("x".repeat(20_000))) + "\n",
+				StandardOpenOption.APPEND);
+			byte[] notUtf8 = {(byte) 0xFF, (byte) 0xFE, '\n'};
+			Files.write(own, notUtf8, StandardOpenOption.APPEND);
+
+			for (String operation : List.of("analyze", "summary"))
+			{
+				try
+				{
+					history(scope, codexHome, operation);
+					throw new AssertionError(operation + " reported a history that cannot be read");
+				}
+				catch (IOException _)
+				{
+					// expected
+				}
+			}
 		}
 	}
 
