@@ -9,10 +9,13 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
@@ -30,6 +33,11 @@ public final class CodexMultiAgentInheritanceTest
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final TomlMapper TOML = TomlMapper.builder().build();
 	private static final String THREAD = "01a1aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee";
+	private static final String PARENT = "01a1aaaa-bbbb-7ccc-8ddd-ffffffffffff";
+	/**
+	 * The ordinal of the first record of {@link #PARENT} that the fork {@link #THREAD} does not inherit.
+	 */
+	private static final int FORK_POINT = 3;
 	/**
 	 * The text that Codex gives the model in the proactive mode.
 	 */
@@ -351,6 +359,226 @@ public final class CodexMultiAgentInheritanceTest
 			requireTable(session, "features", "multi_agent_v2 = true");
 			requireTable(session, "agents", "");
 		}
+	}
+
+	/**
+	 * Verifies that a session started from a forked Codex thread runs the multi-agent version and mode that the
+	 * thread's parent recorded before the fork, when the fork has not recorded any itself.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void forkRunsStateRecordedByParent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path codexHome = root.resolve("host");
+			writeParent(codexHome);
+			writeFork(codexHome);
+
+			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
+				Platform.LINUX_X64);
+
+			requireTable(session, "features", proactiveFeatures());
+			requireTable(session, "agents", "");
+		}
+	}
+
+	/**
+	 * Verifies that a session started from a forked Codex thread does not run state that the parent recorded after the
+	 * fork point, which the fork never saw.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void forkIgnoresStateRecordedAfterForkPoint() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path codexHome = root.resolve("host");
+			writeParent(codexHome, turnContext("disabled"), worldState(true, "\"explicitRequestOnly\""));
+			writeFork(codexHome);
+
+			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
+				Platform.LINUX_X64);
+
+			requireTable(session, "features", proactiveFeatures());
+			requireTable(session, "agents", "");
+		}
+	}
+
+	/**
+	 * Verifies that a session started from a forked Codex thread runs a state that the fork recorded after the fork
+	 * point over the state that its parent recorded before it, because the fork's records are the later ones.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void forkRecordsFollowParentRecords() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path codexHome = root.resolve("host");
+			writeParent(codexHome);
+			writeFork(codexHome, "{\"type\":\"world_state\",\"payload\":{\"full\":false,\"state\":" +
+				"{\"multi_agent_mode\":{\"mode\":\"explicitRequestOnly\"}}}}");
+
+			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
+				Platform.LINUX_X64);
+
+			requireTable(session, "features", "multi_agent_v2.enabled = true");
+			requireTable(session, "agents", "");
+		}
+	}
+
+	/**
+	 * Verifies that a session started from a forked Codex thread whose parent's rollout is gone runs the state that the
+	 * fork recorded itself.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void missingParentKeepsForkState() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path codexHome = root.resolve("host");
+			writeFork(codexHome, turnContext("v1"));
+
+			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
+				Platform.LINUX_X64);
+
+			requireTable(session, "features", "multi_agent = true");
+			requireTable(session, "agents", "");
+		}
+	}
+
+	/**
+	 * Verifies that a session started from a forked Codex thread reads the end of the part of its parent's rollout that
+	 * the fork inherited, however much the parent recorded after the fork point, as it reads the end of a large rollout
+	 * of any other thread.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void forkReadsEndOfInheritedPartOfLargeParent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path codexHome = root.resolve("host");
+			writeParent(codexHome);
+			long inheritedBytes = Files.size(rolloutOf(codexHome, PARENT));
+			// What the parent recorded after the fork point fills more than the part of a rollout that is read
+			String filler = "{\"ordinal\":" + FORK_POINT + ",\"type\":\"event_msg\",\"payload\":{\"text\":\"" +
+				"x".repeat(1000) + "\"}}\n";
+			try (BufferedWriter parent = Files.newBufferedWriter(rolloutOf(codexHome, PARENT), UTF_8,
+				StandardOpenOption.APPEND))
+			{
+				for (long written = 0; written < 65L * 1024 * 1024; written += filler.length())
+					parent.write(filler);
+			}
+			writeForkWithBase(codexHome, ",\"end_byte_offset\":" + inheritedBytes);
+
+			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
+				Platform.LINUX_X64);
+
+			requireTable(session, "features", proactiveFeatures());
+		}
+	}
+
+	/**
+	 * Returns the {@code [features]} entries of a session that runs the second version in the proactive mode.
+	 *
+	 * @return the entries in TOML
+	 */
+	private static String proactiveFeatures()
+	{
+		String proactive = TOML.writeValueAsString(TOML.createObjectNode().put("text", PROACTIVE_TEXT)).
+			substring("text = ".length()).strip();
+		return "multi_agent_v2.enabled = true\nmulti_agent_v2.multi_agent_mode_hint_text = " + proactive + "\n";
+	}
+
+	/**
+	 * Writes the rollout of {@link #PARENT}. Its records before {@link #FORK_POINT} select the second version and the
+	 * proactive mode.
+	 *
+	 * @param codexHome      the Codex home
+	 * @param afterForkPoint the records that follow, which a fork does not inherit
+	 * @throws IOException if fixture I/O fails
+	 */
+	private static void writeParent(Path codexHome, String... afterForkPoint) throws IOException
+	{
+		List<String> lines = new ArrayList<>();
+		lines.add("{\"ordinal\":0,\"type\":\"session_meta\",\"payload\":{\"id\":\"" + PARENT + "\"}}");
+		lines.add(numbered(1, turnContext("v2")));
+		lines.add(numbered(2, worldState(true, "\"proactive\"")));
+		for (int i = 0; i < afterForkPoint.length; ++i)
+			lines.add(numbered(FORK_POINT + i, afterForkPoint[i]));
+		Files.writeString(rolloutOf(codexHome, PARENT), String.join("\n", lines) + "\n", UTF_8);
+	}
+
+	/**
+	 * Writes the rollout of {@link #THREAD}, a fork of {@link #PARENT} that inherits its records before
+	 * {@link #FORK_POINT}.
+	 *
+	 * @param codexHome the Codex home
+	 * @param records   the fork's own records after its {@code session_meta}
+	 * @throws IOException if fixture I/O fails
+	 */
+	private static void writeFork(Path codexHome, String... records) throws IOException
+	{
+		writeForkWithBase(codexHome, "", records);
+	}
+
+	/**
+	 * Writes the rollout of {@link #THREAD}, a fork of {@link #PARENT} that inherits its records before
+	 * {@link #FORK_POINT}.
+	 *
+	 * @param codexHome   the Codex home
+	 * @param historyBase further entries of the fork's {@code history_base}, in JSON, each led by a comma
+	 * @param records     the fork's own records after its {@code session_meta}
+	 * @throws IOException if fixture I/O fails
+	 */
+	private static void writeForkWithBase(Path codexHome, String historyBase, String... records) throws IOException
+	{
+		List<String> lines = new ArrayList<>();
+		lines.add("{\"ordinal\":" + FORK_POINT + ",\"type\":\"session_meta\",\"payload\":{\"id\":\"" + THREAD +
+			"\",\"history_base\":{\"thread_id\":\"" + PARENT + "\",\"end_ordinal_exclusive\":" + FORK_POINT +
+			historyBase + "}}}");
+		for (int i = 0; i < records.length; ++i)
+			lines.add(numbered(FORK_POINT + 1 + i, records[i]));
+		Files.writeString(rolloutOf(codexHome, THREAD), String.join("\n", lines) + "\n", UTF_8);
+	}
+
+	/**
+	 * Adds the ordinal that Codex gives each record of a paginated rollout.
+	 *
+	 * @param ordinal the record's ordinal
+	 * @param record  the record as JSON text, without an ordinal
+	 * @return the record with its ordinal
+	 */
+	private static String numbered(int ordinal, String record)
+	{
+		return "{\"ordinal\":" + ordinal + "," + record.substring(1);
+	}
+
+	/**
+	 * Returns where Codex keeps a thread's rollout, creating its folder.
+	 *
+	 * @param codexHome the Codex home
+	 * @param threadId  the thread's identifier
+	 * @return the rollout, which may not exist
+	 * @throws IOException if fixture I/O fails
+	 */
+	private static Path rolloutOf(Path codexHome, String threadId) throws IOException
+	{
+		Path day = Files.createDirectories(codexHome.resolve("sessions/2026/11/02"));
+		return day.resolve("rollout-2026-11-02T10-00-00-" + threadId + ".jsonl");
 	}
 
 	/**

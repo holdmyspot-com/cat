@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.rollout.RolloutLineage;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -36,9 +37,14 @@ import tools.jackson.databind.node.ObjectNode;
  * the version that the model's catalog entry selects, and the proactive mode that an {@code ultra} reasoning effort
  * selects.
  * <p>
+ * A thread that was forked from another has a rollout that holds only what the fork recorded itself. Its state is the
+ * latest that the records of its history record: those of the rollouts that it inherited its history from, up to
+ * where it inherited them, then its own, as {@link RolloutLineage} finds them.
+ * <p>
  * Only the end of a large rollout is read, so a thread whose latest records lie before it has no recorded state. A
  * missing or unreadable rollout, and a malformed line such as one that Codex is still writing, are not errors: the
- * state stays as the records read before them left it.
+ * state stays as the records read before them left it. A rollout that the thread inherited from and that cannot be
+ * found or read leaves out its records.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -196,79 +202,31 @@ public final class CodexParentMultiAgentState
 	}
 
 	/**
-	 * Reads the latest recorded version and mode from the end of a rollout.
+	 * Reads the latest recorded version and mode from the end of a thread's history: the thread's own rollout and, for
+	 * a thread that was forked, the rollouts that it inherited its history from.
 	 *
 	 * @param json    the JSON mapper
-	 * @param rollout the rollout
+	 * @param rollout the thread's own rollout
 	 * @return the recorded state
-	 * @throws IOException if the rollout cannot be read
+	 * @throws IOException if the thread's own rollout cannot be read
 	 */
 	private static CodexParentMultiAgentState readRollout(JsonMapper json, Path rollout) throws IOException
 	{
-		Version version = null;
-		Mode mode = Mode.UNKNOWN;
-		String customText = "";
-		try (SeekableByteChannel channel = Files.newByteChannel(rollout);
-			BufferedReader reader = new BufferedReader(Channels.newReader(channel, UTF_8.newDecoder().
-				onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE), -1)))
+		Latest latest = new Latest();
+		for (RolloutLineage.Segment segment : RolloutLineage.resolve(json, rollout))
 		{
-			long start = Math.max(0, channel.size() - MAXIMUM_TAIL_BYTES);
-			channel.position(start);
-			// A read that starts inside a line skips the rest of that line
-			if (start > 0)
-				reader.readLine();
-			for (String line = reader.readLine(); line != null; line = reader.readLine())
+			try
 			{
-				if (!holdsReadRecord(line))
-					continue;
-				JsonNode record;
-				try
-				{
-					record = json.readTree(line);
-				}
-				catch (JacksonException _)
-				{
-					continue;
-				}
-				JsonNode payload = record.path("payload");
-				switch (record.path("type").asString(""))
-				{
-					case "turn_context" ->
-					{
-						version = version(payload.path("multi_agent_version"));
-						if (payload.has("multi_agent_mode"))
-						{
-							JsonNode recorded = payload.get("multi_agent_mode");
-							mode = mode(recorded);
-							customText = customText(recorded);
-						}
-					}
-					case "world_state" ->
-					{
-						JsonNode state = payload.path("state");
-						boolean full = payload.path("full").asBoolean(false);
-						JsonNode section = state.path("multi_agent_mode");
-						if (full || section.isNull())
-						{
-							// A full record without the section, or a patch that removes it, leaves no mode
-							mode = Mode.UNKNOWN;
-							customText = "";
-						}
-						if (section.isObject() && section.has("mode"))
-						{
-							mode = mode(section.get("mode"));
-							customText = customText(section.get("mode"));
-						}
-					}
-					default ->
-					{
-					}
-				}
+				latest.read(json, segment);
+			}
+			catch (IOException | UncheckedIOException e)
+			{
+				if (segment.rollout().equals(rollout))
+					throw e;
+				// An inherited rollout that cannot be read leaves out its records, as one that cannot be found does
 			}
 		}
-		if (version == null && mode == Mode.UNKNOWN)
-			return NONE;
-		return new CodexParentMultiAgentState(version, mode, customText);
+		return latest.state();
 	}
 
 	/**
@@ -416,5 +374,112 @@ public final class CodexParentMultiAgentState
 			((ObjectNode) configured).put("enabled", false);
 		else
 			features.put(VERSION_2, false);
+	}
+
+	/**
+	 * The latest version and mode that the records read so far record.
+	 */
+	private static final class Latest
+	{
+		private Version version;
+		private Mode mode = Mode.UNKNOWN;
+		private String customText = "";
+
+		/**
+		 * Reads the records at the end of one rollout of a thread's history, after those of the rollouts read before it.
+		 * Only the end of the part of the rollout that belongs to the history is read, as far as
+		 * {@code MAXIMUM_TAIL_BYTES} allows.
+		 *
+		 * @param json    the JSON mapper
+		 * @param segment the rollout, and where the part of it that belongs to the history ends
+		 * @throws IOException if the rollout cannot be read
+		 */
+		void read(JsonMapper json, RolloutLineage.Segment segment) throws IOException
+		{
+			try (SeekableByteChannel channel = Files.newByteChannel(segment.rollout());
+				BufferedReader reader = new BufferedReader(Channels.newReader(channel, UTF_8.newDecoder().
+					onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE), -1)))
+			{
+				long end = Math.min(channel.size(), segment.endByteOffset());
+				long start = Math.max(0, end - MAXIMUM_TAIL_BYTES);
+				channel.position(start);
+				// A read that starts inside a line skips the rest of that line
+				if (start > 0)
+					reader.readLine();
+				for (String line = reader.readLine(); line != null; line = reader.readLine())
+				{
+					if (!holdsReadRecord(line))
+						continue;
+					JsonNode record;
+					try
+					{
+						record = json.readTree(line);
+					}
+					catch (JacksonException _)
+					{
+						continue;
+					}
+					// Ordinals only grow, so the first record at or past the end ends the part that the history holds
+					if (segment.excludes(record))
+						break;
+					add(record);
+				}
+			}
+		}
+
+		/**
+		 * Applies the version or mode that a record holds.
+		 *
+		 * @param record the {@code turn_context} or {@code world_state} record
+		 */
+		private void add(JsonNode record)
+		{
+			JsonNode payload = record.path("payload");
+			switch (record.path("type").asString(""))
+			{
+				case "turn_context" ->
+				{
+					version = version(payload.path("multi_agent_version"));
+					if (payload.has("multi_agent_mode"))
+					{
+						JsonNode recorded = payload.get("multi_agent_mode");
+						mode = mode(recorded);
+						customText = customText(recorded);
+					}
+				}
+				case "world_state" ->
+				{
+					JsonNode state = payload.path("state");
+					boolean full = payload.path("full").asBoolean(false);
+					JsonNode section = state.path("multi_agent_mode");
+					if (full || section.isNull())
+					{
+						// A full record without the section, or a patch that removes it, leaves no mode
+						mode = Mode.UNKNOWN;
+						customText = "";
+					}
+					if (section.isObject() && section.has("mode"))
+					{
+						mode = mode(section.get("mode"));
+						customText = customText(section.get("mode"));
+					}
+				}
+				default ->
+				{
+				}
+			}
+		}
+
+		/**
+		 * Returns the state that the records read so far record.
+		 *
+		 * @return the state, or {@link #NONE} if they record none
+		 */
+		CodexParentMultiAgentState state()
+		{
+			if (version == null && mode == Mode.UNKNOWN)
+				return NONE;
+			return new CodexParentMultiAgentState(version, mode, customText);
+		}
 	}
 }

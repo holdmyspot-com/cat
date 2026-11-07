@@ -42,9 +42,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class RolloutLineage
 {
 	/**
-	 * The {@code end_ordinal_exclusive} of the thread's own rollout: no record of it is left out.
+	 * An end, as an ordinal or a byte offset, that nothing reaches: the thread's own rollout is left out of nothing,
+	 * and Codex may record no byte offset for an ancestor.
 	 */
-	private static final long OWN_ROLLOUT_END = Long.MAX_VALUE;
+	private static final long NO_END = Long.MAX_VALUE;
 
 	/**
 	 * The records of one rollout that belong to a thread's history.
@@ -52,8 +53,10 @@ public final class RolloutLineage
 	 * @param rollout the rollout file
 	 * @param endOrdinalExclusive the ordinal of the first record of the rollout that the thread does not include, or
 	 *   {@link Long#MAX_VALUE} when it includes every record
+	 * @param endByteOffset the offset in the rollout just after the last record that the thread includes, or
+	 *   {@link Long#MAX_VALUE} when it includes every record or Codex recorded no offset
 	 */
-	public record Segment(Path rollout, long endOrdinalExclusive)
+	public record Segment(Path rollout, long endOrdinalExclusive, long endByteOffset)
 	{
 		/**
 		 * Indicates whether a record lies beyond the part of the rollout that belongs to the thread's history. Ordinals
@@ -75,8 +78,10 @@ public final class RolloutLineage
 	 *
 	 * @param rolloutId the identifier of the parent rollout
 	 * @param endOrdinalExclusive the ordinal of the first record of the parent that the fork does not include
+	 * @param endByteOffset the offset in the parent just after the last record that the fork includes, or
+	 *   {@link Long#MAX_VALUE} if Codex recorded none
 	 */
-	private record HistoryBase(String rolloutId, long endOrdinalExclusive)
+	private record HistoryBase(String rolloutId, long endOrdinalExclusive, long endByteOffset)
 	{
 	}
 
@@ -103,7 +108,7 @@ public final class RolloutLineage
 		requireThat(json, "json").isNotNull();
 		requireThat(rollout, "rollout").isNotNull();
 		List<Segment> newestFirst = new ArrayList<>();
-		newestFirst.add(new Segment(rollout, OWN_ROLLOUT_END));
+		newestFirst.add(new Segment(rollout, NO_END, NO_END));
 		Set<Path> visited = new HashSet<>();
 		visited.add(rollout.toAbsolutePath().normalize());
 		Path child = rollout;
@@ -116,7 +121,7 @@ public final class RolloutLineage
 				// A rollout that names itself or a descendant as its parent is malformed; stop rather than loop
 				if (parent == null || !visited.add(parent.toAbsolutePath().normalize()))
 					break;
-				newestFirst.add(new Segment(parent, base.endOrdinalExclusive()));
+				newestFirst.add(new Segment(parent, base.endOrdinalExclusive(), base.endByteOffset()));
 				child = parent;
 				base = readHistoryBase(json, parent);
 			}
@@ -321,7 +326,9 @@ public final class RolloutLineage
 		JsonNode end = base.path("end_ordinal_exclusive");
 		if (rolloutId.isEmpty() || !end.isNumber())
 			return null;
-		return new HistoryBase(rolloutId, end.asLong(0));
+		// Without an offset, a reader that bounds its read by bytes counts them back from the parent's end
+		long endByteOffset = base.path("end_byte_offset").asLong(NO_END);
+		return new HistoryBase(rolloutId, end.asLong(0), endByteOffset);
 	}
 
 	/**
