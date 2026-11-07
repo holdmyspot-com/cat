@@ -1,0 +1,13 @@
+##[group]Run ./mvnw -B -q verify
+[INFO] Running example.IndexCacheTest
+[ERROR] Tests run: 3, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.412 s <<< FAILURE! -- in example.IndexCacheTest
+[ERROR] example.IndexCacheTest.{{test_method}} -- Time elapsed: 0.031 s <<< ERROR!
+java.nio.file.FileSystemException: D:\a\app\app\target\tmp\cache1042\index.db: The process cannot access the file because it is being used by another process
+	at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:92)
+	at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:272)
+	at java.base/java.nio.file.Files.delete(Files.java:1152)
+	at example.IndexCacheTest.deleteTree(IndexCacheTest.java:32)
+	at example.IndexCacheTest.{{test_method}}(IndexCacheTest.java:21)
+[ERROR] Tests run: 41, Failures: 0, Errors: 1, Skipped: 0
+##[endgroup]
+##[error]Process completed with exit code 1.

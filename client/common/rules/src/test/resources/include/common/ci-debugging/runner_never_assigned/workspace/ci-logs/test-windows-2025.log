@@ -1,0 +1,4 @@
+Requested labels: windows-2025
+Job defined at: owner/app/.github/workflows/ci.yml@refs/heads/fix-parser
+Waiting for a runner to pick up this job...
+The job was canceled after {{minutes}} minutes: no runner matching the specified labels was assigned. No steps were run.

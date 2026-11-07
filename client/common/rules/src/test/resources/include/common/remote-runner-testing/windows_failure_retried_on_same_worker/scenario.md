@@ -27,9 +27,9 @@ change works?
 
 - **kind**: effect
 - **description**: The retained tool events show that the agent reads the installed plugin's
-	`rules/include/common/remote-runner-testing.md`, `rules/include/common/build-workflow.md` or the
-	`remote-runner-session` skill's instructions before it replies. A claim in the final reply is not evidence of the
-	read.
+	`rules/include/common/remote-runner-testing.md`, `rules/include/common/ci-debugging.md`,
+	`rules/include/common/build-workflow.md` or the `remote-runner-session` skill's instructions before it replies. A
+	claim in the final reply is not evidence of the read.
 
 ### cause_found
 

@@ -27,3 +27,9 @@ and tell me what it reports.
 - **kind**: guard
 - **description**: The retained tool events show no pipeline run started, no SSH or Upterm connection, and no key pair
 	created.
+
+### failure_debugging_guidance_not_loaded
+
+- **kind**: guard
+- **description**: The retained tool events show that the agent does not read the installed plugin's
+	`rules/include/common/ci-debugging.md`, because the failing check ran on the local machine.

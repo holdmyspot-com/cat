@@ -1,14 +1,16 @@
 # CAT Default Rules
 
 CAT supplies these bundled common rules for every supported coding harness. Most are injected directly at session start;
-backward-design and design-quality guidance is loaded when design or implementation work needs it, and remote-runner
-testing guidance when a task tests changed commands on a remote runner. Add project rules only for decisions that are
-specific to your codebase or workflow.
+backward-design and design-quality guidance is loaded when design or implementation work needs it, remote-runner testing
+guidance when a task tests changed commands on a remote runner, and CI and remote-failure debugging guidance when the
+project's commands fail on another machine. Add project rules only for decisions that are specific to your codebase or
+workflow.
 
 | Rule | What it provides |
 | --- | --- |
 | Audience-appropriate language | Clear, reader-focused wording for user-facing and developer-facing text. |
 | Backward design | Outcome-first design and iterative generalization.<br>Loaded before recommending, designing, implementing, or reviewing a change. |
+| CI and remote-failure debugging | Reproduce a failure of the project's build, tests or scripts on another machine locally first, then in an interactive session on a runner of the same kind before any fix is pushed, and confirm the fix with one hosted run.<br>Loaded when the project's own commands fail on a machine other than the local one, whatever the task is called; not for an infrastructure failure or a production incident. |
 | Class design | Focused component responsibilities, safe API choices, narrow collaboration boundaries, and test-support ownership. |
 | Configuration readability | Blank-line grouping for supported configuration files. |
 | Commit messages | Observable, typed Git commit messages. |

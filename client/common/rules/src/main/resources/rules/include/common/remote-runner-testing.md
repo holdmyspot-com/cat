@@ -19,8 +19,8 @@ there: the workflow definition, or a script, action, or build setting that the w
 on every runner provider and operating system, and also when you expect the run to pass. Reading or reviewing workflow
 files, and running the changed commands on your own machine, need no session.
 
-When the change repairs a failed CI or hosted-workflow step, lazy load `ci-debugging.md` before you dispatch the remote
-run: a local run that exercises the failing boundary comes first and needs no session.
+When the change repairs a failure of the project's commands on another machine, lazy load `ci-debugging.md` before you
+dispatch the remote run: a local run that exercises the failing boundary comes first and needs no session.
 
 Use the `cat:remote-runner-session` skill, whose instructions are in
 `${CAT_PLUGIN_ROOT}/skills/remote-runner-session/SKILL.md`, for the procedure. Before the changed commands start, make

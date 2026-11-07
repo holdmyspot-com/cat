@@ -104,7 +104,8 @@ across existing code or documentation, lazy load `../include/common/rule-routing
 
 Before changing testable production behavior or selecting or reporting a command as evidence that a project's build
 passes, and when creating, designing, changing, reviewing, or debugging tests, a build script, pipeline, or multi-step
-build, or a CI or hosted workflow; when running a build, selecting, configuring, or reusing a build or workflow cache,
+build, or a CI or hosted workflow; when fixing or investigating a failure of the project's build, tests or scripts on
+a machine other than the local one; when running a build, selecting, configuring, or reusing a build or workflow cache,
 or running such a workflow on a remote runner; or when introducing or repairing an expensive many-unit workflow, lazy load
 `../include/common/rule-routing/testing-and-builds.md`.
 
