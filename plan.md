@@ -80,8 +80,13 @@ revised plugin lifecycle and distribution work, which has not been implemented.
     User rulings, 2026-11-07: only a harness session starts an optimizer campaign, so flow 5 (optimizer in place) is
     replaced by a terminal refusal (unit UR-D10); the launcher's log outlives the launcher (UR-DA); the Codex installer
     writes CAT's hook trust entries (UR-D4); no bubblewrap check in the Codex SessionStart hook (D-E declined); the
-    test branch `launcher-return-u6` is deleted. Brief: `briefs/unit-user-rulings-1107.md`; in progress. After they
-    land, v1.0 is republished and installed in both harnesses (authorized), then the E-runs of gate 4 start.
+    test branch `launcher-return-u6` is deleted. Brief: `briefs/unit-user-rulings-1107.md`; integrated 2026-11-07
+    (`c8c5db89fb`, `6c4921ccd6`, `c89b758c0c`, `044ade68de`, `a07875f5e9`, `c7d5fef0ac`). Whole-reactor `verify` on
+    `c7d5fef0ac`: 4,933 tests, 0 failures, 7 platform skips, 109 s; tests of 1 s or more:
+    `PluginLaunchersTest.wrapperTrainsAndPassesStartupCache` 3.25 s (starts real Java; Javadoc states it),
+    `PluginVersionFolderTest.returnsToEarlierBuild` 1.40 s, `updatesToRepublishedBuild` 1.09 s,
+    `InstallerActivationTest.installUpdateStatusUninstall` 1.15 s and 1.05 s (all under load). Next: v1.0 is
+    republished and installed in both harnesses (authorized), then the E-runs of gate 4 start.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
