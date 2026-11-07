@@ -82,6 +82,12 @@ public final class SessionLauncherChannel
 	 */
 	public static final Duration HEARTBEAT_TIMEOUT = Duration.ofSeconds(15);
 	/**
+	 * How long a sender keeps trying to read a {@link #RESPONSE_FILE} that it finds but cannot read, counted from its
+	 * first failed read, before it reports the last read's failure. It covers a response that another process still
+	 * has open for a moment, or that a file system shows before its content.
+	 */
+	public static final Duration RESPONSE_READ_WAIT = Duration.ofSeconds(5);
+	/**
 	 * How old an inbox file that no live holder names must be before a launcher's start-up sweep deletes it.
 	 */
 	public static final Duration ABANDONED_MESSAGE_AGE = Duration.ofSeconds(60);
@@ -760,10 +766,11 @@ public final class SessionLauncherChannel
 		{
 			requireThat(json, "json").isNotNull();
 			requireThat(source, "source").isNotNull();
+			byte[] content = Files.readAllBytes(source);
 			JsonNode document;
 			try
 			{
-				document = json.readTree(source.toFile());
+				document = json.readTree(content);
 			}
 			catch (JacksonException e)
 			{

@@ -244,7 +244,9 @@ final class RequestExchange
 			Follower follower = new Follower(directory.resolve(SessionLauncherChannel.TRANSCRIPT_FILE), sink,
 				relocation);
 			Streamer streamer = new Streamer(id, directory, feed, requestHolder);
-			Path responseFile = directory.resolve(SessionLauncherChannel.RESPONSE_FILE);
+			PublishedResponse publishedResponse = new PublishedResponse(
+				directory.resolve(SessionLauncherChannel.RESPONSE_FILE));
+			Response response;
 			try (streamer)
 			{
 				while (true)
@@ -252,10 +254,13 @@ final class RequestExchange
 					requireNotInterrupted();
 					// The launcher publishes the response after the child's last record, so a final copy after it
 					// appears returns every record.
-					boolean ended = Files.isRegularFile(responseFile);
-					follower.copy(ended);
-					if (ended)
+					Optional<Response> ended = publishedResponse.read();
+					follower.copy(ended.isPresent());
+					if (ended.isPresent())
+					{
+						response = ended.get();
 						break;
+					}
 					streamer.step();
 					if (heartbeat.isPresent() && heartbeat.get().stale())
 					{
@@ -265,7 +270,6 @@ final class RequestExchange
 					pause.pause();
 				}
 			}
-			Response response = Response.read(json, responseFile);
 			RunCopy copy = copyRun(response, destinations, request.harness());
 			copyReceipt(response, destinations, relocation, copy.skipped());
 			return outcomeOf(response, copy.incomplete());
@@ -308,12 +312,14 @@ final class RequestExchange
 	}
 
 	/**
-	 * Waits for a launcher to accept the request.
+	 * Waits for a launcher to accept the request. An acceptance that the sender finds but cannot read yet does not
+	 * end the wait.
 	 *
 	 * @param directory the request's directory
 	 * @return the accepting launcher's heartbeat, empty if the launcher answered without accepting, or {@code null}
 	 *   if no launcher claimed the request within {@link SessionLauncherChannel#ACCEPTANCE_WAIT}
-	 * @throws IOException if the wait is interrupted or the acceptance cannot be read
+	 * @throws IOException if the wait is interrupted, or the acceptance still cannot be read, or does not name a
+	 *                     launcher, when the wait ends
 	 */
 	private Optional<HeartbeatWatch> awaitAcceptance(Path directory) throws IOException
 	{
@@ -324,10 +330,23 @@ final class RequestExchange
 		{
 			requireNotInterrupted();
 			if (Files.isRegularFile(accepted))
-				return Optional.of(new HeartbeatWatch(heartbeatOf(accepted)));
-			if (Files.isRegularFile(response))
+			{
+				try
+				{
+					return Optional.of(new HeartbeatWatch(heartbeatOf(accepted)));
+				}
+				catch (IOException e)
+				{
+					// Windows can refuse to open the acceptance for a moment while another process still has it open.
+					// Ending the launch then would abandon a request that a launcher accepted, so the sender tries
+					// again until the acceptance wait ends.
+					if (!clock.instant().isBefore(deadline))
+						throw e;
+				}
+			}
+			else if (Files.isRegularFile(response))
 				return Optional.empty();
-			if (!clock.instant().isBefore(deadline))
+			else if (!clock.instant().isBefore(deadline))
 				return null;
 			pause.pause();
 		}
@@ -342,10 +361,11 @@ final class RequestExchange
 	 */
 	private Path heartbeatOf(Path accepted) throws IOException
 	{
+		byte[] content = Files.readAllBytes(accepted);
 		JsonNode document;
 		try
 		{
-			document = json.readTree(accepted.toFile());
+			document = json.readTree(content);
 		}
 		catch (JacksonException e)
 		{
@@ -983,6 +1003,64 @@ final class RequestExchange
 		{
 			if (pending != null)
 				pending.close();
+		}
+	}
+
+	/**
+	 * Reads a request's response once the launcher has published it. Right after the launcher renames the response
+	 * into place, Windows can refuse to open it for a moment while another process still has it open, and a file
+	 * system can show a file before its content. Ending the wait at that first failed read would report a request that
+	 * ended as one whose response is malformed, so the sender keeps trying until reads have failed for
+	 * {@link SessionLauncherChannel#RESPONSE_READ_WAIT}.
+	 */
+	private final class PublishedResponse
+	{
+		/**
+		 * The request directory's {@link SessionLauncherChannel#RESPONSE_FILE}.
+		 */
+		private final Path file;
+		/**
+		 * When a read of the file first failed, or null if no read has failed.
+		 */
+		private Instant firstFailure;
+
+		/**
+		 * Creates a reader of a response that is not published yet.
+		 *
+		 * @param file the request directory's {@link SessionLauncherChannel#RESPONSE_FILE}
+		 */
+		PublishedResponse(Path file)
+		{
+			this.file = file;
+		}
+
+		/**
+		 * Reads the response if the launcher has published it.
+		 *
+		 * @return the response, or empty if the file does not exist yet, or exists but could not be read for less than
+		 *   {@link SessionLauncherChannel#RESPONSE_READ_WAIT}
+		 * @throws IOException if reads of the file have failed for {@link SessionLauncherChannel#RESPONSE_READ_WAIT},
+		 *                     because it cannot be read or does not hold a valid response
+		 */
+		Optional<Response> read() throws IOException
+		{
+			if (!Files.isRegularFile(file))
+				return Optional.empty();
+			try
+			{
+				return Optional.of(Response.read(json, file));
+			}
+			catch (IOException e)
+			{
+				Instant now = clock.instant();
+				if (firstFailure == null)
+					firstFailure = now;
+				boolean failedTooLong = Duration.between(firstFailure, now).
+					compareTo(SessionLauncherChannel.RESPONSE_READ_WAIT) >= 0;
+				if (failedTooLong)
+					throw e;
+				return Optional.empty();
+			}
 		}
 	}
 

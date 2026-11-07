@@ -41,6 +41,7 @@ import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.time.Instant;
@@ -54,6 +55,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -118,19 +120,19 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
-	 * Runs after each poll of the launcher, on the thread that sends the request.
+	 * Runs before or after each poll of the launcher, on the thread that sends the request.
 	 */
 	@FunctionalInterface
-	private interface AfterPoll
+	private interface PollHook
 	{
 		/**
-		 * Acts on the fixture after a poll.
+		 * Acts on the fixture before or after a poll.
 		 *
 		 * @param fixture the fixture
 		 * @throws IOException          if the fixture's files cannot be read
 		 * @throws InterruptedException if the thread is interrupted while it waits for the launcher
 		 */
-		void after(Fixture fixture) throws IOException, InterruptedException;
+		void act(Fixture fixture) throws IOException, InterruptedException;
 	}
 
 	/**
@@ -156,7 +158,10 @@ public final class SessionLauncherClientTest
 		private final Path cache;
 		private boolean serving;
 		private int pauses = 1;
-		private AfterPoll afterPoll = _ ->
+		private PollHook beforePoll = _ ->
+		{
+		};
+		private PollHook afterPoll = _ ->
 		{
 		};
 		private int steps;
@@ -231,11 +236,21 @@ public final class SessionLauncherClientTest
 		}
 
 		/**
+		 * Sets what runs before each later poll.
+		 *
+		 * @param beforePoll what runs
+		 */
+		void beforePoll(PollHook beforePoll)
+		{
+			this.beforePoll = beforePoll;
+		}
+
+		/**
 		 * Sets what runs after each later poll.
 		 *
 		 * @param afterPoll what runs
 		 */
-		void afterPoll(AfterPoll afterPoll)
+		void afterPoll(PollHook afterPoll)
 		{
 			this.afterPoll = afterPoll;
 		}
@@ -274,10 +289,11 @@ public final class SessionLauncherClientTest
 			clock.advance(SessionLauncherChannel.INBOX_POLL);
 			if (!serving || steps % pauses != 0)
 				return;
-			launcher.poll();
 			try
 			{
-				afterPoll.after(this);
+				beforePoll.act(this);
+				launcher.poll();
+				afterPoll.act(this);
 			}
 			catch (InterruptedException e)
 			{
@@ -1093,6 +1109,180 @@ public final class SessionLauncherClientTest
 			requireThat(status, "status").isEqualTo(exitStatus);
 			requireThat(errors.toString(), "errors").contains(answer.value()).
 				contains(FakeRunner.reason(answer.exitStatus()));
+		}
+	}
+
+	/**
+	 * Verifies that a response that the sender finds before it can read it does not end the launch: the sender keeps
+	 * waiting, reads the launcher's response once that replaces it, and reports how the request ended.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void unreadableResponseIsAwaited() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			fixture.starter.exitWith(Status.REFUSED.exitStatus());
+			// The launcher accepts the request but does not run it until the test lets it
+			fixture.executor.hold();
+			fixture.afterPoll(polled ->
+			{
+				List<Path> requests = polled.requests();
+				if (requests.isEmpty())
+					return;
+				Path response = requests.getFirst().resolve(SessionLauncherChannel.RESPONSE_FILE);
+				if (!Files.exists(response))
+				{
+					// After the poll that accepts the request, the test puts the start of a response document in its
+					// place. It stands for a response that the sender finds but cannot read yet: on Windows, one that
+					// is still in use when the sender opens it.
+					Files.writeString(response, "{\"format_version\":1,\"id\":\"");
+					return;
+				}
+				// The sender has failed to read that document once. The launcher now runs the request, whose records
+				// it already holds, and its response replaces the document. Waiting here for that answer keeps the
+				// sender's clock from running past its read wait while the launcher's thread works.
+				polled.executor.release();
+				polled.awaitIdle();
+			});
+			StringWriter errors = new StringWriter();
+
+			int status = fixture.launch(errors, "--project", fixture.project.toString(), "--model", "m",
+				"--effort", "e", "--input", fixture.records().toString());
+
+			requireThat(status, "status").isEqualTo(Status.REFUSED.exitStatus());
+			requireThat(errors.toString(), "errors").contains(FakeRunner.reason(Status.REFUSED.exitStatus()));
+		}
+	}
+
+	/**
+	 * Verifies that a response that stays unreadable ends the launch with the read's failure once the sender has tried
+	 * to read it for {@link SessionLauncherChannel#RESPONSE_READ_WAIT}, rather than at the first failed read or never.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void responseUnreadableTooLongFails() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			// The launcher accepts the request but never runs it, so its own response never replaces the one below
+			fixture.executor.hold();
+			fixture.afterPoll(polled ->
+			{
+				List<Path> requests = polled.requests();
+				if (requests.isEmpty())
+					return;
+				Path response = requests.getFirst().resolve(SessionLauncherChannel.RESPONSE_FILE);
+				if (!Files.exists(response))
+					Files.writeString(response, "{\"format_version\":1,\"id\":\"");
+			});
+
+			IOException failure = expectThrows(IOException.class, () -> fixture.launch(new StringWriter(),
+				"--project", fixture.project.toString(), "--model", "m", "--effort", "e", "--input",
+				fixture.records().toString()));
+
+			requireThat(failure.getMessage(), "message").contains("Malformed response").
+				contains(SessionLauncherChannel.RESPONSE_FILE);
+			requireThat(Duration.between(START, fixture.clock.instant()), "waited").
+				isGreaterThanOrEqualTo(SessionLauncherChannel.RESPONSE_READ_WAIT);
+		}
+	}
+
+	/**
+	 * Verifies that an acceptance that the sender finds before it can read it does not end the launch: the sender
+	 * keeps waiting, reads the acceptance once it can, and the request completes.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void unreadableAcceptanceIsAwaited() throws IOException
+	{
+		if (Platform.current().isWindows())
+			throw new SkipException(NO_POSIX_PERMISSIONS);
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			AtomicInteger pollsSinceAcceptance = new AtomicInteger();
+			AtomicReference<Set<PosixFilePermission>> permissions = new AtomicReference<>();
+			fixture.afterPoll(polled ->
+			{
+				List<Path> requests = polled.requests();
+				if (requests.isEmpty())
+					return;
+				Path accepted = requests.getFirst().resolve(SessionLauncherChannel.ACCEPTED_FILE);
+				int poll = pollsSinceAcceptance.getAndIncrement();
+				if (poll == 0)
+				{
+					// After the poll that accepts the request, the test takes every permission from the acceptance
+					// until the next poll. It stands for an acceptance that the sender finds but cannot open yet: on
+					// Windows, one that is still in use when the sender opens it.
+					permissions.set(Files.getPosixFilePermissions(accepted));
+					Files.setPosixFilePermissions(accepted, Set.of());
+				}
+				else if (poll == 1)
+					Files.setPosixFilePermissions(accepted, permissions.get());
+			});
+
+			int status = fixture.launch(new StringWriter(), "--project", fixture.project.toString(), "--model", "m",
+				"--effort", "e", "--input", fixture.records().toString());
+
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(pollsSinceAcceptance.get(), "pollsSinceAcceptance").isGreaterThanOrEqualTo(2);
+		}
+	}
+
+	/**
+	 * Verifies that a request file that the launcher finds before it can read it is accepted at a later poll that can
+	 * read it, and the request completes.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void unreadableRequestIsAcceptedLater() throws IOException
+	{
+		if (Platform.current().isWindows())
+			throw new SkipException(NO_POSIX_PERMISSIONS);
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			AtomicReference<Path> refused = new AtomicReference<>();
+			AtomicReference<Set<PosixFilePermission>> permissions = new AtomicReference<>();
+			// During the first poll that finds the request file, the test takes every permission from it. It stands
+			// for a request file that the launcher finds but cannot open yet: on Windows, one that is still in use
+			// when the launcher opens it. Permissions are not part of the file's content, size or modification time,
+			// so the next poll finds the same file, which it can read.
+			fixture.beforePoll(polled ->
+			{
+				if (refused.get() != null)
+					return;
+				for (String name : polled.inbox())
+				{
+					if (name.startsWith(SessionLauncherChannel.REQUEST_PREFIX))
+					{
+						Path request = polled.channel.inbox().resolve(name);
+						permissions.set(Files.getPosixFilePermissions(request));
+						Files.setPosixFilePermissions(request, Set.of());
+						refused.set(request);
+						return;
+					}
+				}
+			});
+			fixture.afterPoll(_ ->
+			{
+				Set<PosixFilePermission> before = permissions.getAndSet(null);
+				if (before != null)
+					Files.setPosixFilePermissions(refused.get(), before);
+			});
+
+			int status = fixture.launch(new StringWriter(), "--project", fixture.project.toString(), "--model", "m",
+				"--effort", "e", "--input", fixture.records().toString());
+
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(refused.get(), "refused").isNotNull();
 		}
 	}
 

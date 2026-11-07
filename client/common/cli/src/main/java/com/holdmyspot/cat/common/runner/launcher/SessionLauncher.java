@@ -683,7 +683,12 @@ public final class SessionLauncher implements Closeable
 			TemporaryDirectories.deleteRecursively(staging);
 		Files.createDirectories(staging);
 		Path archive = staging.resolve(ARCHIVE_FILE);
-		Optional<Holder> holder = copyProven(message, archive, candidates);
+		if (!copyMessage(message, archive))
+		{
+			TemporaryDirectories.deleteRecursively(staging);
+			return;
+		}
+		Optional<Holder> holder = provenHolder(archive, candidates);
 		Path target = channel.requestDirectory(message.id());
 		if (holder.isEmpty() || Files.exists(target, LinkOption.NOFOLLOW_LINKS))
 		{
@@ -734,7 +739,12 @@ public final class SessionLauncher implements Closeable
 		}
 		Path copy = request.directory.resolve(TURN_PREFIX + message.number() + ".json");
 		Files.deleteIfExists(copy);
-		if (copyProven(message, copy, candidates).isEmpty())
+		if (!copyMessage(message, copy))
+		{
+			Files.deleteIfExists(copy);
+			return;
+		}
+		if (provenHolder(copy, candidates).isEmpty())
 		{
 			Files.deleteIfExists(copy);
 			declined.add(message.key());
@@ -748,26 +758,40 @@ public final class SessionLauncher implements Closeable
 	}
 
 	/**
-	 * Copies a message into the launcher's state, if its private copy has the digest that one of its holders names.
+	 * Copies a message into the launcher's state. A message that cannot be copied is not declined, so a later poll
+	 * tries the same file again.
 	 *
-	 * @param message    the message
-	 * @param copy       the private copy, which must not exist
-	 * @param candidates the message's holders in the served harness's tree
-	 * @return the holder that names the copy's digest, or empty if none does or the message cannot be copied
-	 * @throws IOException if the launcher's state cannot be written
+	 * @param message the message
+	 * @param copy    the private copy, which must not exist
+	 * @return {@code true} on success, or {@code false} if the message cannot be copied now
 	 */
-	private static Optional<Holder> copyProven(Message message, Path copy, List<Holder> candidates)
-		throws IOException
+	private static boolean copyMessage(Message message, Path copy)
 	{
 		try
 		{
 			RequestArchive.copy(message.path(), copy, RequestLimits.UNBOUNDED);
+			return true;
 		}
 		catch (IOException _)
 		{
-			// The sender replaced or removed the file, or it is not a single regular file
-			return Optional.empty();
+			// The sender replaced or removed the file, or it is not a single regular file, or Windows refused to open
+			// it for a moment while another process still had it open. A declined message stays declined until its
+			// file changes, so declining here would never accept that last one. The retries end with the message's
+			// holder, because a message without a live holder is declined before it is copied.
+			return false;
 		}
+	}
+
+	/**
+	 * Returns the holder that names a message copy's digest.
+	 *
+	 * @param copy       the launcher's private copy of the message
+	 * @param candidates the message's holders in the served harness's tree
+	 * @return the first of {@code candidates} whose digest equals the copy's, or empty if none does
+	 * @throws IOException if the copy cannot be read
+	 */
+	private static Optional<Holder> provenHolder(Path copy, List<Holder> candidates) throws IOException
+	{
 		String digest = SessionLauncherChannel.digest(copy);
 		for (Holder candidate : candidates)
 		{
