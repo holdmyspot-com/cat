@@ -1,0 +1,30 @@
+##[group]Run ./mvnw -B verify
+[INFO] Reactor Build Order:
+[INFO]
+[INFO] app                                                                [pom]
+[INFO] core                                                               [jar]
+[INFO] store                                                              [jar]
+[INFO] cli                                                                [jar]
+[INFO] Running example.store.StoreTest
+[ERROR] Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.418 s <<< FAILURE! -- in example.store.StoreTest
+[ERROR] example.store.StoreTest.{{test_method}} -- Time elapsed: 0.037 s <<< ERROR!
+java.nio.file.FileSystemException: D:\a\app\app\store\target\tmp\store8812\snapshot.db: The process cannot access the file because it is being used by another process
+	at java.base/sun.nio.fs.WindowsException.translateToIOException(WindowsException.java:92)
+	at java.base/sun.nio.fs.WindowsFileSystemProvider.implDelete(WindowsFileSystemProvider.java:272)
+	at java.base/java.nio.file.Files.delete(Files.java:1152)
+	at example.store.SnapshotStore.clear(SnapshotStore.java:49)
+	at example.store.StoreTest.{{test_method}}(StoreTest.java:20)
+[ERROR] Tests run: 1, Failures: 0, Errors: 1, Skipped: 0
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for app 2.4.0-SNAPSHOT:
+[INFO]
+[INFO] app ................................................ SUCCESS [  0.131 s]
+[INFO] core ............................................... SUCCESS [  2.604 s]
+[INFO] store .............................................. FAILURE [  3.188 s]
+[INFO] cli ................................................ SKIPPED
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.2:test (default-test) on project store: There are test failures.
+##[endgroup]
+##[error]Process completed with exit code 1.

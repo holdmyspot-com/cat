@@ -6,13 +6,14 @@
 
 ## Guidance
 
-When the project's build, tests or scripts fail on a machine other than the local one, such as in CI, a hosted
-workflow or a remote build or test host, whatever the task is called, such as fixing failing tests or a red build, lazy
-load `../ci-debugging.md` before retrying the run or changing code to fix it. Do not load it for a production incident,
-or for an infrastructure failure, which the project's commands did not cause: no runner assigned or the runner lost, a
-service or network outage, a quota or rate-limit refusal, or the platform cancelling the job or timing it out before the
-project's commands ran. A flaky test or a timeout inside the project's own steps is a project failure. When the cause
-is unclear, rerun the job once without loading it, and lazy load it if the same failure occurs again.
+When the project's build, tests or scripts fail on a machine other than the local one, such as in CI, a hosted workflow
+or a remote build or test host, whatever the task is called, such as fixing failing tests, a red build or a release step
+that waits for a required check, lazy load `../ci-debugging.md` before retrying the run or changing code to fix it. Do
+not load it for a production incident, or for an infrastructure failure, which the project's commands did not cause: no
+runner assigned or the runner lost, a service or network outage, a quota or rate-limit refusal, or the platform
+cancelling the job or timing it out before the project's commands ran. A flaky test or a timeout inside the project's
+own steps is a project failure. When the cause is unclear, rerun the job once without loading it, and lazy load it if
+the same failure occurs again.
 
 When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
 `../remote-runner-testing.md` before dispatching the run.

@@ -173,8 +173,9 @@ workspace that it keeps. Let a command that is still making progress and still n
 Inspect the command that failed and its environment on the worker, find the cause, make a focused change, and retry the
 affected work in the same workspace, keeping its valid completed outputs. Do not end the session to start a replacement
 worker. Verify each retry by an effect you can observe on the worker and by the command's result. Keep the original
-failure and its evidence separate from a successful retry. Once the retries pass, run the clean verification that the
-task requires.
+failure and its evidence separate from a successful retry. When you are debugging a failure, try each fix here until
+every check of the failed job passes before you push anything. Once the retries pass, run the clean verification that
+the task requires.
 
 If the provider has already destroyed the worker, keep its logs and any valid partial outputs that it published, such
 as caches, and use the smallest replacement run that can reproduce the failure.

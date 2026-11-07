@@ -10,7 +10,7 @@ workflow.
 | --- | --- |
 | Audience-appropriate language | Clear, reader-focused wording for user-facing and developer-facing text. |
 | Backward design | Outcome-first design and iterative generalization.<br>Loaded before recommending, designing, implementing, or reviewing a change. |
-| CI and remote-failure debugging | Reproduce a failure of the project's build, tests or scripts on another machine locally first, then in an interactive session on a runner of the same kind before any fix is pushed, and confirm the fix with one hosted run.<br>Loaded when the project's own commands fail on a machine other than the local one, whatever the task is called; not for an infrastructure failure or a production incident. |
+| CI and remote-failure debugging | Reproduce a failure of the project's build, tests or scripts on another machine locally first, then in an interactive session on a runner of the same kind before any fix is pushed; run every check of the failed job there without stopping at the first failure, fix every failure before pushing, keep sessions and diagnostic runs to the failing platforms and jobs, and confirm the fix with one run of the complete workflow.<br>Loaded when the project's own commands fail on a machine other than the local one, whatever the task is called, including a release step; not for an infrastructure failure or a production incident. |
 | Class design | Focused component responsibilities, safe API choices, narrow collaboration boundaries, and test-support ownership. |
 | Configuration readability | Blank-line grouping for supported configuration files. |
 | Commit messages | Observable, typed Git commit messages. |

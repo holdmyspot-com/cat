@@ -1,0 +1,22 @@
+##[group]Run ./mvnw -B verify
+[INFO] Reactor Build Order:
+[INFO]
+[INFO] app                                                                [pom]
+[INFO] core                                                               [jar]
+[INFO] store                                                              [jar]
+[INFO] cli                                                                [jar]
+[INFO] Running example.store.StoreTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.341 s -- in example.store.StoreTest
+[INFO] Running example.cli.ConfigLocatorTest
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.312 s -- in example.cli.ConfigLocatorTest
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for app 2.4.0-SNAPSHOT:
+[INFO]
+[INFO] app ................................................ SUCCESS [  0.104 s]
+[INFO] core ............................................... SUCCESS [  1.872 s]
+[INFO] store .............................................. SUCCESS [  2.316 s]
+[INFO] cli ................................................ SUCCESS [  1.947 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+##[endgroup]
