@@ -410,7 +410,7 @@ public final class OtherHarnessInstallTest
 			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
-				Invocation invocation = new Invocation(image, Platform.current(), environment,
+				Invocation invocation = new Invocation(image, Platform.current(), environment, null,
 					List.of(new RegisteredProvider(), new RegisteredProvider("harness-b")),
 					List.of(new RecordingIntegration(), otherIntegration), (recorded, recordedHome) ->
 					RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {}, replacer(),

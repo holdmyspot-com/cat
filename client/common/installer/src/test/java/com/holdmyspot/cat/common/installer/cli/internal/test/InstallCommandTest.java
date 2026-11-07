@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.installer.engine.test.Releases;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
+import com.holdmyspot.cat.common.release.EntryCommand;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
@@ -652,7 +653,7 @@ public final class InstallCommandTest
 				{
 					started.add(recorded);
 					return RecordingIntegration.cli();
-				}, _ -> false, migrations);
+				}, _ -> false, migrations, new EntryCommand(Platform.current(), environment, null));
 			return install.install("harness-a", requestedHome, environment, user, provider,
 				integration, others, _ -> false);
 		}

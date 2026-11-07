@@ -34,6 +34,7 @@ import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
+import com.holdmyspot.cat.common.release.EntryCommand;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -72,6 +73,7 @@ public final class Invocation
 	private final Path image;
 	private final Platform platform;
 	private final Map<String, String> environment;
+	private final EntryCommand entryCommand;
 	private final List<PluginActivation> activations;
 	private final List<HarnessIntegration> integrations;
 	private final HarnessCliFactory cliFactory;
@@ -113,6 +115,9 @@ public final class Invocation
 	 *                     install, otherwise the version folder of the installed plugin
 	 * @param platform     the running platform
 	 * @param environment  the boundary-captured environment; routine path authority never comes from this map
+	 * @param accountHome  the home directory that the user database records for the account that runs the installer,
+	 *                     or null if it cannot be determined; a message that tells the user to run the CAT entry
+	 *                     command writes the environment's {@code HOME} into it unless {@code HOME} is this directory
 	 * @param activations  the installed activation services
 	 * @param integrations the installed harness integration services
 	 * @param cliFactory   runs the recorded harness program
@@ -127,12 +132,12 @@ public final class Invocation
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Invocation(Path image, Platform platform, Map<String, String> environment,
+	public Invocation(Path image, Platform platform, Map<String, String> environment, Path accountHome,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
 		PrintStream stdout, PrintStream stderr)
 	{
-		this(image, platform, environment, activations, integrations, cliFactory, clock, waiting,
+		this(image, platform, environment, accountHome, activations, integrations, cliFactory, clock, waiting,
 			replacer, terminal, starter, releaseBaseUrl -> new HttpsReleaseSource(releaseBaseUrl, environment,
 				CONNECT_LIMIT, REQUEST_LIMIT), stdout, stderr);
 	}
@@ -144,6 +149,9 @@ public final class Invocation
 	 *                     install, otherwise the version folder of the installed plugin
 	 * @param platform     the running platform
 	 * @param environment  the boundary-captured environment; routine path authority never comes from this map
+	 * @param accountHome  the home directory that the user database records for the account that runs the installer,
+	 *                     or null if it cannot be determined; a message that tells the user to run the CAT entry
+	 *                     command writes the environment's {@code HOME} into it unless {@code HOME} is this directory
 	 * @param activations  the installed activation services
 	 * @param integrations the installed harness integration services
 	 * @param cliFactory   runs the recorded harness program
@@ -159,7 +167,7 @@ public final class Invocation
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Invocation(Path image, Platform platform, Map<String, String> environment,
+	public Invocation(Path image, Platform platform, Map<String, String> environment, Path accountHome,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
 		ReleaseSources sources, PrintStream stdout, PrintStream stderr)
@@ -178,6 +186,7 @@ public final class Invocation
 		this.image = image;
 		this.platform = platform;
 		this.environment = Map.copyOf(environment);
+		this.entryCommand = new EntryCommand(platform, this.environment, accountHome);
 		this.activations = List.copyOf(activations);
 		this.integrations = List.copyOf(integrations);
 		this.cliFactory = cliFactory;
@@ -260,8 +269,8 @@ public final class Invocation
 		return switch (arguments.operation())
 		{
 			case STATUS -> failure(Result.REFUSED, harness, message, journals);
-			case INSTALL -> failure(Result.FAILED, harness, message + "; " + Locations.rerunEntryCommand(harness) +
-				" to continue.", journals);
+			case INSTALL -> failure(Result.FAILED, harness, message + "; " +
+				Locations.rerunEntryCommand(entryCommand, harness) + " to continue.", journals);
 			case UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " + operation +
 				" command again to continue.", journals);
 		};
@@ -424,7 +433,7 @@ public final class Invocation
 		{
 			return print(failure(Result.REFUSED, harness, "This installer's policy trusts no release key, as a " +
 				"development build's does, so it cannot verify a download of the " + harness + " plugin; install " +
-				"CAT into " + harness + " with the CAT entry command instead: " + Locations.entryCommand(harness) + ".",
+				"CAT into " + harness + " with the CAT entry command instead: " + entryCommand.forHarness(harness) + ".",
 				List.of()), arguments, locations);
 		}
 		OtherInstall install = new OtherInstall(arguments, activation, integration.get());
@@ -452,7 +461,7 @@ public final class Invocation
 		ReleaseVersion release)
 	{
 		String harness = arguments.harness();
-		String update = "with the CAT entry command: " + Locations.entryCommand(harness);
+		String update = "with the CAT entry command: " + entryCommand.forHarness(harness);
 		try
 		{
 			Path folder = installation.versionFolder(PluginVersion.parse(installed));
@@ -587,20 +596,21 @@ public final class Invocation
 		if (!Files.isRegularFile(policyFile))
 		{
 			return Managed.refused(failure(Result.REFUSED, own, "Installer policy is missing; " +
-				Locations.rerunEntryCommand(own) + ".", List.of(policyFile)));
+				Locations.rerunEntryCommand(entryCommand, own) + ".", List.of(policyFile)));
 		}
 		TrustPolicy policy = TrustPolicy.read(policyFile);
 		if (!policy.harnesses().keySet().equals(Set.of(own)))
 		{
 			return Managed.refused(failure(Result.REFUSED, own, "The policy " + policyFile + " records the " +
 				"harnesses " + policy.harnesses().keySet() + ", but this installation manages " + own + " only; " +
-				Locations.rerunEntryCommand(own) + ".", List.of(policyFile)));
+				Locations.rerunEntryCommand(entryCommand, own) + ".", List.of(policyFile)));
 		}
 		Optional<HarnessCommand> command = policy.command(own);
 		if (command.isEmpty())
 		{
 			return Managed.refused(failure(Result.REFUSED, own, "The policy was written by an earlier release and " +
-				"does not record the harness program; " + Locations.rerunEntryCommand(own) + ".", List.of(policyFile)));
+				"does not record the harness program; " + Locations.rerunEntryCommand(entryCommand, own) + ".",
+				List.of(policyFile)));
 		}
 		Optional<PluginActivation> activation = activations.stream().
 			filter(provider -> provider.harness().equals(own)).findFirst();
@@ -641,7 +651,7 @@ public final class Invocation
 			filter(provider -> provider.harness().equals(own)).findFirst().orElseThrow();
 		try
 		{
-			HarnessProgram.requireRecorded(command, managed.home(), policyFile, integration, cliFactory);
+			HarnessProgram.requireRecorded(command, managed.home(), policyFile, integration, cliFactory, entryCommand);
 			return Optional.empty();
 		}
 		catch (TrustException e)
@@ -712,7 +722,7 @@ public final class Invocation
 		try
 		{
 			outcome = new Install(plugin, platform, replacer, cliFactory, ProcessElevation::isElevated,
-				new ProcessMigrationRunner()).
+				new ProcessMigrationRunner(), entryCommand).
 				install(harness, arguments.home(), environment, userHome, activation, integration, others, consent);
 		}
 		catch (TrustException e)
@@ -765,7 +775,7 @@ public final class Invocation
 		else if (plugin == null)
 		{
 			answer = "CAT changed nothing. To allow it, open a terminal and " +
-				Locations.rerunEntryCommand(refusal.harness()) + "; install then asks for your permission.";
+				Locations.rerunEntryCommand(entryCommand, refusal.harness()) + "; install then asks for your permission.";
 		}
 		else
 		{

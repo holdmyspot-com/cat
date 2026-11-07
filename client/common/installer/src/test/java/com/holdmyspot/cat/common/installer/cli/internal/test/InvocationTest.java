@@ -11,6 +11,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -49,6 +50,12 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class InvocationTest
 {
+	/**
+	 * The home directory that the user database records for the account that runs the installer, which is not the
+	 * home that the tests' environment names.
+	 */
+	private static final Path ACCOUNT_HOME = Path.of("/account");
+
 	/**
 	 * Creates the test.
 	 */
@@ -164,6 +171,28 @@ public final class InvocationTest
 			requireThat(run.result().path("message").stringValue(), "message").
 				contains("cat.sh --harness harness-a").contains("cat.ps1 -Harness harness-a");
 			requireThat(run.output.lines().count(), "outputLines").isEqualTo(1L);
+		}
+	}
+
+	/**
+	 * The entry command that a refusal tells the user to run in a terminal sets {@code HOME} to the installer
+	 * process's value when the account's home directory is another directory, so that the terminal installs into the
+	 * harness home of the session that asked.
+	 *
+	 * @throws IOException if the fixture cannot be created or the output cannot be read
+	 */
+	@Test
+	public void entryCommandSetsSessionHome() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-session-home-")));
+
+			Run run = installation.run(Map.of(), List.of(new RecordedHomeProvider(installation.home)),
+				new RecordingIntegration(), "status", "--harness", "harness-a");
+
+			requireThat(run.result().path("message").stringValue(), "message").
+				contains("HOME=" + ShellQuoting.posix(installation.root.toString()) + " cat.sh --harness harness-a");
 		}
 	}
 
@@ -1127,7 +1156,7 @@ public final class InvocationTest
 			// The user's home is the one that the environment names, as the installer's process has it
 			Map<String, String> variables = new HashMap<>(environment);
 			variables.putIfAbsent(platform.homeVariable(), defaultHome.toString());
-			Invocation invocation = new Invocation(image, platform, variables, activations,
+			Invocation invocation = new Invocation(image, platform, variables, ACCOUNT_HOME, activations,
 				List.of(integration), (command, home) -> RecordingIntegration.cli(), Clock.systemUTC(),
 				interval -> () -> {}, replacer(), terminal, starter, stdout, stderr);
 			status = invocation.run(arguments);

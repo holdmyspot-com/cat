@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.release.EntryCommand;
 import com.holdmyspot.cat.common.release.OtherHarnessPlugin;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
@@ -70,7 +71,7 @@ public final class ClaudeArtifact
 	/**
 	 * Finds the Claude CAT plugin for the Codex plugin that holds the running code.
 	 *
-	 * @param environment the process environment, as {@link #execute(Map, Path, Platform)} reads it
+	 * @param environment the process environment, as {@link #execute(Map, Path, Platform, Path)} reads it
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
 	 * @throws NullPointerException if {@code environment} is null
 	 * @throws IOException          if the running code is not loaded from a CAT plugin, or the plugin cannot be found
@@ -86,7 +87,7 @@ public final class ClaudeArtifact
 		{
 			throw new IOException(e.getMessage(), e);
 		}
-		return execute(environment, plugin, Platform.current());
+		return execute(environment, plugin, Platform.current(), EntryCommand.currentAccountHome());
 	}
 
 	/**
@@ -98,12 +99,16 @@ public final class ClaudeArtifact
 	 *                    defaults to {@code .claude} in the home directory
 	 * @param plugin      the version folder of the Codex plugin that runs the command
 	 * @param platform    the platform that the plugins were built for and run on
+	 * @param accountHome the home directory that the user database records for the account that runs the process, or
+	 *                    {@code null} if it cannot be determined; the message that asks the user to run the CAT entry
+	 *                    command sets {@code HOME} when the environment's differs
 	 * @return the {@code artifact}, {@code runner} and {@code source} lines
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code environment}, {@code plugin} or {@code platform} are null
 	 * @throws IOException          if the home directory is not set, the install records cannot be read, Claude Code
 	 *                              has no CAT plugin of this plugin's release, or that plugin is incomplete
 	 */
-	public static String execute(Map<String, String> environment, Path plugin, Platform platform) throws IOException
+	public static String execute(Map<String, String> environment, Path plugin, Platform platform, Path accountHome)
+		throws IOException
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(plugin, "plugin").isNotNull();
@@ -118,7 +123,8 @@ public final class ClaudeArtifact
 			throw new IOException(e.getMessage(), e);
 		}
 		return OtherHarnessPlugin.select(plugin, claude, "claude", "Claude Code",
-			installed(claude.installedPlugins()), MANIFEST, "claude-runner", platform).format();
+			installed(claude.installedPlugins()), MANIFEST, "claude-runner", platform,
+			new EntryCommand(platform, environment, accountHome)).format();
 	}
 
 	/**

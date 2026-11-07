@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
+import com.holdmyspot.cat.common.release.EntryCommand;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,18 +59,20 @@ public final class HarnessProgram
 	 * Confirms that the harness program that install recorded can still be used: it exists, is executable and
 	 * identifies itself as the harness's program.
 	 *
-	 * @param command     the recorded command and environment
-	 * @param home        the real harness home
-	 * @param policyFile  the policy that records the program
-	 * @param integration the harness's integration
-	 * @param cliFactory  runs the program
+	 * @param command      the recorded command and environment
+	 * @param home         the real harness home
+	 * @param policyFile   the policy that records the program
+	 * @param integration  the harness's integration
+	 * @param cliFactory   runs the program
+	 * @param entryCommand writes the CAT entry command that the message tells the user to run to start over
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws TrustException       if the program can no longer be used; the message tells the user how to start over
 	 */
 	public static void requireRecorded(HarnessCommand command, Path home, Path policyFile,
-		HarnessIntegration integration, HarnessCliFactory cliFactory) throws TrustException
+		HarnessIntegration integration, HarnessCliFactory cliFactory, EntryCommand entryCommand) throws TrustException
 	{
 		requireThat(policyFile, "policyFile").isNotNull();
+		requireThat(entryCommand, "entryCommand").isNotNull();
 		String harness = integration.harness();
 		// On Windows a .cmd program follows the cmd.exe prefix that runs it
 		Path program = Path.of(command.command().getLast());
@@ -77,7 +80,8 @@ public final class HarnessProgram
 		{
 			throw new TrustException(Reason.MALFORMED_POLICY, "The " + harness + " program " + program + " that " +
 				"install recorded no longer exists or is not executable, and install never takes another program from " +
-				"PATH once it has recorded one; to start over, " + Locations.startOver(harness, policyFile) + ".");
+				"PATH once it has recorded one; to start over, " +
+				Locations.startOver(entryCommand, harness, policyFile) + ".");
 		}
 		try
 		{
@@ -88,7 +92,7 @@ public final class HarnessProgram
 			throw new TrustException(Reason.MALFORMED_POLICY, "The program " + program + " that install recorded " +
 				"is no longer the " + harness + " program (" + e.getMessage() + "), and install never takes another " +
 				"program from PATH once it has recorded one; to start over, " +
-				Locations.startOver(harness, policyFile) + ".");
+				Locations.startOver(entryCommand, harness, policyFile) + ".");
 		}
 	}
 }

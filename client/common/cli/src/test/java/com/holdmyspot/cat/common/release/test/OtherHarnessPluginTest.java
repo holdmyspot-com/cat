@@ -5,11 +5,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.release.EntryCommand;
 import com.holdmyspot.cat.common.release.OtherHarnessPlugin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -127,6 +129,28 @@ public final class OtherHarnessPluginTest
 	}
 
 	/**
+	 * Verifies that when the other harness records a plugin version whose folder does not exist, so that no installer
+	 * can update it, the message names the CAT entry command that the user runs in a terminal, and that the command
+	 * sets the home directory of the process that wrote the message when it differs from the account's home.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void namesEntryCommandWithSessionHome() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-entry-")), "plugin");
+			HarnessB other = new HarnessB(plugin.getParent().resolve("harness-b"));
+
+			String message = refusal(plugin, other, List.of("0.9+b0123456789ab"), Platform.LINUX_X64);
+
+			requireThat(message, "message").endsWith(": HOME=/home/session cat.sh --harness harness-b " +
+				"(in PowerShell: cat.ps1 -Harness harness-b)");
+		}
+	}
+
+	/**
 	 * Creates the version folder of the plugin that holds the running code, holding its version file.
 	 *
 	 * @param root   the test's directory
@@ -171,7 +195,8 @@ public final class OtherHarnessPluginTest
 		try
 		{
 			OtherHarnessPlugin.select(plugin, other, "harness-b", "Harness B", installed,
-				Path.of(".harness-b/plugin.json"), "harness-b-runner", platform);
+				Path.of(".harness-b/plugin.json"), "harness-b-runner", platform,
+				new EntryCommand(platform, Map.of(platform.homeVariable(), "/home/session"), Path.of("/home/account")));
 			throw new AssertionError("The lookup found a plugin in a harness that has none");
 		}
 		catch (IOException e)

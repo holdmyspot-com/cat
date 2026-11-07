@@ -55,6 +55,21 @@ public final class ShellQuoting
 	{
 		if (isPlainPowerShellWord(word))
 			return word;
+		return powerShellString(word);
+	}
+
+	/**
+	 * Writes a word as a PowerShell single-quoted string, which PowerShell reads as that text, such as the value in an
+	 * assignment to an environment variable. {@link #powerShell(String)} leaves a plain word unquoted, which suits an
+	 * argument but not a value: PowerShell reads an unquoted value as a command.
+	 *
+	 * @param word the word
+	 * @return the word in single quotes, with each single quote doubled
+	 * @throws NullPointerException if {@code word} is null
+	 */
+	public static String powerShellString(String word)
+	{
+		requireThat(word, "word").isNotNull();
 		StringBuilder quoted = new StringBuilder("'");
 		for (int i = 0; i < word.length(); ++i)
 		{

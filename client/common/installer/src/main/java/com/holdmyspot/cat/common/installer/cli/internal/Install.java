@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustException.Reason;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
+import com.holdmyspot.cat.common.release.EntryCommand;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import java.io.IOException;
@@ -72,6 +73,7 @@ public final class Install
 	private final HarnessCliFactory cliFactory;
 	private final Predicate<Path> elevation;
 	private final MigrationRunner migrations;
+	private final EntryCommand entryCommand;
 
 	/**
 	 * Creates the install of the extracted plugin archive.
@@ -83,10 +85,11 @@ public final class Install
 	 * @param elevation  returns whether this process runs with administrative rights, given a directory that the check
 	 *                   may write short-lived files to; the startup cache is not trained with those rights
 	 * @param migrations runs the data migration scripts of the archive's release
+	 * @param entryCommand writes the CAT entry command that a refusal tells the user to run
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Install(Path image, Platform platform, FileReplacer replacer, HarnessCliFactory cliFactory,
-		Predicate<Path> elevation, MigrationRunner migrations)
+		Predicate<Path> elevation, MigrationRunner migrations, EntryCommand entryCommand)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(platform, "platform").isNotNull();
@@ -94,12 +97,14 @@ public final class Install
 		requireThat(cliFactory, "cliFactory").isNotNull();
 		requireThat(elevation, "elevation").isNotNull();
 		requireThat(migrations, "migrations").isNotNull();
+		requireThat(entryCommand, "entryCommand").isNotNull();
 		this.image = image;
 		this.platform = platform;
 		this.replacer = replacer;
 		this.cliFactory = cliFactory;
 		this.elevation = elevation;
 		this.migrations = migrations;
+		this.entryCommand = entryCommand;
 	}
 
 	/**
@@ -175,7 +180,7 @@ public final class Install
 			command = discoverProgram(integration, home, environment);
 		else
 		{
-			HarnessProgram.requireRecorded(recorded, home, policyFile, integration, cliFactory);
+			HarnessProgram.requireRecorded(recorded, home, policyFile, integration, cliFactory, entryCommand);
 			command = recorded;
 		}
 		integration.validateConfiguration(home);

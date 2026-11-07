@@ -122,7 +122,8 @@ public final class CodexArtifactTest
 			Path codexHome = root.resolve("codex home");
 			Path installed = installCodex(root, codexHome, OWN_VERSION);
 
-			String output = CodexArtifact.execute(environment(root, codexHome), ownPlugin(root), Platform.current());
+			String output = CodexArtifact.execute(environment(root, codexHome), ownPlugin(root), Platform.current(),
+				null);
 
 			requireThat(output, "output").isEqualTo("artifact=" + installed + "\nrunner=" + runner(installed) +
 				"\nsource=installed\n");
@@ -144,7 +145,8 @@ public final class CodexArtifactTest
 			Path codexHome = root.resolve("codex");
 			Path installed = installCodex(root, codexHome, "1.0+bfedcba987654");
 
-			String output = CodexArtifact.execute(environment(root, codexHome), ownPlugin(root), Platform.current());
+			String output = CodexArtifact.execute(environment(root, codexHome), ownPlugin(root), Platform.current(),
+				null);
 
 			requireThat(output, "output").isEqualTo("artifact=" + installed + "\nrunner=" + runner(installed) +
 				"\nsource=installed\n");
@@ -235,7 +237,7 @@ public final class CodexArtifactTest
 	{
 		try
 		{
-			String output = CodexArtifact.execute(environment, plugin, Platform.current());
+			String output = CodexArtifact.execute(environment, plugin, Platform.current(), null);
 			throw new AssertionError("The selector reported a plugin that it must refuse:\n" + output);
 		}
 		catch (IOException e)
