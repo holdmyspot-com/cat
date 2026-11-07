@@ -37,6 +37,14 @@ public final class KeptRequestStatusTest
 	private static final String SESSION_ID = "019a2b3c-4d5e-7f60-8a1b-2c3d4e5f6a7b";
 	private static final String UPDATE_REQUEST = "Update CAT from https://github.com/holdmyspot-com/cat/releases";
 	private static final String UPDATE_ANSWER = "CAT remains at 1.0 because the latest release is the installed one.";
+	private static final String GRANDPARENT_ID = "019a2b3c-0000-7000-8000-000000000001";
+	private static final String PARENT_ID = "019a2b3c-0000-7000-8000-000000000002";
+	private static final String FORK_ID = "019a2b3c-0000-7000-8000-000000000003";
+	private static final String REVERTED_THREAD_ID = "019a2b3c-0000-7000-8000-000000000004";
+	private static final String PARENT_REQUEST = "Make format_currency print negative amounts as -$75.25";
+	private static final String PARENT_ANSWER = "format_currency now prints -$75.25";
+	private static final String FORK_REQUEST = "Add a --customer option to the CLI";
+	private static final String FORK_ANSWER = "The CLI accepts --customer";
 
 	/**
 	 * Verifies a kept message that a turn answered before the compaction is reported answered, with when it was sent,
@@ -404,6 +412,243 @@ public final class KeptRequestStatusTest
 	}
 
 	/**
+	 * Verifies that a thread forked at a past turn reports a kept message from the parent's session log, as the parent
+	 * recorded it before the fork point. The parent sent the same text again after the fork point, and the fork never
+	 * saw that turn, so the report does not use its answer. The hook and the {@code get-history request-status} command
+	 * report the same outcome, and a kept message that the fork itself recorded is reported too.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void readsParentLogUpToForkPoint() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Path codexHome = project.resolve("codex-home");
+			Path sessions = Files.createDirectories(codexHome.resolve("sessions/2026/11/06"));
+			Rollout parent = new Rollout().numberedFrom(0);
+			parent.add(Rollout.sessionMeta("2026-11-06T10:00:00Z", PARENT_ID, null, 0));
+			parent.answeredTurn("t1", "2026-11-06T10:01:00Z", PARENT_REQUEST, "2026-11-06T10:02:00Z", PARENT_ANSWER);
+			int forkPoint = parent.nextOrdinal();
+			parent.answeredTurn("t2", "2026-11-06T10:03:00Z", PARENT_REQUEST, "2026-11-06T10:04:00Z",
+				"Answered after the fork point");
+			parent.write(sessions.resolve(logName(PARENT_ID)));
+			Path transcript = writeFork(sessions.resolve(logName(FORK_ID)), PARENT_ID, forkPoint, PARENT_REQUEST);
+
+			String context = context(invokeHook(project, transcript, "compact"));
+			String status = CodexGetHistorySecrets.getCodexGetHistoryAccess().execute(scope,
+				Map.of("CODEX_HOME", codexHome.toString()), new String[]{FORK_ID, "request-status"},
+				new ByteArrayInputStream(PARENT_REQUEST.getBytes(UTF_8)));
+
+			requireThat(context, "context").contains("- \"" + PARENT_REQUEST + "\" (sent 2026-11-06T10:01:00Z): " +
+				"answered at 2026-11-06T10:02:00Z, turn completed: \"" + PARENT_ANSWER + "\"\n").
+				contains("- \"" + FORK_REQUEST + "\" (sent 2026-11-06T11:01:00Z): answered at 2026-11-06T11:02:00Z, " +
+					"turn completed: \"" + FORK_ANSWER + "\"").
+				doesNotContain("not found in the session log").doesNotContain("Answered after the fork point");
+			requireThat(status, "status").contains("before_compaction: \"" + PARENT_REQUEST + "\" (sent " +
+				"2026-11-06T10:01:00Z): answered at 2026-11-06T10:02:00Z, turn completed: \"" + PARENT_ANSWER + "\"\n").
+				doesNotContain("not found in the session log").doesNotContain("Answered after the fork point");
+		}
+	}
+
+	/**
+	 * Verifies that a thread forked from a fork reports kept messages from every ancestor's session log: the
+	 * grandparent's, which the parent inherited, the parent's own, and the fork's own.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void readsEveryAncestorLogOfForkOfFork() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Path sessions = Files.createDirectories(project.resolve("codex-home/sessions/2026/11/06"));
+			Rollout grandparent = new Rollout().numberedFrom(0);
+			grandparent.add(Rollout.sessionMeta("2026-11-06T09:00:00Z", GRANDPARENT_ID, null, 0));
+			grandparent.answeredTurn("t1", "2026-11-06T09:01:00Z", "Format negative amounts", "2026-11-06T09:02:00Z",
+				"Negative amounts print as -$75.25");
+			int grandparentEnd = grandparent.nextOrdinal();
+			grandparent.write(sessions.resolve(logName(GRANDPARENT_ID)));
+			Rollout parent = new Rollout().numberedFrom(grandparentEnd);
+			parent.add(Rollout.sessionMeta("2026-11-06T10:00:00Z", PARENT_ID, GRANDPARENT_ID, grandparentEnd));
+			parent.answeredTurn("t2", "2026-11-06T10:01:00Z", PARENT_REQUEST, "2026-11-06T10:02:00Z", PARENT_ANSWER);
+			int parentEnd = parent.nextOrdinal();
+			parent.write(sessions.resolve(logName(PARENT_ID)));
+			Path transcript = writeFork(sessions.resolve(logName(FORK_ID)), PARENT_ID, parentEnd, "Format negative amounts",
+				PARENT_REQUEST);
+
+			String context = context(invokeHook(project, transcript, "compact"));
+
+			requireThat(context, "context").contains("- \"Format negative amounts\" (sent 2026-11-06T09:01:00Z): " +
+				"answered at 2026-11-06T09:02:00Z, turn completed: \"Negative amounts print as -$75.25\"\n").
+				contains("- \"" + PARENT_REQUEST + "\" (sent 2026-11-06T10:01:00Z): answered at 2026-11-06T10:02:00Z, " +
+					"turn completed: \"" + PARENT_ANSWER + "\"\n").
+				contains("- \"" + FORK_REQUEST + "\" (sent 2026-11-06T11:01:00Z)").
+				doesNotContain("not found in the session log");
+		}
+	}
+
+	/**
+	 * Verifies that a fork whose parent's session log does not exist still reports the kept messages that the fork
+	 * recorded, reports the parent's messages as not found, and does not stop the session.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void missingParentLogKeepsForkMessages() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Path sessions = Files.createDirectories(project.resolve("codex-home/sessions/2026/11/06"));
+			Path transcript = writeFork(sessions.resolve(logName(FORK_ID)), PARENT_ID, 6, PARENT_REQUEST);
+
+			HookResult result = invokeHook(project, transcript, "compact");
+			String context = context(result);
+
+			requireThat(context, "context").contains("- \"" + PARENT_REQUEST + "\": not found in the session log\n").
+				contains("- \"" + FORK_REQUEST + "\" (sent 2026-11-06T11:01:00Z): answered at 2026-11-06T11:02:00Z, " +
+					"turn completed: \"" + FORK_ANSWER + "\"");
+			requireThat(readJson(result.output()).has("continue"), "stops").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a parent's session log that ends before the fork point that the fork declares is read as far as it
+	 * goes, and that its messages are reported with the outcomes it recorded.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void shortParentLogIsReadAsFarAsItGoes() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Path sessions = Files.createDirectories(project.resolve("codex-home/sessions/2026/11/06"));
+			Rollout parent = new Rollout().numberedFrom(0);
+			parent.add(Rollout.sessionMeta("2026-11-06T10:00:00Z", PARENT_ID, null, 0));
+			parent.answeredTurn("t1", "2026-11-06T10:01:00Z", PARENT_REQUEST, "2026-11-06T10:02:00Z", PARENT_ANSWER);
+			parent.write(sessions.resolve(logName(PARENT_ID)));
+			Path transcript = writeFork(sessions.resolve(logName(FORK_ID)), PARENT_ID, parent.nextOrdinal() + 100,
+				PARENT_REQUEST);
+
+			String context = context(invokeHook(project, transcript, "compact"));
+
+			requireThat(context, "context").contains("- \"" + PARENT_REQUEST + "\" (sent 2026-11-06T10:01:00Z): " +
+				"answered at 2026-11-06T10:02:00Z, turn completed: \"" + PARENT_ANSWER + "\"\n").
+				doesNotContain("not found in the session log");
+		}
+	}
+
+	/**
+	 * Verifies that a fork reports kept messages from a parent whose thread was archived after the fork, which Codex
+	 * moves out of {@code sessions/} into {@code archived_sessions/}.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void readsArchivedParentLog() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Path codexHome = project.resolve("codex-home");
+			Path sessions = Files.createDirectories(codexHome.resolve("sessions/2026/11/06"));
+			Path archived = Files.createDirectories(codexHome.resolve("archived_sessions"));
+			int forkPoint = writeParent(archived.resolve(logName(PARENT_ID)), PARENT_ID);
+			Path transcript = writeFork(sessions.resolve(logName(FORK_ID)), PARENT_ID, forkPoint, PARENT_REQUEST);
+
+			String context = context(invokeHook(project, transcript, "compact"));
+
+			requireThat(context, "context").contains("- \"" + PARENT_REQUEST + "\" (sent 2026-11-06T10:01:00Z): " +
+				"answered at 2026-11-06T10:02:00Z, turn completed: \"" + PARENT_ANSWER + "\"\n").
+				doesNotContain("not found in the session log");
+		}
+	}
+
+	/**
+	 * Verifies that a fork reports kept messages from the rollout that its {@code history_base} names when that
+	 * rollout's thread was reverted: Codex then names the log after the thread and the rollout, and the fork refers to
+	 * the rollout.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void readsParentLogOfRevertedThread() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-kept-status-"));
+			Path sessions = Files.createDirectories(project.resolve("codex-home/sessions/2026/11/06"));
+			int forkPoint = writeParent(sessions.resolve(logName(REVERTED_THREAD_ID + "_" + PARENT_ID)), PARENT_ID);
+			Path transcript = writeFork(sessions.resolve(logName(FORK_ID)), PARENT_ID, forkPoint, PARENT_REQUEST);
+
+			String context = context(invokeHook(project, transcript, "compact"));
+
+			requireThat(context, "context").contains("- \"" + PARENT_REQUEST + "\" (sent 2026-11-06T10:01:00Z): " +
+				"answered at 2026-11-06T10:02:00Z, turn completed: \"" + PARENT_ANSWER + "\"\n").
+				doesNotContain("not found in the session log");
+		}
+	}
+
+	/**
+	 * Writes a parent session log that holds one answered turn, which {@link #PARENT_REQUEST} sent.
+	 *
+	 * @param log the file to write
+	 * @param rolloutId the identifier that the log's {@code session_meta} gives the rollout
+	 * @return the ordinal that follows the turn, where a fork of this log can begin
+	 * @throws IOException if the file cannot be written
+	 */
+	private static int writeParent(Path log, String rolloutId) throws IOException
+	{
+		Rollout parent = new Rollout().numberedFrom(0);
+		parent.add(Rollout.sessionMeta("2026-11-06T10:00:00Z", rolloutId, null, 0));
+		parent.answeredTurn("t1", "2026-11-06T10:01:00Z", PARENT_REQUEST, "2026-11-06T10:02:00Z", PARENT_ANSWER);
+		parent.write(log);
+		return parent.nextOrdinal();
+	}
+
+	/**
+	 * Writes a fork's session log that inherits the first turns of a parent's, runs one answered turn of its own, and
+	 * compacts keeping the given inherited messages and {@link #FORK_REQUEST}.
+	 *
+	 * @param log the file to write
+	 * @param baseRolloutId the rollout that the fork's {@code history_base} names
+	 * @param baseEnd the {@code history_base}'s {@code end_ordinal_exclusive}
+	 * @param keptInherited the texts of the inherited messages that the compaction keeps, oldest first
+	 * @return the log
+	 * @throws IOException if the file cannot be written
+	 */
+	private static Path writeFork(Path log, String baseRolloutId, int baseEnd, String... keptInherited)
+		throws IOException
+	{
+		Rollout fork = new Rollout().numberedFrom(baseEnd);
+		fork.add(Rollout.sessionMeta("2026-11-06T11:00:00Z", FORK_ID, baseRolloutId, baseEnd));
+		fork.answeredTurn("t9", "2026-11-06T11:01:00Z", FORK_REQUEST, "2026-11-06T11:02:00Z", FORK_ANSWER);
+		Object[] kept = new Object[keptInherited.length + 1];
+		for (int i = 0; i < keptInherited.length; ++i)
+			kept[i] = Rollout.typed(keptInherited[i]);
+		kept[keptInherited.length] = Rollout.typed(FORK_REQUEST);
+		fork.compacted("2026-11-06T11:10:00Z", kept);
+		return fork.write(log);
+	}
+
+	/**
+	 * Returns the name that Codex gives a session log.
+	 *
+	 * @param id the identifier that ends the name: a thread's, or a thread's followed by an underscore and its rollout's
+	 * @return the file name
+	 */
+	private static String logName(String id)
+	{
+		return "rollout-2026-11-06T10-00-00-" + id + ".jsonl";
+	}
+
+	/**
 	 * Runs the SessionStart hook for {@link #SESSION_ID} in a project whose plugin holds the reading guidance.
 	 *
 	 * @param project the project directory, which also holds the plugin
@@ -495,6 +740,31 @@ public final class KeptRequestStatusTest
 	private static final class Rollout
 	{
 		private final List<Map<String, Object>> records = new ArrayList<>();
+		private int firstOrdinal = -1;
+
+		/**
+		 * Numbers the rollout's records as a paginated Codex rollout does: each record carries an {@code ordinal}, and
+		 * the first one's is the given ordinal.
+		 *
+		 * @param firstOrdinal the first record's ordinal: zero for a thread's own rollout, or the {@code history_base}'s
+		 *   {@code end_ordinal_exclusive} for a fork's
+		 * @return this rollout
+		 */
+		Rollout numberedFrom(int firstOrdinal)
+		{
+			this.firstOrdinal = firstOrdinal;
+			return this;
+		}
+
+		/**
+		 * Returns the ordinal that the next appended record gets.
+		 *
+		 * @return the ordinal
+		 */
+		int nextOrdinal()
+		{
+			return firstOrdinal + records.size();
+		}
 
 		/**
 		 * Appends a record.
@@ -567,10 +837,42 @@ public final class KeptRequestStatusTest
 			if (Files.isDirectory(target))
 				file = target.resolve("rollout.jsonl");
 			StringBuilder text = new StringBuilder();
-			for (Map<String, Object> record : records)
+			for (int i = 0; i < records.size(); ++i)
+			{
+				Map<String, Object> record = records.get(i);
+				if (firstOrdinal >= 0)
+				{
+					Map<String, Object> numbered = new LinkedHashMap<>();
+					numbered.put("timestamp", record.get("timestamp"));
+					numbered.put("ordinal", firstOrdinal + i);
+					numbered.putAll(record);
+					record = numbered;
+				}
 				text.append(writeJson(record)).append('\n');
+			}
 			Files.writeString(file, text, UTF_8);
 			return file;
+		}
+
+		/**
+		 * Returns the {@code session_meta} record that begins a paginated rollout.
+		 *
+		 * @param time the record's time
+		 * @param rolloutId the rollout's identifier
+		 * @param baseRolloutId the rollout that this one's {@code history_base} names, or {@code null} for a thread that
+		 *   is not a fork
+		 * @param baseEnd the {@code history_base}'s {@code end_ordinal_exclusive}, which is ignored when
+		 *   {@code baseRolloutId} is {@code null}
+		 * @return the record
+		 */
+		static Map<String, Object> sessionMeta(String time, String rolloutId, String baseRolloutId, int baseEnd)
+		{
+			Map<String, Object> payload = new LinkedHashMap<>();
+			payload.put("id", rolloutId);
+			payload.put("history_mode", "paginated");
+			if (baseRolloutId != null)
+				payload.put("history_base", Map.of("thread_id", baseRolloutId, "end_ordinal_exclusive", baseEnd));
+			return record(time, "session_meta", payload);
 		}
 
 		/**

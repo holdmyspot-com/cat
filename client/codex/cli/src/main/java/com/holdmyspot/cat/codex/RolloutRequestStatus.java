@@ -36,6 +36,10 @@ import tools.jackson.databind.json.JsonMapper;
  * kept text is the start of the recorded one, or when the kept text is the start and end of the recorded one around
  * Codex's truncation marker. A message that the user sends again after the compaction is a new request and does not
  * match a kept one.
+ * <p>
+ * A thread that was forked has a rollout that holds only the fork's own records. The report reads the records of the
+ * rollouts that the fork inherited its history from, as far as {@link RolloutLineage} finds them, before the fork's
+ * own. A kept message whose rollout cannot be found is reported as not found in the session log.
  */
 // WORKAROUND: https://github.com/openai/codex/issues/42611
 // Codex replays an already-answered kept user message as a new turn after compaction. Remove this class, and the
@@ -94,100 +98,39 @@ final class RolloutRequestStatus
 	}
 
 	/**
-	 * Reads the user messages, answers, turn ends and latest compaction of a Codex rollout. Only lines that hold one of
-	 * those records are parsed, so the rest of a large rollout costs one substring search per line.
+	 * Reads the user messages, answers, turn ends and latest compaction of a Codex rollout. When the rollout is a fork's,
+	 * the records of the rollouts that it inherited its history from, up to where it inherited them, come first. Only
+	 * lines that hold one of those records are parsed, so the rest of a large rollout costs one substring search per
+	 * line.
 	 *
 	 * @param json the JSON mapper
 	 * @param rollout the rollout JSONL file
 	 * @return the rollout's request status
 	 * @throws NullPointerException if {@code json} or {@code rollout} are null
-	 * @throws IOException if the rollout cannot be read, or a line that holds one of those records is not JSON
+	 * @throws IOException if the rollout cannot be read, or a line that holds one of those records is not JSON. A
+	 *   rollout that the fork inherited from is read as far as it exists: one that cannot be found or read leaves its
+	 *   messages unfound without failing this method
 	 */
 	static RolloutRequestStatus read(JsonMapper json, Path rollout) throws IOException
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(rollout, "rollout").isNotNull();
-		List<UserMessage> userMessages = new ArrayList<>();
-		Map<String, TurnOutcome> outcomesByTurn = new HashMap<>();
-		Compaction latestCompaction = null;
-		String currentTurn = "";
-		long position = 0;
-		try (BufferedReader reader = Files.newBufferedReader(rollout, UTF_8))
+		List<RolloutLineage.Segment> segments = RolloutLineage.resolve(json, rollout);
+		Reading reading = new Reading();
+		for (RolloutLineage.Segment segment : segments)
 		{
-			for (String line = reader.readLine(); line != null; line = reader.readLine())
+			try
 			{
-				++position;
-				if (!holdsReadRecord(line))
-					continue;
-				JsonNode record;
-				try
-				{
-					record = json.readTree(line);
-				}
-				catch (JacksonException e)
-				{
-					throw new IOException("Line " + position + " of " + rollout + " is not JSON: " + e.getMessage(), e);
-				}
-				Instant time = timestamp(record);
-				JsonNode payload = record.path("payload");
-				String recordType = record.path("type").asString("");
-				String payloadType = payload.path("type").asString("");
-				if (recordType.equals("compacted"))
-				{
-					latestCompaction = new Compaction(position, time, keptTexts(payload.path("replacement_history")));
-					continue;
-				}
-				if (recordType.equals("event_msg"))
-				{
-					String turnId = payload.path("turn_id").asString("");
-					switch (payloadType)
-					{
-						case "task_started" ->
-						{
-							if (!currentTurn.isEmpty() && !turnId.isEmpty() && !turnId.equals(currentTurn))
-							{
-								TurnOutcome previous = outcomesByTurn.computeIfAbsent(currentTurn, _ -> new TurnOutcome());
-								if (previous.superseded == null)
-									previous.superseded = new Event(position, time);
-							}
-							currentTurn = turnId;
-						}
-						case "task_complete" ->
-						{
-							TurnOutcome outcome = outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome());
-							outcome.completed = new Event(position, time);
-							String lastMessage = payload.path("last_agent_message").asString("");
-							if (!lastMessage.isBlank())
-								outcome.lastAgentMessage = new Answer(position, time, lastMessage);
-						}
-						case "turn_aborted" -> outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome()).
-							aborted = new Event(position, time);
-						default ->
-						{
-						}
-					}
-					continue;
-				}
-				if (!recordType.equals("response_item") || !payloadType.equals("message"))
-					continue;
-				String turnId = turnId(record, currentTurn);
-				String role = payload.path("role").asString("");
-				if (role.equals("user") && isTyped(payload))
-					userMessages.add(new UserMessage(position, time, text(payload), turnId));
-				else if (role.equals("assistant") && payload.path("phase").asString("").equals("final_answer"))
-				{
-					outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome()).finalAnswers.
-						add(new Answer(position, time, text(payload)));
-				}
-				else if (role.equals("developer") && text(payload).stripLeading().startsWith(ABORT_NOTICE_PREFIX))
-				{
-					TurnOutcome outcome = outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome());
-					if (outcome.aborted == null)
-						outcome.aborted = new Event(position, time);
-				}
+				reading.read(json, segment);
+			}
+			catch (IOException e)
+			{
+				if (segment.rollout().equals(rollout))
+					throw e;
+				// An inherited rollout that fails midway still supplies the records read before the failure
 			}
 		}
-		return new RolloutRequestStatus(userMessages, outcomesByTurn, latestCompaction);
+		return new RolloutRequestStatus(reading.userMessages, reading.outcomesByTurn, reading.latestCompaction);
 	}
 
 	/**
@@ -605,6 +548,124 @@ final class RolloutRequestStatus
 			if (end == null || end.position() <= position)
 				return null;
 			return end;
+		}
+	}
+
+	/**
+	 * Collects the records of one or more rollouts of one thread's history, oldest rollout first.
+	 */
+	private static final class Reading
+	{
+		private final List<UserMessage> userMessages = new ArrayList<>();
+		private final Map<String, TurnOutcome> outcomesByTurn = new HashMap<>();
+		private Compaction latestCompaction;
+		private String currentTurn = "";
+		/**
+		 * The number of lines read from every rollout so far, which orders the records of the whole history.
+		 */
+		private long position;
+
+		/**
+		 * Reads the records of one rollout of the history, after those of the rollouts read before it.
+		 *
+		 * @param json the JSON mapper
+		 * @param segment the rollout, and the ordinal before which its records belong to the history
+		 * @throws IOException if the rollout cannot be read, or a line that holds one of those records is not JSON
+		 */
+		void read(JsonMapper json, RolloutLineage.Segment segment) throws IOException
+		{
+			Path rollout = segment.rollout();
+			long lineNumber = 0;
+			try (BufferedReader reader = Files.newBufferedReader(rollout, UTF_8))
+			{
+				for (String line = reader.readLine(); line != null; line = reader.readLine())
+				{
+					++lineNumber;
+					++position;
+					if (!holdsReadRecord(line))
+						continue;
+					JsonNode record;
+					try
+					{
+						record = json.readTree(line);
+					}
+					catch (JacksonException e)
+					{
+						throw new IOException("Line " + lineNumber + " of " + rollout + " is not JSON: " + e.getMessage(), e);
+					}
+					// Ordinals only grow, so the first record at or past the end ends the inherited part of the rollout
+					JsonNode ordinal = record.path("ordinal");
+					if (ordinal.isNumber() && ordinal.asLong(0) >= segment.endOrdinalExclusive())
+						break;
+					add(record);
+				}
+			}
+		}
+
+		/**
+		 * Adds the user message, answer, turn end or compaction that a record holds, at the current position.
+		 *
+		 * @param record the rollout record
+		 */
+		private void add(JsonNode record)
+		{
+			Instant time = timestamp(record);
+			JsonNode payload = record.path("payload");
+			String recordType = record.path("type").asString("");
+			String payloadType = payload.path("type").asString("");
+			if (recordType.equals("compacted"))
+			{
+				latestCompaction = new Compaction(position, time, keptTexts(payload.path("replacement_history")));
+				return;
+			}
+			if (recordType.equals("event_msg"))
+			{
+				String turnId = payload.path("turn_id").asString("");
+				switch (payloadType)
+				{
+					case "task_started" ->
+					{
+						if (!currentTurn.isEmpty() && !turnId.isEmpty() && !turnId.equals(currentTurn))
+						{
+							TurnOutcome previous = outcomesByTurn.computeIfAbsent(currentTurn, _ -> new TurnOutcome());
+							if (previous.superseded == null)
+								previous.superseded = new Event(position, time);
+						}
+						currentTurn = turnId;
+					}
+					case "task_complete" ->
+					{
+						TurnOutcome outcome = outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome());
+						outcome.completed = new Event(position, time);
+						String lastMessage = payload.path("last_agent_message").asString("");
+						if (!lastMessage.isBlank())
+							outcome.lastAgentMessage = new Answer(position, time, lastMessage);
+					}
+					case "turn_aborted" -> outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome()).
+						aborted = new Event(position, time);
+					default ->
+					{
+					}
+				}
+				return;
+			}
+			if (!recordType.equals("response_item") || !payloadType.equals("message"))
+				return;
+			String turnId = turnId(record, currentTurn);
+			String role = payload.path("role").asString("");
+			if (role.equals("user") && isTyped(payload))
+				userMessages.add(new UserMessage(position, time, text(payload), turnId));
+			else if (role.equals("assistant") && payload.path("phase").asString("").equals("final_answer"))
+			{
+				outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome()).finalAnswers.
+					add(new Answer(position, time, text(payload)));
+			}
+			else if (role.equals("developer") && text(payload).stripLeading().startsWith(ABORT_NOTICE_PREFIX))
+			{
+				TurnOutcome outcome = outcomesByTurn.computeIfAbsent(turnId, _ -> new TurnOutcome());
+				if (outcome.aborted == null)
+					outcome.aborted = new Event(position, time);
+			}
 		}
 	}
 }
