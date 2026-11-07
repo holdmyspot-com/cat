@@ -164,6 +164,23 @@ public final class SessionLauncherChannelTest
 	}
 
 	/**
+	 * Verifies that the launcher refuses a request whose manifest has the format of an earlier CAT version, which
+	 * cannot say which thread asks, and tells the sender to start a new session.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesEarlierFormatVersion() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			ObjectNode manifest = fixture.minimalManifest();
+			manifest.put("format_version", 3);
+			fixture.requireRefusal(manifest, "start a new session");
+		}
+	}
+
+	/**
 	 * Supplies extra permissions that the launcher must refuse, each with the text that the refusal names.
 	 *
 	 * @return the permissions' JSON and the text that the refusal names
@@ -427,7 +444,7 @@ public final class SessionLauncherChannelTest
 		 */
 		private ObjectNode minimalManifest()
 		{
-			return json.createObjectNode().put("format_version", 3).put("harness", "claude").put("model", "model-a").
+			return json.createObjectNode().put("format_version", 4).put("harness", "claude").put("model", "model-a").
 				put("effort", "effort-a").put("turns", "turns").put("project", "project");
 		}
 

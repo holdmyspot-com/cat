@@ -57,9 +57,13 @@ public final class RequestArchive
 	static final String EXTENSION = ".tar";
 	static final String MANIFEST = "request.json";
 	/**
-	 * The version of the manifest, which both levels share.
+	 * The version of the manifest of a request made inside a run.
 	 */
 	static final int VERSION = 3;
+	/**
+	 * The version of the manifest of a session-level request.
+	 */
+	static final int SESSION_VERSION = 4;
 	/**
 	 * The most bytes of a manifest at every level, which a receiver reads into memory.
 	 */
@@ -163,7 +167,7 @@ public final class RequestArchive
 		requireThat(limits, "limits").isNotNull();
 		publish(json, destination, limits, (archive, budget) ->
 		{
-			ObjectNode manifest = json.createObjectNode().put("format_version", VERSION).
+			ObjectNode manifest = json.createObjectNode().put("format_version", SESSION_VERSION).
 				put("harness", request.harness());
 			putText(manifest, "model", request.model());
 			putText(manifest, "effort", request.effort());
@@ -668,7 +672,8 @@ public final class RequestArchive
 	 */
 	static RunRequest readRun(JsonMapper json, Path inputs) throws IOException
 	{
-		JsonNode value = manifest(json, inputs, RUN_FIELDS, "A request inside a run");
+		JsonNode value = manifest(json, inputs, RUN_FIELDS, "A request inside a run", VERSION,
+			"Request manifest requires format_version " + VERSION);
 		String harness = harness(value);
 		Path project = entry(value, inputs, "project", Kind.DIRECTORY);
 		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_RUN_INPUTS);
@@ -700,7 +705,9 @@ public final class RequestArchive
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(inputs, "inputs").isNotNull();
-		JsonNode value = manifest(json, inputs, SESSION_FIELDS, "A session request");
+		JsonNode value = manifest(json, inputs, SESSION_FIELDS, "A session request", SESSION_VERSION,
+			"Request manifest requires format_version " + SESSION_VERSION + ", which the CAT version of this " +
+				"session's launcher reads: start a new session");
 		String harness = harness(value);
 		Optional<Path> turns = Optional.empty();
 		if (value.has("turns"))
@@ -768,16 +775,18 @@ public final class RequestArchive
 	/**
 	 * Reads an extracted manifest and refuses a field that its level does not allow.
 	 *
-	 * @param json    the manifest mapper
-	 * @param inputs  the extracted request
-	 * @param allowed the fields that the level allows
-	 * @param level   names the level's requests in a refusal
+	 * @param json            the manifest mapper
+	 * @param inputs          the extracted request
+	 * @param allowed         the fields that the level allows
+	 * @param level           names the level's requests in a refusal
+	 * @param version         the level's {@code format_version}
+	 * @param versionMismatch the refusal of a manifest of another {@code format_version}
 	 * @return the manifest object
-	 * @throws IOException if the manifest is missing, is not a JSON object of {@link #VERSION}, or chooses a field
+	 * @throws IOException if the manifest is missing, is not a JSON object of {@code version}, or chooses a field
 	 *                     outside {@code allowed}
 	 */
-	private static JsonNode manifest(JsonMapper json, Path inputs, Set<String> allowed, String level)
-		throws IOException
+	private static JsonNode manifest(JsonMapper json, Path inputs, Set<String> allowed, String level, int version,
+		String versionMismatch) throws IOException
 	{
 		Path file = inputs.resolve(MANIFEST);
 		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
@@ -793,8 +802,8 @@ public final class RequestArchive
 		}
 		if (!value.isObject())
 			throw new IOException("Request manifest must be a JSON object");
-		if (!value.path("format_version").isInt() || value.path("format_version").intValue() != VERSION)
-			throw new IOException("Request manifest requires format_version " + VERSION);
+		if (!value.path("format_version").isInt() || value.path("format_version").intValue() != version)
+			throw new IOException(versionMismatch);
 		for (String field : value.propertyNames())
 		{
 			if (!allowed.contains(field))
