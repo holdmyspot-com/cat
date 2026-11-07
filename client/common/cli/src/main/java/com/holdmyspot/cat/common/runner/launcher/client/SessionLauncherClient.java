@@ -28,6 +28,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -123,7 +124,31 @@ public final class SessionLauncherClient
 		Path home = Platform.current().homeDirectory(environment);
 		return new SessionLauncherClient(new SessionLauncherChannel(home), sessionProduct(environment),
 			HolderStarter.processes(), GitIdentity.fromGit(), Clock.systemUTC(),
-			waiting.every(SessionLauncherChannel.INBOX_POLL), Map.of());
+			waiting.every(SessionLauncherChannel.INBOX_POLL), askingThreads(environment, SessionHarness.installed()));
+	}
+
+	/**
+	 * Returns the identifier that each harness gives the thread that runs the command: the value of the harness's
+	 * {@link SessionHarness#sessionVariable() session variable}.
+	 *
+	 * @param environment the process environment
+	 * @param harnesses   the harnesses to look for
+	 * @return the identifier of the thread, by the identifier of each harness whose session variable is set and not
+	 *         blank
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static Map<String, String> askingThreads(Map<String, String> environment, List<SessionHarness> harnesses)
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(harnesses, "harnesses").isNotNull();
+		Map<String, String> threads = new HashMap<>();
+		for (SessionHarness harness : harnesses)
+		{
+			String thread = environment.get(harness.sessionVariable());
+			if (thread != null && !thread.isBlank())
+				threads.put(harness.id(), thread);
+		}
+		return threads;
 	}
 
 	/**

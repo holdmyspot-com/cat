@@ -56,7 +56,7 @@ public final class SessionLauncherChannelTest
 			{"plugins"}, {"workspace"}, {"read_only_evidence"}, {"install_cat"}, {"session_transcripts"},
 			{"keep_run"}, {"session_requests"}, {"request_depth"}, {"capacity_wait"}, {"max_concurrency"},
 			{"capacity"}, {"instruction_files"}, {"tool_output_token_limit"}, {"deny_read"}, {"git_name"},
-			{"git_email"}, {"extra_permissions"}};
+			{"git_email"}, {"extra_permissions"}, {"asking_thread"}};
 	}
 
 	/**
@@ -177,6 +177,35 @@ public final class SessionLauncherChannelTest
 			ObjectNode manifest = fixture.minimalManifest();
 			manifest.put("format_version", 3);
 			fixture.requireRefusal(manifest, "start a new session");
+		}
+	}
+
+	/**
+	 * Supplies values of the asking thread that a sender's harness never gives a thread.
+	 *
+	 * @return the field's JSON value
+	 */
+	@DataProvider
+	public Object[][] malformedAskingThreads()
+	{
+		return new Object[][]{{"5"}, {"\"\""}, {"\" \""}, {"[\"thread-a\"]"}};
+	}
+
+	/**
+	 * Verifies that the launcher refuses a request whose asking thread is not a nonblank text, naming the field, so
+	 * that a malformed field can never stand for the main thread.
+	 *
+	 * @param value the field's JSON value
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "malformedAskingThreads")
+	public void refusesMalformedAskingThread(String value) throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			ObjectNode manifest = fixture.minimalManifest();
+			manifest.set("asking_thread", json.readTree(value));
+			fixture.requireRefusal(manifest, "asking_thread");
 		}
 	}
 
@@ -384,11 +413,14 @@ public final class SessionLauncherChannelTest
 			Optional<String> gitEmail = Optional.empty();
 			if (field.equals("git_email"))
 				gitEmail = Optional.of("ada@example.com");
+			Optional<String> askingThread = Optional.empty();
+			if (field.equals("asking_thread"))
+				askingThread = Optional.of("thread-a");
 			boolean keepRun = field.equals("keep_run") || field.equals("session_transcripts");
 			return new Request(harness, model, effort, agent, turns, project, plugins, requestWorkspace, evidence,
 				field.equals("install_cat"), field.equals("session_transcripts"), keepRun, sessionRequests, requestDepth,
 				capacityWait, maximumConcurrency, field.equals("capacity"), instructionFiles, toolOutputTokenLimit,
-				deniedReads, extraPermissions, gitName, gitEmail, Optional.empty());
+				deniedReads, extraPermissions, gitName, gitEmail, askingThread);
 		}
 
 		/**

@@ -89,7 +89,8 @@ public final class RequestArchive
 	private static final Set<String> SESSION_FIELDS = Set.of("format_version", "harness", "model", "effort", "agent",
 		"turns", "input", "project", "plugins", "workspace", "read_only_evidence", "install_cat", "session_transcripts",
 		"keep_run", "session_requests", "request_depth", "capacity_wait", "max_concurrency", "capacity",
-		"instruction_files", "tool_output_token_limit", "deny_read", EXTRA_PERMISSIONS, "git_name", "git_email");
+		"instruction_files", "tool_output_token_limit", "deny_read", EXTRA_PERMISSIONS, "git_name", "git_email",
+		"asking_thread");
 	private static final Set<PosixFilePermission> FILE_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> PROGRAM_MODE = PosixFilePermissions.fromString("rwxr-xr-x");
 
@@ -219,6 +220,7 @@ public final class RequestArchive
 				manifest.set(EXTRA_PERMISSIONS, request.extraPermissions().toDocument(json));
 			putText(manifest, "git_name", request.gitName());
 			putText(manifest, "git_email", request.gitEmail());
+			putText(manifest, "asking_thread", request.askingThread());
 			return manifest;
 		});
 	}
@@ -744,13 +746,16 @@ public final class RequestArchive
 					throw new IOException("deny_read must be an array of absolute paths");
 				deniedReads.add(Path.of(element.asString()));
 			}
+			Optional<String> askingThread = optionalText(value, "asking_thread");
+			if (askingThread.isPresent() && askingThread.get().isBlank())
+				throw new IOException("Request field may not be blank: asking_thread");
 			return new SessionLauncherChannel.Request(harness, optionalText(value, "model"),
 				optionalText(value, "effort"), optionalText(value, "agent"), turns, project, plugins, workspace,
 				evidence, flag(value, "install_cat"), flag(value, "session_transcripts"), flag(value, "keep_run"),
 				count(value, "session_requests").orElse(0), count(value, "request_depth").orElse(0), capacityWait,
 				count(value, "max_concurrency"), capacityHeld, optionalText(value, "instruction_files"),
 				count(value, "tool_output_token_limit"), deniedReads, extraPermissions(value),
-				optionalText(value, "git_name"), optionalText(value, "git_email"), Optional.empty());
+				optionalText(value, "git_name"), optionalText(value, "git_email"), askingThread);
 		}
 		catch (IllegalArgumentException e)
 		{

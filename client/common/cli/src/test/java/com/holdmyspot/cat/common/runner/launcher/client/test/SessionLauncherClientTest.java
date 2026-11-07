@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
@@ -112,7 +113,7 @@ public final class SessionLauncherClientTest
 				}
 			};
 			SessionLauncherClient client = new SessionLauncherClient(channel, PRODUCT, launcher, git, clock,
-				launcher::step, Map.of());
+				launcher::step, Map.of("claude", "thread-a", "codex", "thread-b"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
 			return new Fixture(root, channel, clock, launcher, client, project);
@@ -259,10 +260,29 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
+	 * Verifies that a launch names, for each harness, the thread that the harness's session variable identifies,
+	 * and no thread for a harness whose variable is unset or blank.
+	 */
+	@Test
+	public void asksForThreadOfSessionVariable()
+	{
+		SessionHarness first = new SessionHarness("harness-a", "HARNESS_A_THREAD", "HARNESS_A_HOME", Path.of(".a"),
+			List.of("<session-id>.jsonl"));
+		SessionHarness blank = new SessionHarness("harness-b", "HARNESS_B_THREAD", "HARNESS_B_HOME", Path.of(".b"),
+			List.of("<session-id>.jsonl"));
+		SessionHarness unset = new SessionHarness("harness-c", "HARNESS_C_THREAD", "HARNESS_C_HOME", Path.of(".c"),
+			List.of("<session-id>.jsonl"));
+		Map<String, String> environment = Map.of("HARNESS_A_THREAD", "thread-a", "HARNESS_B_THREAD", " ");
+
+		requireThat(SessionLauncherClient.askingThreads(environment, List.of(first, blank, unset)), "askingThreads").
+			isEqualTo(Map.of("harness-a", "thread-a"));
+	}
+
+	/**
 	 * Verifies that a completed request writes the child's records to {@code --output} and its receipt to
 	 * {@code --receipt}, copies the kept run into {@code --run-root} without links or the child's home, names the
-	 * copy in the records and the receipt, and exits with status 0. The request carries the launch's choices and the
-	 * project's Git identity, under a holder that names its digest.
+	 * copy in the records and the receipt, and exits with status 0. The request carries the launch's choices, the
+	 * project's Git identity and the thread that the launch's harness names, under a holder that names its digest.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -305,6 +325,7 @@ public final class SessionLauncherClientTest
 			requireThat(launcher.request.keepRun(), "keepRun").isTrue();
 			requireThat(launcher.request.capacityHeld(), "capacityHeld").isFalse();
 			requireThat(launcher.request.gitName(), "gitName").isEqualTo(Optional.of("Ada"));
+			requireThat(launcher.request.askingThread(), "askingThread").isEqualTo(Optional.of("thread-a"));
 			requireThat(launcher.consumed, "consumed").isEqualTo(List.of("{\"type\":\"turn\",\"prompt\":\"task\"}",
 				"{\"type\":\"complete\"}"));
 			requireThat(launcher.requestHolder().closed, "requestHolderClosed").isTrue();
