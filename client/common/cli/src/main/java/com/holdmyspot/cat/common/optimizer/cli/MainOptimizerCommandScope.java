@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
@@ -22,11 +23,9 @@ import io.github.cowwoc.pouch10.core.Reference;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.random.RandomGenerator;
 
 /**
@@ -41,21 +40,10 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * The launcher's name in the runtime image's {@code bin} directory.
 	 */
 	private static final String LAUNCHER = "prompt-optimizer";
-	/**
-	 * The variable that Claude Code sets in the environment of its sessions' commands.
-	 */
-	private static final String CLAUDE_MARKER = "CLAUDECODE";
-	/**
-	 * The value of {@link #CLAUDE_MARKER} in a Claude Code session's command.
-	 */
-	private static final String CLAUDE_MARKER_VALUE = "1";
-	/**
-	 * The variable that Codex sets, in the environment of its sessions' commands, to the ID of the command's thread.
-	 */
-	private static final String CODEX_MARKER = "CODEX_THREAD_ID";
 	private final Harness harness;
 	private final HarnessSandbox trialSandbox;
 	private final SessionHarness sessionHarness;
+	private final HarnessMarkers markers;
 	private final Map<String, String> environment;
 	private final Path configurationDirectory;
 	private final Path directory;
@@ -70,6 +58,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @param harness                the harness that runs the launcher
 	 * @param trialSandbox           decides whether {@code harness} sandboxes the campaign's trials on a platform
 	 * @param sessionHarness         the parts of the harness's CAT session directories
+	 * @param markers                reads which harnesses' sessions run a command from its environment
 	 * @param environment            the process environment, whose session variable names the host session
 	 * @param configurationDirectory the host harness's configuration directory
 	 * @param directory              the launcher's working directory, below the project
@@ -79,8 +68,8 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * @throws NullPointerException     if any argument is null
 	 */
 	protected MainOptimizerCommandScope(Harness harness, HarnessSandbox trialSandbox, SessionHarness sessionHarness,
-		Map<String, String> environment, Path configurationDirectory, Path directory, List<Path> loaderConfiguration,
-		Waiting waiting)
+		HarnessMarkers markers, Map<String, String> environment, Path configurationDirectory, Path directory,
+		List<Path> loaderConfiguration, Waiting waiting)
 	{
 		super(new MainJvmScope(environment, waiting));
 		this.fileReplacer = LazyReference.create(() -> FileReplacer.retrying(waiting));
@@ -88,6 +77,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		requireThat(harness, "harness").isNotNull();
 		requireThat(trialSandbox, "trialSandbox").isNotNull();
 		requireThat(sessionHarness, "sessionHarness").isNotNull();
+		requireThat(markers, "markers").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(configurationDirectory, "configurationDirectory").isNotNull();
 		requireThat(directory, "directory").isNotNull();
@@ -95,6 +85,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		this.harness = harness;
 		this.trialSandbox = trialSandbox;
 		this.sessionHarness = sessionHarness;
+		this.markers = markers;
 		this.environment = Map.copyOf(environment);
 		this.configurationDirectory = configurationDirectory;
 		this.directory = directory;
@@ -188,31 +179,12 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		ensureOpen();
 		String id = harness.commandName();
-		return switch (LaunchRoute.decide(id, id, runningHarnesses(environment), new String[0], environment))
+		return switch (LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment))
 		{
 			case LaunchRoute.Launcher _, LaunchRoute.Forward _ ->
 				SessionLauncherClient.production(environment, waiting()).refusal();
 			case LaunchRoute.Refused _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> Optional.empty();
 		};
-	}
-
-	/**
-	 * Returns the harnesses whose sessions run a command, as their markers in the command's environment say: Claude
-	 * Code sets {@value #CLAUDE_MARKER} to {@value #CLAUDE_MARKER_VALUE}, and Codex sets {@value #CODEX_MARKER} to
-	 * the ID of the thread whose command it is.
-	 *
-	 * @param environment the command's environment
-	 * @return the command names of the harnesses, empty if no harness runs the command
-	 */
-	private static Set<String> runningHarnesses(Map<String, String> environment)
-	{
-		Set<String> harnesses = new HashSet<>();
-		if (CLAUDE_MARKER_VALUE.equals(environment.get(CLAUDE_MARKER)))
-			harnesses.add(Harness.CLAUDE.commandName());
-		String thread = environment.get(CODEX_MARKER);
-		if (thread != null && !thread.isBlank())
-			harnesses.add(Harness.CODEX.commandName());
-		return Set.copyOf(harnesses);
 	}
 
 	@Override

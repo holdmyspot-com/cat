@@ -987,7 +987,7 @@ public final class CodexRunnerCliTest
 	@Test(dataProvider = "markedEnvironments")
 	public void readsHarnessMarkers(Map<String, String> environment, Set<String> expected)
 	{
-		Set<String> harnesses = CodexRunnerCli.runningHarnesses(environment);
+		Set<String> harnesses = CodexRunnerCli.MARKERS.running(environment);
 
 		requireThat(harnesses, "harnesses").withContext(environment, "environment").isEqualTo(expected);
 	}
@@ -1028,7 +1028,7 @@ public final class CodexRunnerCliTest
 			requireThat(policy.writeDenials(), "writeDenials").isEmpty();
 			requireThat(policy.readDenials(), "readDenials").isEqualTo(List.of(secret));
 			requireThat(policy.hosts(), "hosts").isEqualTo(needs.hosts());
-			requireThat(LaunchRoute.decide("codex", "codex", CodexRunnerCli.runningHarnesses(environment),
+			requireThat(LaunchRoute.decide("codex", "codex", CodexRunnerCli.MARKERS.running(environment),
 				bounded.toArray(String[]::new), environment), "route").isEqualTo(new LaunchRoute.Bounded());
 		}
 	}

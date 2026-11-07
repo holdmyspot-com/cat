@@ -39,7 +39,7 @@ public final class CodexRunnerRelay
 			return;
 		}
 		Map<String, String> environment = Platform.current().environment(System.getenv());
-		System.exit(RunnerRelay.relay("codex", HARNESS_ID, ClaudeRunnerCli.runningHarnesses(environment),
+		System.exit(RunnerRelay.relay("codex", HARNESS_ID, ClaudeRunnerCli.MARKERS.running(environment),
 			args, environment, () -> CodexArtifact.execute(environment),
 			(command, runnerEnvironment) ->
 			{

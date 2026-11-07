@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
+import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
@@ -53,7 +54,6 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,18 +73,17 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * The variable that Claude Code sets to {@value #CLAUDE_MARKER_VALUE} in the environment of the commands that it
-	 * runs.
-	 */
-	private static final String CLAUDE_MARKER = "CLAUDECODE";
-	/**
-	 * The value of {@link #CLAUDE_MARKER} in a command that Claude Code runs.
-	 */
-	private static final String CLAUDE_MARKER_VALUE = "1";
-	/**
 	 * The identifier of the Claude Code harness.
 	 */
 	private static final String CLAUDE_ID = "claude";
+	/**
+	 * The markers of the harnesses whose sessions run a command: Codex sets its session variable,
+	 * {@code CODEX_THREAD_ID}, to the ID of the thread whose command it runs, and Claude Code sets {@code CLAUDECODE} to
+	 * {@code 1} in the environment of the commands that it runs.
+	 */
+	public static final HarnessMarkers MARKERS = new HarnessMarkers(List.of(
+		HarnessMarkers.Marker.notBlank(HARNESS_ID, CodexSessionHarness.HARNESS.sessionVariable()),
+		HarnessMarkers.Marker.equalTo(CLAUDE_ID, "CLAUDECODE", "1")));
 	/**
 	 * How often a launch inside a run checks the requested session's progress.
 	 */
@@ -183,7 +182,7 @@ public final class CodexRunnerCli
 		String[] options = args;
 		if (options.length > 0 && options[0].equals("serve"))
 			options = Arrays.copyOfRange(options, 1, options.length);
-		return switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, runningHarnesses(environment), args, environment))
+		return switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, MARKERS.running(environment), args, environment))
 		{
 			case LaunchRoute.Forward(Path requests) -> SessionRequestForwarder.forward(HARNESS_ID, options, input,
 				requests, waiting.every(REQUEST_POLL), output, errors);
@@ -213,27 +212,6 @@ public final class CodexRunnerCli
 				}
 			}
 		};
-	}
-
-	/**
-	 * Returns the harnesses whose sessions run a command, as their markers in the command's environment say: Codex
-	 * sets {@code CODEX_THREAD_ID} to the ID of the thread whose command it is, and Claude Code sets
-	 * {@code CLAUDECODE} to {@code 1}.
-	 *
-	 * @param environment the command's environment
-	 * @return the identifiers of the harnesses, empty if no harness runs the command
-	 * @throws NullPointerException if {@code environment} is null
-	 */
-	public static Set<String> runningHarnesses(Map<String, String> environment)
-	{
-		requireThat(environment, "environment").isNotNull();
-		Set<String> harnesses = new HashSet<>();
-		String thread = environment.get(CodexSessionHarness.HARNESS.sessionVariable());
-		if (thread != null && !thread.isBlank())
-			harnesses.add(HARNESS_ID);
-		if (CLAUDE_MARKER_VALUE.equals(environment.get(CLAUDE_MARKER)))
-			harnesses.add(CLAUDE_ID);
-		return Set.copyOf(harnesses);
 	}
 
 	/**

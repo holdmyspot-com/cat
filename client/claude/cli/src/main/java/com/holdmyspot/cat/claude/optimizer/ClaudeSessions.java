@@ -754,7 +754,7 @@ public final class ClaudeSessions extends RunnerSessions
 		{
 			Map<String, String> environment = settings.environment();
 			String[] args = arguments.toArray(String[]::new);
-			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, ClaudeRunnerCli.runningHarnesses(environment), args,
+			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, ClaudeRunnerCli.MARKERS.running(environment), args,
 				environment))
 			{
 				case LaunchRoute.Launcher _, LaunchRoute.Forward _ -> SessionLauncherClient.production(environment,

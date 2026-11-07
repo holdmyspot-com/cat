@@ -731,7 +731,7 @@ public final class ClaudeRunnerCliTest
 	@Test(dataProvider = "markedEnvironments")
 	public void readsHarnessMarkers(Map<String, String> environment, Set<String> expected)
 	{
-		Set<String> harnesses = ClaudeRunnerCli.runningHarnesses(environment);
+		Set<String> harnesses = ClaudeRunnerCli.MARKERS.running(environment);
 
 		requireThat(harnesses, "harnesses").withContext(environment, "environment").isEqualTo(expected);
 	}
@@ -769,7 +769,7 @@ public final class ClaudeRunnerCliTest
 			requireThat(policy.writeDenials(), "writeDenials").isEmpty();
 			requireThat(policy.readDenials(), "readDenials").isEqualTo(List.of(secret));
 			requireThat(policy.hosts(), "hosts").isEqualTo(needs.hosts());
-			requireThat(LaunchRoute.decide("claude", "claude", ClaudeRunnerCli.runningHarnesses(environment),
+			requireThat(LaunchRoute.decide("claude", "claude", ClaudeRunnerCli.MARKERS.running(environment),
 				bounded.toArray(String[]::new), environment), "route").isEqualTo(new LaunchRoute.Bounded());
 		}
 	}

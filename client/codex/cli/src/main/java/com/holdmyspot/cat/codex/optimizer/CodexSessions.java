@@ -438,7 +438,7 @@ public final class CodexSessions extends RunnerSessions
 		{
 			Map<String, String> environment = settings.environment();
 			String[] args = arguments.toArray(String[]::new);
-			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, CodexRunnerCli.runningHarnesses(environment), args,
+			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, CodexRunnerCli.MARKERS.running(environment), args,
 				environment))
 			{
 				case LaunchRoute.Launcher _, LaunchRoute.Forward _ -> SessionLauncherClient.production(environment,

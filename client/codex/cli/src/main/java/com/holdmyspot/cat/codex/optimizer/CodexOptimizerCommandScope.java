@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
+import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
@@ -104,8 +105,8 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		requireThat(home, "home").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		Path configurationDirectory = CodexInstallation.resolveHome(environment, home, directory.toAbsolutePath());
-		super(Harness.CODEX, CodexSessionSandbox::refusal, CodexSessionHarness.HARNESS, environment,
-			configurationDirectory, directory, LOADER_CONFIGURATION, waiting);
+		super(Harness.CODEX, CodexSessionSandbox::refusal, CodexSessionHarness.HARNESS, CodexRunnerCli.MARKERS,
+			environment, configurationDirectory, directory, LOADER_CONFIGURATION, waiting);
 		this.environment = Map.copyOf(environment);
 		this.artifact = artifact;
 		this.configurationDirectory = configurationDirectory;
