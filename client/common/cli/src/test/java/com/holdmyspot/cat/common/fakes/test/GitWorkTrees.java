@@ -89,7 +89,9 @@ public final class GitWorkTrees
 	{
 		Path git = skeleton(project);
 		Path noExcludes = Files.writeString(git.resolve("no-excludes"), "", UTF_8);
-		Files.writeString(git.resolve("config"), "[core]\n\texcludesFile = " + noExcludes + "\n", UTF_8);
+		// A quoted configuration value escapes each backslash and double quote, which a Windows path holds
+		String excludes = noExcludes.toString().replace("\\", "\\\\").replace("\"", "\\\"");
+		Files.writeString(git.resolve("config"), "[core]\n\texcludesFile = \"" + excludes + "\"\n", UTF_8);
 		return project;
 	}
 
