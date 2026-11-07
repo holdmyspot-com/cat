@@ -35,8 +35,16 @@ set -euf
 # HotSpot stores shared performance counters below /tmp. Separate sandbox namespaces can reuse a process ID while
 # sharing that host directory, which makes independent JVMs contend for the same counter file. Give each Maven-wrapper
 # invocation a private /tmp mount so counters remain available without suppressing the warning or disabling the feature.
+# Where bwrap is installed but cannot start, such as an unprivileged user namespace that the host denies, probe it once
+# with the same arguments and run Maven unwrapped, as CAT_MAVEN_PRIVATE_TMP=1 does, after saying why on standard error.
 if [ "$(uname)" = Linux ] && [ "${CAT_MAVEN_PRIVATE_TMP-}" != 1 ] && command -v bwrap >/dev/null 2>&1; then
-  exec bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev --setenv CAT_MAVEN_PRIVATE_TMP 1 -- "$0" "$@"
+  if bwrap_error="$(bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev -- true 2>&1)"; then
+    exec bwrap --bind / / --tmpfs /tmp --proc /proc --dev /dev --setenv CAT_MAVEN_PRIVATE_TMP 1 -- "$0" "$@"
+  fi
+  printf 'mvnw: running Maven without bwrap because bwrap cannot start: %s\n' \
+    "$(printf %s "$bwrap_error" | tr '\n' ' ' | sed 's/ *$//')" >&2
+  CAT_MAVEN_PRIVATE_TMP=1
+  export CAT_MAVEN_PRIVATE_TMP
 fi
 
 # OS specific support.
