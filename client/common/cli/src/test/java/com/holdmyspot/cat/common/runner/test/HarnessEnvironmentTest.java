@@ -3,12 +3,14 @@ package com.holdmyspot.cat.common.runner.test;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.testng.annotations.Test;
@@ -260,5 +262,26 @@ public final class HarnessEnvironmentTest
 		HarnessEnvironment.preventGitDiscoveryAbove(environment, runDirectory);
 
 		requireThat(environment.get("GIT_CEILING_DIRECTORIES"), "gitCeiling").isEqualTo(runDirectory.toString());
+	}
+
+	/**
+	 * Verifies that a runner refuses a launch from a session of a CAT run whose runner lets it request no sessions,
+	 * naming the option that lets it, and lets a launch from a run that lets its session request sessions, or from no
+	 * run, go on.
+	 */
+	@Test
+	public void refusesLaunchInRunWithoutRequests()
+	{
+		Optional<String> refusal = HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE,
+			HarnessEnvironment.RUN_VALUE));
+
+		requireThat(refusal.orElseThrow(), "refusal").startsWith("harness-a-runner refuses to start a session").
+			contains("--session-requests");
+		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE,
+				HarnessEnvironment.RUN_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests")), "requesting").
+			isEmpty();
+		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE, "0")),
+			"otherValue").isEmpty();
+		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of("PATH", "/bin")), "outsideRun").isEmpty();
 	}
 }
