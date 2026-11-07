@@ -7,7 +7,6 @@ import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.secrets.SessionDirectorySecrets;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -19,13 +18,12 @@ import tools.jackson.databind.json.JsonMapper;
  * configuration reads, or how long a process takes to start.
  * <p>
  * The answers are the ones that {@code git check-ignore --quiet --no-index} and
- * {@code git rev-parse --is-inside-work-tree} give for the two kinds of work tree that {@link GitWorkTrees} writes:
- * exit status 0 for {@link GitWorkTrees#ignoring(Path)}, which lists the entry in {@code .git/info/exclude}, and 1 for
- * {@link GitWorkTrees#notIgnoring(Path)}, which lists nothing, and {@code true} for both. Before the first question
- * about a directory that holds no work tree's {@code .git/HEAD}, it writes the files of the work tree, so that tests
- * that read the project see one. A directory that already holds a work tree is left as it is.
- * {@link #reporting(int, boolean)} answers with given values and writes nothing, for the cases that Git does not
- * produce on demand.
+ * {@code git rev-parse --is-inside-work-tree} give in each situation of {@code GitQueriesContract}, which
+ * {@code GitProjectsContractTest} runs on these answers and {@code SessionIgnoreTest} on the questions of
+ * {@link SessionIgnore#GIT_PROCESS}. The project's files are left as they are: a test whose project must be a work tree
+ * on disk creates it with {@link GitWorkTrees}.
+ * <p>
+ * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
 public final class GitProjects implements SessionIgnore.GitQueries
 {
@@ -33,40 +31,29 @@ public final class GitProjects implements SessionIgnore.GitQueries
 	 * Projects whose Git already ignores the CAT session directories, where opening a session directory leaves
 	 * {@code .gitignore} alone and reports nothing.
 	 */
-	public static final GitProjects IGNORING = new GitProjects(true, true, 0, true);
+	public static final GitProjects IGNORING = reporting(0, true);
 	/**
 	 * Projects that are Git work trees that do not ignore the CAT session directories.
 	 */
-	public static final GitProjects NOT_IGNORING = new GitProjects(true, false, 1, true);
-	/**
-	 * Serializes the creation of work trees, so that two threads that ask about one directory do not both create it.
-	 */
-	private static final Object MONITOR = new Object();
+	public static final GitProjects NOT_IGNORING = reporting(1, true);
 
-	private final boolean preparesWorkTree;
-	private final boolean ignoring;
 	private final int checkIgnoreStatus;
 	private final boolean insideWorkTree;
 
 	/**
 	 * Creates the questions.
 	 *
-	 * @param preparesWorkTree  {@code true} if a project that is not yet a work tree becomes one
-	 * @param ignoring          {@code true} if a project that becomes a work tree ignores the CAT session directories
 	 * @param checkIgnoreStatus the exit status that the check of the CAT session directories gives
 	 * @param insideWorkTree    {@code true} if the project is inside a work tree
 	 */
-	private GitProjects(boolean preparesWorkTree, boolean ignoring, int checkIgnoreStatus, boolean insideWorkTree)
+	private GitProjects(int checkIgnoreStatus, boolean insideWorkTree)
 	{
-		this.preparesWorkTree = preparesWorkTree;
-		this.ignoring = ignoring;
 		this.checkIgnoreStatus = checkIgnoreStatus;
 		this.insideWorkTree = insideWorkTree;
 	}
 
 	/**
-	 * Creates questions that give the same answers for every project, as Git does when it cannot decide, for example
-	 * because the project is a bare repository or the check fails. The project stays as it is.
+	 * Creates questions that give the same answers for every project.
 	 *
 	 * @param checkIgnoreStatus the exit status that the check of the CAT session directories gives
 	 * @param insideWorkTree    {@code true} if the project is inside a work tree
@@ -74,7 +61,7 @@ public final class GitProjects implements SessionIgnore.GitQueries
 	 */
 	public static GitProjects reporting(int checkIgnoreStatus, boolean insideWorkTree)
 	{
-		return new GitProjects(false, false, checkIgnoreStatus, insideWorkTree);
+		return new GitProjects(checkIgnoreStatus, insideWorkTree);
 	}
 
 	/**
@@ -120,39 +107,17 @@ public final class GitProjects implements SessionIgnore.GitQueries
 	}
 
 	@Override
-	public int checkIgnore(Path directory, String path) throws IOException
+	public int checkIgnore(Path directory, String path)
 	{
 		requireThat(directory, "directory").isNotNull();
 		requireThat(path, "path").isNotNull();
-		prepare(directory);
 		return checkIgnoreStatus;
 	}
 
 	@Override
-	public List<String> isInsideWorkTree(Path directory) throws IOException
+	public List<String> isInsideWorkTree(Path directory)
 	{
 		requireThat(directory, "directory").isNotNull();
-		prepare(directory);
 		return List.of(Boolean.toString(insideWorkTree));
-	}
-
-	/**
-	 * Makes a directory a work tree unless these questions leave projects as they are or it already holds the
-	 * {@code .git/HEAD} of one.
-	 *
-	 * @param directory the project
-	 * @throws IOException if the work tree cannot be created
-	 */
-	private void prepare(Path directory) throws IOException
-	{
-		synchronized (MONITOR)
-		{
-			if (!preparesWorkTree || Files.exists(directory.resolve(".git/HEAD")))
-				return;
-			if (ignoring)
-				GitWorkTrees.ignoring(directory);
-			else
-				GitWorkTrees.notIgnoring(directory);
-		}
 	}
 }

@@ -7,6 +7,7 @@ import static java.nio.file.StandardOpenOption.READ;
 import static java.nio.file.StandardOpenOption.WRITE;
 
 import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.secrets.SessionIgnoreSecrets;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -31,6 +32,11 @@ import java.util.function.BooleanSupplier;
  */
 public final class SessionIgnore
 {
+	static
+	{
+		SessionIgnoreSecrets.setSessionIgnoreAccess(SessionIgnore::gitProcess);
+	}
+
 	/**
 	 * The {@code .gitignore} entry that ignores the CAT session directories of the project.
 	 */
@@ -53,26 +59,39 @@ public final class SessionIgnore
 	 * Answers {@link #ensure(Path)}'s questions by running Git in the project, as every CAT session directory that a
 	 * harness's hook or tool opens asks them.
 	 */
-	public static final GitQueries GIT_PROCESS = new GitQueries()
-	{
-		@Override
-		public int checkIgnore(Path directory, String path) throws IOException
-		{
-			return new Git(directory).status("check-ignore", "--quiet", "--no-index", path);
-		}
-
-		@Override
-		public List<String> isInsideWorkTree(Path directory) throws IOException
-		{
-			return new Git(directory).lines("rev-parse", "--is-inside-work-tree");
-		}
-	};
+	public static final GitQueries GIT_PROCESS = gitProcess(ProcessBuilder::start);
 
 	/**
 	 * Prevents instantiation.
 	 */
 	private SessionIgnore()
 	{
+	}
+
+	/**
+	 * Returns questions that run Git in the project, starting each Git process through a launcher.
+	 *
+	 * @param launcher starts the configured Git process
+	 * @return the questions
+	 * @throws NullPointerException if {@code launcher} is null
+	 */
+	private static GitQueries gitProcess(ExecutableFiles.ProcessLauncher launcher)
+	{
+		requireThat(launcher, "launcher").isNotNull();
+		return new GitQueries()
+		{
+			@Override
+			public int checkIgnore(Path directory, String path) throws IOException
+			{
+				return new Git(directory, launcher).status("check-ignore", "--quiet", "--no-index", path);
+			}
+
+			@Override
+			public List<String> isInsideWorkTree(Path directory) throws IOException
+			{
+				return new Git(directory, launcher).lines("rev-parse", "--is-inside-work-tree");
+			}
+		};
 	}
 
 	/**

@@ -1,6 +1,9 @@
 package com.holdmyspot.cat.common.git;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+
+import com.holdmyspot.cat.common.ExecutableFiles;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -17,6 +20,10 @@ public final class Git
 {
 	private static final int MAXIMUM_RETAINED_OUTPUT_BYTES = 64 * 1024 * 1024;
 	private final Path repository;
+	/**
+	 * Starts each Git process.
+	 */
+	private final ExecutableFiles.ProcessLauncher launcher;
 
 	/**
 	 * Creates a Git access object.
@@ -25,7 +32,21 @@ public final class Git
 	 */
 	public Git(Path repository)
 	{
+		this(repository, ProcessBuilder::start);
+	}
+
+	/**
+	 * Creates a Git access object that starts each Git process through a launcher.
+	 *
+	 * @param repository the repository directory
+	 * @param launcher   starts the configured Git process
+	 * @throws NullPointerException if {@code launcher} is null
+	 */
+	public Git(Path repository, ExecutableFiles.ProcessLauncher launcher)
+	{
+		requireThat(launcher, "launcher").isNotNull();
 		this.repository = repository;
+		this.launcher = launcher;
 	}
 
 	/**
@@ -149,7 +170,7 @@ public final class Git
 		command.addAll(List.of(arguments));
 		ProcessBuilder builder = new ProcessBuilder(command).directory(repository.toFile()).redirectErrorStream(true);
 		builder.environment().putAll(environment);
-		return builder.start();
+		return launcher.start(builder);
 	}
 
 	/**

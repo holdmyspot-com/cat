@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.GitWorkTrees;
 import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.secrets.SessionIgnoreSecrets;
 import java.io.IOException;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
@@ -33,8 +34,9 @@ import tools.jackson.databind.json.JsonMapper;
  * the project's {@code .gitignore}.
  * <p>
  * {@link #addsLinesInRealWorkTree()} asks real Git about a work tree that {@code git init} creates. Each other test
- * that opens a session directory gets the answers of {@link GitProjects} about a project that it makes a work tree, or
- * the answers that Git gives when it cannot decide. The decision from Git's exit status and output is tested by calling
+ * that opens a session directory gets the answers of {@link GitProjects}, which {@link #gitProcessAnswersAsGit()} shows
+ * to be those of the questions that run Git, by running the {@link GitQueriesContract} on both. The decision from Git's
+ * exit status and output is tested by calling
  * {@link SessionIgnore#decide(Integer, java.util.function.BooleanSupplier)} with the statuses that Git gives.
  */
 public final class SessionIgnoreTest
@@ -125,7 +127,6 @@ public final class SessionIgnoreTest
 			String sessionId = UUID.randomUUID().toString();
 			GitProjects.IGNORING.open(project, sessionId, HARNESS_A, project.resolve("configuration"), CREATED,
 				JsonMapper.builder().build());
-			Files.writeString(project.resolve(".git/info/exclude"), "", UTF_8);
 
 			SessionDirectory reopened = GitProjects.NOT_IGNORING.open(project, sessionId, HARNESS_A,
 				project.resolve("configuration"), CREATED, JsonMapper.builder().build());
@@ -347,6 +348,25 @@ public final class SessionIgnoreTest
 	}
 
 	/**
+	 * Verifies that the questions of {@link SessionIgnore#GIT_PROCESS} run {@code git check-ignore} and
+	 * {@code git rev-parse} in the project and report Git's exit status and output, for a project in each situation of
+	 * the {@link GitQueriesContract}. Each Git process is replaced by one that has already exited with Git's answer to
+	 * the command that the question runs, so no Git starts; any other command fails the test.
+	 *
+	 * @throws IOException if the project directory cannot be created
+	 */
+	@Test
+	public void gitProcessAnswersAsGit() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-ignore-")).toAbsolutePath();
+
+			new GitQueriesContract(SessionIgnoreTest::gitAnswering).answersAsGit(project);
+		}
+	}
+
+	/**
 	 * Verifies which {@code .gitignore} contents are an earlier content followed by CAT's lines.
 	 */
 	@Test
@@ -358,6 +378,29 @@ public final class SessionIgnoreTest
 		requireThat(SessionIgnore.isAppended("a\n", "b\n" + LINES), "otherChange").isFalse();
 		requireThat(SessionIgnore.isAppended("a\n", "a\n" + LINES + "b\n"), "extraLine").isFalse();
 		requireThat(SessionIgnore.isAppended("a\n", "a\n/.cat/sessions/\n"), "withoutComment").isFalse();
+	}
+
+	/**
+	 * Returns the questions of {@link SessionIgnore#GIT_PROCESS} with each Git process replaced by one that has already
+	 * exited with Git's answer in a project's situation.
+	 *
+	 * @param project   the project, which Git must run in
+	 * @param situation the project's situation in Git
+	 * @return the questions
+	 */
+	private static SessionIgnore.GitQueries gitAnswering(Path project, GitQueriesContract.Situation situation)
+	{
+		return SessionIgnoreSecrets.getSessionIgnoreAccess().gitProcess(builder ->
+		{
+			List<String> command = builder.command();
+			if (!project.toFile().equals(builder.directory()))
+				throw new AssertionError("Git runs in " + builder.directory() + " instead of " + project);
+			if (command.equals(List.of("git", "check-ignore", "--quiet", "--no-index", GitQueriesContract.PROBE)))
+				return new ExitedProcess(builder, situation.checkIgnoreStatus(), "", "");
+			if (command.equals(List.of("git", "rev-parse", "--is-inside-work-tree")))
+				return new ExitedProcess(builder, 0, situation.insideWorkTree() + "\n", "");
+			throw new AssertionError("Unexpected Git command: " + command);
+		});
 	}
 
 	/**
