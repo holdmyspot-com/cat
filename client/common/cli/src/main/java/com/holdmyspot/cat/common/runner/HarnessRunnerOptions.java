@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.HomeProject;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -10,6 +12,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -380,6 +384,44 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Refuses a runner launcher's launch whose project is the user's home folder, which {@link HomeProject} refuses as
+	 * a CAT project. The project is the folder that the launch's {@code --project} names, resolved against
+	 * {@code workingDirectory}, or {@code workingDirectory} if the launch names none. A launch whose environment names
+	 * no home folder is not refused.
+	 *
+	 * @param args             the launch's arguments
+	 * @param workingDirectory the directory from which the launcher was started
+	 * @param environment      the launcher's environment
+	 * @param platform         the platform that the launcher runs on, whose home variable names the home folder
+	 * @param errors           receives the reason for a refusal
+	 * @return {@code true} if the launch is refused, after the reason is written to {@code errors}
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static boolean refusesHomeProject(String[] args, Path workingDirectory, Map<String, String> environment,
+		Platform platform, PrintWriter errors)
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(workingDirectory, "workingDirectory").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		String home = environment.get(platform.homeVariable());
+		if (home == null || home.isBlank())
+			return false;
+		Path project = workingDirectory;
+		for (int index = 0; index + 1 < args.length; ++index)
+		{
+			if (args[index].equals("--project"))
+				project = workingDirectory.resolve(args[index + 1]);
+		}
+		Optional<String> refusal = HomeProject.refusal(project, Path.of(home));
+		if (refusal.isEmpty())
+			return false;
+		errors.println(refusal.get());
+		return true;
 	}
 
 	/**

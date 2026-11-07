@@ -50,6 +50,38 @@ public final class PromptOptimizerCliTest
 	}
 
 	/**
+	 * Verifies that a command whose project is the user's home folder is refused, with a message that says the home
+	 * folder cannot be a CAT project, before it creates a CAT session directory there.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesHomeFolderProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("prompt-optimizer-cli-"));
+			Files.createDirectory(home.resolve(".git"));
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, home);
+				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				scope.useHome(home);
+
+				int exit = PromptOptimizerCli.run(new String[]{"status", "AGENTS.md"}, () -> scope, ZoneOffset.UTC,
+					out);
+
+				requireThat(exit, "exit").isEqualTo(1);
+				JsonNode result = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));
+				requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+				requireThat(result.get("message").asString(), "message").contains("cannot be a CAT project").
+					contains("Open a folder below it");
+			}
+			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies scope-creation failures produce the same failure JSON and exit code as command failures.
 	 */
 	@Test

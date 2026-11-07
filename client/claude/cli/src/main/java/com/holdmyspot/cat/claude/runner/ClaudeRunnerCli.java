@@ -65,7 +65,7 @@ public final class ClaudeRunnerCli
 	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
 	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request. It also
 	 * refuses, with the same status, any launch that starts a session on a platform where Claude Code cannot sandbox
-	 * the session.
+	 * the session, or whose project is the user's home folder.
 	 * <p>
 	 * Inside a run whose runner lets its session request sessions, the launch becomes a session request instead: the
 	 * run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
@@ -85,7 +85,8 @@ public final class ClaudeRunnerCli
 	{
 		args = CommandLineArguments.recover(args);
 		Map<String, String> environment = Platform.current().environment(System.getenv());
-		if (refusesLaunch(args, environment, Platform.current(), new PrintWriter(System.err, true, UTF_8)))
+		if (refusesLaunch(args, Path.of("").toAbsolutePath(), environment, Platform.current(),
+			new PrintWriter(System.err, true, UTF_8)))
 			System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 		if (args.length == 1 && args[0].equals("--help"))
 		{
@@ -191,20 +192,23 @@ public final class ClaudeRunnerCli
 
 	/**
 	 * Refuses a launch that would start a session, but must not. That is a launch that names {@code --artifact}, as
-	 * {@link #refusesOverride} refuses it, and any launch on a platform where Claude Code cannot confine the session
-	 * in a sandbox, as {@link ClaudeSessionSandbox} decides. Printing the usage and verifying an artifact start no
-	 * session, so they are never refused for the platform.
+	 * {@link #refusesOverride} refuses it, any launch on a platform where Claude Code cannot confine the session in a
+	 * sandbox, as {@link ClaudeSessionSandbox} decides, and any launch whose project is the user's home folder, as
+	 * {@link HarnessRunnerOptions#refusesHomeProject} decides. Printing the usage and verifying an artifact start no
+	 * session, so they are never refused for the platform or the project.
 	 *
-	 * @param args        the launch's options
-	 * @param environment the launcher's environment
-	 * @param platform    the platform that the launcher runs on
-	 * @param errors      receives the reason for a refusal
+	 * @param args             the launch's options
+	 * @param workingDirectory the directory from which the launcher was started
+	 * @param environment      the launcher's environment
+	 * @param platform         the platform that the launcher runs on
+	 * @param errors           receives the reason for a refusal
 	 * @return {@code true} if the launch is refused
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static boolean refusesLaunch(String[] args, Map<String, String> environment, Platform platform,
-		PrintWriter errors)
+	public static boolean refusesLaunch(String[] args, Path workingDirectory, Map<String, String> environment,
+		Platform platform, PrintWriter errors)
 	{
+		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		if (refusesOverride(args, environment, errors))
 			return true;
@@ -213,10 +217,12 @@ public final class ClaudeRunnerCli
 		if (startsNothing)
 			return false;
 		Optional<String> refusal = ClaudeSessionSandbox.refusal(platform);
-		if (refusal.isEmpty())
-			return false;
-		errors.println(refusal.get());
-		return true;
+		if (refusal.isPresent())
+		{
+			errors.println(refusal.get());
+			return true;
+		}
+		return HarnessRunnerOptions.refusesHomeProject(args, workingDirectory, environment, platform, errors);
 	}
 
 	/**

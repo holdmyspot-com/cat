@@ -50,6 +50,11 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 public final class CodexRunnerCliTest
 {
 	/**
+	 * The working directory of a launch whose environment names no home folder, so that the launcher never resolves
+	 * it.
+	 */
+	private static final Path WORKING_DIRECTORY = Path.of("/working-directory");
+	/**
 	 * A Codex thread ID in canonical form.
 	 */
 	private static final String THREAD_ID = "01a147d8-bf56-7283-92b4-12dcaeb53738";
@@ -604,7 +609,7 @@ public final class CodexRunnerCliTest
 	{
 		StringWriter errors = new StringWriter();
 
-		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new),
+		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new), WORKING_DIRECTORY,
 			Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1"), Platform.LINUX_X64, new PrintWriter(errors, true));
 
 		requireThat(refused, "refused").isTrue();
@@ -622,10 +627,10 @@ public final class CodexRunnerCliTest
 		StringWriter errors = new StringWriter();
 		Map<String, String> environment = Map.of(ParentSandbox.NETWORK_DISABLED_VARIABLE, "1");
 
-		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, environment, Platform.LINUX_X64,
-			new PrintWriter(errors, true));
-		boolean verifyRefused = CodexRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"}, environment,
+		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, WORKING_DIRECTORY, environment,
 			Platform.LINUX_X64, new PrintWriter(errors, true));
+		boolean verifyRefused = CodexRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"},
+			WORKING_DIRECTORY, environment, Platform.LINUX_X64, new PrintWriter(errors, true));
 
 		requireThat(helpRefused, "helpRefused").isFalse();
 		requireThat(verifyRefused, "verifyRefused").isFalse();
@@ -642,11 +647,54 @@ public final class CodexRunnerCliTest
 	{
 		StringWriter errors = new StringWriter();
 
-		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new), Map.of(), Platform.LINUX_X64,
-			new PrintWriter(errors, true));
+		boolean refused = CodexRunnerCli.refusesLaunch(command.toArray(String[]::new), WORKING_DIRECTORY, Map.of(),
+			Platform.LINUX_X64, new PrintWriter(errors, true));
 
 		requireThat(refused, "refused").isFalse();
 		requireThat(errors.toString(), "errors").isEmpty();
+	}
+
+	/**
+	 * Verifies that the launcher refuses a launch whose project folder is the user's home folder, whether the launch
+	 * names it with {@code --project} or runs in it without {@code --project}, and starts a launch whose project is a
+	 * folder below the home folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesHomeFolderProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-"));
+			Files.createDirectory(home.resolve("project"));
+			Map<String, String> environment = Map.of(Platform.LINUX_X64.homeVariable(), home.toString());
+			List<String> profile = List.of("--model", "gpt-6-luna", "--effort", "low");
+
+			for (List<String> project : List.of(List.of("--project", home.toString()), List.<String>of()))
+			{
+				StringWriter errors = new StringWriter();
+				List<String> args = new ArrayList<>(List.of("serve"));
+				args.addAll(project);
+				args.addAll(profile);
+
+				boolean refused = CodexRunnerCli.refusesLaunch(args.toArray(String[]::new), home, environment,
+					Platform.LINUX_X64, new PrintWriter(errors, true));
+
+				requireThat(refused, "refused").withContext(project, "project").isTrue();
+				requireThat(errors.toString(), "errors").withContext(project, "project").
+					contains("cannot be a CAT project").contains("Open a folder below it");
+			}
+			StringWriter errors = new StringWriter();
+			List<String> below = new ArrayList<>(List.of("serve", "--project", "project"));
+			below.addAll(profile);
+
+			boolean refused = CodexRunnerCli.refusesLaunch(below.toArray(String[]::new), home, environment,
+				Platform.LINUX_X64, new PrintWriter(errors, true));
+
+			requireThat(refused, "belowRefused").isFalse();
+			requireThat(errors.toString(), "belowErrors").isEmpty();
+		}
 	}
 
 	/**
@@ -676,7 +724,7 @@ public final class CodexRunnerCliTest
 			StringWriter errors = new StringWriter();
 
 			boolean refused = CodexRunnerCli.refusesLaunch(new String[]{"serve", "--project", "project", "--model",
-				"gpt-6-luna", "--effort", "low"}, environment, platform, new PrintWriter(errors, true));
+				"gpt-6-luna", "--effort", "low"}, WORKING_DIRECTORY, environment, platform, new PrintWriter(errors, true));
 
 			requireThat(refused, "refused").isTrue();
 			requireThat(errors.toString(), "errors").contains("Codex").
@@ -696,10 +744,10 @@ public final class CodexRunnerCliTest
 	{
 		StringWriter errors = new StringWriter();
 
-		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, Map.of(), platform,
+		boolean helpRefused = CodexRunnerCli.refusesLaunch(new String[]{"--help"}, WORKING_DIRECTORY, Map.of(), platform,
 			new PrintWriter(errors, true));
-		boolean verifyRefused = CodexRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"}, Map.of(),
-			platform, new PrintWriter(errors, true));
+		boolean verifyRefused = CodexRunnerCli.refusesLaunch(new String[]{"--verify-artifact", "artifact"},
+			WORKING_DIRECTORY, Map.of(), platform, new PrintWriter(errors, true));
 
 		requireThat(helpRefused, "helpRefused").isFalse();
 		requireThat(verifyRefused, "verifyRefused").isFalse();
@@ -719,7 +767,7 @@ public final class CodexRunnerCliTest
 			StringWriter errors = new StringWriter();
 
 			boolean refused = CodexRunnerCli.refusesLaunch(new String[]{"serve", "--project", "project", "--model",
-				"gpt-6-luna", "--effort", "low"}, Map.of(), platform, new PrintWriter(errors, true));
+				"gpt-6-luna", "--effort", "low"}, WORKING_DIRECTORY, Map.of(), platform, new PrintWriter(errors, true));
 
 			requireThat(refused, "refused").withContext(platform, "platform").isFalse();
 			requireThat(errors.toString(), "errors").withContext(platform, "platform").isEmpty();

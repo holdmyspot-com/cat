@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.AbstractJvmScope;
+import com.holdmyspot.cat.common.HomeProject;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.SessionIgnore;
@@ -242,9 +243,10 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 * Returns the project root: the directory that holds {@code .git}, at or above the working directory.
 	 *
 	 * @return the root
-	 * @throws IllegalStateException if this scope is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository
-	 * @throws IOException if the working directory cannot be resolved
+	 * @throws IllegalStateException   if this scope is closed
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the root is the
+	 *                                 user's home folder, which {@link HomeProject} refuses as a CAT project
+	 * @throws IOException             if the working directory cannot be resolved
 	 */
 	final Path projectRoot() throws CommandRefusedException, IOException
 	{
@@ -256,6 +258,9 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 			{
 				if (Files.exists(candidate.resolve(".git")))
 				{
+					Optional<String> refusal = HomeProject.refusal(candidate, home());
+					if (refusal.isPresent())
+						throw new CommandRefusedException(refusal.get());
 					projectRoot = candidate;
 					return projectRoot;
 				}
@@ -270,8 +275,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *
 	 * @return the directory
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
-	 *   names no host session
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a CAT
+	 *   project, or the environment names no host session
 	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
 	 */
 	final SessionDirectory sessionDirectory() throws CommandRefusedException, IOException
@@ -289,8 +294,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *
 	 * @return the notice; empty if there is none or an earlier call returned it
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
-	 *   names no host session
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a CAT
+	 *   project, or the environment names no host session
 	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
 	 */
 	final Optional<String> takeIgnoreNotice() throws CommandRefusedException, IOException
@@ -318,8 +323,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *
 	 * @return the store
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
-	 *   names no host session
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a CAT
+	 *   project, or the environment names no host session
 	 * @throws IOException if the working directory cannot be resolved or the session's directory cannot be created
 	 */
 	final CampaignStore store() throws CommandRefusedException, IOException
@@ -336,8 +341,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *
 	 * @return the directory, which may not exist
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException if the working directory is not inside a Git repository, the environment names no host
-	 *   session, or the session's directory cannot be created
+	 * @throws IOException if the working directory is not inside a Git repository whose root may be a CAT project,
+	 *   the environment names no host session, or the session's directory cannot be created
 	 */
 	protected final Path runRoot() throws IOException
 	{
@@ -356,7 +361,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *
 	 * @return the project root
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException if the working directory is not inside a Git repository or cannot be resolved
+	 * @throws IOException if the working directory is not inside a Git repository whose root may be a CAT project, or
+	 *   cannot be resolved
 	 */
 	protected final Path hostProject() throws IOException
 	{
@@ -375,8 +381,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *
 	 * @return the real paths of those that exist
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException if the working directory is not inside a Git repository, the environment names no host
-	 *   session, or the campaigns cannot be listed
+	 * @throws IOException if the working directory is not inside a Git repository whose root may be a CAT project,
+	 *   the environment names no host session, or the campaigns cannot be listed
 	 */
 	protected final List<Path> heldOutDirectories() throws IOException
 	{

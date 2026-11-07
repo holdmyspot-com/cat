@@ -79,6 +79,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	};
 	private volatile ExecutableFiles.ProcessLauncher processes = ProcessBuilder::start;
 	private volatile GitProjects git = GitProjects.IGNORING;
+	private Path home;
 	private final ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(
 		Thread::yield, Clock.systemUTC(), this::startProcess);
 
@@ -289,7 +290,21 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	public Path home()
 	{
 		ensureOpen();
-		return directory.resolve("home");
+		if (home == null)
+			return directory.resolve("home");
+		return home;
+	}
+
+	/**
+	 * Sets the user's home folder, which is otherwise the folder {@code home} in the project directory.
+	 *
+	 * @param home the home folder
+	 * @throws NullPointerException if {@code home} is null
+	 */
+	void useHome(Path home)
+	{
+		requireThat(home, "home").isNotNull();
+		this.home = home;
 	}
 
 	@Override

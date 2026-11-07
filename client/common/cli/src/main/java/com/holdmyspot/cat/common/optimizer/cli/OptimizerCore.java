@@ -2101,7 +2101,8 @@ public final class OptimizerCore implements Core
 	 * Returns the cleanup of the project's campaigns.
 	 *
 	 * @return the cleanup
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a
+	 *   CAT project
 	 * @throws IOException if the project root cannot be resolved
 	 */
 	private Cleanup cleanup() throws CommandRefusedException, IOException

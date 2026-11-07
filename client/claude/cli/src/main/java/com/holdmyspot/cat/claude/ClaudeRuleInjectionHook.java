@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.claude.optimizer.ClaudeRuleVariables;
+import com.holdmyspot.cat.common.HomeProject;
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -57,6 +59,9 @@ final class ClaudeRuleInjectionHook
 	 * the user how to fix it, and the session's {@link SessionDirectory#relativeRuleReferencesFile()} lists every such
 	 * reference. When the event created the session's CAT session directory, the {@code systemMessage} also tells the
 	 * user that CAT added the CAT session directories to the project's {@code .gitignore}, or could not and why.
+	 * <p>
+	 * A session whose project directory is the user's home folder, which {@link HomeProject} refuses as a CAT project,
+	 * gets no rules and no CAT session directory; the hook reports the refusal as it reports every other failure.
 	 *
 	 * @param eventName the Claude hook event name
 	 * @param args the hook command-line arguments
@@ -78,6 +83,10 @@ final class ClaudeRuleInjectionHook
 				throw new IllegalArgumentException(eventName + " accepts no arguments");
 			JsonNode event = scope.readEvent(eventName, input);
 			Path projectDir = ClaudeHookScope.projectDir(scope, event, environment, workingDirectory);
+			Optional<String> homeRefusal = HomeProject.refusal(projectDir,
+				Platform.current().homeDirectory(environment));
+			if (homeRefusal.isPresent())
+				throw new IOException(homeRefusal.get());
 			// A Claude Code subagent's input carries its parent's session_id, and its shells the parent's
 			// CLAUDE_CODE_SESSION_ID, so the subagent shares its parent's CAT session directory
 			SessionDirectory session = scope.sessionDirectory(projectDir, event, "session_id");

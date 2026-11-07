@@ -32,7 +32,8 @@ public interface OptimizerCommandScopeAccess
 	 * @param scope the scope
 	 * @return the root
 	 * @throws IllegalStateException if {@code scope} is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a
+	 *   CAT project
 	 * @throws IOException if the working directory cannot be resolved
 	 */
 	Path projectRoot(AbstractOptimizerCommandScope scope) throws CommandRefusedException, IOException;
@@ -43,8 +44,8 @@ public interface OptimizerCommandScopeAccess
 	 * @param scope the scope
 	 * @return the directory
 	 * @throws IllegalStateException if {@code scope} is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
-	 *   names no host session
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a CAT
+	 *   project, or the environment names no host session
 	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
 	 */
 	SessionDirectory sessionDirectory(AbstractOptimizerCommandScope scope) throws CommandRefusedException, IOException;
@@ -55,8 +56,8 @@ public interface OptimizerCommandScopeAccess
 	 * @param scope the scope
 	 * @return the store
 	 * @throws IllegalStateException if {@code scope} is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the environment
-	 *   names no host session
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a CAT
+	 *   project, or the environment names no host session
 	 * @throws IOException if the working directory cannot be resolved or the session's directory cannot be created
 	 */
 	CampaignStore store(AbstractOptimizerCommandScope scope) throws CommandRefusedException, IOException;
@@ -67,8 +68,8 @@ public interface OptimizerCommandScopeAccess
 	 * @param scope the scope
 	 * @return the real paths of those that exist
 	 * @throws IllegalStateException if {@code scope} is closed
-	 * @throws IOException if the working directory is not inside a Git repository, the environment names no host
-	 *   session, or the campaigns cannot be listed
+	 * @throws IOException if the working directory is not inside a Git repository whose root may be a CAT project,
+	 *   the environment names no host session, or the campaigns cannot be listed
 	 */
 	List<Path> heldOutDirectories(AbstractOptimizerCommandScope scope) throws IOException;
 }

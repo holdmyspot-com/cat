@@ -478,6 +478,37 @@ public final class ClaudeSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that SessionStart and SubagentStart refuse a session whose project folder is the user's home folder:
+	 * each injects no rules, reports that the home folder cannot be a CAT project, and creates no CAT session
+	 * directory in the home folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesHomeFolderProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Map<String, String> environment = Map.of("CLAUDE_PLUGIN_ROOT", plugin.toString(),
+				Platform.current().homeVariable(), home.toString());
+			String input = "{\"cwd\":" + jsonString(home) + ",\"session_id\":\"" + SESSION_ID;
+
+			HookResult session = invoke(input + "\"}", environment, home);
+			HookResult subagent = invokeSubagent(input + "\",\"agent_id\":\"a1b2c3\"}", environment, home);
+
+			for (HookResult result : List.of(session, subagent))
+			{
+				requireThat(result.output(), "output").isEqualTo("{}\n");
+				requireThat(result.error(), "error").contains("cannot be a CAT project").
+					contains("Open a folder below it");
+			}
+			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies SessionStart removes the CAT session directory of another session whose marker is older than a day and
 	 * whose transcript the configuration directory no longer holds, and keeps the directory of a session whose transcript
 	 * remains.

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex;
 import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.codex.optimizer.CodexRuleVariables;
+import com.holdmyspot.cat.common.HomeProject;
 import com.holdmyspot.cat.common.HookScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -81,6 +83,9 @@ final class CodexRuleInjectionHook
 	 * the parent's rules file, which the parent's copied messages may name. An input without {@code agent_id} leaves the
 	 * subagent sharing its parent's CAT session directory, so the subagent receives every rule in the response, leaving
 	 * the parent's rules file unchanged.
+	 * <p>
+	 * A session whose project directory is the user's home folder, which {@link HomeProject} refuses as a CAT project,
+	 * gets no rules and no CAT session directory; the hook reports the refusal as it reports every other failure.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments
@@ -104,6 +109,10 @@ final class CodexRuleInjectionHook
 					throw new IllegalArgumentException(eventName + " accepts no arguments");
 				JsonNode event = scope.readEvent(eventName, input);
 				Path projectDir = scope.projectDir(event, workingDirectory);
+				Optional<String> homeRefusal = HomeProject.refusal(projectDir,
+					Platform.current().homeDirectory(environment));
+				if (homeRefusal.isPresent())
+					throw new IOException(homeRefusal.get());
 				Path pluginRoot = scope.pluginRoot();
 				Path userRulesRoot = scope.userRulesRoot();
 				ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml(), Platform.current(),

@@ -420,6 +420,31 @@ public final class CodexSessionStartHookTest
 	}
 
 	/**
+	 * Verifies that SessionStart stops a session whose project folder is the user's home folder, tells the user that
+	 * the home folder cannot be a CAT project, and creates no CAT session directory in the home folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesHomeFolderProject() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-home-"));
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+
+			HookResult result = invoke(event(home), Map.of("PLUGIN_ROOT", plugin.toString(),
+				Platform.current().homeVariable(), home.toString()), home);
+
+			assertStopped(result, "homeFolder");
+			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").
+				contains("cannot be a CAT project").contains("Open a folder below it");
+			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies harness cwd takes precedence over the configured project directory.
 	 */
 	@Test
