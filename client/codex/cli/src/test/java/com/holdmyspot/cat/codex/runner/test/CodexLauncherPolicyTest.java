@@ -25,6 +25,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests the sandbox policy that the Codex session launcher serves its session with: the policy that the command line
@@ -186,14 +187,16 @@ public final class CodexLauncherPolicyTest
 			"names";
 		String legacy = "; a session that sets sandbox_mode instead lists the paths in " +
 			"sandbox_workspace_write.writable_roots";
+		Path m2 = Path.of("/data/m2");
+		Path gradle = Path.of("/data/gradle");
 		return new Object[][]
 			{
-				{List.of(Path.of("/data/m2"), Path.of("/data/gradle")), Set.of("a.example.com", "b.example.com"),
-					"add \"/data/m2\" = \"write\" and \"/data/gradle\" = \"write\" under " +
+				{List.of(m2, gradle), Set.of("a.example.com", "b.example.com"),
+					"add \"" + m2 + "\" = \"write\" and \"" + gradle + "\" = \"write\" under " +
 						"[permissions.<profile>.filesystem] and \"a.example.com\" = \"allow\" and " +
 						"\"b.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where + legacy},
-				{List.of(Path.of("/data/m2")), Set.of(),
-					"add \"/data/m2\" = \"write\" under [permissions.<profile>.filesystem]" + where + legacy},
+				{List.of(m2), Set.of(),
+					"add \"" + m2 + "\" = \"write\" under [permissions.<profile>.filesystem]" + where + legacy},
 				{List.of(), Set.of("api.example.com"),
 					"add \"api.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where},
 				{List.of(), Set.of("localhost"),
@@ -269,7 +272,7 @@ public final class CodexLauncherPolicyTest
 		 */
 		void readOnlyRollout(String threadId, String sessionId) throws IOException
 		{
-			String project = "\"" + this.project + "\"";
+			String project = JsonMapper.builder().build().writeValueAsString(this.project.toString());
 			String records = """
 				{"timestamp":"2026-11-05T12:00:00.000Z","type":"session_meta","payload":{"session_id":"%s","id":"%s",\
 				"cwd":%s,"originator":"codex_exec","cli_version":"0.160.0","source":"exec"}}
