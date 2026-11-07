@@ -85,8 +85,18 @@ revised plugin lifecycle and distribution work, which has not been implemented.
     `c7d5fef0ac`: 4,933 tests, 0 failures, 7 platform skips, 109 s; tests of 1 s or more:
     `PluginLaunchersTest.wrapperTrainsAndPassesStartupCache` 3.25 s (starts real Java; Javadoc states it),
     `PluginVersionFolderTest.returnsToEarlierBuild` 1.40 s, `updatesToRepublishedBuild` 1.09 s,
-    `InstallerActivationTest.installUpdateStatusUninstall` 1.15 s and 1.05 s (all under load). Next: v1.0 is
-    republished and installed in both harnesses (authorized), then the E-runs of gate 4 start.
+    `InstallerActivationTest.installUpdateStatusUninstall` 1.15 s and 1.05 s (all under load).
+    Windows fixes (units REL-WIN, REL-WIN-2, REL-WIN-DEBUG; `cb1e2c9990` to `1d28248773`): the Git identity read no
+    longer names `/dev/null` as Git's input, and tests build paths and expected path text in the platform's form.
+    REL-WIN-DEBUG reproduced and fixed the last failures in an interactive session on a hosted Windows runner. Build
+    run 42388488811 on `1d28248773`: green on all five platforms (Windows Common CLI 3,101 tests, 0 failures, 7
+    skips).
+- **Republished v1.0 (2026-11-07 UTC):** tag `v1.0` = `1d28248773`; Release run 42389478513 succeeded with 10 tarballs
+    and a 10-line SHA256SUMS.txt. Self-install from this session is refused in both harnesses: Claude Code's installed
+    trust policy (plugin `1.0+beb0776e89628`) lists no release key, and Codex's state directory
+    `~/.codex/plugins/data/cat-cat/state/codex` is read-only in the sandbox. Both need the user to run the release's
+    `cat.sh --harness <h>` once outside the sandbox. Next: after that install, the E-runs of gate 4 start; open
+    follow-up: the Codex "add this setting" text quotes a Windows path without TOML escaping.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
