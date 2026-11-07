@@ -94,6 +94,18 @@ final class TomlText
 	}
 
 	/**
+	 * Returns the value of a TOML basic string.
+	 *
+	 * @param quoted the string with its quotes
+	 * @return the value
+	 * @throws JacksonException if {@code quoted} is not a basic string
+	 */
+	static String unquote(String quoted)
+	{
+		return JSON.readValue(quoted, String.class);
+	}
+
+	/**
 	 * Splits a text into lines.
 	 *
 	 * @param text the text

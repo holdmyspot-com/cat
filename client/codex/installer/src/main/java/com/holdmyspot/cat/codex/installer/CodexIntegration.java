@@ -25,6 +25,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,6 +52,10 @@ import tools.jackson.databind.node.ObjectNode;
  * then ignores the writable roots. Other projects that use the profile get the entry too. When the file selects a
  * built-in profile that limits which files commands may write, to which CAT cannot add an entry, install asks the user
  * for permission to select a profile of CAT's that extends the built-in one and holds the entry.
+ * <p>
+ * Codex runs a plugin's hook only after {@code config.toml} records the hash that Codex computes for the hook, which a
+ * user records by reviewing the hook. Install records the hash of each of CAT's hooks, replaces a hash that an update
+ * made stale, and uninstall removes the hashes that install recorded.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -366,15 +371,19 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Writes {@code rules/cat-installer.rules} unless it already holds exactly the rules for {@code installer}, and
-	 * deletes a {@code rules/cat-updater.rules} file whose content is exactly what CAT wrote there before its installer
-	 * was called the installer.
+	 * Writes {@code rules/cat-installer.rules} unless it already holds exactly the rules for {@code installer}, deletes
+	 * a {@code rules/cat-updater.rules} file whose content is exactly what CAT wrote there before its installer was
+	 * called the installer, and records in {@code config.toml} the hash that Codex computes for each hook of the plugin
+	 * that holds {@code installer}, so that Codex runs the hooks without the user reviewing them. A hash that differs
+	 * from the one that {@code config.toml} records for a hook replaces it.
 	 *
-	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}} when this call wrote the file, otherwise an
-	 * 	empty map
+	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}} when this call wrote the file, and for each hash
+	 * 	that this call recorded or replaced, {@code {"config.toml#hooks.state.\"<hook>\".trusted_hash": [<hash>]}};
+	 * 	otherwise an empty map
 	 * @throws IllegalArgumentException if any of the paths are relative or not normalized
-	 * @throws IOException              if {@link #validateConfiguration} refuses the configuration or the file
-	 *                                  cannot be written
+	 * @throws IOException              if {@link #validateConfiguration} refuses the configuration, a file cannot be
+	 *                                  written, or {@code config.toml} holds a hook's state in a form that CAT does not
+	 *                                  edit
 	 */
 	@Override
 	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
@@ -385,13 +394,63 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(replacer, "replacer").isNotNull();
 		validateConfiguration(home);
 		deleteUpdaterLeftover(home);
+		Map<String, List<String>> added = new LinkedHashMap<>();
 		String content = InstallerRules.render(installer, isWindows());
 		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
-		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) && read(file).equals(content))
-			return Map.of();
+		if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS) || !read(file).equals(content))
+		{
+			write(file, content, replacer);
+			added.put(RULES_KEY, List.of(content));
+		}
+		added.putAll(trustHooks(home, installer, replacer));
+		return Map.copyOf(added);
+	}
 
-		write(file, content, replacer);
-		return Map.of(RULES_KEY, List.of(content));
+	/**
+	 * Records in {@code config.toml} the hash of each hook of the plugin that holds an installer.
+	 *
+	 * @param home      the Codex home
+	 * @param installer the installer launcher in the plugin's version folder
+	 * @param replacer  replaces Codex's configuration
+	 * @return each recorded or replaced hash, by record key
+	 * @throws IOException if {@code config.toml} or a hooks file cannot be read, or {@code config.toml} cannot be
+	 *                     written or holds a hook's state in a form that CAT does not edit
+	 */
+	private static Map<String, List<String>> trustHooks(Path home, Path installer, FileReplacer replacer)
+		throws IOException
+	{
+		Map<String, String> hashes = hookHashes(installer);
+		if (hashes.isEmpty())
+			return Map.of();
+		Path file = new CodexInstallation(home).configuration();
+		String content = "";
+		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS))
+			content = read(file);
+		String edited = content;
+		Map<String, List<String>> added = new LinkedHashMap<>();
+		for (Map.Entry<String, String> hook : hashes.entrySet())
+		{
+			String trusted = HookTrust.add(edited, hook.getKey(), hook.getValue(), file);
+			if (!trusted.equals(edited))
+				added.put(HookTrust.recordKey(hook.getKey()), List.of(hook.getValue()));
+			edited = trusted;
+		}
+		if (!edited.equals(content))
+			write(file, edited, replacer);
+		return added;
+	}
+
+	/**
+	 * Returns the hash that Codex computes for each hook of the plugin that holds an installer.
+	 *
+	 * @param installer the installer launcher in the plugin's version folder
+	 * @return each hook's key in {@code config.toml}, mapped to its hash; empty if the plugin declares no hooks
+	 * @throws IOException if the plugin's manifest or hooks file cannot be read
+	 */
+	private static Map<String, String> hookHashes(Path installer) throws IOException
+	{
+		Path plugin = installer.getParent().getParent();
+		return HookTrust.hashes(plugin, CodexPluginCommand.PLUGIN_ID, isWindows());
 	}
 
 	/**
@@ -450,15 +509,22 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the content of {@code rules/cat-installer.rules} that {@link #installPermissions} writes.
+	 * Returns the content of {@code rules/cat-installer.rules} that {@link #installPermissions} writes, and the hash of
+	 * each hook of the plugin that holds {@code installer}, which it records in {@code config.toml}.
 	 *
-	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}}
+	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}}, and for each hook,
+	 * 	{@code {"config.toml#hooks.state.\"<hook>\".trusted_hash": [<hash>]}}
 	 * @throws IllegalArgumentException if {@code installer} is relative or not normalized
+	 * @throws IOException              if the plugin's manifest or hooks file cannot be read
 	 */
 	@Override
-	public Map<String, List<String>> permissions(Path installer)
+	public Map<String, List<String>> permissions(Path installer) throws IOException
 	{
-		return Map.of(RULES_KEY, List.of(InstallerRules.render(installer, isWindows())));
+		Map<String, List<String>> permissions = new LinkedHashMap<>();
+		permissions.put(RULES_KEY, List.of(InstallerRules.render(installer, isWindows())));
+		for (Map.Entry<String, String> hook : hookHashes(installer).entrySet())
+			permissions.put(HookTrust.recordKey(hook.getKey()), List.of(hook.getValue()));
+		return Map.copyOf(permissions);
 	}
 
 	/**
@@ -691,6 +757,27 @@ public final class CodexIntegration implements HarnessIntegration
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(added, "added").isNotNull();
+		List<String> sentences = new ArrayList<>(describeAddedSandbox(home, added));
+		long hooks = added.keySet().stream().filter(key -> HookTrust.hookOf(key).isPresent()).count();
+		if (hooks > 0)
+		{
+			sentences.add("CAT recorded in " + new CodexInstallation(home).configuration() + " the hash of each of " +
+				"its " + hooks + " hooks that this install added or changed, so Codex runs them without asking you to " +
+				"review them; uninstalling CAT removes the hashes that CAT recorded.");
+		}
+		return List.copyOf(sentences);
+	}
+
+	/**
+	 * Returns the sentences about the profile and sandbox entries that an install added.
+	 *
+	 * @param home  the Codex home
+	 * @param added the entries that the install added
+	 * @return the sentences
+	 * @throws IOException if {@code config.toml} cannot be read or is not valid TOML
+	 */
+	private static List<String> describeAddedSandbox(Path home, Map<String, List<String>> added) throws IOException
+	{
 		Path file = new CodexInstallation(home).configuration();
 		List<String> sentences = new ArrayList<>();
 		List<String> selected = added.getOrDefault(SELECTION_KEY, List.of());
@@ -719,7 +806,8 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Tells the user when uninstall left {@code default_permissions} or CAT's profile of a built-in profile in place.
+	 * Tells the user when uninstall left {@code default_permissions}, CAT's profile of a built-in profile, or the hash
+	 * of a hook that the user changed after install recorded it, in place.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if {@code config.toml} cannot be read or is not valid TOML
@@ -731,11 +819,20 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(added, "added").isNotNull();
 		Path file = new CodexInstallation(home).configuration();
 		List<String> builtIns = recordedBuiltIns(added);
-		if (builtIns.isEmpty() || Files.isSymbolicLink(home) || Files.isSymbolicLink(file))
+		List<String> hooks = added.keySet().stream().map(HookTrust::hookOf).flatMap(Optional::stream).toList();
+		if ((builtIns.isEmpty() && hooks.isEmpty()) || Files.isSymbolicLink(home) || Files.isSymbolicLink(file))
 			return List.of();
 		ObjectNode document = readDocument(file);
 		String selection = document.path(BuiltInProfile.SELECTION).asString("");
 		List<String> sentences = new ArrayList<>();
+		for (String hook : hooks)
+		{
+			if (HookTrust.trusted(document, hook).isPresent())
+			{
+				sentences.add("CAT left the hash that " + file + " records for the Codex hook " + TomlText.quote(hook) +
+					" as it is, because it is no longer the hash that CAT recorded.");
+			}
+		}
 		for (String builtIn : builtIns)
 		{
 			String profile = BuiltInProfile.catProfile(builtIn);
@@ -786,7 +883,8 @@ public final class CodexIntegration implements HarnessIntegration
 	 * {@code default_permissions} back to the recorded built-in profile while it still names CAT's profile of it, and
 	 * removes CAT's profile while it holds only what CAT wrote and is not selected. Leaves a changed rules file, a file
 	 * reached through a symbolic link, the writable roots' array and table, each profile's filesystem table of the
-	 * user's profiles, and every other entry in place.
+	 * user's profiles, and every other entry in place. Removes each recorded hook hash from {@code config.toml} while
+	 * the file still records it for its hook, with the hook's table when the hash was all that the table held.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if a file cannot be read or written, or {@code config.toml} holds a recorded
@@ -824,9 +922,10 @@ public final class CodexIntegration implements HarnessIntegration
 
 	/**
 	 * Removes recorded writable roots and recorded profile write and read entries from {@code config.toml}, then sets
-	 * {@code default_permissions} back to a recorded built-in profile while it names CAT's profile of it, and removes
-	 * CAT's profile while it holds only what CAT wrote. A recorded entry of a profile that the file no longer defines
-	 * needs no removal.
+	 * {@code default_permissions} back to a recorded built-in profile while it names CAT's profile of it, removes
+	 * CAT's profile while it holds only what CAT wrote, and removes each recorded hook hash that the file still records
+	 * for its hook. A recorded entry of a profile that the file no longer defines needs
+	 * no removal.
 	 *
 	 * @param home     the Codex home
 	 * @param added    the recorded entries, by entry key
@@ -855,6 +954,14 @@ public final class CodexIntegration implements HarnessIntegration
 		}
 		for (String builtIn : recordedBuiltIns(added))
 			edited = BuiltInProfile.remove(edited, builtIn, file);
+		for (Map.Entry<String, List<String>> entry : added.entrySet())
+		{
+			Optional<String> hook = HookTrust.hookOf(entry.getKey());
+			if (hook.isEmpty())
+				continue;
+			for (String hash : entry.getValue())
+				edited = HookTrust.remove(edited, hook.get(), hash, file);
+		}
 		if (!edited.equals(content))
 			write(file, edited, replacer);
 	}

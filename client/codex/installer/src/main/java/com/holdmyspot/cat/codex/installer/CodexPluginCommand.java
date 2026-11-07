@@ -23,7 +23,7 @@ public record CodexPluginCommand(List<String> arguments, boolean acceptsAbsence)
 	/**
 	 * The plugin as Codex identifies it: the plugin name, then the marketplace name.
 	 */
-	private static final String PLUGIN_ID = "cat@cat";
+	static final String PLUGIN_ID = "cat@cat";
 	/**
 	 * The marketplace name in CAT's marketplace metadata.
 	 */
