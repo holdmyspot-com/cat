@@ -215,7 +215,7 @@ public final class SessionLauncherServiceTest
 				}
 
 				@Override
-				public ParentPolicy read()
+				public ParentPolicy read(Optional<String> askingThread)
 				{
 					return policy;
 				}

@@ -63,6 +63,10 @@ public final class SessionLauncherClient
 	 */
 	private final GitIdentity git;
 	/**
+	 * The identifier that each harness gives the thread that runs the command, by harness identifier.
+	 */
+	private final Map<String, String> askingThreads;
+	/**
 	 * Sends the requests.
 	 */
 	private final RequestExchange exchange;
@@ -81,11 +85,13 @@ public final class SessionLauncherClient
 	 * @param git            reads the project's Git identity
 	 * @param clock          the time source for the waits
 	 * @param pause          paces the checks for the launcher's progress
+	 * @param askingThreads  the identifier that each harness gives the thread that runs the command, by harness
+	 *                       identifier, which a launch through that harness's runner sends as its asking thread
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code sessionProduct} is blank
 	 */
 	public SessionLauncherClient(SessionLauncherChannel channel, String sessionProduct, HolderStarter holders,
-		GitIdentity git, Clock clock, Pause pause)
+		GitIdentity git, Clock clock, Pause pause, Map<String, String> askingThreads)
 	{
 		requireThat(channel, "channel").isNotNull();
 		requireThat(sessionProduct, "sessionProduct").isNotBlank();
@@ -93,7 +99,9 @@ public final class SessionLauncherClient
 		requireThat(git, "git").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(pause, "pause").isNotNull();
+		requireThat(askingThreads, "askingThreads").isNotNull();
 		this.git = git;
+		this.askingThreads = Map.copyOf(askingThreads);
 		this.exchange = new RequestExchange(channel, sessionProduct, holders, clock, pause, json);
 	}
 
@@ -115,7 +123,7 @@ public final class SessionLauncherClient
 		Path home = Platform.current().homeDirectory(environment);
 		return new SessionLauncherClient(new SessionLauncherChannel(home), sessionProduct(environment),
 			HolderStarter.processes(), GitIdentity.fromGit(), Clock.systemUTC(),
-			waiting.every(SessionLauncherChannel.INBOX_POLL));
+			waiting.every(SessionLauncherChannel.INBOX_POLL), Map.of());
 	}
 
 	/**
@@ -305,7 +313,8 @@ public final class SessionLauncherClient
 	/**
 	 * Builds the request of a launch.
 	 *
-	 * @param harness      the child's harness
+	 * @param harness      the child's harness, whose runner the launch stands for; the request names the thread that
+	 *                     this harness gives the command as the asking thread
 	 * @param options      the launch's options
 	 * @param plugins      the plugins that the request carries
 	 * @param capacityHeld indicates whether the sender holds the child's capacity slot
@@ -322,7 +331,8 @@ public final class SessionLauncherClient
 			options.keepRun, options.sessionRequests, options.requestDepth, options.capacityWait,
 			options.maximumConcurrency, capacityHeld, options.instructionFiles, options.toolOutputTokenLimit,
 			options.deniedReads, HarnessRunnerOptions.readExtraPermissions(json, options.extraPermissions.orElse(null)),
-			git.name(options.project), git.email(options.project));
+			git.name(options.project), git.email(options.project),
+			Optional.ofNullable(askingThreads.get(harness)));
 	}
 
 	/**

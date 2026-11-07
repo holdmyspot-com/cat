@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
@@ -62,7 +63,7 @@ public final class ClaudeLauncherPolicyTest
 				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["api.example.com"]}}}""");
 			ParentPolicySource source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
 
-			ParentPolicy first = source.read();
+			ParentPolicy first = source.read(Optional.empty());
 			requireThat(source.harnessName(), "harnessName").isEqualTo(ClaudePolicyReader.HARNESS_NAME);
 			requireThat(first.sandboxed(), "sandboxed").isTrue();
 			requireThat(first.hosts().allows("api.example.com"), "host").isTrue();
@@ -72,12 +73,12 @@ public final class ClaudeLauncherPolicyTest
 				RealPaths.resolveAll(first.writeDenials()), RealPaths.resolveAll(first.readDenials()),
 				RealPaths.resolveAll(first.readReallowances()), first.hosts(), first.allowLocalBinding(),
 				RealPaths.resolveAll(first.protectedSources()));
-			requireThat(source.read(), "second").isEqualTo(resolvedFirst);
+			requireThat(source.read(Optional.empty()), "second").isEqualTo(resolvedFirst);
 
 			fixture.reportedStart = Instant.parse("2026-11-05T13:00:00Z");
 			try
 			{
-				ParentPolicy policy = source.read();
+				ParentPolicy policy = source.read(Optional.empty());
 				throw new AssertionError("The later reading was not refused: " + policy);
 			}
 			catch (PolicyRefusal e)

@@ -388,7 +388,7 @@ public final class SessionLauncherChannelTest
 			return new Request(harness, model, effort, agent, turns, project, plugins, requestWorkspace, evidence,
 				field.equals("install_cat"), field.equals("session_transcripts"), keepRun, sessionRequests, requestDepth,
 				capacityWait, maximumConcurrency, field.equals("capacity"), instructionFiles, toolOutputTokenLimit,
-				deniedReads, extraPermissions, gitName, gitEmail);
+				deniedReads, extraPermissions, gitName, gitEmail, Optional.empty());
 		}
 
 		/**
@@ -494,7 +494,7 @@ public final class SessionLauncherChannelTest
 				received.readOnlyEvidence(), sent.installCat(), sent.sessionTranscripts(), sent.keepRun(),
 				sent.sessionRequests(), sent.requestDepth(), sent.capacityWait(), sent.maximumConcurrency(),
 				sent.capacityHeld(), sent.instructionFiles(), sent.toolOutputTokenLimit(), sent.deniedReads(),
-				sent.extraPermissions(), sent.gitName(), sent.gitEmail());
+				sent.extraPermissions(), sent.gitName(), sent.gitEmail(), sent.askingThread());
 			requireThat(received, "received").isEqualTo(expected);
 			requireThat(contents(received.turns()), "turns").isEqualTo(contents(sent.turns()));
 			requireThat(contents(Optional.of(received.project())), "project").

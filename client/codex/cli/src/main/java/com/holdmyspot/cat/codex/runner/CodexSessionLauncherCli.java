@@ -151,8 +151,9 @@ public final class CodexSessionLauncherCli
 			}
 
 			@Override
-			public ParentPolicy read() throws IOException, PolicyRefusal
+			public ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal
 			{
+				requireThat(askingThread, "askingThread").isNotNull();
 				long pid = record.process().pid();
 				Optional<ProcessDescription> codex = processes.find(pid).
 					filter(process -> process.start().equals(Optional.of(record.process().start())));

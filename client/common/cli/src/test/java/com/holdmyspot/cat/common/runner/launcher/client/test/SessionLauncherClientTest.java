@@ -33,6 +33,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
@@ -111,7 +112,7 @@ public final class SessionLauncherClientTest
 				}
 			};
 			SessionLauncherClient client = new SessionLauncherClient(channel, PRODUCT, launcher, git, clock,
-				launcher::step);
+				launcher::step, Map.of());
 			Path project = Files.createDirectory(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
 			return new Fixture(root, channel, clock, launcher, client, project);

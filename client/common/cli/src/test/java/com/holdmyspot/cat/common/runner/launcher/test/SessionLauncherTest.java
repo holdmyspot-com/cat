@@ -656,7 +656,7 @@ public final class SessionLauncherTest
 			replay.allow(atRequest);
 			Path runRoot = fixture.channel.requestDirectory(id).resolve(SessionLauncherChannel.RUN_DIRECTORY);
 			SessionRefusedException expected = expectThrows(SessionRefusedException.class,
-				() -> snapshot.bound("claude", runRoot, List.of(), extra));
+				() -> snapshot.bound("claude", runRoot, List.of(), extra, Optional.empty()));
 			Response response = fixture.response(id);
 			requireThat(response.status(), "status").isEqualTo(Status.REFUSED);
 			requireThat(response.reason(), "reason").isEqualTo(expected.getMessage());
@@ -764,7 +764,7 @@ public final class SessionLauncherTest
 		}
 
 		@Override
-		public ParentPolicy read() throws PolicyRefusal
+		public ParentPolicy read(Optional<String> askingThread) throws PolicyRefusal
 		{
 			synchronized (this)
 			{
@@ -879,7 +879,7 @@ public final class SessionLauncherTest
 			return new Request("claude", Optional.of("model-a"), Optional.of("effort-a"), Optional.empty(), records,
 				project, List.of(), Optional.empty(), List.of(), false, false, true, 0, 0, Optional.empty(),
 				Optional.empty(), false, Optional.empty(), Optional.empty(), List.of(), extra, Optional.empty(),
-				Optional.empty());
+				Optional.empty(), Optional.empty());
 		}
 
 		/**

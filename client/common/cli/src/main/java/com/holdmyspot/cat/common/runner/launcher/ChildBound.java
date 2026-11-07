@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -90,16 +91,18 @@ public final class ChildBound
 			throw new IllegalArgumentException("trusted must be absolute: " + trusted);
 		List<Path> allTrusted = new ArrayList<>(this.trusted);
 		allTrusted.add(trusted);
-		return new ChildBound(parent, needs, readParent(snapshot, allTrusted), allTrusted);
+		return new ChildBound(parent, needs, readParent(snapshot, allTrusted, Optional.empty()), allTrusted);
 	}
 
 	/**
 	 * Returns the policy that bounds a child.
 	 *
-	 * @param harness     the child's harness identifier
-	 * @param runRoot     the folder that holds the child's run
-	 * @param deniedReads the absolute paths that the launch denies the child
-	 * @param extra       the writes and hosts that the child's commands need beyond what its harness needs
+	 * @param harness      the child's harness identifier
+	 * @param runRoot      the folder that holds the child's run
+	 * @param deniedReads  the absolute paths that the launch denies the child
+	 * @param extra        the writes and hosts that the child's commands need beyond what its harness needs
+	 * @param askingThread the identifier that the parent's harness gives the thread that asks for the child, or
+	 *                     empty for the parent's main thread
 	 * @return the bound
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
@@ -107,14 +110,15 @@ public final class ChildBound
 	 *                                  needs; the message names the settings that would allow it
 	 * @throws IOException              if what the child needs cannot be determined
 	 */
-	public ChildPolicy bound(String harness, Path runRoot, List<Path> deniedReads, ExtraPermissions extra)
-		throws IOException
+	public ChildPolicy bound(String harness, Path runRoot, List<Path> deniedReads, ExtraPermissions extra,
+		Optional<String> askingThread) throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(runRoot, "runRoot").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(extra, "extra").isNotNull();
-		ParentPolicy policy = readParent(snapshot, trusted);
+		requireThat(askingThread, "askingThread").isNotNull();
+		ParentPolicy policy = readParent(snapshot, trusted, askingThread);
 		try
 		{
 			return ChildPolicy.intersect(policy, needs.needs(harness, runRoot, deniedReads, policy).with(extra));
@@ -151,14 +155,16 @@ public final class ChildBound
 	 *
 	 * @param narrowedTo   the policy that the reading is narrowed to
 	 * @param trustedPaths the absolute paths that the reading must keep the parent's commands from writing
+	 * @param askingThread the thread whose policy is read, or empty for the parent's main thread
 	 * @return the policy
 	 * @throws SessionRefusedException if the policy cannot be read safely
 	 */
-	private ParentPolicy readParent(ParentPolicy narrowedTo, List<Path> trustedPaths) throws SessionRefusedException
+	private ParentPolicy readParent(ParentPolicy narrowedTo, List<Path> trustedPaths, Optional<String> askingThread)
+		throws SessionRefusedException
 	{
 		try
 		{
-			ParentPolicy policy = parent.read();
+			ParentPolicy policy = parent.read(askingThread);
 			for (Path path : trustedPaths)
 				policy.requireTrusted(path);
 			return narrowedTo.intersect(policy);

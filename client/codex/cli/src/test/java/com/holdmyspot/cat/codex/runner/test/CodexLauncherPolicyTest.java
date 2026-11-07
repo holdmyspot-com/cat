@@ -57,7 +57,7 @@ public final class CodexLauncherPolicyTest
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
 
-			ParentPolicy policy = source.read();
+			ParentPolicy policy = source.read(Optional.empty());
 
 			requireThat(source.harnessName(), "harnessName").isEqualTo("Codex");
 			requireThat(policy.sandboxed(), "sandboxed").isTrue();
@@ -83,7 +83,7 @@ public final class CodexLauncherPolicyTest
 				ParentPolicySource source = fixture.source(start);
 				try
 				{
-					ParentPolicy policy = source.read();
+					ParentPolicy policy = source.read(Optional.empty());
 					throw new AssertionError("The reading was not refused: " + policy);
 				}
 				catch (PolicyRefusal e)

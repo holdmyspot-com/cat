@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -36,11 +37,16 @@ public interface ParentPolicySource
 	String permissionEntries(List<Path> writes, Set<String> hosts);
 
 	/**
-	 * Reads the session's sandbox policy as it is now.
+	 * Reads the sandbox policy that the session gives the commands of one of its threads, as it is now.
 	 *
+	 * @param askingThread the identifier that the harness gives the thread that asks, as its request names it, or
+	 *                     empty for the session's main thread. An identifier that names no thread of the session
+	 *                     gives the main thread's policy, as does any identifier in a harness whose threads share
+	 *                     the session's policy.
 	 * @return the policy
-	 * @throws IOException   if a source of the policy cannot be read
-	 * @throws PolicyRefusal if the policy cannot be established safely
+	 * @throws NullPointerException if {@code askingThread} is null
+	 * @throws IOException          if a source of the policy cannot be read
+	 * @throws PolicyRefusal        if the policy cannot be established safely
 	 */
-	ParentPolicy read() throws IOException, PolicyRefusal;
+	ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal;
 }

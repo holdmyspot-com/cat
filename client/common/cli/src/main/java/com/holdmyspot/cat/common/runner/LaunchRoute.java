@@ -140,7 +140,8 @@ public sealed interface LaunchRoute
 				}
 				return new ChildNeeds(runFolder, report.writes(), deniedReads, report.hosts());
 			});
-			ChildPolicy policy = bound.bound(harness, options.runRoot(), options.deniedReads(), extra);
+			ChildPolicy policy = bound.bound(harness, options.runRoot(), options.deniedReads(), extra,
+				Optional.empty());
 			Path directory = cleanup.add(Files.createTempDirectory(Files.createDirectories(options.runRoot()),
 				".policy-bound-"));
 			return PolicyBoundFile.boundArguments(json, List.of(args), directory, policy);
@@ -170,7 +171,7 @@ public sealed interface LaunchRoute
 				}
 
 				@Override
-				public ParentPolicy read()
+				public ParentPolicy read(Optional<String> askingThread)
 				{
 					return ParentPolicy.UNSANDBOXED;
 				}

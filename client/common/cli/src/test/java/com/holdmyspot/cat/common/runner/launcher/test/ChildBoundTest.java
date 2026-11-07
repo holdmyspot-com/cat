@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import org.testng.annotations.DataProvider;
@@ -75,7 +76,7 @@ public final class ChildBoundTest
 			}
 
 			@Override
-			public ParentPolicy read() throws IOException, PolicyRefusal
+			public ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal
 			{
 				Object answer;
 				synchronized (remaining)
@@ -165,7 +166,7 @@ public final class ChildBoundTest
 			});
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE));
+				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo(expected);
 		}
@@ -187,7 +188,7 @@ public final class ChildBoundTest
 			ChildBound bound = new ChildBound(parent(harness), needing(List.of()));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE));
+				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
 
 			requireThat(refusal, "refusal").isReferenceEqualTo(harness, "harness");
 		}
@@ -213,7 +214,7 @@ public final class ChildBoundTest
 			});
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE));
+				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo(login.messageFor(HARNESS_NAME));
 		}
@@ -240,7 +241,7 @@ public final class ChildBoundTest
 				needs);
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE));
+				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " and reach " +
@@ -269,7 +270,7 @@ public final class ChildBoundTest
 				needing(List.of(cache)));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE));
+				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " (denied by " + denial +
@@ -296,7 +297,7 @@ public final class ChildBoundTest
 				Set.of("registry.example", "unused.example"))), needing(List.of()));
 
 			ChildPolicy child = bound.bound("codex", run, List.of(),
-				new ExtraPermissions(List.of(cache), Set.of("registry.example")));
+				new ExtraPermissions(List.of(cache), Set.of("registry.example")), Optional.empty());
 
 			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, cache));
 			requireThat(child.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST, "registry.example"));
@@ -320,7 +321,7 @@ public final class ChildBoundTest
 			ChildBound bound = new ChildBound(parent(sandboxed(List.of(root), List.of(),
 				Set.of("registry.example"))), needing(List.of()));
 
-			ChildPolicy child = bound.bound("codex", run, List.of(denied), ExtraPermissions.NONE);
+			ChildPolicy child = bound.bound("codex", run, List.of(denied), ExtraPermissions.NONE, Optional.empty());
 
 			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run));
 			requireThat(child.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST));
@@ -347,7 +348,7 @@ public final class ChildBoundTest
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> bound.bound("codex", run, List.of(),
-					new ExtraPermissions(List.of(cache), Set.of("registry.example"))));
+					new ExtraPermissions(List.of(cache), Set.of("registry.example")), Optional.empty()));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " and reach " +
@@ -404,7 +405,7 @@ public final class ChildBoundTest
 				Set.of("snapshot.example", "launch.example"));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", run, List.of(), extra));
+				() -> bound.bound("codex", run, List.of(), extra, Optional.empty()));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + snapshotCache + ", " +
@@ -452,7 +453,7 @@ public final class ChildBoundTest
 			ChildBound bound = new ChildBound(parent, needing(List.of()));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.snapshot(state).bound("codex", run, List.of(), ExtraPermissions.NONE));
+				() -> bound.snapshot(state).bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: it cannot read " +
 				"this " + HARNESS_NAME + " session's sandbox policy safely: the session's sandbox lets its commands " +

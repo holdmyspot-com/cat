@@ -940,7 +940,8 @@ public final class SessionLauncher implements Closeable
 		ChildPolicy child;
 		try
 		{
-			child = snapshot.bound(choices.harness(), runRoot, choices.deniedReads(), choices.extraPermissions());
+			child = snapshot.bound(choices.harness(), runRoot, choices.deniedReads(), choices.extraPermissions(),
+				Optional.empty());
 		}
 		catch (SessionRefusedException e)
 		{

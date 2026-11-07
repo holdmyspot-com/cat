@@ -750,7 +750,7 @@ public final class RequestArchive
 				count(value, "session_requests").orElse(0), count(value, "request_depth").orElse(0), capacityWait,
 				count(value, "max_concurrency"), capacityHeld, optionalText(value, "instruction_files"),
 				count(value, "tool_output_token_limit"), deniedReads, extraPermissions(value),
-				optionalText(value, "git_name"), optionalText(value, "git_email"));
+				optionalText(value, "git_name"), optionalText(value, "git_email"), Optional.empty());
 		}
 		catch (IllegalArgumentException e)
 		{

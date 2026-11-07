@@ -25,6 +25,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.Executors;
@@ -168,9 +169,16 @@ public final class ClaudeSessionLauncherCli
 			return "add " + String.join(" and ", additions) + " in your Claude Code settings";
 		}
 
+		/**
+		 * {@inheritDoc}
+		 * <p>
+		 * Every thread of a Claude Code session runs its commands in the session's sandbox, so the policy is the
+		 * session's whichever thread asks.
+		 */
 		@Override
-		public ParentPolicy read() throws IOException, PolicyRefusal
+		public ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal
 		{
+			requireThat(askingThread, "askingThread").isNotNull();
 			synchronized (this)
 			{
 				ClaudeSession session = sessions.session();

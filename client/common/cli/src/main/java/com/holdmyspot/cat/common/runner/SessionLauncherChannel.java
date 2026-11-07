@@ -482,13 +482,16 @@ public final class SessionLauncherChannel
 	 *                             its needs
 	 * @param gitName              the Git author name of the copied project, or empty
 	 * @param gitEmail             the Git author email of the copied project, or empty
+	 * @param askingThread         the identifier that the sender's harness gives the thread whose command sends the
+	 *                             request, or empty if it gives none
 	 */
 	public record Request(String harness, Optional<String> model, Optional<String> effort, Optional<String> agent,
 		Optional<Path> turns, Path project, List<Path> plugins, Optional<Path> workspace, List<Path> readOnlyEvidence,
 		boolean installCat, boolean sessionTranscripts, boolean keepRun, int sessionRequests, int requestDepth,
 		Optional<Duration> capacityWait, Optional<Integer> maximumConcurrency, boolean capacityHeld,
 		Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, List<Path> deniedReads,
-		ExtraPermissions extraPermissions, Optional<String> gitName, Optional<String> gitEmail)
+		ExtraPermissions extraPermissions, Optional<String> gitName, Optional<String> gitEmail,
+		Optional<String> askingThread)
 	{
 		/**
 		 * Creates a request.
@@ -520,6 +523,8 @@ public final class SessionLauncherChannel
 		 *                             its needs
 		 * @param gitName              the Git author name of the copied project, or empty
 		 * @param gitEmail             the Git author email of the copied project, or empty
+		 * @param askingThread         the identifier that the sender's harness gives the thread whose command sends
+		 *                             the request, or empty if it gives none
 		 * @throws NullPointerException     if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code harness} is not {@code claude} or {@code codex}; if {@code agent}
 		 *                                  is present beside {@code model} or {@code effort}, or absent while either is
@@ -552,9 +557,11 @@ public final class SessionLauncherChannel
 			requireThat(extraPermissions, "extraPermissions").isNotNull();
 			requireThat(gitName, "gitName").isNotNull();
 			requireThat(gitEmail, "gitEmail").isNotNull();
+			requireThat(askingThread, "askingThread").isNotNull();
 			if (!RequestArchive.HARNESSES.contains(harness))
 				throw new IllegalArgumentException("Unsupported requested harness: " + harness);
-			for (Optional<String> text : List.of(model, effort, agent, instructionFiles, gitName, gitEmail))
+			for (Optional<String> text : List.of(model, effort, agent, instructionFiles, gitName, gitEmail,
+				askingThread))
 				text.ifPresent(value -> requireThat(value, "value").isNotBlank());
 			if (agent.isPresent())
 			{
