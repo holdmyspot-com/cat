@@ -1208,7 +1208,10 @@ completed trials, not forecasts. A minimality pass reports the hunks it removed.
 Each host session has a CAT session directory, `<base>/.cat/sessions/<session-id>/`, named by the harness's session ID.
 One component creates it and writes its marker, which records the harness and that harness's configuration directory;
 every part of CAT that writes into the directory obtains it from that component (D79). A campaign belongs to the host
-session that starts it, and its data lives under `<base>/.cat/sessions/<session-id>/optimizer/<campaign-id>/`:
+session that starts it, and only a Claude Code or Codex session can start or resume one: an optimizer command that no
+harness runs, such as one in a terminal, is refused and says to run it from a Claude Code or Codex session, so the
+optimizer never starts its sessions in place (user ruling, 2026-11-07). Its data lives under
+`<base>/.cat/sessions/<session-id>/optimizer/<campaign-id>/`:
 
 - the held-out directory `held-out/` ([§6.3](#63-prompt-tests-and-test-cases)), holding:
 	- `campaign.json`: a compact snapshot holding identities, the frozen contract and procedure, `(S, F)` per candidate
@@ -2680,7 +2683,7 @@ cache outside the project, names a JSON file with `--extra-permissions <file>` o
 `request-session`: `{"format_version": 1, "writes": ["<absolute path>"], "hosts": ["<host name>"]}`, where either list
 may be left out and no other field is allowed. It rejects a relative path and a `*` host pattern, as the child's own
 needs do. The writes and hosts join the requested session's needs on every path that starts it (through the session launcher,
-through a run's broker, and in place for a command that no harness runs), so the same rule applies: the session gets
+through a run's broker, and in place for a runner launcher that no harness runs), so the same rule applies: the session gets
 them when the requesting session's sandbox allows them and otherwise is refused, with each one named and the settings
 entry that grants it. A caller that names no file requests nothing extra; the file's contents travel inside the request,
 so the runner never opens a path that the requesting session chose (user ruling, 2026-11-06: a file that describes
@@ -2756,7 +2759,9 @@ still passes this check (user ruling, 2026-11-06). It refuses a launch before an
 A session that started before CAT was installed or updated has no session launcher. Its runner launchers start
 nothing, exit `2` and say to start a new session. A session launcher ends when its harness process ends, when
 Claude Code's SessionEnd hook asks it to stop, or when it loses its lock, and it stops every session that it started
-and that still runs.
+and that still runs. Its log, which records each launch it accepts and each answer it gives, outlives it, so the
+answer to a request whose requester has already ended, such as `stopped` after the session ends, stays readable
+(user ruling, 2026-11-07).
 
 A command that no harness runs, such as one in a terminal, has no sandbox to bound the new session. Its runner
 launcher starts the session itself, inside that harness's own sandbox, with exactly what the session needs. Each
