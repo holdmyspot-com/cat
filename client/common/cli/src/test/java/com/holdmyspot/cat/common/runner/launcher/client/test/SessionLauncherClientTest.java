@@ -127,9 +127,10 @@ public final class SessionLauncherClientTest
 		 * Acts on the fixture after a poll.
 		 *
 		 * @param fixture the fixture
-		 * @throws IOException if the fixture's files cannot be read
+		 * @throws IOException          if the fixture's files cannot be read
+		 * @throws InterruptedException if the thread is interrupted while it waits for the launcher
 		 */
-		void after(Fixture fixture) throws IOException;
+		void after(Fixture fixture) throws IOException, InterruptedException;
 	}
 
 	/**
@@ -274,7 +275,15 @@ public final class SessionLauncherClientTest
 			if (!serving || steps % pauses != 0)
 				return;
 			launcher.poll();
-			afterPoll.after(this);
+			try
+			{
+				afterPoll.after(this);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new InterruptedIOException(e.getMessage());
+			}
 			// The launcher serves each request on its own thread
 			Thread.yield();
 		}
@@ -387,6 +396,7 @@ public final class SessionLauncherClientTest
 		{
 			try (cleanup)
 			{
+				executor.release();
 				launcher.close();
 				executor.awaitIdle();
 			}
@@ -1410,8 +1420,8 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
-	 * Verifies that an interrupt of the thread that serves the optimizer's bridge ends the request's holder, which
-	 * makes the launcher stop the child's runner and its harness.
+	 * Verifies that an interrupt of the thread that serves the optimizer's bridge, after the launcher started the
+	 * child's runner, ends the request's holder, which makes the launcher stop the child's runner and its harness.
 	 *
 	 * @throws IOException          if the fixture cannot be written
 	 * @throws InterruptedException if the test is interrupted
@@ -1423,29 +1433,16 @@ public final class SessionLauncherClientTest
 			FeedReader input = new FeedReader())
 		{
 			fixture.serve();
-			// The optimizer interrupts the session once the launcher has consumed its first turn
+			// The optimizer interrupts the session once the launcher has consumed its first turn and started the runner
 			fixture.afterPoll(polled ->
 			{
 				if (polled.turnsConsumed() > 0)
+				{
+					polled.starter.awaitRunner();
 					Thread.currentThread().interrupt();
+				}
 			});
-			input.send("{\"type\":\"turn\",\"prompt\":\"first\"}");
-			Bridge bridge = fixture.client.bridge("claude", fixture.root);
-			boolean interrupted;
-			try
-			{
-				bridge.serve(List.of("--project", fixture.project.toString(), "--run-root",
-					fixture.root.resolve("runs").toString(), "--keep-run", "--model", "m", "--effort", "e"), input,
-					new StringWriter());
-				interrupted = false;
-			}
-			catch (InterruptedIOException _)
-			{
-				interrupted = Thread.interrupted();
-			}
-			fixture.afterPoll(_ ->
-			{
-			});
+			boolean interrupted = serveUntilInterrupted(fixture, input);
 			fixture.poll();
 			fixture.awaitIdle();
 
@@ -1454,6 +1451,71 @@ public final class SessionLauncherClientTest
 			requireThat(fixture.holders.started().stream().allMatch(holder -> holder.closed), "allClosed").isTrue();
 			requireThat(fixture.runner().treeStopped(), "treeStopped").isTrue();
 		}
+	}
+
+	/**
+	 * Verifies that an interrupt of the thread that serves the optimizer's bridge before the launcher started the
+	 * child's runner ends the request's holder, and that the launcher answers that it stopped the session without
+	 * ever starting a runner.
+	 *
+	 * @throws IOException          if the fixture cannot be written
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void bridgeInterruptBeforeRunnerStarts() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture();
+			FeedReader input = new FeedReader())
+		{
+			fixture.serve();
+			// The launcher accepts the request and its first turn, but does not run the request until the test lets it
+			fixture.executor.hold();
+			fixture.afterPoll(polled ->
+			{
+				if (polled.turnsConsumed() > 0)
+					Thread.currentThread().interrupt();
+			});
+			boolean interrupted = serveUntilInterrupted(fixture, input);
+			fixture.poll();
+			fixture.executor.release();
+			fixture.awaitIdle();
+
+			requireThat(interrupted, "interrupted").isTrue();
+			requireThat(fixture.holders.request().closed, "closed").isTrue();
+			requireThat(fixture.starter.runners(), "runners").isEmpty();
+			Path log = fixture.channel.logFile("claude", fixture.harness.pid(), fixture.harness.start());
+			requireThat(Files.readString(log), "log").contains(": stopped");
+		}
+	}
+
+	/**
+	 * Serves a bridge whose first turn is ready, until the thread is interrupted.
+	 *
+	 * @param fixture the fixture, whose later polls may interrupt the thread
+	 * @param input   the bridge's input
+	 * @return {@code true} if the bridge ended because the thread was interrupted
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static boolean serveUntilInterrupted(Fixture fixture, FeedReader input) throws IOException
+	{
+		input.send("{\"type\":\"turn\",\"prompt\":\"first\"}");
+		Bridge bridge = fixture.client.bridge("claude", fixture.root);
+		boolean interrupted;
+		try
+		{
+			bridge.serve(List.of("--project", fixture.project.toString(), "--run-root",
+				fixture.root.resolve("runs").toString(), "--keep-run", "--model", "m", "--effort", "e"), input,
+				new StringWriter());
+			interrupted = false;
+		}
+		catch (InterruptedIOException _)
+		{
+			interrupted = Thread.interrupted();
+		}
+		fixture.afterPoll(_ ->
+		{
+		});
+		return interrupted;
 	}
 
 	/**

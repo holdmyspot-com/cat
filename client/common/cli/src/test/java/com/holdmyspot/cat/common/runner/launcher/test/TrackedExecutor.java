@@ -7,7 +7,8 @@ import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Runs each task on its own virtual thread and lets a test wait until every task has ended.
+ * Runs each task on its own virtual thread and lets a test wait until every task has ended, or hold the tasks that
+ * are submitted until the test releases them.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -15,6 +16,8 @@ public final class TrackedExecutor extends AbstractExecutorService
 {
 	private static final Duration WAIT = Duration.ofSeconds(5);
 	private final List<Thread> threads = new ArrayList<>();
+	private final List<Runnable> held = new ArrayList<>();
+	private boolean holding;
 	private boolean shutdown;
 
 	/**
@@ -31,7 +34,36 @@ public final class TrackedExecutor extends AbstractExecutorService
 		{
 			if (shutdown)
 				throw new IllegalStateException("The executor is shut down");
-			threads.add(Thread.ofVirtual().start(command));
+			if (holding)
+				held.add(command);
+			else
+				threads.add(Thread.ofVirtual().start(command));
+		}
+	}
+
+	/**
+	 * Makes the tasks that are submitted from now on wait, unstarted, until {@link #release()}, so that a test
+	 * chooses what happens before they run.
+	 */
+	public void hold()
+	{
+		synchronized (this)
+		{
+			holding = true;
+		}
+	}
+
+	/**
+	 * Starts the tasks that were held and stops holding later ones. Does nothing if no task is held.
+	 */
+	public void release()
+	{
+		synchronized (this)
+		{
+			holding = false;
+			for (Runnable command : held)
+				threads.add(Thread.ofVirtual().start(command));
+			held.clear();
 		}
 	}
 
@@ -39,7 +71,7 @@ public final class TrackedExecutor extends AbstractExecutorService
 	 * Waits until every task that has started, and every task that those tasks start, has ended.
 	 *
 	 * @throws InterruptedException if the thread is interrupted while waiting
-	 * @throws AssertionError       if a task is still running after five seconds
+	 * @throws AssertionError       if a task is held, or still running after five seconds
 	 */
 	public void awaitIdle() throws InterruptedException
 	{
@@ -50,6 +82,8 @@ public final class TrackedExecutor extends AbstractExecutorService
 			Thread next;
 			synchronized (this)
 			{
+				if (!held.isEmpty())
+					throw new AssertionError("A task is held");
 				if (joined == threads.size())
 					return;
 				next = threads.get(joined);
