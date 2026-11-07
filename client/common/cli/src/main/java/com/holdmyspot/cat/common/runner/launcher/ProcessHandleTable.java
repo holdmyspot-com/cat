@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 /**
  * The operating system's processes as {@link ProcessHandle} reports them, with command lines from
  * {@link HarnessProcesses}, which reads {@code /proc/<pid>/cmdline} on Linux and asks {@link ProcessHandle} elsewhere,
- * and parents from {@link ProcessHandle#parent()}.
+ * where Windows reports none, and parents from {@link ProcessHandle#parent()}.
  * <p>
  * The session launcher's requester proof rests on these properties of the platforms and harnesses, which this class
  * is the one place to correct if a platform or harness release differs:

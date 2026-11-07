@@ -30,6 +30,17 @@ public abstract class ProcessTableContract
 	}
 
 	/**
+	 * Indicates whether the table must report the arguments of a live process. A table that cannot read the command
+	 * line of another process reports none, which makes every reader that needs them refuse.
+	 *
+	 * @return {@code true} if {@link ProcessTable#arguments} must report the arguments of the leaf
+	 */
+	protected boolean reportsArguments()
+	{
+		return true;
+	}
+
+	/**
 	 * Starts a leaf process two generations below a root: the root's child is the leaf's parent.
 	 *
 	 * @return the processes and the table that reports them
@@ -88,7 +99,8 @@ public abstract class ProcessTableContract
 
 	/**
 	 * Verifies that a live process shows in every answer: it is alive and listed, its parent and grandparent are its
-	 * ancestors, it is among both ancestors' descendants, and its command line ends with its arguments.
+	 * ancestors, it is among both ancestors' descendants, and its command line ends with its arguments, which a table
+	 * that cannot read them ({@link #reportsArguments()}) may leave unreported but never reports wrongly.
 	 *
 	 * @throws IOException if the leaf cannot be started or ended
 	 */
@@ -107,10 +119,16 @@ public abstract class ProcessTableContract
 			requireThat(table.descendants(tree.root()), "descendants(root)").contains(tree.middle()).contains(leaf);
 			requireThat(table.descendants(tree.middle()), "descendants(middle)").contains(leaf).
 				doesNotContain(tree.root());
-			List<String> arguments = table.arguments(leaf).orElseThrow();
-			requireThat(arguments.size(), "arguments.size()").isGreaterThanOrEqualTo(LEAF_ARGUMENTS.size());
-			requireThat(arguments.subList(arguments.size() - LEAF_ARGUMENTS.size(), arguments.size()), "arguments").
-				isEqualTo(LEAF_ARGUMENTS);
+			Optional<List<String>> reported = table.arguments(leaf);
+			if (reportsArguments())
+				requireThat(reported, "arguments(leaf)").isPresent();
+			if (reported.isPresent())
+			{
+				List<String> arguments = reported.get();
+				requireThat(arguments.size(), "arguments.size()").isGreaterThanOrEqualTo(LEAF_ARGUMENTS.size());
+				requireThat(arguments.subList(arguments.size() - LEAF_ARGUMENTS.size(), arguments.size()), "arguments").
+					isEqualTo(LEAF_ARGUMENTS);
+			}
 		}
 	}
 

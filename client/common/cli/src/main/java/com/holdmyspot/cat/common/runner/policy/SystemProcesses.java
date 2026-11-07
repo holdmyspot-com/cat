@@ -16,8 +16,9 @@ import java.util.Optional;
  * On Linux, {@link ProcessHandle.Info#arguments()} reports no arguments for a process whose command line exceeds one
  * memory page (4 KiB), such as a harness started with long inline settings. The arguments of a Linux process
  * therefore come from its {@code cmdline} file in the process folder; a process whose file cannot be read reports
- * none, and every reader that needs them refuses. Other systems report every argument through
- * {@link ProcessHandle}.
+ * none, and every reader that needs them refuses. macOS reports every argument through {@link ProcessHandle}.
+ * Windows reports none, so every reader that needs them refuses there; no session launcher is served on native
+ * Windows.
  */
 final class SystemProcesses implements HarnessProcesses
 {

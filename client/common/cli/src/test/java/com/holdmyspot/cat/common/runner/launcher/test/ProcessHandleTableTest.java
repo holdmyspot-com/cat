@@ -50,6 +50,18 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	{
 	}
 
+	/**
+	 * {@link ProcessHandle} reports no arguments of another process on Windows, where the session launcher is not
+	 * served, so the table reports none there.
+	 *
+	 * @return {@code false} on Windows
+	 */
+	@Override
+	protected boolean reportsArguments()
+	{
+		return !Platform.current().isWindows();
+	}
+
 	@Override
 	protected ProcessTree start() throws IOException
 	{
