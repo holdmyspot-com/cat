@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
@@ -65,6 +66,12 @@ public final class CodexSessions extends RunnerSessions
 			{
 				return new CodexSessions(settings, bridge);
 			}
+
+			@Override
+			public CodexSessions newCodexSessions(RunnerSessions.Settings settings, GitIdentity git)
+			{
+				return new CodexSessions(settings, git);
+			}
 		});
 	}
 
@@ -94,7 +101,20 @@ public final class CodexSessions extends RunnerSessions
 	 */
 	public CodexSessions(Settings settings)
 	{
-		this(settings, productionBridge(settings));
+		this(settings, GitIdentity.fromGit());
+	}
+
+	/**
+	 * Creates a port that runs sessions through the real Codex runner, reading each project's Git identity with the
+	 * given reader.
+	 *
+	 * @param settings how the runner is configured
+	 * @param git      reads the project's Git identity
+	 * @throws NullPointerException if any argument is null
+	 */
+	CodexSessions(Settings settings, GitIdentity git)
+	{
+		this(settings, productionBridge(settings, git));
 	}
 
 	/**
@@ -424,11 +444,13 @@ public final class CodexSessions extends RunnerSessions
 	 * A refused session fails with a {@link LaunchRefusedException}.
 	 *
 	 * @param settings how the runner is configured
+	 * @param git      reads the project's Git identity for a session that goes to the session launcher
 	 * @return the bridge
 	 */
-	private static Bridge productionBridge(Settings settings)
+	private static Bridge productionBridge(Settings settings, GitIdentity git)
 	{
 		requireThat(settings, "settings").isNotNull();
+		requireThat(git, "git").isNotNull();
 		return (arguments, input, output) ->
 		{
 			Map<String, String> environment = settings.environment();
@@ -437,7 +459,7 @@ public final class CodexSessions extends RunnerSessions
 				environment))
 			{
 				case LaunchRoute.Launcher _, LaunchRoute.Forward _ -> SessionLauncherClient.production(environment,
-					settings.scope().waiting()).bridge(HARNESS_ID, settings.artifact()).serve(arguments, input, output);
+					settings.scope().waiting(), git).bridge(HARNESS_ID, settings.artifact()).serve(arguments, input, output);
 				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
 				case LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> throw new LaunchRefusedException(
 					"CAT cannot start the session: no Claude Code or Codex session runs this command, so no session " +

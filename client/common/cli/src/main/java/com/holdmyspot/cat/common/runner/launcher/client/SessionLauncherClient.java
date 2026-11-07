@@ -119,12 +119,30 @@ public final class SessionLauncherClient
 	public static SessionLauncherClient production(Map<String, String> environment, Waiting waiting)
 		throws IOException
 	{
+		return production(environment, waiting, GitIdentity.fromGit());
+	}
+
+	/**
+	 * Returns the client that serves a process, as {@link #production(Map, Waiting)} does, but reading the project's
+	 * Git identity with the given reader instead of Git's configuration.
+	 *
+	 * @param environment the process environment
+	 * @param waiting     paces the client's checks of the launcher's files
+	 * @param git         reads the project's Git identity
+	 * @return the client
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the user's home directory cannot be found
+	 */
+	public static SessionLauncherClient production(Map<String, String> environment, Waiting waiting, GitIdentity git)
+		throws IOException
+	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
+		requireThat(git, "git").isNotNull();
 		Path home = Platform.current().homeDirectory(environment);
 		return new SessionLauncherClient(new SessionLauncherChannel(home), sessionProduct(environment),
-			HolderStarter.processes(), GitIdentity.fromGit(), Clock.systemUTC(),
-			waiting.every(SessionLauncherChannel.INBOX_POLL), askingThreads(environment, SessionHarness.installed()));
+			HolderStarter.processes(), git, Clock.systemUTC(), waiting.every(SessionLauncherChannel.INBOX_POLL),
+			askingThreads(environment, SessionHarness.installed()));
 	}
 
 	/**

@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.optimizer.test;
 
 import com.holdmyspot.cat.common.JvmScope;
 
+import com.holdmyspot.cat.common.fakes.test.FixedGitIdentity;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
@@ -1340,7 +1341,10 @@ public final class CodexSessionsTest
 				runRoot.toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment, jvm.waiting(),
 				new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
 
-			SessionResult result = await(new CodexSessions(settings).start(new SessionRequest(SessionRole.JUDGE,
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
+				new FixedGitIdentity("Ada", "ada@example.com"));
+
+			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.JUDGE,
 				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
 				List.of())));
 

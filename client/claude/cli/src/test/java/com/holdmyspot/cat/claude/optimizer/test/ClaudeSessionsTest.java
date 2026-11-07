@@ -2,6 +2,7 @@ package com.holdmyspot.cat.claude.optimizer.test;
 
 import com.holdmyspot.cat.common.JvmScope;
 
+import com.holdmyspot.cat.common.fakes.test.FixedGitIdentity;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
@@ -1484,7 +1485,10 @@ public final class ClaudeSessionsTest
 				runRoot.toString(), "--model", "sonnet", "--effort", "low"}, environment, jvm.waiting(),
 				new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
 
-			SessionResult result = await(new ClaudeSessions(settings).start(new SessionRequest(SessionRole.JUDGE,
+			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
+				new FixedGitIdentity("Ada", "ada@example.com"));
+
+			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.JUDGE,
 				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
 				List.of())));
 
