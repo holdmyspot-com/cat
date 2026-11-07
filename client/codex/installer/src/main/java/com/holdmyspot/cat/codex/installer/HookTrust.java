@@ -88,6 +88,10 @@ final class HookTrust
 	 */
 	private static final String HOOKS = "hooks";
 	/**
+	 * The table that holds the state of each hook.
+	 */
+	static final String STATE_TABLE = HOOKS + ".state";
+	/**
 	 * The setting that records the hash that the user trusted.
 	 */
 	private static final String TRUSTED_HASH = "trusted_hash";
@@ -233,7 +237,7 @@ final class HookTrust
 	 */
 	static String recordKey(String key)
 	{
-		return "config.toml#" + HOOKS + ".state." + quote(key) + "." + TRUSTED_HASH;
+		return "config.toml#" + STATE_TABLE + "." + quote(key) + "." + TRUSTED_HASH;
 	}
 
 	/**
@@ -244,7 +248,7 @@ final class HookTrust
 	 */
 	static Optional<String> hookOf(String recordKey)
 	{
-		String prefix = "config.toml#" + HOOKS + ".state.";
+		String prefix = "config.toml#" + STATE_TABLE + ".";
 		String suffix = "." + TRUSTED_HASH;
 		if (!recordKey.startsWith(prefix) || !recordKey.endsWith(suffix))
 			return Optional.empty();
@@ -496,7 +500,7 @@ final class HookTrust
 	 */
 	private static String headerLine(String key)
 	{
-		return "[" + HOOKS + ".state." + quote(key) + "]";
+		return "[" + STATE_TABLE + "." + quote(key) + "]";
 	}
 
 	/**

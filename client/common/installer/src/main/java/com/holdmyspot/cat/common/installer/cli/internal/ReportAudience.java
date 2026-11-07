@@ -2,7 +2,6 @@ package com.holdmyspot.cat.common.installer.cli.internal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.nio.file.Path;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
@@ -54,17 +53,17 @@ public final class ReportAudience
 	 * @param result  the result object
 	 * @param person  {@code true} if a person reads the text
 	 * @param product the name of the result's harness, or empty when the installer does not know the harness
-	 * @param home    the harness home that the result's permission entries lie in, or empty when the result lists none
+	 * @param entries the permission and sandbox entries that the report for a person lists, or null when it lists
+	 *                none
 	 * @return the report for a person, otherwise the result as one line of JSON, without a final line separator
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code result} or {@code product} are null
 	 */
-	public static String text(ObjectNode result, boolean person, Optional<String> product, Optional<Path> home)
+	public static String text(ObjectNode result, boolean person, Optional<String> product, ReportedEntries entries)
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(product, "product").isNotNull();
-		requireThat(home, "home").isNotNull();
 		if (person)
-			return HumanReport.render(result, product, home);
+			return HumanReport.render(result, product, entries);
 		return MAPPER.writeValueAsString(result);
 	}
 }

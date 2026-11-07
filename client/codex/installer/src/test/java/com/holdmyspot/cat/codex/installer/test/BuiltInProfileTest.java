@@ -6,6 +6,8 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.ServiceLoader;
+import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -194,6 +197,40 @@ public final class BuiltInProfileTest
 						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n%2$s = \"read\"\n",
 					"default_permissions = \":workspace\" # mine\n\n[permissions.mine]\nextends = \":read-only\"\n"}
 			};
+	}
+
+	/**
+	 * The installer's report lists CAT's profile of a built-in profile as values that install set, the profile's
+	 * write entry as a path that the sandbox may write and its read entry as a path that the sandbox may not write,
+	 * each in the profile's table, and lists each entry as {@code config.toml} writes it.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void reportsProfileEntries() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path locks = home.resolveSibling("user/.cat/locks");
+			Files.writeString(home.resolve("config.toml"), "default_permissions = \":workspace\"\n");
+
+			Map<String, List<String>> recorded = install(home, locks);
+			Set<EntryGroup> groups = Set.copyOf(provider().describeEntries(recorded,
+				home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer")));
+
+			Path file = Path.of("config.toml");
+			String filesystem = "permissions.cat-workspace.filesystem";
+			requireThat(groups, "groups").isEqualTo(Set.of(
+				new EntryGroup(EntryEffect.SETS_VALUE, file, "default_permissions", List.of("cat-workspace"),
+					List.of("default_permissions = \"cat-workspace\"")),
+				new EntryGroup(EntryEffect.SETS_VALUE, file, "permissions.cat-workspace",
+					List.of("extends = \":workspace\""), List.of("extends = \":workspace\"")),
+				new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, filesystem, List.of(locks.toString()),
+					List.of(quote(locks) + " = \"write\"")),
+				new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, filesystem,
+					List.of(launcherState(locks).toString()), List.of(quote(launcherState(locks)) + " = \"read\""))));
+		}
 	}
 
 	/**

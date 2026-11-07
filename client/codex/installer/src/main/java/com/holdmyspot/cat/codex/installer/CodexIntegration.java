@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
@@ -803,6 +805,83 @@ public final class CodexIntegration implements HarnessIntegration
 			}
 		}
 		return List.copyOf(sentences);
+	}
+
+	/**
+	 * Groups the recorded entries: the rules of {@code rules/cat-installer.rules} as {@link InstallerRules} describes
+	 * them, the writable roots and each profile's write entries as paths that the sandbox may write, each profile's
+	 * read entries as paths that it may not write, the hooks whose hashes {@code config.toml} records, and
+	 * {@code default_permissions} and CAT's profile of a built-in profile as the values that they are set to, each
+	 * entry as {@code config.toml} writes it. Any other key is a group of the values that it records.
+	 *
+	 * @throws IllegalArgumentException if {@code installer} is relative or not normalized
+	 */
+	@Override
+	public List<EntryGroup> describeEntries(Map<String, List<String>> recorded, Path installer)
+	{
+		requireThat(recorded, "recorded").isNotNull();
+		requireThat(installer, "installer").isAbsolute().isEqualTo(installer.normalize());
+		List<EntryGroup> groups = new ArrayList<>();
+		Path hookFile = null;
+		List<String> hooks = new ArrayList<>();
+		List<String> hashes = new ArrayList<>();
+		for (Map.Entry<String, List<String>> entry : recorded.entrySet())
+		{
+			String key = entry.getKey();
+			List<String> values = entry.getValue();
+			int separator = key.indexOf('#');
+			Path file = Path.of(key.substring(0, separator));
+			String setting = key.substring(separator + 1);
+			Optional<String> hook = HookTrust.hookOf(key);
+			if (key.equals(RULES_KEY))
+			{
+				for (String content : values)
+					groups.addAll(InstallerRules.describe(content, file, installer, isWindows()));
+			}
+			else if (hook.isPresent())
+			{
+				hookFile = file;
+				hooks.add(hook.get());
+				for (String hash : values)
+					hashes.add(setting + " = " + TomlText.quote(hash));
+			}
+			else if (key.equals(WRITABLE_ROOTS_KEY))
+			{
+				groups.add(new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, setting, values,
+					values.stream().map(TomlText::quote).toList()));
+			}
+			else if (key.endsWith("." + PermissionProfile.FILESYSTEM))
+			{
+				List<String> lines = values.stream().map(path -> TomlText.quote(path) + " = \"write\"").toList();
+				groups.add(new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, setting, values, lines));
+			}
+			else if (key.endsWith("." + PermissionProfile.FILESYSTEM + READ_SUFFIX))
+			{
+				String table = setting.substring(0, setting.length() - READ_SUFFIX.length());
+				List<String> lines = values.stream().map(path -> TomlText.quote(path) + " = \"read\"").toList();
+				groups.add(new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, table, values, lines));
+			}
+			else if (key.equals(SELECTION_KEY))
+			{
+				List<String> profiles = values.stream().map(BuiltInProfile::catProfile).toList();
+				List<String> lines = profiles.stream().map(profile -> setting + " = " + TomlText.quote(profile)).
+					toList();
+				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, setting, profiles, lines));
+			}
+			else if (!values.isEmpty() && values.stream().allMatch(builtIn -> key.equals(catProfileKey(builtIn))))
+			{
+				List<String> lines = values.stream().map(BuiltInProfile::definition).toList();
+				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, setting, lines, lines));
+			}
+			else
+				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, setting, values, values));
+		}
+		if (hookFile != null)
+		{
+			groups.add(new EntryGroup(EntryEffect.HOOKS_RUN_WITHOUT_REVIEW, hookFile, HookTrust.STATE_TABLE, hooks,
+				hashes));
+		}
+		return List.copyOf(groups);
 	}
 
 	/**

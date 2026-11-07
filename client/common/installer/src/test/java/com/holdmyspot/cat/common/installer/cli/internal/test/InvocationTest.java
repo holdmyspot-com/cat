@@ -20,6 +20,8 @@ import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessStarter;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
+import com.holdmyspot.cat.common.installer.engine.InstallerState;
+import com.holdmyspot.cat.common.installer.engine.PermissionRecord;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
@@ -580,6 +582,72 @@ public final class InvocationTest
 			requireThat(result.has("pending_swap"), "pendingSwap").isFalse();
 			requireThat(result.has("cached_bundle"), "cachedBundle").isFalse();
 			requireThat(result.has("previous_version"), "previousVersion").isFalse();
+		}
+	}
+
+	/**
+	 * Status lists the permission and sandbox entries that install recorded only when asked with {@code --verbose}: in
+	 * the machine-readable result, and to a person as the harness configuration holds each entry, under the file and
+	 * the setting that hold it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void verboseStatusListsRecordedEntries() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-status-verbose-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.createDirectories(installation.home.resolve("live"));
+			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			PermissionRecord.add(InstallerState.of(installation.data, "harness-a").permissions(),
+				Map.of("settings.json#sandbox.excludedCommands", List.of("first entry", "second entry")));
+			Terminal person = new Terminal()
+			{
+				@Override
+				public Optional<String> ask(String question)
+				{
+					return Optional.empty();
+				}
+
+				@Override
+				public boolean isStdoutTerminal()
+				{
+					return true;
+				}
+			};
+
+			Run plain = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+				"--harness", "harness-a");
+			Run verbose = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+				"--harness", "harness-a", "--verbose");
+			Run shown = run(installation.image, installation.root, Map.of(), List.of(new LiveProvider()),
+				new RecordingIntegration(), person, Platform.current(), command ->
+				{
+					throw new AssertionError("Started " + command);
+				}, "status", "--verbose");
+
+			requireThat(plain.status, "plain").withContext(plain.output, "output").isEqualTo(0);
+			requireThat(plain.result().has("permissions"), "plainPermissions").isFalse();
+			requireThat(verbose.status, "verbose").withContext(verbose.output, "output").isEqualTo(0);
+			JsonNode permissions = verbose.result().path("permissions").path("settings.json#sandbox.excludedCommands");
+			requireThat(permissions.size(), "permissions").withContext(verbose.output, "output").isEqualTo(2);
+			requireThat(permissions.get(1).stringValue(), "second").isEqualTo("second entry");
+			requireThat(shown.status, "shown").withContext(shown.output, "output").isEqualTo(0);
+			String settings = "~" + installation.root.getFileSystem().getSeparator() +
+				installation.root.relativize(installation.home.resolve("settings.json"));
+			String lineSeparator = System.lineSeparator();
+			requireThat(shown.output, "output").contains(String.join(lineSeparator,
+				"CAT changed " + settings + ". Uninstalling CAT undoes these changes.",
+				"",
+				"  Sets   (sandbox.excludedCommands)",
+				"    first entry",
+				"    second entry",
+				"",
+				"  where ~ = " + installation.root)).
+				doesNotContain("installer =").doesNotContain("--verbose").doesNotContain("{");
 		}
 	}
 

@@ -65,6 +65,26 @@ public final class ArgumentsTest
 	}
 
 	/**
+	 * Status asks for the exact permission and sandbox entries with {@code --verbose} after the arguments that select
+	 * the installation, and lists them only then.
+	 */
+	@Test
+	public void parsesVerboseStatus()
+	{
+		Set<String> harnesses = Set.of("harness-a");
+
+		Arguments own = Arguments.parse(new String[]{"status", "--verbose"}, harnesses);
+		Arguments named = Arguments.parse(new String[]{"status", "--harness", "harness-a", "--verbose"}, harnesses);
+		Arguments plain = Arguments.parse(new String[]{"status", "--harness", "harness-a"}, harnesses);
+
+		requireThat(own.verbose(), "own").isTrue();
+		requireThat(own.harness(), "ownHarness").isEmpty();
+		requireThat(named.verbose(), "named").isTrue();
+		requireThat(named.harness(), "namedHarness").isEqualTo("harness-a");
+		requireThat(plain.verbose(), "plain").isFalse();
+	}
+
+	/**
 	 * Install names the harness, and optionally its home before the operation; without a home it installs at the home
 	 * that the user's environment selects.
 	 */
@@ -287,7 +307,14 @@ public final class ArgumentsTest
 			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a"}},
 			{new String[]{"install", "--harness", "harness-a", "--home", "/home/a", "v1.0"}},
 			{new String[]{"uninstall", "--harness", "harness-a", "--create-profile"}},
-			{new String[]{"status", "--create-profile"}}
+			{new String[]{"status", "--create-profile"}},
+			{new String[]{"--verbose", "status"}},
+			{new String[]{"status", "--verbose", "--verbose"}},
+			{new String[]{"status", "--verbose", "--harness", "harness-a"}},
+			{new String[]{"status", "--harness", "harness-a", "--verbose", "extra"}},
+			{new String[]{"install", "--harness", "harness-a", "--verbose"}},
+			{new String[]{"uninstall", "--verbose"}},
+			{new String[]{"uninstall", "--harness", "harness-a", "--verbose"}}
 		};
 	}
 
@@ -316,8 +343,8 @@ public final class ArgumentsTest
 		catch (IllegalArgumentException e)
 		{
 			requireThat(e.getMessage(), "message").startsWith("Usage: installer ").contains(" install --harness").
-				contains("installer status").contains("installer uninstall").doesNotContain("rollback").
-				doesNotContain("setup").doesNotContain("update");
+				contains("installer status [--harness <id>] [--verbose]").contains("installer uninstall").
+				doesNotContain("rollback").doesNotContain("setup").doesNotContain("update");
 			return;
 		}
 		throw new AssertionError("rollback was accepted");

@@ -88,6 +88,17 @@ final class BuiltInProfile
 	}
 
 	/**
+	 * Returns the setting that {@link #create} writes into CAT's profile of a built-in profile.
+	 *
+	 * @param builtIn the built-in profile's name, such as {@code :workspace}
+	 * @return the line that makes the profile extend {@code builtIn}, such as {@code extends = ":workspace"}
+	 */
+	static String definition(String builtIn)
+	{
+		return EXTENDS + " = " + quote(builtIn);
+	}
+
+	/**
 	 * Returns the built-in profile that a profile of CAT's extends, for each profile that the document defines in the
 	 * form that {@link #create} writes.
 	 *
@@ -141,7 +152,7 @@ final class BuiltInProfile
 
 		String newline = TomlText.newline(text);
 		String edited = TomlText.appendTable(selected.get(), "[" + PROFILES + "." + profile + "]",
-			EXTENDS + " = " + quote(builtIn), newline);
+			definition(builtIn), newline);
 		ObjectNode expected = document.deepCopy();
 		expected.put(SELECTION, profile);
 		ObjectNode expectedProfiles;

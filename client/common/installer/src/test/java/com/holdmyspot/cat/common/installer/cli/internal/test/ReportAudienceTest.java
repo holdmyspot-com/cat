@@ -2,7 +2,11 @@ package com.holdmyspot.cat.common.installer.cli.internal.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.cli.internal.ReportAudience;
+import com.holdmyspot.cat.common.installer.cli.internal.ReportedEntries;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -86,7 +90,8 @@ public final class ReportAudienceTest
 
 	/**
 	 * A person at a terminal reads which product CAT is installed for, the installed version, that the product must be
-	 * restarted, and each permission entry that install added with the file that holds it. The report is not JSON.
+	 * restarted, and what the permission entries that install added let the product do, with the file that holds
+	 * them. The report is not JSON.
 	 */
 	@Test
 	public void personReadsInstalledReport()
@@ -101,14 +106,17 @@ public final class ReportAudienceTest
 		result.putArray("key_ids");
 		result.putObject("permissions").putArray("settings.json#permissions.allow").add("Bash(entry-one)").
 			add("Bash(entry-two)");
+		Path home = FileSystems.getDefault().getRootDirectories().iterator().next().resolve("user").resolve("home");
+		List<EntryGroup> groups = List.of(new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, Path.of("settings.json"),
+			"permissions.allow", List.of("install", "status"), List.of("Bash(entry-one)", "Bash(entry-two)")));
 
 		String text = ReportAudience.text(result, true, Optional.of("Product harness-a"),
-			Optional.of(Path.of("/user/home")));
+			new ReportedEntries(groups, home, home, home.resolve("installer"), false));
 
 		requireThat(text, "text").contains("Product harness-a").contains("1.2").
-			contains("Restart Product harness-a for changes to take effect.").
-			contains(Path.of("/user/home/settings.json").toString()).contains("permissions.allow").
-			contains("Bash(entry-one)").contains("Bash(entry-two)").doesNotContain("{").doesNotContain("\"result\"");
+			contains("Restart Product harness-a for the changes to take effect.").
+			contains("~" + home.getFileSystem().getSeparator() + "settings.json").contains("permissions.allow").
+			contains("installer install, installer status").doesNotContain("{").doesNotContain("\"result\"");
 	}
 
 	/**
@@ -121,7 +129,7 @@ public final class ReportAudienceTest
 		result.put("result", "refused");
 		result.put("message", "May CAT change the shared setting? CAT changed nothing.");
 
-		String text = ReportAudience.text(result, false, Optional.of("Product harness-a"), Optional.empty());
+		String text = ReportAudience.text(result, false, Optional.of("Product harness-a"), null);
 
 		requireThat(text, "text").isEqualTo("{\"result\":\"refused\"," +
 			"\"message\":\"May CAT change the shared setting? CAT changed nothing.\"}");

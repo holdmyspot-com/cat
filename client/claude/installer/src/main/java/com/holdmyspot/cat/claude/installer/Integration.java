@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.File;
@@ -974,6 +976,76 @@ public final class Integration implements HarnessIntegration
 		requireThat(home, "home").isAbsolute();
 		requireThat(added, "added").isNotNull();
 		return List.of();
+	}
+
+	/**
+	 * Groups the recorded entries of {@code settings.json} by setting: {@code permissions.allow} names the installer
+	 * operations that Claude Code runs without asking, {@code sandbox.excludedCommands} the operations that it runs
+	 * outside its sandbox, {@code sandbox.filesystem.allowWrite} the paths that sandboxed commands may write, and
+	 * {@code sandbox.filesystem.denyWrite} the paths that they may not write. Any other setting is a group of the
+	 * values that it records.
+	 *
+	 * @throws IllegalArgumentException if {@code installer} is relative
+	 * @throws IOException              if, on Windows, the launcher path holds {@code "}, {@code $} or {@code `}
+	 */
+	@Override
+	public List<EntryGroup> describeEntries(Map<String, List<String>> recorded, Path installer) throws IOException
+	{
+		requireThat(recorded, "recorded").isNotNull();
+		requireThat(installer, "installer").isAbsolute();
+		String launcher = launcherCommand(installer) + " ";
+		List<EntryGroup> groups = new ArrayList<>();
+		for (Map.Entry<String, List<String>> entry : recorded.entrySet())
+		{
+			String key = entry.getKey();
+			int separator = key.indexOf('#');
+			Path file = Path.of(key.substring(0, separator));
+			String setting = key.substring(separator + 1);
+			List<String> values = entry.getValue();
+			EntryGroup group = switch (setting)
+			{
+				case ALLOWED_TOOLS -> new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, file, setting,
+					operations(values.stream().map(Integration::allowedCommand).toList(), launcher), values);
+				case EXCLUDED_COMMANDS -> new EntryGroup(EntryEffect.RUNS_OUTSIDE_SANDBOX, file, setting,
+					operations(values, launcher), values);
+				case ALLOW_WRITE -> new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, setting, values, values);
+				case DENY_WRITE -> new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, setting, values, values);
+				default -> new EntryGroup(EntryEffect.SETS_VALUE, file, setting, values, values);
+			};
+			groups.add(group);
+		}
+		return List.copyOf(groups);
+	}
+
+	/**
+	 * Returns the command that a {@code permissions.allow} entry allows.
+	 *
+	 * @param entry the entry
+	 * @return the command inside {@code Bash(...)}, or the entry when it does not name a Bash command
+	 */
+	private static String allowedCommand(String entry)
+	{
+		if (entry.startsWith("Bash(") && entry.endsWith(")"))
+			return entry.substring("Bash(".length(), entry.length() - 1);
+		return entry;
+	}
+
+	/**
+	 * Returns the installer operations that commands run.
+	 *
+	 * @param commands the commands
+	 * @param launcher the shell text that runs the installer launcher, followed by a space
+	 * @return the first word after {@code launcher} of each command that starts with it, such as {@code install}
+	 */
+	private static List<String> operations(List<String> commands, String launcher)
+	{
+		List<String> operations = new ArrayList<>();
+		for (String command : commands)
+		{
+			if (command.startsWith(launcher))
+				operations.add(command.substring(launcher.length()).split(" ", 2)[0]);
+		}
+		return operations;
 	}
 
 	/**

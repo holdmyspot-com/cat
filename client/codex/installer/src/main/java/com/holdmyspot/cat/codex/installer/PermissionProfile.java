@@ -40,7 +40,7 @@ final class PermissionProfile
 	/**
 	 * The table of a profile's filesystem entries.
 	 */
-	private static final String FILESYSTEM = "filesystem";
+	static final String FILESYSTEM = "filesystem";
 	/**
 	 * Matches a profile name that TOML accepts as a key without quotes.
 	 */

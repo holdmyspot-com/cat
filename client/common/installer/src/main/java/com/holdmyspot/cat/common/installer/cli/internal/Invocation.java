@@ -26,6 +26,8 @@ import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
+import com.holdmyspot.cat.common.installer.engine.PermissionRecord;
+import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
 import com.holdmyspot.cat.common.installer.engine.ProcessMigrationRunner;
 import com.holdmyspot.cat.common.installer.engine.ReleaseConnection;
@@ -101,9 +103,10 @@ public final class Invocation
 	 */
 	private Path userHome;
 	/**
-	 * The harness home that the install which just ran put its permission entries in, once it is known.
+	 * The permission and sandbox entries that the report to a person lists, once the operation that lists them has
+	 * read them.
 	 */
-	private Path resolvedHome;
+	private ReportedEntries reportedEntries;
 	/**
 	 * Whether the result is described to a person instead of printed as JSON.
 	 */
@@ -305,13 +308,55 @@ public final class Invocation
 			{
 				UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 					platform.id(), clock, waiting);
-				return print(engine.status(), arguments, locations);
+				UpdateResult status = engine.status();
+				ObjectNode object = encode(status);
+				if (arguments.verbose() && status.version().isPresent())
+					addRecordedEntries(object, locations, managed.home());
+				return print(status, object, arguments, locations);
 			}
 		}
 		HarnessSession session = managed.session();
 		UninstallResult result = new Uninstaller(locations.data(), managed.policy(), managed.activation(), session,
 			locations.image(), clock, waiting).uninstall(arguments.deleteData());
 		return printUninstall(result, arguments, locations);
+	}
+
+	/**
+	 * Adds to a status the permission and sandbox entries that install recorded for the installation that the running
+	 * installer belongs to, which the report to a person lists as the harness configuration holds them.
+	 *
+	 * @param object    the status's encoding, which receives the entries
+	 * @param locations the installation's locations
+	 * @param home      the installation's harness home
+	 * @throws IOException if the record cannot be read, or the user's home directory cannot be determined
+	 */
+	private void addRecordedEntries(ObjectNode object, Locations locations, Path home) throws IOException
+	{
+		String harness = locations.harness();
+		Map<String, List<String>> recorded = PermissionRecord.read(InstallerState.of(locations.data(), harness).
+			permissions());
+		putPermissions(object, recorded);
+		HarnessIntegration integration = integrations.stream().
+			filter(provider -> provider.harness().equals(harness)).findFirst().orElseThrow();
+		Path installer = PluginInstall.installer(locations.image(), platform.isWindows());
+		reportedEntries = new ReportedEntries(integration.describeEntries(recorded, installer), home,
+			platform.homeDirectory(platform.environment(environment)), installer, true);
+	}
+
+	/**
+	 * Adds permission and sandbox entries to a result's encoding.
+	 *
+	 * @param object  the encoding
+	 * @param entries the entries, keyed by the file and the setting that hold them
+	 */
+	private static void putPermissions(ObjectNode object, Map<String, List<String>> entries)
+	{
+		ObjectNode permissions = object.putObject("permissions");
+		for (Map.Entry<String, List<String>> entry : entries.entrySet())
+		{
+			ArrayNode values = permissions.putArray(entry.getKey());
+			entry.getValue().forEach(values::add);
+		}
 	}
 
 	/**
@@ -775,7 +820,6 @@ public final class Invocation
 		HarnessInstallation installation = integration.installation(outcome.policy().harnesses().get(harness));
 		resolvedData = installation.dataDirectory();
 		resolvedHarness = harness;
-		resolvedHome = installation.home();
 		FolderRetention retention = new InstallCompletion(integration, installation).completeLocked(outcome.version(),
 			outcome.before(), image, clock, waiting);
 		UpdateResult result = new UpdateResult(Result.INSTALLED, harness, Optional.of(outcome.version().release()),
@@ -787,12 +831,10 @@ public final class Invocation
 		object.put("plugin_version", outcome.version().toString());
 		object.put("aot_cache", outcome.startupCache());
 		object.put("launcher", outcome.installer().toString());
-		ObjectNode permissions = object.putObject("permissions");
-		for (Map.Entry<String, List<String>> entry : outcome.entries().recorded().entrySet())
-		{
-			ArrayNode entries = permissions.putArray(entry.getKey());
-			entry.getValue().forEach(entries::add);
-		}
+		Map<String, List<String>> recorded = outcome.entries().recorded();
+		putPermissions(object, recorded);
+		reportedEntries = new ReportedEntries(integration.describeEntries(recorded, outcome.installer()),
+			installation.home(), userHome, outcome.installer(), false);
 		return new Printed(result, object);
 	}
 
@@ -879,8 +921,7 @@ public final class Invocation
 				stderr.println(result.message());
 			appendDiagnostic(arguments, locations, result.message());
 		}
-		String text = ReportAudience.text(object, describesToPerson, productName(result.harness()),
-			Optional.ofNullable(resolvedHome));
+		String text = ReportAudience.text(object, describesToPerson, productName(result.harness()), reportedEntries);
 		stdout.println(text);
 		stdout.flush();
 		new ExitDeletion(platform, environment, starter, stderr).delete(result.exitDeletions());

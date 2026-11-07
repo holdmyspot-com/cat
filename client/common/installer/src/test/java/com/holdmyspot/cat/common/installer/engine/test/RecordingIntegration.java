@@ -4,6 +4,8 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
@@ -643,6 +645,25 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		return notices.entrySet().stream().filter(entry -> added.containsKey(entry.getKey())).
 			map(Map.Entry::getValue).toList();
+	}
+
+	/**
+	 * Returns a group of the values that each key records, as values that its setting is set to.
+	 */
+	@Override
+	public List<EntryGroup> describeEntries(Map<String, List<String>> recorded, Path installer)
+	{
+		List<EntryGroup> groups = new ArrayList<>();
+		for (Map.Entry<String, List<String>> entry : recorded.entrySet())
+		{
+			String[] location = entry.getKey().split("#", 2);
+			String setting = "";
+			if (location.length == 2)
+				setting = location[1];
+			groups.add(new EntryGroup(EntryEffect.SETS_VALUE, Path.of(location[0]), setting, entry.getValue(),
+				entry.getValue()));
+		}
+		return groups;
 	}
 
 	@Override

@@ -25,9 +25,11 @@ import java.util.Set;
  *                      configuration needs one
  * @param json          true if the user asks for the machine-readable JSON result even where the installer would
  *                      describe the result to a person
+ * @param verbose       true if status also lists each permission and sandbox entry that install recorded, as the
+ *                      harness configuration holds it
  */
 public record Arguments(Operation operation, String harness, String tag, Path home, boolean deleteData,
-	boolean createProfile, boolean json)
+	boolean createProfile, boolean json, boolean verbose)
 {
 	/**
 	 * The complete operations exposed by the installer.
@@ -97,7 +99,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 		if ((home != null || createProfile) && parsed.operation() != Operation.INSTALL)
 			throw usage();
 		return new Arguments(parsed.operation(), parsed.harness(), parsed.tag(), parsed.home(), parsed.deleteData(),
-			parsed.createProfile(), json);
+			parsed.createProfile(), json, parsed.verbose());
 	}
 
 	/**
@@ -121,13 +123,13 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			case "uninstall" -> Operation.UNINSTALL;
 			default -> throw usage();
 		};
-		if (operation == Operation.STATUS && args.length == 1)
-			return new Arguments(operation, "", null, null, false, false, false);
+		if (operation == Operation.STATUS && (args.length == 1 || isVerbose(args, 1)))
+			return new Arguments(operation, "", null, null, false, false, false, args.length == 2);
 		if (operation == Operation.UNINSTALL && args.length <= 2)
 		{
 			if (args.length == 2 && !args[1].equals("--delete-data"))
 				throw usage();
-			return new Arguments(operation, "", null, null, args.length == 2, false, false);
+			return new Arguments(operation, "", null, null, args.length == 2, false, false, false);
 		}
 		if (args.length < 3 || !args[1].equals("--harness") || !harnesses.contains(args[2]))
 			throw usage();
@@ -139,13 +141,13 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			{
 				if (args.length > 4 || (args.length == 4 && !args[3].equals("--delete-data")))
 					throw usage();
-				yield new Arguments(operation, harness, null, null, args.length == 4, false, false);
+				yield new Arguments(operation, harness, null, null, args.length == 4, false, false, false);
 			}
 			case STATUS ->
 			{
-				if (args.length != 3)
+				if (args.length != 3 && !isVerbose(args, 3))
 					throw usage();
-				yield new Arguments(operation, harness, null, null, false, false, false);
+				yield new Arguments(operation, harness, null, null, false, false, false, args.length == 4);
 			}
 		};
 	}
@@ -174,7 +176,20 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			tag = parseTag(args[3]);
 		else if (args.length != 3)
 			throw usage();
-		return new Arguments(Operation.INSTALL, harness, tag, home, false, createProfile, false);
+		return new Arguments(Operation.INSTALL, harness, tag, home, false, createProfile, false, false);
+	}
+
+	/**
+	 * Returns whether the last argument of a status command, and only it, follows the arguments that select the
+	 * installation, and asks for {@code --verbose}.
+	 *
+	 * @param args     the arguments from the operation on
+	 * @param selected the number of arguments that select the installation, the operation included
+	 * @return {@code true} if {@code --verbose} is the one argument after them
+	 */
+	private static boolean isVerbose(String[] args, int selected)
+	{
+		return args.length == selected + 1 && args[selected].equals("--verbose");
 	}
 
 	/**
@@ -282,6 +297,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 * @param deleteData    true if uninstall also deletes the harness's plugin data
 	 * @param createProfile true if the user allows install to create a permission profile for CAT
 	 * @param json          true if the user asks for the JSON result
+	 * @param verbose       true if status also lists each recorded permission and sandbox entry
 	 * @throws NullPointerException if {@code operation} or {@code harness} are null
 	 */
 	public Arguments
@@ -298,7 +314,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	private static IllegalArgumentException usage()
 	{
 		return new IllegalArgumentException("Usage: installer [--home <absolute dir>] [--create-profile] [--json] " +
-			"install --harness <id> [vX.Y[.Z]|latest]; installer status [--harness <id>]; installer uninstall " +
-			"[--harness <id>] [--delete-data]");
+			"install --harness <id> [vX.Y[.Z]|latest]; installer status [--harness <id>] [--verbose]; installer " +
+			"uninstall [--harness <id>] [--delete-data]");
 	}
 }

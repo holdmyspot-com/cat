@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
+import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
@@ -180,6 +181,60 @@ public final class InstallerActivationTest
 	}
 
 	/**
+	 * A person who installs CAT reads which files CAT changed and what their entries let the harness do, grouped by
+	 * effect, with the installer's operations by name, the paths in the user's home directory relative to {@code ~} and
+	 * the command that lists the entries exactly. That command lists each entry as the harness configuration holds it.
+	 *
+	 * @param harness the packaged harness to exercise
+	 * @throws IOException if a fixture file cannot be written or read
+	 */
+	@Test(dataProvider = "harnesses")
+	public void installReportsEntriesByEffect(String harness) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			// Install looks for the harness program outside the temporary directory, so the fixture lies beside the
+			// test classes in the build directory
+			Path build = Path.of(URI.create(InstallerActivationTest.class.getProtectionDomain().getCodeSource().
+				getLocation().toString())).getParent();
+			Path root = cleanup.add(Files.createTempDirectory(Files.createDirectories(build.resolve("test-files")),
+				"installer-report-").toRealPath());
+			Platform platform = Platform.current();
+			HarnessIntegration integration = provider(HarnessIntegration.class, harness);
+			FakeHarness fake = new FakeHarness(harness, platform, root);
+			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
+			Path home = fake.home;
+			fake.dataDirectory = provider(PluginActivation.class, harness).dataDirectory(home);
+
+			String installed = fake.report(first, "--home", home.toString(), "install", "--harness", harness);
+			Path versionFolder = integration.installation(home).versionFolder(FIRST);
+			String exact = fake.report(versionFolder, "status", "--verbose");
+
+			String lineSeparator = System.lineSeparator();
+			Path launcher = versionFolder.resolve("bin").resolve("installer");
+			if (platform.isWindows())
+				launcher = launcher.resolveSibling("installer.ps1");
+			requireThat(installed, "installed").
+				contains("CAT 1.0 is installed for " + integration.productName() + ". Restart " +
+					integration.productName() + " for the changes to take effect.").
+				contains("Uninstalling CAT undoes these changes.").
+				contains("Runs without asking").contains("installer install, installer status" + lineSeparator).
+				contains("Runs outside the sandbox").
+				contains("installer install, installer status, installer uninstall" + lineSeparator).
+				contains("The sandbox may write to").contains("    " + String.join(fake.user.getFileSystem().
+					getSeparator(), "~", ".cat", "locks") + lineSeparator).
+				contains("  where ~         = " + fake.user + lineSeparator).
+				contains("        installer = " + launcher + lineSeparator).
+				endsWith("Run installer status --verbose to see the exact entries." + lineSeparator).
+				doesNotContain("\"result\"");
+			requireThat(exact, "exact").contains("Uninstalling CAT undoes these changes.").
+				contains("Runs without asking").contains(launcher.toString()).doesNotContain("installer =").
+				doesNotContain("--verbose").doesNotContain("\"result\"");
+		}
+	}
+
+	/**
 	 * Returns the packaged provider of a harness.
 	 *
 	 * @param <T>     the provider's service
@@ -325,6 +380,55 @@ public final class InstallerActivationTest
 		 */
 		private JsonNode run(Path plugin, String... arguments) throws IOException
 		{
+			Printed printed = output(plugin, _ -> Optional.empty(), arguments);
+			try
+			{
+				return MAPPER.readTree(printed.output());
+			}
+			catch (RuntimeException e)
+			{
+				throw new IOException("The installer printed no JSON result: " + printed.output() +
+					printed.diagnostics(), e);
+			}
+		}
+
+		/**
+		 * Runs an installer command of a plugin folder in a terminal that a person reads.
+		 *
+		 * @param plugin    the plugin folder that the installer belongs to
+		 * @param arguments the command line
+		 * @return what the installer printed to its standard output
+		 */
+		private String report(Path plugin, String... arguments)
+		{
+			Printed printed = output(plugin, new Terminal()
+			{
+				@Override
+				public Optional<String> ask(String question)
+				{
+					return Optional.empty();
+				}
+
+				@Override
+				public boolean isStdoutTerminal()
+				{
+					return true;
+				}
+			}, arguments);
+			requireThat(printed.diagnostics(), "diagnostics").withContext(printed.output(), "output").isEmpty();
+			return printed.output();
+		}
+
+		/**
+		 * Runs an installer command of a plugin folder, as its launcher starts the installer there.
+		 *
+		 * @param plugin    the plugin folder that the installer belongs to
+		 * @param terminal  the user's terminal
+		 * @param arguments the command line
+		 * @return what the installer printed
+		 */
+		private Printed output(Path plugin, Terminal terminal, String... arguments)
+		{
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 			try (PrintStream stdout = new PrintStream(output, false, UTF_8);
@@ -340,17 +444,9 @@ public final class InstallerActivationTest
 						toList()),
 					(command, _) -> this, Clock.systemUTC(), _ -> () ->
 				{
-				}, replacer, _ -> Optional.empty(), started::add, stdout, stderr).run(arguments);
+				}, replacer, terminal, started::add, stdout, stderr).run(arguments);
 			}
-			String text = output.toString(UTF_8);
-			try
-			{
-				return MAPPER.readTree(text);
-			}
-			catch (RuntimeException e)
-			{
-				throw new IOException("The installer printed no JSON result: " + text + diagnostics.toString(UTF_8), e);
-			}
+			return new Printed(output.toString(UTF_8), diagnostics.toString(UTF_8));
 		}
 
 		/**
@@ -457,5 +553,15 @@ public final class InstallerActivationTest
 			}
 			return new CommandResult(0, "Added cat@cat\n");
 		}
+	}
+
+	/**
+	 * What one installer command printed.
+	 *
+	 * @param output      the standard output
+	 * @param diagnostics the standard error
+	 */
+	private record Printed(String output, String diagnostics)
+	{
 	}
 }

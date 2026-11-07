@@ -2,6 +2,8 @@ package com.holdmyspot.cat.codex.installer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import java.io.File;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -86,6 +88,74 @@ public final class InstallerRules
 	public static String render(Path launcher, boolean windows)
 	{
 		return render(HEADER, launcher, windows, false);
+	}
+
+	/**
+	 * Groups the rules that {@link #render} writes for a launcher by what they let Codex do. Codex runs an operation
+	 * that a rule allows without asking and outside its sandbox, and runs the operation of the rule that keeps its
+	 * prompt outside its sandbox once the user agrees.
+	 *
+	 * @param content  the content of the rules file, as {@link #render} wrote it
+	 * @param file     the rules file, relative to the Codex home
+	 * @param launcher the absolute, normalized path of the installer launcher that the rules name
+	 * @param windows  {@code true} if the rules name the launcher script through PowerShell
+	 * @return the group of the rules that Codex runs without asking, and the group of the rules that Codex runs outside
+	 * 	its sandbox; a rule that names another launcher or operation is in the entries of the second group only
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code file} is absolute, or {@code launcher} is relative or not normalized
+	 */
+	static List<EntryGroup> describe(String content, Path file, Path launcher, boolean windows)
+	{
+		requireThat(content, "content").isNotNull();
+		requireThat(launcher, "launcher").isAbsolute().isEqualTo(launcher.normalize());
+		List<String> command = new ArrayList<>();
+		if (windows)
+			command.addAll(WINDOWS_PREFIX);
+		command.add(launcher.toString());
+		Map<String, String> allowed = Map.of(
+			ruleLine(command, List.of("install", "--harness", CodexActivation.HARNESS), ALLOW), "install",
+			ruleLine(command, List.of("status"), ALLOW), "status");
+		Map<String, String> prompted = Map.of(
+			ruleLine(command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION),
+			"uninstall");
+
+		List<String> allowedOperations = new ArrayList<>();
+		List<String> allowedRules = new ArrayList<>();
+		List<String> outsideOperations = new ArrayList<>();
+		List<String> rules = new ArrayList<>();
+		for (String line : content.lines().toList())
+		{
+			if (!line.startsWith(RULE_FUNCTION))
+				continue;
+			rules.add(line);
+			String operation = allowed.get(line);
+			if (operation != null)
+			{
+				allowedOperations.add(operation);
+				allowedRules.add(line);
+			}
+			else
+				operation = prompted.get(line);
+			if (operation != null)
+				outsideOperations.add(operation);
+		}
+		return List.of(new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, file, "", allowedOperations, allowedRules),
+			new EntryGroup(EntryEffect.RUNS_OUTSIDE_SANDBOX, file, "", outsideOperations, rules));
+	}
+
+	/**
+	 * Returns one rule as {@link #render} writes it.
+	 *
+	 * @param command   the tokens that run the launcher
+	 * @param operation the tokens of the operation that the rule permits
+	 * @param decision  the rule's decision
+	 * @return the rule's line, without its line feed
+	 */
+	private static String ruleLine(List<String> command, List<String> operation, String decision)
+	{
+		StringBuilder line = new StringBuilder();
+		rule(line, command, operation, decision);
+		return line.toString().strip();
 	}
 
 	/**

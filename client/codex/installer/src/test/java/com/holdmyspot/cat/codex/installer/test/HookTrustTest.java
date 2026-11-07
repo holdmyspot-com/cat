@@ -7,6 +7,8 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
@@ -131,6 +133,36 @@ public final class HookTrustTest
 			requireThat(Files.readString(home.resolve("config.toml")), "configuration").isEqualTo(
 				trusted(SESSION_START, SESSION_START_HASH) + "\n" + trusted(POST_TOOL_USE, POST_TOOL_USE_HASH) + "\n" +
 					trusted(SUBAGENT_START, SUBAGENT_START_HASH));
+		}
+	}
+
+	/**
+	 * The installer's report lists the hooks whose trust install recorded as hooks that run without review, by their
+	 * keys, and lists exactly the setting that records each hook's hash.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void reportsTrustedHooks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path installer = plugin(home, VERSION, CAT_HOOKS);
+
+			Map<String, List<String>> recorded = provider().installPermissions(home, installer, replacer());
+			List<EntryGroup> hooks = provider().describeEntries(recorded, installer).stream().
+				filter(group -> group.effect() == EntryEffect.HOOKS_RUN_WITHOUT_REVIEW).toList();
+
+			requireThat(hooks.size(), "groups").isEqualTo(1);
+			EntryGroup group = hooks.getFirst();
+			requireThat(group.file(), "file").isEqualTo(Path.of("config.toml"));
+			requireThat(group.setting(), "setting").isEqualTo("hooks.state");
+			requireThat(group.items(), "items").containsExactly(List.of(SESSION_START, POST_TOOL_USE, SUBAGENT_START));
+			requireThat(group.entries(), "entries").containsExactly(List.of(
+				"hooks.state.\"" + SESSION_START + "\".trusted_hash = \"" + SESSION_START_HASH + "\"",
+				"hooks.state.\"" + POST_TOOL_USE + "\".trusted_hash = \"" + POST_TOOL_USE_HASH + "\"",
+				"hooks.state.\"" + SUBAGENT_START + "\".trusted_hash = \"" + SUBAGENT_START_HASH + "\""));
 		}
 	}
 

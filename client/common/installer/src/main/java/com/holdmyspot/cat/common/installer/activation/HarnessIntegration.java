@@ -290,6 +290,20 @@ public interface HarnessIntegration
 	List<String> describeAdded(Path home, Map<String, List<String>> added) throws IOException;
 
 	/**
+	 * Groups the entries that install recorded by what they let the harness do, for the installer's report to a
+	 * person. The items of a group of installer operations name only the operations of {@code installer}; an entry
+	 * that names another program is in the group's entries only.
+	 *
+	 * @param recorded  the recorded entries, keyed as {@link #installPermissions} keys them
+	 * @param installer the absolute path of the installer launcher that the entries name
+	 * @return a group for each effect of each setting that holds a recorded entry, in no particular order
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code installer} is relative
+	 * @throws IOException              if the launcher path cannot be named in an entry
+	 */
+	List<EntryGroup> describeEntries(Map<String, List<String>> recorded, Path installer) throws IOException;
+
+	/**
 	 * Returns the sentences that tell the user which recorded entries {@link #removePermissions} left in place
 	 * because the user changed them after install added them. Called after {@link #removePermissions}.
 	 *

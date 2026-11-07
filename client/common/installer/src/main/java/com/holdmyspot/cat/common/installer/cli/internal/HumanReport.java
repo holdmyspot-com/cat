@@ -2,12 +2,19 @@ package com.holdmyspot.cat.common.installer.cli.internal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.installer.activation.EntryEffect.Items;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
+import java.util.StringJoiner;
+import java.util.TreeSet;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -35,19 +42,18 @@ public final class HumanReport
 	 *
 	 * @param result  the result object that the installer prints as JSON when its standard output is not a terminal
 	 * @param product the name of the result's harness, or empty when the installer does not know the harness
-	 * @param home    the harness home that the result's permission entries lie in, or empty when the result lists none
+	 * @param entries the permission and sandbox entries that a success lists, or null when it lists none
 	 * @return the report, without a final line separator
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException if {@code result} or {@code product} are null
 	 */
-	public static String render(ObjectNode result, Optional<String> product, Optional<Path> home)
+	public static String render(ObjectNode result, Optional<String> product, ReportedEntries entries)
 	{
 		requireThat(result, "result").isNotNull();
 		requireThat(product, "product").isNotNull();
-		requireThat(home, "home").isNotNull();
 		Result kind = Result.valueOf(result.path("result").stringValue().toUpperCase(Locale.ROOT));
 		List<String> sections = new ArrayList<>();
 		if (kind.exitStatus() == 0)
-			addSuccess(kind, result, product.orElse(result.path("harness").stringValue()), home, sections);
+			addSuccess(kind, result, product.orElse(result.path("harness").stringValue()), entries, sections);
 		else
 			addFailure(kind, result, product, sections);
 		return String.join(System.lineSeparator() + System.lineSeparator(), sections);
@@ -59,21 +65,21 @@ public final class HumanReport
 	 * @param kind     the result
 	 * @param result   the result object
 	 * @param product  the name of the result's harness
-	 * @param home     the harness home that the permission entries lie in
+	 * @param entries  the permission and sandbox entries that the success lists, or null when it lists none
 	 * @param sections receives the sections
 	 */
-	private static void addSuccess(Result kind, ObjectNode result, String product, Optional<Path> home,
+	private static void addSuccess(Result kind, ObjectNode result, String product, ReportedEntries entries,
 		List<String> sections)
 	{
 		String version = result.path("version").stringValue();
 		String installed = "CAT is installed for " + product + ".";
 		if (!version.isEmpty())
 			installed = "CAT " + version + " is installed for " + product + ".";
-		String restart = "Restart " + product + " for changes to take effect.";
+		String restart = "Restart " + product + " for the changes to take effect.";
 		String headline;
 		switch (kind)
 		{
-			case INSTALLED -> headline = installed + System.lineSeparator() + restart;
+			case INSTALLED -> headline = installed + " " + restart;
 			case UPDATED ->
 			{
 				String previous = result.path("previous_version").stringValue("");
@@ -83,7 +89,7 @@ public final class HumanReport
 				String to = "";
 				if (!version.isEmpty())
 					to = " to version " + version;
-				headline = "CAT is updated for " + product + from + to + "." + System.lineSeparator() + restart;
+				headline = "CAT is updated for " + product + from + to + ". " + restart;
 			}
 			case UP_TO_DATE ->
 			{
@@ -91,7 +97,7 @@ public final class HumanReport
 				if (version.isEmpty())
 					headline = "CAT is already installed for " + product + " and up to date.";
 			}
-			case UNINSTALLED -> headline = "CAT is removed from " + product + "." + System.lineSeparator() + restart;
+			case UNINSTALLED -> headline = "CAT is removed from " + product + ". " + restart;
 			default ->
 			{
 				// STATUS
@@ -111,9 +117,8 @@ public final class HumanReport
 		String notes = withoutHeadline(result);
 		if (!notes.isEmpty())
 			sections.add(notes);
-		JsonNode permissions = result.path("permissions");
-		if (permissions.isObject() && !permissions.isEmpty())
-			sections.add(entries(permissions, home));
+		if (entries != null)
+			entries(entries, sections);
 	}
 
 	/**
@@ -136,34 +141,160 @@ public final class HumanReport
 	}
 
 	/**
-	 * Lists the permission and sandbox entries that install added.
+	 * Adds the sections that list the permission and sandbox entries: the files that hold them, a group for each
+	 * effect of each setting, under the effect's heading and the setting, and the meaning of the abbreviations.
+	 * Without {@link ReportedEntries#exact()}, a group lists the installer operations, paths or names that its entries
+	 * name, and a last section says how to list the entries exactly.
 	 *
-	 * @param permissions the entries by the file and the setting that hold them
-	 * @param home        the harness home that the files lie in
-	 * @return the section
+	 * @param entries  the entries
+	 * @param sections receives the sections; nothing when no group holds an entry
 	 */
-	private static String entries(JsonNode permissions, Optional<Path> home)
+	private static void entries(ReportedEntries entries, List<String> sections)
 	{
-		String lineSeparator = System.lineSeparator();
-		StringBuilder section = new StringBuilder("CAT added these permission and sandbox entries. Uninstalling " +
-			"CAT removes them:");
-		for (String key : permissions.propertyNames())
+		List<EntryGroup> groups = new ArrayList<>();
+		for (EntryGroup group : entries.groups())
 		{
-			String file = key;
-			String setting = "";
-			int separator = key.indexOf('#');
-			if (separator >= 0)
-			{
-				file = key.substring(0, separator);
-				setting = " (" + key.substring(separator + 1) + ")";
-			}
-			if (home.isPresent())
-				file = home.get().resolve(file).toString();
-			section.append(lineSeparator).append("  ").append(file).append(setting);
-			for (JsonNode entry : permissions.path(key))
-				section.append(lineSeparator).append("    ").append(entry.stringValue());
+			if (!lines(group, entries.exact(), new Abbreviation(entries.userHome())).isEmpty())
+				groups.add(group);
 		}
-		return section.toString();
+		if (groups.isEmpty())
+			return;
+		groups.sort(Comparator.comparing(EntryGroup::effect).thenComparing(EntryGroup::file).
+			thenComparing(EntryGroup::setting));
+
+		Abbreviation abbreviation = new Abbreviation(entries.userHome());
+		Set<Path> files = new LinkedHashSet<>();
+		for (EntryGroup group : groups)
+			files.add(group.file());
+		List<String> fileNames = new ArrayList<>();
+		for (Path file : files)
+			fileNames.add(abbreviation.of(entries.harnessHome().resolve(file)));
+		StringJoiner section = new StringJoiner(System.lineSeparator());
+		section.add("CAT changed " + sentenceList(fileNames) + ". Uninstalling CAT undoes these changes.");
+		int width = 0;
+		for (EntryGroup group : groups)
+			width = Math.max(width, group.effect().heading().length());
+		for (EntryGroup group : groups)
+		{
+			section.add("").add("  " + heading(group, width, files.size() > 1));
+			for (String line : lines(group, entries.exact(), abbreviation))
+				section.add("    " + line);
+		}
+
+		List<String> names = new ArrayList<>();
+		List<String> values = new ArrayList<>();
+		if (!entries.exact())
+		{
+			names.add("installer");
+			values.add(abbreviation.of(entries.installer()));
+		}
+		if (abbreviation.used)
+		{
+			names.addFirst("~");
+			values.addFirst(entries.userHome().toString());
+		}
+		if (!names.isEmpty())
+			section.add("").add(legend(names, values));
+		sections.add(section.toString());
+		if (!entries.exact())
+			sections.add("Run installer status --verbose to see the exact entries.");
+	}
+
+	/**
+	 * Returns the line that introduces a group.
+	 *
+	 * @param group     the group
+	 * @param width     the length of the longest heading of the report's groups
+	 * @param manyFiles {@code true} if the report lists the entries of more than one file, so that the line names the
+	 *                  group's file
+	 * @return the group's heading, followed by its file and setting in parentheses, aligned with the other groups'
+	 */
+	private static String heading(EntryGroup group, int width, boolean manyFiles)
+	{
+		String location = group.setting();
+		if (manyFiles)
+		{
+			location = group.file().toString();
+			if (!group.setting().isEmpty())
+				location += ": " + group.setting();
+		}
+		String heading = group.effect().heading();
+		if (location.isEmpty())
+			return heading;
+		// Three spaces separate the longest heading from its location
+		return heading + " ".repeat(width - heading.length() + 3) + "(" + location + ")";
+	}
+
+	/**
+	 * Returns the lines that list a group's entries.
+	 *
+	 * @param group        the group
+	 * @param exact        {@code true} to list each entry as the configuration holds it
+	 * @param abbreviation names the paths that the group lists
+	 * @return the lines, empty when the group lists nothing: installer operations on one line, separated by commas,
+	 * 	and each other item on its own line, in alphabetical order without repeats
+	 */
+	private static List<String> lines(EntryGroup group, boolean exact, Abbreviation abbreviation)
+	{
+		if (exact)
+		{
+			List<String> lines = new ArrayList<>();
+			for (String entry : group.entries())
+				entry.lines().forEach(lines::add);
+			return lines;
+		}
+		Items kind = group.effect().items();
+		Set<String> items = new TreeSet<>();
+		for (String item : group.items())
+		{
+			switch (kind)
+			{
+				case OPERATIONS -> items.add("installer " + item);
+				case PATHS -> items.add(abbreviation.of(Path.of(item)));
+				case NAMES -> items.add(item);
+			}
+		}
+		if (items.isEmpty())
+			return List.of();
+		if (kind == Items.OPERATIONS)
+			return List.of(String.join(", ", items));
+		return List.copyOf(items);
+	}
+
+	/**
+	 * Joins names as a sentence lists them.
+	 *
+	 * @param names one or more names
+	 * @return the names, separated by commas, and by {@code and} before the last
+	 */
+	private static String sentenceList(List<String> names)
+	{
+		if (names.size() == 1)
+			return names.getFirst();
+		return String.join(", ", names.subList(0, names.size() - 1)) + " and " + names.getLast();
+	}
+
+	/**
+	 * Returns the lines that say what the report's abbreviations stand for.
+	 *
+	 * @param names  the abbreviations
+	 * @param values what each abbreviation stands for
+	 * @return the lines, with the values aligned
+	 */
+	private static String legend(List<String> names, List<String> values)
+	{
+		int width = 0;
+		for (String name : names)
+			width = Math.max(width, name.length());
+		StringJoiner legend = new StringJoiner(System.lineSeparator());
+		String prefix = "  where ";
+		for (int i = 0; i < names.size(); ++i)
+		{
+			String name = names.get(i);
+			legend.add(prefix + name + " ".repeat(width - name.length()) + " = " + values.get(i));
+			prefix = " ".repeat(prefix.length());
+		}
+		return legend.toString();
 	}
 
 	/**
@@ -227,5 +358,44 @@ public final class HumanReport
 			case NOT_WRITABLE -> "make the files above writable by your user, then run the same command again.";
 			default -> "run the same command again, which repairs what the failure left.";
 		};
+	}
+
+	/**
+	 * Writes paths in the user's home directory relative to {@code ~}, and remembers whether it did.
+	 */
+	private static final class Abbreviation
+	{
+		private final Path userHome;
+		/**
+		 * Whether a path was written relative to {@code ~}.
+		 */
+		private boolean used;
+
+		/**
+		 * Creates an abbreviation.
+		 *
+		 * @param userHome the user's home directory
+		 */
+		private Abbreviation(Path userHome)
+		{
+			this.userHome = userHome;
+		}
+
+		/**
+		 * Returns how the report writes a path.
+		 *
+		 * @param path an absolute path
+		 * @return {@code ~}, followed by the path relative to the user's home directory when the path lies in it;
+		 * 	otherwise the path
+		 */
+		private String of(Path path)
+		{
+			if (!path.startsWith(userHome))
+				return path.toString();
+			used = true;
+			if (path.equals(userHome))
+				return "~";
+			return "~" + userHome.getFileSystem().getSeparator() + userHome.relativize(path);
+		}
 	}
 }

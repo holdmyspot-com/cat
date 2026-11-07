@@ -9,9 +9,12 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.cli.internal.HumanReport;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessTerminal;
+import com.holdmyspot.cat.common.installer.cli.internal.ReportedEntries;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
@@ -19,6 +22,7 @@ import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -132,7 +136,7 @@ public final class HumanReportTest
 		ArrayNode paths = result.putArray("paths");
 		paths.add("/data/involved-file");
 
-		String report = HumanReport.render(result, Optional.of("Product A"), Optional.empty());
+		String report = HumanReport.render(result, Optional.of("Product A"), null);
 
 		requireThat(report, "report").contains("The cause is in this sentence.").contains("/data/involved-file").
 			contains("Next step:").doesNotContain("{").doesNotContain("\"result\"").doesNotContain("\tat ");
@@ -148,7 +152,7 @@ public final class HumanReportTest
 	{
 		ObjectNode result = result(Result.REFUSED, "The cause is in this sentence.");
 
-		String report = HumanReport.render(result, Optional.empty(), Optional.empty());
+		String report = HumanReport.render(result, Optional.empty(), null);
 
 		requireThat(report, "report").contains("The cause is in this sentence.").contains("Next step:").
 			doesNotContain("{");
@@ -163,7 +167,7 @@ public final class HumanReportTest
 		ObjectNode result = result(Result.REFUSED, "May CAT change the setting? CAT changed nothing.");
 		result.put("consent_command", "/launcher/bin/installer --create-profile install --harness harness-a");
 
-		String report = HumanReport.render(result, Optional.of("Product A"), Optional.empty());
+		String report = HumanReport.render(result, Optional.of("Product A"), null);
 
 		requireThat(report, "report").contains("Next step:").
 			contains("/launcher/bin/installer --create-profile install --harness harness-a").doesNotContain("{");
@@ -201,35 +205,109 @@ public final class HumanReportTest
 		result.put("version", "2.3");
 		result.put("previous_version", "2.2");
 
-		String report = HumanReport.render(result, Optional.of("Product A"), Optional.empty());
+		String report = HumanReport.render(result, Optional.of("Product A"), null);
 
 		requireThat(report, "report").contains("Product A").contains(words).contains("A notice.").
 			doesNotContain("{").doesNotContain("\"result\"");
 		if (kind != Result.UNINSTALLED)
 			requireThat(report, "report").contains("2.3");
 		if (restart)
-			requireThat(report, "report").contains("Restart Product A for changes to take effect.");
+			requireThat(report, "report").contains("Restart Product A for the changes to take effect.");
 		else
 			requireThat(report, "report").doesNotContain("Restart");
 	}
 
 	/**
-	 * A permission entry is listed with the file that holds it, in the harness home, and the setting in the file.
+	 * An install lists its entries once per changed file, grouped by effect in a fixed order, with the installer's
+	 * operations collapsed to their names, paths in the user's home directory written relative to {@code ~}, a legend
+	 * for each abbreviation and the command that lists the entries exactly.
 	 */
 	@Test
-	public void entriesNameFileAndSetting()
+	public void entriesGroupByEffect()
 	{
+		Path userHome = root().resolve("user").resolve("home");
+		Path harnessHome = userHome.resolve(".claude");
+		Path installer = harnessHome.resolve("plugins").resolve("cat").resolve("bin").resolve("installer");
+		Path elsewhere = root().resolve("elsewhere").resolve("data");
+		Path settings = Path.of("settings.json");
+		List<EntryGroup> groups = List.of(
+			new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, settings, "sandbox.filesystem.denyWrite",
+				List.of(userHome.resolve(".codex").resolve("data").toString(), elsewhere.toString()),
+				List.of("deny-one", "deny-two")),
+			new EntryGroup(EntryEffect.RUNS_OUTSIDE_SANDBOX, settings, "sandbox.excludedCommands",
+				List.of("uninstall", "install", "status", "install"), List.of("excluded")),
+			new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, settings, "sandbox.filesystem.allowWrite",
+				List.of(userHome.resolve(".cat").resolve("locks").toString()), List.of("allow-write")),
+			new EntryGroup(EntryEffect.SETS_VALUE, settings, "unused", List.of(), List.of()),
+			new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, settings, "permissions.allow",
+				List.of("status", "install"), List.of("allowed")));
 		ObjectNode result = result(Result.INSTALLED, "CAT is installed for harness-a.");
 		result.put("version", "2.3");
-		ObjectNode permissions = result.putObject("permissions");
-		permissions.putArray("settings.json#sandbox.excludedCommands").add("entry-one");
-		permissions.putArray("rules/cat-installer.rules").add("entry-two");
 
-		String report = HumanReport.render(result, Optional.of("Product A"), Optional.of(Path.of("/user/home")));
+		String report = HumanReport.render(result, Optional.of("Product A"),
+			new ReportedEntries(groups, harnessHome, userHome, installer, false));
 
-		requireThat(report, "report").contains(Path.of("/user/home/settings.json").toString()).
-			contains("sandbox.excludedCommands").contains("entry-one").
-			contains(Path.of("/user/home/rules/cat-installer.rules").toString()).contains("entry-two");
+		String separator = userHome.getFileSystem().getSeparator();
+		requireThat(report, "report").isEqualTo(lines(
+			"CAT 2.3 is installed for Product A. Restart Product A for the changes to take effect.",
+			"",
+			"CAT changed ~" + separator + ".claude" + separator + "settings.json. Uninstalling CAT undoes these " +
+				"changes.",
+			"",
+			"  Runs without asking            (permissions.allow)",
+			"    installer install, installer status",
+			"",
+			"  Runs outside the sandbox       (sandbox.excludedCommands)",
+			"    installer install, installer status, installer uninstall",
+			"",
+			"  The sandbox may write to       (sandbox.filesystem.allowWrite)",
+			"    ~" + separator + ".cat" + separator + "locks",
+			"",
+			"  The sandbox may not write to   (sandbox.filesystem.denyWrite)",
+			"    " + elsewhere,
+			"    ~" + separator + ".codex" + separator + "data",
+			"",
+			"  where ~         = " + userHome,
+			"        installer = " + String.join(separator, "~", ".claude", "plugins", "cat", "bin", "installer"),
+			"",
+			"Run installer status --verbose to see the exact entries."));
+	}
+
+	/**
+	 * Exact entries list each entry as the configuration holds it, name the setting of each file when they span more
+	 * than one file, and leave out the installer's abbreviation and the command that lists them exactly.
+	 */
+	@Test
+	public void exactEntriesNameEachFileAndSetting()
+	{
+		Path userHome = root().resolve("user");
+		Path harnessHome = root().resolve("harness");
+		Path installer = harnessHome.resolve("bin").resolve("installer");
+		Path rules = Path.of("rules").resolve("cat-installer.rules");
+		Path configuration = Path.of("config.toml");
+		List<EntryGroup> groups = List.of(
+			new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, configuration, "sandbox_workspace_write.writable_roots",
+				List.of(userHome.resolve("locks").toString()), List.of("\"" + userHome.resolve("locks") + "\"")),
+			new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, rules, "", List.of("install"),
+				List.of("prefix_rule(install)")));
+		ObjectNode result = result(Result.STATUS, "The installation state was read.");
+		result.put("version", "2.3");
+		result.put("installed", true);
+
+		String report = HumanReport.render(result, Optional.of("Product A"),
+			new ReportedEntries(groups, harnessHome, userHome, installer, true));
+
+		requireThat(report, "report").isEqualTo(lines(
+			"CAT 2.3 is installed for Product A.",
+			"",
+			"CAT changed " + harnessHome.resolve(rules) + " and " + harnessHome.resolve(configuration) +
+				". Uninstalling CAT undoes these changes.",
+			"",
+			"  Runs without asking        (" + rules + ")",
+			"    prefix_rule(install)",
+			"",
+			"  The sandbox may write to   (config.toml: sandbox_workspace_write.writable_roots)",
+			"    \"" + userHome.resolve("locks") + "\""));
 	}
 
 	/**
@@ -248,9 +326,9 @@ public final class HumanReportTest
 		inconsistent.put("installed", true);
 		inconsistent.put("consistent", false);
 
-		String present = HumanReport.render(installed, Optional.of("Product A"), Optional.empty());
-		String absent = HumanReport.render(missing, Optional.of("Product A"), Optional.empty());
-		String broken = HumanReport.render(inconsistent, Optional.of("Product A"), Optional.empty());
+		String present = HumanReport.render(installed, Optional.of("Product A"), null);
+		String absent = HumanReport.render(missing, Optional.of("Product A"), null);
+		String broken = HumanReport.render(inconsistent, Optional.of("Product A"), null);
 
 		requireThat(present, "installed").contains("2.3").contains("installed").doesNotContain("not installed");
 		requireThat(absent, "missing").contains("not installed").contains("Run the explicit CAT install command");
@@ -275,6 +353,27 @@ public final class HumanReportTest
 		result.put("consistent", true);
 		result.putArray("key_ids");
 		return result;
+	}
+
+	/**
+	 * Returns the root of the file system's absolute paths.
+	 *
+	 * @return the first root directory of the default file system
+	 */
+	private static Path root()
+	{
+		return FileSystems.getDefault().getRootDirectories().iterator().next();
+	}
+
+	/**
+	 * Joins the lines of a report.
+	 *
+	 * @param lines the lines
+	 * @return the lines, separated by the platform's line separator
+	 */
+	private static String lines(String... lines)
+	{
+		return String.join(System.lineSeparator(), lines);
 	}
 
 	/**
