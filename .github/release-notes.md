@@ -28,7 +28,8 @@ you rely on it.
 
 These commands are for a person typing in their own terminal, or at a Claude Code prompt prefixed with `! `; an agent
 follows the paragraph at the top of this page instead. Choose your harness explicitly. Each entry script downloads only
-${GITHUB_REF_NAME} assets and verifies their embedded SHA-256 digests before use.
+${GITHUB_REF_NAME} assets and verifies their embedded SHA-256 digests before use. To install somewhere other than the
+default, see [Choosing where CAT installs](#choosing-where-cat-installs).
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | sh -s -- --harness claude
@@ -50,6 +51,43 @@ also use the POSIX command in Git Bash; Codex on Windows needs the PowerShell co
 optimization are not available on native Windows; to use them, run your harness and CAT inside WSL2. If the command
 cannot write a required path, run it outside the agent sandbox. Restart the harness: a session that was already running
 has no CAT session launcher, so it cannot start runner sessions or prompt optimization trials.
+
+## Choosing where CAT installs
+
+These environment variables choose the folders that the entry scripts and the installer that they run use. Put an
+assignment after the pipe, before `sh`, so that it reaches the script. The plugin data folder, which holds the
+installation's policy, and the capacity-lock folder have no variable of their own: the data folder is always inside the
+harness home, and the lock folder is always `.cat/locks` in your home folder. The installer finds the harness program on
+`PATH`, and no variable changes where the script downloads from.
+
+| Variable | What it changes | Default |
+| --- | --- | --- |
+| `CLAUDE_CONFIG_DIR` (Claude Code), `CODEX_HOME` (Codex) | The harness home. CAT's plugin folders, its plugin data folder (the policy with its trust keys, installer state and kept releases), and the permission entries all go inside it. It must be an existing absolute folder. | `.claude` or `.codex` in your home folder |
+| `HOME` (`USERPROFILE` on Windows) | Your home folder: where the default harness home is, and where the installer puts `.cat/locks`, the folder that CAT's runners write in to take capacity locks. The installer refuses to run unless it is an absolute path. | Your account's home folder |
+| `TMPDIR` (`cat.sh`), `TEMP` (`cat.ps1`) | Where the script downloads and unpacks the plugin archive. It deletes that folder when it finishes. | `/tmp`; `TEMP` has no default and must be set |
+
+Examples, each moving only that variable:
+
+```bash
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | CLAUDE_CONFIG_DIR=/path/to/claude-home sh -s -- --harness claude
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | CODEX_HOME=/path/to/codex-home sh -s -- --harness codex
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | HOME=/path/to/home sh -s -- --harness claude
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.sh | TMPDIR=/path/to/temp sh -s -- --harness claude
+```
+
+```powershell
+$env:CLAUDE_CONFIG_DIR = 'C:\path\to\claude-home'; & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness claude
+$env:CODEX_HOME = 'C:\path\to\codex-home'; & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex
+$env:USERPROFILE = 'C:\path\to\home'; & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex
+$env:TEMP = 'C:\path\to\temp'; & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex
+```
+
+If your terminal already exports one of these variables, the command uses its value. On Windows, `cat.ps1` takes the
+default harness home from your user profile folder, not from `USERPROFILE`, so setting `USERPROFILE` moves
+`.cat\locks` but not the harness home; set the harness variable to move that. In Git Bash, `cat.sh` reads `HOME` for the default
+harness home and the installer reads `USERPROFILE`. The installation records its harness home, so a later change to
+these variables does not redirect an update; the full list of what the installer writes is in the
+[installation guide](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md#installed-locations).
 
 CAT's runners need no sandbox exception: each session's CAT session launcher starts runner sessions inside their
 harness's own sandbox, never wider than the session that asked for them. The command removes the runner exceptions that
