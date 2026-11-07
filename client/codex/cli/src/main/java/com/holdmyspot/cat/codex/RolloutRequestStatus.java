@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.codex.rollout.RolloutLineage;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;

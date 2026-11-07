@@ -1,4 +1,4 @@
-package com.holdmyspot.cat.codex;
+package com.holdmyspot.cat.codex.rollout;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -34,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
  * {@code history_base} refers to the rollout's. A rollout that Codex has compressed into a {@code .jsonl.zst} file is
  * not read.
  */
-final class RolloutLineage
+public final class RolloutLineage
 {
 	/**
 	 * The {@code end_ordinal_exclusive} of the thread's own rollout: no record of it is left out.
@@ -48,7 +48,7 @@ final class RolloutLineage
 	 * @param endOrdinalExclusive the ordinal of the first record of the rollout that the thread does not include, or
 	 *   {@link Long#MAX_VALUE} when it includes every record
 	 */
-	record Segment(Path rollout, long endOrdinalExclusive)
+	public record Segment(Path rollout, long endOrdinalExclusive)
 	{
 	}
 
@@ -80,7 +80,7 @@ final class RolloutLineage
 	 * @throws NullPointerException if {@code json} or {@code rollout} are null
 	 * @throws IOException          if the thread's own rollout cannot be read
 	 */
-	static List<Segment> resolve(JsonMapper json, Path rollout) throws IOException
+	public static List<Segment> resolve(JsonMapper json, Path rollout) throws IOException
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(rollout, "rollout").isNotNull();
