@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.launcher.LauncherRecord;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessHandleTable;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncherService;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -140,6 +141,10 @@ public final class CodexSessionLauncherCli
 					for (String host : new TreeSet<>(hosts))
 						entries.add("\"" + host + "\" = \"allow\"");
 					additions.add(String.join(" and ", entries) + " under [permissions.<profile>.network.domains]");
+					// Codex's managed network proxy blocks these hosts unless the profile also lets commands bind local
+					// addresses, even when its domains allow them
+					if (hosts.stream().anyMatch(ChildPolicy::needsLocalBinding))
+						additions.add("allow_local_binding = true under [permissions.<profile>.network]");
 				}
 				String instruction = "add " + String.join(" and ", additions) + " in Codex's config.toml, where " +
 					"<profile> is the permissions profile that default_permissions names";

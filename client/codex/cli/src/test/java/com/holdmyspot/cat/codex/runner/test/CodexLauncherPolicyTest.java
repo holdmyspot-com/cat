@@ -195,7 +195,14 @@ public final class CodexLauncherPolicyTest
 				{List.of(Path.of("/data/m2")), Set.of(),
 					"add \"/data/m2\" = \"write\" under [permissions.<profile>.filesystem]" + where + legacy},
 				{List.of(), Set.of("api.example.com"),
-					"add \"api.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where}
+					"add \"api.example.com\" = \"allow\" under [permissions.<profile>.network.domains]" + where},
+				{List.of(), Set.of("localhost"),
+					"add \"localhost\" = \"allow\" under [permissions.<profile>.network.domains] and " +
+						"allow_local_binding = true under [permissions.<profile>.network]" + where},
+				{List.of(), Set.of("api.example.com", "localhost"),
+					"add \"api.example.com\" = \"allow\" and \"localhost\" = \"allow\" under " +
+						"[permissions.<profile>.network.domains] and allow_local_binding = true under " +
+						"[permissions.<profile>.network]" + where}
 			};
 	}
 
