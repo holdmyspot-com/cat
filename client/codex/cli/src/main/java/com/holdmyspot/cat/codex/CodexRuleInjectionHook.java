@@ -84,8 +84,9 @@ final class CodexRuleInjectionHook
 	 * subagent sharing its parent's CAT session directory, so the subagent receives every rule in the response, leaving
 	 * the parent's rules file unchanged.
 	 * <p>
-	 * A session whose project directory is the user's home folder, which {@link HomeProject} refuses as a CAT project,
-	 * gets no rules and no CAT session directory; the hook reports the refusal as it reports every other failure.
+	 * A session whose project directory is the user's home folder or contains it, which {@link HomeProject} refuses as
+	 * a CAT project, gets no rules and no CAT session directory; the hook reports the refusal as it reports every other
+	 * failure.
 	 *
 	 * @param eventName the Codex hook event name
 	 * @param args the hook command-line arguments

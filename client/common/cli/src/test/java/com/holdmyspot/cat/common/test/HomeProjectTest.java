@@ -12,7 +12,8 @@ import org.testng.annotations.Test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Verifies that {@link HomeProject} refuses the user's home folder as a CAT project and allows every other folder.
+ * Verifies that {@link HomeProject} refuses the user's home folder and every folder that contains it as a CAT project,
+ * and allows every other folder.
  */
 public final class HomeProjectTest
 {
@@ -40,7 +41,7 @@ public final class HomeProjectTest
 
 			requireThat(refusal, "refusal").isPresent();
 			requireThat(refusal.get(), "message").contains(home.toString()).
-				contains("cannot be a CAT project").contains("Open a folder below it");
+				contains("cannot be a CAT project").contains("Open a folder below the home folder");
 		}
 	}
 
@@ -65,6 +66,44 @@ public final class HomeProjectTest
 	}
 
 	/**
+	 * Verifies that a folder that contains the home folder is refused, with a message that names both folders.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesParentOfHome() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("home-project-"));
+			Path home = Files.createDirectories(project.resolve("users/home"));
+
+			Optional<String> refusal = HomeProject.refusal(project, home);
+
+			requireThat(refusal, "refusal").isPresent();
+			requireThat(refusal.get(), "message").contains(project.toString()).contains(home.toString()).
+				contains("cannot be a CAT project");
+		}
+	}
+
+	/**
+	 * Verifies that the root of the filesystem that holds the home folder is refused, because it contains the home
+	 * folder.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesFilesystemRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("home-project-"));
+
+			requireThat(HomeProject.refusal(home.toRealPath().getRoot(), home), "refusal").isPresent();
+		}
+	}
+
+	/**
 	 * Verifies that a folder below the home folder is allowed.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
@@ -82,19 +121,23 @@ public final class HomeProjectTest
 	}
 
 	/**
-	 * Verifies that a folder that contains the home folder is allowed.
+	 * Verifies that a folder outside the home folder's ancestry is allowed, both one beside the home folder and one
+	 * whose path is the start of the home folder's path as text but not one of its parent folders.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void allowsFolderAboveHome() throws IOException
+	public void allowsFolderOutsideHomeAncestry() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory("home-project-"));
-			Path home = Files.createDirectory(project.resolve("home"));
+			Path root = cleanup.add(Files.createTempDirectory("home-project-"));
+			Path home = Files.createDirectory(root.resolve("home"));
+			Path beside = Files.createDirectory(root.resolve("project"));
+			Path textPrefix = Files.createDirectory(root.resolve("hom"));
 
-			requireThat(HomeProject.refusal(project, home), "refusal").isEmpty();
+			requireThat(HomeProject.refusal(beside, home), "besideRefusal").isEmpty();
+			requireThat(HomeProject.refusal(textPrefix, home), "textPrefixRefusal").isEmpty();
 		}
 	}
 }

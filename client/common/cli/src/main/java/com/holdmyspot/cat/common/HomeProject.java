@@ -7,10 +7,11 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Decides whether a folder may be a CAT project. The user's home folder never may: a project keeps its CAT session
- * directories in the folder that {@link SessionDirectory#ROOT} names, and in the home folder that folder holds the
- * session launcher's state, which sandboxed commands are denied writing. Every other folder may, including the folders
- * below the home folder and the folders that contain it.
+ * Decides whether a folder may be a CAT project. The user's home folder never may, nor may any folder that contains
+ * it, such as the filesystem's root: a project keeps its CAT session directories in the folder that
+ * {@link SessionDirectory#ROOT} names, and in the home folder that folder holds the session launcher's state, which
+ * sandboxed commands are denied writing. Every other folder may, including the folders below the home folder and the
+ * folders outside the folders that contain it.
  */
 public final class HomeProject
 {
@@ -28,17 +29,20 @@ public final class HomeProject
 	 *
 	 * @param project the folder
 	 * @param home    the user's home folder
-	 * @return a message that names the home folder and tells the user to open a folder below it, if {@code project}
-	 *   is the home folder; otherwise empty
+	 * @return a message that names both folders and tells the user to open a folder below the home folder, if
+	 *   {@code project} is the home folder or contains it; otherwise empty
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public static Optional<String> refusal(Path project, Path home)
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(home, "home").isNotNull();
-		if (!realPath(project).equals(realPath(home)))
-			return Optional.empty();
-		return Optional.of("The home folder " + home + " cannot be a CAT project. Open a folder below it instead.");
+		if (realPath(home).startsWith(realPath(project)))
+		{
+			return Optional.of("The folder " + project + " is the home folder " + home + " or contains it, so it " +
+				"cannot be a CAT project. Open a folder below the home folder instead.");
+		}
+		return Optional.empty();
 	}
 
 	/**

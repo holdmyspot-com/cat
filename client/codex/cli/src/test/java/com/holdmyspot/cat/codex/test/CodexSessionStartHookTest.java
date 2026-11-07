@@ -439,7 +439,7 @@ public final class CodexSessionStartHookTest
 
 			assertStopped(result, "homeFolder");
 			requireThat(readResponse(result).path("systemMessage").asString(), "systemMessage").
-				contains("cannot be a CAT project").contains("Open a folder below it");
+				contains("cannot be a CAT project").contains("Open a folder below the home folder");
 			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}
 	}
@@ -586,7 +586,7 @@ public final class CodexSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			copyBundledRules(plugin);
 			Map<String, String> environment = Map.of("PLUGIN_ROOT", plugin.toString(),
-				Platform.current().homeVariable(), project.resolve("home").toString());
+				Platform.current().homeVariable(), project.resolveSibling(project.getFileName() + "-home").toString());
 
 			HookResult first = invoke(event(project), environment, project, GitProjects.NOT_IGNORING);
 			HookResult second = invoke(event(project), environment, project, GitProjects.NOT_IGNORING);
@@ -627,8 +627,8 @@ public final class CodexSessionStartHookTest
 				new ByteArrayInputStream(("{\"session_id\":\"" + sessionId() + "\",\"cwd\":" + jsonString(project) +
 					",\"agent_type\":\"cat:worker\"}").getBytes(UTF_8)), subagentOutput,
 				new PrintStream(subagentError, true, UTF_8), Map.of("PLUGIN_ROOT", plugin.toString(),
-					Platform.current().homeVariable(), project.resolve("home").toString()), project, Yielding.waiting(),
-				GitProjects.IGNORING);
+					Platform.current().homeVariable(), project.resolveSibling(project.getFileName() + "-home").toString()),
+				project, Yielding.waiting(), GitProjects.IGNORING);
 			requireThat(readJson(subagentOutput.toString(UTF_8)).has("systemMessage"), "subagent.hasSystemMessage").
 				isFalse();
 			requireThat(Files.exists(listFile), "listFileAfterSubagentStart").isFalse();
@@ -947,7 +947,10 @@ public final class CodexSessionStartHookTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
+		// A home folder that no test creates, outside every project directory, because a project directory that
+		// contains the home folder is refused
+		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(),
+			Path.of(System.getProperty("java.io.tmpdir"), "cat-absent-home").toString());
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
 			harnessEnvironment, workingDirectory, Yielding.waiting(), git, Platform.current(), List::of, (_, _) ->

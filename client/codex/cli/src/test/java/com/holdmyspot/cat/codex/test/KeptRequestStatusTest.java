@@ -294,7 +294,8 @@ public final class KeptRequestStatusTest
 			event.put("transcript_path", transcript.toString());
 		Map<String, String> environment = new HashMap<>();
 		environment.put("PLUGIN_ROOT", plugin.toString());
-		environment.put(Platform.current().homeVariable(), project.resolve("home").toString());
+		environment.put(Platform.current().homeVariable(),
+			project.resolveSibling(project.getFileName() + "-home").toString());
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],

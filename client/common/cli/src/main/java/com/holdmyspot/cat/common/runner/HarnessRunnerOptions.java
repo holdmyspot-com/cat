@@ -387,10 +387,10 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	}
 
 	/**
-	 * Refuses a runner launcher's launch whose project is the user's home folder, which {@link HomeProject} refuses as
-	 * a CAT project. The project is the folder that the launch's {@code --project} names, resolved against
-	 * {@code workingDirectory}, or {@code workingDirectory} if the launch names none. A launch whose environment names
-	 * no home folder is not refused.
+	 * Refuses a runner launcher's launch whose project is the user's home folder or contains it, which
+	 * {@link HomeProject} refuses as a CAT project. The project is the folder that the launch's {@code --project}
+	 * names, resolved against {@code workingDirectory}, or {@code workingDirectory} if the launch names none. A launch
+	 * whose environment names no home folder is not refused.
 	 *
 	 * @param args             the launch's arguments
 	 * @param workingDirectory the directory from which the launcher was started

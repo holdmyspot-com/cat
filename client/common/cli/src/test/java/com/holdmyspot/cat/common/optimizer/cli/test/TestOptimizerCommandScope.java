@@ -291,12 +291,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 		ensureOpen();
 		if (home == null)
-			return directory.resolve("home");
+			return Path.of(System.getProperty("java.io.tmpdir"), "cat-absent-home");
 		return home;
 	}
 
 	/**
-	 * Sets the user's home folder, which is otherwise the folder {@code home} in the project directory.
+	 * Sets the user's home folder, which is otherwise a folder that no test creates in the temporary folder, outside
+	 * every project directory, because a project directory that contains the home folder is refused.
 	 *
 	 * @param home the home folder
 	 * @throws NullPointerException if {@code home} is null

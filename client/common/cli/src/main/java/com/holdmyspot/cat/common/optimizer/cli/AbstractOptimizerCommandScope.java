@@ -245,7 +245,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 * @return the root
 	 * @throws IllegalStateException   if this scope is closed
 	 * @throws CommandRefusedException if the working directory is not inside a Git repository, or the root is the
-	 *                                 user's home folder, which {@link HomeProject} refuses as a CAT project
+	 *                                 user's home folder or contains it, which {@link HomeProject} refuses as a CAT
+	 *                                 project
 	 * @throws IOException             if the working directory cannot be resolved
 	 */
 	final Path projectRoot() throws CommandRefusedException, IOException

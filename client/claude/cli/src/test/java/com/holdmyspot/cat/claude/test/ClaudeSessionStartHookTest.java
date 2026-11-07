@@ -502,7 +502,7 @@ public final class ClaudeSessionStartHookTest
 			{
 				requireThat(result.output(), "output").isEqualTo("{}\n");
 				requireThat(result.error(), "error").contains("cannot be a CAT project").
-					contains("Open a folder below it");
+					contains("Open a folder below the home folder");
 			}
 			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}
@@ -1114,8 +1114,10 @@ public final class ClaudeSessionStartHookTest
 	 * @param environment the process environment
 	 * @param workingDirectory the process working directory
 	 * @return the captured standard streams
+	 * @throws IOException if a home folder for the hook cannot be created
 	 */
 	private static HookResult invoke(String input, Map<String, String> environment, Path workingDirectory)
+		throws IOException
 	{
 		assert input != null;
 		assert environment != null;
@@ -1132,8 +1134,10 @@ public final class ClaudeSessionStartHookTest
 	 * @param environment the process environment
 	 * @param workingDirectory the process working directory
 	 * @return the captured standard streams
+	 * @throws IOException if a home folder for the hook cannot be created
 	 */
 	private static HookResult invoke(String[] args, String input, Map<String, String> environment, Path workingDirectory)
+		throws IOException
 	{
 		return invoke(args, input, environment, workingDirectory, GitProjects.IGNORING);
 	}
@@ -1147,9 +1151,10 @@ public final class ClaudeSessionStartHookTest
 	 * @param workingDirectory the process working directory
 	 * @param git the kind of Git work tree that the project is
 	 * @return the captured standard streams
+	 * @throws IOException if a home folder for the hook cannot be created
 	 */
 	private static HookResult invoke(String[] args, String input, Map<String, String> environment, Path workingDirectory,
-		GitProjects git)
+		GitProjects git) throws IOException
 	{
 		assert args != null;
 		assert input != null;
@@ -1158,15 +1163,16 @@ public final class ClaudeSessionStartHookTest
 		assert git != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
-		ClaudeSessionStartHookSecrets.getClaudeSessionStartHookAccess().run(args,
-			new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			harnessEnvironment, workingDirectory, Yielding.waiting(), git, Platform.current(), _ -> Optional.empty(),
-			(_, _) ->
-			{
-				throw new AssertionError("The hook started a session launcher");
-			});
+		try (TemporaryDirectories homes = new TemporaryDirectories())
+		{
+			ClaudeSessionStartHookSecrets.getClaudeSessionStartHookAccess().run(args,
+				new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+				withHome(environment, homes), workingDirectory, Yielding.waiting(), git, Platform.current(),
+				_ -> Optional.empty(), (_, _) ->
+				{
+					throw new AssertionError("The hook started a session launcher");
+				});
+		}
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 
@@ -1177,20 +1183,44 @@ public final class ClaudeSessionStartHookTest
 	 * @param environment the process environment
 	 * @param workingDirectory the process working directory
 	 * @return the captured standard streams
+	 * @throws IOException if a home folder for the hook cannot be created
 	 */
 	private static HookResult invokeSubagent(String input, Map<String, String> environment, Path workingDirectory)
+		throws IOException
 	{
 		assert input != null;
 		assert environment != null;
 		assert workingDirectory != null;
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
-		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
-		ClaudeSubagentStartHookSecrets.getClaudeSubagentStartHookAccess().run(new String[0],
-			new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			harnessEnvironment, workingDirectory, Yielding.waiting(), GitProjects.IGNORING);
+		try (TemporaryDirectories homes = new TemporaryDirectories())
+		{
+			ClaudeSubagentStartHookSecrets.getClaudeSubagentStartHookAccess().run(new String[0],
+				new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
+				withHome(environment, homes), workingDirectory, Yielding.waiting(), GitProjects.IGNORING);
+		}
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
+	}
+
+	/**
+	 * Returns a hook's environment with the user's home folder set. A test that names no home folder gets a new empty
+	 * one outside its project, because CAT refuses a project that is the home folder or contains it.
+	 *
+	 * @param environment the environment that the test gives the hook
+	 * @param homes       owns the home folder that this method creates, for the duration of one hook run
+	 * @return {@code environment}, with the home variable set to a new empty folder if {@code environment} does not
+	 *   set it
+	 * @throws IOException if the home folder cannot be created
+	 */
+	private static Map<String, String> withHome(Map<String, String> environment, TemporaryDirectories homes)
+		throws IOException
+	{
+		String homeVariable = Platform.current().homeVariable();
+		if (environment.containsKey(homeVariable))
+			return environment;
+		Map<String, String> withHome = new HashMap<>(environment);
+		withHome.put(homeVariable, homes.add(Files.createTempDirectory("cat-hook-home-")).toString());
+		return withHome;
 	}
 
 	/**

@@ -75,7 +75,7 @@ public final class PromptOptimizerCliTest
 				JsonNode result = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));
 				requireThat(result.get("status").asString(), "status").isEqualTo("refused");
 				requireThat(result.get("message").asString(), "message").contains("cannot be a CAT project").
-					contains("Open a folder below it");
+					contains("Open a folder below the home folder");
 			}
 			requireThat(Files.exists(home.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}

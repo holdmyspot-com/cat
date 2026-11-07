@@ -526,7 +526,7 @@ public final class ClaudeRunnerCliTest
 
 				requireThat(refused, "refused").withContext(project, "project").isTrue();
 				requireThat(errors.toString(), "errors").withContext(project, "project").
-					contains("cannot be a CAT project").contains("Open a folder below it");
+					contains("cannot be a CAT project").contains("Open a folder below the home folder");
 			}
 			StringWriter errors = new StringWriter();
 			List<String> below = new ArrayList<>(List.of("--project", "project"));

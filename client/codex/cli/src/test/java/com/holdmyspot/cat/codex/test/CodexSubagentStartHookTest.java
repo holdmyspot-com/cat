@@ -216,7 +216,10 @@ public final class CodexSubagentStartHookTest
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream error = new ByteArrayOutputStream();
 		Map<String, String> harnessEnvironment = new HashMap<>(environment);
-		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(), workingDirectory.resolve("home").toString());
+		// A home folder that no test creates, outside every project directory, because a project directory that
+		// contains the home folder is refused
+		harnessEnvironment.putIfAbsent(Platform.current().homeVariable(),
+			Path.of(System.getProperty("java.io.tmpdir"), "cat-absent-home").toString());
 		CodexSubagentStartHookSecrets.getCodexSubagentStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
 			harnessEnvironment, workingDirectory, Yielding.waiting(), GitProjects.IGNORING);

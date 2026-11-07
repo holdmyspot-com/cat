@@ -100,7 +100,8 @@ public final class CodexRunnerCli
 	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
 	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request. It also
 	 * refuses, with the same status, any launch that starts a session on a platform where CAT does not let Codex
-	 * sandbox the session, whose project is the user's home folder, or from a Codex sandbox that has network off.
+	 * sandbox the session, whose project is the user's home folder or contains it, or from a Codex sandbox that has
+	 * network off.
 	 * <p>
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
 	 * PrintWriter)} describes, and the launcher exits with the launch's status.
@@ -336,9 +337,9 @@ public final class CodexRunnerCli
 	 * Refuses a launch that would start a session, but must not or cannot. That is a launch that names
 	 * {@code --artifact}, as {@link #refusesOverride} refuses it, any launch on a platform where CAT does not let Codex
 	 * confine the session in a sandbox, as {@link CodexSessionSandbox} decides, any launch whose project is the user's
-	 * home folder, as {@link HarnessRunnerOptions#refusesHomeProject} decides, and any launch from a Codex sandbox that
-	 * has network off, whose session could not reach its model. Printing the usage and verifying an artifact start no
-	 * session, so they are never refused for the platform, the project or the sandbox.
+	 * home folder or contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides, and any launch from a
+	 * Codex sandbox that has network off, whose session could not reach its model. Printing the usage and verifying an
+	 * artifact start no session, so they are never refused for the platform, the project or the sandbox.
 	 *
 	 * @param args             the command and its options
 	 * @param workingDirectory the directory from which the launcher was started

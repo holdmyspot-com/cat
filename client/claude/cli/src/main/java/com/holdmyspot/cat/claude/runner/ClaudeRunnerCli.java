@@ -92,7 +92,7 @@ public final class ClaudeRunnerCli
 	 * {@code PATH} finds: before anything else, it refuses {@code --artifact} with exit status
 	 * {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} unless it forwards the launch as a session request. It also
 	 * refuses, with the same status, any launch that starts a session on a platform where Claude Code cannot sandbox
-	 * the session, or whose project is the user's home folder.
+	 * the session, or whose project is the user's home folder or contains it.
 	 * <p>
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
 	 * PrintWriter)} describes, and the launcher exits with the launch's status.
@@ -329,9 +329,9 @@ public final class ClaudeRunnerCli
 	/**
 	 * Refuses a launch that would start a session, but must not. That is a launch that names {@code --artifact}, as
 	 * {@link #refusesOverride} refuses it, any launch on a platform where Claude Code cannot confine the session in a
-	 * sandbox, as {@link ClaudeSessionSandbox} decides, and any launch whose project is the user's home folder, as
-	 * {@link HarnessRunnerOptions#refusesHomeProject} decides. Printing the usage and verifying an artifact start no
-	 * session, so they are never refused for the platform or the project.
+	 * sandbox, as {@link ClaudeSessionSandbox} decides, and any launch whose project is the user's home folder or
+	 * contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides. Printing the usage and verifying an
+	 * artifact start no session, so they are never refused for the platform or the project.
 	 *
 	 * @param args             the launch's options
 	 * @param workingDirectory the directory from which the launcher was started
