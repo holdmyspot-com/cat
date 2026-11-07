@@ -95,8 +95,24 @@ revised plugin lifecycle and distribution work, which has not been implemented.
     and a 10-line SHA256SUMS.txt. Self-install from this session is refused in both harnesses: Claude Code's installed
     trust policy (plugin `1.0+beb0776e89628`) lists no release key, and Codex's state directory
     `~/.codex/plugins/data/cat-cat/state/codex` is read-only in the sandbox. Both need the user to run the release's
-    `cat.sh --harness <h>` once outside the sandbox. Next: after that install, the E-runs of gate 4 start; open
-    follow-up: the Codex "add this setting" text quotes a Windows path without TOML escaping.
+    `cat.sh --harness <h>` once outside the sandbox. The user ran it in both harnesses; both now run
+    `1.0+b1d282487738b`.
+- **Unreleased on v1.0 after `1d28248773` (2026-11-07 UTC):** the Codex launcher writes the paths and hosts it asks the
+    user to add as valid TOML strings (`8286120d8a`); install, update and uninstall end with "Restart <product> for
+    changes to take effect." (`412a92d565`); a project rule makes a command handed to the user set only the variables
+    it needs, with the session's values (`f461be3f7d`). An agent asked to update CAT from the releases page downloaded
+    and checked the release's files before giving the user the entry command, and left out the session's `HOME`.
+    Fixes: the `update` skill replies at once, writes the session's `HOME` (and a non-default harness home) into the
+    entry command and checks the install under the session's harness home (`d7907f1b5c`, uncertified, shipped by the
+    user's approval and still to certify); the installer and the entry scripts print the entry command with those
+    values (`2e36ad5557`, `d13a09176f`); the release page, README and install guide start with steps for an agent
+    (`8b6c98af08`). `cat.ps1`'s change is not executed anywhere locally (no PowerShell). Whole-reactor verify at
+    `8b6c98af08`: 4,949 tests, 0 failures, 94 s; entry-script bats 35/35.
+- **Gate 6, G9 part (2026-11-07 UTC):** whole-reactor verify at `f461be3f7d` with `HOME` and `user.home` set to a
+    missing folder and a logging `git` on PATH: exit 0 in 106 s, 4,939 tests, 0 failures; the folder was never
+    created; every test's Git call ran in a temporary fixture repository; the only call on the source repository was
+    the build reading `HEAD` for the version.
+- **Next:** gate 4's E-runs on the final tree, all 16 cells, Codex first; republish when the user asks.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
