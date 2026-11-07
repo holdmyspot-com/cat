@@ -77,9 +77,11 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   - **Status.** Plan: `shared_runtime_lifecycle-vZqE9s/reports/launcher-return-plan.md`. Units U1 to U5b and U7 are
     integrated on v1.0 (2026-11-07). The live checks (U6) ran on WSL and on hosted Linux and macOS
     (`reports/lr-u6-wsl.md`, `reports/lr-u6-hosted.md`); the defects they found are fixed on v1.0 up to `0f903e6d5c`.
-    Open: flow 5 (optimizer in place) waits on user decision D10 (who owns a campaign started from a terminal);
-    Codex hook trust on install waits on D4; a bubblewrap check in the Codex SessionStart hook waits on D-E; a
-    Codex parent's `stopped` answer is unobservable after its launcher ends (D-A limit).
+    User rulings, 2026-11-07: only a harness session starts an optimizer campaign, so flow 5 (optimizer in place) is
+    replaced by a terminal refusal (unit UR-D10); the launcher's log outlives the launcher (UR-DA); the Codex installer
+    writes CAT's hook trust entries (UR-D4); no bubblewrap check in the Codex SessionStart hook (D-E declined); the
+    test branch `launcher-return-u6` is deleted. Brief: `briefs/unit-user-rulings-1107.md`; in progress. After they
+    land, v1.0 is republished and installed in both harnesses (authorized), then the E-runs of gate 4 start.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
