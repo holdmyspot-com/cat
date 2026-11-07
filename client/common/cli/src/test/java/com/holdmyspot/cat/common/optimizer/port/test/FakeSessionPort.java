@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,6 +28,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -35,10 +38,12 @@ import java.util.function.Predicate;
  * <p>
  * The answers that a real port gives without a session are checked by {@code SessionPortContract}, which runs against
  * this fake and the real adapters: the versions, run roots, empty answers about the host, evidence reading, the
- * exit-status answer and the windows of an interrupted session. {@link #loading(Function)},
- * {@link #unstartable(Predicate)} and {@link #supplyEvidence(Path, SessionEvidence)} are controls that make the fake
- * answer what no contract case can induce in a real port, such as a project with prompt files or a session that
- * cannot start.
+ * exit-status answer and the windows of an interrupted session. {@link #loading(BiFunction)},
+ * {@link #earlyHooks(List)}, {@link #install(String, List)}, {@link #unapprovedHooks(Function)},
+ * {@link #sessionEnvironmentVersion(int)}, {@link #judgeVersion(int)}, {@link #unstartable(Predicate)},
+ * {@link #onStart(Consumer)} and {@link #supplyEvidence(Path, SessionEvidence)} are controls that make the fake
+ * answer what no contract case can induce in a real port, such as a project with prompt files, an installed plugin,
+ * another CAT release, a session that cannot start, or a session that the test ends as soon as it starts.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -70,10 +75,36 @@ public final class FakeSessionPort implements SessionPort
 	private final Map<Path, SessionEvidence> evidence = new HashMap<>();
 	private final Set<Path> readTranscripts = new HashSet<>();
 	/**
-	 * Returns the files that load in a project, which {@link #loadedSources(Path, List)} reports.
+	 * The installed copies that {@link #installedPlugins(String)} reports for each plugin name, in installation order.
 	 */
-	private volatile Function<Path, LoadedSources> loading = _ -> new LoadedSources(List.of(), List.of(), List.of(),
-		List.of(), List.of());
+	private final Map<String, List<Path>> installed = new LinkedHashMap<>();
+	/**
+	 * Returns the files that load in a project with trial plugins, which {@link #loadedSources(Path, List)} reports.
+	 */
+	private volatile BiFunction<Path, List<PluginBase>, LoadedSources> loading = (_, _) -> new LoadedSources(List.of(),
+		List.of(), List.of(), List.of(), List.of());
+	/**
+	 * The hooks that {@link #earlyHooks(Path, List, Optional, String)} reports.
+	 */
+	private volatile List<HookInvocation> earlyHooks = List.of();
+	/**
+	 * Returns the hooks of a plugin that the user has not approved, which {@link #unapprovedHooks(Path)} reports.
+	 */
+	private volatile Function<Path, List<String>> unapprovedHooks = _ -> List.of();
+	/**
+	 * The version that {@link #sessionEnvironmentVersion()} reports.
+	 */
+	private volatile int sessionEnvironmentVersion = SESSION_ENVIRONMENT_VERSION;
+	/**
+	 * The version that {@link #judgeVersion()} reports.
+	 */
+	private volatile int judgeVersion = JUDGE_VERSION;
+	/**
+	 * What the test does with each session as it starts.
+	 */
+	private volatile Consumer<FakeSession> onStart = _ ->
+	{
+	};
 	/**
 	 * Selects the requests whose sessions cannot start, which {@link #start(SessionRequest)} refuses.
 	 */
@@ -134,7 +165,20 @@ public final class FakeSessionPort implements SessionPort
 	@Override
 	public int sessionEnvironmentVersion()
 	{
-		return SESSION_ENVIRONMENT_VERSION;
+		return sessionEnvironmentVersion;
+	}
+
+	/**
+	 * Sets the session environment version, as a port of another CAT release reports it.
+	 *
+	 * @param version the version that {@link #sessionEnvironmentVersion()} reports; by default,
+	 *   {@link #SESSION_ENVIRONMENT_VERSION}
+	 * @throws IllegalArgumentException if {@code version} is not positive
+	 */
+	public void sessionEnvironmentVersion(int version)
+	{
+		requireThat(version, "version").isPositive();
+		this.sessionEnvironmentVersion = version;
 	}
 
 	@Override
@@ -146,7 +190,19 @@ public final class FakeSessionPort implements SessionPort
 	@Override
 	public int judgeVersion()
 	{
-		return JUDGE_VERSION;
+		return judgeVersion;
+	}
+
+	/**
+	 * Sets the judge version, as a port of another CAT release reports it.
+	 *
+	 * @param version the version that {@link #judgeVersion()} reports; by default, {@link #JUDGE_VERSION}
+	 * @throws IllegalArgumentException if {@code version} is not positive
+	 */
+	public void judgeVersion(int version)
+	{
+		requireThat(version, "version").isPositive();
+		this.judgeVersion = version;
 	}
 
 	@Override
@@ -158,16 +214,17 @@ public final class FakeSessionPort implements SessionPort
 	@Override
 	public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
 	{
-		return loading.apply(project);
+		return loading.apply(project, plugins);
 	}
 
 	/**
 	 * Sets the files that load in a project.
 	 *
-	 * @param loading returns the files that load in the project that it receives; by default, none load
+	 * @param loading returns the files that load in the project and with the trial plugins that it receives; by
+	 *   default, none load
 	 * @throws NullPointerException if {@code loading} is null
 	 */
-	public void loading(Function<Path, LoadedSources> loading)
+	public void loading(BiFunction<Path, List<PluginBase>, LoadedSources> loading)
 	{
 		requireThat(loading, "loading").isNotNull();
 		this.loading = loading;
@@ -182,19 +239,54 @@ public final class FakeSessionPort implements SessionPort
 	@Override
 	public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home, String prompt)
 	{
-		return List.of();
+		return earlyHooks;
+	}
+
+	/**
+	 * Sets the hooks that run before a session's first prompt reaches the model.
+	 *
+	 * @param hooks the hooks that {@link #earlyHooks(Path, List, Optional, String)} reports; by default, none
+	 * @throws NullPointerException if {@code hooks} is null
+	 */
+	public void earlyHooks(List<HookInvocation> hooks)
+	{
+		requireThat(hooks, "hooks").isNotNull();
+		this.earlyHooks = List.copyOf(hooks);
 	}
 
 	@Override
 	public List<Path> installedPlugins(String name)
 	{
-		return List.of();
+		synchronized (sessions)
+		{
+			return installed.getOrDefault(name, List.of());
+		}
 	}
 
 	@Override
 	public List<String> installedPluginNames()
 	{
-		return List.of();
+		synchronized (sessions)
+		{
+			return List.copyOf(installed.keySet());
+		}
+	}
+
+	/**
+	 * Sets the user's installed copies of a plugin.
+	 *
+	 * @param name   the plugin's name, {@code <plugin>@<marketplace>}
+	 * @param copies the directories of the copies that {@link #installedPlugins(String)} reports
+	 * @throws NullPointerException if any argument is null
+	 */
+	public void install(String name, List<Path> copies)
+	{
+		requireThat(name, "name").isNotNull();
+		requireThat(copies, "copies").isNotNull();
+		synchronized (sessions)
+		{
+			installed.put(name, List.copyOf(copies));
+		}
 	}
 
 	@Override
@@ -207,7 +299,20 @@ public final class FakeSessionPort implements SessionPort
 	public List<String> unapprovedHooks(Path plugin)
 	{
 		requireThat(plugin, "plugin").isNotNull();
-		return List.of();
+		return unapprovedHooks.apply(plugin);
+	}
+
+	/**
+	 * Sets the hooks of each plugin that the user has not approved in the harness.
+	 *
+	 * @param unapprovedHooks returns the hooks of the plugin directory that it receives, each as its event and
+	 *   command; by default, none
+	 * @throws NullPointerException if {@code unapprovedHooks} is null
+	 */
+	public void unapprovedHooks(Function<Path, List<String>> unapprovedHooks)
+	{
+		requireThat(unapprovedHooks, "unapprovedHooks").isNotNull();
+		this.unapprovedHooks = unapprovedHooks;
 	}
 
 	@Override
@@ -298,7 +403,21 @@ public final class FakeSessionPort implements SessionPort
 		{
 			sessions.add(session);
 		}
+		onStart.accept(session);
 		return session;
+	}
+
+	/**
+	 * Sets what the test does with each session as it starts, such as ending it at once. The action runs after the
+	 * session is added to {@link #sessions()} and before {@link #start(SessionRequest)} returns it.
+	 *
+	 * @param onStart the action; by default, the session runs until the test ends it
+	 * @throws NullPointerException if {@code onStart} is null
+	 */
+	public void onStart(Consumer<FakeSession> onStart)
+	{
+		requireThat(onStart, "onStart").isNotNull();
+		this.onStart = onStart;
 	}
 
 	/**

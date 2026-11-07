@@ -22,7 +22,6 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
-import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
@@ -35,19 +34,13 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
-import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
-import com.holdmyspot.cat.common.optimizer.port.HostLogin;
-import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
-import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
-import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
-import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
-import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import org.testng.annotations.Test;
@@ -74,8 +67,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import java.util.SplittableRandom;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -121,7 +112,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-weakest"));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			Path project = Files.createDirectories(directory.resolve("project"));
 			Files.createDirectories(project.resolve("docs"));
 			Files.createDirectories(project.resolve(".cat/tests/main"));
@@ -190,7 +181,7 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-tallies"));
 			AtomicInteger safetyTrials = new AtomicInteger();
-			ScriptedPort sessions = new ScriptedPort(directory, request ->
+			SessionScript sessions = new SessionScript(directory, request ->
 			{
 				if (!isSafety(request) || safetyTrials.incrementAndGet() % 4 != 0)
 					return "pass";
@@ -225,7 +216,7 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-copies"));
 			AtomicInteger safetyTrials = new AtomicInteger();
-			ScriptedPort sessions = new ScriptedPort(directory, request ->
+			SessionScript sessions = new SessionScript(directory, request ->
 			{
 				if (!isSafety(request) || safetyTrials.incrementAndGet() % 4 != 0)
 					return "pass";
@@ -261,7 +252,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-check"));
-			ScriptedPort sessions = new ScriptedPort(directory, request ->
+			SessionScript sessions = new SessionScript(directory, request ->
 			{
 				if (isSafety(request))
 					return BROKEN;
@@ -301,7 +292,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-deferred"));
-			ScriptedPort sessions = new ScriptedPort(directory, request ->
+			SessionScript sessions = new SessionScript(directory, request ->
 			{
 				if (isSafety(request))
 					return BROKEN;
@@ -334,7 +325,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-invalid"));
-			ScriptedPort sessions = new ScriptedPort(directory, request ->
+			SessionScript sessions = new SessionScript(directory, request ->
 			{
 				if (isSafety(request))
 					return "invalid";
@@ -371,7 +362,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-undecidable"));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 
 			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
 				SELECTION, Map.of(), new SplittableRandom(5)).get("safety");
@@ -396,9 +387,9 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-reuse"));
-			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+			Map<String, PilotResult> first = pilot(new SessionScript(directory, _ -> "pass"), workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(6));
@@ -422,10 +413,10 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-revise"));
-			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+			Map<String, PilotResult> first = pilot(new SessionScript(directory, _ -> "pass"), workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(7));
 			Contract revised = withSafetyStatement(contract, "The assistant confirms before deleting {{target}}.");
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
 				run(revised, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(8));
@@ -457,7 +448,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-failed"));
-			ScriptedPort failing = new ScriptedPort(directory, request ->
+			SessionScript failing = new SessionScript(directory, request ->
 			{
 				if (isSafety(request))
 					return "invalid";
@@ -465,7 +456,7 @@ public final class GuardPilotTest
 			});
 			Map<String, PilotResult> first = pilot(failing, workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(10));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(11));
@@ -493,10 +484,10 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-environment"));
-			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+			Map<String, PilotResult> first = pilot(new SessionScript(directory, _ -> "pass"), workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(12));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
-			sessions.setSessionEnvironmentVersion(2);
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			sessions.port().sessionEnvironmentVersion(FakeSessionPort.SESSION_ENVIRONMENT_VERSION + 1);
 
 			pilot(sessions, workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(13));
@@ -521,9 +512,9 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-selection"));
-			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+			Map<String, PilotResult> first = pilot(new SessionScript(directory, _ -> "pass"), workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(18));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			SourceSelection wider = SELECTION.withPatterns(List.of("docs/**"));
 
 			pilot(sessions, workspace(directory), 4).
@@ -549,10 +540,10 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-judge"));
-			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+			Map<String, PilotResult> first = pilot(new SessionScript(directory, _ -> "pass"), workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(14));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
-			sessions.setJudgeVersion(2);
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			sessions.port().judgeVersion(FakeSessionPort.JUDGE_VERSION + 1);
 
 			pilot(sessions, workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(15));
@@ -577,14 +568,14 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-rubric"));
-			Map<String, PilotResult> first = pilot(new ScriptedPort(directory, _ -> "pass"), workspace(directory), 4).
+			Map<String, PilotResult> first = pilot(new SessionScript(directory, _ -> "pass"), workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(16));
 			JudgeProfile judge = contract.judge();
 			Contract revised = new Contract(contract.requirements(), contract.tests(), contract.profiles(),
 				new JudgeProfile(judge.profile(), judge.prompt(), judge.rubric() + " Capitalization is harmless.",
 					judge.decisionRule(), judge.resultSchema()), contract.limitations(),
 				contract.minimumPassRate(), contract.salt());
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 
 			pilot(sessions, workspace(directory), 4).
 				run(revised, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(17));
@@ -613,7 +604,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			FakeWorkspacePort workspace = workspace(directory);
 
 			pilot(sessions, workspace, 4).run(contract, plugins, control(), Set.of(), SELECTION, Map.of(),
@@ -647,7 +638,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			FakeWorkspacePort workspace = workspace(directory);
 			GuardPilot pilot = pilot(sessions, workspace, 4);
 
@@ -693,7 +684,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-limit"));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			Hold hold = new Hold(Instant.EPOCH, 0);
 			sessions.reject(SessionRole.TRIAL, List.of(new SessionResult.RateLimited(hold, List.of()),
 				new SessionResult.Refused(hold, false, List.of())));
@@ -735,7 +726,7 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-refusal"));
-			ScriptedPort sessions = new ScriptedPort(directory, _ -> "pass");
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			sessions.reject(SessionRole.TRIAL, List.of(new SessionResult.Refused(new Hold(Instant.EPOCH, 5), true,
 				List.of())));
 			Overlay control = control();
@@ -762,9 +753,9 @@ public final class GuardPilotTest
 	 * @param ceiling the maximum number of simultaneous sessions
 	 * @return the pilot
 	 */
-	private GuardPilot pilot(ScriptedPort sessions, FakeWorkspacePort workspace, int ceiling)
+	private GuardPilot pilot(SessionScript sessions, FakeWorkspacePort workspace, int ceiling)
 	{
-		return new GuardPilot(sessions, workspace, sessions.judge(), new ProposalSchema(json), json,
+		return new GuardPilot(sessions.port(), workspace, sessions.judge(), new ProposalSchema(json), json,
 			ceiling);
 	}
 
@@ -866,35 +857,37 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * A session port whose sessions end as soon as they start. A trial replies with the text that the test's script
-	 * chooses for its request; a judge replies, in the format of the judge's result schema, with the verdict that the
-	 * reply of the trial under evidence names. The judge reads that trial from the evidence directory of its request.
-	 * The port's {@link #judge() judge} is the production {@link JudgePrompt}, which also records the assertions that
-	 * it asks each judge session to decide.
+	 * The test's script for the sessions of a {@link FakeSessionPort}, which it ends as soon as they start. A trial
+	 * replies with the text that the test's script chooses for its request; a judge replies, in the format of the
+	 * judge's result schema, with the verdict that the reply of the trial under evidence names. The judge reads that
+	 * trial from the evidence directory of its request. The script's {@link #judge() judge} is the production
+	 * {@link JudgePrompt}, which also records the assertions that it asks each judge session to decide.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 */
-	private static final class ScriptedPort implements SessionPort
+	private static final class SessionScript
 	{
+		private final FakeSessionPort port = new FakeSessionPort();
 		private final Path directory;
 		private final Function<SessionRequest, String> replies;
-		private final List<SessionRequest> requests = new ArrayList<>();
+		/**
+		 * Guards the script's state.
+		 */
+		private final Object lock = new Object();
 		private final List<SessionResult.Completed> trials = new ArrayList<>();
 		private final Map<Path, String> trialReplies = new HashMap<>();
 		private final Map<Path, List<JudgedAssertion>> judged = new HashMap<>();
 		private final List<String> judgedReplies = new ArrayList<>();
 		private final JudgePrompt judgePrompt;
 		private final Map<SessionRole, Deque<SessionResult>> rejections = new EnumMap<>(SessionRole.class);
-		private volatile int sessionEnvironmentVersion = 1;
-		private volatile int judgeVersion = 1;
 
 		/**
-		 * Creates a port.
+		 * Creates a script.
 		 *
 		 * @param directory a directory that the test owns, which holds each session's effects
-		 * @param replies the reply of each trial session
+		 * @param replies   the reply of each trial session
 		 */
-		ScriptedPort(Path directory, Function<SessionRequest, String> replies)
+		SessionScript(Path directory, Function<SessionRequest, String> replies)
 		{
 			this.directory = directory;
 			this.replies = replies;
@@ -908,6 +901,17 @@ public final class GuardPilotTest
 				throw new UncheckedIOException(e);
 			}
 			this.judgePrompt = new JudgePrompt(JsonMapper.builder().build(), judgeDirectory);
+			port.onStart(this::answer);
+		}
+
+		/**
+		 * Returns the port whose sessions follow the script.
+		 *
+		 * @return the port
+		 */
+		FakeSessionPort port()
+		{
+			return port;
 		}
 
 		/**
@@ -924,7 +928,7 @@ public final class GuardPilotTest
 					SessionResult.Completed evidence, List<JudgedAssertion> assertions, List<BuiltInToolResult> results,
 					String evidenceSection)
 				{
-					synchronized (requests)
+					synchronized (lock)
 					{
 						judged.put(evidence.effects(), assertions);
 					}
@@ -946,30 +950,10 @@ public final class GuardPilotTest
 		 */
 		List<String> judgedReplies()
 		{
-			synchronized (requests)
+			synchronized (lock)
 			{
 				return List.copyOf(judgedReplies);
 			}
-		}
-
-		/**
-		 * Sets the session environment version that the port reports.
-		 *
-		 * @param version the version
-		 */
-		void setSessionEnvironmentVersion(int version)
-		{
-			sessionEnvironmentVersion = version;
-		}
-
-		/**
-		 * Sets the judge version that the port reports.
-		 *
-		 * @param version the version
-		 */
-		void setJudgeVersion(int version)
-		{
-			judgeVersion = version;
 		}
 
 		/**
@@ -981,7 +965,7 @@ public final class GuardPilotTest
 		 */
 		void reject(SessionRole role, List<SessionResult> results)
 		{
-			synchronized (requests)
+			synchronized (lock)
 			{
 				rejections.computeIfAbsent(role, _ -> new ArrayDeque<>()).addAll(results);
 			}
@@ -995,10 +979,8 @@ public final class GuardPilotTest
 		 */
 		List<SessionRequest> requests(SessionRole role)
 		{
-			synchronized (requests)
-			{
-				return requests.stream().filter(request -> request.role() == role).toList();
-			}
+			return port.sessions().stream().map(FakeSession::request).filter(request -> request.role() == role).
+				toList();
 		}
 
 		/**
@@ -1008,21 +990,25 @@ public final class GuardPilotTest
 		 */
 		List<SessionResult.Completed> trials()
 		{
-			synchronized (requests)
+			synchronized (lock)
 			{
 				return List.copyOf(trials);
 			}
 		}
 
-		@Override
-		public SessionHandle start(SessionRequest request)
+		/**
+		 * Ends a session that just started with the result that the script chooses.
+		 *
+		 * @param session the session
+		 */
+		private void answer(FakeSession session)
 		{
-			int number;
+			SessionRequest request = session.request();
+			// The session's start position names its evidence directory
+			int number = port.sessions().indexOf(session) + 1;
 			SessionResult rejection;
-			synchronized (requests)
+			synchronized (lock)
 			{
-				requests.add(request);
-				number = requests.size();
 				Deque<SessionResult> queued = rejections.get(request.role());
 				if (queued == null)
 					rejection = null;
@@ -1035,7 +1021,7 @@ public final class GuardPilotTest
 			else if (request.role() == SessionRole.TRIAL)
 			{
 				SessionResult.Completed trial = completed(number, replies.apply(request));
-				synchronized (requests)
+				synchronized (lock)
 				{
 					trials.add(trial);
 					trialReplies.put(trial.effects(), trial.responses().getFirst().getFirst());
@@ -1044,19 +1030,7 @@ public final class GuardPilotTest
 			}
 			else
 				result = completed(number, judgeReply(request));
-			return new SessionHandle()
-			{
-				@Override
-				public CompletionStage<SessionResult> completion()
-				{
-					return CompletableFuture.completedFuture(result);
-				}
-
-				@Override
-				public void interrupt()
-				{
-				}
-			};
+			session.end(result);
 		}
 
 		/**
@@ -1072,7 +1046,7 @@ public final class GuardPilotTest
 			Path evidence = request.readOnly().getFirst();
 			String trialReply;
 			List<JudgedAssertion> decided;
-			synchronized (requests)
+			synchronized (lock)
 			{
 				trialReply = trialReplies.get(evidence);
 				decided = judged.get(evidence);
@@ -1108,7 +1082,7 @@ public final class GuardPilotTest
 		 * Returns a completed session.
 		 *
 		 * @param number the session's start position, which names its evidence directory
-		 * @param reply the session's only reply
+		 * @param reply  the session's only reply
 		 * @return the result
 		 */
 		private SessionResult.Completed completed(int number, String reply)
@@ -1127,91 +1101,6 @@ public final class GuardPilotTest
 			}
 			return new SessionResult.Completed(evidence.resolve("transcript"), List.of(List.of(reply)), effects,
 				initialProject, "model", "reasoning", null, List.of(), "none", List.of());
-		}
-
-		@Override
-		public int sessionEnvironmentVersion()
-		{
-			return sessionEnvironmentVersion;
-		}
-
-		@Override
-		public String sessionEnvironmentRelease()
-		{
-			return FakeSessionPort.SESSION_ENVIRONMENT_RELEASE;
-		}
-
-		@Override
-		public int judgeVersion()
-		{
-			return judgeVersion;
-		}
-
-		@Override
-		public SessionEvidence readEvidence(Path transcript)
-		{
-			return new SessionEvidence(List.of());
-		}
-
-		@Override
-		public boolean reportsExitStatus()
-		{
-			return true;
-		}
-
-		@Override
-		public HostLogin hostLogin()
-		{
-			return HostLogin.UNKNOWN;
-		}
-
-		@Override
-		public List<String> unapprovedHooks(Path plugin)
-		{
-			return List.of();
-		}
-
-		@Override
-		public Optional<String> findHeldOutExposure(Path project)
-		{
-			return Optional.empty();
-		}
-
-		@Override
-		public List<Path> runRoots()
-		{
-			return List.of();
-		}
-
-		@Override
-		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
-		{
-			return new LoadedSources(List.of(), List.of(), List.of(), List.of(), List.of());
-		}
-
-		@Override
-		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
-		{
-			return List.of();
-		}
-
-		@Override
-		public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
-			String prompt)
-		{
-			return List.of();
-		}
-
-		@Override
-		public List<Path> installedPlugins(String name)
-		{
-			return List.of();
-		}
-
-		@Override
-		public List<String> installedPluginNames()
-		{
-			return List.of();
 		}
 	}
 }

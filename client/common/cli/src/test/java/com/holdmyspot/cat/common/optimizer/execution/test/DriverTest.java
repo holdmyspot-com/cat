@@ -5994,7 +5994,7 @@ public final class DriverTest
 				developing().development("safety", 50, 1).failure(Builder.testCase("safety", "logs")).
 					round(new Round(Map.of("safety", 0))).build());
 			// Each import in the target loads, except an import of a missing file, which trials cannot receive
-			harness.sessions().loading(project ->
+			harness.sessions().loading((project, _) ->
 			{
 				List<DerivedSource> loaded = new ArrayList<>();
 				List<UnreachableReference> unreachable = new ArrayList<>();

@@ -52,7 +52,6 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
-import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.execution.CampaignLock;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
@@ -69,15 +68,12 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
-import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
-import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
-import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
@@ -113,8 +109,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -123,7 +117,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -730,99 +723,118 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * A session port that answers each session at once from a script and advances the clock by one minute per
-	 * session, so that a slice's budget runs out without waiting.
+	 * The test's script for the sessions of a {@link FakeSessionPort}: it ends each session as soon as it starts, with
+	 * the result that the script chooses, and advances the clock by one minute per session, so that a slice's budget
+	 * runs out without waiting. When a request carries a follow-up that chooses another turn after the first result,
+	 * the script answers that turn too and the session ends with both replies, as a harness that sends the turn does.
+	 * The script also sets what the port reports about the host: the prompt files that load, the hooks that run before
+	 * the first prompt, the installed plugins and their unapproved hooks.
 	 */
-	private static final class ScriptedSessions implements SessionPort
+	private static final class SessionScript
 	{
-		private final List<SessionRequest> requests = new ArrayList<>();
+		private final FakeSessionPort port = new FakeSessionPort();
 		/**
 		 * The turns that the sessions' follow-ups chose, in the order that they were sent.
 		 */
 		private final List<String> followUps = new ArrayList<>();
 		private final ManualClock clock;
 		private final Function<SessionRequest, SessionResult> script;
+		/**
+		 * The token usage of each role's sessions, by start position among the role's sessions and cycling; a role
+		 * without an entry reports the usage that the script chooses.
+		 */
 		private final Map<SessionRole, List<TokenUsage>> usage = new java.util.EnumMap<>(SessionRole.class);
 		/**
-		 * The hooks that {@link #unapprovedHooks(Path)} returns for each plugin directory, by the end of the
-		 * directory's name.
+		 * The hooks of each plugin directory that the user has not approved, by the end of the directory's name.
 		 */
 		private final Map<String, List<String>> unapprovedHooks = new HashMap<>();
 		/**
-		 * The prompt files that {@link #loadedSources(Path, List)} returns as loading both in production and in trials.
+		 * The prompt files that load both in production and in trials.
 		 */
 		private volatile List<DerivedSource> derivedSources = List.of(new DerivedSource("CLAUDE.md",
 			"The harness reads the project instruction file in the project root at startup."));
-
 		/**
-		 * Creates the port.
-		 *
-		 * @param clock the clock to advance
-		 * @param script decides each session's result
-		 */
-		ScriptedSessions(ManualClock clock, Function<SessionRequest, SessionResult> script)
-		{
-			this.clock = clock;
-			this.script = script;
-		}
-
-		@Override
-		public int sessionEnvironmentVersion()
-		{
-			return FakeSessionPort.SESSION_ENVIRONMENT_VERSION;
-		}
-
-		@Override
-		public String sessionEnvironmentRelease()
-		{
-			return FakeSessionPort.SESSION_ENVIRONMENT_RELEASE;
-		}
-
-		@Override
-		public int judgeVersion()
-		{
-			return FakeSessionPort.JUDGE_VERSION;
-		}
-
-		@Override
-		public SessionEvidence readEvidence(Path transcript)
-		{
-			return new SessionEvidence(List.of());
-		}
-
-		@Override
-		public boolean reportsExitStatus()
-		{
-			return true;
-		}
-
-		@Override
-		public List<Path> runRoots()
-		{
-			return List.of();
-		}
-
-		/**
-		 * The installed copies that {@link #installedPlugins(String)} returns for each plugin name.
-		 */
-		private final Map<String, List<Path>> installed = new LinkedHashMap<>();
-
-		/**
-		 * The files, relative to each trial plugin's base copy, that {@link #loadedSources(Path, List)} also returns as
-		 * loading in trials, each named by its absolute path in the base copy.
+		 * The files, relative to each trial plugin's base copy, that also load in trials, each named by its absolute
+		 * path in the base copy.
 		 */
 		private volatile List<Path> pluginSources = List.of();
 		/**
-		 * The prompt files that {@link #loadedSources(Path, List)} returns as loading in production but not in trials.
+		 * The prompt files that load in production but not in trials.
 		 */
 		private volatile List<DerivedSource> productionOnlySources = List.of();
 		/**
-		 * The references that {@link #loadedSources(Path, List)} returns as unreachable from trials.
+		 * The references that trials cannot receive.
 		 */
 		private volatile List<UnreachableReference> unreachable = List.of();
 
-		@Override
-		public LoadedSources loadedSources(Path project, List<PluginBase> plugins)
+		/**
+		 * Creates the script.
+		 *
+		 * @param clock  the clock to advance
+		 * @param script decides each session's result
+		 */
+		SessionScript(ManualClock clock, Function<SessionRequest, SessionResult> script)
+		{
+			this.clock = clock;
+			this.script = script;
+			port.onStart(session -> session.end(answer(session.request())));
+			port.loading((_, plugins) -> loadedSources(plugins));
+			port.unapprovedHooks(this::unapprovedHooks);
+		}
+
+		/**
+		 * Returns the port whose sessions follow the script.
+		 *
+		 * @return the port
+		 */
+		FakeSessionPort port()
+		{
+			return port;
+		}
+
+		/**
+		 * Returns the result of a session that just started.
+		 *
+		 * @param request the session's request
+		 * @return the result
+		 */
+		private SessionResult answer(SessionRequest request)
+		{
+			clock.advance(Duration.ofMinutes(1));
+			SessionResult response = script.apply(request);
+			if (request.followUp().isPresent() && response instanceof SessionResult.Completed first)
+			{
+				Optional<String> turn = request.followUp().get().next(first);
+				if (turn.isPresent() && script.apply(request) instanceof SessionResult.Completed reply)
+				{
+					followUps.add(turn.get());
+					List<List<String>> responses = new ArrayList<>(first.responses());
+					responses.addAll(reply.responses());
+					// The session's project ends in the state that the reply left
+					response = new SessionResult.Completed(first.transcript(), responses, reply.effects(),
+						first.initialProject(), first.model(), first.reasoning(), first.usage(), first.windows(),
+						first.promptSources(), first.toolCalls());
+				}
+			}
+			List<TokenUsage> tokens = usage.getOrDefault(request.role(), List.of());
+			if (!tokens.isEmpty() && response instanceof SessionResult.Completed completed)
+			{
+				int index = requests(request.role()).size() - 1;
+				response = new SessionResult.Completed(completed.transcript(), completed.responses(),
+					completed.effects(), completed.initialProject(),
+					completed.model(), completed.reasoning(), tokens.get(index % tokens.size()), completed.windows(),
+					completed.promptSources(), completed.toolCalls());
+			}
+			return response;
+		}
+
+		/**
+		 * Returns the files that load in the project with trial plugins.
+		 *
+		 * @param plugins the trial plugins' base copies
+		 * @return the files
+		 */
+		private LoadedSources loadedSources(List<PluginBase> plugins)
 		{
 			List<DerivedSource> production = new ArrayList<>(derivedSources);
 			List<String> productionOnly = new ArrayList<>();
@@ -874,36 +886,6 @@ public final class OptimizerCoreTest
 			pluginSources = List.copyOf(sources);
 		}
 
-		@Override
-		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
-		{
-			return List.of();
-		}
-
-		/**
-		 * The commands of the hooks that {@link #earlyHooks(Path, List, Optional, String)} returns.
-		 */
-		private volatile List<String> earlyHookCommands = List.of();
-		/**
-		 * The directory that the hooks receive in {@code PLUGIN_ROOT}.
-		 */
-		private volatile Path pluginRoot = Path.of("");
-
-		@Override
-		public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
-			String prompt)
-		{
-			Map<String, String> environment = new HashMap<>();
-			environment.put("PLUGIN_ROOT", pluginRoot.toString());
-			List<HookInvocation> hooks = new ArrayList<>();
-			for (String command : earlyHookCommands)
-			{
-				hooks.add(new HookInvocation("the SessionStart hook `" + command + "` of `.claude/settings.json`",
-					List.of("sh", "-c", command), environment, "{}", Duration.ofSeconds(30)));
-			}
-			return hooks;
-		}
-
 		/**
 		 * Sets the hooks that run at session start, each run by {@code sh -c} in the session's directory.
 		 *
@@ -912,44 +894,29 @@ public final class OptimizerCoreTest
 		 */
 		void earlyHooks(List<String> commands, Path pluginRoot)
 		{
-			this.earlyHookCommands = List.copyOf(commands);
-			this.pluginRoot = pluginRoot;
-		}
-
-		@Override
-		public List<Path> installedPlugins(String name)
-		{
-			synchronized (installed)
+			Map<String, String> environment = Map.of("PLUGIN_ROOT", pluginRoot.toString());
+			List<HookInvocation> hooks = new ArrayList<>();
+			for (String command : commands)
 			{
-				return installed.getOrDefault(name, List.of());
+				hooks.add(new HookInvocation("the SessionStart hook `" + command + "` of `.claude/settings.json`",
+					List.of("sh", "-c", command), environment, "{}", Duration.ofSeconds(30)));
 			}
-		}
-
-		@Override
-		public List<String> installedPluginNames()
-		{
-			synchronized (installed)
-			{
-				return List.copyOf(installed.keySet());
-			}
+			port.earlyHooks(hooks);
 		}
 
 		/**
 		 * Sets the user's installed copies of a plugin.
 		 *
-		 * @param name the plugin's name, {@code <plugin>@<marketplace>}
+		 * @param name   the plugin's name, {@code <plugin>@<marketplace>}
 		 * @param copies the directories of the copies
 		 */
 		void install(String name, List<Path> copies)
 		{
-			synchronized (installed)
-			{
-				installed.put(name, List.copyOf(copies));
-			}
+			port.install(name, copies);
 		}
 
 		/**
-		 * Returns the prompt files that {@link #loadedSources(Path, List)} returns.
+		 * Returns the prompt files that load both in production and in trials.
 		 *
 		 * @return the files
 		 */
@@ -959,7 +926,7 @@ public final class OptimizerCoreTest
 		}
 
 		/**
-		 * Sets the prompt files that {@link #loadedSources(Path, List)} returns.
+		 * Sets the prompt files that load both in production and in trials.
 		 *
 		 * @param sources the files
 		 */
@@ -969,7 +936,7 @@ public final class OptimizerCoreTest
 		}
 
 		/**
-		 * Adds prompt files to those that {@link #loadedSources(Path, List)} returns.
+		 * Adds prompt files to those that load both in production and in trials.
 		 *
 		 * @param sources the files
 		 */
@@ -980,69 +947,38 @@ public final class OptimizerCoreTest
 			derivedSources = List.copyOf(all);
 		}
 
-		@Override
-		public HostLogin hostLogin()
-		{
-			return HostLogin.UNKNOWN;
-		}
-
-		@Override
-		public List<String> unapprovedHooks(Path plugin)
+		/**
+		 * Returns the hooks of a plugin that the user has not approved.
+		 *
+		 * @param plugin the plugin directory
+		 * @return the hooks, each as its event and command
+		 */
+		private List<String> unapprovedHooks(Path plugin)
 		{
 			String name = plugin.getFileName().toString();
 			return unapprovedHooks.entrySet().stream().filter(entry -> name.endsWith(entry.getKey())).
 				flatMap(entry -> entry.getValue().stream()).toList();
 		}
 
-		@Override
-		public Optional<String> findHeldOutExposure(Path project)
+		/**
+		 * Sets the hooks of a plugin that the user has not approved in the harness.
+		 *
+		 * @param plugin the end of the plugin directory's name
+		 * @param hooks  the hooks, each as its event and command
+		 */
+		void unapprovedHooks(String plugin, List<String> hooks)
 		{
-			return Optional.empty();
+			unapprovedHooks.put(plugin, hooks);
 		}
 
-		@Override
-		public SessionHandle start(SessionRequest request)
+		/**
+		 * Returns the requests of the sessions started so far.
+		 *
+		 * @return the requests, in start order
+		 */
+		List<SessionRequest> requests()
 		{
-			requests.add(request);
-			clock.advance(Duration.ofMinutes(1));
-			SessionResult response = script.apply(request);
-			if (request.followUp().isPresent() && response instanceof SessionResult.Completed first)
-			{
-				Optional<String> turn = request.followUp().get().next(first);
-				if (turn.isPresent() && script.apply(request) instanceof SessionResult.Completed reply)
-				{
-					followUps.add(turn.get());
-					List<List<String>> responses = new ArrayList<>(first.responses());
-					responses.addAll(reply.responses());
-					// The session's project ends in the state that the reply left
-					response = new SessionResult.Completed(first.transcript(), responses, reply.effects(),
-						first.initialProject(), first.model(), first.reasoning(), first.usage(), first.windows(),
-						first.promptSources(), first.toolCalls());
-				}
-			}
-			List<TokenUsage> tokens = usage.getOrDefault(request.role(), List.of());
-			if (!tokens.isEmpty() && response instanceof SessionResult.Completed completed)
-			{
-				int index = (int) requests.stream().filter(started -> started.role() == request.role()).count() - 1;
-				response = new SessionResult.Completed(completed.transcript(), completed.responses(),
-					completed.effects(), completed.initialProject(),
-					completed.model(), completed.reasoning(), tokens.get(index % tokens.size()), completed.windows(),
-					completed.promptSources(), completed.toolCalls());
-			}
-			CompletableFuture<SessionResult> result = CompletableFuture.completedFuture(response);
-			return new SessionHandle()
-			{
-				@Override
-				public CompletionStage<SessionResult> completion()
-				{
-					return result;
-				}
-
-				@Override
-				public void interrupt()
-				{
-				}
-			};
+			return port.sessions().stream().map(FakeSessionPort.FakeSession::request).toList();
 		}
 
 		/**
@@ -1052,7 +988,7 @@ public final class OptimizerCoreTest
 		 */
 		List<SessionRole> roles()
 		{
-			return requests.stream().map(SessionRequest::role).toList();
+			return requests().stream().map(SessionRequest::role).toList();
 		}
 
 		/**
@@ -1063,18 +999,7 @@ public final class OptimizerCoreTest
 		 */
 		List<SessionRequest> requests(SessionRole role)
 		{
-			return requests.stream().filter(request -> request.role() == role).toList();
-		}
-
-		/**
-		 * Sets the hooks of a plugin that the user has not approved in the harness.
-		 *
-		 * @param plugin the plugin directory
-		 * @param hooks the hooks, each as its event and command
-		 */
-		void unapprovedHooks(String plugin, List<String> hooks)
-		{
-			unapprovedHooks.put(plugin, hooks);
+			return requests().stream().filter(request -> request.role() == role).toList();
 		}
 	}
 
@@ -1082,22 +1007,14 @@ public final class OptimizerCoreTest
 	 * A project directory that holds a tracked prompt and ignored files, with forks and the core that
 	 * runs on it.
 	 *
-	 * @param root the project directory
-	 * @param scope the command's scope
-	 * @param core the core
+	 * @param root     the project directory
+	 * @param scope    the command's scope
+	 * @param sessions the script of the scope's sessions
+	 * @param core     the core
 	 */
-	private record Repository(Path root, TestOptimizerCommandScope<ScriptedSessions> scope, OptimizerCore core)
+	private record Repository(Path root, TestOptimizerCommandScope<FakeSessionPort> scope, SessionScript sessions,
+		OptimizerCore core)
 	{
-		/**
-		 * Returns the scripted sessions.
-		 *
-		 * @return the sessions
-		 */
-		ScriptedSessions sessions()
-		{
-			return scope.sessions();
-		}
-
 		/**
 		 * Returns the forks.
 		 *
@@ -1265,8 +1182,13 @@ public final class OptimizerCoreTest
 				List.of(List.of("{\"needed_edits\": []}")), effects, initialProject, "model", null, null,
 				List.of(), "CLAUDE.md", List.of());
 		};
-		TestOptimizerCommandScope<ScriptedSessions> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
-			tracked, clock -> new ScriptedSessions(clock, script));
+		AtomicReference<SessionScript> sessions = new AtomicReference<>();
+		TestOptimizerCommandScope<FakeSessionPort> command = new TestOptimizerCommandScope<>(Harness.CLAUDE, root,
+			tracked, clock ->
+		{
+			sessions.set(new SessionScript(clock, script));
+			return sessions.get().port();
+		});
 		if (notIgnored)
 			command.useGit(GitProjects.NOT_IGNORING);
 		else
@@ -1281,7 +1203,7 @@ public final class OptimizerCoreTest
 				throw new IOException(e.getMessage(), e);
 			}
 		}
-		return new Repository(root, command, new OptimizerCore(command));
+		return new Repository(root, command, sessions.get(), new OptimizerCore(command));
 	}
 
 	/**
@@ -1502,7 +1424,7 @@ public final class OptimizerCoreTest
 			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md")));
 
 			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
-			requireThat(repository.sessions().requests, "requests").isEmpty();
+			requireThat(repository.sessions().requests(), "requests").isEmpty();
 			requireThat(contents(repository.root()), "contents").isEqualTo(before);
 		}
 	}
@@ -1524,12 +1446,12 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			repository.scope().refuseLaunches(LAUNCH_REFUSAL);
-			int requests = repository.sessions().requests.size();
+			int requests = repository.sessions().requests().size();
 
 			String refusal = refusal(() -> repository.core().run(id));
 
 			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
-			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
 		}
 	}
 
@@ -1877,7 +1799,7 @@ public final class OptimizerCoreTest
 				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
 					replaceSnapshot(new Builder().header(header).build());
 			}
-			int requestsBefore = repository.sessions().requests.size();
+			int requestsBefore = repository.sessions().requests().size();
 			List<Campaign> before = new ArrayList<>();
 			for (Header header : OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
 				store(repository.scope()).listHeaders())
@@ -1920,7 +1842,7 @@ public final class OptimizerCoreTest
 				requireThat(message, "message").doesNotContain("Developer Mode").doesNotContain("IOException");
 			else
 				requireThat(message, "message").contains("IOException:").contains("Developer Mode").contains("permission");
-			requireThat(repository.sessions().requests.size(), "modelRequests").isEqualTo(requestsBefore);
+			requireThat(repository.sessions().requests().size(), "modelRequests").isEqualTo(requestsBefore);
 			List<Campaign> after = new ArrayList<>();
 			for (Header header : OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().
 				store(repository.scope()).listHeaders())
@@ -1951,7 +1873,7 @@ public final class OptimizerCoreTest
 			Path scenarios = Files.createDirectories(repository.root().resolve(".cat/tests/CLAUDE"));
 			Files.writeString(scenarios.resolve("reported.md"), "Turn: Summarize the notes.\nExpected: Be brief.\n");
 			repository.core().start(Path.of("CLAUDE.md"));
-			SessionRequest request = repository.sessions().requests.getFirst();
+			SessionRequest request = repository.sessions().requests().getFirst();
 			requireThat(request.turns().getFirst(), "contractAuthorTurn").contains(".cat/tests/CLAUDE/reported.md");
 			requireThat(draftFiles(scope, request).get(".cat/tests/CLAUDE/reported/scenario.md"), "scenario").
 				isEqualTo("Turn: Summarize the notes.\nExpected: Be brief.\n");
@@ -1988,7 +1910,7 @@ public final class OptimizerCoreTest
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 
-			SessionRequest request = repository.sessions().requests.getFirst();
+			SessionRequest request = repository.sessions().requests().getFirst();
 			requireThat(request.turns().getFirst(), "contractAuthorTurn").contains("target-case.md").
 				doesNotContain("rule-case.md");
 			requireThat(String.join("\n", draftFiles(scope, request).values()), "draft").
@@ -2021,7 +1943,7 @@ public final class OptimizerCoreTest
 				campaignId();
 
 			requireThat(repository.load(id).header().goal(), "goal").isEqualTo(goal);
-			requireThat(repository.sessions().requests.getFirst().turns().getFirst(), "contractAuthorTurn").
+			requireThat(repository.sessions().requests().getFirst().turns().getFirst(), "contractAuthorTurn").
 				contains(goal).contains("`CLAUDE.md`");
 		}
 	}
@@ -2056,7 +1978,7 @@ public final class OptimizerCoreTest
 			repository.core().revise(id, "cover the formal tone");
 
 			requireThat(repository.load(id).header().extraPermissions(), "recorded").isEqualTo(expected);
-			List<SessionRequest> requests = repository.sessions().requests;
+			List<SessionRequest> requests = repository.sessions().requests();
 			requireThat(requests.size(), "requests.size()").isGreaterThanOrEqualTo(2);
 			for (SessionRequest request : requests)
 				requireThat(request.extraPermissions(), "extraPermissions").isEqualTo(expected);
@@ -2084,7 +2006,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 
 			requireThat(repository.load(id).header().extraPermissions(), "recorded").isEqualTo(ExtraPermissions.NONE);
-			requireThat(repository.sessions().requests.getFirst().extraPermissions(), "requested").
+			requireThat(repository.sessions().requests().getFirst().extraPermissions(), "requested").
 				isEqualTo(ExtraPermissions.NONE);
 		}
 	}
@@ -2116,7 +2038,7 @@ public final class OptimizerCoreTest
 
 				requireThat(refusal, "refusal").contains(file.toString());
 			}
-			requireThat(repository.sessions().requests, "requests").isEmpty();
+			requireThat(repository.sessions().requests(), "requests").isEmpty();
 		}
 	}
 
@@ -2144,7 +2066,7 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, null, recorded).
 				status().campaignId();
 			Header before = repository.load(id).header();
-			int requests = repository.sessions().requests.size();
+			int requests = repository.sessions().requests().size();
 
 			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
 				null, changed));
@@ -2153,7 +2075,7 @@ public final class OptimizerCoreTest
 				contains("added.example.com").contains(cachePath("removed").toString()).contains("removed.example.com").
 				doesNotContain(cachePath("kept").toString()).doesNotContain("kept.example.com").
 				contains("start a new campaign");
-			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
 			requireThat(repository.load(id).header(), "header").isEqualTo(before);
 		}
 	}
@@ -2291,13 +2213,13 @@ public final class OptimizerCoreTest
 			String named = "Replies cite their sources.";
 			String id = repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING, recorded).status().
 				campaignId();
-			int requests = repository.sessions().requests.size();
+			int requests = repository.sessions().requests().size();
 
 			String refusal = refusal(() -> repository.core().start(Path.of("CLAUDE.md"), Campaign.DEFAULT_CEILING,
 				named));
 
 			requireThat(refusal, "refusal").contains(recorded).contains(named).contains("start a new campaign");
-			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
 			requireThat(repository.load(id).header().goal(), "goal").isEqualTo(recorded);
 		}
 	}
@@ -2392,7 +2314,7 @@ public final class OptimizerCoreTest
 			}));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().cancel(id);
-			int requests = repository.sessions().requests.size();
+			int requests = repository.sessions().requests().size();
 			Campaign before = repository.load(id);
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
@@ -2403,7 +2325,7 @@ public final class OptimizerCoreTest
 			requireThat(result.proposal(), "proposal").isNull();
 			requireThat(result.status().choices().stream().map(ChoiceItem::choice).toList(), "choices").
 				contains(Choice.RESUME);
-			requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
 			requireThat(repository.load(id), "stored").isEqualTo(before);
 		}
 	}
@@ -2883,7 +2805,7 @@ public final class OptimizerCoreTest
 				FakeProfileInventory.content(new TrialProfile("unused-model", "")));
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
-			requireThat(repository.sessions().requests.getFirst().profile(), "contractAuthorProfile").
+			requireThat(repository.sessions().requests().getFirst().profile(), "contractAuthorProfile").
 				isEqualTo(FakeProfileInventory.ROLE);
 			requireThat(result.proposal(), "proposal").
 				contains("Trial profile inventory (" + FakeProfileInventory.INVENTORY.source() + ")").
@@ -2937,7 +2859,7 @@ public final class OptimizerCoreTest
 		// Requirement: R-D18
 		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("gpt-5.6-luna", "low"), (repository, result) ->
 		{
-			requireThat(repository.sessions().requests, "requests").isEmpty();
+			requireThat(repository.sessions().requests(), "requests").isEmpty();
 			requireThat(result.proposal(), "proposal").isNull();
 			requireThat(result.message(), "message").contains("agents/safety.agent").contains("gpt-5.6-luna").
 				contains("Change the binding").contains("`start` again");
@@ -4496,7 +4418,7 @@ public final class OptimizerCoreTest
 			try (CampaignLock _ = holdLock(repository, id))
 			{
 				Map<String, String> before = contentsWhileHeld(repository, id);
-				int requests = repository.sessions().requests.size();
+				int requests = repository.sessions().requests().size();
 				List<ThrowingCall> calls = List.of(
 					() -> repository.core().start(Path.of("CLAUDE.md")),
 					() -> repository.core().revise(id, "more"),
@@ -4506,7 +4428,7 @@ public final class OptimizerCoreTest
 					() -> repository.core().cancel(id));
 				for (ThrowingCall call : calls)
 					requireThat(refusal(call), "refusal").contains(id).contains("is running in another process");
-				requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+				requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
 				requireThat(contentsWhileHeld(repository, id), "contents").isEqualTo(before);
 			}
 		}
@@ -4570,12 +4492,12 @@ public final class OptimizerCoreTest
 			try (CampaignLock _ = holdLock(repository, id))
 			{
 				Map<String, String> before = contentsWhileHeld(repository, id);
-				int requests = repository.sessions().requests.size();
+				int requests = repository.sessions().requests().size();
 
 				CommandResult result = repository.core().run(id);
 
 				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Active(Status.BUSY));
-				requireThat(repository.sessions().requests.size(), "requests").isEqualTo(requests);
+				requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
 				requireThat(contentsWhileHeld(repository, id), "contents").isEqualTo(before);
 			}
 		}
