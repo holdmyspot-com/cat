@@ -63,6 +63,7 @@ public final class SessionLauncherStartTest
 	@Test
 	public void startsLauncherWithHookData() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();
@@ -95,6 +96,7 @@ public final class SessionLauncherStartTest
 	@Test
 	public void createsInboxBeforeSessionCommands() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();
@@ -173,6 +175,7 @@ public final class SessionLauncherStartTest
 	@Test
 	public void startsNoneInCatRun() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();

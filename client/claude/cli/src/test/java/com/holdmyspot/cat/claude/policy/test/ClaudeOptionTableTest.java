@@ -53,6 +53,7 @@ public final class ClaudeOptionTableTest
 	@Test
 	public void everyListedOptionIsKnown() throws IOException
 	{
+		// Requirement: R-I11
 		String help;
 		try (InputStream in = ClaudeOptionTableTest.class.getResourceAsStream("/policy/claude-2.1.318-help.txt"))
 		{

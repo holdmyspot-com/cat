@@ -42,6 +42,7 @@ public final class LaunchRouteTest
 	@Test
 	public void forwardsInsideRunWithRequests()
 	{
+		// Requirement: R-I11
 		Map<String, String> environment = Map.of(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE,
 			SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests");
 
@@ -58,6 +59,7 @@ public final class LaunchRouteTest
 	@Test
 	public void refusesInsideRunWithoutRequests()
 	{
+		// Requirement: R-I11
 		Map<String, String> environment = Map.of(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
 
 		for (List<String> launch : List.of(LAUNCH, BOUND_LAUNCH))
@@ -77,6 +79,7 @@ public final class LaunchRouteTest
 	@Test
 	public void servesBoundLaunch()
 	{
+		// Requirement: R-I11
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-a"),
 			BOUND_LAUNCH.toArray(String[]::new), Map.of());
 
@@ -90,6 +93,7 @@ public final class LaunchRouteTest
 	@Test
 	public void sendsOwnHarnessToLauncher()
 	{
+		// Requirement: R-I11
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-a"),
 			LAUNCH.toArray(String[]::new), Map.of());
 
@@ -103,6 +107,7 @@ public final class LaunchRouteTest
 	@Test
 	public void ownHarnessWinsOverOther()
 	{
+		// Requirement: R-I11
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-b", "harness-a"),
 			LAUNCH.toArray(String[]::new), Map.of());
 
@@ -116,6 +121,7 @@ public final class LaunchRouteTest
 	@Test
 	public void refusesOtherHarness()
 	{
+		// Requirement: R-I11
 		LaunchRoute route = LaunchRoute.decide("harness-b", "harness-a", Set.of("harness-b"),
 			LAUNCH.toArray(String[]::new), Map.of());
 
@@ -130,6 +136,7 @@ public final class LaunchRouteTest
 	@Test
 	public void startsUnmarkedLaunchInPlace()
 	{
+		// Requirement: R-I11
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of(),
 			LAUNCH.toArray(String[]::new), Map.of("PATH", "/bin"));
 

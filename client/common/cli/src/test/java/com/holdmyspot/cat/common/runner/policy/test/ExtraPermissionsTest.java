@@ -56,6 +56,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void readsWritesAndHosts() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -79,6 +80,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void listsAreOptional() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -127,6 +129,7 @@ public final class ExtraPermissionsTest
 	@Test(dataProvider = "rejectedFiles")
 	public void rejectsInvalidFile(String content, String problem) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -147,6 +150,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void writtenPermissionsReadBack() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -166,6 +170,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void noPermissionsAreEmpty()
 	{
+		// Requirement: R-I11
 		requireThat(ExtraPermissions.NONE.isEmpty(), "NONE.isEmpty()").isTrue();
 		requireThat(new ExtraPermissions(List.of(), Set.of("a.example")).isEmpty(), "isEmpty()").isFalse();
 	}
@@ -178,6 +183,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void joinChildNeeds() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -203,6 +209,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void parentGrantsAllowedPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -228,6 +235,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void parentRefusesMissingPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -255,6 +263,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void refusalNamesExtraPermissionsOption() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
@@ -282,6 +291,7 @@ public final class ExtraPermissionsTest
 	@Test
 	public void denialNotLiftedByExtraPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();

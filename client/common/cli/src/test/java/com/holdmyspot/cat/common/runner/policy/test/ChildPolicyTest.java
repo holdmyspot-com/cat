@@ -71,6 +71,7 @@ public final class ChildPolicyTest
 	@Test
 	public void refusesWriteOutsideParentWrites() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -95,6 +96,7 @@ public final class ChildPolicyTest
 	@Test
 	public void namesEveryMissingWriteAndHost() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -124,6 +126,7 @@ public final class ChildPolicyTest
 	@Test
 	public void keepsWriteInsideParentWrites() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -148,6 +151,7 @@ public final class ChildPolicyTest
 	@Test
 	public void refusesWriteInsideParentWriteDenial() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -173,6 +177,7 @@ public final class ChildPolicyTest
 	@Test
 	public void keepsWriteInsideRunFolder() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -196,6 +201,7 @@ public final class ChildPolicyTest
 	@Test
 	public void keepsRunFolderOutsideParentWrites() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -219,6 +225,7 @@ public final class ChildPolicyTest
 	@Test
 	public void keepsEveryParentReadDenial() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -244,6 +251,7 @@ public final class ChildPolicyTest
 	@Test
 	public void dropsReallowanceThatReopensChildDenial() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -293,6 +301,7 @@ public final class ChildPolicyTest
 	@Test(dataProvider = "hostAccess")
 	public void requiresParentToReachChildHosts(HostAccess parentHosts, Set<String> missing) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
@@ -376,6 +385,7 @@ public final class ChildPolicyTest
 	public void bindsLocallyOnlyForParentAndLocalHost(boolean parentAllows, Set<String> hosts, boolean expected)
 		throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
@@ -395,6 +405,7 @@ public final class ChildPolicyTest
 	@Test
 	public void givesUnsandboxedParentsChildItsNeeds() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -419,6 +430,7 @@ public final class ChildPolicyTest
 	@Test
 	public void bindsLocallyForUnsandboxedPrivateHost() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
@@ -439,6 +451,7 @@ public final class ChildPolicyTest
 	@Test
 	public void comparesPathsByRealPath() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -471,6 +484,7 @@ public final class ChildPolicyTest
 	@Test
 	public void comparesDanglingLinkByTarget() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -496,6 +510,7 @@ public final class ChildPolicyTest
 	@Test
 	public void boundGivesRequestedSessionWhatItAllows() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -524,6 +539,7 @@ public final class ChildPolicyTest
 	@Test
 	public void boundRefusesRequestedSessionNeedingMore() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -550,6 +566,7 @@ public final class ChildPolicyTest
 	@Test
 	public void boundWithoutHostsRefusesHost() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();

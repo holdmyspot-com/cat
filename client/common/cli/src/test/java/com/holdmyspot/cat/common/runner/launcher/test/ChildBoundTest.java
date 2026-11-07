@@ -157,6 +157,7 @@ public final class ChildBoundTest
 	@Test(dataProvider = "unusablePolicies")
 	public void refusesUnusablePolicy(Exception failure, String expected) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -181,6 +182,7 @@ public final class ChildBoundTest
 	@Test
 	public void keepsParentsOwnRefusal() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -203,6 +205,7 @@ public final class ChildBoundTest
 	@Test
 	public void refusesChildThatCannotRunWithinParent() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -230,6 +233,7 @@ public final class ChildBoundTest
 	@Test
 	public void refusesChildNeedingMoreThanParentAllows() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -260,6 +264,7 @@ public final class ChildBoundTest
 	@Test
 	public void refusesChildNeedingWriteThatParentDenies() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path work = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -288,6 +293,7 @@ public final class ChildBoundTest
 	@Test
 	public void givesChildAllowedExtraPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -313,6 +319,7 @@ public final class ChildBoundTest
 	@Test
 	public void givesChildNoExtraPermissionsUnlessAsked() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -338,6 +345,7 @@ public final class ChildBoundTest
 	@Test
 	public void refusesDisallowedExtraPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -369,6 +377,7 @@ public final class ChildBoundTest
 	@Test(dataProvider = "unusablePolicies")
 	public void refusesSnapshotOfUnusablePolicy(Exception failure, String expected) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path state = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -390,6 +399,7 @@ public final class ChildBoundTest
 	@Test
 	public void boundsChildBySnapshotAndLaunchReadings() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
@@ -439,6 +449,7 @@ public final class ChildBoundTest
 	@Test(dataProvider = "trustedFolderReadings")
 	public void refusesReadingThatLetsParentWriteTrusted(String reading) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();

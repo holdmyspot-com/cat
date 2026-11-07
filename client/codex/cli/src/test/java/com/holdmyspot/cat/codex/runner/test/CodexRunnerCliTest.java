@@ -77,6 +77,7 @@ public final class CodexRunnerCliTest
 	@Test
 	public void defaultsRunRootToSessionTemp() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("codex-runner-cli-"));
@@ -107,6 +108,7 @@ public final class CodexRunnerCliTest
 	@Test
 	public void requiresRunRootWithoutThreadId() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("codex-runner-cli-"));

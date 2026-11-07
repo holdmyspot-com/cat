@@ -752,6 +752,7 @@ public final class IntegrationTest
 	@Test
 	public void sandboxEntriesProtectOtherHarness() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path userHome = cleanup.add(testDirectory());
@@ -884,6 +885,7 @@ public final class IntegrationTest
 	@Test
 	public void reinstallReplacesStaleStateDenial() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path userHome = cleanup.add(testDirectory());

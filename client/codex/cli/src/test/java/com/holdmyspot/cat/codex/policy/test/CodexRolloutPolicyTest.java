@@ -36,6 +36,7 @@ public final class CodexRolloutPolicyTest
 	@Test
 	public void rolloutNarrowerWins() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -56,6 +57,7 @@ public final class CodexRolloutPolicyTest
 	@Test
 	public void rolloutDenialApplies() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -79,6 +81,7 @@ public final class CodexRolloutPolicyTest
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*home_directory.*")
 	public void rolloutUnknownKindRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -99,6 +102,7 @@ public final class CodexRolloutPolicyTest
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*lets its commands write.*")
 	public void rolloutInsideWritesRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -116,6 +120,7 @@ public final class CodexRolloutPolicyTest
 	@Test
 	public void subagentNarrowerApplies() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -134,6 +139,7 @@ public final class CodexRolloutPolicyTest
 	@Test
 	public void forgedThreadCannotWiden() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));

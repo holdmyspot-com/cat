@@ -51,6 +51,7 @@ public final class ExtraPermissionSessionsTest
 	@Test
 	public void everySessionAsksForExtraPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		FakeSessionPort wrapped = new FakeSessionPort();
 		ExtraPermissions extra = new ExtraPermissions(List.of(Path.of("/cache/npm").toAbsolutePath()),
 			Set.of("registry.example.com"));
@@ -73,6 +74,7 @@ public final class ExtraPermissionSessionsTest
 	@Test
 	public void noExtraPermissionsAskForNothing() throws IOException
 	{
+		// Requirement: R-I11
 		FakeSessionPort wrapped = new FakeSessionPort();
 		SessionPort port = new ExtraPermissionSessions(wrapped, ExtraPermissions.NONE);
 

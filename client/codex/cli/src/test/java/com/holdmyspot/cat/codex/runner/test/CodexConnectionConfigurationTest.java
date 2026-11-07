@@ -403,6 +403,7 @@ public final class CodexConnectionConfigurationTest
 	@Test
 	public void limitsNetworkToPolicyHosts() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-network-hosts-"));
@@ -453,6 +454,7 @@ public final class CodexConnectionConfigurationTest
 	@Test(dataProvider = "localBinding")
 	public void bindsLocallyOnlyWhenParentMay(boolean parentBinds, boolean childBinds) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-local-binding-"));
@@ -509,6 +511,7 @@ public final class CodexConnectionConfigurationTest
 	@Test
 	public void disablesNetworkWithoutHosts() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-network-off-"));
@@ -703,6 +706,7 @@ public final class CodexConnectionConfigurationTest
 	@Test
 	public void filesystemFollowsPolicy() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-filesystem-policy-")).toRealPath();
@@ -791,6 +795,7 @@ public final class CodexConnectionConfigurationTest
 	@Test
 	public void sessionWritesExtraPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-extra-permissions-")).toRealPath();
@@ -989,6 +994,7 @@ public final class CodexConnectionConfigurationTest
 	@Test(dataProvider = "wideningLayers")
 	public void refusesWideningLayer(boolean managed, String layer, String setting) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-widening-layer-"));

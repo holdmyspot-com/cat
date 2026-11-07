@@ -36,6 +36,7 @@ public final class ParentPolicyTest
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*settings\\.json.*")
 	public void refusesSourceInsideWrites() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -57,6 +58,7 @@ public final class ParentPolicyTest
 	@Test
 	public void trustsProtectedOrUnwritableSources() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -82,6 +84,7 @@ public final class ParentPolicyTest
 	@Test
 	public void combinesSnapshotAndReread() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -121,6 +124,7 @@ public final class ParentPolicyTest
 	@Test
 	public void keepsOnlyNarrowingOfUncertainSource() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
@@ -152,6 +156,7 @@ public final class ParentPolicyTest
 	@Test
 	public void readsOutsideDenials() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();

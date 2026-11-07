@@ -59,6 +59,7 @@ public final class ToolScopeTest
 	@Test
 	public void resolvesEnclosingProjectRoot() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-project-"));
@@ -85,6 +86,7 @@ public final class ToolScopeTest
 	@Test
 	public void outsideProjectUsesWorkingDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			FileSystem isolated = FileSystems.newFileSystem(cleanup.add(Files.createTempDirectory("cat-outside-")).
 				resolve("outside-project.zip"), Map.of("create", "true")))
@@ -110,6 +112,7 @@ public final class ToolScopeTest
 	@Test
 	public void firstSetVariableNamesSession() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-project-"));
@@ -135,6 +138,7 @@ public final class ToolScopeTest
 	@Test
 	public void refusesInvalidSessionVariable() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-project-"));

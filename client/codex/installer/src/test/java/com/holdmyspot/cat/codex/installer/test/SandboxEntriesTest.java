@@ -260,6 +260,7 @@ public final class SandboxEntriesTest
 	@Test
 	public void maintainsProfileEntry() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
@@ -290,6 +291,7 @@ public final class SandboxEntriesTest
 	public void addsAndRemovesProfileEntry(String original, String key, String edited, String removed)
 		throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));

@@ -111,6 +111,7 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	@Test
 	public void readsLongCommandLine() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path processFolder = cleanup.add(Files.createTempDirectory("cat-proc-"));
@@ -133,6 +134,7 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	@Test
 	public void reusedIdentifierHasNoArguments() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path processFolder = cleanup.add(Files.createTempDirectory("cat-proc-"));

@@ -53,6 +53,7 @@ public final class SessionLauncherChannelTest
 	@Test
 	public void namesSharedServerWithoutLauncher()
 	{
+		// Requirement: R-I11
 		String codex = SessionLauncherChannel.noLauncherMessage("Codex");
 		String claude = SessionLauncherChannel.noLauncherMessage("Claude Code");
 
@@ -124,6 +125,7 @@ public final class SessionLauncherChannelTest
 	@Test(dataProvider = "forbiddenFields")
 	public void refusesForbiddenField(String field, String value) throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			ObjectNode manifest = fixture.minimalManifest();
@@ -254,6 +256,7 @@ public final class SessionLauncherChannelTest
 	@Test(dataProvider = "invalidExtraPermissions")
 	public void refusesInvalidExtraPermissions(String permissions, String problem) throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			ObjectNode manifest = fixture.minimalManifest();

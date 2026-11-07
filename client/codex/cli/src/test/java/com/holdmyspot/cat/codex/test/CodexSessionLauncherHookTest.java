@@ -77,6 +77,7 @@ public final class CodexSessionLauncherHookTest
 	@Test
 	public void startsLauncherWithHookData() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-launcher-")).toRealPath();
@@ -108,6 +109,7 @@ public final class CodexSessionLauncherHookTest
 	@Test
 	public void startsNoneInCatRun() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-launcher-")).toRealPath();
@@ -155,6 +157,7 @@ public final class CodexSessionLauncherHookTest
 	@Test(dataProvider = "codexCommandLines")
 	public void startsNoneInSharedServer(List<String> arguments, boolean starts) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-launcher-")).toRealPath();

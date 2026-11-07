@@ -67,6 +67,7 @@ public final class CodexLauncherPolicyTest
 	@Test
 	public void readsPolicyOfRecordedSession() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
@@ -90,6 +91,7 @@ public final class CodexLauncherPolicyTest
 	@Test
 	public void refusesReplacedProcess() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
@@ -119,6 +121,7 @@ public final class CodexLauncherPolicyTest
 	@Test
 	public void readOnlySubagentNarrowsPolicy() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
@@ -142,6 +145,7 @@ public final class CodexLauncherPolicyTest
 	@Test
 	public void threadOfOtherSessionKeepsSessionPolicy() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
@@ -164,6 +168,7 @@ public final class CodexLauncherPolicyTest
 	@Test
 	public void malformedThreadIsIgnored() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
@@ -226,6 +231,7 @@ public final class CodexLauncherPolicyTest
 	public void namesSettingsThatAllowMissingAccess(List<Path> writes, Set<String> hosts, String expected)
 		throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
@@ -284,6 +290,7 @@ public final class CodexLauncherPolicyTest
 	@Test(dataProvider = "pathsThatTomlEscapes")
 	public void namesMissingWriteAsTomlString(Path write) throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
@@ -306,6 +313,7 @@ public final class CodexLauncherPolicyTest
 	@Test
 	public void namesMissingHostAsTomlString() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));

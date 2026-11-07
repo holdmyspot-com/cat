@@ -2039,6 +2039,7 @@ public final class OptimizerCoreTest
 	public void startRecordsAndAppliesExtraPermissions() throws IOException, CommandRefusedException,
 		InterruptedException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2073,6 +2074,7 @@ public final class OptimizerCoreTest
 	public void startAsksForNoExtraPermissionsByDefault() throws IOException, CommandRefusedException,
 		InterruptedException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2096,6 +2098,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void startRefusesInvalidExtraPermissions() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2127,6 +2130,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeRefusesChangedExtraPermissions() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2163,6 +2167,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeRefusesPermissionsAddedToNone() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2189,6 +2194,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeRefusesPermissionsRemoved() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2217,6 +2223,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeKeepsReorderedPermissions() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2246,6 +2253,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeKeepsPermissionsWithoutFile() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2273,6 +2281,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeRefusesChangedGoal() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2302,6 +2311,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeRefusesGoalAddedToNone() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->
@@ -2406,6 +2416,7 @@ public final class OptimizerCoreTest
 	@Test
 	public void resumeRefusalNamesGoalAndPermissions() throws Exception
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Repository repository = repository(scope, _ -> derivation(_ ->

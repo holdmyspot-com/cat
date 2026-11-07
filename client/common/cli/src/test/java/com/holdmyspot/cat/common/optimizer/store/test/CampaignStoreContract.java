@@ -446,6 +446,7 @@ public abstract class CampaignStoreContract
 	@Test
 	public void extraPermissionsSurviveReload() throws IOException
 	{
+		// Requirement: R-I11
 		try (StoreFixture fixture = open())
 		{
 			ExtraPermissions extra = new ExtraPermissions(List.of(Path.of("/cache/npm").toAbsolutePath()),

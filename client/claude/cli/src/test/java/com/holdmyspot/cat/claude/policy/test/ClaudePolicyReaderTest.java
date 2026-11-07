@@ -80,6 +80,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void disabledSandboxIsUnsandboxed() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			requireThat(fixture.policy().sandboxed(), "sandboxedWithoutSettings").isFalse();
@@ -102,6 +103,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void higherLayerSettingWins() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			String bind = """
@@ -135,6 +137,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void sandboxListsMergeAcrossLayers() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			Path root = fixture.root;
@@ -170,6 +173,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void inlineSettingsApply() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			Path folder = fixture.root.resolve("w-inline");
@@ -189,6 +193,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void settingSourcesUserDropsProject() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			Path root = fixture.root;
@@ -216,6 +221,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void addDirTakesEveryFolder() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings(ENABLED);
@@ -241,6 +247,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void readDenyRulesDenyReads() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			Path secret = write(fixture.project.resolve("deep/er/.env"), "");
@@ -272,6 +279,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void editAndWebFetchRulesMap() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			Path editable = fixture.root.resolve("editable");
@@ -301,6 +309,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void everyDomainAllowsEveryHost() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings("""
@@ -329,6 +338,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void portLimitedDomainGivesNoHost() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings("""
@@ -354,6 +364,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void unknownOptionIsRefusedByName() throws IOException
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings(ENABLED);
@@ -373,6 +384,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void unparseableFileIsRefusedByPath() throws IOException
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings(ENABLED);
@@ -393,6 +405,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void emptyFileHoldsNoSettings() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings("""
@@ -412,6 +425,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void proxyPortIsRefused() throws IOException
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings("""
@@ -426,6 +440,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void missingProcessIdIsRefused()
 	{
+		// Requirement: R-I11
 		try
 		{
 			ClaudeSession session = ClaudeSession.fromHookEnvironment(Map.of("CLAUDE_PROJECT_DIR", "/work"),
@@ -449,6 +464,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void otherProcessIsRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings(ENABLED);
@@ -478,6 +494,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void laterProjectFileOnlyNarrows() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings("""
@@ -511,6 +528,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void uncertainManagedSourceNarrows() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings(ENABLED);
@@ -539,6 +557,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void writableSettingsFileIsRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings(ENABLED);
@@ -570,6 +589,7 @@ public final class ClaudePolicyReaderTest
 	@Test
 	public void trustsLauncherStateWithDenial() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			SessionLauncherChannel channel = new SessionLauncherChannel(fixture.home);

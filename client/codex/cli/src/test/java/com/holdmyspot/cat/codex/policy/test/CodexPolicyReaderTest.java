@@ -42,6 +42,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void legacyWorkspaceWriteRoots() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -64,6 +65,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void profileExtendsWorkspace() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -117,6 +119,7 @@ public final class CodexPolicyReaderTest
 	public void proxyBlocksLocalHostsWithoutBinding(boolean binds, boolean reachLocal) throws IOException,
 		PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -156,6 +159,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void inlineTableOverride() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -178,6 +182,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void profileFileSelection() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -200,6 +205,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void addDirIsWritable() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -239,6 +245,7 @@ public final class CodexPolicyReaderTest
 	@Test(dataProvider = "unsandboxedCommandLines")
 	public void dangerFullAccessUnsandboxed(String[] arguments) throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -256,6 +263,7 @@ public final class CodexPolicyReaderTest
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*--remote.*")
 	public void remoteRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -272,6 +280,7 @@ public final class CodexPolicyReaderTest
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*shared.*--no-daemon.*")
 	public void sharedServerRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -287,6 +296,7 @@ public final class CodexPolicyReaderTest
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*--frobnicate.*")
 	public void unknownOptionRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -302,6 +312,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void trustedProjectLayerApplies() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -320,6 +331,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void untrustedProjectLayerIgnored() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -369,6 +381,7 @@ public final class CodexPolicyReaderTest
 		expectedExceptionsMessageRegExp = ".*cannot parse.*")
 	public void unparsableManagedFileRefused(String name) throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -385,6 +398,7 @@ public final class CodexPolicyReaderTest
 	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*managed preferences.*")
 	public void managedPreferencesRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -403,6 +417,7 @@ public final class CodexPolicyReaderTest
 		"sandbox_workspace_write\\.network_access = true.*\\[permissions\\..*\\.network] enabled = true.*")
 	public void networkOffRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -420,6 +435,7 @@ public final class CodexPolicyReaderTest
 		"config\\.toml.*")
 	public void configurationBelowSlashTmpRefused() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
@@ -439,6 +455,7 @@ public final class CodexPolicyReaderTest
 	@Test
 	public void trustsLauncherStateWithReadEntry() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));

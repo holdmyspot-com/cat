@@ -268,6 +268,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void deletesAfterLastPartOfRunPart() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
@@ -291,6 +292,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void deletesAfterLastPartOfReadPart() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
@@ -314,6 +316,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void deletesAfterEmptyOutput() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
@@ -336,6 +339,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void keepsAfterCutLastPart() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
@@ -358,6 +362,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void keepsFileOutsideRunPartFolder() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
@@ -382,6 +387,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void keepsOutputWithoutExitStatus() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));
@@ -403,6 +409,7 @@ public final class CodexPostToolUseHookTest
 	@Test
 	public void keepsAfterPartThatMoreFollow() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("post-tool-use-test-"));

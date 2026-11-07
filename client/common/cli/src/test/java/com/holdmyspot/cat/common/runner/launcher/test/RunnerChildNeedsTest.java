@@ -50,6 +50,7 @@ public final class RunnerChildNeedsTest
 	@Test
 	public void needsWhatRunnerReports() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path request = cleanup.add(Files.createTempDirectory("cat-request-")).toRealPath();
@@ -84,6 +85,7 @@ public final class RunnerChildNeedsTest
 	@Test
 	public void refusesLoginThatRequesterMayNotRead() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-request-")).toRealPath();

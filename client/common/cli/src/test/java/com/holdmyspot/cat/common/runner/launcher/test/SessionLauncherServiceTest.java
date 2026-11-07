@@ -58,6 +58,7 @@ public final class SessionLauncherServiceTest
 	@Test
 	public void servesUntilHarnessEnds() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			List<LauncherRecord> policyRecords = new ArrayList<>();
@@ -91,6 +92,7 @@ public final class SessionLauncherServiceTest
 	@Test
 	public void terminationEndsLauncher() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			List<Runnable> onTermination = new ArrayList<>();
@@ -113,6 +115,7 @@ public final class SessionLauncherServiceTest
 	@Test
 	public void leavesHarnessThatAnotherLauncherServes() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			ExclusiveFileLock _ = fixture.fileLocks.tryLock(fixture.folder.resolve(SessionLauncherChannel.LOCK_FILE),
 				file -> FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE)).orElseThrow())

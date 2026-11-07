@@ -272,6 +272,7 @@ public final class HarnessEnvironmentTest
 	@Test
 	public void refusesLaunchInRunWithoutRequests()
 	{
+		// Requirement: R-I11
 		Optional<String> refusal = HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE,
 			HarnessEnvironment.RUN_VALUE));
 

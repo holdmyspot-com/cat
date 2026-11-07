@@ -39,6 +39,7 @@ public final class HarnessProcessesTest
 	@Test
 	public void reportsLongLinuxCommandLine() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path processFolder = cleanup.add(Files.createTempDirectory("cat-proc-"));
@@ -64,6 +65,7 @@ public final class HarnessProcessesTest
 	@Test
 	public void noArgumentsWithoutLinuxCommandLine() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path processFolder = cleanup.add(Files.createTempDirectory("cat-proc-"));

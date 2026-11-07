@@ -345,6 +345,7 @@ public final class RunnerSessionsTest
 	public void passesExtraPermissionsFile()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
+		// Requirement: R-I11
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())

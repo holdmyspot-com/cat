@@ -79,6 +79,7 @@ public final class SessionLauncherTest
 	@Test
 	public void servesHolderInItsHarnessTree() throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			SessionLauncher launcher = fixture.launcher(fixture.harness))
 		{
@@ -298,6 +299,7 @@ public final class SessionLauncherTest
 	@Test(dataProvider = "unprovenRequests")
 	public void startsNothingWithoutProof(String proof) throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			SessionLauncher launcher = fixture.launcher(fixture.harness))
 		{
@@ -338,6 +340,7 @@ public final class SessionLauncherTest
 	@Test
 	public void nearestHarnessClaims() throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			ProcessIdentity inner = fixture.processes.start(300, Optional.of(fixture.sandbox), List.of("harness-a"));
@@ -480,6 +483,7 @@ public final class SessionLauncherTest
 	@Test(dataProvider = "launcherEnds")
 	public void endsAndCleansUp(String event) throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			SessionLauncher launcher = fixture.launcher(fixture.harness))
 		{
@@ -749,6 +753,7 @@ public final class SessionLauncherTest
 	@Test(dataProvider = "unusablePolicies")
 	public void refusesUnusablePolicy(String when) throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			SessionLauncher launcher = fixture.launcher(fixture.harness))
 		{
@@ -791,6 +796,7 @@ public final class SessionLauncherTest
 	@Test
 	public void givesRunnerExtraPermissions() throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			SessionLauncher launcher = fixture.launcher(fixture.harness))
 		{
@@ -826,6 +832,7 @@ public final class SessionLauncherTest
 	@Test
 	public void boundsChildByStartAndRequestPolicies() throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			SessionLauncher launcher = fixture.launcher(fixture.harness))
 		{
@@ -871,6 +878,7 @@ public final class SessionLauncherTest
 	@Test
 	public void boundsChildByAskingThreadPolicy() throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture();
 			SessionLauncher launcher = fixture.launcher(fixture.harness))
 		{

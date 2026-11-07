@@ -567,6 +567,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void defaultsRunRootToSessionTemp() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));
@@ -596,6 +597,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void explicitRunRootLeavesSessionAlone() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-runner-options-"));

@@ -70,6 +70,7 @@ public final class ClaudeSessionLauncherHookTest
 	@Test
 	public void startsLauncherWithHookData() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-launcher-")).toRealPath();
@@ -102,6 +103,7 @@ public final class ClaudeSessionLauncherHookTest
 	@Test
 	public void startsNoneInCatRun() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-launcher-")).toRealPath();
@@ -148,6 +150,7 @@ public final class ClaudeSessionLauncherHookTest
 	@Test
 	public void sessionEndStopsLauncher() throws IOException
 	{
+		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-launcher-")).toRealPath();

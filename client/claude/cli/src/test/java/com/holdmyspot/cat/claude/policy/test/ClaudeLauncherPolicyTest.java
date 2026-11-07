@@ -57,6 +57,7 @@ public final class ClaudeLauncherPolicyTest
 	@Test
 	public void laterReadingRefusesReplacedProcess() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings("""
@@ -121,6 +122,7 @@ public final class ClaudeLauncherPolicyTest
 	public void namesSettingsThatAllowMissingAccess(List<Path> writes, Set<String> hosts, String expected)
 		throws IOException
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			ParentPolicySource source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
@@ -139,6 +141,7 @@ public final class ClaudeLauncherPolicyTest
 	@Test
 	public void namesPortLimitedEntryOfMissingHost() throws IOException, PolicyRefusal
 	{
+		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
 			fixture.userSettings("""

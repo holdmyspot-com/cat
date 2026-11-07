@@ -159,6 +159,7 @@ public final class SessionRequestCliTest
 	@Test
 	public void carriesExtraPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())

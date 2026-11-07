@@ -185,6 +185,7 @@ public final class CodexRunPartTest
 	@Test
 	public void savesOutputInSessionTemp() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("run-part-test-"));
@@ -263,6 +264,7 @@ public final class CodexRunPartTest
 	@Test
 	public void fallsBackWithoutThreadId() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("run-part-test-"));

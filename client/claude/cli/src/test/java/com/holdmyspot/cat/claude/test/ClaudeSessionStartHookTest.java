@@ -366,6 +366,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void createsSessionDirectoryInLaunchDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path parent = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -393,6 +394,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void writesRulesToSessionDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -433,6 +435,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void writesSubagentRulesToSessionDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -463,6 +466,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void refusesNonCanonicalSessionId() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -529,6 +533,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void sweepsGoneSessions() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
@@ -638,6 +643,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void statesLaunchDirectoryInSessionRules() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
@@ -842,6 +848,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void statesLaunchDirectoryInSubagentRules() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
@@ -869,6 +876,7 @@ public final class ClaudeSessionStartHookTest
 	@Test
 	public void statesWindowsTemporaryDirectoryOnWindows() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();

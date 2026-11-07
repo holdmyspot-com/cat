@@ -293,6 +293,7 @@ public final class CodexSessionStartHookTest
 	@Test
 	public void createsSessionDirectory() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
@@ -328,6 +329,7 @@ public final class CodexSessionStartHookTest
 	@Test
 	public void sweepsGoneSessions() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
@@ -404,6 +406,7 @@ public final class CodexSessionStartHookTest
 	@Test
 	public void rejectsNonCanonicalSessionId() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
@@ -478,6 +481,7 @@ public final class CodexSessionStartHookTest
 	@Test
 	public void statesProjectDirectoryInSessionRules() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-")).toAbsolutePath().normalize();
@@ -757,6 +761,7 @@ public final class CodexSessionStartHookTest
 	@Test
 	public void deliversRulesThroughSessionFile() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
@@ -790,6 +795,7 @@ public final class CodexSessionStartHookTest
 	@Test
 	public void inlinesRulesWithoutReadingGuidance() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));
@@ -816,6 +822,7 @@ public final class CodexSessionStartHookTest
 	@Test
 	public void rejectsMissingSessionId() throws IOException
 	{
+		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path project = cleanup.add(Files.createTempDirectory("cat-session-start-"));

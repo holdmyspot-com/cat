@@ -594,6 +594,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void exitsAtOnceWithoutLauncher() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			Files.createDirectories(fixture.channel.launchers());
@@ -619,6 +620,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void exitsWhenStateIsUnreadable() throws IOException
 	{
+		// Requirement: R-I11
 		if (Platform.current().isWindows())
 			throw new SkipException(NO_POSIX_PERMISSIONS);
 		try (Fixture fixture = new Fixture())
@@ -654,6 +656,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void exitsWhenRequestIsUnclaimed() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.serve();
@@ -752,6 +755,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void asksAsThreadOfLaunchHarness() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.serve();
@@ -1355,6 +1359,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void requestCarriesExtraPermissions() throws IOException, InterruptedException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.serve();
@@ -1389,6 +1394,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void refusesInvalidExtraPermissions() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.serve();
@@ -1416,6 +1422,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void refusesArtifact() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.serve();
@@ -1744,6 +1751,7 @@ public final class SessionLauncherClientTest
 	@Test
 	public void bridgeWithoutLauncherIsRefused() throws IOException
 	{
+		// Requirement: R-I11
 		try (Fixture fixture = new Fixture())
 		{
 			Files.createDirectories(fixture.channel.launchers());

@@ -383,6 +383,7 @@ public final class CommandsTest
 	@Test
 	public void passesTheExtraPermissionsFile()
 	{
+		// Requirement: R-I11
 		List<List<String>> commands = List.of(
 			List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json"),
 			List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json", "--goal", "Be brief."),
@@ -406,6 +407,7 @@ public final class CommandsTest
 	@Test
 	public void rejectsInvalidExtraPermissionsOption()
 	{
+		// Requirement: R-I11
 		List<List<String>> options = List.of(
 			List.of("--extra-permissions"),
 			List.of("--extra-permissions", " "),

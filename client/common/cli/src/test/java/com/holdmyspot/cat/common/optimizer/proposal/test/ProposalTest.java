@@ -2582,6 +2582,7 @@ public final class ProposalTest
 	public void requestHoldsTheTargetAndGoal()
 	{
 		// Requirement: R-C24
+		// Requirement: R-C25
 		String goal = "Summaries must stay safe for a general audience.";
 		ContractAuthorProtocol withGoal = new ContractAuthorProtocol(json, schema, judge,
 			new RegressionScenarios(PROMPT_SYSTEM, List.of()), PROMPT_SYSTEM.resolve("rules/safety.md"), goal, true,
