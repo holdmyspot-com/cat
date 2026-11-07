@@ -24,9 +24,12 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
@@ -133,7 +136,8 @@ public final class ClaudePromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID), Platform.WINDOWS_X64,
+			int exit = run(setup, Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"),
+				Platform.WINDOWS_X64,
 				List.of("start", "prompts/a.md"), output);
 			requireThat(exit, "exit").isEqualTo(1);
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
@@ -156,7 +160,8 @@ public final class ClaudePromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID), List.of("status", CAMPAIGN), output);
+			int exit = run(setup, Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"),
+				List.of("status", CAMPAIGN), output);
 			requireThat(exit, "exit").isEqualTo(0);
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("campaign").asString(), "campaign").isEqualTo(CAMPAIGN);
@@ -178,7 +183,8 @@ public final class ClaudePromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID), List.of("status", CAMPAIGN), output);
+			int exit = run(setup, Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"),
+				List.of("status", CAMPAIGN), output);
 			requireThat(exit, "exit").isEqualTo(0);
 		}
 	}
@@ -244,7 +250,7 @@ public final class ClaudePromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of(), List.of("status", CAMPAIGN), output);
+			int exit = run(setup, Map.of("CLAUDECODE", "1"), List.of("status", CAMPAIGN), output);
 			requireThat(exit, "exit").isEqualTo(1);
 			requireThat(output.toString(), "output").contains("CLAUDE_CODE_SESSION_ID").contains("claude session");
 			requireThat(Files.exists(setup.root().resolve(".cat/sessions").resolve(SESSION_ID).resolve("temp")),
@@ -265,14 +271,14 @@ public final class ClaudePromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			StringBuilder output = new StringBuilder();
-			int exit = run(setup, Map.of(), List.of("frobnicate"), output);
+			int exit = run(setup, Map.of("CLAUDECODE", "1"), List.of("frobnicate"), output);
 			requireThat(exit, "exit").isEqualTo(2);
 		}
 	}
 
 	/**
-	 * Returns environments of {@code start}, each with how its refusal begins when no session launcher serves the
-	 * session that runs it.
+	 * Returns environments of a harness session's {@code start}, each with how its refusal begins when no session
+	 * launcher serves the session that runs it.
 	 *
 	 * @return the environments and the beginnings of the refusals
 	 */
@@ -283,8 +289,6 @@ public final class ClaudePromptOptimizerTest
 		{
 			// Claude Code runs the command, so its sessions go to the session launcher, and none serves the session
 			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"), LAUNCH_REFUSAL},
-			// No harness runs the command, so its sessions start in place, and no launcher needs to serve it
-			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID), MISSING_TARGET},
 			// Only Codex runs the command, so each of its sessions is refused, with the reason, when it starts
 			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CODEX_THREAD_ID", "thread"), MISSING_TARGET},
 			// A run whose runner lets its session request no sessions refuses each session when it starts
@@ -318,6 +322,121 @@ public final class ClaudePromptOptimizerTest
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").startsWith(refusal);
+		}
+	}
+
+	/**
+	 * Returns environments in which no harness session runs a command, each naming a session variable or none.
+	 *
+	 * @return the environments' variables
+	 */
+	@DataProvider
+	public static Object[][] environmentsOfNoHarness()
+	{
+		return new Object[][]
+		{
+			// A terminal
+			{Map.of()},
+			// The session variable alone is no marker of Claude Code, as when it is set by hand
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID)}
+		};
+	}
+
+	/**
+	 * Verifies that a command that no harness session runs is refused with exit code 2 and one message that tells the
+	 * user to run it from a Claude Code or Codex session, and that the command changes nothing in the project.
+	 *
+	 * @param variables the environment's variables, besides the home folder
+	 * @param command   the command and its arguments
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test(dataProvider = "commandsOfNoHarness")
+	public void noHarnessCommandChangesNothing(Map<String, String> variables, List<String> command)
+		throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			Map<String, String> environment = new HashMap<>(variables);
+			environment.put(Platform.current().homeVariable(), setup.home().toString());
+			List<String> before = tree(setup.root());
+			StringBuilder output = new StringBuilder();
+
+			int exit = run(setup, environment, command, output);
+
+			requireThat(exit, "exit").isEqualTo(2);
+			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(json.get("message").asString(), "message").
+				contains("Run it from a Claude Code or Codex session.");
+			requireThat(tree(setup.root()), "tree").isEqualTo(before);
+			requireThat(tree(setup.home()), "home").isEmpty();
+		}
+	}
+
+	/**
+	 * Returns every command and the environments in which no harness session runs it.
+	 *
+	 * @return the environments' variables and the commands
+	 */
+	@DataProvider
+	public static Object[][] commandsOfNoHarness()
+	{
+		List<List<String>> commands = List.of(List.of("start", "prompts/a.md"), List.of("run", CAMPAIGN),
+			List.of("status", CAMPAIGN), List.of("status"), List.of("confirm", CAMPAIGN),
+			List.of("revise", CAMPAIGN, "feedback"), List.of("cancel", CAMPAIGN));
+		List<Object[]> rows = new ArrayList<>();
+		for (Object[] environment : environmentsOfNoHarness())
+		{
+			for (List<String> command : commands)
+				rows.add(new Object[]{environment[0], command});
+		}
+		return rows.toArray(Object[][]::new);
+	}
+
+	/**
+	 * Verifies that the usage text needs no harness session.
+	 *
+	 * @throws IOException if a file cannot be written
+	 */
+	@Test
+	public void helpNeedsNoHarness() throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			StringBuilder output = new StringBuilder();
+
+			int exit = run(setup, Map.of(), List.of("help"), output);
+
+			requireThat(exit, "exit").isEqualTo(0);
+			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("help");
+		}
+	}
+
+	/**
+	 * Lists every file and folder below a folder.
+	 *
+	 * @param root the folder
+	 * @return the paths relative to {@code root}, sorted, each with its size if it is a file
+	 * @throws IOException if the folder cannot be read
+	 */
+	private static List<String> tree(Path root) throws IOException
+	{
+		try (Stream<Path> paths = Files.walk(root))
+		{
+			List<String> entries = new ArrayList<>();
+			for (Path path : (Iterable<Path>) paths::iterator)
+			{
+				StringBuilder entry = new StringBuilder(root.relativize(path).toString());
+				if (Files.isRegularFile(path))
+					entry.append(' ').append(Files.size(path));
+				entries.add(entry.toString());
+			}
+			entries.remove("");
+			Collections.sort(entries);
+			return entries;
 		}
 	}
 }

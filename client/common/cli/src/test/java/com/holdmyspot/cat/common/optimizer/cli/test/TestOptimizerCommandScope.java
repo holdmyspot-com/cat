@@ -337,6 +337,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	}
 
 	@Override
+	protected Optional<String> noHarnessRefusal()
+	{
+		ensureOpen();
+		return Optional.empty();
+	}
+
+	@Override
 	protected Optional<String> launchRefusal()
 	{
 		ensureOpen();

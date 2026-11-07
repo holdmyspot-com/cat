@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The entry point that both harnesses' {@code prompt-optimizer} launchers share.
@@ -89,14 +90,16 @@ public final class PromptOptimizerCli
 	}
 
 	/**
-	 * Runs one command.
+	 * Runs one command. A command that no harness session runs is refused before it reads or changes any state, unless
+	 * it only asks for the usage text.
 	 *
 	 * @param scope    the command's scope
 	 * @param args     the launcher's arguments
 	 * @param zone     the user's time zone, in which the human summary shows times
 	 * @param platform the platform that runs the command
 	 * @param out      where the JSON goes
-	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input
+	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input or for a command that
+	 *   no harness session runs
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(AbstractOptimizerCommandScope scope, List<String> args, ZoneId zone, Platform platform,
@@ -107,6 +110,15 @@ public final class PromptOptimizerCli
 		requireThat(zone, "zone").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(out, "out").isNotNull();
+		if (!Commands.isHelpRequest(args) && !Commands.isContractTool(args))
+		{
+			Optional<String> refusal = scope.noHarnessRefusal();
+			if (refusal.isPresent())
+			{
+				out.println(Commands.statusMessage(scope.json(), "refused", refusal.get()));
+				return 2;
+			}
+		}
 		return new Commands(new OptimizerCore(scope), scope.json(), zone, scope.trialSandbox(), platform).
 			execute(args, out);
 	}

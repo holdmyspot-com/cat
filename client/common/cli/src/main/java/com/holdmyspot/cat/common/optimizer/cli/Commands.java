@@ -705,7 +705,7 @@ public final class Commands
 	 * @param args the arguments, starting with the command's name
 	 * @return {@code true} for {@code help} alone, or for {@code --help} or {@code -h} anywhere
 	 */
-	private static boolean isHelpRequest(List<String> args)
+	static boolean isHelpRequest(List<String> args)
 	{
 		if (args.equals(List.of("help")))
 			return true;

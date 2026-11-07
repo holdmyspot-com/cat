@@ -163,11 +163,29 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	}
 
 	/**
+	 * Returns why this command is refused when no harness session runs it: the environment holds no marker of Claude
+	 * Code or Codex, as in a terminal. A session variable without its harness's marker does not make a harness run
+	 * the command.
+	 *
+	 * @return the message that tells the user to run the command from a Claude Code or Codex session, or empty if a
+	 *   harness session runs the command
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	@Override
+	protected final Optional<String> noHarnessRefusal()
+	{
+		ensureOpen();
+		if (!markers.running(environment).isEmpty())
+			return Optional.empty();
+		return Optional.of("The prompt optimizer runs only from a Claude Code or Codex session, and no harness " +
+			"session runs this command. Run it from a Claude Code or Codex session.");
+	}
+
+	/**
 	 * Returns why the session launcher would refuse every session, but only when this command's sessions go to the
 	 * session launcher, as their bridge decides from the environment: when this scope's harness runs the command, or
 	 * a run whose runner lets its session request sessions does. On every other route no launcher needs to serve the
-	 * host session: sessions that start in place need none, and a route that refuses its sessions refuses each of
-	 * them, with its reason, when it starts.
+	 * host session: a route that refuses its sessions refuses each of them, with its reason, when it starts.
 	 *
 	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions or
 	 *   the sessions do not go to a session launcher

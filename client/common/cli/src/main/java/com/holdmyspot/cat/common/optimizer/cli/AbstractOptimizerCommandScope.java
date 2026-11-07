@@ -165,6 +165,15 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract Optional<String> launchRefusal() throws IOException;
 
 	/**
+	 * Returns why this command is refused because no harness session runs it, found before the command reads or
+	 * changes any state. Only a Claude Code or Codex session can start or resume a campaign.
+	 *
+	 * @return the message that names the remedy, or empty if a harness session runs the command
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract Optional<String> noHarnessRefusal();
+
+	/**
 	 * Returns the source of campaign identifiers and draw seeds.
 	 *
 	 * @return the source
