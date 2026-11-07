@@ -122,10 +122,14 @@ revised plugin lifecycle and distribution work, which has not been implemented.
     column names a test class that does not carry the tag, though another passing test does; gate 7 corrects the
     column. Gate 6 follow-up: `GitIdentityTest` and the tests that use `GitWorkTrees.create` run real Git but §8's
     real-Git list does not name them.
-- **Republish in progress (2026-11-07):** the user approved it. Build run 42396347203 on `9ed37fdfde` failed on
-    windows-x64 in `ProcessElevationTest.readsEffectiveUserId` (unchanged code): on timeout, the elevation check waits
-    for the program but not for its stopped children, so deleting the output file fails and replaces the check's
-    result. The fix is in progress; then rebuild, push and release.
+- **Republished v1.0 (2026-11-07 UTC):** tag `v1.0` = `439eb40a55`; Build run 42407589966 green on all five platforms;
+    Release run 42408292475 published 10 archives and a 10-line SHA256SUMS.txt. Three earlier Builds failed on Windows
+    only (elevation-check timeout cleanup, Windows-invalid test paths, a race reading the session launcher's
+    `response.json`); the last round was found and fixed in one interactive Windows session (run 42404950877), and the
+    CI-debugging rule now requires that (`81c86fa4ba`, `fbb049578b`, uncertified, shipped by the user's approval).
+    Self-install refused in both harnesses: Codex's state folder is read-only in the sandbox, and both trust policies
+    list no release key, because the user-run setup command keeps an existing keyless policy; the fix is in progress
+    (unit POLICY-RELEASE-KEY), and the user decides whether it ships before the install.
 - **Next:** gate 4's E-runs on the final tree, all 16 cells, Codex first, after the user installs the republished
     release.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
