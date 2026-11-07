@@ -44,6 +44,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
@@ -486,6 +487,9 @@ public final class Invocation
 	 * Installs a harness's plugin from the extracted plugin archive that the running installer belongs to. Where the
 	 * harness already has a CAT version and a valid policy of this installation, the archive's version is installed
 	 * under the policy like a signed release; otherwise install writes the policy and installs the archive's version.
+	 * Only the user runs the archive's installer, through the CAT entry command, so where the existing policy lists no
+	 * release key, a successful install adds the signing keys that the archive's default policy names to it, keeping its
+	 * other values; a policy that lists a key keeps it.
 	 *
 	 * @param arguments the validated install operation
 	 * @return its printed result's status
@@ -528,6 +532,9 @@ public final class Invocation
 						return print(unusable.get(), arguments, null);
 					resolvedData = installation.dataDirectory();
 					resolvedHarness = harness;
+					List<TrustedKey> releaseKeys = List.of();
+					if (managed.policy().keys().isEmpty())
+						releaseKeys = Install.defaultPolicy(image).keys();
 					try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 					{
 						UpdateEngine engine = new UpdateEngine(installation.dataDirectory(), managed.policy(), source,
@@ -536,12 +543,45 @@ public final class Invocation
 						UpdateResult result = engine.installFrom(image, request(managed, image, consent));
 						if (result.result() == Result.REFUSED && consent.withheld())
 							return print(result, withheld(result, consent, arguments, null), arguments, null);
+						boolean succeeded = result.result().exitStatus() == 0;
+						if (succeeded && !releaseKeys.isEmpty())
+							result = addReleaseKeys(result, managed.policy(), installation.policy(), releaseKeys);
 						return print(result, arguments, null);
 					}
 				}
 			}
 		}
 		return installFirst(arguments, activation, integration.get());
+	}
+
+	/**
+	 * Adds the signing keys of the running installer's release to an installation's policy that lists no release key,
+	 * keeping the policy's other values, and adds the change to the result of the install that preceded it.
+	 *
+	 * @param result     the result of the install
+	 * @param policy     the installation's policy, which lists no release key
+	 * @param policyFile the installation's policy file
+	 * @param keys       the signing keys of the running installer's release
+	 * @return the result, which reports the added keys
+	 * @throws IOException    if the policy cannot be written
+	 * @throws TrustException if two keys have the same id
+	 */
+	private UpdateResult addReleaseKeys(UpdateResult result, TrustPolicy policy, Path policyFile,
+		List<TrustedKey> keys) throws IOException, TrustException
+	{
+		Install.writePolicy(policy.withKeys(keys), policyFile, replacer);
+		List<String> ids = keys.stream().map(TrustedKey::id).toList();
+		String added;
+		if (ids.size() == 1)
+			added = "key " + ids.getFirst();
+		else
+			added = "keys " + String.join(", ", ids);
+		List<Path> paths = new ArrayList<>(result.paths());
+		paths.add(policyFile);
+		return new UpdateResult(result.result(), result.harness(), result.version(), result.previousVersion(),
+			result.message() + " The policy " + policyFile + " listed no release key, so install added this " +
+				"release's signing " + added + " to it, which lets the installed installer verify later releases.",
+			paths, result.consistent(), ids, result.aotCache(), result.exitDeletions());
 	}
 
 	/**

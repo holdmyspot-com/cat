@@ -146,10 +146,13 @@ Each run creates or changes only its own harness's installation.
 
 The command is repeatable. Running it again repairs an installation that stopped part-way, because every step of an
 install can be repeated. Where the harness already has CAT and the installation has a valid policy, the command installs
-the archive's CAT version under that policy, like an install from a signed release, and leaves the policy as it is. Only
-you can change what the installer trusts: its key, release source and version limits change only when you run a
-release's entry command where the harness has no CAT or where its policy is not usable, for example after an uninstall.
-The command then writes the policy from the archive again.
+the archive's CAT version under that policy, like an install from a signed release, and keeps the policy's release
+source and version limits. A policy that lists a release key keeps its keys. A policy that lists none, such as one that
+a build without a release key wrote, gets the release's signing key once the install succeeds, and the command's result
+says that it added the key; from then on the installer can verify that key's releases. Only you can change what the
+installer trusts: a policy's keys, release source and version limits are replaced only when you run a release's entry
+command where the harness has no CAT or where its policy is not usable, for example after an uninstall. The command
+then writes the policy from the archive again.
 
 A runner of one harness that starts a session of the other harness runs the other harness's installed CAT plugin, of the
 same release as its own plugin, whatever build of that release. The runner itself downloads nothing. When the other
@@ -273,7 +276,8 @@ checksum beside an unauthenticated archive is insufficient.
 The default policy, from `bin/conf/installer/default-policy.json` in the plugin, permits releases at least the release
 that the plugin shipped with and with a major version at most that release's major version. A maintainer signature and
 these version limits jointly approve a release. Changing keys, release source, or version limits requires an explicit
-entry command that you run where the harness has no CAT. A build without a release key refuses the install. HTTPS
+entry command that you run where the harness has no CAT; where the harness has CAT, the entry command only adds its
+release's key to a policy that lists no key. A build without a release key refuses the install. HTTPS
 proxies may route downloads, but cannot change which signed bytes are accepted.
 
 The initial `cat.sh` or `cat.ps1` download relies on HTTPS to GitHub. It contains the selected release tag and pinned

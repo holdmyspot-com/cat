@@ -503,6 +503,21 @@ public final class TrustPolicy
 	}
 
 	/**
+	 * Returns this policy with other release keys and every other value unchanged, including its format.
+	 *
+	 * @param keys the keys whose signatures make a release authentic, with unique ids; when empty, no release
+	 *             verifies
+	 * @return the policy
+	 * @throws NullPointerException if {@code keys} is null or contains null
+	 * @throws TrustException       if two keys have the same id
+	 */
+	public TrustPolicy withKeys(List<TrustedKey> keys) throws TrustException
+	{
+		TrustPolicy keyed = of(keys, releaseBaseUrl, minimum, maximumMajor, harnesses);
+		return new TrustPolicy(keyed.keys, releaseBaseUrl, minimum, maximumMajor, harnesses, commands, format);
+	}
+
+	/**
 	 * Writes the policy to a file, replacing it atomically.
 	 * <p>
 	 * The policy is written to a new temporary file in the same directory, forced to the storage device, and then

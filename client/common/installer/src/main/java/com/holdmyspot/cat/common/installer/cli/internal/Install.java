@@ -150,8 +150,7 @@ public final class Install
 		home = home.toRealPath();
 		Path plugin = image.toRealPath();
 		PluginVersion version = version(plugin);
-		TrustPolicy defaults = TrustPolicy.read(plugin.resolve(PluginDirectory.INSTALLER_CONFIGURATION).
-			resolve("default-policy.json"));
+		TrustPolicy defaults = defaultPolicy(plugin);
 		if (!Files.isRegularFile(plugin.resolve(activation.pluginManifest()), NOFOLLOW_LINKS))
 		{
 			throw refusal("The archive " + plugin + " holds no " + harness + " plugin; download the " + harness +
@@ -199,9 +198,7 @@ public final class Install
 
 		TrustPolicy policy = TrustPolicy.of(defaults.keys(), defaults.releaseBaseUrl(), defaults.minimum(),
 			defaults.maximumMajor(), Map.of(harness, home), Map.of(harness, command));
-		Files.createDirectories(policyFile.getParent());
-		policy.write(policyFile, replacer);
-		setPermissions(policyFile);
+		writePolicy(policy, policyFile, replacer);
 
 		Path installer = PluginInstall.installer(versionFolder, platform.isWindows());
 		List<HarnessInstallation> otherInstallations = others.stream().
@@ -210,6 +207,35 @@ public final class Install
 		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
 			launcherState, consentRequest.isPresent());
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
+	}
+
+	/**
+	 * Reads the default policy of an extracted plugin archive, which names the signing keys of the archive's release
+	 * and the releases that its install accepts.
+	 *
+	 * @param plugin the archive's plugin folder
+	 * @return the policy
+	 * @throws TrustException if the policy is malformed
+	 * @throws IOException    if the policy cannot be read
+	 */
+	static TrustPolicy defaultPolicy(Path plugin) throws TrustException, IOException
+	{
+		return TrustPolicy.read(plugin.resolve(PluginDirectory.INSTALLER_CONFIGURATION).resolve("default-policy.json"));
+	}
+
+	/**
+	 * Writes an installation's policy, which only the installing user may read or change.
+	 *
+	 * @param policy     the policy
+	 * @param policyFile the installation's policy file
+	 * @param replacer   atomically replaces the policy file
+	 * @throws IOException if the policy cannot be written or replaced, or its permissions cannot be applied
+	 */
+	static void writePolicy(TrustPolicy policy, Path policyFile, FileReplacer replacer) throws IOException
+	{
+		Files.createDirectories(policyFile.getParent());
+		policy.write(policyFile, replacer);
+		setPermissions(policyFile);
 	}
 
 	/**
