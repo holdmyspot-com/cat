@@ -112,7 +112,22 @@ revised plugin lifecycle and distribution work, which has not been implemented.
     missing folder and a logging `git` on PATH: exit 0 in 106 s, 4,939 tests, 0 failures; the folder was never
     created; every test's Git call ran in a temporary fixture repository; the only call on the source repository was
     the build reading `HEAD` for the version.
-- **Next:** gate 4's E-runs on the final tree, all 16 cells, Codex first; republish when the user asks.
+- **Gate 3 (2026-11-07 UTC): passed** on `9ed37fdfde`. A static audit of 480 Java test sources and 28 POMs traced
+    every process start: each is `git`, an OS utility, the test JVM's own `java`, or a program the test writes. Every
+    runner-CLI `serve` call ends before `ClaudeRunner.start` or `CodexRunner.start`; no test uses an HTTP client or
+    socket; there is no TestNG group, JUnit tag or `native` profile.
+- **Gate 2 (2026-11-07 UTC): unmet** on `9ed37fdfde`. Tags: 136 of the 137 §3 IDs carry a passing tag in the tier
+    their proof names (2,369 tag uses, all passed, none unknown); R-I1, whose only proof is E in both harnesses, has
+    none and is proved by gate 4's receipts. Receipts: no E proof has a receipt on the final tree. For 34 IDs the proof
+    column names a test class that does not carry the tag, though another passing test does; gate 7 corrects the
+    column. Gate 6 follow-up: `GitIdentityTest` and the tests that use `GitWorkTrees.create` run real Git but §8's
+    real-Git list does not name them.
+- **Republish in progress (2026-11-07):** the user approved it. Build run 42396347203 on `9ed37fdfde` failed on
+    windows-x64 in `ProcessElevationTest.readsEffectiveUserId` (unchanged code): on timeout, the elevation check waits
+    for the program but not for its stopped children, so deleting the output file fails and replaces the check's
+    result. The fix is in progress; then rebuild, push and release.
+- **Next:** gate 4's E-runs on the final tree, all 16 cells, Codex first, after the user installs the republished
+    release.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
