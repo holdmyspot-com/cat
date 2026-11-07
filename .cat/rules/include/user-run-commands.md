@@ -21,12 +21,19 @@ harness home (for example `~/.claude`) instead of this session's.
 2. Read the session's value of each listed variable from the session, for example with `printenv NAME` in the tool
 	shell; "unset" is a value. Do not use a remembered or assumed value.
 3. Write into the command only the variables it needs:
-	- Set a variable, with the session's value, when the user's terminal may hold a different value and the command
-	  would then act elsewhere. Put the assignments on the command that runs the script (`curl … | HOME=… sh -s -- …`),
-	  not on an earlier stage of a pipeline that never reads them.
-	- Omit a variable whose value the script derives from a variable that the command already sets, when the session's
-	  value equals that derived value. This includes a session value that is unset, when the script's default from the set
-	  variable gives the session's path.
+	- Set `HOME`, with the session's value, only when the session's `HOME` is not the account's home folder in the
+	  account database, or that folder cannot be determined: a terminal that the account opens has the account's home
+	  folder as its `HOME`, so only then would the command act elsewhere. Print the session's `HOME` and the account's
+	  home folder and compare them, ignoring a trailing slash. On Linux, the account's home folder is
+	  `getent passwd "$(id -un)" | cut -d: -f6`. On macOS, it is the value that
+	  `dscl . -read "/Users/$(id -un)" NFSHomeDirectory` prints after `NFSHomeDirectory:`. On Windows, a command that
+	  reads the user profile needs no `HOME`.
+	- Set another variable that the command reads, with the session's value, only when the session's value is not the
+	  default that the script derives from the session's `HOME`, which the terminal then has. Omit it when the
+	  session's value equals that default, including when the session leaves it unset and the script's default gives
+	  the session's path.
+	- Put the assignments on the command that runs the script (`curl … | HOME=… sh -s -- …`), not on an earlier stage of
+	  a pipeline that never reads them.
 	- When the user's terminal could plausibly hold an overriding value for an omitted variable, such as an exported
 	  `CLAUDE_CONFIG_DIR`, say so in one sentence beside the command ("if your terminal exports `CLAUDE_CONFIG_DIR`,
 	  unset it first"). Do not add the variable to the command: that presents a precaution as a requirement.
@@ -37,8 +44,9 @@ harness home (for example `~/.claude`) instead of this session's.
 	directory (for an installer, the installed plugin and its version). If it is absent or unchanged, the command acted on
 	another environment: ask the user for the command's printed output instead of continuing as if it had succeeded.
 
-For example, when a session runs with `HOME=/home/gili/cat/home`, `CLAUDE_CONFIG_DIR` unset and
-`CODEX_HOME=/home/gili/cat/home/.codex` (read the current values first), `HOME=/home/gili/cat/home` alone is the right
-setup command for both harnesses: `curl -fsSL <installer URL> | HOME=/home/gili/cat/home sh -s -- --harness claude`, and
-the same with `--harness codex`. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are omitted because `cat.sh` derives them from
-`HOME` and the session's values equal what it derives.
+For example, when a session runs with `HOME=/home/gili/cat/home`, which differs from the account's home folder
+`/home/gili` in the account database, `CLAUDE_CONFIG_DIR` unset and `CODEX_HOME=/home/gili/cat/home/.codex` (read the
+current values first), `HOME=/home/gili/cat/home` alone is the right setup command for both harnesses:
+`curl -fsSL <installer URL> | HOME=/home/gili/cat/home sh -s -- --harness claude`, and the same with
+`--harness codex`. `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are omitted because `cat.sh` derives them from `HOME` and the
+session's values equal what it derives.
