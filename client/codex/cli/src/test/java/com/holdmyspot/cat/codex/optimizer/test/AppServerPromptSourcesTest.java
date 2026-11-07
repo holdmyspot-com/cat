@@ -5,6 +5,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.AppServerPromptSources;
 import com.holdmyspot.cat.codex.secrets.AppServerPromptSourcesSecrets;
+import com.holdmyspot.cat.common.optimizer.adapter.PromptSources;
+import com.holdmyspot.cat.common.optimizer.adapter.contract.test.PromptSourcesContract;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -161,15 +163,27 @@ public final class AppServerPromptSourcesTest
 	}
 
 	/**
-	 * Verifies that a session that loaded nothing that the events show is recorded as an explicit value.
+	 * Runs the contract check that a session that loaded nothing that the events show is recorded as an explicit
+	 * value.
 	 */
 	@Test
 	public void recordsExplicitValueWhenNothingSeen()
 	{
 		// Requirement: R-M1
-		AppServerPromptSources sources = AppServerPromptSourcesSecrets.getAppServerPromptSourcesAccess().
-			newAppServerPromptSources(JSON, Map.of());
-		sources.accept("{\"method\":\"item/started\"}");
-		requireThat(sources.value(), "value").isEqualTo("none");
+		new PromptSourcesContract(new PromptSourcesContract.Subject()
+		{
+			@Override
+			public PromptSources newSources()
+			{
+				return AppServerPromptSourcesSecrets.getAppServerPromptSourcesAccess().
+					newAppServerPromptSources(JSON, Map.of());
+			}
+
+			@Override
+			public List<String> loadingNothing()
+			{
+				return List.of("{\"method\":\"item/started\"}");
+			}
+		}).recordsAnExplicitValueWhenNothingLoads();
 	}
 }

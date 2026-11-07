@@ -8,9 +8,12 @@ import com.holdmyspot.cat.common.optimizer.adapter.PromptSources;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
+import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,8 +23,9 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Runs sessions of the generic harness {@value #HARNESS}, whose events report only whether the model produced output,
- * whether a hook is running, and whether the provider rejected or refused a request.
+ * Runs sessions of the generic harness {@value #HARNESS}, whose events report only the model, its token usage and
+ * rate-limit windows, whether the model produced output, whether a hook is running, and whether the provider rejected
+ * or refused a request.
  */
 final class TestSessions extends RunnerSessions
 {
@@ -33,6 +37,22 @@ final class TestSessions extends RunnerSessions
 	 * An event that reports model output.
 	 */
 	static final String OUTPUT_EVENT = "{\"type\":\"output\"}";
+	/**
+	 * An event that reports the model {@code model-a}.
+	 */
+	static final String MODEL_EVENT = "{\"type\":\"model\",\"model\":\"model-a\"}";
+	/**
+	 * An event that reports a token usage of 10 input and 5 output tokens.
+	 */
+	static final String USAGE_EVENT = "{\"type\":\"usage\",\"input\":10,\"output\":5}";
+	/**
+	 * The rate-limit window that {@link #WINDOW_EVENT} reports.
+	 */
+	static final RateLimitWindow WINDOW = new RateLimitWindow(0.25, Instant.ofEpochSecond(1_792_455_600L));
+	/**
+	 * An event that reports the rate-limit window {@link #WINDOW}.
+	 */
+	static final String WINDOW_EVENT = "{\"type\":\"window\",\"utilization\":0.25,\"resetsAt\":1792455600}";
 	/**
 	 * An event that reports that the hook {@code hook} started.
 	 */
@@ -203,7 +223,8 @@ final class TestSessions extends RunnerSessions
 	}
 
 	/**
-	 * Harness events that report model output, hooks, rejections and refusals, and nothing else.
+	 * Harness events that report the model, its token usage, a rate-limit window, model output, hooks, rejections and
+	 * refusals, and nothing else.
 	 */
 	static final class Events extends HarnessEvents
 	{
@@ -223,6 +244,10 @@ final class TestSessions extends RunnerSessions
 			String id = event.path("id").asString("");
 			switch (event.path("type").asString(""))
 			{
+				case "model" -> setModel(event.path("model").asString());
+				case "usage" -> setUsage(new TokenUsage(event.path("input").asLong(), 0, event.path("output").asLong(), 0));
+				case "window" -> setWindows(List.of(new RateLimitWindow(event.path("utilization").asDouble(),
+					Instant.ofEpochSecond(event.path("resetsAt").asLong()))));
 				case "output" -> setOutputProduced();
 				case "hook_started" -> setHookStarted(id);
 				case "hook_completed" -> setHookCompleted(id);

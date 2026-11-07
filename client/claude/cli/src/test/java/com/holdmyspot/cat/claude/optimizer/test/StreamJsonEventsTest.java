@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.claude.optimizer.StreamJsonEvents;
 import com.holdmyspot.cat.claude.secrets.StreamJsonEventsSecrets;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
+import com.holdmyspot.cat.common.optimizer.adapter.contract.test.HarnessEventsContract;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
@@ -63,6 +64,62 @@ public final class StreamJsonEventsTest
 		for (String line : lines)
 			events.accept(line);
 		return events;
+	}
+
+	/**
+	 * Returns the event reader contract over Claude's {@code stream-json} records.
+	 *
+	 * @return the contract
+	 */
+	private static HarnessEventsContract contract()
+	{
+		return new HarnessEventsContract(new HarnessEventsContract.Subject()
+		{
+			@Override
+			public HarnessEvents newEvents()
+			{
+				return parse(List.of());
+			}
+
+			@Override
+			public String modelOutput()
+			{
+				return "{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":{\"id\":\"msg_1\"," +
+					"\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}";
+			}
+
+			@Override
+			public String withoutOutput()
+			{
+				return "{\"type\":\"user\",\"parent_tool_use_id\":null,\"message\":{\"role\":\"user\",\"content\":" +
+					"[{\"type\":\"text\",\"text\":\"Do the task\"}]}}";
+			}
+
+			@Override
+			public String hookStarted(String id)
+			{
+				return hook("hook_started", id);
+			}
+
+			@Override
+			public String hookCompleted(String id)
+			{
+				return hook("hook_response", id);
+			}
+
+			@Override
+			public List<String> rejection()
+			{
+				return List.of("{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\"}}");
+			}
+
+			@Override
+			public List<String> refusal()
+			{
+				return List.of("{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":true," +
+					"\"api_error_status\":403,\"terminal_reason\":\"model_error\",\"result\":\"forbidden\"}");
+			}
+		});
 	}
 
 	/**
@@ -161,15 +218,23 @@ public final class StreamJsonEventsTest
 	}
 
 	/**
-	 * Verifies that a rejection without a reset time is still a rejection.
+	 * Runs the contract check that a rejection without a reset time is still a rejection, and not a refusal.
 	 */
 	@Test
 	public void reportsRejectionWithoutResetTime()
 	{
 		// Requirement: R-E6
-		HarnessEvents events = parse(List.of(
-			"{\"type\":\"rate_limit_event\",\"rate_limit_info\":{\"status\":\"rejected\"}}"));
-		requireThat(events.rejection(), "rejection").isEqualTo(Optional.of(new HarnessEvents.Rejection(null)));
+		contract().reportsARejectionWithoutAResetTime();
+	}
+
+	/**
+	 * Runs the contract check that a refused request is a refusal, and not a rate-limit rejection.
+	 */
+	@Test
+	public void reportsRefusal()
+	{
+		// Requirement: R-E6
+		contract().reportsARefusal();
 	}
 
 	/**
@@ -407,24 +472,20 @@ public final class StreamJsonEventsTest
 	}
 
 	/**
-	 * Verifies that a new turn starts with no model output while an earlier turn's output stays out of it.
+	 * Runs the contract check that a new turn starts with no model output while an earlier turn's output stays out of
+	 * it.
 	 */
 	@Test
 	public void clearsOutputWhenATurnBegins()
 	{
 		// Requirement: R-E13
-		HarnessEvents events = parse(List.of("{\"type\":\"assistant\",\"parent_tool_use_id\":null,\"message\":" +
-			"{\"id\":\"msg_1\",\"content\":[{\"type\":\"text\",\"text\":\"Hello\"}]}}"));
-		requireThat(events.outputProduced(), "first").isTrue();
-
-		events.startTurn();
-
-		requireThat(events.outputProduced(), "second").isFalse();
+		contract().modelOutputMarksTheTurnUntilTheNextTurn();
 	}
 
 	/**
-	 * Verifies that a hook is running from its start until its response, and that one hook's response leaves another
-	 * running.
+	 * Runs the contract check that a hook is running from its start until its response, that one hook's response
+	 * leaves another running, and that a running hook keeps running across turns; and verifies that no hook is left
+	 * running after a recorded turn.
 	 *
 	 * @throws IOException if the recorded lines cannot be read
 	 */
@@ -432,33 +493,8 @@ public final class StreamJsonEventsTest
 	public void tracksRunningHooks() throws IOException
 	{
 		// Requirement: R-E13
-		HarnessEvents events = parse(List.of());
-		requireThat(events.hookRunning(), "initial").isFalse();
-
-		events.accept(hook("hook_started", "first"));
-		requireThat(events.hookRunning(), "firstStarted").isTrue();
-
-		events.accept(hook("hook_started", "second"));
-		events.accept(hook("hook_response", "first"));
-		requireThat(events.hookRunning(), "firstResponded").isTrue();
-
-		events.accept(hook("hook_response", "second"));
-		requireThat(events.hookRunning(), "secondResponded").isFalse();
+		contract().aHookRunsFromItsStartUntilItsCompletion();
 
 		requireThat(parse(recorded("claude-single-turn.jsonl")).hookRunning(), "recorded").isFalse();
-	}
-
-	/**
-	 * Verifies that a hook that is still running when a new turn begins is still running.
-	 */
-	@Test
-	public void keepsRunningHookAcrossTurns()
-	{
-		// Requirement: R-E13
-		HarnessEvents events = parse(List.of(hook("hook_started", "slow")));
-
-		events.startTurn();
-
-		requireThat(events.hookRunning(), "hookRunning").isTrue();
 	}
 }

@@ -14,6 +14,8 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.git.test to org.testng;
 	exports com.holdmyspot.cat.common.history.test to org.testng;
 	exports com.holdmyspot.cat.common.installation.test to org.testng;
+	exports com.holdmyspot.cat.common.optimizer.adapter.contract.test to com.holdmyspot.cat.claude.cli.test,
+		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.adapter.fakes.test to com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.adapter.test to org.testng;

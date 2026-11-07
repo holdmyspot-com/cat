@@ -6,6 +6,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.claude.optimizer.StreamJsonPromptSources;
 import com.holdmyspot.cat.claude.secrets.StreamJsonPromptSourcesSecrets;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.adapter.PromptSources;
+import com.holdmyspot.cat.common.optimizer.adapter.contract.test.PromptSourcesContract;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -239,16 +241,27 @@ public final class StreamJsonPromptSourcesTest
 	}
 
 	/**
-	 * Verifies that a session that loaded nothing that the events show is recorded as an explicit value.
+	 * Runs the contract check that a session that loaded nothing that the events show is recorded as an explicit
+	 * value.
 	 */
 	@Test
 	public void recordsExplicitValueWhenNothingSeen()
 	{
 		// Requirement: R-M1
-		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.getStreamJsonPromptSourcesAccess().
-			newStreamJsonPromptSources(JSON,
-			Map.of());
-		sources.accept("{\"type\":\"assistant\"}");
-		requireThat(sources.value(), "value").isEqualTo("none");
+		new PromptSourcesContract(new PromptSourcesContract.Subject()
+		{
+			@Override
+			public PromptSources newSources()
+			{
+				return StreamJsonPromptSourcesSecrets.getStreamJsonPromptSourcesAccess().
+					newStreamJsonPromptSources(JSON, Map.of());
+			}
+
+			@Override
+			public List<String> loadingNothing()
+			{
+				return List.of("{\"type\":\"assistant\"}");
+			}
+		}).recordsAnExplicitValueWhenNothingLoads();
 	}
 }

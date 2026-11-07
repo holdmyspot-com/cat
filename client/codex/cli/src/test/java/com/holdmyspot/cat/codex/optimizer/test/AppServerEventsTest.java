@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.codex.optimizer.AppServerEvents;
 import com.holdmyspot.cat.codex.secrets.AppServerEventsSecrets;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
+import com.holdmyspot.cat.common.optimizer.adapter.contract.test.HarnessEventsContract;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
@@ -94,6 +95,68 @@ public final class AppServerEventsTest
 		for (String line : lines)
 			events.accept(line);
 		return events;
+	}
+
+	/**
+	 * Returns the event reader contract over Codex's app-server notifications.
+	 *
+	 * @return the contract
+	 */
+	private static HarnessEventsContract contract()
+	{
+		return new HarnessEventsContract(new HarnessEventsContract.Subject()
+		{
+			@Override
+			public HarnessEvents newEvents()
+			{
+				return parse(List.of());
+			}
+
+			@Override
+			public String modelOutput()
+			{
+				return item("item/started", "reasoning");
+			}
+
+			@Override
+			public String withoutOutput()
+			{
+				return item("item/started", "userMessage");
+			}
+
+			@Override
+			public String hookStarted(String id)
+			{
+				return hook("hook/started", id);
+			}
+
+			@Override
+			public String hookCompleted(String id)
+			{
+				return hook("hook/completed", id);
+			}
+
+			@Override
+			public List<String> rejection()
+			{
+				return List.of("{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
+					"{\"primary\":null,\"secondary\":null," +
+					"\"rateLimitReachedType\":\"workspace_member_usage_limit_reached\"}}}");
+			}
+
+			@Override
+			public List<String> refusal()
+			{
+				try
+				{
+					return recorded("codex-refusal.jsonl");
+				}
+				catch (IOException e)
+				{
+					throw new AssertionError(e);
+				}
+			}
+		});
 	}
 
 	/**
@@ -308,15 +371,14 @@ public final class AppServerEventsTest
 	}
 
 	/**
-	 * Verifies that a reached limit that names no exhausted window is a rejection without a reset time.
+	 * Runs the contract check that a reached limit that names no exhausted window is a rejection without a reset time,
+	 * and not a refusal.
 	 */
 	@Test
 	public void reportsReachedRateLimitWithoutResetTime()
 	{
 		// Requirement: R-E6
-		HarnessEvents events = parse(List.of("{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":" +
-			"{\"primary\":null,\"secondary\":null,\"rateLimitReachedType\":\"workspace_member_usage_limit_reached\"}}}"));
-		requireThat(events.rejection(), "rejection").isEqualTo(Optional.of(new HarnessEvents.Rejection(null)));
+		contract().reportsARejectionWithoutAResetTime();
 	}
 
 	/**
@@ -362,19 +424,14 @@ public final class AppServerEventsTest
 	}
 
 	/**
-	 * Verifies that an error that Codex does not retry after the provider answered with HTTP status 403 is a refusal,
-	 * not a rate-limit rejection.
-	 *
-	 * @throws IOException if the recording cannot be read
+	 * Runs the contract check that an error that Codex does not retry after the provider answered with HTTP status 403
+	 * is a refusal, not a rate-limit rejection.
 	 */
 	@Test
-	public void reportsFinalRefusal() throws IOException
+	public void reportsFinalRefusal()
 	{
 		// Requirement: R-E6
-		HarnessEvents events = parse(recorded("codex-refusal.jsonl"));
-
-		requireThat(events.refused(), "refused").isTrue();
-		requireThat(events.rejection(), "rejection").isEqualTo(Optional.empty());
+		contract().reportsARefusal();
 	}
 
 	/**
@@ -540,53 +597,24 @@ public final class AppServerEventsTest
 	}
 
 	/**
-	 * Verifies that a new turn starts with no model output while an earlier turn's output stays out of it.
+	 * Runs the contract check that a new turn starts with no model output while an earlier turn's output stays out of
+	 * it.
 	 */
 	@Test
 	public void clearsOutputWhenATurnBegins()
 	{
 		// Requirement: R-E13
-		HarnessEvents events = parse(List.of(item("item/started", "reasoning")));
-		requireThat(events.outputProduced(), "first").isTrue();
-
-		events.startTurn();
-
-		requireThat(events.outputProduced(), "second").isFalse();
+		contract().modelOutputMarksTheTurnUntilTheNextTurn();
 	}
 
 	/**
-	 * Verifies that a hook is running from its start until its completion, and that one hook's completion leaves
-	 * another running.
+	 * Runs the contract check that a hook is running from its start until its completion, that one hook's completion
+	 * leaves another running, and that a running hook keeps running across turns.
 	 */
 	@Test
 	public void tracksRunningHooks()
 	{
 		// Requirement: R-E13
-		HarnessEvents events = parse(List.of());
-		requireThat(events.hookRunning(), "initial").isFalse();
-
-		events.accept(hook("hook/started", "first"));
-		requireThat(events.hookRunning(), "firstStarted").isTrue();
-
-		events.accept(hook("hook/started", "second"));
-		events.accept(hook("hook/completed", "first"));
-		requireThat(events.hookRunning(), "firstCompleted").isTrue();
-
-		events.accept(hook("hook/completed", "second"));
-		requireThat(events.hookRunning(), "secondCompleted").isFalse();
-	}
-
-	/**
-	 * Verifies that a hook that is still running when a new turn begins is still running.
-	 */
-	@Test
-	public void keepsRunningHookAcrossTurns()
-	{
-		// Requirement: R-E13
-		HarnessEvents events = parse(List.of(hook("hook/started", "slow")));
-
-		events.startTurn();
-
-		requireThat(events.hookRunning(), "hookRunning").isTrue();
+		contract().aHookRunsFromItsStartUntilItsCompletion();
 	}
 }
