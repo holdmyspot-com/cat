@@ -86,6 +86,10 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
+	 * Names the prompt optimizer in the messages with which it refuses to start a session.
+	 */
+	public static final String COMMAND = "The prompt optimizer";
+	/**
 	 * How often a session's driver wakes to check the clock and the interrupt request.
 	 */
 	private static final Duration POLL = Duration.ofMillis(250);

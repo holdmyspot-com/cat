@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
@@ -434,8 +435,10 @@ public final class CodexSessions extends RunnerSessions
 	 * takes from the settings' environment:
 	 * <ul>
 	 *   <li>When Codex runs the optimizer, the session is a request to the session launcher of the Codex process,
-	 *   which starts the runner of the settings' CAT artifact outside the optimizer's sandbox. A run whose runner lets
-	 *   its session request sessions sends the session there too.</li>
+	 *   which starts the runner of the settings' CAT artifact outside the optimizer's sandbox.</li>
+	 *   <li>Inside a run whose runner lets its session request sessions, the session is a request to the run's
+	 *   runner, which starts it outside the optimizer's sandbox and counts it against the run's limit; the session's
+	 *   kept run is copied into the optimizer's run root.</li>
 	 *   <li>Inside a run whose runner lets its session request none, or when only Claude Code runs the optimizer, the
 	 *   session is refused with the reason that the runner's launch gives.</li>
 	 *   <li>When no harness runs the optimizer, the session is refused: the optimizer never starts its sessions in
@@ -458,8 +461,11 @@ public final class CodexSessions extends RunnerSessions
 			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, CodexRunnerCli.MARKERS.running(environment), args,
 				environment))
 			{
-				case LaunchRoute.Launcher _, LaunchRoute.Forward _ -> SessionLauncherClient.production(environment,
+				case LaunchRoute.Launcher _ -> SessionLauncherClient.production(environment,
 					settings.scope().waiting(), git).bridge(HARNESS_ID, settings.artifact()).serve(arguments, input, output);
+				case LaunchRoute.Forward(Path requests) -> SessionRequestForwarder.serve(COMMAND,
+					HARNESS_ID, settings.artifact(), arguments, input, output, requests,
+					settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL));
 				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
 				case LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> throw new LaunchRefusedException(
 					"CAT cannot start the session: no Claude Code or Codex session runs this command, so no session " +

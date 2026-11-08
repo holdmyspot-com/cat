@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
@@ -18,6 +19,7 @@ import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
@@ -182,18 +184,40 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 			"session runs this command. Run it from a Claude Code or Codex session.");
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * Inside a run whose runner lets its session request sessions, the command's sessions are requests to that runner,
+	 * so the command is also refused when the run's limits, as its runner states them, allow no further session.
+	 */
 	@Override
 	protected final Optional<String> runRefusal()
 	{
 		ensureOpen();
-		return HarnessEnvironment.runRefusal("The prompt optimizer", environment);
+		Optional<String> refusal = HarnessEnvironment.runRefusal(RunnerSessions.COMMAND, environment);
+		if (refusal.isPresent())
+			return refusal;
+		String id = harness.commandName();
+		if (!(LaunchRoute.decide(id, id, markers.running(environment), new String[0],
+			environment) instanceof LaunchRoute.Forward(Path requests)))
+			return Optional.empty();
+		try
+		{
+			return SessionRequestAccess.furtherRequestRefusal(requests).
+				map(reason -> SessionRequestAccess.refusalMessage(RunnerSessions.COMMAND, reason));
+		}
+		catch (IOException _)
+		{
+			// The run's runner still refuses each session that its limits do not allow, which pauses the campaign
+			return Optional.empty();
+		}
 	}
 
 	/**
 	 * Returns why the session launcher would refuse every session, but only when this command's sessions go to the
-	 * session launcher, as their bridge decides from the environment: when this scope's harness runs the command, or
-	 * a run whose runner lets its session request sessions does. On every other route no launcher needs to serve the
-	 * host session: a route that refuses its sessions refuses each of them, with its reason, when it starts.
+	 * session launcher, as their bridge decides from the environment: when this scope's harness runs the command
+	 * outside a run. On every other route no launcher needs to serve the host session: inside a run the run's runner
+	 * serves it, and a route that refuses its sessions refuses each of them, with its reason, when it starts.
 	 *
 	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions or
 	 *   the sessions do not go to a session launcher
@@ -207,9 +231,9 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		String id = harness.commandName();
 		return switch (LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment))
 		{
-			case LaunchRoute.Launcher _, LaunchRoute.Forward _ ->
-				SessionLauncherClient.production(environment, waiting()).refusal();
-			case LaunchRoute.Refused _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> Optional.empty();
+			case LaunchRoute.Launcher _ -> SessionLauncherClient.production(environment, waiting()).refusal();
+			case LaunchRoute.Forward _, LaunchRoute.Refused _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ ->
+				Optional.empty();
 		};
 	}
 

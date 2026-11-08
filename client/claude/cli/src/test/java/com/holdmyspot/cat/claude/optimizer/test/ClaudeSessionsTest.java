@@ -43,6 +43,8 @@ import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess.InterruptedTurn;
@@ -69,6 +71,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -1533,6 +1536,167 @@ public final class ClaudeSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.LaunchRefused.class);
 			requireThat(((SessionResult.LaunchRefused) result).reason(), "reason").
 				contains("Run the prompt optimizer from a Claude Code or Codex session");
+		}
+	}
+
+	/**
+	 * Verifies that inside a run that allows sessions, each of the optimizer's sessions goes to the run's runner, which
+	 * starts it, and that the session completes with the requested session's reply and with its kept run where the
+	 * optimizer reads its sessions' runs.
+	 *
+	 * @throws IOException          if a fixture cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void sessionsInsideRunGoThroughRunsRunner()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
+			Path source = Files.createDirectories(home.resolve("source"));
+			Path runRoot = home.resolve("runs");
+			try (RequestingRun parent = new RequestingRun(home.resolve("parent"), jvm.fileLocks(), 1))
+			{
+				ClaudeSessions sessions = inRun(jvm, home, runRoot, parent);
+
+				SessionResult result = await(sessions.start(new SessionRequest(SessionRole.JUDGE,
+					partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE,
+					TestWorkspace.NONE, List.of())));
+
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				SessionResult.Completed completed = (SessionResult.Completed) result;
+				requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("reply 1")));
+				// The optimizer reads the requested session's kept run, without its home, in its own run root
+				Path run = completed.transcript().getParent().getParent();
+				requireThat(Files.readString(run.resolve("project/result.txt")), "result").isEqualTo("result");
+				requireThat(Files.exists(run.resolve("home")), "home").isFalse();
+				requireThat(parent.launches().size(), "launches").isEqualTo(1);
+				requireThat(ScriptedHarness.optionValue(parent.launches().getFirst(), "--model"), "model").
+					isEqualTo(SESSION_PROFILE.model());
+			}
+		}
+	}
+
+	/**
+	 * Supplies the session requests of a run whose runner refuses the optimizer's next session, and whether the run
+	 * first serves the one session it allows.
+	 *
+	 * @return the session requests of the run and whether one session is served first
+	 */
+	@DataProvider
+	public static Object[][] spentRuns()
+	{
+		return new Object[][]{{0, false}, {1, true}};
+	}
+
+	/**
+	 * Verifies that inside a run that allows no session, or whose sessions are spent, the optimizer's session ends as a
+	 * launch refusal, which pauses the optimizer instead of counting a failure, with the message that names the
+	 * caller's options that would allow the session, and that it publishes no request and writes no run first.
+	 *
+	 * @param sessionRequests how many sessions the run allows
+	 * @param serveFirst      indicates whether the run serves one session before
+	 * @throws IOException          if a fixture cannot be created
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	@Test(dataProvider = "spentRuns", timeOut = 120_000)
+	public void spentRunRefusesSessionsBeforeAnyChange(int sessionRequests, boolean serveFirst)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
+			Path source = Files.createDirectories(home.resolve("source"));
+			Path runRoot = home.resolve("runs");
+			try (RequestingRun parent = new RequestingRun(home.resolve("parent"), jvm.fileLocks(), sessionRequests))
+			{
+				ClaudeSessions sessions = inRun(jvm, home, runRoot, parent);
+				SessionRequest request = new SessionRequest(SessionRole.JUDGE, partOf(SessionRole.JUDGE), source,
+					List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE, List.of());
+				if (serveFirst)
+					requireThat(await(sessions.start(request)), "first").isInstanceOf(SessionResult.Completed.class);
+				List<String> requestsBefore = names(parent.requests());
+				List<Path> runsBefore = runs(home, home.resolve("parent"));
+				if (serveFirst)
+					requireThat(runsBefore.size(), "runsBefore").isEqualTo(1);
+				String reason;
+				if (sessionRequests == 0)
+					reason = SessionRequestAccess.NO_REQUESTS_REASON;
+				else
+					reason = SessionRequestAccess.limitReason(sessionRequests);
+
+				SessionResult result = await(sessions.start(request));
+
+				requireThat(result, "result").isEqualTo(new SessionResult.LaunchRefused(
+					SessionRequestAccess.refusalMessage(RunnerSessions.COMMAND, reason), List.of()));
+				requireThat(names(parent.requests()), "requests").isEqualTo(requestsBefore);
+				requireThat(runs(home, home.resolve("parent")), "runs").isEqualTo(runsBefore);
+			}
+		}
+	}
+
+	/**
+	 * Returns the production port of an optimizer that a Claude Code session runs inside a run.
+	 *
+	 * @param jvm     the borrowed process scope
+	 * @param home    the user's home and the port's artifact
+	 * @param runRoot the directory for run directories
+	 * @param parent  the run
+	 * @return the port
+	 */
+	private static ClaudeSessions inRun(JvmScope jvm, Path home, Path runRoot, RequestingRun parent)
+	{
+		Map<String, String> environment = new HashMap<>();
+		environment.put("CAT_RUN", "1");
+		environment.put("CLAUDECODE", "1");
+		environment.put(SessionRequestAccess.REQUESTS_VARIABLE, parent.requests().toString());
+		environment.put("PATH", "");
+		environment.put(Platform.current().homeVariable(), home.toString());
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
+			environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
+			new FixedGitIdentity("Ada", "ada@example.com"));
+	}
+
+	/**
+	 * Returns the runs that the optimizer's sessions keep, which are the directories that hold an {@code artifacts}
+	 * directory outside the requesting run.
+	 *
+	 * @param home       the folder that holds the optimizer's files
+	 * @param requesting the folder of the requesting run, which is left out
+	 * @return the runs, sorted
+	 * @throws IOException if the folder cannot be walked
+	 */
+	private static List<Path> runs(Path home, Path requesting) throws IOException
+	{
+		try (Stream<Path> paths = Files.walk(home))
+		{
+			return paths.filter(path -> path.getFileName().toString().equals("artifacts") && Files.isDirectory(path) &&
+				!path.startsWith(requesting)).map(Path::getParent).sorted().toList();
+		}
+	}
+
+	/**
+	 * Returns the sorted names in a directory.
+	 *
+	 * @param directory the directory
+	 * @return the names, empty if the directory does not exist
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static List<String> names(Path directory) throws IOException
+	{
+		if (!Files.exists(directory))
+			return List.of();
+		try (Stream<Path> entries = Files.list(directory))
+		{
+			return entries.map(path -> path.getFileName().toString()).sorted().toList();
 		}
 	}
 

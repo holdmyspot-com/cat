@@ -175,10 +175,11 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 
 	/**
 	 * Returns why a command that starts sessions is refused because it runs in a session of a CAT run whose caller
-	 * lets it request no sessions, found before the command reads or changes any state.
+	 * lets it request no sessions, or whose request depth or limit is spent, found before the command reads or changes
+	 * any state.
 	 *
 	 * @return the message that names the caller's options that would allow the sessions, or empty if the command does
-	 *   not run in a CAT run or the run lets its session request sessions
+	 *   not run in a CAT run or the run allows a further session
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	protected abstract Optional<String> runRefusal();

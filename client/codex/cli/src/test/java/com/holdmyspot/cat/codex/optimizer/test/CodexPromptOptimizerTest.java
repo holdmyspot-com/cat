@@ -1,5 +1,13 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
+import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.util.concurrent.atomic.AtomicInteger;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.codex.optimizer.CodexOptimizerCommandScope;
@@ -381,6 +389,83 @@ public final class CodexPromptOptimizerTest
 			requireThat(json.get("message").asString(), "message").contains("--session-requests <count>").
 				contains("--request-depth <levels>").doesNotContain("--no-daemon");
 			requireThat(tree(setup.root()), "tree").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Returns every command that may start sessions, each with the session requests of a run whose runner refuses the
+	 * next session and whether the run first serves the one session it allows.
+	 *
+	 * @return the commands and their arguments, the run's session requests and whether one session is served first
+	 */
+	@DataProvider
+	public static Object[][] spentRuns()
+	{
+		List<Object[]> cases = new ArrayList<>();
+		for (Object[] command : sessionCommands())
+		{
+			cases.add(new Object[]{command[0], 0, false});
+			cases.add(new Object[]{command[0], 1, true});
+		}
+		return cases.toArray(Object[][]::new);
+	}
+
+	/**
+	 * Verifies that each command that may start sessions, run in a session of a CAT run whose runner serves its
+	 * sessions but whose limits, as the runner states them, allow no further session, is refused with exit code 2
+	 * before it changes anything, with the message that names the caller's options that would allow the sessions.
+	 *
+	 * @param command         the command and its arguments
+	 * @param sessionRequests how many sessions the run allows
+	 * @param serveFirst      indicates whether the run serves one session before
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test(dataProvider = "spentRuns", timeOut = 30_000)
+	public void inRunCommandRefusedWhenNoFurtherSession(List<String> command, int sessionRequests, boolean serveFirst)
+		throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			Path runs = scope.add(Files.createTempDirectory("codex-optimizer-run")).toRealPath();
+			try (RequestingRun parent = new RequestingRun(runs.resolve("parent"), new FileLocks(), sessionRequests))
+			{
+				if (serveFirst)
+				{
+					AtomicInteger checks = new AtomicInteger();
+					Path project = Files.createDirectories(runs.resolve("project"));
+					SessionRequestForwarder.serve(RunnerSessions.COMMAND, "codex", runs, List.of("--project",
+						project.toString(), "--run-root", runs.resolve("runs").toString(), "--keep-run", "--model",
+						"model-a", "--effort", "effort-a"), new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+						"{\"type\":\"complete\"}\n"), new StringWriter(), parent.requests(), () ->
+					{
+						if (checks.incrementAndGet() > 10_000_000)
+							throw new IOException("The first session did not end");
+						Thread.yield();
+					});
+				}
+				Map<String, String> environment = new HashMap<>(Map.of("CODEX_THREAD_ID", SESSION_ID, "CAT_RUN", "1"));
+				environment.put(SessionRequestAccess.REQUESTS_VARIABLE, parent.requests().toString());
+				environment.put(Platform.current().homeVariable(), setup.home().toString());
+				List<String> before = tree(setup.root());
+				String reason;
+				if (sessionRequests == 0)
+					reason = SessionRequestAccess.NO_REQUESTS_REASON;
+				else
+					reason = SessionRequestAccess.limitReason(sessionRequests);
+				StringBuilder output = new StringBuilder();
+
+				int exit = run(setup, environment, command, output);
+
+				requireThat(exit, "exit").isEqualTo(2);
+				JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+				requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+				requireThat(json.get("message").asString(), "message").
+					contains(SessionRequestAccess.refusalMessage(RunnerSessions.COMMAND, reason)).
+					doesNotContain("--no-daemon");
+				requireThat(tree(setup.root()), "tree").isEqualTo(before);
+				requireThat(parent.launches().size(), "launches").isEqualTo(sessionRequests);
+			}
 		}
 	}
 
