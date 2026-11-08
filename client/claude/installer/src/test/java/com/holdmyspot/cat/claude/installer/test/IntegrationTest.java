@@ -1046,6 +1046,35 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * The report names the entries that match a version even when the launcher's path holds a backslash, which those
+	 * entries escape.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void reportNamesEscapedVersionEntries() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = home.resolve("plugins\\cache/bin/installer");
+			Integration integration = new Integration(Platform.LINUX_X64);
+			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
+
+			List<EntryGroup> groups = integration.describeEntries(added, launcher);
+
+			Map<String, List<String>> items = new HashMap<>();
+			for (EntryGroup group : groups)
+				items.put(group.setting(), group.items());
+			requireThat(items, "items").isEqualTo(Map.of(
+				"sandbox.excludedCommands", List.of("installer install", "installer install", "installer install",
+					"installer status", "installer status", "installer uninstall", "installer uninstall", "request-server"),
+				"permissions.allow", List.of("installer install", "installer install", "installer status",
+					"installer status", "request-server")));
+		}
+	}
+
+	/**
 	 * The report names each installer operation and the request server that the recorded entries let Claude Code run
 	 * outside its sandbox and without asking.
 	 *

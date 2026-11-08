@@ -690,7 +690,18 @@ public final class Integration implements HarnessIntegration
 	 */
 	private static String versionPattern(String command)
 	{
-		return command.replace("\\", "\\\\").replace("*", "\\*") + " *";
+		return escapePattern(command) + " *";
+	}
+
+	/**
+	 * Returns text as a matcher pattern spells it literally.
+	 *
+	 * @param text the text
+	 * @return the text with each backslash and star escaped
+	 */
+	private static String escapePattern(String text)
+	{
+		return text.replace("\\", "\\\\").replace("*", "\\*");
 	}
 
 	/**
@@ -963,6 +974,7 @@ public final class Integration implements HarnessIntegration
 		requireThat(recorded, "recorded").isNotNull();
 		requireThat(installer, "installer").isAbsolute();
 		String launcher = launcherCommand(installer) + " ";
+		String patternLauncher = escapePattern(launcher);
 		Map<String, String> servers = Map.of(launcherCommand(installer.resolveSibling(REQUEST_SERVER)), REQUEST_SERVER);
 		List<EntryGroup> groups = new ArrayList<>();
 		for (Map.Entry<String, List<String>> entry : recorded.entrySet())
@@ -975,10 +987,11 @@ public final class Integration implements HarnessIntegration
 			EntryGroup group = switch (setting)
 			{
 				case ALLOWED_TOOLS -> new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, file, setting,
-					operations(values.stream().map(Integration::allowedCommand).toList(), launcher, servers),
+					operations(values.stream().map(Integration::allowedCommand).toList(), launcher, patternLauncher,
+						servers),
 					values);
 				case EXCLUDED_COMMANDS -> new EntryGroup(EntryEffect.RUNS_OUTSIDE_SANDBOX, file, setting,
-					operations(values, launcher, servers), values);
+					operations(values, launcher, patternLauncher, servers), values);
 				case DENIED_TOOLS -> new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, setting,
 					deniedPaths(values), values);
 				case ALLOW_WRITE -> new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, setting, values, values);
@@ -1008,11 +1021,13 @@ public final class Integration implements HarnessIntegration
 	 *
 	 * @param entries  the entries, without {@code Bash(...)}
 	 * @param launcher the shell text that runs the installer launcher, followed by a space
+	 * @param patternLauncher {@code launcher} as a matcher pattern spells it, which the entries that match a version use
 	 * @param servers  the entry of the request server, mapped to the server's name
 	 * @return for each entry that runs the installer, {@code installer} and the first word after {@code launcher},
 	 * 	such as {@code installer install}, and for the request server's entry, the server's name
 	 */
-	private static List<String> operations(List<String> entries, String launcher, Map<String, String> servers)
+	private static List<String> operations(List<String> entries, String launcher,
+		String patternLauncher, Map<String, String> servers)
 	{
 		List<String> operations = new ArrayList<>();
 		for (String entry : entries)
@@ -1022,6 +1037,8 @@ public final class Integration implements HarnessIntegration
 				operations.add(server);
 			else if (entry.startsWith(launcher))
 				operations.add("installer " + entry.substring(launcher.length()).split(" ", 2)[0]);
+			else if (entry.startsWith(patternLauncher))
+				operations.add("installer " + entry.substring(patternLauncher.length()).split(" ", 2)[0]);
 		}
 		return operations;
 	}
