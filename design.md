@@ -2727,7 +2727,12 @@ wrapper's name would run outside the sandbox. `install` therefore also denies se
 in the harness's home folder (`.bashrc`, `.bash_profile`, `.bash_login`, `.bash_logout`, `.profile`, `.zshrc`,
 `.zshenv`, `.zprofile` and `.zlogin`): Claude Code gets `sandbox.filesystem.denyWrite` and `permissions.deny`
 `Edit(//<path>)` entries, and Codex gets a `read` entry for each in its permission profile (user ruling, 2026-11-08:
-"make the startup files read only"). It reports these entries with the others.
+"make the startup files read only"). It reports these entries with the others. A Codex configuration that selects no
+permission profile has none to hold them, so `install` creates a CAT profile that `extends` the built-in profile that
+Codex would otherwise choose (`:workspace`, or `:read-only` when Codex would use that), copies into it the writable
+folders and network setting of the user's `[sandbox_workspace_write]` table, adds the read entries, and selects it
+with `default_permissions`; it reports the profile and the selection, and `uninstall` removes both and restores the
+earlier selection (user ruling, 2026-11-08: "do that").
 
 A runner launcher that a harness session runs treats its options, inputs and environment as the session's, because the
 session's model chose them, and checks the following before it starts anything. It refuses with status `2` and the
