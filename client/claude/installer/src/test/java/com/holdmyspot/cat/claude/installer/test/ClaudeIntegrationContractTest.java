@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -14,6 +15,8 @@ import com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContr
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -100,6 +103,16 @@ public final class ClaudeIntegrationContractTest
 			public boolean arrangeSharedSetting(HarnessIntegration integration, Path home)
 			{
 				return false;
+			}
+
+			@Override
+			public Map<String, Set<EntryEffect>> effects()
+			{
+				return Map.of(
+					"settings.json#permissions.allow", Set.of(EntryEffect.RUNS_WITHOUT_ASKING),
+					"settings.json#sandbox.excludedCommands", Set.of(EntryEffect.RUNS_OUTSIDE_SANDBOX),
+					"settings.json#sandbox.filesystem.allowWrite", Set.of(EntryEffect.SANDBOX_MAY_WRITE),
+					"settings.json#sandbox.filesystem.denyWrite", Set.of(EntryEffect.SANDBOX_MAY_NOT_WRITE));
 			}
 		});
 
@@ -336,7 +349,8 @@ public final class ClaudeIntegrationContractTest
 	}
 
 	/**
-	 * Verifies that the groups of the recorded entries hold entries and name the files of the recorded entries.
+	 * Verifies that the groups of the recorded entries give each configuration setting its effects, hold entries and
+	 * items that come from the recorded entries, and name the files of the recorded entries.
 	 *
 	 * @throws IOException if a home cannot be created, written or read
 	 */

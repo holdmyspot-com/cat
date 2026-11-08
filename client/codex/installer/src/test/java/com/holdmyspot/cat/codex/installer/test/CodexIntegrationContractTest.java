@@ -6,6 +6,7 @@ import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -13,6 +14,8 @@ import com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContr
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -106,6 +109,16 @@ public final class CodexIntegrationContractTest
 				Files.writeString(home.resolve("config.toml"), "default_permissions = \"mine\"\n\n" +
 					"[permissions.mine]\nextends = \":workspace\"\n");
 				return true;
+			}
+
+			@Override
+			public Map<String, Set<EntryEffect>> effects()
+			{
+				// The rules file lets the installer's operations run without asking and outside the sandbox
+				return Map.of(
+					"rules/cat-installer.rules#",
+					Set.of(EntryEffect.RUNS_WITHOUT_ASKING, EntryEffect.RUNS_OUTSIDE_SANDBOX),
+					"config.toml#sandbox_workspace_write.writable_roots", Set.of(EntryEffect.SANDBOX_MAY_WRITE));
 			}
 		});
 
@@ -342,7 +355,8 @@ public final class CodexIntegrationContractTest
 	}
 
 	/**
-	 * Verifies that the groups of the recorded entries hold entries and name the files of the recorded entries.
+	 * Verifies that the groups of the recorded entries give each configuration setting its effects, hold entries and
+	 * items that come from the recorded entries, and name the files of the recorded entries.
 	 *
 	 * @throws IOException if a home cannot be created, written or read
 	 */

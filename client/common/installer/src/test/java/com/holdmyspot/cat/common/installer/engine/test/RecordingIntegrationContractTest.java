@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.installer.engine.test;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -13,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.testng.annotations.Test;
 
 /**
@@ -274,7 +276,8 @@ public final class RecordingIntegrationContractTest
 	}
 
 	/**
-	 * Verifies that the groups of the recorded entries hold entries and name the files of the recorded entries.
+	 * Verifies that the groups of the recorded entries give each configuration setting its effects, hold entries and
+	 * items that come from the recorded entries, and name the files of the recorded entries.
 	 *
 	 * @throws IOException if a home cannot be created, written or read
 	 */
@@ -398,6 +401,13 @@ public final class RecordingIntegrationContractTest
 		{
 			((RecordingIntegration) integration).describing(SANDBOX, "CAT added the lock folder to a shared profile.");
 			return true;
+		}
+
+		@Override
+		public Map<String, Set<EntryEffect>> effects()
+		{
+			return Map.of("settings.json#allow", Set.of(EntryEffect.SETS_VALUE),
+				SANDBOX, Set.of(EntryEffect.SETS_VALUE));
 		}
 	}
 }

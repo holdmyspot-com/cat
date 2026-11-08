@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -19,13 +20,14 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Checks that a {@link HarnessIntegration} changes a harness home as the installer relies on: registration installs
@@ -384,8 +386,11 @@ public final class HarnessIntegrationContract
 	}
 
 	/**
-	 * Verifies that each group of the entries that install recorded holds entries, that the groups name exactly the
-	 * configuration files of the recorded entries, and that no recorded entries form no groups.
+	 * Verifies that the entries that install recorded fall into groups as the installer's report shows them: each
+	 * configuration setting holds groups of the effects that the harness gives its entries, the groups name exactly
+	 * the configuration files of the recorded entries, each group's entries are recorded entries as the configuration
+	 * holds them, and each item is a recorded entry, or a name or operation that one of the group's entries names, and
+	 * an absolute path when the effect's items are paths. No recorded entries form no groups.
 	 *
 	 * @param home      an empty absolute directory
 	 * @param otherHome another empty absolute directory, standing for the other harness's home
@@ -407,20 +412,58 @@ public final class HarnessIntegrationContract
 			values.addAll(entry.getValue());
 			recorded.put(entry.getKey(), values);
 		}
+		Map<Path, List<String>> recordedByFile = new LinkedHashMap<>();
+		for (Map.Entry<String, List<String>> entry : recorded.entrySet())
+		{
+			Path file = Path.of(entry.getKey().substring(0, entry.getKey().indexOf('#')));
+			recordedByFile.computeIfAbsent(file, _ -> new ArrayList<>()).addAll(entry.getValue());
+		}
 
 		List<EntryGroup> groups = integration.describeEntries(recorded, installer);
 
 		requireThat(integration.describeEntries(Map.of(), installer), "noEntries").isEmpty();
-		Set<Path> files = new HashSet<>();
+		Map<String, Set<EntryEffect>> effects = new LinkedHashMap<>();
 		for (EntryGroup group : groups)
 		{
-			requireThat(group.entries(), "entries").withContext(group, "group").isNotEmpty();
-			files.add(group.file());
+			// A group's key is its file and setting, with an empty setting when CAT owns the whole file
+			String key = group.file().toString().replace('\\', '/') + "#" + group.setting();
+			effects.computeIfAbsent(key, _ -> EnumSet.noneOf(EntryEffect.class)).add(group.effect());
+			requireGrouped(group, recordedByFile.getOrDefault(group.file(), List.of()));
 		}
-		Set<Path> recordedFiles = new HashSet<>();
-		for (String key : recorded.keySet())
-			recordedFiles.add(Path.of(key.substring(0, key.indexOf('#'))));
-		requireThat(files, "files").isEqualTo(recordedFiles);
+		requireThat(effects, "effects").isEqualTo(subject.effects());
+		requireThat(groups.stream().map(EntryGroup::file).collect(Collectors.toSet()), "files").
+			isEqualTo(recordedByFile.keySet());
+	}
+
+	/**
+	 * Requires a group's entries to be recorded entries as the configuration holds them, and its items to be recorded
+	 * entries or what its entries name.
+	 *
+	 * @param group    the group
+	 * @param recorded the recorded entries of the group's file
+	 */
+	private static void requireGrouped(EntryGroup group, List<String> recorded)
+	{
+		requireThat(group.entries(), "entries").withContext(group, "group").isNotEmpty();
+		requireThat(group.items(), "items").withContext(group, "group").isNotEmpty();
+		for (String entry : group.entries())
+		{
+			// The configuration holds an entry as it is, as a quoted string, whose backslashes are escaped, or as a
+			// line of a file that CAT owns
+			requireThat(recorded.stream().anyMatch(value -> entry.contains(value) || value.contains(entry) ||
+					entry.contains(value.replace("\\", "\\\\"))), "recordedEntry").withContext(entry, "entry").
+				withContext(group, "group").isTrue();
+		}
+		for (String item : group.items())
+		{
+			requireThat(recorded.contains(item) || group.entries().stream().anyMatch(entry -> entry.contains(item)),
+				"namedItem").withContext(item, "item").withContext(group, "group").isTrue();
+			if (group.effect().items() == EntryEffect.Items.PATHS)
+			{
+				requireThat(Path.of(item).isAbsolute(), "absoluteItem").withContext(item, "item").
+					withContext(group, "group").isTrue();
+			}
+		}
 	}
 
 	/**
@@ -560,5 +603,14 @@ public final class HarnessIntegrationContract
 		 * @throws IOException if the configuration cannot be written
 		 */
 		boolean arrangeSharedSetting(HarnessIntegration integration, Path home) throws IOException;
+
+		/**
+		 * Returns the effects that the harness gives the entries that install adds to a fresh home, as the
+		 * installer's report groups them.
+		 *
+		 * @return each group's effects, by the group's configuration file, {@code #} and setting, which is empty when
+		 * 	CAT owns the whole file
+		 */
+		Map<String, Set<EntryEffect>> effects();
 	}
 }
