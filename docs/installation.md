@@ -501,24 +501,25 @@ without such a profile gets none. `uninstall` removes what `install` added. A co
 is the launcher's absolute path followed by its options, with nothing in front of it, such as a variable assignment or
 `env`, and no pipe or redirection.
 
-A runner launcher that a session runs treats its options, inputs and environment as the session's and checks them
-before it starts anything. It identifies the session from its harness process and the session or thread ID that the
-harness puts in the command's environment (`CLAUDE_CODE_SESSION_ID` in Claude Code, `CODEX_THREAD_ID` in Codex), finds
-the session's transcript by that ID in the harness's home, and takes the session's project folder from the working
-directory that the transcript names; a launch without `--project` uses that folder, not the command's working directory.
-It reads the session's sandbox policy from that harness's own settings and command line, never from the launch. Every
-path that the launch names for reading, such as the project, the input or the `--extra-permissions` file, must be one
-the session may read, and every path that it writes, such as the output, the conversation folder and the run root, one
-the session may write. It removes the variables that make a program load other code, such as `LD_PRELOAD`,
-`LD_LIBRARY_PATH`, `DYLD_*`, `BASH_ENV` and the Java option variables, before Java starts. It then starts the new
-session itself, inside that harness's own sandbox, so that the new session can read, write and reach no more than the
-session that asked for it, and it stops the new session's processes when it ends. A launch from a session that names
-an option that only CAT itself passes, such as `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name` or
-`--git-email`, exits with status 2 and starts nothing. A launcher always runs its own CAT artifact and the `claude` or
-`codex` command that your `PATH` finds: a launch that names `--artifact` exits with status 2 and starts nothing. A
-runner launcher that no harness runs, such as one that you run in a terminal, starts the new session itself, inside
-that harness's own sandbox, with exactly what the session needs. A runner launcher run by the harness whose plugin did
-not provide it starts nothing and names the plugin to use instead.
+A runner launcher that a session runs treats its options, inputs and environment as the session's and checks them before
+it starts anything. It identifies the session from its harness process and the session or thread ID that the harness
+puts in the command's environment (`CLAUDE_CODE_SESSION_ID` in Claude Code, `CODEX_THREAD_ID` in Codex), finds the
+session's transcript by that ID in the harness's home, and takes the session's project folder from the working directory
+that the transcript names; a launch without `--project` uses that folder, not the command's working directory. It reads
+the session's sandbox policy from that harness's own settings and command line, never from the launch. Every path that
+the launch names for reading, such as the project, the input or the `--extra-permissions` file, must be one the session
+may read, and every path that it writes, such as the output, the conversation folder and the run root, one the session
+may write. A launch whose project folder is your home folder or contains it exits with status 2 and starts nothing, and
+so does `--verify-artifact` with an artifact that the session may not read. The launcher removes the variables that make
+a program load other code, such as `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_*`, `BASH_ENV` and the Java option variables,
+before Java starts. It then starts the new session itself, inside that harness's own sandbox, so that the new session
+can read, write and reach no more than the session that asked for it, and it stops the new session's processes when it
+ends. A launch from a session that names an option that only CAT itself passes, such as `--policy-bound`,
+`--capacity-held`, `--child-needs`, `--git-name` or `--git-email`, exits with status 2 and starts nothing. A launcher
+always runs its own CAT artifact and the `claude` or `codex` command that your `PATH` finds: a launch that names
+`--artifact` exits with status 2 and starts nothing. A runner launcher that no harness runs, such as one that you run in
+a terminal, starts the new session itself, inside that harness's own sandbox, with exactly what the session needs. A
+runner launcher run by the harness whose plugin did not provide it starts nothing and names the plugin to use instead.
 
 When the launcher finds that it runs inside the session's sandbox, it starts nothing and exits with status 2. Its
 message begins "CAT cannot start the session:" and says why:
