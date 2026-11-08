@@ -124,6 +124,10 @@ final class ClaudeRelease
 	 */
 	static final Path MACOS_MANAGED_DIRECTORY = Path.of("/Library/Application Support/ClaudeCode");
 	/**
+	 * The folder of the managed settings on native Windows.
+	 */
+	static final Path WINDOWS_MANAGED_DIRECTORY = Path.of("C:\\Program Files\\ClaudeCode");
+	/**
 	 * The folder of the Windows managed settings, which Claude Code also reads on WSL when an administrator source
 	 * asks it to.
 	 */

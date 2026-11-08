@@ -129,7 +129,9 @@ public record ClaudeSession(long processId, Path projectDirectory, Path userHome
 		requireThat(userName, "userName").isNotNull();
 		Optional<Path> temporaryDirectory = absolute(environment, ClaudeRelease.TEMPORARY_DIRECTORY_VARIABLE);
 
-		boolean macOs = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("mac");
+		String operatingSystem = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+		boolean macOs = operatingSystem.startsWith("mac");
+		boolean windows = operatingSystem.startsWith("windows");
 		Path managedDirectory;
 		List<Path> otherManagedDirectories = new ArrayList<>();
 		List<Path> unreadableManagedSources = new ArrayList<>();
@@ -139,6 +141,8 @@ public record ClaudeSession(long processId, Path projectDirectory, Path userHome
 			for (String preference : ClaudeRelease.MACOS_MANAGED_PREFERENCES)
 				unreadableManagedSources.add(Path.of(preference.formatted(userName)));
 		}
+		else if (windows)
+			managedDirectory = ClaudeRelease.WINDOWS_MANAGED_DIRECTORY;
 		else
 		{
 			managedDirectory = ClaudeRelease.LINUX_MANAGED_DIRECTORY;
