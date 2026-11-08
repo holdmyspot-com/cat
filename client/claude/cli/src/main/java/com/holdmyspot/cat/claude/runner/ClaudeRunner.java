@@ -1005,15 +1005,16 @@ public final class ClaudeRunner
 		}
 
 		/**
-		 * Records a refusal and stops the process tree.
+		 * Stops the process tree, then records a refusal, so that no caller sees the refusal while the process still
+		 * runs.
 		 *
 		 * @param reason the refusal
 		 */
 		private void stop(String reason)
 		{
-			refusal = reason;
 			process.descendants().forEach(ProcessHandle::destroyForcibly);
 			process.destroyForcibly();
+			refusal = reason;
 		}
 
 		/**
