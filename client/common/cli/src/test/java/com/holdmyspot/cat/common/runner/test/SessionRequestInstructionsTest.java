@@ -96,8 +96,9 @@ public final class SessionRequestInstructionsTest
 
 	/**
 	 * Verifies that the instructions describe a conversation with a requested session: the option of every launcher
-	 * that holds one, the folder's two files, each message, the line that ends a turn, and the refused launch's exit
-	 * status.
+	 * that holds one, the folder's two files, each message, that an interrupt ends only the turn in progress, the line
+	 * that ends a turn, the line that ends the conversation, and the exit statuses of a refused launch and of
+	 * {@code request-session}.
 	 */
 	@Test
 	public void describesConversation()
@@ -109,7 +110,9 @@ public final class SessionRequestInstructionsTest
 			contains("<folder>/from-child.jsonl").contains("{\"turn\": \"<text>\"}").
 			contains("{\"interrupt\": true}").contains("{\"end\": true}").
 			contains("{\"turn_end\": <n>, \"status\": \"<status>\"}").contains("background command").
-			contains("2 when the run refused the launch");
+			contains("2 when the run refused the launch").contains("{\"ended\": \"<status>\"}").
+			contains("ends the turn in progress and the conversation goes on").
+			contains("2 when the run refused the request, 3 when the wait ended first");
 	}
 
 	/**

@@ -68,7 +68,9 @@ public final class SessionRequestInstructions
 			"with a reason, and whose fields name the file paths of the session's transcript, receipt and, with " +
 			"--session-transcripts, its native transcripts. Read those files for the results; you may read them " +
 			"although they lie under the run root. If the session is still running when the wait ends, the command " +
-			"prints the request's id and the command that waits again, " + command + " --await <id>.\n" +
+			"prints the request's id and the command that waits again, " + command + " --await <id>. It exits with 0 " +
+			"when the session completed, 2 when the run refused the request, 3 when the wait ended first, and 1 " +
+			"otherwise.\n" +
 			"\n" +
 			"The runner launchers " + claudeRunner + " and " + codexRunner + " request a session of their harness " +
 			"in the same way, from the same count, and wait until it ends. Write the session's turns into a file, one " +
@@ -90,12 +92,15 @@ public final class SessionRequestInstructions
 			"background command, and in Codex, as a command that keeps running. " +
 			"Append your messages to <folder>/to-child.jsonl, one JSON object per line: " +
 			"{\"turn\": \"<text>\"} asks for the session's next turn, which starts when the previous one has ended; " +
-			"{\"interrupt\": true} interrupts the turn in progress; and {\"end\": true} ends the conversation. A " +
+			"{\"interrupt\": true} ends the turn in progress and the conversation goes on; and {\"end\": true} ends " +
+			"the conversation. A " +
 			"line that is not one of these is refused in <folder>/from-child.jsonl and changes nothing. The " +
 			"session's records go to <folder>/from-child.jsonl as they arrive, and a line " +
 			"{\"turn_end\": <n>, \"status\": \"<status>\"} follows them when turn n ends, with the status " +
 			"completed, interrupted or failed, so wait for that line " +
-			"before you read the turn's reply. The session ends when the conversation ends or when the command ends, " +
+			"before you read the turn's reply. The last line that the command writes there, however the session ends, " +
+			"is {\"ended\": \"<status>\"}, with the status of the response, so a turn_end that you wait for does " +
+			"not come once that line is there. The session ends when the conversation ends or when the command ends, " +
 			"and the command then ends as it does without --conversation.";
 	}
 
