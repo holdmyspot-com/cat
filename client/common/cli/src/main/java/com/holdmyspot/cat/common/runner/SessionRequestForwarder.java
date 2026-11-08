@@ -34,8 +34,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * request instead, waits for the parent runner to finish it, and returns the requested session's transcript and receipt
  * as its own. With {@code --conversation}, the launch publishes the request without its records and sends each of the
  * conversation's messages as the request's next record while the session runs. When the parent's run may request no
- * further session, the parent refuses the request and the launch fails with the reason. The parent chooses the
- * run root, the artifact, the denied reads and the limits of the sessions it requests, so a launch may not choose them.
+ * further session, the parent refuses the request and the launch exits with status 2 and the reason. The parent
+ * chooses the run root, the artifact, the denied reads and the limits of the sessions it requests, so a launch may not
+ * choose them.
  */
 public final class SessionRequestForwarder
 {
@@ -67,7 +68,8 @@ public final class SessionRequestForwarder
 	 * @param pause    paces checks for the session's progress
 	 * @param output   receives the session's transcript when {@code --output} is absent
 	 * @param errors   receives the reason when the session does not complete
-	 * @return {@code 0} if the session completed, {@code 75} if it found no capacity, or {@code 1} otherwise
+	 * @return {@code 0} if the session completed, {@code 75} if it found no capacity, {@code 2} if the run allows no
+	 *         further session, or {@code 1} otherwise
 	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
 	 *                                  {@code --input} and {@code --conversation} are both given, or if the launch
 	 *                                  names no {@code --model} or no {@code --effort}
@@ -190,6 +192,8 @@ public final class SessionRequestForwarder
 			response.path("reason").asString());
 		if (status.equals("capacity"))
 			return HarnessCapacityWaitExpiredException.EXIT_STATUS;
+		if (status.equals("refused"))
+			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 		return 1;
 	}
 

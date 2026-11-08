@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
@@ -179,6 +180,13 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 			return Optional.empty();
 		return Optional.of("The prompt optimizer runs only from a Claude Code or Codex session, and no harness " +
 			"session runs this command. Run it from a Claude Code or Codex session.");
+	}
+
+	@Override
+	protected final Optional<String> runRefusal()
+	{
+		ensureOpen();
+		return HarnessEnvironment.runRefusal("The prompt optimizer", environment);
 	}
 
 	/**

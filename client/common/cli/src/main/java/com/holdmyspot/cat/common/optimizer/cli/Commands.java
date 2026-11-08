@@ -474,6 +474,28 @@ public final class Commands
 	}
 
 	/**
+	 * Indicates whether arguments name a command that may start sessions.
+	 *
+	 * @param args the arguments, starting with the command's name
+	 * @return {@code false} if the arguments are invalid, or name a command that starts no session
+	 * @throws NullPointerException if {@code args} is null
+	 */
+	public boolean startsSessions(List<String> args)
+	{
+		requireThat(args, "args").isNotNull();
+		if (isHelpRequest(args) || isContractTool(args))
+			return false;
+		try
+		{
+			return canStartTrial(parse(args));
+		}
+		catch (InvalidCommandException _)
+		{
+			return false;
+		}
+	}
+
+	/**
 	 * Runs a command and prints its JSON result.
 	 *
 	 * @param args the arguments, starting with the command's name

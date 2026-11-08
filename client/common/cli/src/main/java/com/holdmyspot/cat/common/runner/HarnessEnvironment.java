@@ -57,15 +57,32 @@ public final class HarnessEnvironment
 	public static Optional<String> inRunRefusal(String harness, Map<String, String> environment)
 	{
 		requireThat(harness, "harness").isNotBlank();
+		return runRefusal(harness + "-runner", environment);
+	}
+
+	/**
+	 * Returns why a CAT command that starts sessions refuses to start any from the command that runs it, because the
+	 * command runs in a session of a CAT run that lets its session request none. The reason names the options of the
+	 * run's caller that would let it.
+	 *
+	 * @param command     the command's name, as its user knows it
+	 * @param environment the command's environment
+	 * @return the reason, or empty if the command is not part of a CAT run or the run lets its session request sessions
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code command} is blank
+	 */
+	public static Optional<String> runRefusal(String command, Map<String, String> environment)
+	{
+		requireThat(command, "command").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
 		if (!RUN_VALUE.equals(environment.get(RUN_VARIABLE)))
 			return Optional.empty();
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
 			return Optional.empty();
-		return Optional.of(harness + "-runner refuses to start a session: this command runs in a session of a CAT " +
-			"run whose runner lets it request no sessions. Start the run with --session-requests to let its session " +
-			"request sessions.");
+		return Optional.of(command + " refuses to start a session: this command runs in a session of a CAT run " +
+			"whose caller lets it request no sessions. The run's caller allows them with --session-requests " +
+			"<count>, and lets a requested session's commands start sessions too with --request-depth <levels>.");
 	}
 
 	/**

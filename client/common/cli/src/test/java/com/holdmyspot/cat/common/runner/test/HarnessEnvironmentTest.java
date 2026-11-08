@@ -266,8 +266,8 @@ public final class HarnessEnvironmentTest
 
 	/**
 	 * Verifies that a runner refuses a launch from a session of a CAT run whose runner lets it request no sessions,
-	 * naming the option that lets it, and lets a launch from a run that lets its session request sessions, or from no
-	 * run, go on.
+	 * naming the caller's options that let it, and lets a launch from a run that lets its session request sessions, or
+	 * from no run, go on.
 	 */
 	@Test
 	public void refusesLaunchInRunWithoutRequests()
@@ -277,7 +277,7 @@ public final class HarnessEnvironmentTest
 			HarnessEnvironment.RUN_VALUE));
 
 		requireThat(refusal.orElseThrow(), "refusal").startsWith("harness-a-runner refuses to start a session").
-			contains("--session-requests");
+			contains("--session-requests <count>").contains("--request-depth <levels>").doesNotContain("--no-daemon");
 		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE,
 				HarnessEnvironment.RUN_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests")), "requesting").
 			isEmpty();

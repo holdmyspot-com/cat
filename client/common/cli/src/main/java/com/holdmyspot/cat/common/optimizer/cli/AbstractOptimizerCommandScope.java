@@ -174,6 +174,16 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract Optional<String> noHarnessRefusal();
 
 	/**
+	 * Returns why a command that starts sessions is refused because it runs in a session of a CAT run whose caller
+	 * lets it request no sessions, found before the command reads or changes any state.
+	 *
+	 * @return the message that names the caller's options that would allow the sessions, or empty if the command does
+	 *   not run in a CAT run or the run lets its session request sessions
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract Optional<String> runRefusal();
+
+	/**
 	 * Returns the source of campaign identifiers and draw seeds.
 	 *
 	 * @return the source

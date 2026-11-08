@@ -193,7 +193,7 @@ public final class SessionRequestForwarderTest
 	@DataProvider
 	public Object[][] outcomes()
 	{
-		return new Object[][]{{"capacity", 75}, {"failed", 1}, {"refused", 1}};
+		return new Object[][]{{"capacity", 75}, {"failed", 1}, {"refused", 2}};
 	}
 
 	/**

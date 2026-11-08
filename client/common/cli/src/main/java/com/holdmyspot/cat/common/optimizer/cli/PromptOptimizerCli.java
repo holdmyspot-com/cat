@@ -98,8 +98,8 @@ public final class PromptOptimizerCli
 	 * @param zone     the user's time zone, in which the human summary shows times
 	 * @param platform the platform that runs the command
 	 * @param out      where the JSON goes
-	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input or for a command that
-	 *   no harness session runs
+	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input, for a command that
+	 *   no harness session runs, or for a command that would start sessions inside a CAT run whose caller allows none
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(AbstractOptimizerCommandScope scope, List<String> args, ZoneId zone, Platform platform,
@@ -110,17 +110,19 @@ public final class PromptOptimizerCli
 		requireThat(zone, "zone").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(out, "out").isNotNull();
+		Commands commands = new Commands(new OptimizerCore(scope), scope.json(), zone, scope.trialSandbox(), platform);
 		if (!Commands.isHelpRequest(args) && !Commands.isContractTool(args))
 		{
 			Optional<String> refusal = scope.noHarnessRefusal();
+			if (refusal.isEmpty() && commands.startsSessions(args))
+				refusal = scope.runRefusal();
 			if (refusal.isPresent())
 			{
 				out.println(Commands.statusMessage(scope.json(), "refused", refusal.get()));
 				return 2;
 			}
 		}
-		return new Commands(new OptimizerCore(scope), scope.json(), zone, scope.trialSandbox(), platform).
-			execute(args, out);
+		return commands.execute(args, out);
 	}
 
 	/**

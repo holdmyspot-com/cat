@@ -60,9 +60,25 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public static final String LAUNCHER = "request-session";
 	/**
-	 * The reason with which a runner refuses each request of a session that may request no session.
+	 * The reason with which a runner refuses each request of a session that may request no session, which names the
+	 * options of the run's caller that would allow it.
 	 */
-	public static final String NO_REQUESTS_REASON = "this run allows no further sessions";
+	public static final String NO_REQUESTS_REASON = "this run allows no further sessions. Its caller allows them " +
+		"with --session-requests <count>, and lets a requested session's commands start sessions too with " +
+		"--request-depth <levels>";
+
+	/**
+	 * Returns the reason with which a runner refuses each request after it accepted all that its options allow, which
+	 * names the option of the run's caller that would allow more.
+	 *
+	 * @param sessionRequests how many sessions the run allows
+	 * @return the reason
+	 */
+	public static String limitReason(int sessionRequests)
+	{
+		return "this run allows no further sessions: it has requested all " + sessionRequests + " that its " +
+			"caller's --session-requests allows. Its caller allows more with a larger --session-requests";
+	}
 
 	/**
 	 * Creates the access.

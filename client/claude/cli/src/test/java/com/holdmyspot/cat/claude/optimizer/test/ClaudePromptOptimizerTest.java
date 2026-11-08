@@ -290,9 +290,7 @@ public final class ClaudePromptOptimizerTest
 			// Claude Code runs the command, so its sessions go to the session launcher, and none serves the session
 			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"), LAUNCH_REFUSAL},
 			// Only Codex runs the command, so each of its sessions is refused, with the reason, when it starts
-			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CODEX_THREAD_ID", "thread"), MISSING_TARGET},
-			// A run whose runner lets its session request no sessions refuses each session when it starts
-			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1", "CAT_RUN", "1"), MISSING_TARGET}
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CODEX_THREAD_ID", "thread"), MISSING_TARGET}
 		};
 	}
 
@@ -323,6 +321,49 @@ public final class ClaudePromptOptimizerTest
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").startsWith(refusal);
 		}
+	}
+
+	/**
+	 * Verifies that each command that may start sessions, run in a session of a CAT run whose caller lets it request
+	 * no sessions, is refused with exit code 2 before it changes anything, with a message that names the caller's
+	 * options that would allow the sessions and does not suggest starting Codex with {@code --no-daemon}.
+	 *
+	 * @param command the command and its arguments
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test(dataProvider = "sessionCommands")
+	public void inRunCommandRefusedWithoutRequests(List<String> command) throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			Map<String, String> environment = new HashMap<>(Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE",
+				"1", "CAT_RUN", "1"));
+			environment.put(Platform.current().homeVariable(), setup.home().toString());
+			List<String> before = tree(setup.root());
+			StringBuilder output = new StringBuilder();
+
+			int exit = run(setup, environment, command, output);
+
+			requireThat(exit, "exit").isEqualTo(2);
+			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(json.get("message").asString(), "message").contains("--session-requests <count>").
+				contains("--request-depth <levels>").doesNotContain("--no-daemon");
+			requireThat(tree(setup.root()), "tree").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Returns every command that may start sessions.
+	 *
+	 * @return the commands and their arguments
+	 */
+	@DataProvider
+	public static Object[][] sessionCommands()
+	{
+		return new Object[][]{{List.of("start", "prompts/a.md")}, {List.of("run", CAMPAIGN)},
+			{List.of("confirm", CAMPAIGN)}, {List.of("revise", CAMPAIGN, "feedback")}};
 	}
 
 	/**

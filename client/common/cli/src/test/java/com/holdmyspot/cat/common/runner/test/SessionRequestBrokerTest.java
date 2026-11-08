@@ -152,7 +152,8 @@ public final class SessionRequestBrokerTest
 				}
 				fixture.request("second");
 				broker.scan();
-				requireThat(fixture.await("second").path("reason").asString(), "limit").isEqualTo("limit");
+				requireThat(fixture.await("second").path("reason").asString(), "limit").
+					isEqualTo(SessionRequestAccess.limitReason(1));
 			}
 		}
 	}
@@ -667,8 +668,9 @@ public final class SessionRequestBrokerTest
 
 	/**
 	 * Verifies that a runner launch made inside a session whose run may request no session reaches the session's
-	 * runner, which refuses it without starting a requested session, so that the launch fails with the reason instead of
-	 * starting a harness inside the session.
+	 * runner, which refuses it without starting a requested session, so that the launch exits with status 2 and a
+	 * reason that names the caller's options that would allow the session, instead of starting a harness inside the
+	 * session.
 	 *
 	 * @throws IOException if fixture or bridge I/O fails
 	 */
@@ -713,8 +715,9 @@ public final class SessionRequestBrokerTest
 						throw new IOException("No requested session may start");
 					});
 			}
-			requireThat(status.get(), "status").isEqualTo(1);
-			requireThat(errors.toString(), "errors").contains("refused: this run allows no further sessions");
+			requireThat(status.get(), "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("refused: this run allows no further sessions").
+				contains("--session-requests").contains("--request-depth").doesNotContain("--no-daemon");
 			requireThat(started, "started").isEmpty();
 		}
 	}

@@ -42,7 +42,6 @@ public final class CodexPromptOptimizerTest
 	private static final String CAMPAIGN = "fixture-campaign";
 	private static final String SESSION_ID = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
 	private static final String LAUNCH_REFUSAL = "No CAT session launcher serves this session";
-	private static final String MISSING_TARGET = "The target does not exist: ";
 	private static final String NO_HOST_SESSION = "A campaign belongs to the codex session that runs it, but " +
 		"CODEX_THREAD_ID is not set.";
 
@@ -320,8 +319,6 @@ public final class CodexPromptOptimizerTest
 		{
 			// Codex runs the command, so its sessions go to the session launcher, and none serves the session
 			{Map.of("CODEX_THREAD_ID", SESSION_ID), LAUNCH_REFUSAL},
-			// A run whose runner lets its session request no sessions refuses each session when it starts
-			{Map.of("CODEX_THREAD_ID", SESSION_ID, "CAT_RUN", "1"), MISSING_TARGET},
 			// Only Claude Code runs the command, so each of its sessions would be refused when it starts, but no Codex
 			// session hosts a campaign
 			{Map.of("CLAUDECODE", "1"), NO_HOST_SESSION}
@@ -330,8 +327,8 @@ public final class CodexPromptOptimizerTest
 
 	/**
 	 * Verifies that {@code start} is refused, before it starts any session, for want of a session launcher only when
-	 * its sessions go to the session launcher. On every other route the command goes on, here to refuse the target
-	 * that does not exist, or the campaign that no Codex session hosts.
+	 * its sessions go to the session launcher. On every other route the command goes on, here to refuse the campaign
+	 * that no Codex session hosts.
 	 *
 	 * @param variables the environment's variables, besides the home folder
 	 * @param refusal   how the refusal begins
@@ -355,6 +352,48 @@ public final class CodexPromptOptimizerTest
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").startsWith(refusal);
 		}
+	}
+
+	/**
+	 * Verifies that each command that may start sessions, run in a session of a CAT run whose caller lets it request
+	 * no sessions, is refused with exit code 2 before it changes anything, with a message that names the caller's
+	 * options that would allow the sessions and does not suggest starting Codex with {@code --no-daemon}.
+	 *
+	 * @param command the command and its arguments
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test(dataProvider = "sessionCommands")
+	public void inRunCommandRefusedWithoutRequests(List<String> command) throws IOException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Setup setup = setup(scope);
+			Map<String, String> environment = new HashMap<>(Map.of("CODEX_THREAD_ID", SESSION_ID, "CAT_RUN", "1"));
+			environment.put(Platform.current().homeVariable(), setup.home().toString());
+			List<String> before = tree(setup.root());
+			StringBuilder output = new StringBuilder();
+
+			int exit = run(setup, environment, command, output);
+
+			requireThat(exit, "exit").isEqualTo(2);
+			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(json.get("message").asString(), "message").contains("--session-requests <count>").
+				contains("--request-depth <levels>").doesNotContain("--no-daemon");
+			requireThat(tree(setup.root()), "tree").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Returns every command that may start sessions.
+	 *
+	 * @return the commands and their arguments
+	 */
+	@DataProvider
+	public static Object[][] sessionCommands()
+	{
+		return new Object[][]{{List.of("start", "prompts/a.md")}, {List.of("run", CAMPAIGN)},
+			{List.of("confirm", CAMPAIGN)}, {List.of("revise", CAMPAIGN, "feedback")}};
 	}
 
 	/**

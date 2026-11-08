@@ -35,7 +35,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Validates session requests, snapshots their inputs before starting children, and publishes retained evidence.
  * A run whose options allow no session request gets each request refused with
  * {@link SessionRequestAccess#NO_REQUESTS_REASON}, and one that has accepted all that its options allow gets each
- * further request refused with {@code limit}. A request whose records follow it, as
+ * further request refused with {@link SessionRequestAccess#limitReason(int)}. A request whose records follow it, as
  * {@link StreamedRequest} publishes them, gets each record on its child's standard input as it arrives, and its child
  * is stopped once the request's sender ends. Closing the broker stops child process trees and answers unprocessed
  * requests as stopped.
@@ -161,7 +161,8 @@ public final class SessionRequestBroker implements Closeable
 				}
 				if (accepted >= options.sessionRequests())
 				{
-					respond(id, "", "refused", "limit", "", directory);
+					respond(id, "", "refused", SessionRequestAccess.limitReason(options.sessionRequests()), "",
+						directory);
 					continue;
 				}
 				try
