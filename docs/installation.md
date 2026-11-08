@@ -354,11 +354,19 @@ The installer has three operations, and each accepts these arguments:
 | `install --harness <h> latest` | The same. |
 | `install --harness <h> v1.1` | Installs release `v1.1`, which must satisfy the policy. |
 | `status` or `status --harness <h>` | Reads the active version without changing anything. |
+| `status --verbose` or `status --harness <h> --verbose` | Also lists the permission and sandbox entries. |
 | `uninstall` or `uninstall --harness <h>` | Uninstalls CAT and keeps its plugin data. |
 | `uninstall --harness <h> --delete-data` | Uninstalls CAT and deletes its plugin data. |
 
 `--home <directory>` and `--create-profile` go before the operation and apply to the first install only; an installed
 installer refuses a `--home` other than the one that its policy records.
+
+The report that `install` prints for you groups the permission and sandbox entries it wrote by their effect, such as
+"Runs outside the sandbox", and shortens their paths: `~` stands for your home folder and `installer` for the active
+version folder's installer. `status --verbose` lists each entry that install recorded exactly as your harness
+configuration holds it, under the file and the setting that hold it, such as `settings.json` and
+`sandbox.excludedCommands`; with `--json` before the operation, the result's `permissions` field holds the same entries.
+It refuses with exit status `3`, changing nothing, when `HOME` (`USERPROFILE` on Windows) is not an absolute path.
 
 `install` installs a release into its own version folder and makes it the active one. Omitting the release, or passing
 `latest`, requests GitHub's latest release. That release must satisfy the policy; the installer refuses an unapproved
