@@ -12,7 +12,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -37,7 +36,8 @@ public final class OtherHarnessPluginTest
 
 	/**
 	 * Verifies that a command whose installer path holds no character that a POSIX shell treats specially is named
-	 * without quotes.
+	 * without quotes. A path that holds the backslashes of a Windows path is quoted, because a POSIX shell would take
+	 * each backslash as an escape.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -45,16 +45,16 @@ public final class OtherHarnessPluginTest
 	public void namesPlainPosixCommandUnquoted() throws IOException
 	{
 		// Requirement: R-I6
-		if (Platform.current().isWindows())
-			throw new SkipException("A POSIX shell treats the backslashes of a Windows path specially");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = ownPlugin(cleanup.add(Files.createTempDirectory("other-harness-plain-")), "plugin");
 
 			String message = refusal(plugin, Platform.LINUX_X64);
 
-			requireThat(message, "message").endsWith(": " + plugin.resolve("bin/installer") +
-				" install --harness harness-b");
+			String installer = plugin.resolve("bin/installer").toString();
+			if (installer.indexOf('\\') >= 0)
+				installer = "'" + installer + "'";
+			requireThat(message, "message").endsWith(": " + installer + " install --harness harness-b");
 		}
 	}
 

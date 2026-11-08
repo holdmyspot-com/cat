@@ -8,7 +8,6 @@ import com.holdmyspot.cat.common.installer.cli.internal.ConsentCommand;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Set;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -24,8 +23,6 @@ public final class ConsentCommandTest
 	@Test
 	public void repeatsInstallWithPermission()
 	{
-		if (Platform.current().isWindows())
-			throw new SkipException("A POSIX shell treats the backslashes of a Windows path specially");
 		Path root = Path.of(System.getProperty("cat.installer.test.directory")).toAbsolutePath();
 		Path plugin = root.resolve("home/plugins/cache/cat/cat/1.0+b0123456789ab");
 		Path home = root.resolve("home");
@@ -34,9 +31,16 @@ public final class ConsentCommandTest
 
 		String command = ConsentCommand.of(plugin, Platform.LINUX_X64, asked);
 
-		String launcher = plugin.resolve("bin/installer").toString();
-		requireThat(command, "command").startsWith(launcher + " --home ").doesNotStartWith(launcher + " install");
-		String[] words = command.substring(launcher.length() + 1).split(" ");
+		String launcher = posixWord(plugin.resolve("bin/installer").toString());
+		String homeWord = posixWord(home.toString());
+		requireThat(command, "command").startsWith(launcher + " --home " + homeWord + " ").
+			doesNotStartWith(launcher + " install");
+		String[] rest = command.substring(launcher.length() + 1 + "--home ".length() + homeWord.length() + 1).
+			split(" ");
+		String[] words = new String[rest.length + 2];
+		words[0] = "--home";
+		words[1] = home.toString();
+		System.arraycopy(rest, 0, words, 2, rest.length);
 		Arguments allowed = Arguments.parse(words, Set.of("harness-a"));
 		requireThat(allowed.createProfile(), "createProfile").isTrue();
 		requireThat(allowed.harness(), "harness").isEqualTo("harness-a");
@@ -51,14 +55,13 @@ public final class ConsentCommandTest
 	@Test
 	public void quotesHomeWithSpace()
 	{
-		if (Platform.current().isWindows())
-			throw new SkipException("A POSIX shell treats the backslashes of a Windows path specially");
 		Path plugin = Path.of("/data/plugins/cache/cat/cat/1.0+b0123456789ab");
-		Arguments asked = Arguments.parse(new String[]{"--home", "/data/my home", "install", "--harness",
+		Path home = Path.of("/data/my home");
+		Arguments asked = Arguments.parse(new String[]{"--home", home.toString(), "install", "--harness",
 			"harness-a"}, Set.of("harness-a"));
 
 		requireThat(ConsentCommand.of(plugin, Platform.LINUX_X64, asked), "command").
-			endsWith(" --home '/data/my home' --create-profile install --harness harness-a");
+			endsWith(" --home '" + home + "' --create-profile install --harness harness-a");
 	}
 
 	/**
@@ -74,5 +77,19 @@ public final class ConsentCommandTest
 		requireThat(ConsentCommand.of(plugin, Platform.WINDOWS_X64, asked), "command").
 			isEqualTo("powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" +
 				plugin.resolve("bin/installer.ps1") + "\" --create-profile install --harness harness-a");
+	}
+
+	/**
+	 * Returns the word that a POSIX shell reads as a path: the path itself, or, when it holds the backslashes of a
+	 * Windows path that the shell would take as escapes, the path in single quotes.
+	 *
+	 * @param path a path that holds no space or single quote
+	 * @return the word
+	 */
+	private static String posixWord(String path)
+	{
+		if (path.indexOf('\\') >= 0)
+			return "'" + path + "'";
+		return path;
 	}
 }
