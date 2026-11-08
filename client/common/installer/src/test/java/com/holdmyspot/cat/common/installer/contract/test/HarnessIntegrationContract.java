@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
@@ -17,9 +18,13 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -376,6 +381,46 @@ public final class HarnessIntegrationContract
 		integration.removePermissions(home, consented, REPLACER);
 
 		requireThat(integration.describeRetained(home, consented), "retained").isNotEmpty();
+	}
+
+	/**
+	 * Verifies that each group of the entries that install recorded holds entries, that the groups name exactly the
+	 * configuration files of the recorded entries, and that no recorded entries form no groups.
+	 *
+	 * @param home      an empty absolute directory
+	 * @param otherHome another empty absolute directory, standing for the other harness's home
+	 * @throws IOException if the configuration cannot be read or changed
+	 */
+	public void groupsRecordedEntries(Path home, Path otherHome) throws IOException
+	{
+		HarnessIntegration integration = subject.integration();
+		register(integration, home, VERSION);
+		Path installer = PluginInstall.installer(integration.installation(home).versionFolder(VERSION),
+			Platform.current().isWindows());
+		Map<String, List<String>> recorded = new LinkedHashMap<>(integration.installPermissions(home, installer,
+			REPLACER));
+		Map<String, List<String>> sandbox = integration.installSandboxEntries(home, integration.installation(otherHome),
+			otherHome.resolve("locks"), otherHome.resolve("sessions"), REPLACER);
+		for (Map.Entry<String, List<String>> entry : sandbox.entrySet())
+		{
+			List<String> values = new ArrayList<>(recorded.getOrDefault(entry.getKey(), List.of()));
+			values.addAll(entry.getValue());
+			recorded.put(entry.getKey(), values);
+		}
+
+		List<EntryGroup> groups = integration.describeEntries(recorded, installer);
+
+		requireThat(integration.describeEntries(Map.of(), installer), "noEntries").isEmpty();
+		Set<Path> files = new HashSet<>();
+		for (EntryGroup group : groups)
+		{
+			requireThat(group.entries(), "entries").withContext(group, "group").isNotEmpty();
+			files.add(group.file());
+		}
+		Set<Path> recordedFiles = new HashSet<>();
+		for (String key : recorded.keySet())
+			recordedFiles.add(Path.of(key.substring(0, key.indexOf('#'))));
+		requireThat(files, "files").isEqualTo(recordedFiles);
 	}
 
 	/**

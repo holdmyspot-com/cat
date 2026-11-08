@@ -340,4 +340,20 @@ public final class CodexIntegrationContractTest
 			CONTRACT.describesNothingAdded(cleanup.add(Files.createTempDirectory("cat-integration-")));
 		}
 	}
+
+	/**
+	 * Verifies that the groups of the recorded entries hold entries and name the files of the recorded entries.
+	 *
+	 * @throws IOException if a home cannot be created, written or read
+	 */
+	@Test
+	public void groupsRecordedEntries() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CONTRACT.groupsRecordedEntries(
+				cleanup.add(Files.createTempDirectory("cat-integration-")),
+				cleanup.add(Files.createTempDirectory("cat-integration-")));
+		}
+	}
 }
