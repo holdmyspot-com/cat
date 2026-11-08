@@ -245,7 +245,7 @@ public final class InstallCommandTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-entries-")));
-			fixture.integration.adding(Map.of("settings.json", List.of("entry")));
+			fixture.integration.maintain(Map.of("settings.json", List.of("entry")));
 
 			Install.Outcome outcome = fixture.install();
 

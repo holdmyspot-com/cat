@@ -53,7 +53,7 @@ public final class UpToDateTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("up-to-date-entries-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
 			Path active = fixture.installActive("1.1");
-			fixture.integration.adding(Map.of("settings.json", List.of("repaired-entry")));
+			fixture.integration.maintain(Map.of("settings.json", List.of("repaired-entry")));
 			int calls = fixture.integration.calls().size();
 
 			UpdateResult result = fixture.install("v1.1");
@@ -85,7 +85,8 @@ public final class UpToDateTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("up-to-date-refused-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
 			fixture.installActive("1.1");
-			fixture.integration.asking(QUESTION, Map.of("config#selection", List.of("built-in")));
+			fixture.integration.asking(QUESTION, Map.of("config#selection", List.of("built-in")),
+				"CAT changed the shared setting.");
 			Map<String, String> before = Releases.snapshot(fixture.home);
 
 			UpdateResult result = fixture.engine().install("v1.1", request(fixture, false));
@@ -111,8 +112,8 @@ public final class UpToDateTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("up-to-date-consent-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
 			fixture.installActive("1.1");
-			fixture.integration.asking(QUESTION, Map.of("config#selection", List.of("built-in"))).
-				describing("config#selection", "CAT changed the shared setting.");
+			fixture.integration.asking(QUESTION, Map.of("config#selection", List.of("built-in")),
+				"CAT changed the shared setting.");
 
 			UpdateResult result = fixture.engine().install("v1.1", request(fixture, true));
 

@@ -59,7 +59,7 @@ public final class UninstallTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-")));
-			RecordingIntegration integration = new RecordingIntegration().deletingData(fixture.data);
+			RecordingIntegration integration = new RecordingIntegration().deletingData();
 
 			UninstallResult result = fixture.uninstaller(integration).uninstall(false);
 
@@ -91,7 +91,7 @@ public final class UninstallTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("uninstall-data-")));
-			RecordingIntegration integration = new RecordingIntegration().deletingData(fixture.data);
+			RecordingIntegration integration = new RecordingIntegration().deletingData();
 
 			UpdateResult result = fixture.uninstaller(integration).uninstall(true).outcome();
 
@@ -296,7 +296,7 @@ public final class UninstallTest
 			UpdateEngine engine = new UpdateEngine(data, trust, catalog.source(), new RegisteredProvider(), "linux-x64",
 				Clock.systemUTC(), interval -> () -> {});
 			RecordingIntegration integration = new RecordingIntegration().
-				adding(Map.of("settings.json", List.of("entry"))).fail("unregister");
+				maintain(Map.of("settings.json", List.of("entry"))).fail("unregister");
 			InstallRequest request = new InstallRequest(integration.session(), root.resolve("download/plugin"),
 				List.of(), root.resolve("user/.cat/locks"), root.resolve("user/.cat/sessions"), _ -> false);
 			requireThat(engine.install("v1.1", request).result(), "installed").
@@ -305,7 +305,7 @@ public final class UninstallTest
 				root.resolve("download/plugin"), Clock.systemUTC(), interval -> () -> {});
 			requireThat(uninstaller.uninstall(false).outcome().result(), "stopped").
 				isEqualTo(Result.UNINSTALL_INCOMPLETE);
-			integration.adding(Map.of("settings.json", List.of("entry")));
+			integration.maintain(Map.of("settings.json", List.of("entry")));
 			// The stopped uninstall left the plugin registered, so the install finds it up to date
 			requireThat(engine.install("v1.1", request).result(), "reinstalled").isEqualTo(Result.UP_TO_DATE);
 			integration.succeed("unregister");

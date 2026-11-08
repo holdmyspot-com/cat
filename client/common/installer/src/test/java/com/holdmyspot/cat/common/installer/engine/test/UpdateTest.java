@@ -118,7 +118,7 @@ public final class UpdateTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-entries-")), catalog());
 			Path active = fixture.installActive("1.0");
-			fixture.integration.adding(Map.of("settings.json", List.of("updated-entry")));
+			fixture.integration.maintain(Map.of("settings.json", List.of("updated-entry")));
 
 			UpdateResult result = fixture.install("v1.1", active);
 
@@ -143,7 +143,7 @@ public final class UpdateTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-failed-register-")), catalog());
-			fixture.integration.adding(Map.of("settings.json", List.of("active-entry")));
+			fixture.integration.maintain(Map.of("settings.json", List.of("active-entry")));
 			Path active = fixture.installActive("1.0");
 			String record = Files.readString(fixture.permissionRecord());
 			fixture.integration.fail("register");

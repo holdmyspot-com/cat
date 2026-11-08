@@ -895,7 +895,7 @@ public final class InvocationTest
 			Path user = Files.createDirectory(root.resolve("user"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			RecordingIntegration integration = new RecordingIntegration().
-				adding(Map.of("settings.json", List.of("entry")));
+				maintain(Map.of("settings.json", List.of("entry")));
 			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
 			Map<String, String> environment = installEnvironment(user, tools);
 
@@ -973,7 +973,7 @@ public final class InvocationTest
 		{
 			Archive archive = new Archive(cleanup.add(testDirectory("invocation-notice-")));
 			RecordingIntegration integration = new RecordingIntegration().
-				adding(Map.of("config#profile", List.of("locks"))).
+				maintain(Map.of("config#profile", List.of("locks"))).
 				describing("config#profile", "CAT added the lock folder to a shared profile.");
 
 			Run run = archive.run(integration, _ -> Optional.empty());
@@ -1048,7 +1048,8 @@ public final class InvocationTest
 		{
 			Archive archive = new Archive(cleanup.add(testDirectory("invocation-consent-")));
 			RecordingIntegration integration = new RecordingIntegration().
-				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")),
+					"CAT changed the shared setting.");
 			List<String> questions = new ArrayList<>();
 
 			Run run = archive.run(integration, question ->
@@ -1081,7 +1082,8 @@ public final class InvocationTest
 		{
 			Archive archive = new Archive(cleanup.add(testDirectory("invocation-decline-")));
 			RecordingIntegration integration = new RecordingIntegration().
-				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")),
+					"CAT changed the shared setting.");
 			Map<String, String> before = Releases.snapshot(archive.root);
 
 			Run run = archive.run(integration, _ -> Optional.of("n"));
@@ -1111,7 +1113,8 @@ public final class InvocationTest
 		{
 			Archive archive = new Archive(cleanup.add(testDirectory("invocation-no-terminal-")));
 			RecordingIntegration integration = new RecordingIntegration().
-				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")),
+					"CAT changed the shared setting.");
 			Map<String, String> before = Releases.snapshot(archive.root);
 
 			Run run = archive.run(integration, _ -> Optional.empty());
@@ -1138,7 +1141,8 @@ public final class InvocationTest
 		{
 			Archive archive = new Archive(cleanup.add(testDirectory("invocation-consent-flag-")));
 			RecordingIntegration integration = new RecordingIntegration().
-				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")));
+				asking("May CAT change the shared setting?", Map.of("config#selection", List.of("built-in")),
+					"CAT changed the shared setting.");
 
 			Run run = archive.run(integration, _ ->
 			{
@@ -1167,7 +1171,7 @@ public final class InvocationTest
 			Files.writeString(installation.data.resolve("state/permissions/harness-a.json"),
 				"{\"config#selection\": [\"built-in\"]}\n");
 			RecordingIntegration integration = new RecordingIntegration().
-				retaining(List.of("CAT left the shared setting as you changed it."));
+				retaining("config#selection", "CAT left the shared setting as you changed it.");
 
 			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 

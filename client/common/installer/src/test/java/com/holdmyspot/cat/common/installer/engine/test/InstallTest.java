@@ -113,7 +113,7 @@ public final class InstallTest
 			// Stands for the install of 1.0 that the harness ran before this update
 			fixture.registerExisting(Releases.pluginVersion("1.0"));
 			fixture.integration.asking("May CAT change the shared setting?", Map.of("config#selection",
-				List.of("built-in")));
+				List.of("built-in")), "CAT changed the shared setting.");
 			Map<String, String> before = Releases.snapshot(fixture.home);
 			List<String> questions = new ArrayList<>();
 
@@ -150,7 +150,7 @@ public final class InstallTest
 			// Stands for the install of 1.0 that the harness ran before this update
 			fixture.registerExisting(Releases.pluginVersion("1.0"));
 			fixture.integration.asking("May CAT change the shared setting?", Map.of("config#selection",
-				List.of("built-in"))).describing("config#selection", "CAT changed the shared setting.");
+				List.of("built-in")), "CAT changed the shared setting.");
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),

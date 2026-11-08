@@ -69,7 +69,7 @@ public final class HumanReportTest
 			Fixture piped = new Fixture(cleanup.add(testDirectory("human-report-pipe-")));
 			Map<String, List<String>> entries = Map.of("settings.json", List.of("entry"));
 
-			Run machine = piped.run(new RecordingIntegration().adding(entries), "install", "--harness", "harness-a");
+			Run machine = piped.run(new RecordingIntegration().maintain(entries), "install", "--harness", "harness-a");
 
 			requireThat(machine.status, "status").withContext(machine.output, "output").isEqualTo(0);
 			requireThat(machine.output, "output").startsWith("{\"result\":\"installed\",\"harness\":\"harness-a\"," +

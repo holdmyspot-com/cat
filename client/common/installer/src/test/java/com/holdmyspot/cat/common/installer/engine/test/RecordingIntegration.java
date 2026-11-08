@@ -21,6 +21,7 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,7 +37,10 @@ import java.util.Set;
  * of any other harness in {@code plugins/cache/<harness>/cat}, so that no folder is a version folder of two harnesses,
  * and installs a plugin as a harness does: {@code register} copies the plugin in the
  * marketplace folder into the folder of the version that it is asked to register, and records that version in
- * {@link #registeredVersion(Path)}.
+ * {@link #registeredVersion(Path)}. Each home's configuration holds the permission, sandbox and consented entries that
+ * the integration added and did not remove, so each entry is added once. The harness integration contract checks this
+ * behavior on this integration and on the Claude Code and Codex integrations; the failures that a test names and the
+ * recorded calls are test controls and observations.
  */
 public final class RecordingIntegration implements HarnessIntegration
 {
@@ -57,21 +61,19 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private final Set<String> crashing = new HashSet<>();
 	/**
-	 * The entries that the next {@code installPermissions} call reports as added.
-	 */
-	private Map<String, List<String>> added = Map.of();
-	/**
-	 * The entries that {@code permissions} reports as maintained: every entry that a permission installation reported
-	 * as added, and the entries that a test names.
+	 * The entries that {@code permissions} reports as maintained, which {@code installPermissions} adds.
 	 */
 	private final Map<String, List<String>> maintained = new LinkedHashMap<>();
+	/**
+	 * The entries that each home's configuration holds, by home.
+	 */
+	private final Map<Path, Map<String, List<String>>> configurations = new HashMap<>();
 	/**
 	 * The entries that each {@code removePermissions} call received.
 	 */
 	private final List<Map<String, List<String>>> removed = new ArrayList<>();
 	/**
-	 * The entries that the next {@code installSandboxEntries} call reports as added, which {@code sandboxEntries} also
-	 * reports as maintained.
+	 * The sandbox entries that {@code sandboxEntries} reports as maintained, which {@code installSandboxEntries} adds.
 	 */
 	private Map<String, List<String>> sandbox = Map.of();
 	/**
@@ -83,24 +85,26 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private String question;
 	/**
-	 * The entries that {@code installConsentedEntries} reports as added, which {@code sandboxEntries} also reports
-	 * as maintained once they are added.
+	 * The entries that {@code installConsentedEntries} adds, which {@code sandboxEntries} also reports as maintained
+	 * once they are added.
 	 */
 	private Map<String, List<String>> consented = Map.of();
 	/**
-	 * Whether {@code installConsentedEntries} has added its entries.
+	 * The sentence that {@code describeAdded} returns when the added entries hold a consented entry.
 	 */
-	private boolean consentedAdded;
+	private String consentNotice = "";
 	/**
-	 * The sentence that {@code describeAdded} returns for each added entry key.
+	 * The sentence that {@code describeAdded} returns for each added entry key, standing for an entry that a setting
+	 * of the user's shares.
 	 */
 	private final Map<String, String> notices = new LinkedHashMap<>();
 	/**
-	 * The sentences that {@code describeRetained} returns.
+	 * The sentence that {@code describeRetained} returns for each entry key that the user changed after install
+	 * added it.
 	 */
-	private List<String> retained = List.of();
+	private final Map<String, String> changed = new LinkedHashMap<>();
 	/**
-	 * The sentences that {@code removeRunnerExceptions} returns.
+	 * The sentences that the next {@code removeRunnerExceptions} call returns.
 	 */
 	private List<String> runnerRemovals = List.of();
 	/**
@@ -108,10 +112,9 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private final List<Boolean> keptData = new ArrayList<>();
 	/**
-	 * The plugin data directory that {@code unregister} deletes unless it is asked to keep it, as Claude Code does, or
-	 * null when it deletes none.
+	 * Whether {@code unregister} deletes the plugin data directory unless it is asked to keep it, as Claude Code does.
 	 */
-	private Path deletedData;
+	private boolean deletesData;
 	/**
 	 * Whether the harness runs the plugin from the version folder with the greatest name, as Codex does, instead of
 	 * the version that it registered.
@@ -174,20 +177,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Sets the entries that the next permission installation reports as added.
-	 *
-	 * @param entries each configuration's added entries
-	 * @return this integration
-	 */
-	public RecordingIntegration adding(Map<String, List<String>> entries)
-	{
-		this.added = new LinkedHashMap<>(entries);
-		maintain(entries);
-		return this;
-	}
-
-	/**
-	 * Adds entries to those that the integration reports as maintained, without reporting them as added.
+	 * Adds entries to those that the integration maintains, which the next permission installation adds to each home
+	 * whose configuration lacks them.
 	 *
 	 * @param entries each configuration's maintained entries
 	 * @return this integration
@@ -208,8 +199,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Sets the sandbox entries that the next sandbox installation reports as added and that the integration reports as
-	 * maintained.
+	 * Sets the sandbox entries that the integration maintains, which the next sandbox installation adds to each home
+	 * whose configuration lacks them.
 	 *
 	 * @param entries each configuration's sandbox entries
 	 * @return this integration
@@ -221,24 +212,27 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Makes install ask the user a question before it changes anything, and sets the entries that it adds once the
-	 * user agrees.
+	 * Makes install ask the user a question before it changes anything, as a configuration that shares the setting
+	 * that CAT must change does, and sets the entries that it adds once the user agrees.
 	 *
 	 * @param question the question
 	 * @param entries  the entries that {@code installConsentedEntries} adds
+	 * @param notice   the sentence that tells the user that the entries change a shared setting
 	 * @return this integration
 	 */
-	public RecordingIntegration asking(String question, Map<String, List<String>> entries)
+	public RecordingIntegration asking(String question, Map<String, List<String>> entries, String notice)
 	{
 		this.question = question;
 		this.consented = Map.copyOf(entries);
+		this.consentNotice = notice;
 		return this;
 	}
 
 	/**
-	 * Sets the sentence that tells the user about an added entry.
+	 * Makes an entry that installation adds one that a setting of the user's shares, so that the user is told about
+	 * it.
 	 *
-	 * @param key      the entry key
+	 * @param key      the entry's key
 	 * @param sentence the sentence that {@code describeAdded} returns when the key is among the added entries
 	 * @return this integration
 	 */
@@ -249,9 +243,23 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Sets the sentences that tell the user which runner entries install removed.
+	 * Stands for the user's change of an entry that install added, so that uninstall tells the user that it left it.
 	 *
-	 * @param sentences the sentences that {@code removeRunnerExceptions} returns
+	 * @param key      the entry's key
+	 * @param sentence the sentence that {@code describeRetained} returns when the key is among the added entries
+	 * @return this integration
+	 */
+	public RecordingIntegration retaining(String key, String sentence)
+	{
+		changed.put(key, sentence);
+		return this;
+	}
+
+	/**
+	 * Adds the runner exceptions that CAT's installation guide told users to add, which the next runner exception
+	 * removal removes.
+	 *
+	 * @param sentences the sentences that the next {@code removeRunnerExceptions} call returns
 	 * @return this integration
 	 */
 	public RecordingIntegration removingRunnerExceptions(List<String> sentences)
@@ -261,27 +269,14 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Sets the sentences that tell the user which entries uninstall left in place.
+	 * Makes {@code unregister} delete the plugin data directory unless it is asked to keep it, as Claude Code's
+	 * plugin uninstall does.
 	 *
-	 * @param sentences the sentences that {@code describeRetained} returns
 	 * @return this integration
 	 */
-	public RecordingIntegration retaining(List<String> sentences)
+	public RecordingIntegration deletingData()
 	{
-		this.retained = List.copyOf(sentences);
-		return this;
-	}
-
-	/**
-	 * Makes {@code unregister} delete a plugin data directory unless it is asked to keep it, as Claude Code's plugin
-	 * uninstall does.
-	 *
-	 * @param data the plugin data directory
-	 * @return this integration
-	 */
-	public RecordingIntegration deletingData(Path data)
-	{
-		this.deletedData = data;
+		this.deletesData = true;
 		return this;
 	}
 
@@ -517,6 +512,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	public void requireIdentity(CommandResult version) throws IOException
 	{
 		record("requireIdentity", "exit status " + version.exitCode());
+		if (version.exitCode() != 0)
+			throw new IOException(programName() + " --version failed with exit status " + version.exitCode());
 	}
 
 	@Override
@@ -537,7 +534,7 @@ public final class RecordingIntegration implements HarnessIntegration
 		Layout layout = layout(harness, home);
 		Path source = layout.marketplacePlugin();
 		if (!Files.isRegularFile(source.resolve(PluginDirectory.VERSION)))
-			return;
+			throw new IOException("The marketplace folder holds no plugin: " + source);
 		Path target = layout.versionFolder(version);
 		Files.createDirectories(target.getParent());
 		LinkSafeDeletion.delete(target, target.getParent());
@@ -561,8 +558,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		record("unregister", home);
 		keptData.add(keepData);
-		if (!keepData && deletedData != null)
-			LinkSafeDeletion.delete(deletedData, home);
+		if (!keepData && deletesData)
+			LinkSafeDeletion.delete(layout(harness, home).dataDirectory(), home);
 	}
 
 	@Override
@@ -578,7 +575,9 @@ public final class RecordingIntegration implements HarnessIntegration
 	public List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException
 	{
 		record("removeRunnerExceptions", home);
-		return runnerRemovals;
+		List<String> sentences = runnerRemovals;
+		runnerRemovals = List.of();
+		return sentences;
 	}
 
 	@Override
@@ -586,9 +585,7 @@ public final class RecordingIntegration implements HarnessIntegration
 		throws IOException
 	{
 		record("installPermissions", installer);
-		Map<String, List<String>> entries = added;
-		added = Map.of();
-		return entries;
+		return add(home, maintained);
 	}
 
 	@Override
@@ -606,14 +603,14 @@ public final class RecordingIntegration implements HarnessIntegration
 		Path launcherState, FileReplacer replacer) throws IOException
 	{
 		record("installSandboxEntries", other.home() + " " + catLocks + " " + launcherState);
-		return sandbox;
+		return add(home, sandbox);
 	}
 
 	@Override
 	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks,
 		Path launcherState)
 	{
-		if (!consentedAdded)
+		if (!consentedAdded(home))
 			return sandbox;
 		Map<String, List<String>> entries = new LinkedHashMap<>(sandbox);
 		entries.putAll(consented);
@@ -626,7 +623,7 @@ public final class RecordingIntegration implements HarnessIntegration
 	@Override
 	public Optional<String> consentRequest(Path home, Path catLocks)
 	{
-		if (consentedAdded)
+		if (consentedAdded(home))
 			return Optional.empty();
 		return Optional.ofNullable(question);
 	}
@@ -638,15 +635,18 @@ public final class RecordingIntegration implements HarnessIntegration
 	public Map<String, List<String>> installConsentedEntries(Path home, FileReplacer replacer) throws IOException
 	{
 		record("installConsentedEntries", home);
-		consentedAdded = true;
-		return consented;
+		if (question == null)
+			return Map.of();
+		return add(home, consented);
 	}
 
 	@Override
 	public List<String> describeAdded(Path home, Map<String, List<String>> added)
 	{
-		return notices.entrySet().stream().filter(entry -> added.containsKey(entry.getKey())).
-			map(Map.Entry::getValue).toList();
+		List<String> sentences = new ArrayList<>(describe(notices, added));
+		if (consented.keySet().stream().anyMatch(added::containsKey))
+			sentences.add(consentNotice);
+		return List.copyOf(sentences);
 	}
 
 	/**
@@ -671,7 +671,20 @@ public final class RecordingIntegration implements HarnessIntegration
 	@Override
 	public List<String> describeRetained(Path home, Map<String, List<String>> added)
 	{
-		return retained;
+		return describe(changed, added);
+	}
+
+	/**
+	 * Returns the sentences for the keys among the added entries.
+	 *
+	 * @param sentences each key's sentence
+	 * @param added     the added entries
+	 * @return the sentences, in the order in which the test set them
+	 */
+	private static List<String> describe(Map<String, String> sentences, Map<String, List<String>> added)
+	{
+		return sentences.entrySet().stream().filter(entry -> added.containsKey(entry.getKey())).
+			map(Map.Entry::getValue).toList();
 	}
 
 	@Override
@@ -680,6 +693,66 @@ public final class RecordingIntegration implements HarnessIntegration
 	{
 		record("removePermissions", home);
 		removed.add(Map.copyOf(entries));
+		Map<String, List<String>> configuration = configuration(home);
+		for (Map.Entry<String, List<String>> entry : entries.entrySet())
+		{
+			List<String> values = new ArrayList<>(configuration.getOrDefault(entry.getKey(), List.of()));
+			values.removeAll(entry.getValue());
+			if (values.isEmpty())
+				configuration.remove(entry.getKey());
+			else
+				configuration.put(entry.getKey(), List.copyOf(values));
+		}
+	}
+
+	/**
+	 * Adds the entries that a home's configuration lacks.
+	 *
+	 * @param home    the harness home
+	 * @param entries the entries to hold
+	 * @return the entries that were added
+	 */
+	private Map<String, List<String>> add(Path home, Map<String, List<String>> entries)
+	{
+		Map<String, List<String>> configuration = configuration(home);
+		Map<String, List<String>> added = new LinkedHashMap<>();
+		for (Map.Entry<String, List<String>> entry : entries.entrySet())
+		{
+			List<String> values = new ArrayList<>(configuration.getOrDefault(entry.getKey(), List.of()));
+			List<String> missing = entry.getValue().stream().filter(value -> !values.contains(value)).toList();
+			if (missing.isEmpty())
+				continue;
+			values.addAll(missing);
+			configuration.put(entry.getKey(), List.copyOf(values));
+			added.put(entry.getKey(), missing);
+		}
+		return Map.copyOf(added);
+	}
+
+	/**
+	 * Returns whether a home's configuration holds every consented entry.
+	 *
+	 * @param home the harness home
+	 * @return true if the consented entries were added and not removed
+	 */
+	private boolean consentedAdded(Path home)
+	{
+		if (question == null)
+			return false;
+		Map<String, List<String>> configuration = configuration(home);
+		return consented.entrySet().stream().allMatch(entry ->
+			configuration.getOrDefault(entry.getKey(), List.of()).containsAll(entry.getValue()));
+	}
+
+	/**
+	 * Returns the entries that a home's configuration holds.
+	 *
+	 * @param home the harness home
+	 * @return the modifiable entries
+	 */
+	private Map<String, List<String>> configuration(Path home)
+	{
+		return configurations.computeIfAbsent(home, _ -> new LinkedHashMap<>());
 	}
 
 	/**
