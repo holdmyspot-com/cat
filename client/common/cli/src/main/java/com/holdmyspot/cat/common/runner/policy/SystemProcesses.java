@@ -19,6 +19,11 @@ import java.util.Optional;
  * none, and every reader that needs them refuses. macOS reports every argument through {@link ProcessHandle}.
  * Windows reports none, so every reader that needs them refuses there; no session launcher is served on native
  * Windows.
+ * <p>
+ * The {@link ProcessDescription#start() start} of a Linux process comes from the process folder too: the boot's
+ * identifier from {@code sys/kernel/random/boot_id}, and the clock ticks since the boot from field 22 of
+ * {@code <pid>/stat}. A process whose files cannot be read reports no start. Elsewhere the start comes from
+ * {@link ProcessHandle.Info#startInstant()}.
  */
 final class SystemProcesses implements HarnessProcesses
 {
@@ -28,10 +33,19 @@ final class SystemProcesses implements HarnessProcesses
 	}
 
 	/**
-	 * The folder that holds the {@code <pid>/cmdline} files, or null to take the arguments from
-	 * {@link ProcessHandle}.
+	 * The field of {@code <pid>/stat} that holds the clock ticks between the boot and the process's start, counted
+	 * from 1.
 	 */
-	private final Path commandLineFolder;
+	private static final int START_TICKS_FIELD = 22;
+	/**
+	 * The field of {@code <pid>/stat} that follows the parenthesized program name, counted from 1.
+	 */
+	private static final int FIRST_FIELD_AFTER_NAME = 3;
+	/**
+	 * Linux's process folder, which holds the {@code <pid>/cmdline} and {@code <pid>/stat} files and the boot's
+	 * identifier, or null to take the arguments and the start from {@link ProcessHandle}.
+	 */
+	private final Path processFolder;
 
 	/**
 	 * Creates the processes of this computer's operating system.
@@ -40,21 +54,21 @@ final class SystemProcesses implements HarnessProcesses
 	 */
 	static SystemProcesses current()
 	{
-		Path commandLineFolder = null;
+		Path processFolder = null;
 		if (Platform.current().isLinux())
-			commandLineFolder = Path.of("/proc");
-		return new SystemProcesses(commandLineFolder);
+			processFolder = Path.of("/proc");
+		return new SystemProcesses(processFolder);
 	}
 
 	/**
 	 * Creates processes.
 	 *
-	 * @param commandLineFolder the folder that holds the {@code <pid>/cmdline} files of Linux processes, or null to
-	 *                          take the arguments from {@link ProcessHandle}
+	 * @param processFolder Linux's process folder, or null to take the arguments and the start of each process from
+	 *                      {@link ProcessHandle}
 	 */
-	private SystemProcesses(Path commandLineFolder)
+	private SystemProcesses(Path processFolder)
 	{
-		this.commandLineFolder = commandLineFolder;
+		this.processFolder = processFolder;
 	}
 
 	@Override
@@ -93,7 +107,58 @@ final class SystemProcesses implements HarnessProcesses
 	private ProcessDescription describe(ProcessHandle handle)
 	{
 		ProcessHandle.Info info = handle.info();
-		return new ProcessDescription(handle.pid(), info.startInstant(), info.command(), arguments(handle, info));
+		return new ProcessDescription(handle.pid(), start(handle, info), info.command(), arguments(handle, info));
+	}
+
+	/**
+	 * Returns the start of a process.
+	 *
+	 * @param handle the process
+	 * @param info   what {@link ProcessHandle} reports about it
+	 * @return the start, or empty if the system does not report it
+	 */
+	private Optional<String> start(ProcessHandle handle, ProcessHandle.Info info)
+	{
+		if (processFolder == null)
+			return info.startInstant().map(instant -> String.valueOf(instant.toEpochMilli()));
+		String boot;
+		String status;
+		try
+		{
+			boot = Files.readString(processFolder.resolve("sys/kernel/random/boot_id"), StandardCharsets.US_ASCII);
+			status = Files.readString(processFolder.resolve(String.valueOf(handle.pid())).resolve("stat"),
+				StandardCharsets.UTF_8);
+		}
+		catch (IOException _)
+		{
+			// The process ended, or the system hides its files
+			return Optional.empty();
+		}
+		return linuxStart(boot, status);
+	}
+
+	/**
+	 * Returns the start of a Linux process from what the kernel reports.
+	 *
+	 * @param boot   the content of {@code sys/kernel/random/boot_id}: the boot's identifier, a UUID
+	 * @param status the content of the process's {@code stat} file
+	 * @return the boot's identifier without hyphens, the letter {@code t}, and the clock ticks between the boot and
+	 *   the process's start; or empty if either content has another form
+	 */
+	private static Optional<String> linuxStart(String boot, String status)
+	{
+		String bootId = boot.strip().replace("-", "");
+		if (!bootId.matches("[0-9a-f]{32}"))
+			return Optional.empty();
+		// The program's name, in parentheses, may itself hold spaces and parentheses
+		int nameEnd = status.lastIndexOf(')');
+		if (nameEnd < 0)
+			return Optional.empty();
+		String[] fields = status.substring(nameEnd + 1).strip().split(" ");
+		int index = START_TICKS_FIELD - FIRST_FIELD_AFTER_NAME;
+		if (fields.length <= index || !fields[index].matches("[0-9]+"))
+			return Optional.empty();
+		return Optional.of(bootId + "t" + fields[index]);
 	}
 
 	/**
@@ -105,12 +170,12 @@ final class SystemProcesses implements HarnessProcesses
 	 */
 	private Optional<List<String>> arguments(ProcessHandle handle, ProcessHandle.Info info)
 	{
-		if (commandLineFolder == null)
+		if (processFolder == null)
 			return info.arguments().map(List::of);
 		byte[] commandLine;
 		try
 		{
-			commandLine = Files.readAllBytes(commandLineFolder.resolve(String.valueOf(handle.pid())).
+			commandLine = Files.readAllBytes(processFolder.resolve(String.valueOf(handle.pid())).
 				resolve("cmdline"));
 		}
 		catch (IOException _)

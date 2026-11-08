@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -16,7 +17,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -42,11 +42,11 @@ import tools.jackson.databind.node.ObjectNode;
  *     regular files only, copies the file into the request's directory before parsing it, and deletes it.</li>
  *   <li>{@link #stateRoot()}, {@link SessionDirectory#ROOT} below the user's home directory, beside the inbox on
  *     the same file system, which only launchers write and no parent session may write. It holds
- *     {@link #launcherDirectory(String, long, Instant)} for each harness process, with {@link #LAUNCHER_FILE},
+ *     {@link #launcherDirectory(String, long, String)} for each harness process, with {@link #LAUNCHER_FILE},
  *     {@link #LOCK_FILE}, {@link #HEARTBEAT_FILE} and {@link #STOP_FILE}, and
  *     {@link #requestDirectory(String)} for each accepted request, with
  *     {@link #ACCEPTED_FILE}, {@link #TURNS_FILE}, {@link #TRANSCRIPT_FILE}, {@link #RUNNER_STDERR_FILE},
- *     {@link #RESPONSE_FILE} and {@link #RUN_DIRECTORY}. It also holds {@link #logFile(String, long, Instant)} for
+ *     {@link #RESPONSE_FILE} and {@link #RUN_DIRECTORY}. It also holds {@link #logFile(String, long, String)} for
  *     each harness process in {@link #logs()}, outside the launcher's directory, so that the log, which records each
  *     launch that the launcher accepts and each answer that it gives, stays readable after the launcher ends and
  *     deletes its directory. A later launcher's start deletes the logs of ended launchers that were last written
@@ -120,7 +120,7 @@ public final class SessionLauncherChannel
 	 */
 	public static final String STOP_FILE = "stop";
 	/**
-	 * The end of the name of a launcher's log, which {@link #logFile(String, long, Instant)} gives.
+	 * The end of the name of a launcher's log, which {@link #logFile(String, long, String)} gives.
 	 */
 	public static final String LOG_SUFFIX = ".log";
 	/**
@@ -208,14 +208,15 @@ public final class SessionLauncherChannel
 	 *
 	 * @param harness the harness identifier
 	 * @param pid     the harness process's identifier
-	 * @param start   the instant at which the harness process started, which tells it apart from a later process
-	 *                with the same identifier
-	 * @return {@code <harness>-<pid>-<start in milliseconds since the epoch>} below {@link #launchers()}
+	 * @param start   the harness process's {@link ProcessDescription#start() start}, which tells it apart from a
+	 *                later process with the same identifier
+	 * @return {@code <harness>-<pid>-<start>} below {@link #launchers()}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is not lower-case letters, digits and hyphens starting with
-	 *                                  a letter, or {@code pid} is not positive
+	 *                                  a letter, {@code pid} is not positive, or {@code start} does not match
+	 *                                  {@link ProcessDescription#START_PATTERN}
 	 */
-	public Path launcherDirectory(String harness, long pid, Instant start)
+	public Path launcherDirectory(String harness, long pid, String start)
 	{
 		return launchers().resolve(launcherName(harness, pid, start));
 	}
@@ -240,14 +241,15 @@ public final class SessionLauncherChannel
 	 *
 	 * @param harness the harness identifier
 	 * @param pid     the harness process's identifier
-	 * @param start   the instant at which the harness process started
-	 * @return {@code <harness>-<pid>-<start in milliseconds since the epoch>.log} below {@link #logs()}, named like
-	 *   {@link #launcherDirectory(String, long, Instant)} with {@link #LOG_SUFFIX} added
+	 * @param start   the harness process's {@link ProcessDescription#start() start}
+	 * @return {@code <harness>-<pid>-<start>.log} below {@link #logs()}, named like
+	 *   {@link #launcherDirectory(String, long, String)} with {@link #LOG_SUFFIX} added
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is not lower-case letters, digits and hyphens starting with
-	 *                                  a letter, or {@code pid} is not positive
+	 *                                  a letter, {@code pid} is not positive, or {@code start} does not match
+	 *                                  {@link ProcessDescription#START_PATTERN}
 	 */
-	public Path logFile(String harness, long pid, Instant start)
+	public Path logFile(String harness, long pid, String start)
 	{
 		return logs().resolve(launcherName(harness, pid, start) + LOG_SUFFIX);
 	}
@@ -257,18 +259,19 @@ public final class SessionLauncherChannel
 	 *
 	 * @param harness the harness identifier
 	 * @param pid     the harness process's identifier
-	 * @param start   the instant at which the harness process started
-	 * @return {@code <harness>-<pid>-<start in milliseconds since the epoch>}
+	 * @param start   the harness process's {@link ProcessDescription#start() start}
+	 * @return {@code <harness>-<pid>-<start>}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is not lower-case letters, digits and hyphens starting with
-	 *                                  a letter, or {@code pid} is not positive
+	 *                                  a letter, {@code pid} is not positive, or {@code start} does not match
+	 *                                  {@link ProcessDescription#START_PATTERN}
 	 */
-	private static String launcherName(String harness, long pid, Instant start)
+	private static String launcherName(String harness, long pid, String start)
 	{
 		requireThat(harness, "harness").matches("[a-z][a-z0-9-]*");
 		requireThat(pid, "pid").isPositive();
-		requireThat(start, "start").isNotNull();
-		return harness + "-" + pid + "-" + start.toEpochMilli();
+		requireThat(start, "start").matches(ProcessDescription.START_PATTERN);
+		return harness + "-" + pid + "-" + start;
 	}
 
 	/**

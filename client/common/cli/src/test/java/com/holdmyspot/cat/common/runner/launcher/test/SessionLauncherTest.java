@@ -1130,7 +1130,7 @@ public final class SessionLauncherTest
 		private Path crashedLauncher() throws IOException
 		{
 			Path directory = Files.createDirectories(channel.launcherDirectory("harness-a", 777,
-				Instant.parse("2026-11-05T11:00:00Z")));
+				"0f1e2d3c4b5a69788796a5b4c3d2e1f0t4242"));
 			Files.writeString(directory.resolve(SessionLauncherChannel.LOCK_FILE), "");
 			Files.writeString(directory.resolve(SessionLauncherChannel.HEARTBEAT_FILE), "");
 			return directory;

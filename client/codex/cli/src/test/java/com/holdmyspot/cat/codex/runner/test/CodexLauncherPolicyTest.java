@@ -21,7 +21,6 @@ import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +45,7 @@ import tools.jackson.dataformat.toml.TomlMapper;
 public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 {
 	private static final long CODEX_PID = 5151;
-	private static final Instant CODEX_START = Instant.parse("2026-11-05T12:00:00.456Z");
+	private static final String CODEX_START = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t6000000";
 	/**
 	 * The session that the hook described, which is also the identifier of its main thread.
 	 */
@@ -125,7 +124,8 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
-			for (Optional<Instant> start : List.of(Optional.of(CODEX_START.plusSeconds(60)), Optional.<Instant>empty()))
+			String laterStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t6006000";
+			for (Optional<String> start : List.of(Optional.of(laterStart), Optional.<String>empty()))
 			{
 				ParentPolicySource source = fixture.source(start);
 				try
@@ -479,7 +479,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		 * @param reportedStart the start of the process with the hook's process identifier, or empty if none runs
 		 * @return the source
 		 */
-		ParentPolicySource source(Optional<Instant> reportedStart)
+		ParentPolicySource source(Optional<String> reportedStart)
 		{
 			return source(() -> reportedStart);
 		}
@@ -491,11 +491,11 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		 *                      empty if none runs
 		 * @return the source
 		 */
-		ParentPolicySource source(Supplier<Optional<Instant>> reportedStart)
+		ParentPolicySource source(Supplier<Optional<String>> reportedStart)
 		{
 			HarnessProcesses processes = pid ->
 			{
-				Optional<Instant> start = reportedStart.get();
+				Optional<String> start = reportedStart.get();
 				if (pid != CODEX_PID || start.isEmpty())
 					return Optional.empty();
 				return Optional.of(new ProcessDescription(pid, start, Optional.of("/usr/lib/codex/bin/codex"),

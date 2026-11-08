@@ -8,8 +8,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.DateTimeException;
-import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
@@ -22,7 +20,8 @@ import tools.jackson.databind.node.ObjectNode;
  * {@link SessionLauncherChannel#LAUNCHER_FILE} in the launcher's folder before it starts the launcher, and which the
  * launcher reads. Its file is a JSON object whose {@code format_version} is {@value #VERSION}, with the text fields
  * {@code harness}, {@code session_id}, {@code cwd}, {@code source}, {@code harness_home} and {@code cat_version}, the
- * number {@code pid}, the ISO-8601 instant {@code start}, and {@code transcript_path}, a path or {@code null}.
+ * number {@code pid}, the text {@code start}, the harness process's {@link ProcessIdentity#start() start}, and
+ * {@code transcript_path}, a path or {@code null}.
  *
  * @param harness     the identifier of the served harness
  * @param process     the served harness process
@@ -39,7 +38,7 @@ public record LauncherRecord(String harness, ProcessIdentity process, String ses
 	/**
 	 * The version of the file's format.
 	 */
-	public static final int VERSION = 1;
+	public static final int VERSION = 2;
 	/**
 	 * The size of the largest file that is read.
 	 */
@@ -91,7 +90,7 @@ public record LauncherRecord(String harness, ProcessIdentity process, String ses
 			put("format_version", VERSION).
 			put("harness", harness).
 			put("pid", process.pid()).
-			put("start", process.start().toString()).
+			put("start", process.start()).
 			put("session_id", sessionId).
 			put("cwd", cwd.toString()).
 			put("transcript_path", transcript.map(Path::toString).orElse(null)).
@@ -158,12 +157,12 @@ public record LauncherRecord(String harness, ProcessIdentity process, String ses
 		try
 		{
 			return new LauncherRecord(text(document, "harness", source),
-				new ProcessIdentity(pid.longValue(), Instant.parse(text(document, "start", source))),
+				new ProcessIdentity(pid.longValue(), text(document, "start", source)),
 				text(document, "session_id", source), Path.of(text(document, "cwd", source)), transcriptPath,
 				text(document, "source", source), Path.of(text(document, "harness_home", source)),
 				text(document, "cat_version", source));
 		}
-		catch (IllegalArgumentException | DateTimeException e)
+		catch (IllegalArgumentException e)
 		{
 			throw new IOException("The launcher record " + source + " is not valid: " + e.getMessage(), e);
 		}

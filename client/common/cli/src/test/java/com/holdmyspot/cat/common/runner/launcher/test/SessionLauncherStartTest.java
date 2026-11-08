@@ -5,12 +5,15 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.FakeProcessLauncher;
+import com.holdmyspot.cat.common.fakes.test.ProcessFolder;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.launcher.LauncherRecord;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncherStart;
 import com.holdmyspot.cat.common.runner.launcher.SessionLauncherStart.DetachedStarter;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
 import com.holdmyspot.cat.common.secrets.SessionLauncherStartSecrets;
 import java.io.File;
 import java.io.IOException;
@@ -24,7 +27,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,6 +34,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -234,6 +237,64 @@ public final class SessionLauncherStartTest
 	}
 
 	/**
+	 * Verifies that a later SessionStart of a harness process whose launcher runs starts no second launcher after
+	 * the wall clock was set back, which moves the boot time that Linux derives from it: the hook names the harness
+	 * process by the start that the kernel records, as the first hook did, and finds the running launcher's lock. A
+	 * folder stands for Linux's process folder, and the test's own process plays the harness process.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void startsNoneAfterBootTimeMoves() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-launcher-start-")).toRealPath();
+			ProcessFolder folder = new ProcessFolder(Files.createDirectories(root.resolve("proc")), 1_794_069_622);
+			long harnessPid = ProcessHandle.current().pid();
+			folder.start(harnessPid, "claude", 1_234_563);
+			SessionLauncherChannel channel = new SessionLauncherChannel(root.resolve("home"));
+			FileLocks fileLocks = new FileLocks();
+			FakeProcessLauncher processes = new FakeProcessLauncher();
+			ProcessIdentity first = harnessProcess(folder, harnessPid);
+			boolean startedFirst = SessionLauncherStart.start(channel, record(root, first), root.resolve("plugin"),
+				Platform.LINUX_X64, Map.of(), fileLocks, starter(processes));
+			Path launcher = channel.launcherDirectory("claude", harnessPid, first.start());
+			Optional<ExclusiveFileLock> running = fileLocks.tryLock(launcher.resolve(SessionLauncherChannel.LOCK_FILE),
+				file -> FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE));
+			try (ExclusiveFileLock _ = running.orElseThrow())
+			{
+				folder.setBootTime(1_794_069_343);
+
+				boolean startedLater = SessionLauncherStart.start(channel, record(root, harnessProcess(folder,
+					harnessPid)), root.resolve("plugin"), Platform.LINUX_X64, Map.of(), fileLocks, starter(processes));
+
+				requireThat(startedFirst, "startedFirst").isTrue();
+				requireThat(startedLater, "startedLater").isFalse();
+				requireThat(commands(processes).size(), "launchers").isEqualTo(1);
+				try (Stream<Path> folders = Files.list(launcher.getParent()))
+				{
+					requireThat(folders.toList(), "folders").isEqualTo(List.of(launcher));
+				}
+			}
+		}
+	}
+
+	/**
+	 * Returns the identity of a harness process, as a SessionStart hook reads it.
+	 *
+	 * @param folder the stand-in for Linux's process folder
+	 * @param pid    the harness process's identifier
+	 * @return the identity
+	 * @throws IOException if the folder does not show when the process started
+	 */
+	private static ProcessIdentity harnessProcess(ProcessFolder folder, long pid) throws IOException
+	{
+		HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
+		return SessionLauncherStart.identity(processes.find(pid).orElseThrow());
+	}
+
+	/**
 	 * Verifies that a hook that starts a launcher can end with its output and error output closed while the launcher
 	 * keeps running: the launcher reads end-of-input at once and writes its own output to its log. A separate JVM
 	 * plays the hook, and a shell that keeps running plays the launcher.
@@ -377,8 +438,19 @@ public final class SessionLauncherStartTest
 	 */
 	private static LauncherRecord record(Path root)
 	{
-		return new LauncherRecord("claude", new ProcessIdentity(4242, Instant.parse("2026-11-05T12:00:00.123Z")),
-			"session-1", root.resolve("project"), Optional.of(root.resolve("transcript.jsonl")), "startup",
-			root.resolve("home/.claude"), "1.0");
+		return record(root, new ProcessIdentity(4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t4242"));
+	}
+
+	/**
+	 * Returns the hook data of a Claude Code session.
+	 *
+	 * @param root    the test's folder
+	 * @param process the Claude Code process
+	 * @return the data
+	 */
+	private static LauncherRecord record(Path root, ProcessIdentity process)
+	{
+		return new LauncherRecord("claude", process, "session-1", root.resolve("project"),
+			Optional.of(root.resolve("transcript.jsonl")), "startup", root.resolve("home/.claude"), "1.0");
 	}
 }

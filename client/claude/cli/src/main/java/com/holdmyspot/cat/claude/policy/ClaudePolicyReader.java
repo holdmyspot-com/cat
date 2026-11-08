@@ -9,7 +9,6 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -122,14 +121,13 @@ public final class ClaudePolicyReader
 		long processId = session.processId();
 		ProcessDescription process = processes.find(processId).orElseThrow(() -> new PolicyRefusal("the Claude Code " +
 			"process " + processId + " that the hook environment's CLAUDE_PID names is not running", PROCESS_FIX));
-		Instant start = process.start().orElseThrow(() -> new PolicyRefusal("the operating system does not report " +
+		String start = process.start().orElseThrow(() -> new PolicyRefusal("the operating system does not report " +
 			"when the Claude Code process " + processId + " started, so CAT cannot tell it from a later process " +
 			"with the same ID", PROCESS_FIX));
 		if (snapshot != null && !start.equals(snapshot.processStart()))
 		{
-			throw new PolicyRefusal("the process " + processId + " started at " + start + ", not at " +
-				snapshot.processStart() + " like the session's Claude Code process, so it is another process",
-				PROCESS_FIX);
+			throw new PolicyRefusal("the session's Claude Code process " + processId + " has ended, and another " +
+				"process now has its ID", PROCESS_FIX);
 		}
 		if (process.command().isEmpty() || process.arguments().isEmpty())
 		{

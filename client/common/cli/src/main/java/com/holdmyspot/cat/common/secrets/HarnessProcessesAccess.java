@@ -10,12 +10,12 @@ import java.nio.file.Path;
 public interface HarnessProcessesAccess
 {
 	/**
-	 * Returns the processes that the operating system reports, with the command lines of Linux processes read from a
-	 * process folder.
+	 * Returns the processes that the operating system reports, with the command lines and the starts of Linux
+	 * processes read from a process folder.
 	 *
-	 * @param commandLineFolder the folder that holds the {@code <pid>/cmdline} files, or null to take the arguments
-	 *                          from {@link ProcessHandle}
+	 * @param processFolder the folder that stands for Linux's {@code /proc}, or null to take the arguments and the
+	 *                      starts from {@link ProcessHandle}
 	 * @return the processes
 	 */
-	HarnessProcesses system(Path commandLineFolder);
+	HarnessProcesses system(Path processFolder);
 }

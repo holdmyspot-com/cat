@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.ProcessTable;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -13,13 +12,14 @@ import java.util.Optional;
 
 /**
  * An in-memory process table that the test edits: it starts processes under a parent with a command line, ends them,
- * and lets a later process reuse an identifier with another start instant.
+ * and lets a later process reuse an identifier with another start. Each start has the form of a Linux process's: the
+ * boot's identifier, the letter {@code t}, and the clock ticks since the boot.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class FakeProcessTable implements ProcessTable
 {
-	private static final Instant BOOT = Instant.parse("2026-11-05T12:00:00Z");
+	private static final String BOOT = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
 	private final Map<Long, Entry> processes = new HashMap<>();
 	private int generation;
 
@@ -44,7 +44,7 @@ public final class FakeProcessTable implements ProcessTable
 		{
 			requireThat(processes.containsKey(pid), "processes.containsKey(pid)").isFalse();
 			generation += 1;
-			ProcessIdentity identity = new ProcessIdentity(pid, BOOT.plusSeconds(pid).plusMillis(generation));
+			ProcessIdentity identity = new ProcessIdentity(pid, BOOT + "t" + (pid * 1000 + generation));
 			processes.put(pid, new Entry(identity, parent, List.copyOf(arguments)));
 			return identity;
 		}

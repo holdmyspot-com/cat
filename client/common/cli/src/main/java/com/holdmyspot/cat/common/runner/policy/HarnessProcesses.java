@@ -13,7 +13,9 @@ public interface HarnessProcesses
 {
 	/**
 	 * Returns the processes that the operating system reports. On Linux, their arguments come from the process
-	 * folder {@code /proc}, because {@link ProcessHandle} reports none for a command line longer than 4 KiB.
+	 * folder {@code /proc}, because {@link ProcessHandle} reports none for a command line longer than 4 KiB, and so
+	 * do their {@link ProcessDescription#start() starts}, because {@link ProcessHandle} derives a start instant that
+	 * can differ between the processes that read it.
 	 *
 	 * @return the processes
 	 */

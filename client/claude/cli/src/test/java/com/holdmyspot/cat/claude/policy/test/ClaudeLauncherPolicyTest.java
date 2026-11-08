@@ -13,7 +13,6 @@ import com.holdmyspot.cat.common.runner.policy.RealPaths;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -106,7 +105,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 				RealPaths.resolveAll(first.protectedSources()));
 			requireThat(source.read(Optional.empty()), "second").isEqualTo(resolvedFirst);
 
-			fixture.reportedStart = Instant.parse("2026-11-05T13:00:00Z");
+			fixture.reportedStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t4300000";
 			try
 			{
 				ParentPolicy policy = source.read(Optional.empty());

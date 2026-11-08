@@ -26,7 +26,6 @@ import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -43,7 +42,7 @@ public final class ClaudeSessionLauncherHookTest
 {
 	private static final String SESSION_ID = "3f2a6c1e-8b4d-4e7a-9c2f-1a5b6d7e8f90";
 	private static final long CLAUDE_PID = 4242;
-	private static final Instant CLAUDE_START = Instant.parse("2026-11-05T12:00:00.123Z");
+	private static final String CLAUDE_START = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t4242000";
 	/**
 	 * Claude Code's process, as the operating system reports it.
 	 */

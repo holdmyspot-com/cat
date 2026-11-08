@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -28,7 +27,7 @@ final class ClaudeSessionFixture implements AutoCloseable
 	/**
 	 * The instant that the fake process started.
 	 */
-	static final Instant START = Instant.parse("2026-11-05T12:00:00Z");
+	static final String START = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t4200000";
 	/**
 	 * The temporary folders.
 	 */
@@ -68,7 +67,7 @@ final class ClaudeSessionFixture implements AutoCloseable
 	/**
 	 * The instant that the fake process reports as its start.
 	 */
-	Instant reportedStart = START;
+	String reportedStart = START;
 	/**
 	 * Whether the fake process is running.
 	 */

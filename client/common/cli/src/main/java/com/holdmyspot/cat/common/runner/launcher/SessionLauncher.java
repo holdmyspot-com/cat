@@ -390,7 +390,7 @@ public final class SessionLauncher implements Closeable
 	/**
 	 * Returns the harness process that a launcher folder's name identifies.
 	 *
-	 * @param name the folder's name, {@code <harness>-<pid>-<start in epoch milliseconds>}
+	 * @param name the folder's name, {@code <harness>-<pid>-<start>}
 	 * @return the process, or empty if the name has another form
 	 */
 	private static Optional<ProcessIdentity> launcherProcess(String name)
@@ -404,13 +404,11 @@ public final class SessionLauncher implements Closeable
 		try
 		{
 			long pid = Long.parseLong(name.substring(pidSeparator + 1, startSeparator));
-			long start = Long.parseLong(name.substring(startSeparator + 1));
-			if (pid <= 0)
-				return Optional.empty();
-			return Optional.of(new ProcessIdentity(pid, Instant.ofEpochMilli(start)));
+			return Optional.of(new ProcessIdentity(pid, name.substring(startSeparator + 1)));
 		}
-		catch (NumberFormatException _)
+		catch (IllegalArgumentException _)
 		{
+			// The pid is not a positive number, or the start has another form
 			return Optional.empty();
 		}
 	}

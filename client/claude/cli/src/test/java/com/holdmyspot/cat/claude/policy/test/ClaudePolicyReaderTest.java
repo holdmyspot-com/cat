@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -469,7 +468,7 @@ public final class ClaudePolicyReaderTest
 		{
 			fixture.userSettings(ENABLED);
 			ClaudePolicyReading snapshot = fixture.read();
-			fixture.reportedStart = Instant.parse("2026-11-05T13:00:00Z");
+			fixture.reportedStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t4300000";
 			try
 			{
 				ParentPolicy policy = fixture.reader().reread(fixture.session(), snapshot);

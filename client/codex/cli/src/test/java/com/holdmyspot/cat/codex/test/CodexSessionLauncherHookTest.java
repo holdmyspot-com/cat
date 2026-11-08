@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,7 +40,7 @@ public final class CodexSessionLauncherHookTest
 {
 	private static final String SESSION_ID = "019a2b3c-4d5e-7f60-8a1b-2c3d4e5f6a7b";
 	private static final long CODEX_PID = 5151;
-	private static final Instant CODEX_START = Instant.parse("2026-11-05T12:00:00.456Z");
+	private static final String CODEX_START = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t6000000";
 	/**
 	 * The hook's ancestry, nearest first: the shell that runs the hook's command, then Codex.
 	 */
@@ -57,7 +56,7 @@ public final class CodexSessionLauncherHookTest
 	private static List<ProcessDescription> ancestry(List<String> codexArguments)
 	{
 		return List.of(
-			new ProcessDescription(6000, Optional.of(CODEX_START.plusSeconds(1)), Optional.of("/bin/sh"),
+			new ProcessDescription(6000, Optional.of("0f1e2d3c4b5a69788796a5b4c3d2e1f0t6000100"), Optional.of("/bin/sh"),
 				Optional.of(List.of("-c", "session-start"))),
 			new ProcessDescription(CODEX_PID, Optional.of(CODEX_START), Optional.of("/usr/lib/codex/bin/codex"),
 				Optional.of(codexArguments)));

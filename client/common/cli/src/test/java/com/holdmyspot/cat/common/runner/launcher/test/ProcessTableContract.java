@@ -165,7 +165,8 @@ public abstract class ProcessTableContract
 		try (ProcessTree tree = start())
 		{
 			ProcessTable table = tree.table();
-			ProcessIdentity earlier = new ProcessIdentity(tree.leaf().pid(), tree.leaf().start().minusSeconds(1));
+			// No process that the tree starts has the start "0", whatever form the table's starts have
+			ProcessIdentity earlier = new ProcessIdentity(tree.leaf().pid(), "0");
 
 			requireAbsent(table, earlier);
 			requireThat(table.descendants(tree.middle()), "descendants(middle)").doesNotContain(earlier);
