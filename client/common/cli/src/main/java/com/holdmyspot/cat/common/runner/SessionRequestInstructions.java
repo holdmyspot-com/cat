@@ -80,7 +80,23 @@ public final class SessionRequestInstructions
 			"[--receipt <file>]\n" +
 			"\n" +
 			"It writes the session's transcript to --output, or prints it, copies its receipt to --receipt, and exits " +
-			"with 0 when the session completed, 75 when no capacity was free, and 1 otherwise, with the reason.";
+			"with 0 when the session completed, 75 when no capacity was free, 2 when the run refused the launch, and 1 " +
+			"otherwise, with the reason.\n" +
+			"\n" +
+			"To hold a conversation with a requested session, which keeps running between its turns, run either " +
+			"runner launcher with --conversation <folder> in place of --input, or " + command + " with " +
+			"--conversation <folder> in place of --prompt and --wait. <folder> is a new or empty folder that your " +
+			"commands may write. Run the command so that it keeps running across your turns: in Claude Code, as a " +
+			"background command, and in Codex, as a command that keeps running. " +
+			"Append your messages to <folder>/to-child.jsonl, one JSON object per line: " +
+			"{\"turn\": \"<text>\"} asks for the session's next turn, which starts when the previous one has ended; " +
+			"{\"interrupt\": true} interrupts the turn in progress; and {\"end\": true} ends the conversation. A " +
+			"line that is not one of these is refused in <folder>/from-child.jsonl and changes nothing. The " +
+			"session's records go to <folder>/from-child.jsonl as they arrive, and a line " +
+			"{\"turn_end\": <n>, \"status\": \"<status>\"} follows them when turn n ends, with the status " +
+			"completed, interrupted or failed, so wait for that line " +
+			"before you read the turn's reply. The session ends when the conversation ends or when the command ends, " +
+			"and the command then ends as it does without --conversation.";
 	}
 
 	/**

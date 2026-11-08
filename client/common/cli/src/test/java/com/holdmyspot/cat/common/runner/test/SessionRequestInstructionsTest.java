@@ -95,6 +95,24 @@ public final class SessionRequestInstructionsTest
 	}
 
 	/**
+	 * Verifies that the instructions describe a conversation with a requested session: the option of every launcher
+	 * that holds one, the folder's two files, each message, the line that ends a turn, and the refused launch's exit
+	 * status.
+	 */
+	@Test
+	public void describesConversation()
+	{
+		Path launcher = Path.of("/artifact/bin/request-session").toAbsolutePath();
+		String text = SessionRequestInstructions.text(2, launcher, false);
+
+		requireThat(text, "text").contains("--conversation <folder>").contains("<folder>/to-child.jsonl").
+			contains("<folder>/from-child.jsonl").contains("{\"turn\": \"<text>\"}").
+			contains("{\"interrupt\": true}").contains("{\"end\": true}").
+			contains("{\"turn_end\": <n>, \"status\": \"<status>\"}").contains("background command").
+			contains("2 when the run refused the launch");
+	}
+
+	/**
 	 * Verifies that both POSIX commands quote a launcher path containing spaces.
 	 */
 	@Test
