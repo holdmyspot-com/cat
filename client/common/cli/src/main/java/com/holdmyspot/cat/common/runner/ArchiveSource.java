@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.lang.foreign.Arena;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
+import java.lang.foreign.MemoryLayout;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
@@ -22,12 +23,22 @@ import java.nio.file.Path;
 final class ArchiveSource
 {
 	/**
+	 * The name under which a Windows call's {@code GetLastError} value is captured.
+	 */
+	private static final String WINDOWS_ERROR = "GetLastError";
+	/**
+	 * The Windows error that a file open reports when another handle to the file conflicts with the requested sharing.
+	 */
+	private static final int ERROR_SHARING_VIOLATION = 32;
+
+	/**
 	 * Copies an ordinary, singly linked archive into a private file, with a bound on bytes read.
 	 *
 	 * @param source      the request file in the runner-owned requests directory
 	 * @param destination the new private copy
 	 * @param maximum     the most bytes that the archive may hold
-	 * @throws IOException if opening, validation or bounded copying fails
+	 * @throws RequestArchiveBusyException if another handle to the archive is open on Windows
+	 * @throws IOException                 if opening, validation or bounded copying fails
 	 */
 	static void copy(Path source, Path destination, long maximum) throws IOException
 	{
@@ -200,7 +211,9 @@ final class ArchiveSource
 		SymbolLookup symbols = SymbolLookup.libraryLookup("kernel32", arena);
 		MethodHandle open = function(symbols, "CreateFileW", FunctionDescriptor.of(ValueLayout.ADDRESS,
 			ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
-			ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+			ValueLayout.JAVA_INT, ValueLayout.JAVA_INT, ValueLayout.ADDRESS),
+			Linker.Option.captureCallState(WINDOWS_ERROR));
+		MemorySegment callState = arena.allocate(Linker.Option.captureStateLayout());
 		String path = source.toAbsolutePath().toString();
 		if (path.startsWith("\\\\"))
 			path = "\\\\?\\UNC\\" + path.substring(2);
@@ -209,15 +222,23 @@ final class ArchiveSource
 		MemorySegment handle;
 		try
 		{
-			handle = (MemorySegment) open.invokeExact(arena.allocateFrom(path, StandardCharsets.UTF_16LE),
-				0x80000000, 0, MemorySegment.NULL, 3, 0x00200000, MemorySegment.NULL);
+			handle = (MemorySegment) open.invokeExact(callState,
+				arena.allocateFrom(path, StandardCharsets.UTF_16LE), 0x80000000, 0, MemorySegment.NULL, 3, 0x00200000,
+				MemorySegment.NULL);
 		}
 		catch (Throwable exception)
 		{
 			throw invocationFailure(exception);
 		}
 		if (handle.address() == -1)
-			throw new IOException("Cannot open request archive without following reparse points: " + source);
+		{
+			int error = callState.get(ValueLayout.JAVA_INT,
+				Linker.Option.captureStateLayout().byteOffset(MemoryLayout.PathElement.groupElement(WINDOWS_ERROR)));
+			if (error == ERROR_SHARING_VIOLATION)
+				throw new RequestArchiveBusyException(source);
+			throw new IOException("Cannot open request archive without following reparse points (Windows error " +
+				error + "): " + source);
+		}
 		Closeable cleanup = () -> closeWindows(symbols, handle, source);
 		try (cleanup)
 		{
@@ -298,13 +319,15 @@ final class ArchiveSource
 	 * @param symbols    the native library
 	 * @param name       its exported function
 	 * @param descriptor the function's ABI
+	 * @param options    the options of the call, such as the error state to capture
 	 * @return the native call
 	 */
 	// Native access is required to inspect and read the same file handle.
 	@SuppressWarnings("restricted")
-	private static MethodHandle function(SymbolLookup symbols, String name, FunctionDescriptor descriptor)
+	private static MethodHandle function(SymbolLookup symbols, String name, FunctionDescriptor descriptor,
+		Linker.Option... options)
 	{
-		return Linker.nativeLinker().downcallHandle(symbols.findOrThrow(name), descriptor);
+		return Linker.nativeLinker().downcallHandle(symbols.findOrThrow(name), descriptor, options);
 	}
 
 	/**

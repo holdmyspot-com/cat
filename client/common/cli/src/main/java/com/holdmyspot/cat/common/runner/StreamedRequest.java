@@ -118,7 +118,8 @@ final class StreamedRequest
 	 * @param turn      the record's number, from 1
 	 * @param directory a private directory of the runner that receives a copy of the record
 	 * @param limits    the bounds that the record must stay within
-	 * @return the record, or empty if the sender has not published it
+	 * @return the record, or empty if the sender has not published it or another handle to the published file is
+	 *   still open, as a program that scans a new file holds one for a moment; the next call looks again
 	 * @throws IOException if the record is a link, has another name, exceeds {@code limits}, is not a {@code turn}
 	 *                     with a prompt, an {@code interrupt} or the {@code complete} record, or cannot be read
 	 */
@@ -131,7 +132,14 @@ final class StreamedRequest
 		Path copy = directory.resolve("turn-" + turn + ".json");
 		try
 		{
-			RequestArchive.copy(published, copy, limits);
+			try
+			{
+				RequestArchive.copy(published, copy, limits);
+			}
+			catch (RequestArchiveBusyException _)
+			{
+				return Optional.empty();
+			}
 			Files.delete(published);
 			return Optional.of(record(json, Files.readString(copy, UTF_8)));
 		}

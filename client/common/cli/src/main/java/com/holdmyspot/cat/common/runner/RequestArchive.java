@@ -278,6 +278,8 @@ public final class RequestArchive
 	 * @param destination the new private copy
 	 * @param limits      the bounds whose {@link RequestLimits#archiveBytes()} the file must stay within
 	 * @throws NullPointerException if any of the arguments are null
+	 * @throws RequestArchiveBusyException if another handle to the file is open on Windows, where the file is opened
+	 *                              exclusively so that no writer can change it while it is read
 	 * @throws IOException          if the file is a link, is not a regular file, has another name, exceeds
 	 *                              {@code limits}, or cannot be copied
 	 */
