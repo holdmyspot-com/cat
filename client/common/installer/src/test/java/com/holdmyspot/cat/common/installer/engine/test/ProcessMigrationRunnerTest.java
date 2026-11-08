@@ -16,13 +16,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
  * Tests that a data migration script runs in its own directory with the variables that install passes, and that
- * its exit status and output reach install. The {@link MigrationRunnerContract} cases run POSIX shell scripts, which
- * the runner starts with {@code /bin/sh}.
+ * its exit status and output reach install. The scripts are POSIX shell scripts, which the runner starts with
+ * {@code /bin/sh}, and on Windows {@code .ps1} scripts, which it starts with Windows PowerShell.
  */
 public final class ProcessMigrationRunnerTest
 {
@@ -34,26 +33,37 @@ public final class ProcessMigrationRunnerTest
 	}
 
 	/**
-	 * A POSIX script receives the variables, runs in its own directory, and reports its exit status and output.
+	 * A script receives the variables, runs in its own directory, and reports its exit status and output.
 	 *
 	 * @throws IOException if the fixture cannot be created or the script cannot be run
 	 */
 	@Test
-	public void runsPosixScript() throws IOException
+	public void runsScript() throws IOException
 	{
-		if (Platform.current().isWindows())
-			throw new SkipException("POSIX shell scripts run only on POSIX platforms");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("migration-process-")).toRealPath();
 			Path scripts = Files.createDirectories(root.resolve("plugin/install/migrations"));
 			Path data = Files.createDirectories(root.resolve("data"));
-			Path script = Files.writeString(scripts.resolve("split.sh"), """
-				printf '%s %s' "$CAT_MIGRATION_FROM_VERSION" "$CAT_MIGRATION_TO_VERSION" > \
-				"$CAT_MIGRATION_DATA_DIR/migrated"
-				echo "ran in $(pwd)"
-				exit 3
-				""");
+			Path script;
+			if (Platform.current().isWindows())
+			{
+				script = Files.writeString(scripts.resolve("split.ps1"), """
+					[System.IO.File]::WriteAllText("$env:CAT_MIGRATION_DATA_DIR\\migrated", \
+						"$env:CAT_MIGRATION_FROM_VERSION $env:CAT_MIGRATION_TO_VERSION")
+					[Console]::Out.Write("ran in " + (Get-Location).Path + "`n")
+					exit 3
+					""");
+			}
+			else
+			{
+				script = Files.writeString(scripts.resolve("split.sh"), """
+					printf '%s %s' "$CAT_MIGRATION_FROM_VERSION" "$CAT_MIGRATION_TO_VERSION" > \
+					"$CAT_MIGRATION_DATA_DIR/migrated"
+					echo "ran in $(pwd)"
+					exit 3
+					""");
+			}
 
 			CommandResult result = new ProcessMigrationRunner().run(script, Map.of("CAT_MIGRATION_DATA_DIR",
 				data.toString(), "CAT_MIGRATION_FROM_VERSION", "1.0", "CAT_MIGRATION_TO_VERSION", "1.1"));
@@ -72,7 +82,6 @@ public final class ProcessMigrationRunnerTest
 	@Test
 	public void reportsFailure() throws IOException
 	{
-		requirePosix();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			contract().reportsFailure(cleanup.add(testDirectory("migration-process-")).toRealPath());
@@ -87,7 +96,6 @@ public final class ProcessMigrationRunnerTest
 	@Test
 	public void reportsSuccess() throws IOException
 	{
-		requirePosix();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			contract().reportsSuccess(cleanup.add(testDirectory("migration-process-")).toRealPath());
@@ -102,7 +110,6 @@ public final class ProcessMigrationRunnerTest
 	@Test
 	public void passesVariables() throws IOException
 	{
-		requirePosix();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			contract().passesVariables(cleanup.add(testDirectory("migration-process-")).toRealPath());
@@ -110,17 +117,8 @@ public final class ProcessMigrationRunnerTest
 	}
 
 	/**
-	 * Skips a test that runs a POSIX shell script on a platform that has none.
-	 */
-	private static void requirePosix()
-	{
-		if (Platform.current().isWindows())
-			throw new SkipException("POSIX shell scripts run only on POSIX platforms");
-	}
-
-	/**
-	 * Creates the contract over the runner, with scripts that print the output, record each variable in a file
-	 * beside the script and exit with the status.
+	 * Creates the contract over the runner, with scripts for the current platform that print the output, record each
+	 * variable in a file beside the script and exit with the status.
 	 *
 	 * @return the contract
 	 */
@@ -138,12 +136,27 @@ public final class ProcessMigrationRunnerTest
 			@Override
 			public Path script(Path directory, CommandResult result, Set<String> variables) throws IOException
 			{
+				boolean windows = Platform.current().isWindows();
 				List<String> lines = new ArrayList<>();
 				for (String variable : variables)
-					lines.add("printf '%s' \"$" + variable + "\" > '" + value(directory, variable) + "'");
-				lines.add("printf '%s' '" + result.output() + "'");
+				{
+					if (windows)
+					{
+						lines.add("[System.IO.File]::WriteAllText('" + value(directory, variable) + "', $env:" +
+							variable + ")");
+					}
+					else
+						lines.add("printf '%s' \"$" + variable + "\" > '" + value(directory, variable) + "'");
+				}
+				if (windows)
+					lines.add("[Console]::Out.Write('" + result.output() + "')");
+				else
+					lines.add("printf '%s' '" + result.output() + "'");
 				lines.add("exit " + result.exitCode());
-				return Files.writeString(directory.resolve("migrate.sh"), String.join("\n", lines) + "\n");
+				String name = "migrate.sh";
+				if (windows)
+					name = "migrate.ps1";
+				return Files.writeString(directory.resolve(name), String.join("\n", lines) + "\n");
 			}
 
 			@Override
