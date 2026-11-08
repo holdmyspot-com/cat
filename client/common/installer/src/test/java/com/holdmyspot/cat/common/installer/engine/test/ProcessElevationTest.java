@@ -9,7 +9,6 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
 import com.holdmyspot.cat.common.installer.secrets.ProcessElevationSecrets;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -33,21 +32,15 @@ public final class ProcessElevationTest
 	 * The check agrees with an independent one: on Windows, whether {@code net session}, which only an elevated
 	 * process may run, succeeds; elsewhere, whether the process's user is {@code root}.
 	 *
-	 * @throws IOException          if the fixture cannot be created or the independent check cannot run
+	 * @throws IOException          if the independent check cannot run
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test
 	public void agreesWithIndependentCheck() throws IOException, InterruptedException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path directory = cleanup.add(testDirectory("process-elevation-"));
+		boolean elevated = ProcessElevation.isElevated();
 
-			boolean elevated = ProcessElevation.isElevated(directory.resolve("probe"));
-
-			requireThat(elevated, "elevated").isEqualTo(independentlyElevated());
-			requireThat(directory.resolve("probe").toFile().list(), "probeEntries").isEmpty();
-		}
+		requireThat(elevated, "elevated").isEqualTo(independentlyElevated());
 	}
 
 	/**
@@ -92,8 +85,7 @@ public final class ProcessElevationTest
 			Path directory = cleanup.add(testDirectory("process-elevation-id-"));
 			Path id = fakeId(directory, posix, windows);
 
-			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id, limit,
-				directory.resolve("probe"));
+			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id, limit);
 
 			requireThat(elevated, "elevated").isEqualTo(expected);
 		}
@@ -101,11 +93,9 @@ public final class ProcessElevationTest
 
 	/**
 	 * The check stops every process that a program which does not end in time started, and waits until they have
-	 * ended, so that no process is left holding the check's output file. The fake {@code id} program starts a child
-	 * that holds the program's output and outlives the check's limit, as a batch file does with the {@code ping} that
-	 * it runs on Windows. A process that keeps a file open blocks the deletion of that file there, so the check
-	 * removes its output only after the child has ended. The check still reports administrative rights, because a
-	 * program that does not end in time never counts as unprivileged.
+	 * ended, so that no process is left running. The fake {@code id} program starts a child that outlives the check's
+	 * limit, as a batch file does with the {@code ping} that it runs on Windows. The check still reports
+	 * administrative rights, because a program that does not end in time never counts as unprivileged.
 	 *
 	 * @throws IOException if the fixture cannot be created or read
 	 */
@@ -120,10 +110,9 @@ public final class ProcessElevationTest
 				"@ping -n 60 127.0.0.1 >nul");
 
 			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
-				Duration.ofMillis(500), directory.resolve("probe"));
+				Duration.ofMillis(500));
 
 			requireThat(elevated, "elevated").isTrue();
-			requireThat(directory.resolve("probe").toFile().list(), "probeEntries").isEmpty();
 			if (!Platform.current().isWindows())
 			{
 				long childId = Long.parseLong(Files.readString(childIdFile).strip());
@@ -134,62 +123,67 @@ public final class ProcessElevationTest
 	}
 
 	/**
-	 * The check reports the user ID that the {@code id} program printed even when the check cannot delete the file
-	 * that received the program's output, so that a failure to clean up never turns an unprivileged user into
-	 * administrative rights. The fake program makes the deletion fail, as a virus scanner that holds a file open
-	 * does on Windows: on POSIX it removes write permission from the directory that holds the output file, and on
-	 * Windows it marks the output file read-only. Running as {@code root} ignores the missing permission, which
-	 * leaves the deletion to succeed and the result unchanged.
+	 * The check reports within its limit the output of a program that has ended while a process that it started still
+	 * holds the program's output open. The fake {@code id} program prints an unprivileged user ID and ends, leaving a
+	 * background child that keeps the pipe of its output open for longer than the limit. A check that waited for the
+	 * end of the output would hang until the child ended, and one that left a thread blocked on the pipe would leave
+	 * it there.
 	 *
-	 * @throws IOException if the fixture cannot be created
+	 * @throws IOException if the fixture cannot be created or read
 	 */
 	@Test
-	public void reportsUserIdWhenOutputCannotBeDeleted() throws IOException
+	public void reportsOutputWhileLeftoverChildHoldsIt() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(testDirectory("process-elevation-undeletable-"));
-			Path probe = directory.resolve("probe");
-			// Windows rejects a path that contains a wildcard, so the pattern that attrib expands is plain text
-			Path id = fakeId(directory, "chmod a-w '" + probe + "'\necho 1000",
-				"@attrib +r \"" + probe + "\\check-*.txt\"\r\n@echo 1000");
+			Path directory = cleanup.add(testDirectory("process-elevation-leftover-"));
+			Path childIdFile = directory.resolve("child-id.txt");
+			Path id = fakeId(directory, "echo 1000\nsleep 60 &\necho $! > '" + childIdFile + "'",
+				"@echo 1000\r\n@start /b ping -n 30 127.0.0.1 >nul");
 			try
 			{
+				long start = System.nanoTime();
 				boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
-					Duration.ofSeconds(10), probe);
+					Duration.ofSeconds(10));
+				Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
 
 				requireThat(elevated, "elevated").isFalse();
+				// The child holds the output for at least 30 seconds, so a check that waited for it would take longer
+				requireThat(elapsed, "elapsed").isLessThan(Duration.ofSeconds(10));
 			}
 			finally
 			{
-				if (Files.isDirectory(probe))
-					restoreDeletable(probe);
+				if (!Platform.current().isWindows() && Files.exists(childIdFile))
+				{
+					long childId = Long.parseLong(Files.readString(childIdFile).strip());
+					ProcessHandle.of(childId).ifPresent(ProcessHandle::destroyForcibly);
+				}
 			}
 		}
 	}
 
 	/**
-	 * Undoes what the fake program did to make the deletion fail, so that the cleanup can delete the fixture. On POSIX
-	 * the directory is writable again. On Windows the read-only attribute of a directory does not stop deletion of its
-	 * files, so the attribute is cleared from each file in the directory instead.
+	 * The check counts a program that prints more than it accepts as one that failed, so that output which hides the
+	 * user ID after a long stretch of blanks never counts as unprivileged. The fake {@code id} program prints
+	 * {@code 1000} after more blanks than the check accepts, which a check that read all of it would report as an
+	 * unprivileged user ID.
 	 *
-	 * @param probe the directory that received the program's output file
-	 * @throws IOException if the directory cannot be listed or an attribute cannot be changed
+	 * @throws IOException if the fixture cannot be created
 	 */
-	private static void restoreDeletable(Path probe) throws IOException
+	@Test
+	public void reportsTooLongOutput() throws IOException
 	{
-		if (!Platform.current().isWindows())
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			requireThat(probe.toFile().setWritable(true), "writable").isTrue();
-			return;
-		}
-		try (DirectoryStream<Path> files = Files.newDirectoryStream(probe))
-		{
-			for (Path file : files)
-			{
-				Files.setAttribute(file, "dos:readonly", false);
-				requireThat(Files.getAttribute(file, "dos:readonly"), "readOnly").isEqualTo(false);
-			}
+			Path directory = cleanup.add(testDirectory("process-elevation-long-"));
+			Path printed = Files.writeString(directory.resolve("printed.txt"), " ".repeat(100_000) + "1000\n",
+				ISO_8859_1);
+			Path id = fakeId(directory, "exec cat '" + printed + "'", "@type \"" + printed + "\"");
+
+			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id,
+				Duration.ofSeconds(10));
+
+			requireThat(elevated, "elevated").isTrue();
 		}
 	}
 
@@ -282,7 +276,7 @@ public final class ProcessElevationTest
 			Path whoami = fakeWhoami(directory, groups);
 
 			boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().holdsElevatedToken(whoami,
-				Duration.ofSeconds(30), directory.resolve("probe"));
+				Duration.ofSeconds(30));
 
 			requireThat(elevated, "elevated").withContext(token, "token").isEqualTo(expected);
 		}

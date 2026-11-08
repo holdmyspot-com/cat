@@ -260,7 +260,7 @@ public final class InstallTest
 			UpdateEngine engine = new UpdateEngine(provider.dataDirectory(realHome), catalog.policy(home, "1.0"),
 				catalog.source(), provider, "linux-x64", Clock.systemUTC(), interval -> () ->
 			{
-			}, Duration.ZERO, _ -> false, new RecordingMigrations());
+			}, Duration.ZERO, () -> false, new RecordingMigrations());
 
 			UpdateResult result = engine.install("v1.1", new InstallRequest(integration.session(),
 				root.resolve("download/plugin"), List.of(), root.resolve("user/.cat/locks"),

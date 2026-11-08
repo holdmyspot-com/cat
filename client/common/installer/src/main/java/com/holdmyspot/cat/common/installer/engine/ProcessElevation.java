@@ -6,8 +6,9 @@ import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installer.secrets.ProcessElevationAccess;
 import com.holdmyspot.cat.common.installer.secrets.ProcessElevationSecrets;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -50,6 +51,14 @@ public final class ProcessElevation
 	 */
 	private static final Duration STOP_LIMIT = Duration.ofSeconds(10);
 	/**
+	 * The most bytes of output that a check accepts from its program, which prints a line.
+	 */
+	private static final int OUTPUT_LIMIT = 64 * 1024;
+	/**
+	 * The time between two reads of the output that a program has printed.
+	 */
+	private static final Duration POLL_INTERVAL = Duration.ofMillis(20);
+	/**
 	 * The form of a user ID.
 	 */
 	private static final Pattern USER_ID = Pattern.compile("[0-9]+");
@@ -59,15 +68,15 @@ public final class ProcessElevation
 		ProcessElevationSecrets.setProcessElevationAccess(new ProcessElevationAccess()
 		{
 			@Override
-			public boolean runsAsRoot(Path id, Duration limit, Path directory)
+			public boolean runsAsRoot(Path id, Duration limit)
 			{
-				return ProcessElevation.runsAsRoot(id, limit, directory);
+				return ProcessElevation.runsAsRoot(id, limit);
 			}
 
 			@Override
-			public boolean holdsElevatedToken(Path whoami, Duration limit, Path directory)
+			public boolean holdsElevatedToken(Path whoami, Duration limit)
 			{
-				return ProcessElevation.holdsElevatedToken(whoami, limit, directory);
+				return ProcessElevation.holdsElevatedToken(whoami, limit);
 			}
 		});
 	}
@@ -84,38 +93,33 @@ public final class ProcessElevation
 	 * elevated, which {@code whoami /groups} reports as an integrity level of high or above. Elsewhere, it is when its
 	 * effective user ID is 0, which {@code /usr/bin/id -u} prints.
 	 *
-	 * @param directory a directory that this process may write short-lived files to, which is created when absent
 	 * @return {@code true} if the process runs with administrative rights, or the check fails
-	 * @throws NullPointerException if {@code directory} is null
 	 */
-	public static boolean isElevated(Path directory)
+	public static boolean isElevated()
 	{
-		requireThat(directory, "directory").isNotNull();
 		if (!Platform.current().isWindows())
-			return runsAsRoot(ID, CHECK_LIMIT, directory);
+			return runsAsRoot(ID, CHECK_LIMIT);
 		String systemRoot = System.getenv("SystemRoot");
 		if (systemRoot == null || systemRoot.isBlank())
 			return true;
-		return holdsElevatedToken(Path.of(systemRoot, "System32", "whoami.exe"), CHECK_LIMIT, directory);
+		return holdsElevatedToken(Path.of(systemRoot, "System32", "whoami.exe"), CHECK_LIMIT);
 	}
 
 	/**
 	 * Returns whether this process's access token is elevated, as a program that lists the token's groups reports it.
 	 *
-	 * @param whoami    the program, run with the arguments {@code /groups /fo csv /nh}
-	 * @param limit     the longest time that the program may take before it is stopped
-	 * @param directory a directory that the check may write short-lived files to, which is created when absent
+	 * @param whoami the program, run with the arguments {@code /groups /fo csv /nh}
+	 * @param limit  the longest time that the program may take before it is stopped
 	 * @return {@code true} if the program reports an integrity level of high or above, or cannot be run, fails, does
 	 *   not end in time or reports no integrity level
 	 */
-	private static boolean holdsElevatedToken(Path whoami, Duration limit, Path directory)
+	private static boolean holdsElevatedToken(Path whoami, Duration limit)
 	{
 		requireThat(whoami, "whoami").isNotNull();
 		requireThat(limit, "limit").isNotNull();
-		requireThat(directory, "directory").isNotNull();
 		try
 		{
-			String groups = output(List.of(whoami.toString(), "/groups", "/fo", "csv", "/nh"), limit, directory);
+			String groups = output(List.of(whoami.toString(), "/groups", "/fo", "csv", "/nh"), limit);
 			Matcher level = INTEGRITY_LEVEL.matcher(groups);
 			boolean found = false;
 			while (level.find())
@@ -141,20 +145,18 @@ public final class ProcessElevation
 	/**
 	 * Returns whether this process's effective user ID is 0, as a program that prints the ID reports it.
 	 *
-	 * @param id        the program, run with the single argument {@code -u}
-	 * @param limit     the longest time that the program may take before it is stopped
-	 * @param directory a directory that the check may write short-lived files to, which is created when absent
+	 * @param id    the program, run with the single argument {@code -u}
+	 * @param limit the longest time that the program may take before it is stopped
 	 * @return {@code true} if the program reports the user ID 0, or cannot be run, fails, does not end in time or
 	 *   prints no user ID
 	 */
-	private static boolean runsAsRoot(Path id, Duration limit, Path directory)
+	private static boolean runsAsRoot(Path id, Duration limit)
 	{
 		requireThat(id, "id").isNotNull();
 		requireThat(limit, "limit").isNotNull();
-		requireThat(directory, "directory").isNotNull();
 		try
 		{
-			String userId = output(List.of(id.toString(), "-u"), limit, directory).strip();
+			String userId = output(List.of(id.toString(), "-u"), limit).strip();
 			boolean printedUnprivilegedId = USER_ID.matcher(userId).matches() && Long.parseLong(userId) != 0;
 			return !printedUnprivilegedId;
 		}
@@ -170,60 +172,79 @@ public final class ProcessElevation
 	}
 
 	/**
-	 * Runs a check's program and returns what it printed.
+	 * Runs a check's program and returns what it printed. The output is read through the program's pipe, but only the
+	 * part that has already arrived, so that a process which keeps the pipe open after the program ended cannot block
+	 * the check past its limit and no thread is left blocked on the pipe.
 	 *
-	 * @param command   the program and its arguments
-	 * @param limit     the longest time that the program may take before it is stopped, together with every
-	 *                  process that it started
-	 * @param directory the directory to write the program's output to, which is created when absent
+	 * @param command the program and its arguments
+	 * @param limit   the longest time that the program may take before it is stopped, together with every process
+	 *                that it started
 	 * @return the program's standard output and error, which programs of a check write in ASCII
-	 * @throws IOException          if the program cannot be run, fails or does not end in time
+	 * @throws IOException          if the program cannot be run, fails, prints more than {@value #OUTPUT_LIMIT} bytes
+	 *                              or does not end in time
 	 * @throws InterruptedException if the thread is interrupted while waiting
 	 */
-	private static String output(List<String> command, Duration limit, Path directory)
-		throws IOException, InterruptedException
+	private static String output(List<String> command, Duration limit) throws IOException, InterruptedException
 	{
-		Files.createDirectories(directory);
-		Path output = Files.createTempFile(directory, "check-", ".txt");
-		try
+		long deadline = System.nanoTime() + limit.toNanos();
+		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+		try (Process process = builder.start(); InputStream pipe = process.getInputStream())
 		{
-			ProcessBuilder builder = new ProcessBuilder(command).
-				redirectErrorStream(true).
-				redirectOutput(output.toFile());
-			try (Process process = builder.start())
-			{
-				process.getOutputStream().close();
-				boolean ended = process.waitFor(limit.toMillis(), TimeUnit.MILLISECONDS);
-				if (!ended)
-				{
-					stopWithDescendants(process);
-					throw new IOException(command.getFirst() + " did not end within " + limit);
-				}
-				// A program may write in the console's code page; the text that a check looks for is ASCII
-				String printed = Files.readString(output, ISO_8859_1);
-				if (process.exitValue() != 0)
-					throw new IOException(command.getFirst() + " failed: " + printed);
-				return printed;
-			}
-		}
-		finally
-		{
+			process.getOutputStream().close();
 			try
 			{
-				Files.deleteIfExists(output);
+				ByteArrayOutputStream printed = new ByteArrayOutputStream();
+				boolean ended = false;
+				while (!ended)
+				{
+					long remaining = deadline - System.nanoTime();
+					if (remaining <= 0)
+						throw new IOException(command.getFirst() + " did not end within " + limit);
+					// Returns as soon as the program ends, so a program that prints and ends is not delayed
+					ended = process.waitFor(Math.min(remaining, POLL_INTERVAL.toNanos()), TimeUnit.NANOSECONDS);
+					readArrived(pipe, printed);
+				}
+				// A program may write in the console's code page; the text that a check looks for is ASCII
+				String text = printed.toString(ISO_8859_1);
+				if (process.exitValue() != 0)
+					throw new IOException(command.getFirst() + " failed: " + text);
+				return text;
 			}
-			catch (IOException _)
+			finally
 			{
-				// A file that another process still holds open, or that a virus scanner has locked, must not
-				// replace the check's own result or exception. The file is left in the check's own directory.
+				if (process.isAlive())
+					stopWithDescendants(process);
 			}
 		}
 	}
 
 	/**
+	 * Reads the output that a program has printed so far, without waiting for more.
+	 *
+	 * @param pipe    the program's output
+	 * @param printed receives the bytes
+	 * @throws IOException if the pipe cannot be read, or the output grows beyond the most that a check accepts
+	 */
+	private static void readArrived(InputStream pipe, ByteArrayOutputStream printed) throws IOException
+	{
+		byte[] buffer = new byte[8192];
+		while (true)
+		{
+			int arrived = pipe.available();
+			if (arrived <= 0)
+				return;
+			int count = pipe.read(buffer, 0, Math.min(arrived, buffer.length));
+			if (count == -1)
+				return;
+			if (printed.size() + count > OUTPUT_LIMIT)
+				throw new IOException("The output exceeds " + OUTPUT_LIMIT + " bytes");
+			printed.write(buffer, 0, count);
+		}
+	}
+
+	/**
 	 * Stops a process and every process that it started, and waits until all of them have ended or the stop limit
-	 * has passed. On Windows, a process that is still running keeps the file that received the program's output open,
-	 * so the file cannot be deleted before the processes have ended.
+	 * has passed.
 	 *
 	 * @param process the process to stop
 	 * @throws InterruptedException if the thread is interrupted while waiting
@@ -260,8 +281,7 @@ public final class ProcessElevation
 		}
 		catch (ExecutionException | TimeoutException _)
 		{
-			// The check reports the program's failure to end either way; a process that outlives the wait only
-			// leaves the output file behind
+			// The check reports the program's failure to end either way
 		}
 	}
 }

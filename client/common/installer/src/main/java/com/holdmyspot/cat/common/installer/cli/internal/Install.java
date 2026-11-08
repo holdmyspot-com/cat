@@ -37,7 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Predicate;
+import java.util.function.BooleanSupplier;
 
 /**
  * Installs CAT's plugin into one harness from the extracted plugin archive that the running installer belongs to. The
@@ -72,7 +72,7 @@ public final class Install
 	private final Platform platform;
 	private final FileReplacer replacer;
 	private final HarnessCliFactory cliFactory;
-	private final Predicate<Path> elevation;
+	private final BooleanSupplier elevation;
 	private final MigrationRunner migrations;
 	private final EntryCommand entryCommand;
 
@@ -83,14 +83,14 @@ public final class Install
 	 * @param platform   the current platform
 	 * @param replacer   atomically replaces the policy
 	 * @param cliFactory runs the harness program that install discovers
-	 * @param elevation  returns whether this process runs with administrative rights, given a directory that the check
-	 *                   may write short-lived files to; the startup cache is not trained with those rights
+	 * @param elevation  tells whether this process runs with administrative rights; the startup cache is not trained
+	 *                   with those rights
 	 * @param migrations runs the data migration scripts of the archive's release
 	 * @param entryCommand writes the CAT entry command that a refusal tells the user to run
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Install(Path image, Platform platform, FileReplacer replacer, HarnessCliFactory cliFactory,
-		Predicate<Path> elevation, MigrationRunner migrations, EntryCommand entryCommand)
+		BooleanSupplier elevation, MigrationRunner migrations, EntryCommand entryCommand)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(platform, "platform").isNotNull();
@@ -200,7 +200,7 @@ public final class Install
 		activation.installCompanions(home, versionFolder);
 		migration.apply(versionFolder, migrationFile.getParent(), migrations, platform.isWindows());
 		Path scratch = InstallerState.of(installation.dataDirectory(), harness).directory().resolve("startup-cache");
-		boolean startupCache = new StartupCacheTrainer(scratch, TRAINING_LIMIT, () -> elevation.test(scratch)).
+		boolean startupCache = new StartupCacheTrainer(scratch, TRAINING_LIMIT, elevation).
 			train(versionFolder);
 
 		TrustPolicy policy = TrustPolicy.of(defaults.keys(), defaults.releaseBaseUrl(), defaults.minimum(),

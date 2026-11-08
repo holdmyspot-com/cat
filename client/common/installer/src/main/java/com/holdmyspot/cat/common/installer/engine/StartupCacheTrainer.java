@@ -66,7 +66,7 @@ public final class StartupCacheTrainer
 	 *                 absent
 	 * @param timeout  the longest time that each of a training's two Java runs may take before it is stopped
 	 * @param elevated tells whether this process runs with administrative rights, such as
-	 *                 {@link ProcessElevation#isElevated(Path)}
+	 *                 {@link ProcessElevation#isElevated()}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code timeout} is not positive
 	 */

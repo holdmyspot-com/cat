@@ -34,7 +34,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Predicate;
+import java.util.function.BooleanSupplier;
 
 /**
  * Installs CAT's plugin into a harness whose policy the installer already wrote, from an authenticated release or
@@ -117,14 +117,13 @@ public final class UpdateEngine
 	 * @param clock         operation time source
 	 * @param waiting       creates pauses between lock attempts
 	 * @param lockWait      nonnegative maximum wait for the harness lock
-	 * @param elevation     returns whether this process runs with administrative rights, given a directory that the
-	 *                      check may write short-lived files to
+	 * @param elevation     tells whether this process runs with administrative rights
 	 * @param migrations    runs the data migration scripts of the release that install installs
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code platform} is blank or {@code lockWait} is negative
 	 */
 	public UpdateEngine(Path dataDirectory, TrustPolicy policy, ReleaseSource source, PluginActivation activation,
-		String platform, Clock clock, Waiting waiting, Duration lockWait, Predicate<Path> elevation,
+		String platform, Clock clock, Waiting waiting, Duration lockWait, BooleanSupplier elevation,
 		MigrationRunner migrations)
 	{
 		requireThat(dataDirectory, "dataDirectory").isNotNull();
@@ -151,8 +150,7 @@ public final class UpdateEngine
 		this.lockWait = lockWait;
 		this.migrations = migrations;
 		Path trainingScratch = state.directory().resolve("startup-cache");
-		this.trainer = new StartupCacheTrainer(trainingScratch, Duration.ofMinutes(1),
-			() -> elevation.test(trainingScratch));
+		this.trainer = new StartupCacheTrainer(trainingScratch, Duration.ofMinutes(1), elevation);
 	}
 
 	/**

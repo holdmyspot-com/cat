@@ -157,7 +157,7 @@ final class EngineFixture
 		throws TrustException
 	{
 		return new UpdateEngine(data(), catalog.policy(home, MINIMUM), source, provider, "linux-x64", clock, waiting,
-			lockWait, _ -> elevated, migrations);
+			lockWait, () -> elevated, migrations);
 	}
 
 	/**
