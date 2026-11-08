@@ -41,7 +41,9 @@ public final class HarnessRunnerBridge
 	 * Starts one session and serves turn and completion messages until completion. Harness events are written once as
 	 * {@code harness_event} responses; the terminal response records the status, error, final assistant response
 	 * and every assistant message in order. A turn that fails ends with a {@code turn_failed} response that records
-	 * why, and the bridge then fails at its next request.
+	 * why, and the bridge then fails at its next request, unless the client interrupted the turn and the harness keeps
+	 * running, as Claude Code does when it fails the turn that it was asked to interrupt: an interrupt ends only the
+	 * turn in progress, so the bridge then keeps serving.
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
@@ -128,6 +130,8 @@ public final class HarnessRunnerBridge
 		int turnNumber = 0;
 		FutureTask<Void> activeTurn = null;
 		CountDownLatch activeTurnStarted = null;
+		// Set once the client interrupts the active turn
+		AtomicBoolean activeTurnInterrupted = new AtomicBoolean();
 		AtomicBoolean transcriptRecorded = new AtomicBoolean();
 		try
 		{
@@ -153,6 +157,7 @@ public final class HarnessRunnerBridge
 							String prompt = requiredText(request, "prompt");
 							int currentTurn = turnNumber + 1;
 							CountDownLatch turnStarted = new CountDownLatch(1);
+							AtomicBoolean turnInterrupted = new AtomicBoolean();
 							// An interrupt that this thread reads next must stop this turn even if the turn's thread has not
 							// yet sent it to the harness
 							session.prepareTurn();
@@ -185,6 +190,13 @@ public final class HarnessRunnerBridge
 										if (broker != null)
 											broker.stopChildren();
 										reportTurnFailure(session, client, e);
+										// The interrupt ended only this turn, and the harness serves the next one
+										if (turnInterrupted.get() && session.processIsAlive())
+										{
+											if (manager != null)
+												manager.markIdle(session.run());
+											return null;
+										}
 										throw e;
 									}
 									if (manager != null)
@@ -207,6 +219,7 @@ public final class HarnessRunnerBridge
 							});
 							Thread.ofPlatform().start(activeTurn);
 							activeTurnStarted = turnStarted;
+							activeTurnInterrupted = turnInterrupted;
 							turnNumber = currentTurn;
 						}
 						else if (type.equals("steer"))
@@ -226,6 +239,7 @@ public final class HarnessRunnerBridge
 								awaitRequestedTurnStart(request, activeTurnStarted);
 								if (broker != null)
 									broker.stopChildren();
+								activeTurnInterrupted.set(true);
 								session.interrupt();
 								client.write(event(session.scope(), "interrupted").put("run_id", session.run().id()));
 							}
@@ -292,7 +306,8 @@ public final class HarnessRunnerBridge
 
 	/**
 	 * Tells the client that the active turn failed, so that it stops waiting for the turn's {@code turn_completed}
-	 * response. The bridge reports the same failure again when it receives its next request.
+	 * response. Unless the client interrupted the turn and the harness keeps running, the bridge reports the same
+	 * failure again when it receives its next request.
 	 *
 	 * @param session the live harness session
 	 * @param client  the bridge's output

@@ -34,6 +34,7 @@ import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.fakes.test.ManualTicker;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess.InterruptedTurn;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -668,6 +669,37 @@ public final class HarnessRunnerBridgeTest
 			requireThat(received, "received").isEqualTo(List.of("first", "change course"));
 			requireThat(output.toString(), "output").contains("\"type\":\"steered\"").
 				contains("\"type\":\"interrupted\"").contains("\"type\":\"turn_completed\"");
+		}
+	}
+
+	/**
+	 * Verifies that an interrupt ends only the turn in progress when the harness fails the interrupted turn, as Claude
+	 * Code does: the bridge reports the turn's end, keeps the harness and serves the client's next turn.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000)
+	public void servesTurnAfterInterruptedTurnFails() throws IOException
+	{
+		List<String> received = new CopyOnWriteArrayList<>();
+		CountDownLatch printed = new CountDownLatch(1);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted("harness line").
+				announcing(printed), Turn.replies("two")), received, InterruptedTurn.FAILS);
+			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", printed,
+				"{\"type\":\"interrupt\"}\n", new CountDownLatch(1),
+				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			StringWriter output = new StringWriter();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+				output);
+
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
+			requireThat(output.toString(), "output").contains("\"type\":\"interrupted\"").
+				contains("\"type\":\"turn_failed\"").contains("\"assistant_response\":\"two\"").
+				contains("\"type\":\"completed\"");
 		}
 	}
 

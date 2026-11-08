@@ -236,6 +236,40 @@ public abstract class HarnessProcessContract
 	}
 
 	/**
+	 * Verifies that an interrupt ends only the turn in progress, whether the harness completes or fails that turn: the
+	 * process stays alive and its next turn completes with its reply.
+	 *
+	 * @throws IOException if the next turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void servesTurnAfterInterruptedTurn() throws IOException
+	{
+		Harness harness = start(List.of(Turn.blocksUntilInterrupted("harness line"), Turn.replies("two")), null);
+		try (HarnessProcess process = harness.process())
+		{
+			AtomicBoolean interrupted = new AtomicBoolean();
+			try
+			{
+				process.sendTurn("first", _ ->
+				{
+					if (interrupted.compareAndSet(false, true))
+						process.interrupt();
+				});
+			}
+			catch (IOException e)
+			{
+				requireThat(completesInterruptedTurn(), "completesInterruptedTurn").withContext(e, "failure").isFalse();
+			}
+			requireThat(process.isAlive(), "isAlive").isTrue();
+
+			HarnessProcessResult result = process.sendTurn("second");
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("two");
+		}
+	}
+
+	/**
 	 * Verifies that an interrupt between turns changes nothing: the next turn completes with its reply.
 	 *
 	 * @throws IOException if a turn fails
