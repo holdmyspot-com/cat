@@ -123,8 +123,9 @@ public final class Install
 	 * @return the outcome
 	 * @throws NullPointerException if any argument other than {@code home} is null
 	 * @throws TrustException       if a check refuses install, including when the policy records a harness program
-	 *                              that can no longer be used, or the user withholds a permission that install needs;
-	 *                              the message of the latter is the question that the integration asked
+	 *                              that can no longer be used, a first install finds a harness program that cannot
+	 *                              start in the user's environment, or the user withholds a permission that install
+	 *                              needs; the message of the latter is the question that the integration asked
 	 * @throws IOException          if a first install does not find the harness program, the harness configuration is
 	 *                              invalid, the harness does not install the plugin, a data migration fails, or a file
 	 *                              cannot be read, written or replaced
@@ -336,13 +337,13 @@ public final class Install
 	 * @param home        the real harness home
 	 * @param environment the user's environment
 	 * @return the command and environment to record
-	 * @throws ProgramStartException if the program could not start in the user's environment; the message tells the
-	 *                               user to run the installer with the environment of the harness's sessions
-	 * @throws IOException           if the program is not found, cannot be run, or does not identify itself as the
-	 *                               harness's program
+	 * @throws TrustException if the program could not start in the user's environment; the message tells the user to
+	 *                        run the installer with the environment of the harness's sessions
+	 * @throws IOException    if the program is not found, cannot be run, or does not identify itself as the harness's
+	 *                        program
 	 */
 	private HarnessCommand discoverProgram(HarnessIntegration integration, Path home, Map<String, String> environment)
-		throws IOException
+		throws TrustException, IOException
 	{
 		HarnessCommand command = new ExecutableDiscovery(platform).find(integration.programName(), environment,
 			integration.programEnvironment(home, platform.environment(environment)));
@@ -352,8 +353,9 @@ public final class Install
 		}
 		catch (ProgramStartException e)
 		{
-			throw new ProgramStartException(e.getMessage() + " Run the installer with the environment your " +
-				integration.productName() + " sessions use.", e);
+			// The same environment fails the same way, so only the user can change the outcome
+			throw refusal(e.getMessage() + " Run the installer with the environment your " +
+				integration.productName() + " sessions use.");
 		}
 		catch (IOException e)
 		{

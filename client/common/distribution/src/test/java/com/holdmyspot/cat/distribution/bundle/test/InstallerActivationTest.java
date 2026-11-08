@@ -250,8 +250,9 @@ public final class InstallerActivationTest
 	/**
 	 * A harness program on PATH that cannot start in the installer's environment, such as a program whose interpreter
 	 * exits with status 127 because the environment lacks what it loads, is reported as a program that could not start
-	 * there, with its status and output and the environment to run the installer with. The report does not call it
-	 * another program, ask the user to reinstall the harness, or ask the user to run the entry command again.
+	 * there, with its status and output and the environment to run the installer with. Install refuses, because the
+	 * same environment fails the same way, and the report does not call it another program, ask the user to reinstall
+	 * the harness, or ask the user to run the entry command again.
 	 *
 	 * @param harness the packaged harness to exercise
 	 * @param status  the program's exit status
@@ -273,16 +274,16 @@ public final class InstallerActivationTest
 				output = "node: nvm is not installed at " + fake.user.resolve(".nvm");
 			Path program = fake.program(output, status);
 
-			JsonNode failed = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
+			JsonNode refused = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
 
 			String shown = "";
 			if (!output.isEmpty())
 				shown = " Its output: " + output + ".";
-			requireThat(failed.path("result").asString(), "result").withContext(failed, "output").
-				isEqualTo("failed");
-			requireThat(failed.path("message").asString(), "message").isEqualTo("The installer could not complete " +
-				"install: " + product + " at " + program + " could not start in this environment (status " + status +
-				")." + shown + " Run the installer with the environment your " + product + " sessions use.");
+			requireThat(refused.path("result").asString(), "result").withContext(refused, "output").
+				isEqualTo("refused");
+			requireThat(refused.path("message").asString(), "message").isEqualTo(product + " at " + program +
+				" could not start in this environment (status " + status + ")." + shown + " Run the installer with " +
+				"the environment your " + product + " sessions use.");
 		}
 	}
 

@@ -273,15 +273,8 @@ public final class Invocation
 		return switch (arguments.operation())
 		{
 			case STATUS -> failure(Result.REFUSED, harness, message, journals);
-			case INSTALL ->
-			{
-				// A program that could not start leaves nothing to continue, and fails the same way in the same
-				// environment
-				if (cause instanceof ProgramStartException)
-					yield failure(Result.FAILED, harness, message, journals);
-				yield failure(Result.FAILED, harness, message + "; " +
-					Locations.rerunEntryCommand(entryCommand, harness) + " to continue.", journals);
-			}
+			case INSTALL -> failure(Result.FAILED, harness, message + "; " +
+				Locations.rerunEntryCommand(entryCommand, harness) + " to continue.", journals);
 			case UNINSTALL -> failure(Result.FAILED, harness, message + "; run the same " + operation +
 				" command again to continue.", journals);
 		};
