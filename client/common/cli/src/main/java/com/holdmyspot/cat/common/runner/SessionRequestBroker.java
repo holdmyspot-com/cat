@@ -104,17 +104,20 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Starts paced discovery using the session's ticker. Any discovery failure is reported by {@link #close()}.
+	 * Starts paced discovery using the session's ticker, after stating the run's limits in its
+	 * {@link SessionRequestAccess#LIMITS_FILE}. Any discovery failure is reported by {@link #close()}.
 	 *
 	 * @param ticker the injected scan schedule
+	 * @throws IOException if the limits cannot be written
 	 */
-	public void start(HeartbeatTicker ticker)
+	public void start(HeartbeatTicker ticker) throws IOException
 	{
 		synchronized (this)
 		{
 			requireThat(ticker, "ticker").isNotNull();
 			if (monitor != null || stopped)
 				throw new IllegalStateException("The session request broker has already started or stopped");
+			writeLimits();
 			monitor = ticker.start(() ->
 			{
 				try
@@ -169,6 +172,7 @@ public final class SessionRequestBroker implements Closeable
 				{
 					RunRequest request = read(file, directory);
 					accepted += 1;
+					writeLimits();
 					harnesses.put(id, request.harness());
 					childRoots.put(id, SessionRequestAccess.requestedRunsDirectory(run).
 						resolve(String.valueOf(accepted)).resolve(request.harness()));
@@ -184,6 +188,21 @@ public final class SessionRequestBroker implements Closeable
 			}
 			serveStreams(requests);
 		}
+	}
+
+	/**
+	 * Atomically states, in the run's {@link SessionRequestAccess#LIMITS_FILE}, how many sessions the run allows, how
+	 * many it has accepted and how many levels below its requested sessions may request sessions in turn.
+	 *
+	 * @throws IOException if the file cannot be written
+	 */
+	private void writeLimits() throws IOException
+	{
+		ObjectNode limits = json.createObjectNode().put("format_version", 1).
+			put("requests_allowed", options.sessionRequests()).put("requests_used", accepted).
+			put("depth_remaining", options.requestDepth());
+		SessionRequestCli.write(json, SessionRequestAccess.responsesDirectory(run).
+			resolve(SessionRequestAccess.LIMITS_FILE), limits);
 	}
 
 	/**

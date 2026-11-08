@@ -601,15 +601,31 @@ public final class HarnessRunnerBridge
 	 * @param starter starts child runners
 	 * @return the started broker, or null if {@code options} is null or the session's run has no requests directory
 	 * @throws NullPointerException if the broker starts and {@code starter} is null
+	 * @throws IOException          if the broker cannot state the run's limits
 	 */
 	private static SessionRequestBroker requestBroker(HarnessRunSession session, HarnessRunnerOptions options,
-		RequestedSessionStarter starter)
+		RequestedSessionStarter starter) throws IOException
 	{
 		if (options == null || !Files.isDirectory(SessionRequestAccess.requestsDirectory(session.run())))
 			return null;
 		requireThat(starter, "requestedStarter").isNotNull();
 		SessionRequestBroker broker = new SessionRequestBroker(session.run(), options, starter);
-		broker.start(session.scope().heartbeatTicker());
+		try
+		{
+			broker.start(session.scope().heartbeatTicker());
+		}
+		catch (IOException | RuntimeException e)
+		{
+			try
+			{
+				broker.close();
+			}
+			catch (IOException suppressed)
+			{
+				e.addSuppressed(suppressed);
+			}
+			throw e;
+		}
 		return broker;
 	}
 

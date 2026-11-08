@@ -44,6 +44,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -209,6 +210,70 @@ public final class SessionRequestBrokerTest
 			else
 				requireThat(option(arguments.get(), "--request-depth"), "requestDepth").
 					isEqualTo(String.valueOf(expected));
+		}
+	}
+
+	/**
+	 * Verifies that the runner states the run's limits in the responses directory when its broker starts and again
+	 * whenever it accepts a request, so that a command can tell before it changes anything whether the run allows a
+	 * further session, and that a reader of the file gets the reason with which the runner would refuse one.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void statesLimits() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "1", "--request-depth", "2"))
+		{
+			Path file = fixture.responses.resolve(SessionRequestAccess.LIMITS_FILE);
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					}, 1);
+					process.closeOutputThenExitWhenAwaited();
+					return process;
+				}))
+			{
+				broker.start(_ -> () ->
+				{
+				});
+				requireThat(fixture.json.readTree(file.toFile()), "started").isEqualTo(fixture.json.readTree(
+					"{\"format_version\":1,\"requests_allowed\":1,\"requests_used\":0,\"depth_remaining\":2}"));
+				requireThat(SessionRequestAccess.furtherRequestRefusal(fixture.requests), "before").isEmpty();
+
+				fixture.request("first");
+				broker.scan();
+				fixture.await("first");
+				requireThat(fixture.json.readTree(file.toFile()), "accepted").isEqualTo(fixture.json.readTree(
+					"{\"format_version\":1,\"requests_allowed\":1,\"requests_used\":1,\"depth_remaining\":2}"));
+				requireThat(SessionRequestAccess.furtherRequestRefusal(fixture.requests), "spent").
+					isEqualTo(Optional.of(SessionRequestAccess.limitReason(1)));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a run whose options allow no session request states so in its limits, and that a reader of the
+	 * file gets the reason that names the caller's options that would allow the sessions.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void statesNoRequests() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "0");
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			{
+				throw new AssertionError("A run that allows no request starts no session");
+			}))
+		{
+			broker.start(_ -> () ->
+			{
+			});
+			requireThat(SessionRequestAccess.furtherRequestRefusal(fixture.requests), "refusal").
+				isEqualTo(Optional.of(SessionRequestAccess.NO_REQUESTS_REASON));
 		}
 	}
 
@@ -875,7 +940,8 @@ public final class SessionRequestBrokerTest
 				String id;
 				try (Stream<Path> answered = Files.list(fixture.responses))
 				{
-					id = answered.map(file -> file.getFileName().toString()).findFirst().orElseThrow();
+					id = answered.filter(Files::isDirectory).map(file -> file.getFileName().toString()).findFirst().
+						orElseThrow();
 				}
 				JsonNode response = fixture.await(id);
 				requireThat(response.path("status").asString(), "status").isEqualTo("stopped");

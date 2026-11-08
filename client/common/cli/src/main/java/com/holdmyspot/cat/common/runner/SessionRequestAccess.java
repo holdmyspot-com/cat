@@ -2,14 +2,19 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * What every session that a runner starts reaches beyond the limits of {@link SessionCommandLimits}, the same in
@@ -68,6 +73,19 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 		"--request-depth <levels>";
 
 	/**
+	 * The file in a run's responses directory in which the runner states how many sessions the run allows, how many it
+	 * has accepted and how many levels below its requested sessions may request sessions in turn:
+	 * {@code {"format_version": 1, "requests_allowed": <n>, "requests_used": <n>, "depth_remaining": <n>}}. The runner
+	 * rewrites it whenever it accepts a request, so that a command can tell, before it changes anything, whether the
+	 * run allows any further session.
+	 */
+	public static final String LIMITS_FILE = "limits.json";
+	/**
+	 * The most bytes of a {@link #LIMITS_FILE} that a reader reads.
+	 */
+	private static final int MAXIMUM_LIMITS_BYTES = 4096;
+
+	/**
 	 * Returns the reason with which a runner refuses each request after it accepted all that its options allow, which
 	 * names the option of the run's caller that would allow more.
 	 *
@@ -78,6 +96,45 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	{
 		return "this run allows no further sessions: it has requested all " + sessionRequests + " that its " +
 			"caller's --session-requests allows. Its caller allows more with a larger --session-requests";
+	}
+
+	/**
+	 * Returns why the run whose requests directory a session's environment names would refuse a further session
+	 * request, as its runner's {@link #LIMITS_FILE} states.
+	 *
+	 * @param requests the run's requests directory
+	 * @return {@link #NO_REQUESTS_REASON} if the run allows no session, {@link #limitReason(int)} if it has accepted
+	 *   all that it allows, or empty if it allows more or its runner has not stated its limits
+	 * @throws NullPointerException if {@code requests} is null
+	 * @throws IOException          if the limits cannot be read or are malformed
+	 */
+	public static Optional<String> furtherRequestRefusal(Path requests) throws IOException
+	{
+		requireThat(requests, "requests").isNotNull();
+		Path file = requests.toAbsolutePath().getParent().resolve("responses").resolve(LIMITS_FILE);
+		JsonNode limits;
+		try
+		{
+			limits = JsonMapper.builder().build().readTree(BoundedInput.readUtf8(file, MAXIMUM_LIMITS_BYTES,
+				"session request limits"));
+		}
+		catch (NoSuchFileException _)
+		{
+			return Optional.empty();
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("The run's session request limits are malformed: " + file, e);
+		}
+		if (limits.path("format_version").asInt(0) != 1 || !limits.path("requests_allowed").isInt() ||
+			!limits.path("requests_used").isInt())
+			throw new IOException("The run's session request limits are malformed: " + file);
+		int allowed = limits.path("requests_allowed").intValue();
+		if (allowed == 0)
+			return Optional.of(NO_REQUESTS_REASON);
+		if (limits.path("requests_used").intValue() >= allowed)
+			return Optional.of(limitReason(allowed));
+		return Optional.empty();
 	}
 
 	/**
