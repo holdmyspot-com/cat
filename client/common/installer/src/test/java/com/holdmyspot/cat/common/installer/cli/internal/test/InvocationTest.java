@@ -13,10 +13,12 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
+import com.holdmyspot.cat.common.installer.cli.internal.HarnessCliFactory;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessStarter;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
@@ -379,6 +381,42 @@ public final class InvocationTest
 			requireThat(run.result().path("message").stringValue(), "message").
 				contains(installation.policyFile.toString()).contains("cat.sh --harness harness-a");
 			requireThat(Files.exists(installation.data.resolve("state"), NOFOLLOW_LINKS), "state").isFalse();
+			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
+		}
+	}
+
+	/**
+	 * When the recorded harness program cannot start in the environment that install recorded for it, exiting with
+	 * status 127 as a shell does when the interpreter that the program names is missing, install from the version
+	 * folder is refused before anything changes. The refusal reports the status and output of the program, does not
+	 * call it another program, and tells the user how to start over.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void refusesRecordedProgramThatCannotStart() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-unstarted-")));
+			installation.writePolicy(installation.trustPolicy());
+			byte[] policy = Files.readAllBytes(installation.policyFile);
+
+			Run run = run(installation.image, installation.root, Map.of(), List.of(new LiveProvider()),
+				new RecordingIntegration(), _ -> Optional.empty(), Platform.LINUX_X64, command ->
+				{
+					throw new AssertionError("Started " + command);
+				}, (command, home) -> arguments -> new CommandResult(127, "node: nvm is not installed\n"), "install",
+				"--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").
+				startsWith("Product harness-a at " + installation.program + " could not start in this environment " +
+					"(status 127). Its output: node: nvm is not installed. Install recorded this program").
+				contains(installation.policyFile.toString()).contains("cat.sh --harness harness-a").
+				doesNotContain("no longer");
 			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
 		}
 	}
@@ -1215,6 +1253,29 @@ public final class InvocationTest
 		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, Platform platform,
 		ProcessStarter starter, String... arguments)
 	{
+		return run(image, defaultHome, environment, activations, integration, terminal, platform, starter,
+			(command, home) -> RecordingIntegration.cli(), arguments);
+	}
+
+	/**
+	 * Runs one installer invocation on a platform, with a terminal and a harness program.
+	 *
+	 * @param image        the plugin folder of the running installer
+	 * @param defaultHome  the user's home when the environment names none in the platform's home variable
+	 * @param environment  the caller's environment
+	 * @param activations  the installed activation providers
+	 * @param integration  the harness integration
+	 * @param terminal     the user's terminal
+	 * @param platform     the platform that the installer runs on
+	 * @param starter      starts the programs that outlive the installer's process
+	 * @param cliFactory   runs the harness program
+	 * @param arguments    the command line
+	 * @return the outcome
+	 */
+	private static Run run(Path image, Path defaultHome, Map<String, String> environment,
+		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, Platform platform,
+		ProcessStarter starter, HarnessCliFactory cliFactory, String... arguments)
+	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 		int status;
@@ -1225,8 +1286,8 @@ public final class InvocationTest
 			Map<String, String> variables = new HashMap<>(environment);
 			variables.putIfAbsent(platform.homeVariable(), defaultHome.toString());
 			Invocation invocation = new Invocation(image, platform, variables, ACCOUNT_HOME, activations,
-				List.of(integration), (command, home) -> RecordingIntegration.cli(), Clock.systemUTC(),
-				interval -> () -> {}, replacer(), terminal, starter, stdout, stderr);
+				List.of(integration), cliFactory, Clock.systemUTC(), interval -> () -> {}, replacer(), terminal, starter,
+				stdout, stderr);
 			status = invocation.run(arguments);
 		}
 		return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));

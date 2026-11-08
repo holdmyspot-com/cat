@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Confirms that a harness program is the harness's program before install runs it.
@@ -34,6 +35,12 @@ public final class HarnessProgram
 	}
 
 	/**
+	 * The exit statuses with which a shell reports that it could not run a command: 126 when the command is not
+	 * executable, and 127 when it, or the interpreter that it names, is not found.
+	 */
+	private static final Set<Integer> NOT_STARTED = Set.of(126, 127);
+
+	/**
 	 * Confirms that a program is the harness's program by running {@code <program> --version} exactly as registration
 	 * will run it.
 	 *
@@ -41,8 +48,11 @@ public final class HarnessProgram
 	 * @param home        the real harness home
 	 * @param integration the harness's integration
 	 * @param cliFactory  runs the program
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the program cannot be run, or does not identify itself as the harness's program
+	 * @throws NullPointerException  if any of the arguments are null
+	 * @throws ProgramStartException if the program could not start in its environment; the message names the
+	 *                               product, the program, and the exit status and output or the launch failure
+	 * @throws IOException           if the program does not finish or its output cannot be read, or the program
+	 *                               does not identify itself as the harness's program
 	 */
 	public static void requireIdentity(HarnessCommand command, Path home, HarnessIntegration integration,
 		HarnessCliFactory cliFactory) throws IOException
@@ -51,8 +61,40 @@ public final class HarnessProgram
 		requireThat(home, "home").isNotNull();
 		requireThat(integration, "integration").isNotNull();
 		requireThat(cliFactory, "cliFactory").isNotNull();
-		CommandResult version = cliFactory.create(command, home).run(List.of("--version"));
+		// On Windows a .cmd program follows the cmd.exe prefix that runs it
+		String notStarted = integration.productName() + " at " + command.command().getLast() + " could not start " +
+			"in this environment";
+		CommandResult version;
+		try
+		{
+			version = cliFactory.create(command, home).run(List.of("--version"));
+		}
+		catch (ProgramStartException e)
+		{
+			throw new ProgramStartException(notStarted + ": " + sentence(e.getMessage()), e);
+		}
+		if (NOT_STARTED.contains(version.exitCode()))
+		{
+			String output = version.output().strip();
+			String message = notStarted + " (status " + version.exitCode() + ").";
+			if (!output.isEmpty())
+				message += " Its output: " + sentence(output);
+			throw new ProgramStartException(message, null);
+		}
 		integration.requireIdentity(version);
+	}
+
+	/**
+	 * Ends text as a sentence.
+	 *
+	 * @param text the text
+	 * @return the text, followed by a period unless it ends with one
+	 */
+	private static String sentence(String text)
+	{
+		if (text.endsWith("."))
+			return text;
+		return text + ".";
 	}
 
 	/**
@@ -86,6 +128,12 @@ public final class HarnessProgram
 		try
 		{
 			requireIdentity(command, home, integration, cliFactory);
+		}
+		catch (ProgramStartException e)
+		{
+			throw new TrustException(Reason.MALFORMED_POLICY, e.getMessage() + " Install recorded this program, and " +
+				"never takes another program from PATH once it has recorded one; to start over, " +
+				Locations.startOver(entryCommand, harness, policyFile) + ".");
 		}
 		catch (IOException e)
 		{

@@ -48,6 +48,16 @@ public final class ProcessHarnessCli implements HarnessCli
 		this.home = home;
 	}
 
+	/**
+	 * Runs the recorded command followed by {@code arguments}, with exactly the recorded environment and the harness
+	 * home as working directory, without a shell and with standard input closed, and waits for it to exit.
+	 *
+	 * @param arguments the arguments after the recorded command prefix
+	 * @return the exit status and output
+	 * @throws NullPointerException  if {@code arguments} is null
+	 * @throws ProgramStartException if the process cannot be launched; the message is the launch failure's
+	 * @throws IOException           if the program does not finish in time or its output cannot be read
+	 */
 	@Override
 	public CommandResult run(List<String> arguments) throws IOException
 	{
@@ -57,7 +67,16 @@ public final class ProcessHarnessCli implements HarnessCli
 		ProcessBuilder builder = new ProcessBuilder(line).directory(home.toFile()).redirectErrorStream(true);
 		builder.environment().clear();
 		builder.environment().putAll(command.environment());
-		try (Process process = builder.start())
+		Process started;
+		try
+		{
+			started = builder.start();
+		}
+		catch (IOException e)
+		{
+			throw new ProgramStartException(e.getMessage(), e);
+		}
+		try (Process process = started)
 		{
 			process.getOutputStream().close();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();

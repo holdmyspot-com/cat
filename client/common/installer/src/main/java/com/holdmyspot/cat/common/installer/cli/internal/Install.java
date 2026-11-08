@@ -336,8 +336,10 @@ public final class Install
 	 * @param home        the real harness home
 	 * @param environment the user's environment
 	 * @return the command and environment to record
-	 * @throws IOException if the program is not found, cannot be run, or does not identify itself as the harness's
-	 *                     program
+	 * @throws ProgramStartException if the program could not start in the user's environment; the message tells the
+	 *                               user to run the installer with the environment of the harness's sessions
+	 * @throws IOException           if the program is not found, cannot be run, or does not identify itself as the
+	 *                               harness's program
 	 */
 	private HarnessCommand discoverProgram(HarnessIntegration integration, Path home, Map<String, String> environment)
 		throws IOException
@@ -347,6 +349,11 @@ public final class Install
 		try
 		{
 			HarnessProgram.requireIdentity(command, home, integration, cliFactory);
+		}
+		catch (ProgramStartException e)
+		{
+			throw new ProgramStartException(e.getMessage() + " Run the installer with the environment your " +
+				integration.productName() + " sessions use.", e);
 		}
 		catch (IOException e)
 		{

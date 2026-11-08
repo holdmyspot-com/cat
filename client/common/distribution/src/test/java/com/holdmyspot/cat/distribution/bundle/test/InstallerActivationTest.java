@@ -12,7 +12,9 @@ import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
+import com.holdmyspot.cat.common.installer.cli.internal.HarnessCliFactory;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
+import com.holdmyspot.cat.common.installer.cli.internal.ProcessHarnessCli;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
@@ -235,6 +237,101 @@ public final class InstallerActivationTest
 	}
 
 	/**
+	 * Supplies each packaged harness with each exit status by which a shell reports that it could not run a program.
+	 *
+	 * @return the harness identifiers and exit statuses
+	 */
+	@DataProvider
+	public Object[][] unstartedPrograms()
+	{
+		return new Object[][]{{"claude", 127}, {"claude", 126}, {"codex", 127}, {"codex", 126}};
+	}
+
+	/**
+	 * A harness program on PATH that cannot start in the installer's environment, such as a program whose interpreter
+	 * exits with status 127 because the environment lacks what it loads, is reported as a program that could not start
+	 * there, with its status and output and the environment to run the installer with. The report does not call it
+	 * another program, ask the user to reinstall the harness, or ask the user to run the entry command again.
+	 *
+	 * @param harness the packaged harness to exercise
+	 * @param status  the program's exit status
+	 * @throws IOException if a fixture file cannot be written or read
+	 */
+	@Test(dataProvider = "unstartedPrograms")
+	public void unstartedProgramIsReported(String harness, int status) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			Path root = cleanup.add(fixtureDirectory("installer-unstarted-"));
+			Platform platform = Platform.current();
+			String product = provider(HarnessIntegration.class, harness).productName();
+			FakeHarness fake = new FakeHarness(harness, platform, root);
+			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
+			String output = "";
+			if (status == 127)
+				output = "node: nvm is not installed at " + fake.user.resolve(".nvm");
+			Path program = fake.program(output, status);
+
+			JsonNode failed = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
+
+			String shown = "";
+			if (!output.isEmpty())
+				shown = " Its output: " + output + ".";
+			requireThat(failed.path("result").asString(), "result").withContext(failed, "output").
+				isEqualTo("failed");
+			requireThat(failed.path("message").asString(), "message").isEqualTo("The installer could not complete " +
+				"install: " + product + " at " + program + " could not start in this environment (status " + status +
+				")." + shown + " Run the installer with the environment your " + product + " sessions use.");
+		}
+	}
+
+	/**
+	 * A program on PATH that runs but does not answer {@code --version} as the harness's program does is reported as
+	 * not the harness's program.
+	 *
+	 * @param harness the packaged harness to exercise
+	 * @throws IOException if a fixture file cannot be written or read
+	 */
+	@Test(dataProvider = "harnesses")
+	public void otherProgramIsNotTheHarness(String harness) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			Path root = cleanup.add(fixtureDirectory("installer-other-program-"));
+			Platform platform = Platform.current();
+			FakeHarness fake = new FakeHarness(harness, platform, root);
+			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
+			Path program = fake.program("other 2.0: unknown option --version", 2);
+
+			JsonNode failed = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
+
+			requireThat(failed.path("result").asString(), "result").withContext(failed, "output").
+				isEqualTo("failed");
+			requireThat(failed.path("message").asString(), "message").
+				startsWith("The installer could not complete install: The program " + program + " that install " +
+					"found on PATH is not the " + harness + " program: ").
+				contains("other 2.0: unknown option --version").doesNotContain("could not start");
+		}
+	}
+
+	/**
+	 * Creates a test directory beside the test classes in the build directory, because install looks for the harness
+	 * program outside the temporary directory.
+	 *
+	 * @param prefix the start of the directory's name
+	 * @return the real path of the new directory
+	 * @throws IOException if the directory cannot be created
+	 */
+	private static Path fixtureDirectory(String prefix) throws IOException
+	{
+		Path build = Path.of(URI.create(InstallerActivationTest.class.getProtectionDomain().getCodeSource().
+			getLocation().toString())).getParent();
+		return Files.createTempDirectory(Files.createDirectories(build.resolve("test-files")), prefix).toRealPath();
+	}
+
+	/**
 	 * Returns the packaged provider of a harness.
 	 *
 	 * @param <T>     the provider's service
@@ -326,6 +423,10 @@ public final class InstallerActivationTest
 		private final Platform platform;
 		private final Path home;
 		private final Path user;
+		/**
+		 * The folder that the search path names, which holds the harness program.
+		 */
+		private final Path tools;
 		private final Map<String, String> environment = new HashMap<>();
 		/**
 		 * The plugin data directory, which Claude Code's {@code plugin uninstall} deletes unless the command passes
@@ -352,7 +453,7 @@ public final class InstallerActivationTest
 			this.platform = platform;
 			this.home = Files.createDirectories(root.resolve("harness-home"));
 			this.user = Files.createDirectories(root.resolve("user"));
-			Path tools = Files.createDirectories(root.resolve("tools"));
+			this.tools = Files.createDirectories(root.resolve("tools"));
 			environment.put("PATH", tools.toString());
 			if (platform.isWindows())
 			{
@@ -380,7 +481,32 @@ public final class InstallerActivationTest
 		 */
 		private JsonNode run(Path plugin, String... arguments) throws IOException
 		{
-			Printed printed = output(plugin, _ -> Optional.empty(), arguments);
+			return json(output(plugin, _ -> Optional.empty(), (command, _) -> this, arguments));
+		}
+
+		/**
+		 * Runs an installer command of a plugin folder that runs the harness program that install finds, instead of
+		 * this fake.
+		 *
+		 * @param plugin    the plugin folder that the installer belongs to
+		 * @param arguments the command line
+		 * @return the printed result
+		 * @throws IOException if the output is not one JSON result
+		 */
+		private JsonNode runProgram(Path plugin, String... arguments) throws IOException
+		{
+			return json(output(plugin, _ -> Optional.empty(), ProcessHarnessCli::new, arguments));
+		}
+
+		/**
+		 * Returns the result that an installer command printed.
+		 *
+		 * @param printed what the command printed
+		 * @return the result
+		 * @throws IOException if the output is not one JSON result
+		 */
+		private static JsonNode json(Printed printed) throws IOException
+		{
 			try
 			{
 				return MAPPER.readTree(printed.output());
@@ -414,7 +540,7 @@ public final class InstallerActivationTest
 				{
 					return true;
 				}
-			}, arguments);
+			}, (command, _) -> this, arguments);
 			requireThat(printed.diagnostics(), "diagnostics").withContext(printed.output(), "output").isEmpty();
 			return printed.output();
 		}
@@ -422,12 +548,13 @@ public final class InstallerActivationTest
 		/**
 		 * Runs an installer command of a plugin folder, as its launcher starts the installer there.
 		 *
-		 * @param plugin    the plugin folder that the installer belongs to
-		 * @param terminal  the user's terminal
-		 * @param arguments the command line
+		 * @param plugin     the plugin folder that the installer belongs to
+		 * @param terminal   the user's terminal
+		 * @param cliFactory runs the harness program
+		 * @param arguments  the command line
 		 * @return what the installer printed
 		 */
-		private Printed output(Path plugin, Terminal terminal, String... arguments)
+		private Printed output(Path plugin, Terminal terminal, HarnessCliFactory cliFactory, String... arguments)
 		{
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
@@ -442,11 +569,37 @@ public final class InstallerActivationTest
 						toList()),
 					List.copyOf(ServiceLoader.load(HarnessIntegration.class).stream().map(ServiceLoader.Provider::get).
 						toList()),
-					(command, _) -> this, Clock.systemUTC(), _ -> () ->
+					cliFactory, Clock.systemUTC(), _ -> () ->
 				{
 				}, replacer, terminal, started::add, stdout, stderr).run(arguments);
 			}
 			return new Printed(output.toString(UTF_8), diagnostics.toString(UTF_8));
+		}
+
+		/**
+		 * Replaces the harness program that install finds with a program that prints a line and exits.
+		 *
+		 * @param output the line, without quotes or shell metacharacters, or empty to print nothing
+		 * @param status the exit status
+		 * @return the program
+		 * @throws IOException if the program cannot be written
+		 */
+		private Path program(String output, int status) throws IOException
+		{
+			if (platform.isWindows())
+			{
+				String echo = "";
+				if (!output.isEmpty())
+					echo = "@echo " + output + "\r\n";
+				return Files.writeString(tools.resolve(harness + ".cmd"), echo + "@exit /b " + status + "\r\n");
+			}
+			String echo = "";
+			if (!output.isEmpty())
+				echo = "echo '" + output + "'\n";
+			Path program = Files.writeString(tools.resolve(harness), "#!/bin/sh\n" + echo + "exit " + status + "\n");
+			if (!program.toFile().setExecutable(true))
+				throw new IOException("Cannot make " + program + " executable");
+			return program;
 		}
 
 		/**
