@@ -4,6 +4,9 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.DirectLaunch;
+import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
@@ -39,6 +42,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -947,6 +951,47 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
+	 * Verifies that a launch from a command that Claude Code runs is not refused for the folder that the command runs
+	 * in, and is refused with the refusal status when the project folder that the session's transcript names, which
+	 * the new session would take, is the user's home folder, before the launcher writes anything for it.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesHomeProjectFromTranscript() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path plugin = Files.createDirectory(home.resolve("plugin"));
+			Path transcript = Files.writeString(home.resolve("session.jsonl"), "");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CLAUDECODE", "1");
+			String[] args = {"--model", "sonnet", "--effort", "low"};
+			StringWriter checkErrors = new StringWriter();
+
+			boolean refused = ClaudeRunnerCli.refusesLaunch(args, home, environment, Platform.current(),
+				new PrintWriter(checkErrors, true));
+
+			requireThat(refused, "refused").isFalse();
+			requireThat(checkErrors.toString(), "checkErrors").isEmpty();
+
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			DirectLaunch.Session session = new DirectLaunch.Session(unreadPolicy(), transcript, home, Optional.empty());
+
+			int status = ClaudeRunnerCli.launch(args, environment, Yielding.waiting(), new StringReader(""), output,
+				new PrintWriter(errors, true), () -> plugin, () -> session);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("cannot be a CAT project").
+				contains("Open a folder below the home folder");
+			requireThat(output.size(), "outputSize").isZero();
+			requireThat(Files.exists(home.resolve(".cat")), "homeCatExists").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a launch from a command that Claude Code runs is refused with the refusal status when it names an
 	 * option that only CAT's own starters pass, and starts nothing.
 	 *
@@ -1032,5 +1077,33 @@ public final class ClaudeRunnerCliTest
 		Files.writeString(agents.resolve(AGENT + ".md"), "---\nname: " + AGENT + "\n" + frontmatter +
 			"---\nReview the change.\n");
 		return artifact;
+	}
+	/**
+	 * Returns a sandbox policy source that no check-failing launch may read.
+	 *
+	 * @return the source
+	 */
+	private static ParentPolicySource unreadPolicy()
+	{
+		return new ParentPolicySource()
+		{
+			@Override
+			public String harnessName()
+			{
+				return "Claude Code";
+			}
+
+			@Override
+			public String permissionEntries(List<Path> writes, Set<String> hosts)
+			{
+				throw new AssertionError("No permission entries are named");
+			}
+
+			@Override
+			public ParentPolicy read(Optional<String> thread)
+			{
+				throw new AssertionError("No policy is read");
+			}
+		};
 	}
 }

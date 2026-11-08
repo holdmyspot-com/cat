@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
@@ -22,6 +23,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -118,6 +120,45 @@ public final class DirectLaunch
 	 */
 	private DirectLaunch()
 	{
+	}
+
+	/**
+	 * Returns a finder that refuses a launch whose new session would take the user's home folder, or a folder that
+	 * contains it, as its project, which {@link HarnessRunnerOptions#refusesHomeProject} refuses. That project is the
+	 * folder that the launch's {@code --project} names, resolved against {@code workingDirectory}, or else the project
+	 * folder that the session's transcript names, which {@link #boundArguments} gives the new session. The finder
+	 * refuses before {@link #boundArguments} writes anything for the new session.
+	 *
+	 * @param sessions         identifies the session that runs the launcher
+	 * @param args             the launch's options
+	 * @param workingDirectory the folder against which a relative {@code --project} resolves
+	 * @param environment      the launcher's environment
+	 * @param platform         the platform that the launcher runs on, whose home variable names the home folder
+	 * @return a finder that returns the session that {@code sessions} finds, or throws a
+	 *   {@link SessionRefusedException} that gives the reason if the new session's project is refused
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static SessionFinder refusingHomeProject(SessionFinder sessions, String[] args, Path workingDirectory,
+		Map<String, String> environment, Platform platform)
+	{
+		requireThat(sessions, "sessions").isNotNull();
+		requireThat(args, "args").isNotNull();
+		requireThat(workingDirectory, "workingDirectory").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(platform, "platform").isNotNull();
+		return () ->
+		{
+			Session session = sessions.find();
+			Path base;
+			if (Arrays.asList(args).contains("--project"))
+				base = workingDirectory;
+			else
+				base = session.project();
+			Optional<String> refusal = HarnessRunnerOptions.homeProjectRefusal(args, base, environment, platform);
+			if (refusal.isPresent())
+				throw new SessionRefusedException(refusal.get());
+			return session;
+		};
 	}
 
 	/**

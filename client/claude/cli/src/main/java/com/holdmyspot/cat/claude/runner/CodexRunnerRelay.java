@@ -92,7 +92,9 @@ public final class CodexRunnerRelay
 		{
 			RequestedSessionStarter starter = (_, arguments, directory) -> new RequestedRunner(scope, runner,
 				List.of("serve")).start(arguments, directory, ClaudeRunnerCli.MARKERS.without(environment));
-			return DirectLaunch.boundArguments(CODEX_ID, args, plugin, ClaudeDirectLaunch.sessions(environment),
+			DirectLaunch.SessionFinder sessions = DirectLaunch.refusingHomeProject(
+				ClaudeDirectLaunch.sessions(environment), args, Path.of("").toAbsolutePath(), environment, Platform.current());
+			return DirectLaunch.boundArguments(CODEX_ID, args, plugin, sessions,
 				project -> ToolScope.forSession(project, environment, SessionHarness.installed(), scope.waiting()),
 				DirectLaunch.runnerNeeds(starter, cleanup), () -> ClaudeDirectLaunch.sandboxed(
 					plugin.resolve(PluginDirectory.BIN).resolve("codex-runner")), cleanup);

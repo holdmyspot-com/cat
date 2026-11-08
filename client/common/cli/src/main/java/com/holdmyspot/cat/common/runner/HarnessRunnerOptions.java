@@ -414,20 +414,42 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(environment, "environment").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(errors, "errors").isNotNull();
+		Optional<String> refusal = homeProjectRefusal(args, workingDirectory, environment, platform);
+		if (refusal.isEmpty())
+			return false;
+		errors.println(refusal.get());
+		return true;
+	}
+
+	/**
+	 * Returns why a runner launcher refuses a launch whose project is the user's home folder or contains it, as
+	 * {@link #refusesHomeProject} decides.
+	 *
+	 * @param args             the launch's arguments
+	 * @param workingDirectory the folder against which the launch's {@code --project} resolves, and the project if
+	 *                         the launch names none
+	 * @param environment      the launcher's environment
+	 * @param platform         the platform that the launcher runs on, whose home variable names the home folder
+	 * @return the reason, or empty if the launch is not refused
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static Optional<String> homeProjectRefusal(String[] args, Path workingDirectory,
+		Map<String, String> environment, Platform platform)
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(workingDirectory, "workingDirectory").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		requireThat(platform, "platform").isNotNull();
 		String home = environment.get(platform.homeVariable());
 		if (home == null || home.isBlank())
-			return false;
+			return Optional.empty();
 		Path project = workingDirectory;
 		for (int index = 0; index + 1 < args.length; ++index)
 		{
 			if (args[index].equals("--project"))
 				project = workingDirectory.resolve(args[index + 1]);
 		}
-		Optional<String> refusal = HomeProject.refusal(project, Path.of(home));
-		if (refusal.isEmpty())
-			return false;
-		errors.println(refusal.get());
-		return true;
+		return HomeProject.refusal(project, Path.of(home));
 	}
 
 	/**

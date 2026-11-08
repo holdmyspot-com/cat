@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
@@ -282,6 +283,59 @@ public final class DirectLaunchTest
 		}
 		requireThat(DirectLaunch.internalOptionRefusal(new String[]{"--project", "project", "--model", "model-a"}),
 			"reason").isEmpty();
+	}
+
+	/**
+	 * Verifies that a launch whose new session would take the user's home folder as its project is refused before the
+	 * launcher bounds it: the project is the folder that {@code --project} names, resolved against the working
+	 * directory, or else the project folder that the session's transcript names, and a project below the home folder
+	 * is accepted either way.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusesHomeProject() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Map<String, String> environment = Map.of(Platform.current().homeVariable(), fixture.root.toString());
+			DirectLaunch.Session belowHome = fixture.session(Optional.empty());
+			DirectLaunch.Session atHome = new DirectLaunch.Session(belowHome.policy(), fixture.transcript,
+				fixture.root, Optional.empty());
+			Path elsewhere = fixture.runs;
+
+			SessionRefusedException fromTranscript = refusal(() -> find(DirectLaunch.refusingHomeProject(
+				() -> atHome, new String[]{"--model", "model-a"}, elsewhere, environment, Platform.current())));
+			SessionRefusedException named = refusal(() -> find(DirectLaunch.refusingHomeProject(() -> belowHome,
+				new String[]{"--project", fixture.root.toString()}, elsewhere, environment, Platform.current())));
+
+			for (SessionRefusedException refusal : List.of(fromTranscript, named))
+				requireThat(refusal.getMessage(), "message").contains("cannot be a CAT project");
+			requireThat(find(DirectLaunch.refusingHomeProject(() -> belowHome, new String[]{"--model", "model-a"},
+				fixture.root, environment, Platform.current())), "fromTranscript").isEqualTo(belowHome);
+			requireThat(find(DirectLaunch.refusingHomeProject(() -> atHome, new String[]{"--project", "project"},
+				fixture.root, environment, Platform.current())), "named").isEqualTo(atHome);
+		}
+	}
+
+	/**
+	 * Returns the session that a finder finds.
+	 *
+	 * @param sessions the finder
+	 * @return the session
+	 * @throws IOException    if the finder refuses the launch or cannot read its sources
+	 * @throws AssertionError if the finder identifies no session
+	 */
+	private static DirectLaunch.Session find(DirectLaunch.SessionFinder sessions) throws IOException
+	{
+		try
+		{
+			return sessions.find();
+		}
+		catch (PolicyRefusal e)
+		{
+			throw new AssertionError("The finder identified no session", e);
+		}
 	}
 
 	/**

@@ -306,7 +306,10 @@ public final class ClaudeRunnerCli
 	 * @param cleanup     receives the folder that holds the bound's file, which the session reads when it starts
 	 * @return {@code args} followed by the options that bound the session
 	 * @throws NullPointerException      if any of the arguments are null
-	 * @throws SessionRefusedException   if a check of the launch fails; the message says why and how to fix it
+	 * @throws SessionRefusedException   if a check of the launch fails, such as when the new session's project is the
+	 *                                   user's home folder or contains it, as
+	 *                                   {@link DirectLaunch#refusingHomeProject} decides; the message says why and how
+	 *                                   to fix it
 	 * @throws InvalidArgumentsException if an option lacks its value, a denied read is not absolute, or the file of
 	 *                                   extra permissions is invalid
 	 * @throws IOException               if what the session needs cannot be determined, or the bound cannot be
@@ -319,8 +322,10 @@ public final class ClaudeRunnerCli
 		requireThat(scope, "scope").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(plugin, "plugin").isNotNull();
-		return DirectLaunch.boundArguments(HARNESS_ID, args, plugin, sessions, project -> ToolScope.forSession(project,
-				environment, SessionHarness.installed(), scope.waiting()), () -> ClaudeRunner.childNeeds(scope,
+		DirectLaunch.SessionFinder outsideHome = DirectLaunch.refusingHomeProject(sessions, args,
+			Path.of("").toAbsolutePath(), environment, Platform.current());
+		return DirectLaunch.boundArguments(HARNESS_ID, args, plugin, outsideHome, project -> ToolScope.forSession(
+				project, environment, SessionHarness.installed(), scope.waiting()), () -> ClaudeRunner.childNeeds(scope,
 				environment), () -> ClaudeDirectLaunch.sandboxed(plugin.resolve(PluginDirectory.BIN).
 				resolve("claude-runner")), cleanup);
 	}
@@ -428,8 +433,10 @@ public final class ClaudeRunnerCli
 	 * Refuses a launch that would start a session, but must not. That is a launch that names {@code --artifact}, as
 	 * {@link #refusesOverride} refuses it, any launch on a platform where Claude Code cannot confine the session in a
 	 * sandbox, as {@link ClaudeSessionSandbox} decides, and any launch whose project is the user's home folder or
-	 * contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides. Printing the usage and verifying an
-	 * artifact start no session, so they are never refused for the platform or the project.
+	 * contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides. A launch that Claude Code runs is not
+	 * refused for its project here: its project can come from the session's transcript, so {@link #directArguments}
+	 * refuses it. Printing the usage and verifying an artifact start no session, so they are never refused for the
+	 * platform or the project.
 	 *
 	 * @param args             the launch's options
 	 * @param workingDirectory the directory from which the launcher was started
@@ -456,6 +463,10 @@ public final class ClaudeRunnerCli
 			errors.println(refusal.get());
 			return true;
 		}
+		// A launch that Claude Code runs takes its project from the session's transcript, which the launch checks
+		if (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, MARKERS.running(environment), args, environment) instanceof
+			LaunchRoute.Launcher)
+			return false;
 		return HarnessRunnerOptions.refusesHomeProject(args, workingDirectory, environment, platform, errors);
 	}
 

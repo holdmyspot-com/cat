@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.runner.DirectLaunch;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -23,8 +24,10 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -41,6 +44,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
@@ -1137,6 +1141,48 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
+	 * Verifies that a launch from a command that Codex runs is not refused for the folder that the command runs
+	 * in, and is refused with the refusal status when the project folder that the session's transcript names, which
+	 * the new session would take, is the user's home folder, before the launcher writes anything for it.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesHomeProjectFromTranscript() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path plugin = Files.createDirectory(home.resolve("plugin"));
+			Path transcript = Files.writeString(home.resolve("session.jsonl"), "");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID",
+				"019a0000-0000-7000-8000-000000000000");
+			String[] args = {"serve", "--model", "gpt-6-luna", "--effort", "low"};
+			StringWriter checkErrors = new StringWriter();
+
+			boolean refused = CodexRunnerCli.refusesLaunch(args, home, environment, Platform.current(),
+				new PrintWriter(checkErrors, true));
+
+			requireThat(refused, "refused").isFalse();
+			requireThat(checkErrors.toString(), "checkErrors").isEmpty();
+
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			DirectLaunch.Session session = new DirectLaunch.Session(unreadPolicy(), transcript, home, Optional.empty());
+
+			int status = CodexRunnerCli.launch(args, environment, Yielding.waiting(), new StringReader(""), output,
+				new PrintWriter(errors, true), () -> plugin, () -> session);
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("cannot be a CAT project").
+				contains("Open a folder below the home folder");
+			requireThat(output.size(), "outputSize").isZero();
+			requireThat(Files.exists(home.resolve(".cat")), "homeCatExists").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a launch from a command that Codex runs is refused with the refusal status when it names an
 	 * option that only CAT's own starters pass, and starts nothing.
 	 *
@@ -1238,5 +1284,33 @@ public final class CodexRunnerCliTest
 		Files.writeString(agents.resolve(AGENT + ".toml"), "name = \"" + AGENT + "\"\n" + fields +
 			"developer_instructions = '''\nReview the change.\n'''\n");
 		return artifact;
+	}
+	/**
+	 * Returns a sandbox policy source that no check-failing launch may read.
+	 *
+	 * @return the source
+	 */
+	private static ParentPolicySource unreadPolicy()
+	{
+		return new ParentPolicySource()
+		{
+			@Override
+			public String harnessName()
+			{
+				return "Codex";
+			}
+
+			@Override
+			public String permissionEntries(List<Path> writes, Set<String> hosts)
+			{
+				throw new AssertionError("No permission entries are named");
+			}
+
+			@Override
+			public ParentPolicy read(Optional<String> thread)
+			{
+				throw new AssertionError("No policy is read");
+			}
+		};
 	}
 }
