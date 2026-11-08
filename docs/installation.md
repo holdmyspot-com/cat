@@ -232,7 +232,10 @@ refuses them after it.
 
 The first install records the installation's protected data and policy paths, its harness's home, and the harness
 program that it found; later changes to `HOME`, `PATH`, `CLAUDE_CONFIG_DIR`, or `CODEX_HOME` cannot redirect a routine
-operation. An installation serves only its own harness: its installer refuses a `--harness` that names the other one.
+operation. A first install refuses, changing nothing, when `PATH` holds no program of the harness, or when the program
+it holds cannot start in the installer's environment. The message names the program, says to install the harness or to
+run the installer with the `PATH` that your harness's sessions use, and says to run the same command again. An
+installation serves only its own harness: its installer refuses a `--harness` that names the other one.
 
 Each install writes the permission entries for exactly those operations on the active version folder's installer,
 records the entries it added so that uninstall removes only those, and removes the entries that name an older version
@@ -417,7 +420,7 @@ app-server notices an install without restart remains unverified.
 | --- | --- |
 | `0` | Operation succeeded, or the approved release is already active. |
 | `2` | Invalid arguments; correct the command. |
-| `3` | Release, signature, archive, policy, migration or consent refused before anything changed; inspect the message. |
+| `3` | Release, signature, archive, policy, migration, consent or harness program refused before anything changed; inspect the message. |
 | `4` | Download failed; retry after restoring connectivity. |
 | `9` | Uninstall stopped at a step (`uninstall_incomplete`); run the same uninstall command again to continue. |
 | `10` | An unexpected error stopped the operation after it may have changed the installation (`failed`); run the same command again to continue. |
