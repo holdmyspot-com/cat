@@ -3,7 +3,7 @@ package com.holdmyspot.cat.claude.policy.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
-import com.holdmyspot.cat.claude.runner.ClaudeSessionLauncherCli;
+import com.holdmyspot.cat.claude.runner.ClaudeRequestServerCli;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.contract.test.ParentPolicySourceContract;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
@@ -91,7 +91,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 		{
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["api.example.com"]}}}""");
-			ParentPolicySource source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
+			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
 
 			ParentPolicy first = source.read(Optional.empty());
 			requireThat(source.harnessName(), "harnessName").isEqualTo(ClaudePolicyReader.HARNESS_NAME);
@@ -154,7 +154,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
 		{
-			ParentPolicySource source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
+			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
 
 			requireThat(source.permissionEntries(writes, hosts), "entries").isEqualTo(expected);
 		}
@@ -176,7 +176,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true,
 				 "network": {"allowedDomains": ["gateway.example:2455", "db.example.com:5432"]}}}""");
-			ParentPolicySource source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
+			ParentPolicySource source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
 			source.read(Optional.empty());
 
 			requireThat(source.permissionEntries(List.of(), Set.of("gateway.example")), "entries").isEqualTo(
@@ -207,7 +207,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 		{
 			this.folder = Files.createDirectory(fixture.root.resolve("outside"));
 			allowWrites(List.of());
-			this.source = ClaudeSessionLauncherCli.policySource(fixture.reader(), fixture::session);
+			this.source = ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session);
 		}
 
 		@Override

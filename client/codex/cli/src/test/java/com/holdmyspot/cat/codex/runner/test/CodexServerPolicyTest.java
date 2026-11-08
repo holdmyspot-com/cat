@@ -4,13 +4,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
-import com.holdmyspot.cat.codex.runner.CodexSessionLauncherCli;
+import com.holdmyspot.cat.codex.policy.CodexSession;
+import com.holdmyspot.cat.codex.runner.CodexServedSession;
 import com.holdmyspot.cat.codex.runner.TomlStrings;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.contract.test.ParentPolicySourceContract;
-import com.holdmyspot.cat.common.runner.launcher.LauncherRecord;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -34,20 +33,20 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
- * Tests the sandbox policy that the Codex session launcher serves its session with: the policy that the command line
- * of the Codex process that the hook named and the session's configuration give, narrowed by the policy that Codex
+ * Tests the sandbox policy that the Codex request server serves its session with: the policy that the command line
+ * of the session's Codex process and the session's configuration give, narrowed by the policy that Codex
  * records for the subagent thread that asks.
  * <p>
  * The rollout records follow those of Codex 0.160.0 ({@code codex exec}, Linux), with the instructions left out. The
  * {@link ParentPolicySource} contract runs against the same source, over the session's configuration and a stand-in
  * for the Codex process.
  */
-public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
+public final class CodexServerPolicyTest extends ParentPolicySourceContract
 {
 	private static final long CODEX_PID = 5151;
 	private static final String CODEX_START = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t6000000";
 	/**
-	 * The session that the hook described, which is also the identifier of its main thread.
+	 * The session that the server serves, which is also the identifier of its main thread.
 	 */
 	private static final String SESSION_ID = "01a1a8eb-3d83-7d73-b243-c636c2041ee1";
 	/**
@@ -58,7 +57,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 	/**
 	 * Creates the test.
 	 */
-	public CodexLauncherPolicyTest()
+	public CodexServerPolicyTest()
 	{
 	}
 
@@ -87,8 +86,8 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
-	 * Verifies that the launcher reads the policy of the session that the hook described, from the command line of
-	 * the Codex process that the hook named.
+	 * Verifies that the server reads the policy of the session that it serves, from the command line of the
+	 * session's Codex process.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the policy is refused
@@ -99,7 +98,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
 
 			ParentPolicy policy = source.read(Optional.empty());
@@ -112,7 +111,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
-	 * Verifies that the launcher refuses to read a policy once the Codex process that the hook named has ended, even
+	 * Verifies that the server refuses to read a policy once the session's Codex process has ended, even
 	 * when another process has taken its identifier.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -123,7 +122,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			String laterStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t6006000";
 			for (Optional<String> start : List.of(Optional.of(laterStart), Optional.<String>empty()))
 			{
@@ -154,7 +153,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			fixture.readOnlyRollout(SUBAGENT_THREAD, SESSION_ID);
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
 
@@ -166,8 +165,8 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
-	 * Verifies that a launch that names a thread of another session gets the policy of the session that the hook
-	 * described, even when that thread's latest turn is read-only.
+	 * Verifies that a launch that names a thread of another session gets the policy of the session that the server
+	 * serves, even when that thread's latest turn is read-only.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the policy is refused
@@ -178,7 +177,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			fixture.readOnlyRollout(SUBAGENT_THREAD, "01a1a8f0-9999-7999-8999-999999999999");
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
 
@@ -201,7 +200,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			String malformed = "thread-a";
 			fixture.readOnlyRollout(malformed, SESSION_ID);
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
@@ -250,7 +249,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
-	 * Verifies that the launcher tells the user which Codex settings to add a missing write and host to.
+	 * Verifies that the server tells the user which Codex settings to add a missing write and host to.
 	 *
 	 * @param writes   the paths that the session's sandbox lacks
 	 * @param hosts    the hosts that the session's sandbox lacks
@@ -264,7 +263,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
 
 			requireThat(source.permissionEntries(writes, hosts), "entries").isEqualTo(expected);
@@ -323,7 +322,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
 
 			String instruction = source.permissionEntries(List.of(write), Set.of());
@@ -346,7 +345,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-launcher-policy")));
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory("codex-server-policy")));
 			ParentPolicySource source = fixture.source(Optional.of(CODEX_START));
 			String host = "odd\"host\\name";
 
@@ -474,9 +473,9 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		}
 
 		/**
-		 * Returns the launcher's policy source.
+		 * Returns the server's policy source.
 		 *
-		 * @param reportedStart the start of the process with the hook's process identifier, or empty if none runs
+		 * @param reportedStart the start of the process with the Codex process's identifier, or empty if none runs
 		 * @return the source
 		 */
 		ParentPolicySource source(Optional<String> reportedStart)
@@ -485,9 +484,9 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		}
 
 		/**
-		 * Returns the launcher's policy source.
+		 * Returns the server's policy source.
 		 *
-		 * @param reportedStart returns the start of the process with the hook's process identifier at each reading, or
+		 * @param reportedStart returns the start of the process with the Codex process's identifier at each reading, or
 		 *                      empty if none runs
 		 * @return the source
 		 */
@@ -501,13 +500,12 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 				return Optional.of(new ProcessDescription(pid, start, Optional.of("/usr/lib/codex/bin/codex"),
 					Optional.of(List.of())));
 			};
-			LauncherRecord record = new LauncherRecord("codex", new ProcessIdentity(CODEX_PID, CODEX_START),
-				SESSION_ID, project, Optional.empty(), "startup", home.resolve(".codex"),
-				PluginInfo.CAT_VERSION);
+			CodexSession session = new CodexSession(List.of(), Map.of("HOME", home.toString()), home, project,
+				Optional.empty(), SESSION_ID);
 			CodexPolicyReader reader = new CodexPolicyReader(new CodexSystemFiles(system,
 				List.of(system.resolve("managed.plist")), slashTmp));
-			return CodexSessionLauncherCli.policySource(reader, processes, record, Map.of("HOME", home.toString()),
-				home);
+			return CodexServedSession.policySource(reader, processes, new ProcessIdentity(CODEX_PID, CODEX_START),
+				session);
 		}
 	}
 
@@ -530,7 +528,7 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		 */
 		CodexContractSession() throws IOException
 		{
-			Path root = cleanup.add(Files.createTempDirectory("codex-launcher-policy")).toRealPath();
+			Path root = cleanup.add(Files.createTempDirectory("codex-server-policy")).toRealPath();
 			this.fixture = new Fixture(root);
 			this.folder = Files.createDirectory(root.resolve("outside"));
 			this.source = fixture.source(() ->

@@ -49,7 +49,7 @@ public final class CodexPromptOptimizerTest
 	private static final Path FIXTURE = Path.of("../../common/cli/src/test/resources/optimizer/cli/campaign.json");
 	private static final String CAMPAIGN = "fixture-campaign";
 	private static final String SESSION_ID = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
-	private static final String LAUNCH_REFUSAL = "No CAT session launcher serves this session";
+	private static final String LAUNCH_REFUSAL = "No request server serves this session";
 	private static final String NO_HOST_SESSION = "A campaign belongs to the codex session that runs it, but " +
 		"CODEX_THREAD_ID is not set.";
 
@@ -315,8 +315,8 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Returns environments of a harness session's {@code start}, each with how its refusal begins when no session
-	 * launcher serves the session that runs it.
+	 * Returns environments of a harness session's {@code start}, each with how its refusal begins when no request
+	 * server serves the session that runs it.
 	 *
 	 * @return the environments and the beginnings of the refusals
 	 */
@@ -325,7 +325,7 @@ public final class CodexPromptOptimizerTest
 	{
 		return new Object[][]
 		{
-			// Codex runs the command, so its sessions go to the session launcher, and none serves the session
+			// Codex runs the command, so its sessions go to its request server, and none serves the session
 			{Map.of("CODEX_THREAD_ID", SESSION_ID), LAUNCH_REFUSAL},
 			// Only Claude Code runs the command, so each of its sessions would be refused when it starts, but no Codex
 			// session hosts a campaign
@@ -334,16 +334,16 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that {@code start} is refused, before it starts any session, for want of a session launcher only when
-	 * its sessions go to the session launcher. On every other route the command goes on, here to refuse the campaign
-	 * that no Codex session hosts.
+	 * Verifies that {@code start} is refused, before it starts any session, for want of a request server only when
+	 * its sessions go to the session's request server. On every other route the command goes on, here to refuse the
+	 * campaign that no Codex session hosts.
 	 *
 	 * @param variables the environment's variables, besides the home folder
 	 * @param refusal   how the refusal begins
 	 * @throws IOException if a file cannot be written
 	 */
 	@Test(dataProvider = "launchRoutes")
-	public void startNeedsLauncherOnLauncherRoute(Map<String, String> variables, String refusal)
+	public void startNeedsServerOnServedRoute(Map<String, String> variables, String refusal)
 		throws IOException
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())

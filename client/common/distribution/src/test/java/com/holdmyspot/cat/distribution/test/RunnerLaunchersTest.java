@@ -3,7 +3,7 @@ package com.holdmyspot.cat.distribution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.common.runner.DirectLaunch;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
@@ -108,19 +108,19 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
-	 * Verifies that each plugin's {@code bin/} holds the {@code session-launcher} that its SessionStart hook starts,
-	 * which serves the sessions that its harness's sessions request. The table is the same on every platform.
+	 * Verifies that each plugin's {@code bin/} holds the {@code request-server} that a session's agent starts, which
+	 * serves the sessions that its harness's sessions request outside a run. The table is the same on every platform.
 	 */
 	@Test
-	public void bothPluginsHoldSessionLauncher()
+	public void bothPluginsHoldRequestServer()
 	{
 		DistributionMainAccess access = DistributionMainSecrets.getDistributionMainAccess();
 		requireThat(access.claudeLaunchers(), "claudeLaunchers").
-			contains(new Launcher("session-launcher", CLAUDE_MODULE,
-				"com.holdmyspot.cat.claude.runner.ClaudeSessionLauncherCli"));
+			contains(new Launcher("request-server", CLAUDE_MODULE,
+				"com.holdmyspot.cat.claude.runner.ClaudeRequestServerCli"));
 		requireThat(access.codexLaunchers(), "codexLaunchers").
-			contains(new Launcher("session-launcher", CODEX_MODULE,
-				"com.holdmyspot.cat.codex.runner.CodexSessionLauncherCli"));
+			contains(new Launcher("request-server", CODEX_MODULE,
+				"com.holdmyspot.cat.codex.runner.CodexRequestServerCli"));
 	}
 
 	/**
@@ -381,7 +381,7 @@ public final class RunnerLaunchersTest
 		int never = rule.indexOf("Never pass ");
 		requireThat(never, "never").isNotNegative();
 		String refusal = rule.substring(never, rule.indexOf("the launcher refuses them", never));
-		for (String option : DirectLaunch.INTERNAL_OPTIONS)
+		for (String option : LaunchRoute.INTERNAL_OPTIONS)
 			requireThat(refusal, "refusal").contains("`" + option + "`");
 	}
 

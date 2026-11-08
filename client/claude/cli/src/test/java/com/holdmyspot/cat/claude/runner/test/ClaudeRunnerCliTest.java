@@ -4,16 +4,16 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.runner.DirectLaunch;
-import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
-import com.holdmyspot.cat.common.runner.policy.HostAccess;
-import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import com.holdmyspot.cat.claude.policy.ClaudeCommandSession;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
@@ -28,7 +28,6 @@ import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
-import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -43,10 +42,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static org.testng.Assert.expectThrows;
@@ -66,6 +63,10 @@ public final class ClaudeRunnerCliTest
 	 * The name of the CAT agent definition in a test artifact.
 	 */
 	private static final String AGENT = "probe-agent";
+	/**
+	 * The identifier of the Claude Code session that runs the launcher.
+	 */
+	private static final String SESSION_ID = "5d2c8e4a-7b1f-4c3d-9e6a-1f2b3c4d5e6f";
 
 	/**
 	 * Creates the test.
@@ -880,157 +881,60 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that Claude Code runs inside the session's sandbox, where the launcher
-	 * cannot write its plugin's folder, is refused with the refusal status and a reason that names the launcher's
-	 * absolute path, before the launcher identifies the session or starts anything.
+	 * Verifies that a launch from a command that Claude Code runs outside a run is refused with the refusal status
+	 * when no request server serves the session, with a reason that names the command that starts the server, before
+	 * the launcher writes a request or starts anything.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void refusesClaudeLaunchInsideSandbox() throws IOException
+	public void refusesClaudeLaunchWithoutServer() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path plugin = home.resolve("unwritable plugin");
+			Path project = Files.createDirectories(home.resolve("project/.cat")).getParent();
+			Path plugin = home.resolve("plugin");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CLAUDECODE", "1");
+				"CLAUDECODE", "1", ClaudeCommandSession.SESSION_VARIABLE, SESSION_ID);
 			StringWriter errors = new StringWriter();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
 					"--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
-				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin, () ->
-				{
-					throw new AssertionError("No session is identified");
-				});
+				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin,
+				() -> ToolScope.forSession(project, environment, SessionHarness.installed(), Yielding.waiting(),
+					GitProjects.IGNORING));
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("runs the launcher inside its sandbox").
-				contains(plugin.resolve("bin/claude-runner").toString());
+			requireThat(errors.toString(), "errors").contains("No request server serves this session").
+				contains(plugin.resolve("bin/request-server").toString());
 			requireThat(output.size(), "outputSize").isZero();
+			requireThat(Files.exists(project.resolve(".cat/sessions").resolve(SESSION_ID).resolve("requests")),
+				"requestsExist").isFalse();
+			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies that a launch from a command that Claude Code runs outside the session's sandbox is refused with the
-	 * refusal status and the reason when its sources identify no session, and starts nothing.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
+	 * Verifies that a launch from a command that Claude Code runs is refused with the refusal status, before the
+	 * launcher sends a request, when the folder that the command runs in, which the new session would take as its
+	 * project, is the user's home folder.
 	 */
 	@Test
-	public void refusesLaunchFromUnknownSession() throws IOException
+	public void refusesHomeProjectFromClaudeSession()
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path plugin = Files.createDirectory(home.resolve("plugin"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CLAUDECODE", "1");
-			StringWriter errors = new StringWriter();
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
+		Path home = Path.of("/home/user").toAbsolutePath();
+		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+			"CLAUDECODE", "1");
+		StringWriter errors = new StringWriter();
 
-			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
-					"--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
-				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin, () ->
-				{
-					throw new PolicyRefusal("no transcript of the session is in the projects folder",
-						"Run the launcher from a Claude Code session that keeps its transcript");
-				});
+		boolean refused = ClaudeRunnerCli.refusesLaunch(new String[]{"--model", "sonnet", "--effort", "low"}, home,
+			environment, Platform.LINUX_X64, new PrintWriter(errors, true));
 
-			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("no transcript of the session").
-				contains("keeps its transcript");
-			requireThat(output.size(), "outputSize").isZero();
-			try (Stream<Path> files = Files.list(plugin))
-			{
-				requireThat(files.toList(), "pluginFiles").isEmpty();
-			}
-		}
-	}
-
-	/**
-	 * Verifies that verifying an artifact is refused with a reason when Claude Code runs the command outside a run and
-	 * the session's sandbox does not let its commands read the artifact, is not refused for an artifact that the
-	 * session may read, and is not checked when no harness session runs the command.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesUnreadableArtifact() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path secrets = Files.createDirectory(home.resolve("secrets"));
-			Path plugin = Files.createDirectory(home.resolve("plugin"));
-			Path transcript = Files.writeString(home.resolve("session.jsonl"), "");
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CLAUDECODE", "1");
-			DirectLaunch.Session session = new DirectLaunch.Session(denyingPolicy(project, secrets), transcript,
-				project, Optional.empty());
-			String[] denied = {"--verify-artifact", secrets.resolve("artifact").toString()};
-			StringWriter errors = new StringWriter();
-
-			boolean refused = ClaudeRunnerCli.refusesArtifactRead(denied, environment, new PrintWriter(errors, true),
-				() -> plugin, () -> session);
-
-			requireThat(refused, "refused").isTrue();
-			requireThat(errors.toString(), "errors").contains("--verify-artifact").
-				contains("does not let its commands read " + secrets.resolve("artifact"));
-			String[] readable = {"--verify-artifact", project.resolve("artifact").toString()};
-			requireThat(ClaudeRunnerCli.refusesArtifactRead(readable, environment, new PrintWriter(new StringWriter(), true),
-				() -> plugin, () -> session), "readableRefused").isFalse();
-			requireThat(ClaudeRunnerCli.refusesArtifactRead(denied, Map.of(), new PrintWriter(new StringWriter(), true),
-				() -> plugin, () ->
-				{
-					throw new AssertionError("No session is identified");
-				}), "outsideSessionRefused").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies that a launch from a command that Claude Code runs is not refused for the folder that the command runs
-	 * in, and is refused with the refusal status when the project folder that the session's transcript names, which
-	 * the new session would take, is the user's home folder, before the launcher writes anything for it.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesHomeProjectFromTranscript() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path plugin = Files.createDirectory(home.resolve("plugin"));
-			Path transcript = Files.writeString(home.resolve("session.jsonl"), "");
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CLAUDECODE", "1");
-			String[] args = {"--model", "sonnet", "--effort", "low"};
-			StringWriter checkErrors = new StringWriter();
-
-			boolean refused = ClaudeRunnerCli.refusesLaunch(args, home, environment, Platform.current(),
-				new PrintWriter(checkErrors, true));
-
-			requireThat(refused, "refused").isFalse();
-			requireThat(checkErrors.toString(), "checkErrors").isEmpty();
-
-			StringWriter errors = new StringWriter();
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			DirectLaunch.Session session = new DirectLaunch.Session(unreadPolicy(), transcript, home, Optional.empty());
-
-			int status = ClaudeRunnerCli.launch(args, environment, Yielding.waiting(), new StringReader(""), output,
-				new PrintWriter(errors, true), () -> plugin, () -> session);
-
-			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("cannot be a CAT project").
-				contains("Open a folder below the home folder");
-			requireThat(output.size(), "outputSize").isZero();
-			requireThat(Files.exists(home.resolve(".cat")), "homeCatExists").isFalse();
-		}
+		requireThat(refused, "refused").isTrue();
+		requireThat(errors.toString(), "errors").contains("cannot be a CAT project").
+			contains("Open a folder below the home folder");
 	}
 
 	/**
@@ -1057,7 +961,7 @@ public final class ClaudeRunnerCliTest
 					throw new AssertionError("No plugin is found");
 				}, () ->
 				{
-					throw new AssertionError("No session is identified");
+					throw new AssertionError("No session's tool scope is opened");
 				});
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
@@ -1076,8 +980,8 @@ public final class ClaudeRunnerCliTest
 	{
 		return new Object[][]
 		{
-			{Map.of("CODEX_THREAD_ID", "thread"), "Codex runs this command, and CAT's Claude Code plugin cannot read " +
-				"a Codex session's sandbox policy. Run the runner of CAT's Codex plugin instead."},
+			{Map.of("CODEX_THREAD_ID", "thread"), "Codex runs this command, and CAT's Claude Code plugin holds no " +
+				"request server for a Codex session. Run the runner of CAT's Codex plugin instead."},
 			{Map.of("CAT_RUN", "1", "CLAUDECODE", "1"), "claude-runner refuses to start a session"}
 		};
 	}
@@ -1119,66 +1023,5 @@ public final class ClaudeRunnerCliTest
 		Files.writeString(agents.resolve(AGENT + ".md"), "---\nname: " + AGENT + "\n" + frontmatter +
 			"---\nReview the change.\n");
 		return artifact;
-	}
-	/**
-	 * Returns a sandbox policy source whose policy lets the session's commands write one folder and denies them reads
-	 * of another.
-	 *
-	 * @param writable the folder that the commands may write
-	 * @param denied   the folder that the commands may not read
-	 * @return the source
-	 */
-	private static ParentPolicySource denyingPolicy(Path writable, Path denied)
-	{
-		return new ParentPolicySource()
-		{
-			@Override
-			public String harnessName()
-			{
-				return "Claude Code";
-			}
-
-			@Override
-			public String permissionEntries(List<Path> writes, Set<String> hosts)
-			{
-				throw new AssertionError("No permission entries are named");
-			}
-
-			@Override
-			public ParentPolicy read(Optional<String> thread)
-			{
-				return new ParentPolicy(true, List.of(writable), List.of(), List.of(denied), List.of(), HostAccess.ALL,
-					false, List.of());
-			}
-		};
-	}
-
-	/**
-	 * Returns a sandbox policy source that no check-failing launch may read.
-	 *
-	 * @return the source
-	 */
-	private static ParentPolicySource unreadPolicy()
-	{
-		return new ParentPolicySource()
-		{
-			@Override
-			public String harnessName()
-			{
-				return "Claude Code";
-			}
-
-			@Override
-			public String permissionEntries(List<Path> writes, Set<String> hosts)
-			{
-				throw new AssertionError("No permission entries are named");
-			}
-
-			@Override
-			public ParentPolicy read(Optional<String> thread)
-			{
-				throw new AssertionError("No policy is read");
-			}
-		};
 	}
 }

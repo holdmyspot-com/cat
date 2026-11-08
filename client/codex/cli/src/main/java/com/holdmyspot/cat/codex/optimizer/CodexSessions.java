@@ -22,8 +22,6 @@ import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
-import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
-import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
 
@@ -67,12 +65,6 @@ public final class CodexSessions extends RunnerSessions
 			{
 				return new CodexSessions(settings, bridge);
 			}
-
-			@Override
-			public CodexSessions newCodexSessions(RunnerSessions.Settings settings, GitIdentity git)
-			{
-				return new CodexSessions(settings, git);
-			}
 		});
 	}
 
@@ -102,20 +94,7 @@ public final class CodexSessions extends RunnerSessions
 	 */
 	public CodexSessions(Settings settings)
 	{
-		this(settings, GitIdentity.fromGit());
-	}
-
-	/**
-	 * Creates a port that runs sessions through the real Codex runner, reading each project's Git identity with the
-	 * given reader.
-	 *
-	 * @param settings how the runner is configured
-	 * @param git      reads the project's Git identity
-	 * @throws NullPointerException if any argument is null
-	 */
-	CodexSessions(Settings settings, GitIdentity git)
-	{
-		this(settings, productionBridge(settings, git));
+		this(settings, productionBridge(settings));
 	}
 
 	/**
@@ -434,8 +413,10 @@ public final class CodexSessions extends RunnerSessions
 	 * Creates the bridge that runs the real runner. Each session follows the route that the runner's own launch
 	 * takes from the settings' environment:
 	 * <ul>
-	 *   <li>When Codex runs the optimizer, the session is a request to the session launcher of the Codex process,
-	 *   which starts the runner of the settings' CAT artifact outside the optimizer's sandbox.</li>
+	 *   <li>When Codex runs the optimizer outside a run, the session is a request to the request server of the host
+	 *   session, which starts the runner of the settings' CAT artifact outside the optimizer's sandbox; the session's
+	 *   kept run is copied into the optimizer's run root. Without a request server that serves the host session, the
+	 *   session is refused, naming the command that starts the server.</li>
 	 *   <li>Inside a run whose runner lets its session request sessions, the session is a request to the run's
 	 *   runner, which starts it outside the optimizer's sandbox and counts it against the run's limit; the session's
 	 *   kept run is copied into the optimizer's run root.</li>
@@ -447,13 +428,11 @@ public final class CodexSessions extends RunnerSessions
 	 * A refused session fails with a {@link LaunchRefusedException}.
 	 *
 	 * @param settings how the runner is configured
-	 * @param git      reads the project's Git identity for a session that goes to the session launcher
 	 * @return the bridge
 	 */
-	private static Bridge productionBridge(Settings settings, GitIdentity git)
+	private static Bridge productionBridge(Settings settings)
 	{
 		requireThat(settings, "settings").isNotNull();
-		requireThat(git, "git").isNotNull();
 		return (arguments, input, output) ->
 		{
 			Map<String, String> environment = settings.environment();
@@ -461,15 +440,16 @@ public final class CodexSessions extends RunnerSessions
 			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, CodexRunnerCli.MARKERS.running(environment), args,
 				environment))
 			{
-				case LaunchRoute.Launcher _ -> SessionLauncherClient.production(environment,
-					settings.scope().waiting(), git).bridge(HARNESS_ID, settings.artifact()).serve(arguments, input, output);
+				case LaunchRoute.Served _ -> SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER,
+					COMMAND, HARNESS_ID, settings.artifact(), arguments, input, output, servedRequests(settings),
+					settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL));
 				case LaunchRoute.Forward(Path requests) -> SessionRequestForwarder.serve(COMMAND,
 					HARNESS_ID, settings.artifact(), arguments, input, output, requests,
 					settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL));
 				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
 				case LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> throw new LaunchRefusedException(
-					"CAT cannot start the session: no Claude Code or Codex session runs this command, so no session " +
-						"launcher serves it. Run the prompt optimizer from a Claude Code or Codex session.");
+					"CAT cannot start the session: no Claude Code or Codex session runs this command, so no request " +
+						"server serves it. Run the prompt optimizer from a Claude Code or Codex session.");
 			}
 		};
 	}

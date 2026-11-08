@@ -9,7 +9,9 @@ import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.RuleSource;
 import com.holdmyspot.cat.common.RuleVariableResolver;
+import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
@@ -24,6 +26,8 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginManifest;
+import com.holdmyspot.cat.common.runner.RequestServer;
+import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;
@@ -852,6 +856,35 @@ public abstract class RunnerSessions implements SessionPort
 	 * @throws IOException if the configuration exists but cannot be read
 	 */
 	protected abstract List<McpServer> projectMcpServers(Path project) throws IOException;
+
+	/**
+	 * Returns the requests directory of the request server that serves the host session that starts the sessions,
+	 * outside a run. The host session's CAT session directory is the one that the settings' host project and
+	 * environment name.
+	 *
+	 * @param settings how the runner is configured
+	 * @return the server's requests directory
+	 * @throws NullPointerException    if {@code settings} is null
+	 * @throws LaunchRefusedException  if the environment names no host session, or no request server serves it; the
+	 *                                 message names the command of the settings' CAT artifact that starts the server
+	 * @throws IOException             if the host session's CAT session directory or the server's lock file cannot
+	 *                                 be opened
+	 */
+	protected static Path servedRequests(Settings settings) throws IOException
+	{
+		requireThat(settings, "settings").isNotNull();
+		Path project = settings.hostProject();
+		if (project == null)
+			project = Path.of("");
+		try (ToolScope tools = ToolScope.forSession(project, settings.environment(), SessionHarness.installed(),
+			settings.scope().waiting()))
+		{
+			Optional<Path> requests = RequestServer.servedRequests(tools);
+			if (requests.isEmpty())
+				throw new LaunchRefusedException(RequestServer.missingServer(settings.artifact()));
+			return requests.get();
+		}
+	}
 
 	/**
 	 * Lists the MCP servers that one configuration object declares.

@@ -1,7 +1,12 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.CommandLineArguments;
+import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SessionHarness;
+import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -16,6 +21,8 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import tools.jackson.core.JacksonException;
@@ -32,11 +39,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * appends to the folder's {@value Conversation#TO_CHILD_FILE} goes to the requested session while it runs, the
  * requested session's records go to {@value Conversation#FROM_CHILD_FILE}, and the command waits until the session
  * ends, without a bound, because ending the command stops the session.
+ * <p>
+ * Inside a run, the command writes its requests for the run's runner. Outside a run, a harness session's command
+ * writes them for the session's {@link RequestServer}, and is refused when no request server serves the session.
  */
 public final class SessionRequestCli
 {
 	/**
-	 * Runs the request launcher using the directories supplied by the owning runner.
+	 * Runs the request launcher using the directories supplied by the owning runner, or outside a run, those of the
+	 * harness session's request server.
 	 *
 	 * @param args submission options or {@code --await <id>}, with optional {@code --wait <seconds>}
 	 * @throws IOException if the request or response cannot be read or written
@@ -55,13 +66,68 @@ public final class SessionRequestCli
 		}
 		String directory = System.getenv(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (directory == null || directory.isBlank())
-			throw new IOException("Session requests are unavailable; start the runner with --session-requests <count>");
+		{
+			Map<String, String> environment = Platform.current().environment(System.getenv());
+			int status;
+			try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
+			{
+				status = executeServed(args, PluginDirectory.of(SessionRequestCli.class),
+					() -> ToolScope.forSession(Path.of(""), environment, SessionHarness.installed(), scope.waiting()),
+					Clock.systemUTC(), Pause.sleeping(Duration.ofMillis(100)),
+					new PrintWriter(System.out, true, StandardCharsets.UTF_8),
+					new PrintWriter(System.err, true, StandardCharsets.UTF_8));
+			}
+			System.exit(status);
+		}
 		SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.valueOf(
 			System.getenv(SessionRequestAccess.SHELL_VARIABLE));
 		int status = execute(args, Path.of(directory), shell, Clock.systemUTC(),
 			Pause.sleeping(Duration.ofMillis(100)),
 			new PrintWriter(System.out, true, StandardCharsets.UTF_8));
 		System.exit(status);
+	}
+
+	/**
+	 * Writes a request of a harness session's command outside a run for the session's request server, as
+	 * {@link #execute(String[], Path, Path, RequestLimits, SessionRequestAccess.Shell, Clock, Pause, PrintWriter)}
+	 * does for a run's runner. A request that no request server serves is refused before it changes anything, naming
+	 * the command that starts the server.
+	 *
+	 * @param args   submission options or await options
+	 * @param plugin the folder of the plugin that holds the command
+	 * @param scopes opens the command's tool scope, which gives the session's CAT session directory
+	 * @param clock  measures the wait bound
+	 * @param pause  paces response checks
+	 * @param output receives response paths or timeout instructions
+	 * @param errors receives the reason when no request server serves the session
+	 * @return the status that {@code execute} returns, or {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if no
+	 *   request server serves the session
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
+	 * @throws IOException              if no harness session runs the command, or request I/O fails
+	 */
+	public static int executeServed(String[] args, Path plugin, RequestServer.SessionScope scopes, Clock clock,
+		Pause pause, PrintWriter output, PrintWriter errors) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(scopes, "scopes").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		try (ToolScope tools = scopes.open())
+		{
+			if (tools.sessionDirectory().isEmpty())
+			{
+				throw new IOException("Session requests are unavailable; start the runner with --session-requests " +
+					"<count>, or run this command in a harness session");
+			}
+			Optional<Path> requests = RequestServer.servedRequests(tools);
+			if (requests.isEmpty())
+			{
+				errors.println(RequestServer.missingServer(plugin));
+				return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+			}
+			return execute(args, requests.get(), RequestArchive.NULL_DEVICE, RequestLimits.UNBOUNDED, clock, pause,
+				output, "\"" + plugin.resolve(PluginDirectory.BIN).resolve("request-session") + "\"");
+		}
 	}
 
 	/**
@@ -161,11 +227,38 @@ public final class SessionRequestCli
 		SessionRequestAccess.Shell shell,
 		Clock clock, Pause pause, PrintWriter output) throws IOException
 	{
+		requireThat(shell, "shell").isNotNull();
+		String launcher;
+		if (shell == SessionRequestAccess.Shell.POWERSHELL)
+			launcher = "& $env:" + SessionRequestAccess.LAUNCHER_VARIABLE;
+		else
+			launcher = "\"$" + SessionRequestAccess.LAUNCHER_VARIABLE + "\"";
+		return execute(args, requests, nullDevice, limits, clock, pause, output, launcher);
+	}
+
+	/**
+	 * Writes a request atomically and waits, or waits again for an existing request.
+	 *
+	 * @param args       submission options or await options
+	 * @param requests   the directory into which the request is written
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read
+	 * @param limits     the bounds that the request's archive must stay within
+	 * @param clock      measures the wait bound
+	 * @param pause      paces response checks
+	 * @param output     receives response paths or timeout instructions
+	 * @param launcher   the command, in the session's shell, that runs the request launcher again
+	 * @return 0 for completed, 2 for refused, 1 for another response status, or 3 after the wait bound
+	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
+	 * @throws IOException              if request I/O fails or a pause is cut short or the request exceeds
+	 *                                  {@code limits}
+	 */
+	private static int execute(String[] args, Path requests, Path nullDevice, RequestLimits limits, Clock clock,
+		Pause pause, PrintWriter output, String launcher) throws IOException
+	{
 		requireThat(args, "args").isNotNull();
 		requireThat(requests, "requests").isDirectory();
 		requireThat(nullDevice, "nullDevice").isNotNull();
 		requireThat(limits, "limits").isNotNull();
-		requireThat(shell, "shell").isNotNull();
 		requireThat(clock, "clock").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -283,10 +376,7 @@ public final class SessionRequestCli
 			if (!clock.instant().isBefore(deadline))
 			{
 				output.println("id=" + id);
-				if (shell == SessionRequestAccess.Shell.POWERSHELL)
-					output.println("& $env:CAT_REQUEST_SESSION --await " + id);
-				else
-					output.println("\"$CAT_REQUEST_SESSION\" --await " + id);
+				output.println(launcher + " --await " + id);
 				if (!readFailure.isEmpty())
 					output.println("unreadable=" + response + ": " + readFailure);
 				return 3;

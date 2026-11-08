@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
@@ -19,8 +20,8 @@ import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
 
@@ -214,15 +215,16 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	}
 
 	/**
-	 * Returns why the session launcher would refuse every session, but only when this command's sessions go to the
-	 * session launcher, as their bridge decides from the environment: when this scope's harness runs the command
-	 * outside a run. On every other route no launcher needs to serve the host session: inside a run the run's runner
-	 * serves it, and a route that refuses its sessions refuses each of them, with its reason, when it starts.
+	 * Returns why every session would be refused, but only when this command's sessions go to the session's request
+	 * server, as their bridge decides from the environment: when this scope's harness runs the command outside a run.
+	 * Such sessions are refused while no request server serves the host session. On every other route no request
+	 * server needs to serve the host session: inside a run the run's runner serves it, and a route that refuses its
+	 * sessions refuses each of them, with its reason, when it starts.
 	 *
-	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions or
-	 *   the sessions do not go to a session launcher
+	 * @return the message that names the command that starts the request server, or empty if a request server serves
+	 *   the host session or the sessions do not go to a request server
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException           if the launchers' state cannot be listed
+	 * @throws IOException           if the host session's CAT session directory cannot be opened
 	 */
 	@Override
 	protected final Optional<String> launchRefusal() throws IOException
@@ -231,11 +233,28 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		String id = harness.commandName();
 		return switch (LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment))
 		{
-			case LaunchRoute.Launcher _ -> SessionLauncherClient.production(environment, waiting()).refusal();
+			case LaunchRoute.Served _ ->
+			{
+				try (ToolScope tools = ToolScope.forSession(directory, environment, SessionHarness.installed(),
+					waiting()))
+				{
+					if (RequestServer.servedRequests(tools).isPresent())
+						yield Optional.empty();
+					yield Optional.of(RequestServer.missingServer(plugin()));
+				}
+			}
 			case LaunchRoute.Forward _, LaunchRoute.Refused _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ ->
 				Optional.empty();
 		};
 	}
+
+	/**
+	 * Returns the folder of the CAT plugin that runs this command.
+	 *
+	 * @return the plugin's folder
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract Path plugin();
 
 	@Override
 	protected final RandomGenerator random()

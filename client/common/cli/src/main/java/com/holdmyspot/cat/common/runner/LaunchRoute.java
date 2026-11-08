@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.launcher.ChildBound;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
@@ -29,6 +30,35 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public sealed interface LaunchRoute
 {
+	/**
+	 * The options that only CAT's own starters pass to a runner launcher. A harness session's launch may not name
+	 * them: each one would let the session choose what bounds the new session.
+	 */
+	List<String> INTERNAL_OPTIONS = List.of(PolicyBoundFile.OPTION, RunnerArguments.CAPACITY_HELD_OPTION,
+		ChildNeedsReport.OPTION, RunnerArguments.GIT_NAME_OPTION, RunnerArguments.GIT_EMAIL_OPTION);
+
+	/**
+	 * Returns the reason for refusing a launch that a harness session runs and that names an option that only CAT's
+	 * own starters pass.
+	 *
+	 * @param args the launch's options
+	 * @return the reason, or empty if the launch names none of {@link #INTERNAL_OPTIONS}
+	 * @throws NullPointerException if {@code args} is null
+	 */
+	static Optional<String> internalOptionRefusal(String[] args)
+	{
+		requireThat(args, "args").isNotNull();
+		for (String argument : args)
+		{
+			if (INTERNAL_OPTIONS.contains(argument))
+			{
+				return Optional.of("CAT cannot start the session: only CAT itself passes " + argument + ", and a " +
+					"harness session's launch may not name it. Run the launcher again without " + argument + ".");
+			}
+		}
+		return Optional.empty();
+	}
+
 	/**
 	 * The launch becomes a request to the runner of the CAT run whose session runs the command, which starts the
 	 * session outside the run's sandbox.
@@ -70,11 +100,11 @@ public sealed interface LaunchRoute
 	}
 
 	/**
-	 * A session of the plugin's own harness runs the command. A runner launcher, which that harness runs outside the
-	 * session's sandbox, starts the new session itself within the bound that {@link DirectLaunch} gives it; the prompt
-	 * optimizer sends its sessions to the session launcher of the harness process instead.
+	 * A session of the plugin's own harness runs the command outside a run. The command, inside the session's
+	 * sandbox, packs the launch as a request to the session's {@link RequestServer}, which starts the new session
+	 * outside that sandbox, or refuses the launch when no request server serves the session.
 	 */
-	record Launcher() implements LaunchRoute
+	record Served() implements LaunchRoute
 	{
 	}
 
@@ -127,7 +157,7 @@ public sealed interface LaunchRoute
 			requireThat(cleanup, "cleanup").isNotNull();
 			InPlaceOptions options = InPlaceOptions.parse(args, temporaryRoot);
 			ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, options.extraPermissions());
-			String harnessName = DirectLaunch.productName(harness);
+			String harnessName = RequestServer.productName(harness);
 			ChildBound bound = new ChildBound(unconfined(harnessName), (_, runFolder, deniedReads, _) ->
 			{
 				ChildNeedsReport report;
@@ -204,11 +234,12 @@ public sealed interface LaunchRoute
 	 *   <li>Inside a run whose runner lets its session request none, the launch is refused, as
 	 *   {@link HarnessEnvironment#inRunRefusal(String, Map)} says: {@link Refused}.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass, as
-	 *   {@link DirectLaunch#internalOptionRefusal(String[])} lists them, is refused: {@link Refused}.</li>
-	 *   <li>When the plugin's own harness runs the command, the launcher starts the session itself: {@link Launcher}.
-	 *   This holds even when the environment also names the other harness.</li>
-	 *   <li>When only the other harness runs the command, the launch is refused, since the plugin cannot read that
-	 *   harness's sandbox policy, and the message names the plugin to use instead: {@link Refused}.</li>
+	 *   {@link #internalOptionRefusal(String[])} lists them, is refused: {@link Refused}.</li>
+	 *   <li>When the plugin's own harness runs the command, the launch becomes a request to the session's request
+	 *   server: {@link Served}. This holds even when the environment also names the other harness.</li>
+	 *   <li>When only the other harness runs the command, the launch is refused, since only that harness's plugin
+	 *   holds the request server of its sessions, and the message names the plugin to use instead:
+	 *   {@link Refused}.</li>
 	 *   <li>A launch that names {@value PolicyBoundFile#OPTION} serves its session within that bound:
 	 *   {@link Bounded}.</li>
 	 *   <li>When no harness runs the command, the session starts in place: {@link InPlace}.</li>
@@ -240,19 +271,19 @@ public sealed interface LaunchRoute
 			return new Refused(inRun.get());
 		if (!harnesses.isEmpty())
 		{
-			Optional<String> internal = DirectLaunch.internalOptionRefusal(args);
+			Optional<String> internal = internalOptionRefusal(args);
 			if (internal.isPresent())
 				return new Refused(internal.get());
 		}
 		if (harnesses.contains(plugin))
-			return new Launcher();
+			return new Served();
 		Optional<String> other = harnesses.stream().sorted().findFirst();
 		if (other.isPresent())
 		{
-			String otherName = DirectLaunch.productName(other.get());
+			String otherName = RequestServer.productName(other.get());
 			return new Refused("CAT cannot start the session: " + otherName + " runs this command, and CAT's " +
-				DirectLaunch.productName(plugin) + " plugin cannot read a " + otherName + " session's sandbox " +
-				"policy. Run the runner of CAT's " + otherName + " plugin instead.");
+				RequestServer.productName(plugin) + " plugin holds no request server for a " + otherName + " session. " +
+				"Run the runner of CAT's " + otherName + " plugin instead.");
 		}
 		if (Arrays.asList(args).contains(PolicyBoundFile.OPTION))
 			return new Bounded();

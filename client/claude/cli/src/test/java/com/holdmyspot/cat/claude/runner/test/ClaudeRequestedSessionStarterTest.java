@@ -2,7 +2,7 @@ package com.holdmyspot.cat.claude.runner.test;
 
 import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
-import com.holdmyspot.cat.claude.runner.ClaudeSessionLauncherCli;
+import com.holdmyspot.cat.claude.runner.ClaudeRequestServerCli;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.fakes.test.FakeProcessLauncher;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
@@ -65,7 +65,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 			}, new ManualClock(Instant.EPOCH), processes);
 			this.jvm = new TestJvmScope(build.temporaryDirectory(), executables);
 			Path artifact = Path.of("/plugins/cat/1.0").toAbsolutePath();
-			this.starter = ClaudeSessionLauncherCli.starter(jvm, artifact, Map.of());
+			this.starter = ClaudeRequestServerCli.starter(jvm, artifact, Map.of());
 			this.launcher = artifact.resolve("bin/claude-runner");
 		}
 

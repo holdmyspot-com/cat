@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.launcher.client.TurnFeed;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -20,6 +21,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -32,19 +34,21 @@ import tools.jackson.databind.node.ObjectNode;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Hands a runner launch made inside a run to the run's own runner, which starts the session outside the run's sandbox.
+ * Hands a runner launch to the runner that serves the session's requests outside its sandbox: inside a run, the run's
+ * own runner, and outside a run, the session's request server.
  * <p>
- * A session's commands cannot start a harness: they run in a sandbox and hold no login. Every session that a runner
- * starts has {@link SessionRequestAccess}, so a runner launcher that the session runs packs the launch as a session
- * request instead, waits for the parent runner to finish it, and returns the requested session's transcript and receipt
- * as its own. With {@code --conversation}, the launch publishes the request without its records and sends each of the
- * conversation's messages as the request's next record while the session runs. When the parent's run may request no
- * further session, the parent refuses the request and the launch exits with status 2 and the reason. The parent
+ * A session's commands cannot start a sandboxed harness: they run in a sandbox, inside which no harness sandbox can
+ * start. A runner launcher that the session runs packs the launch as a session request instead, waits for the runner
+ * that serves it to finish it, and returns the requested session's transcript and receipt as its own. With
+ * {@code --conversation}, the launch publishes the request without its records and sends each of the conversation's
+ * messages as the request's next record while the session runs. When the parent's run may request no further
+ * session, the parent refuses the request and the launch exits with status 2 and the reason. Inside a run, the parent
  * chooses the run root, the artifact, its own denied reads and the limits of the sessions it requests, so a launch may
- * not choose them. A launch may name the options that only narrow the requested session or describe its own inputs:
- * further denied reads, the workspace files, the read-only evidence, the tool-output token limit, the instruction files
- * and {@code --keep-run}. The files and directories that it names travel inside the request, so each must be one that
- * the session's sandbox lets it read.
+ * not choose them; outside a run, a launch chooses the limits of the session it requests, and its kept run is copied
+ * into its run root. A launch may name the options that only narrow the requested session or describe its own inputs:
+ * further denied reads, the workspace files, the read-only evidence, the tool-output token limit, the instruction
+ * files and {@code --keep-run}. The files and directories that it names travel inside the request, so each must be one
+ * that the session's sandbox lets it read.
  */
 public final class SessionRequestForwarder
 {
@@ -53,10 +57,40 @@ public final class SessionRequestForwarder
 	 */
 	public static final Duration RESPONSE_POLL = Duration.ofMillis(100);
 	/**
-	 * Options that the parent runner chooses for the sessions it requests.
+	 * Options that the parent runner chooses for the sessions it requests inside a run, and their manifest fields.
 	 */
-	private static final Set<String> PARENT_OPTIONS = Set.of("--session-requests", "--request-depth",
-		"--max-concurrency", "--capacity-wait", "--agent");
+	private static final Map<String, String> PARENT_OPTIONS = Map.of("--session-requests", "session_requests",
+		"--request-depth", "request_depth", "--max-concurrency", "max_concurrency", "--capacity-wait", "capacity_wait",
+		"--agent", "agent");
+
+	/**
+	 * The runner that serves a launch's request.
+	 */
+	public enum Route
+	{
+		/**
+		 * The run's runner, which chooses the limits of the sessions that its run's session requests.
+		 */
+		RUN,
+		/**
+		 * The session's request server, outside a run, which applies the limits that the launch names.
+		 */
+		SERVER;
+
+		/**
+		 * Returns the bounds that the route's requests stay within.
+		 *
+		 * @return the bounds
+		 */
+		private RequestLimits limits()
+		{
+			return switch (this)
+			{
+				case RUN -> RequestLimits.IN_RUN;
+				case SERVER -> RequestLimits.UNBOUNDED;
+			};
+		}
+	}
 	/**
 	 * Options that a launch may name more than once.
 	 */
@@ -90,15 +124,51 @@ public final class SessionRequestForwarder
 	public static int forward(String harness, String[] args, Reader input, Path requests, Pause pause,
 		OutputStream output, PrintWriter errors) throws IOException
 	{
+		return forward(Route.RUN, harness, args, input, requests, null, pause, output, errors);
+	}
+
+	/**
+	 * Forwards one launch and waits for its requested session to end. Outside a run, the launch's kept run is copied
+	 * into its run root as {@code <run root>/<harness>/<run id>}, and the response is removed once the launch has
+	 * copied what it needs.
+	 *
+	 * @param route          the runner that serves the request
+	 * @param harness        the harness of the runner launcher
+	 * @param args           the runner launcher's options
+	 * @param input          the launch's {@code turn} and {@code complete} records when neither {@code --input} nor
+	 *                       {@code --conversation} is given
+	 * @param requests       the directory into which the launch writes its request
+	 * @param defaultRunRoot the run root of a launch that names no {@code --run-root} outside a run, or {@code null}
+	 *                       inside one
+	 * @param pause          paces checks for the session's progress
+	 * @param output         receives the session's transcript when {@code --output} is absent
+	 * @param errors         receives the reason when the session does not complete
+	 * @return {@code 0} if the session completed, {@code 75} if it found no capacity, {@code 2} if the session was
+	 *         refused, or {@code 1} otherwise
+	 * @throws NullPointerException     if any argument other than {@code defaultRunRoot} is null, or if
+	 *                                  {@code defaultRunRoot} is null outside a run
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a run, chosen by the
+	 *                                  parent runner, if {@code --input} and {@code --conversation} are both given,
+	 *                                  or if the launch names no {@code --model} or no {@code --effort}
+	 * @throws IOException              if the records are invalid, a file or directory that the launch names cannot be
+	 *                                  read, the request or response cannot be read or written, or the kept run
+	 *                                  cannot be copied
+	 */
+	public static int forward(Route route, String harness, String[] args, Reader input, Path requests,
+		Path defaultRunRoot, Pause pause, OutputStream output, PrintWriter errors) throws IOException
+	{
+		requireThat(route, "route").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(args, "args").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(requests, "requests").isDirectory();
+		if (route == Route.SERVER)
+			requireThat(defaultRunRoot, "defaultRunRoot").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(errors, "errors").isNotNull();
 		JsonMapper json = JsonMapper.builder().build();
-		Launch launch = parse(json, harness, args);
+		Launch launch = parse(json, route, harness, args);
 		ObjectNode request = launch.request();
 		String id = UUID.randomUUID().toString();
 		JsonNode response;
@@ -115,14 +185,14 @@ public final class SessionRequestForwarder
 				}
 			}
 			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
-				prompts, RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN);
+				prompts, RequestArchive.NULL_DEVICE, route.limits());
 			response = awaitTranscript(json, responses(requests, id), pause, output, launch.transcript(),
 				Function.identity());
 		}
 		else
 		{
 			response = converse(json, request, requests, id, launch.conversation(), RequestArchive.NULL_DEVICE,
-				RequestLimits.IN_RUN, pause, output, launch.transcript());
+				route.limits(), pause, output, launch.transcript());
 		}
 		Path childReceipt = responses(requests, id).resolve("receipt.json");
 		if (launch.receipt() != null && Files.isRegularFile(childReceipt))
@@ -131,6 +201,19 @@ public final class SessionRequestForwarder
 			Files.copy(childReceipt, launch.receipt(), StandardCopyOption.REPLACE_EXISTING);
 		}
 		String status = response.path("status").asString();
+		if (route == Route.SERVER)
+		{
+			Path runRoot = launch.runRoot();
+			if (runRoot == null)
+				runRoot = defaultRunRoot;
+			Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness));
+			TemporaryDirectories.deleteRecursively(responses(requests, id));
+			if (incomplete.isPresent() && status.equals("completed"))
+			{
+				errors.println(incomplete.get());
+				return 1;
+			}
+		}
 		if (status.equals("completed"))
 			return 0;
 		errors.println("The requested session ended with status " + status + ": " +
@@ -140,6 +223,24 @@ public final class SessionRequestForwarder
 		if (status.equals("refused"))
 			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 		return 1;
+	}
+
+	/**
+	 * Copies the kept run that a response names into a harness's runs.
+	 *
+	 * @param response the response
+	 * @param runs     the directory that holds the harness's runs in the launch's run root
+	 * @return the reason why the copy is incomplete, or empty if the response names no kept run or the copy is
+	 *   complete
+	 * @throws IOException if the run cannot be copied
+	 */
+	private static Optional<String> copyKeptRun(JsonNode response, Path runs) throws IOException
+	{
+		String run = response.path(SessionRequestBroker.RUN_COPY).asString("");
+		String runId = response.path("child_run_id").asString("");
+		if (run.isEmpty() || !RecordCopy.isRunId(runId))
+			return Optional.empty();
+		return KeptRunCopy.copy(Path.of(run), runs.resolve(runId)).incomplete();
 	}
 
 	/**
@@ -172,6 +273,38 @@ public final class SessionRequestForwarder
 	public static void serve(String command, String harness, Path ownArtifact, List<String> arguments, Reader input,
 		Writer output, Path requests, Pause pause) throws IOException
 	{
+		serve(Route.RUN, command, harness, ownArtifact, arguments, input, output, requests, pause);
+	}
+
+	/**
+	 * Serves one session of a CAT command, such as the prompt optimizer, through the runner that a route names, as
+	 * {@link #serve(String, String, Path, List, Reader, Writer, Path, Pause)} does inside a run. Outside a run, the
+	 * response is removed once the command has copied the kept run.
+	 *
+	 * @param route       the runner that serves the request
+	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
+	 * @param harness     the harness of the session
+	 * @param ownArtifact the CAT artifact that the command runs from
+	 * @param arguments   the runner's options, which name {@code --run-root} and {@code --keep-run}
+	 * @param input       the {@code turn}, {@code interrupt} and {@code complete} records, one per line
+	 * @param output      receives the session's records, one per line
+	 * @param requests    the directory into which the command writes its request
+	 * @param pause       paces checks for the session's progress, and throws once the calling thread is
+	 *                    interrupted, which ends the request and stops the session
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a run, chosen by the
+	 *                                  parent runner, if the launch names {@code --input} or {@code --conversation},
+	 *                                  or no {@code --run-root}, {@code --keep-run}, {@code --model} or
+	 *                                  {@code --effort}
+	 * @throws LaunchRefusedException   if the run allows no further session or the runner refused the session
+	 * @throws IOException              if the session did not complete, a file or directory that the launch names
+	 *                                  cannot be read, the request or response cannot be read or written, or the kept
+	 *                                  run cannot be copied in full
+	 */
+	public static void serve(Route route, String command, String harness, Path ownArtifact, List<String> arguments,
+		Reader input, Writer output, Path requests, Pause pause) throws IOException
+	{
+		requireThat(route, "route").isNotNull();
 		requireThat(command, "command").isNotBlank();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(ownArtifact, "ownArtifact").isNotNull();
@@ -181,7 +314,7 @@ public final class SessionRequestForwarder
 		requireThat(requests, "requests").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		JsonMapper json = JsonMapper.builder().build();
-		Launch launch = parse(json, harness, arguments.toArray(String[]::new));
+		Launch launch = parse(json, route, harness, arguments.toArray(String[]::new));
 		if (launch.records() != null || launch.conversation() != null)
 			throw new InvalidArgumentsException("A served session takes its records from its input");
 		if (launch.runRoot() == null || !launch.keepRun())
@@ -201,7 +334,7 @@ public final class SessionRequestForwarder
 		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
 		{
 			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
-				List.of(), RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN);
+				List.of(), RequestArchive.NULL_DEVICE, route.limits());
 			Pause sending = () ->
 			{
 				for (Optional<String> next = records.poll(); next.isPresent(); next = records.poll())
@@ -213,17 +346,15 @@ public final class SessionRequestForwarder
 		}
 		String status = response.path("status").asString("");
 		String reason = response.path("reason").asString("");
-		String run = response.path(SessionRequestBroker.RUN_COPY).asString("");
-		String runId = response.path("child_run_id").asString("");
-		if (!run.isEmpty() && RecordCopy.isRunId(runId))
-		{
-			Optional<String> incomplete = KeptRunCopy.copy(Path.of(run),
-				launch.runRoot().resolve(harness).resolve(runId)).incomplete();
-			if (incomplete.isPresent() && status.equals("completed"))
-				throw new IOException(incomplete.get());
-		}
-		else if (status.equals("completed"))
-			throw new IOException("The run's runner kept no run of the requested session");
+		boolean kept = !response.path(SessionRequestBroker.RUN_COPY).asString("").isEmpty() &&
+			RecordCopy.isRunId(response.path("child_run_id").asString(""));
+		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness));
+		if (route == Route.SERVER)
+			TemporaryDirectories.deleteRecursively(responses(requests, id));
+		if (incomplete.isPresent() && status.equals("completed"))
+			throw new IOException(incomplete.get());
+		if (!kept && status.equals("completed"))
+			throw new IOException("The runner kept no run of the requested session");
 		if (status.equals("refused"))
 		{
 			if (SessionRequestAccess.isRequestLimit(reason))
@@ -238,15 +369,17 @@ public final class SessionRequestForwarder
 	 * Reads a launch's options.
 	 *
 	 * @param json    the manifest mapper
+	 * @param route   the runner that serves the launch's request
 	 * @param harness the harness of the runner launcher
 	 * @param args    the launch's options
 	 * @return the launch
-	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a run, chosen by the
+	 *                                  parent runner, if
 	 *                                  {@code --input} and {@code --conversation} are both given, or if the launch
 	 *                                  names no {@code --model} or no {@code --effort}
 	 * @throws IOException              if the file of {@code --extra-permissions} cannot be read
 	 */
-	private static Launch parse(JsonMapper json, String harness, String[] args) throws IOException
+	private static Launch parse(JsonMapper json, Route route, String harness, String[] args) throws IOException
 	{
 		ObjectNode request = json.createObjectNode().put("format_version", RequestArchive.VERSION).
 			put("harness", harness).put("project", Path.of("").toAbsolutePath().toString());
@@ -263,13 +396,25 @@ public final class SessionRequestForwarder
 		for (int index = 0; index < args.length; ++index)
 		{
 			String option = args[index];
-			if (PARENT_OPTIONS.contains(option))
+			if (PARENT_OPTIONS.containsKey(option) && route == Route.RUN)
 			{
 				throw new InvalidArgumentsException("Inside a run, the parent runner chooses " + option +
 					" for the sessions it starts");
 			}
 			if (!REPEATABLE_OPTIONS.contains(option) && !scalars.add(option))
 				throw new InvalidArgumentsException("Repeated option: " + option);
+			if (PARENT_OPTIONS.containsKey(option))
+			{
+				if (index + 1 == args.length)
+					throw new InvalidArgumentsException("Missing value for " + option);
+				index += 1;
+				String field = PARENT_OPTIONS.get(option);
+				if (option.equals("--agent"))
+					request.put(field, args[index]);
+				else
+					request.put(field, count(option, args[index]));
+				continue;
+			}
 			switch (option)
 			{
 				case "--keep-run" ->
@@ -346,6 +491,29 @@ public final class SessionRequestForwarder
 		if (Files.exists(first) && Files.exists(second))
 			return Files.isSameFile(first, second);
 		return first.toAbsolutePath().normalize().equals(second.toAbsolutePath().normalize());
+	}
+
+	/**
+	 * Reads the value of a limit that a launch outside a run names.
+	 *
+	 * @param option the option
+	 * @param value  the option's value
+	 * @return the limit
+	 * @throws IllegalArgumentException if the value is not a whole number
+	 */
+	private static int count(String option, String value)
+	{
+		try
+		{
+			int count = Integer.parseInt(value);
+			if (count >= 0)
+				return count;
+		}
+		catch (NumberFormatException _)
+		{
+			// Refused below
+		}
+		throw new InvalidArgumentsException(option + " must be a whole number: " + value);
 	}
 
 	/**

@@ -2,9 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.Waiting;
-import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintWriter;
@@ -25,9 +23,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * The launcher sends each launch along its {@link LaunchRoute}, as the harness's own runner launcher does. Inside a
  * run whose runner lets its session request sessions, it requests a session of its harness from the run's runner.
- * From a command of the plugin's own harness, which runs the launcher outside the session's sandbox, it bounds the
- * launch by that session's policy and has the runner of the other harness's CAT artifact that the plugin selects
- * serve the session within that bound. A launch from a command that no harness runs runs that runner with the
+ * From a command that a session of the plugin's own harness runs outside a run, it requests the session from that
+ * session's {@link RequestServer}, except on native Windows, where the selected runner refuses it. A launch from a
+ * command that no harness runs runs the runner of the other harness's CAT artifact that the plugin selects, with the
  * caller's options. The launcher refuses a launch from a run that lets its session request no sessions, a launch
  * from a command that only the other harness runs, and any launch from a Codex sandbox that has network off.
  */
@@ -75,28 +73,6 @@ public final class RunnerRelay
 	}
 
 	/**
-	 * Bounds a launch that a session of the plugin's own harness runs, as {@link DirectLaunch} bounds it.
-	 */
-	@FunctionalInterface
-	public interface LaunchBound
-	{
-		/**
-		 * Bounds the launch by the policy of the session that runs it and what a session of the relayed harness
-		 * needs, as its runner reports it.
-		 *
-		 * @param runner  the runner launcher of the relayed harness's CAT artifact
-		 * @param args    the launch's options
-		 * @param cleanup receives the folders that the bound's files are in, which the new session reads when it
-		 *                starts
-		 * @return {@code args} with the options that bound the new session
-		 * @throws SessionRefusedException if the launch is refused; the message says why and how to fix it
-		 * @throws IOException             if what the new session needs cannot be determined, or the bound cannot
-		 *                                 be written
-		 */
-		List<String> bound(Path runner, String[] args, TemporaryDirectories cleanup) throws IOException;
-	}
-
-	/**
 	 * Runs one launch on the current platform.
 	 *
 	 * @param harness     the harness whose runner the launcher stands for
@@ -106,35 +82,37 @@ public final class RunnerRelay
 	 * @param environment the launcher's environment
 	 * @param selector    selects the harness's CAT artifact
 	 * @param starter     runs the artifact's runner
-	 * @param bound       bounds a launch that a session of the plugin's own harness runs
+	 * @param folder      the folder of the plugin that holds the launcher
+	 * @param scopes      opens the launcher's tool scope, which gives the session's CAT session directory
 	 * @param input       the launch's records when {@code --input} is absent
-	 * @param waiting     the process's waiting, which paces checks for the requested session's progress inside a run
+	 * @param waiting     the process's waiting, which paces checks for the requested session's progress
 	 * @param output      receives the session's transcript when {@code --output} is absent
 	 * @param errors      receives the reason when the launcher refuses the launch or a requested session does not
 	 *                    complete
 	 * @return the exit status, as {@link #relay(String, String, HarnessMarkers, String[], Map, Platform,
-	 *   ArtifactSelector, RunnerStarter, LaunchBound, Reader, Pause, OutputStream, PrintWriter)} returns it
+	 *   ArtifactSelector, RunnerStarter, Path, RequestServer.SessionScope, Reader, Pause, OutputStream, PrintWriter)}
+	 *   returns it
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if the options are invalid
 	 * @throws IOException              if no artifact can be selected, the runner cannot be run, or the launch cannot
 	 *                                  be forwarded or bounded
 	 */
 	public static int relay(String harness, String plugin, HarnessMarkers markers, String[] args,
-		Map<String, String> environment, ArtifactSelector selector, RunnerStarter starter, LaunchBound bound,
-		Reader input, Waiting waiting, OutputStream output, PrintWriter errors) throws IOException
+		Map<String, String> environment, ArtifactSelector selector, RunnerStarter starter, Path folder,
+		RequestServer.SessionScope scopes, Reader input, Waiting waiting, OutputStream output, PrintWriter errors)
+		throws IOException
 	{
 		requireThat(waiting, "waiting").isNotNull();
-		return relay(harness, plugin, markers, args, environment, Platform.current(), selector, starter, bound, input,
-			waiting.every(REQUEST_POLL), output, errors);
+		return relay(harness, plugin, markers, args, environment, Platform.current(), selector, starter, folder, scopes,
+			input, waiting.every(REQUEST_POLL), output, errors);
 	}
 
 	/**
 	 * Runs one launch along the route that {@link LaunchRoute#decide(String, String, Set, String[], Map)} gives it.
-	 * When a session of the plugin's own harness runs the command, other than on native Windows, {@code bound} bounds
-	 * the launch by that session's policy, and the selected artifact's runner runs the bounded launch with an
-	 * environment that names no harness, so that it serves the session within that bound. Otherwise, the selected
-	 * artifact's runner runs with the caller's options and serves the launch along the same route; on native Windows,
-	 * it refuses every launch from a harness session.
+	 * When a session of the plugin's own harness runs the command outside a run, other than on native Windows, the
+	 * launch is a request to that session's request server. Otherwise, the selected artifact's runner runs with the
+	 * caller's options and serves the launch along the same route; on native Windows, it refuses every launch from a
+	 * harness session.
 	 *
 	 * @param harness     the harness whose runner the launcher stands for
 	 * @param plugin      the harness whose CAT plugin holds the launcher
@@ -144,24 +122,27 @@ public final class RunnerRelay
 	 * @param platform    the platform that the launcher runs on
 	 * @param selector    selects the harness's CAT artifact
 	 * @param starter     runs the artifact's runner
-	 * @param bound       bounds a launch that a session of the plugin's own harness runs
+	 * @param folder      the folder of the plugin that holds the launcher
+	 * @param scopes      opens the launcher's tool scope, which gives the session's CAT session directory
 	 * @param input       the launch's records when {@code --input} is absent
-	 * @param pause       paces checks for the requested session's progress inside a run
-	 * @param output      receives the session's transcript inside a run when {@code --output} is absent
+	 * @param pause       paces checks for the requested session's progress
+	 * @param output      receives the session's transcript when {@code --output} is absent
 	 * @param errors      receives the reason when the launcher refuses the launch or a requested session does not
 	 *                    complete
 	 * @return the runner's or the requested session's exit status, or
 	 *   {@link HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch is made from a Codex sandbox that has network
 	 *   off, names {@code --artifact} outside a run whose runner lets its session request sessions, takes a route that
-	 *   refuses it, or fails a check of its bound. The launcher refuses before it starts a runner or sends a request
+	 *   refuses it, requests a session whose project is the user's home folder, or finds no request server that
+	 *   serves its session. The launcher refuses before it starts a runner or sends a request
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if the options are invalid
 	 * @throws IOException              if no artifact can be selected, the runner cannot be run, or the launch cannot
-	 *                                  be forwarded or bounded
+	 *                                  be forwarded
 	 */
 	public static int relay(String harness, String plugin, HarnessMarkers markers, String[] args,
 		Map<String, String> environment, Platform platform, ArtifactSelector selector, RunnerStarter starter,
-		LaunchBound bound, Reader input, Pause pause, OutputStream output, PrintWriter errors) throws IOException
+		Path folder, RequestServer.SessionScope scopes, Reader input, Pause pause, OutputStream output,
+		PrintWriter errors) throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(markers, "markers").isNotNull();
@@ -170,7 +151,8 @@ public final class RunnerRelay
 		requireThat(platform, "platform").isNotNull();
 		requireThat(selector, "selector").isNotNull();
 		requireThat(starter, "starter").isNotNull();
-		requireThat(bound, "bound").isNotNull();
+		requireThat(folder, "folder").isNotNull();
+		requireThat(scopes, "scopes").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		if (ParentSandbox.refusesNetworkOff(harness, environment, errors))
 			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
@@ -186,27 +168,16 @@ public final class RunnerRelay
 				errors.println(reason);
 				yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
-			case LaunchRoute.Launcher _ when !platform.isWindows() ->
+			case LaunchRoute.Served _ when !platform.isWindows() ->
 			{
-				Path runner = RequestedRunner.locations(selector.select()).get(1);
-				try (TemporaryDirectories cleanup = new TemporaryDirectories())
+				if (HarnessRunnerOptions.refusesHomeProject(args, Path.of("").toAbsolutePath(), environment, platform,
+					errors))
 				{
-					List<String> bounded;
-					try
-					{
-						bounded = bound.bound(runner, args, cleanup);
-					}
-					catch (SessionRefusedException e)
-					{
-						errors.println(e.getMessage());
-						yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
-					}
-					List<String> command = new ArrayList<>(List.of(runner.toString()));
-					command.addAll(bounded);
-					yield starter.run(command, markers.without(environment));
+					yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 				}
+				yield RequestServer.forward(harness, args, folder, scopes, input, pause, output, errors);
 			}
-			case LaunchRoute.Launcher _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ ->
+			case LaunchRoute.Served _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ ->
 			{
 				// The selected artifact's runner runs the artifact that holds it
 				List<Path> locations = RequestedRunner.locations(selector.select());

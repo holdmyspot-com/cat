@@ -9,11 +9,13 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
@@ -26,7 +28,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -89,6 +90,12 @@ public final class RequestArchive
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
 		"tool_output_token_limit", "keep_run");
+	/**
+	 * The manifest fields that a session's request server reads and the run's runner refuses, because the run's runner
+	 * chooses them for the sessions that it starts.
+	 */
+	private static final Set<String> SERVED_FIELDS = Set.of("agent", "session_requests", "request_depth",
+		"capacity_wait", "max_concurrency");
 	private static final Set<String> SESSION_FIELDS = Set.of("format_version", "harness", "model", "effort", "agent",
 		"turns", "input", "project", "plugins", "workspace", "read_only_evidence", "install_cat", "session_transcripts",
 		"keep_run", "session_requests", "request_depth", "capacity_wait", "max_concurrency", "capacity",
@@ -114,10 +121,12 @@ public final class RequestArchive
 	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts, Path nullDevice,
 		RequestLimits limits) throws IOException
 	{
+		Set<Path> skipped = RequestServer.ownEntries(destination.toAbsolutePath().getParent().toRealPath().
+			getParent());
 		publish(json, destination, limits, (archive, budget) ->
 		{
 			Path project = Path.of(request.path("project").asString());
-			packTree(archive, project, "project", budget, nullDevice);
+			packTree(archive, project, "project", budget, nullDevice, skipped);
 			request.put("project", "project");
 			for (String field : new String[]{"prompts", "plugins"})
 			{
@@ -131,13 +140,14 @@ public final class RequestArchive
 					if (field.equals("prompts"))
 						packFile(archive, source, name, MAXIMUM_PROMPT_BYTES, budget);
 					else
-						packTree(archive, source, name, budget, nullDevice);
+						packTree(archive, source, name, budget, nullDevice, skipped);
 					paths.set(index, json.getNodeFactory().stringNode(name));
 				}
 			}
 			if (request.has("workspace"))
 			{
-				packTree(archive, Path.of(request.path("workspace").asString()), "workspace", budget, nullDevice);
+				packTree(archive, Path.of(request.path("workspace").asString()), "workspace", budget, nullDevice,
+					skipped);
 				request.put("workspace", "workspace");
 			}
 			if (request.has("read_only_evidence"))
@@ -153,7 +163,7 @@ public final class RequestArchive
 					Path source = Path.of(evidence.get(index).asString());
 					String name = "read_only_evidence/" + index;
 					if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
-						packTree(archive, source, name, budget, nullDevice);
+						packTree(archive, source, name, budget, nullDevice, skipped);
 					else
 						packFile(archive, source, name, limits.entryBytes(), budget);
 					evidence.set(index, json.getNodeFactory().stringNode(name));
@@ -208,18 +218,18 @@ public final class RequestArchive
 			}
 			else
 				manifest.put("input", "stream");
-			packTree(archive, request.project(), "project", budget, nullDevice);
+			packTree(archive, request.project(), "project", budget, nullDevice, Set.of());
 			manifest.put("project", "project");
 			ArrayNode plugins = manifest.putArray("plugins");
 			for (Path plugin : request.plugins())
 			{
 				String name = "plugins/" + plugins.size();
-				packTree(archive, plugin, name, budget, nullDevice);
+				packTree(archive, plugin, name, budget, nullDevice, Set.of());
 				plugins.add(name);
 			}
 			if (request.workspace().isPresent())
 			{
-				packTree(archive, request.workspace().get(), "workspace", budget, nullDevice);
+				packTree(archive, request.workspace().get(), "workspace", budget, nullDevice, Set.of());
 				manifest.put("workspace", "workspace");
 			}
 			ArrayNode evidence = manifest.putArray("read_only_evidence");
@@ -227,7 +237,7 @@ public final class RequestArchive
 			{
 				String name = "read_only_evidence/" + evidence.size();
 				if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
-					packTree(archive, source, name, budget, nullDevice);
+					packTree(archive, source, name, budget, nullDevice, Set.of());
 				else
 					packFile(archive, source, name, limits.entryBytes(), budget);
 				evidence.add(name);
@@ -381,41 +391,62 @@ public final class RequestArchive
 
 	/**
 	 * Packs one plain directory and its descendants without following symbolic links, leaving out the null-device
-	 * placeholders of files that the session may not read.
+	 * placeholders of files that the session may not read and the request server's own entries.
 	 *
 	 * @param archive    the destination archive
 	 * @param source     the readable directory
 	 * @param name       its archive name
 	 * @param budget     the request's cumulative limits
 	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read
+	 * @param skipped    the real paths of the entries that the archive leaves out with their descendants
 	 * @throws IOException if the input is unsafe, oversized or unreadable
 	 */
 	private static void packTree(TarArchiveOutputStream archive, Path source, String name, Budget budget,
-		Path nullDevice) throws IOException
+		Path nullDevice, Set<Path> skipped) throws IOException
 	{
 		checkAncestors(source);
 		if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 			throw new IOException("Input must be a directory without symbolic links: " + source);
-		try (Stream<Path> paths = Files.walk(source))
+		Path realSource = source.toRealPath(LinkOption.NOFOLLOW_LINKS);
+		Files.walkFileTree(source, new SimpleFileVisitor<>()
 		{
-			for (Path path : (Iterable<Path>) paths::iterator)
+			@Override
+			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+				throws IOException
+			{
+				if (skipped.contains(realSource.resolve(source.relativize(directory))))
+					return FileVisitResult.SKIP_SUBTREE;
+				budget.add(0, budget.limits.entryBytes());
+				archive.putArchiveEntry(new TarArchiveEntry(entryName(directory) + "/"));
+				archive.closeArchiveEntry();
+				return FileVisitResult.CONTINUE;
+			}
+
+			@Override
+			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
+			{
+				if (!skipped.contains(realSource.resolve(source.relativize(file))) &&
+					!SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
+				{
+					packFile(archive, file, entryName(file), budget.limits.entryBytes(), budget);
+				}
+				return FileVisitResult.CONTINUE;
+			}
+
+			/**
+			 * Returns the archive name of a path in the tree.
+			 *
+			 * @param path the path
+			 * @return its name
+			 */
+			private String entryName(Path path)
 			{
 				String relative = source.relativize(path).toString().replace(source.getFileSystem().getSeparator(), "/");
-				String entryName = name;
-				if (!relative.isEmpty())
-					entryName = name + "/" + relative;
-				BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class,
-					LinkOption.NOFOLLOW_LINKS);
-				if (attributes.isDirectory())
-				{
-					budget.add(0, budget.limits.entryBytes());
-					archive.putArchiveEntry(new TarArchiveEntry(entryName + "/"));
-					archive.closeArchiveEntry();
-				}
-				else if (!SandboxPlaceholders.isPlaceholder(path, attributes, nullDevice))
-					packFile(archive, path, entryName, budget.limits.entryBytes(), budget);
+				if (relative.isEmpty())
+					return name;
+				return name + "/" + relative;
 			}
-		}
+		});
 	}
 
 	/**
@@ -702,7 +733,48 @@ public final class RequestArchive
 	 */
 	static RunRequest readRun(JsonMapper json, Path inputs) throws IOException
 	{
-		JsonNode value = manifest(json, inputs, RUN_FIELDS, "A request inside a run", VERSION,
+		return readRun(json, inputs, false);
+	}
+
+	/**
+	 * Reads the manifest of an extracted request that a session's command made to the session's request server. Such a
+	 * request may also choose the requested session's agent, its own session requests and their depth, its capacity
+	 * wait and its concurrency ceiling, which the run's runner chooses inside a run.
+	 *
+	 * @param json   the manifest mapper
+	 * @param inputs the private directory that {@link #unpack(Path, Path, RequestLimits)} extracted the request into
+	 * @return the request, with its prompts' text already read
+	 * @throws IOException              if the manifest is malformed, chooses a field that the request may not choose,
+	 *                                  or names an entry that is missing or of the wrong type
+	 * @throws IllegalArgumentException if the request names no agent and no model or no effort
+	 */
+	static RunRequest readServed(JsonMapper json, Path inputs) throws IOException
+	{
+		return readRun(json, inputs, true);
+	}
+
+	/**
+	 * Reads the manifest of an extracted request.
+	 *
+	 * @param json   the manifest mapper
+	 * @param inputs the private directory that {@link #unpack(Path, Path, RequestLimits)} extracted the request into
+	 * @param served {@code true} for a request to a session's request server, {@code false} for one inside a run
+	 * @return the request, with its prompts' text already read
+	 * @throws IOException              if the manifest is malformed, chooses a field that the request may not choose,
+	 *                                  or names an entry that is missing or of the wrong type
+	 * @throws IllegalArgumentException if the request names no agent and no model or no effort
+	 */
+	private static RunRequest readRun(JsonMapper json, Path inputs, boolean served) throws IOException
+	{
+		Set<String> allowed = RUN_FIELDS;
+		String level = "A request inside a run";
+		if (served)
+		{
+			allowed = new HashSet<>(RUN_FIELDS);
+			allowed.addAll(SERVED_FIELDS);
+			level = "A session request";
+		}
+		JsonNode value = manifest(json, inputs, allowed, level, VERSION,
 			"Request manifest requires format_version " + VERSION);
 		String harness = harness(value);
 		Path project = entry(value, inputs, "project", Kind.DIRECTORY);
@@ -723,7 +795,9 @@ public final class RequestArchive
 			prompts.add(Files.readString(prompt, StandardCharsets.UTF_8));
 		String model = optionalText(value, "model").orElse("");
 		String effort = optionalText(value, "effort").orElse("");
-		HarnessRunnerOptions.requireProfile(harness, model, effort);
+		Optional<String> agent = optionalText(value, "agent");
+		if (agent.isEmpty())
+			HarnessRunnerOptions.requireProfile(harness, model, effort);
 		Optional<Path> workspace = Optional.empty();
 		if (value.has("workspace"))
 			workspace = Optional.of(entry(value, inputs, "workspace", Kind.DIRECTORY));
@@ -734,7 +808,41 @@ public final class RequestArchive
 		return new RunRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
 			flag(value, "install_cat"), extraPermissions(value), streamed, workspace, evidence,
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), toolOutputTokenLimit,
-			flag(value, "keep_run"));
+			flag(value, "keep_run"), agent, nonNegative(value, "session_requests").orElse(0),
+			nonNegative(value, "request_depth").orElse(0), nonNegative(value, "capacity_wait"),
+			positive(value, "max_concurrency"));
+	}
+
+	/**
+	 * Reads an optional field that holds a whole number that is zero or more.
+	 *
+	 * @param value the manifest
+	 * @param field the field
+	 * @return the number, or empty when the field is absent
+	 * @throws IOException if the field is present but not such a number
+	 */
+	private static Optional<Integer> nonNegative(JsonNode value, String field) throws IOException
+	{
+		Optional<Integer> number = count(value, field);
+		if (number.isPresent() && number.get() < 0)
+			throw new IOException(field + " may not be negative");
+		return number;
+	}
+
+	/**
+	 * Reads an optional field that holds a whole number that is one or more.
+	 *
+	 * @param value the manifest
+	 * @param field the field
+	 * @return the number, or empty when the field is absent
+	 * @throws IOException if the field is present but not such a number
+	 */
+	private static Optional<Integer> positive(JsonNode value, String field) throws IOException
+	{
+		Optional<Integer> number = count(value, field);
+		if (number.isPresent() && number.get() <= 0)
+			throw new IOException(field + " must be positive");
+		return number;
 	}
 
 	/**
@@ -1097,11 +1205,21 @@ public final class RequestArchive
 	 * @param instructionFiles   the instruction files that the session loads, or empty for its harness's default
 	 * @param toolOutputTokenLimit the most tokens of one tool's output, or empty for its harness's default
 	 * @param keepRun            indicates whether the requester receives a copy of the session's kept run
+	 * @param agent              the agent whose definition gives the session's model and effort, or empty if the
+	 *                           request names them; only a request to a session's request server names one
+	 * @param sessionRequests    how many sessions the requested session may request in turn; only a request to a
+	 *                           session's request server names a number other than {@code 0}
+	 * @param requestDepth       how many levels below the requested session's requests may request sessions in turn
+	 * @param capacityWait       the most seconds that the requested session waits for capacity, or empty for the
+	 *                           requester's choice
+	 * @param maximumConcurrency the most sessions that run at once, or empty for the requester's choice
 	 */
 	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
 		boolean streamed, Optional<Path> workspace, List<Path> readOnlyEvidence, List<Path> deniedReads,
-		Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, boolean keepRun)
+		Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, boolean keepRun,
+		Optional<String> agent, int sessionRequests, int requestDepth, Optional<Integer> capacityWait,
+		Optional<Integer> maximumConcurrency)
 	{
 	}
 

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -52,10 +53,8 @@ public final class SessionRequestBroker implements Closeable
 	 * The name, in a response directory and in its response, of the copy of a kept run that the requester reads.
 	 */
 	static final String RUN_COPY = "run";
-	private final HarnessRun run;
-	private final HarnessRunnerOptions options;
+	private final Site site;
 	private final RequestedSessionStarter starter;
-	private final RequestLimits limits;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ExecutorService children = Executors.newVirtualThreadPerTaskExecutor();
 	/**
@@ -63,6 +62,10 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private final Map<String, Process> processes = new HashMap<>();
 	private final Map<String, String> harnesses = new HashMap<>();
+	/**
+	 * The run root of each accepted request, which holds its child's run below the child's harness.
+	 */
+	private final Map<String, Path> runRoots = new HashMap<>();
 	private final Map<String, Path> childRoots = new HashMap<>();
 	private final Set<String> cancelled = new HashSet<>();
 	/**
@@ -101,14 +104,22 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter,
 		RequestLimits limits)
 	{
-		requireThat(run, "run").isNotNull();
-		requireThat(options, "options").isNotNull();
+		this(new RunSite(run, options, limits), starter);
+	}
+
+	/**
+	 * Creates a broker that serves the requests of a site.
+	 *
+	 * @param site    where the requests arrive and what their children receive
+	 * @param starter resolves and starts child runners
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	SessionRequestBroker(Site site, RequestedSessionStarter starter)
+	{
+		requireThat(site, "site").isNotNull();
 		requireThat(starter, "starter").isNotNull();
-		requireThat(limits, "limits").isNotNull();
-		this.run = run;
-		this.options = options;
+		this.site = site;
 		this.starter = starter;
-		this.limits = limits;
 	}
 
 	/**
@@ -125,7 +136,7 @@ public final class SessionRequestBroker implements Closeable
 			requireThat(ticker, "ticker").isNotNull();
 			if (monitor != null || stopped)
 				throw new IllegalStateException("The session request broker has already started or stopped");
-			writeLimits();
+			site.accepted(json, accepted);
 			monitor = ticker.start(() ->
 			{
 				try
@@ -152,39 +163,35 @@ public final class SessionRequestBroker implements Closeable
 	{
 		synchronized (this)
 		{
-			Path requests = SessionRequestAccess.requestsDirectory(run);
+			Path requests = site.requests();
 			for (String id : RequestArchive.pendingIds(requests, ""))
 			{
 				Path file = requests.resolve(id + RequestArchive.EXTENSION);
-				Path directory = SessionRequestAccess.responsesDirectory(run).resolve(id);
+				Path directory = site.responses().resolve(id);
 				if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS))
 					continue;
 				Files.createDirectory(directory);
 				if (stopped)
 				{
-					respond(id, "", "stopped", "The requesting run stopped", "", directory);
+					respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
 					continue;
 				}
-				if (options.sessionRequests() == 0)
+				Optional<String> refusal = site.refusal(accepted);
+				if (refusal.isPresent())
 				{
-					respond(id, "", "refused", SessionRequestAccess.NO_REQUESTS_REASON, "", directory);
-					continue;
-				}
-				if (accepted >= options.sessionRequests())
-				{
-					respond(id, "", "refused", SessionRequestAccess.limitReason(options.sessionRequests()), "",
-						directory);
+					respond(id, "", "refused", refusal.get(), "", directory);
 					continue;
 				}
 				try
 				{
 					RunRequest request = read(file, directory);
 					accepted += 1;
-					writeLimits();
+					site.accepted(json, accepted);
 					harnesses.put(id, request.harness());
-					childRoots.put(id, SessionRequestAccess.requestedRunsDirectory(run).
-						resolve(String.valueOf(accepted)).resolve(request.harness()));
-					List<String> arguments = arguments(request, request.project(), request.plugins(), directory, accepted);
+					Path runRoot = site.runRoot(id, accepted);
+					runRoots.put(id, runRoot);
+					childRoots.put(id, runRoot.resolve(request.harness()));
+					List<String> arguments = arguments(request, runRoot, directory);
 					if (request.streamed())
 						streams.put(id, new Streamed(directory));
 					if (request.keepRun())
@@ -198,21 +205,6 @@ public final class SessionRequestBroker implements Closeable
 			}
 			serveStreams(requests);
 		}
-	}
-
-	/**
-	 * Atomically states, in the run's {@link SessionRequestAccess#LIMITS_FILE}, how many sessions the run allows, how
-	 * many it has accepted and how many levels below its requested sessions may request sessions in turn.
-	 *
-	 * @throws IOException if the file cannot be written
-	 */
-	private void writeLimits() throws IOException
-	{
-		ObjectNode limits = json.createObjectNode().put("format_version", 1).
-			put("requests_allowed", options.sessionRequests()).put("requests_used", accepted).
-			put("depth_remaining", options.requestDepth());
-		SessionRequestCli.write(json, SessionRequestAccess.responsesDirectory(run).
-			resolve(SessionRequestAccess.LIMITS_FILE), limits);
 	}
 
 	/**
@@ -280,41 +272,32 @@ public final class SessionRequestBroker implements Closeable
 		Path inputs = Files.createDirectory(directory.resolve("inputs"));
 		try
 		{
-			RequestArchive.copy(file, copy, limits);
-			RequestArchive.unpack(copy, inputs, limits);
+			RequestArchive.copy(file, copy, site.limits());
+			RequestArchive.unpack(copy, inputs, site.limits());
 		}
 		finally
 		{
 			Files.deleteIfExists(copy);
 		}
-		return RequestArchive.readRun(json, inputs);
+		return site.read(json, inputs);
 	}
 
 	/**
-	 * Builds a child's runner options from private copies, retaining the parent's denied reads and capacity ceiling
-	 * and adding the request's options, which only narrow the child or describe its own inputs. While the parent's
-	 * request depth leaves a level below the child, the child may request as many sessions as the parent, one level
-	 * less deep; otherwise it may request none.
+	 * Builds the runner options that every child receives from its request's private copies: its project, run root,
+	 * transcript, receipt and kept run, and the request's options, which only narrow the child or describe its own
+	 * inputs. The site adds its own options before the child starts.
 	 *
 	 * @param request   the validated request
-	 * @param project   the project snapshot
-	 * @param plugins   the plugin snapshots
+	 * @param runRoot   the request's run root
 	 * @param directory the response directory
-	 * @param ordinal   the accepted request number
 	 * @return the runner options
 	 * @throws IOException if the request's extra permissions cannot be written for the runner
 	 */
-	private List<String> arguments(RunRequest request, Path project, List<Path> plugins, Path directory, int ordinal)
-		throws IOException
+	private List<String> arguments(RunRequest request, Path runRoot, Path directory) throws IOException
 	{
-		List<String> arguments = new ArrayList<>(List.of("--project", project.toString(), "--run-root",
-			SessionRequestAccess.requestedRunsDirectory(run).resolve(String.valueOf(ordinal)).toString(),
-			"--keep-run", "--output", directory.resolve("transcript.jsonl").toString(), "--receipt",
-			directory.resolve("receipt.json").toString(), "--capacity-wait", "600", "--max-concurrency",
-			String.valueOf(options.maximumConcurrency())));
-		for (Path denied : options.deniedReads())
-			arguments.addAll(List.of("--deny-read", denied.toString()));
-		arguments.addAll(List.of("--deny-read", options.runRoot().toString()));
+		List<String> arguments = new ArrayList<>(List.of("--project", request.project().toString(), "--run-root",
+			runRoot.toString(), "--keep-run", "--output", directory.resolve("transcript.jsonl").toString(),
+			"--receipt", directory.resolve("receipt.json").toString()));
 		for (Path denied : request.deniedReads())
 			arguments.addAll(List.of("--deny-read", denied.toString()));
 		request.workspace().ifPresent(workspace -> arguments.addAll(List.of("--workspace", workspace.toString())));
@@ -323,9 +306,13 @@ public final class SessionRequestBroker implements Closeable
 		request.instructionFiles().ifPresent(files -> arguments.addAll(List.of("--instruction-files", files)));
 		request.toolOutputTokenLimit().ifPresent(limit ->
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(limit))));
-		for (Path plugin : plugins)
+		for (Path plugin : request.plugins())
 			arguments.addAll(List.of("--plugin", plugin.toString()));
-		arguments.addAll(List.of("--model", request.model(), "--effort", request.effort()));
+		request.agent().ifPresent(agent -> arguments.addAll(List.of("--agent", agent)));
+		if (!request.model().isEmpty())
+			arguments.addAll(List.of("--model", request.model()));
+		if (!request.effort().isEmpty())
+			arguments.addAll(List.of("--effort", request.effort()));
 		if (request.sessionTranscripts())
 			arguments.add("--session-transcripts");
 		if (request.installCat())
@@ -335,13 +322,6 @@ public final class SessionRequestBroker implements Closeable
 			Path file = directory.resolve(ExtraPermissions.FILE_NAME);
 			request.extraPermissions().write(json, file);
 			arguments.addAll(List.of(ExtraPermissions.OPTION, file.toString()));
-		}
-		if (options.requestDepth() > 0)
-		{
-			arguments.addAll(List.of("--session-requests", String.valueOf(options.sessionRequests())));
-			int childDepth = options.requestDepth() - 1;
-			if (childDepth > 0)
-				arguments.addAll(List.of("--request-depth", String.valueOf(childDepth)));
 		}
 		return arguments;
 	}
@@ -359,7 +339,19 @@ public final class SessionRequestBroker implements Closeable
 		Process process = null;
 		try
 		{
-			process = starter.start(request.harness(), arguments, directory);
+			Path runRoot;
+			synchronized (this)
+			{
+				runRoot = runRoots.get(id);
+			}
+			List<String> options = new ArrayList<>(arguments);
+			options.addAll(site.options(request, runRoot));
+			synchronized (this)
+			{
+				if (stopped || cancelled.contains(id))
+					return;
+			}
+			process = starter.start(request.harness(), options, directory);
 			synchronized (this)
 			{
 				processes.put(id, process);
@@ -410,7 +402,7 @@ public final class SessionRequestBroker implements Closeable
 			Thread.currentThread().interrupt();
 			publishFailure(id, request.harness(), "stopped", "Requested session interrupted", directory);
 		}
-		catch (IllegalArgumentException e)
+		catch (IllegalArgumentException | SessionRefusedException e)
 		{
 			publishFailure(id, request.harness(), "refused", e.getMessage(), directory);
 		}
@@ -426,6 +418,14 @@ public final class SessionRequestBroker implements Closeable
 			{
 				processes.remove(id);
 				streams.remove(id);
+				try
+				{
+					site.answered(runRoots.get(id));
+				}
+				catch (IOException e)
+				{
+					recordFailure(e);
+				}
 			}
 		}
 	}
@@ -651,7 +651,7 @@ public final class SessionRequestBroker implements Closeable
 				HarnessProcessTermination.terminate(processes.get(id), "requested runner");
 			for (Map.Entry<String, String> entry : harnesses.entrySet())
 			{
-				Path directory = SessionRequestAccess.responsesDirectory(run).resolve(entry.getKey());
+				Path directory = site.responses().resolve(entry.getKey());
 				if (!Files.exists(directory.resolve("response.json")))
 				{
 					cancelled.add(entry.getKey());
@@ -702,11 +702,11 @@ public final class SessionRequestBroker implements Closeable
 			}
 			for (Map.Entry<String, String> entry : harnesses.entrySet())
 			{
-				Path directory = SessionRequestAccess.responsesDirectory(run).resolve(entry.getKey());
+				Path directory = site.responses().resolve(entry.getKey());
 				try
 				{
 					if (!Files.exists(directory.resolve("response.json")))
-						respond(entry.getKey(), entry.getValue(), "stopped", "The requesting run stopped",
+						respond(entry.getKey(), entry.getValue(), site.closedStatus(), site.closedReason(),
 							copyChildEvidence(entry.getKey(), directory), directory);
 				}
 				catch (IOException e)
@@ -787,13 +787,237 @@ public final class SessionRequestBroker implements Closeable
 		{
 			while (!complete)
 			{
-				Optional<String> record = StreamedRequest.take(json, requests, id, next, directory, limits);
+				Optional<String> record = StreamedRequest.take(json, requests, id, next, directory, site.limits());
 				if (record.isEmpty())
 					return;
 				next += 1;
 				complete = StreamedRequest.isComplete(json, record.get());
 				records.add(record);
 			}
+		}
+	}
+
+	/**
+	 * Where a broker's requests arrive, and what the children that it starts for them receive.
+	 * <p>
+	 * <b>Thread Safety:</b> Implementations must be thread-safe.
+	 */
+	interface Site
+	{
+		/**
+		 * Returns the directory into which requesters write their requests.
+		 *
+		 * @return the directory
+		 */
+		Path requests();
+
+		/**
+		 * Returns the directory that holds one response directory per request.
+		 *
+		 * @return the directory
+		 */
+		Path responses();
+
+		/**
+		 * Returns the bounds that each request's archive must stay within.
+		 *
+		 * @return the bounds
+		 */
+		RequestLimits limits();
+
+		/**
+		 * Reads the manifest of an extracted request.
+		 *
+		 * @param json   the manifest mapper
+		 * @param inputs the private directory that holds the extracted request
+		 * @return the request
+		 * @throws IOException              if the manifest is malformed or chooses a field that the site refuses
+		 * @throws IllegalArgumentException if the request names no model or no effort
+		 */
+		RunRequest read(JsonMapper json, Path inputs) throws IOException;
+
+		/**
+		 * Returns why the site refuses the next request before it reads it.
+		 *
+		 * @param accepted how many requests the broker has accepted
+		 * @return the reason, or empty if the site reads the request
+		 */
+		Optional<String> refusal(int accepted);
+
+		/**
+		 * Records how many requests the broker has accepted, once when it starts and again after each acceptance.
+		 *
+		 * @param json     writes the record
+		 * @param accepted how many requests the broker has accepted
+		 * @throws IOException if the record cannot be written
+		 */
+		void accepted(JsonMapper json, int accepted) throws IOException;
+
+		/**
+		 * Returns the run root of an accepted request.
+		 *
+		 * @param id      the request's identifier
+		 * @param ordinal the request's number among the accepted requests, starting at {@code 1}
+		 * @return the run root
+		 */
+		Path runRoot(String id, int ordinal);
+
+		/**
+		 * Returns the options that the site adds to an accepted request's child, on the request's own thread before
+		 * the child starts.
+		 *
+		 * @param request the request
+		 * @param runRoot the request's run root
+		 * @return the options
+		 * @throws SessionRefusedException if the site refuses the request; the message says why
+		 * @throws IOException             if the options cannot be determined
+		 */
+		List<String> options(RunRequest request, Path runRoot) throws IOException;
+
+		/**
+		 * Returns the status of the requests that remain unanswered when the broker closes.
+		 *
+		 * @return the status
+		 */
+		String closedStatus();
+
+		/**
+		 * Returns the reason of the requests that remain unanswered when the broker closes.
+		 *
+		 * @return the reason
+		 */
+		String closedReason();
+
+		/**
+		 * Releases what an accepted request leaves in its run root once its child has ended and the request is
+		 * answered.
+		 *
+		 * @param runRoot the request's run root
+		 * @throws IOException if what the request leaves cannot be released
+		 */
+		void answered(Path runRoot) throws IOException;
+	}
+
+	/**
+	 * The site of a run whose runner serves the requests of the run's commands.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param run     the requesting run
+	 * @param options the requesting runner's options
+	 * @param limits  the bounds that each request's archive must stay within
+	 */
+	private record RunSite(HarnessRun run, HarnessRunnerOptions options, RequestLimits limits) implements Site
+	{
+		/**
+		 * Creates the site of a run.
+		 *
+		 * @param run     the requesting run
+		 * @param options the requesting runner's options
+		 * @param limits  the bounds that each request's archive must stay within
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		private RunSite
+		{
+			requireThat(run, "run").isNotNull();
+			requireThat(options, "options").isNotNull();
+			requireThat(limits, "limits").isNotNull();
+		}
+
+		@Override
+		public Path requests()
+		{
+			return SessionRequestAccess.requestsDirectory(run);
+		}
+
+		@Override
+		public Path responses()
+		{
+			return SessionRequestAccess.responsesDirectory(run);
+		}
+
+		@Override
+		public RunRequest read(JsonMapper json, Path inputs) throws IOException
+		{
+			return RequestArchive.readRun(json, inputs);
+		}
+
+		@Override
+		public Optional<String> refusal(int accepted)
+		{
+			if (options.sessionRequests() == 0)
+				return Optional.of(SessionRequestAccess.NO_REQUESTS_REASON);
+			if (accepted >= options.sessionRequests())
+				return Optional.of(SessionRequestAccess.limitReason(options.sessionRequests()));
+			return Optional.empty();
+		}
+
+		/**
+		 * Atomically states, in the run's {@link SessionRequestAccess#LIMITS_FILE}, how many sessions the run allows,
+		 * how many it has accepted and how many levels below its requested sessions may request sessions in turn.
+		 *
+		 * @param json     writes the file
+		 * @param accepted how many requests the broker has accepted
+		 * @throws IOException if the file cannot be written
+		 */
+		@Override
+		public void accepted(JsonMapper json, int accepted) throws IOException
+		{
+			ObjectNode limits = json.createObjectNode().put("format_version", 1).
+				put("requests_allowed", options.sessionRequests()).put("requests_used", accepted).
+				put("depth_remaining", options.requestDepth());
+			SessionRequestCli.write(json, responses().resolve(SessionRequestAccess.LIMITS_FILE), limits);
+		}
+
+		@Override
+		public Path runRoot(String id, int ordinal)
+		{
+			return SessionRequestAccess.requestedRunsDirectory(run).resolve(String.valueOf(ordinal));
+		}
+
+		/**
+		 * Retains the parent's denied reads and capacity ceiling, denies the child the parent's run, and, while the
+		 * parent's request depth leaves a level below the child, lets the child request as many sessions as the
+		 * parent, one level less deep; otherwise it may request none.
+		 *
+		 * @param request the request
+		 * @param runRoot the request's run root
+		 * @return the options
+		 */
+		@Override
+		public List<String> options(RunRequest request, Path runRoot)
+		{
+			List<String> arguments = new ArrayList<>(List.of("--capacity-wait", "600", "--max-concurrency",
+				String.valueOf(options.maximumConcurrency())));
+			for (Path denied : options.deniedReads())
+				arguments.addAll(List.of("--deny-read", denied.toString()));
+			arguments.addAll(List.of("--deny-read", options.runRoot().toString()));
+			if (options.requestDepth() > 0)
+			{
+				arguments.addAll(List.of("--session-requests", String.valueOf(options.sessionRequests())));
+				int childDepth = options.requestDepth() - 1;
+				if (childDepth > 0)
+					arguments.addAll(List.of("--request-depth", String.valueOf(childDepth)));
+			}
+			return arguments;
+		}
+
+		@Override
+		public String closedStatus()
+		{
+			return "stopped";
+		}
+
+		@Override
+		public String closedReason()
+		{
+			return "The requesting run stopped";
+		}
+
+		@Override
+		public void answered(Path runRoot)
+		{
+			// The requested runs stay in the run, which the run's runner removes with it
 		}
 	}
 }

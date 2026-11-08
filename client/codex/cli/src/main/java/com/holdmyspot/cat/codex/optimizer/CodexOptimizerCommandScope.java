@@ -161,6 +161,13 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	@Override
+	protected Path plugin()
+	{
+		ensureOpen();
+		return artifact;
+	}
+
+	@Override
 	protected Optional<String> userLoaderSettings() throws IOException
 	{
 		ensureOpen();

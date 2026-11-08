@@ -229,6 +229,21 @@ public final class CodexPolicyReader
 	}
 
 	/**
+	 * Returns the nearest Codex process among the processes that run a command.
+	 *
+	 * @param ancestors the processes that run the command, from its parent up
+	 * @return the process, or empty if no ancestor's executable is Codex's
+	 * @throws NullPointerException if {@code ancestors} is null
+	 */
+	public static Optional<ProcessDescription> codexProcess(List<ProcessDescription> ancestors)
+	{
+		requireThat(ancestors, "ancestors").isNotNull();
+		return ancestors.stream().
+			filter(process -> isCodex(process.command().orElse(""))).
+			findFirst();
+	}
+
+	/**
 	 * Indicates whether an executable is Codex's.
 	 *
 	 * @param executable the path of the executable

@@ -3,21 +3,27 @@ package com.holdmyspot.cat.common.runner.test;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
+import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RunnerRelay;
-import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -28,6 +34,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
+import static com.holdmyspot.cat.common.test.SessionHarnesses.HARNESS_A;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
@@ -45,12 +52,20 @@ public final class RunnerRelayTest
 	};
 
 	/**
-	 * A bound that no launch may reach.
+	 * The folder of the plugin that holds the launcher.
 	 */
-	private static final RunnerRelay.LaunchBound NO_BOUND = (_, _, _) ->
+	private static final Path PLUGIN = Path.of("/plugin-a").toAbsolutePath();
+	/**
+	 * The session's tool scope, which no launch may open.
+	 */
+	private static final RequestServer.SessionScope NO_SCOPE = () ->
 	{
-		throw new AssertionError("No launch is bounded");
+		throw new AssertionError("No launch goes to a request server");
 	};
+	/**
+	 * The ID of the session that runs the launcher.
+	 */
+	private static final String SESSION_ID = "6a1f3c6e-29a4-4d5e-9b7f-0c1d2e3f4a5b";
 
 	/**
 	 * The variable that marks a command of the plugin's own harness.
@@ -101,7 +116,7 @@ public final class RunnerRelayTest
 				commands.add(command);
 				requireThat(environment, "environment").isEqualTo(Map.of("PATH", "programs", OWN_MARKER, "1"));
 				return 7;
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
 			new PrintWriter(new StringWriter()));
 
 		requireThat(status, "status").isEqualTo(7);
@@ -140,7 +155,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b-runner").contains(option).
@@ -168,7 +183,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b-runner").
@@ -177,70 +192,116 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that outside a run, except on native Windows, a launch from a command of the plugin's own harness is
-	 * bounded by that session's policy, and the selected artifact's runner runs the bounded launch with an
-	 * environment that names no harness, so that it serves the session within that bound, and the launcher exits with
-	 * the runner's status.
+	 * Verifies that outside a run, except on native Windows, a launch from a command of the plugin's own harness that
+	 * no request server serves is refused with status 2, naming the command that starts the server, before the
+	 * launcher selects an artifact, starts a runner or writes a request.
 	 *
-	 * @throws IOException if the relay fails
+	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void runsBoundedLaunchFromOwnHarness() throws IOException
+	public void refusesOwnHarnessWithoutServer() throws IOException
 	{
-		Path artifact = Path.of("/other-artifact").toAbsolutePath();
-		Path runner = artifact.resolve("bin/harness-b-runner");
-		List<Path> boundRunners = new ArrayList<>();
-		List<List<String>> commands = new ArrayList<>();
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = project(jvm, cleanup);
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+			StringWriter errors = new StringWriter();
 
-		int status = RunnerRelay.relay("harness-b", "harness-a", MARKERS, new String[]{"--project", "project"},
-			Map.of("PATH", "programs", OWN_MARKER, "1", OTHER_MARKER, "thread"), Platform.LINUX_X64,
-			() -> "artifact=" + artifact + "\nrunner=" + runner + "\nsource=installed\n",
-			(command, environment) ->
-			{
-				commands.add(command);
-				requireThat(environment, "environment").isEqualTo(Map.of("PATH", "programs"));
-				return 75;
-			}, (boundRunner, args, _) ->
-			{
-				boundRunners.add(boundRunner);
-				List<String> bounded = new ArrayList<>(List.of(args));
-				bounded.addAll(List.of("--policy-bound", "bound.json"));
-				return bounded;
-			}, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
+			int status = RunnerRelay.relay("harness-b", "harness-a", MARKERS, new String[]{"--project",
+					project.toString()}, OWN_HARNESS, Platform.LINUX_X64, () ->
+				{
+					throw new AssertionError("No artifact is selected");
+				}, (_, _) ->
+				{
+					throw new AssertionError("No runner starts");
+				}, PLUGIN, scopes(project), new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
-		requireThat(status, "status").isEqualTo(75);
-		requireThat(boundRunners, "boundRunners").isEqualTo(List.of(runner));
-		requireThat(commands, "commands").isEqualTo(List.of(List.of(runner.toString(), "--project", "project",
-			"--policy-bound", "bound.json")));
+			requireThat(status, "status").isEqualTo(2);
+			requireThat(errors.toString(), "errors").contains("No request server serves this session").
+				contains(PLUGIN.resolve("bin/request-server").toString());
+			requireThat(output.size(), "outputBytes").isEqualTo(0);
+			requireThat(Files.exists(sessionDirectory(project).resolve(RequestServer.REQUESTS)), "requestsExist").
+				isFalse();
+		}
 	}
 
 	/**
-	 * Verifies that a launch from a command of the plugin's own harness that fails a check of its bound is refused
-	 * with status 2 and the check's reason, before any runner starts.
+	 * Verifies that outside a run, except on native Windows, the launcher selects no artifact and starts no runner,
+	 * but requests a session of its harness from the request server that serves the session that runs it.
 	 *
-	 * @throws IOException if the relay fails
+	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void refusesLaunchThatFailsItsBound() throws IOException
+	public void forwardsOwnHarnessToServer() throws IOException
 	{
-		Path artifact = Path.of("/other-artifact").toAbsolutePath();
-		Path runner = artifact.resolve("bin/harness-b-runner");
-		ByteArrayOutputStream output = new ByteArrayOutputStream();
-		StringWriter errors = new StringWriter();
-
-		int status = RunnerRelay.relay("harness-b", "harness-a", MARKERS, new String[]{"--project", "project"},
-			OWN_HARNESS, Platform.LINUX_X64,
-			() -> "artifact=" + artifact + "\nrunner=" + runner + "\nsource=installed\n", (_, _) ->
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = project(jvm, cleanup);
+			Path session = Files.createDirectories(sessionDirectory(project));
+			Path requests = Files.createDirectories(session.resolve(RequestServer.REQUESTS));
+			Files.createDirectories(session.resolve("responses"));
+			try (FileChannel channel = FileChannel.open(session.resolve(RequestServer.LOCK_FILE),
+				StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+				FileLock _ = channel.lock())
 			{
-				throw new AssertionError("No runner starts");
-			}, (_, _, _) ->
-			{
-				throw new SessionRefusedException("CAT cannot start the session: the check failed.");
-			}, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+				int status = RunnerRelay.relay("harness-b", "harness-a", MARKERS, new String[]{"--project",
+						project.toString(), "--model", "model-b", "--effort", "effort-b"}, OWN_HARNESS, Platform.LINUX_X64,
+					() ->
+					{
+						throw new AssertionError("No artifact is selected");
+					}, (_, _) ->
+					{
+						throw new AssertionError("No runner starts");
+					}, PLUGIN, scopes(project),
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n{\"type\":\"complete\"}\n"),
+					() -> answer(requests), new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
 
-		requireThat(status, "status").isEqualTo(2);
-		requireThat(errors.toString().strip(), "errors").isEqualTo("CAT cannot start the session: the check failed.");
-		requireThat(output.size(), "outputBytes").isEqualTo(0);
+				requireThat(status, "status").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Creates a project of the session that runs the launcher.
+	 *
+	 * @param jvm     the test's JVM scope
+	 * @param cleanup removes the project
+	 * @return the project
+	 * @throws IOException if the project cannot be created
+	 */
+	private static Path project(TestJvmScope jvm, TemporaryDirectories cleanup) throws IOException
+	{
+		Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "relay-")).toRealPath();
+		Files.createDirectories(root.resolve("home"));
+		return Files.createDirectories(root.resolve("project/.cat")).getParent();
+	}
+
+	/**
+	 * Returns the CAT session directory of the session that runs the launcher.
+	 *
+	 * @param project the session's project
+	 * @return the directory
+	 */
+	private static Path sessionDirectory(Path project)
+	{
+		return project.resolve(".cat/sessions").resolve(SESSION_ID);
+	}
+
+	/**
+	 * Returns how the launcher opens the tool scope of the session that runs it.
+	 *
+	 * @param project the session's project
+	 * @return the scopes
+	 */
+	private static RequestServer.SessionScope scopes(Path project)
+	{
+		Path home = project.resolveSibling("home");
+		Map<String, String> environment = Map.of(HARNESS_A.sessionVariable(), SESSION_ID, "HOME", home.toString(),
+			"USERPROFILE", home.toString());
+		return () -> ToolScope.forSession(project, environment, List.of(HARNESS_A), Yielding.waiting(),
+			GitProjects.IGNORING);
 	}
 
 	/**
@@ -263,7 +324,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("--policy-bound").contains("without --policy-bound");
@@ -290,7 +351,7 @@ public final class RunnerRelayTest
 			{
 				commands.add(command);
 				return 0;
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
 			new PrintWriter(new StringWriter()));
 
 		requireThat(status, "status").isEqualTo(0);
@@ -318,7 +379,7 @@ public final class RunnerRelayTest
 			{
 				commands.add(command);
 				return 0;
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
 			new PrintWriter(new StringWriter()));
 
 		requireThat(status, "status").isEqualTo(0);
@@ -344,7 +405,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b runs this command").
@@ -372,7 +433,7 @@ public final class RunnerRelayTest
 			}, (_, _) ->
 			{
 				throw new AssertionError("No runner starts");
-			}, NO_BOUND, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
 		requireThat(status, "status").isEqualTo(2);
 		requireThat(errors.toString(), "errors").contains("harness-b-runner refuses to start a session").
@@ -405,7 +466,7 @@ public final class RunnerRelayTest
 				}, (_, _) ->
 				{
 					throw new AssertionError("No runner starts");
-				}, NO_BOUND, new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n{\"type\":\"complete\"}\n"),
+				}, PLUGIN, NO_SCOPE, new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n{\"type\":\"complete\"}\n"),
 				() -> answer(requests), new ByteArrayOutputStream(), new PrintWriter(new StringWriter()));
 
 			requireThat(status, "status").isEqualTo(0);

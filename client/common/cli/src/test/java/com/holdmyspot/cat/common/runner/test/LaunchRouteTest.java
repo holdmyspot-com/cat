@@ -1,6 +1,5 @@
 package com.holdmyspot.cat.common.runner.test;
 
-import com.holdmyspot.cat.common.runner.DirectLaunch;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -98,7 +97,7 @@ public final class LaunchRouteTest
 	public Object[][] internalOptions()
 	{
 		List<Object[]> cases = new ArrayList<>();
-		for (String option : DirectLaunch.INTERNAL_OPTIONS)
+		for (String option : LaunchRoute.INTERNAL_OPTIONS)
 		{
 			cases.add(new Object[]{option, Set.of("harness-a")});
 			cases.add(new Object[]{option, Set.of("harness-b")});
@@ -129,22 +128,22 @@ public final class LaunchRouteTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that the plugin's own harness runs takes the route on which the launcher
-	 * starts the session itself.
+	 * Verifies that a launch from a command that the plugin's own harness runs outside a run goes to the session's
+	 * request server.
 	 */
 	@Test
-	public void sendsOwnHarnessToLauncher()
+	public void sendsOwnHarnessToServer()
 	{
 		// Requirement: R-I11
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-a"),
 			LAUNCH.toArray(String[]::new), Map.of());
 
-		requireThat(route, "route").isEqualTo(new LaunchRoute.Launcher());
+		requireThat(route, "route").isEqualTo(new LaunchRoute.Served());
 	}
 
 	/**
-	 * Verifies that when the environment names both harnesses, the plugin's own harness wins and the launcher starts
-	 * the session itself.
+	 * Verifies that when the environment names both harnesses, the plugin's own harness wins and the launch goes to the
+	 * session's request server.
 	 */
 	@Test
 	public void ownHarnessWinsOverOther()
@@ -153,12 +152,12 @@ public final class LaunchRouteTest
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-b", "harness-a"),
 			LAUNCH.toArray(String[]::new), Map.of());
 
-		requireThat(route, "route").isEqualTo(new LaunchRoute.Launcher());
+		requireThat(route, "route").isEqualTo(new LaunchRoute.Served());
 	}
 
 	/**
 	 * Verifies that a launch from a command that only the other harness runs is refused, naming that harness and the
-	 * plugin to use, since this plugin cannot read that harness's sandbox policy.
+	 * plugin to use, since this plugin's request server serves no session of that harness.
 	 */
 	@Test
 	public void refusesOtherHarness()
@@ -168,7 +167,7 @@ public final class LaunchRouteTest
 			LAUNCH.toArray(String[]::new), Map.of());
 
 		requireThat(route, "route").isEqualTo(new LaunchRoute.Refused("CAT cannot start the session: harness-b " +
-			"runs this command, and CAT's harness-a plugin cannot read a harness-b session's sandbox policy. Run the " +
+			"runs this command, and CAT's harness-a plugin holds no request server for a harness-b session. Run the " +
 			"runner of CAT's harness-b plugin instead."));
 	}
 

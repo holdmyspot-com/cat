@@ -2,7 +2,6 @@ package com.holdmyspot.cat.codex.optimizer.test;
 
 import com.holdmyspot.cat.common.JvmScope;
 
-import com.holdmyspot.cat.common.fakes.test.FixedGitIdentity;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
@@ -1300,21 +1299,22 @@ public final class CodexSessionsTest
 	{
 		return new Object[][]
 		{
-			// Codex runs the command, so the optimizer's session goes to the session launcher, which serves none
-			// here, while codex-runner starts the session itself
-			{Map.of("CODEX_THREAD_ID", "thread"), "No CAT session launcher serves this session", false},
+			// Codex runs the command, so the optimizer's session goes to the session's request server, and no request
+			// server serves it here
+			{Map.of("CODEX_THREAD_ID", "01a147d8-bf56-7283-92b4-12dcaeb53738"), "No request server serves this session",
+				false},
 			{Map.of("CLAUDECODE", "1"), "CAT cannot start the session: Claude Code runs this command, and CAT's " +
-				"Codex plugin cannot read a Claude Code session's sandbox policy.", true},
+				"Codex plugin holds no request server for a Claude Code session.", true},
 			{Map.of("CAT_RUN", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session", true}
 		};
 	}
 
 	/**
-	 * Verifies that each of the optimizer's sessions takes its route: to the Codex process's session launcher when
-	 * Codex runs the command, and refused when only Claude Code runs it or when it runs in a CAT run that lets its
-	 * session request no sessions. On the refused routes, {@code codex-runner} gives a launch from the same command the
-	 * same refusal; when Codex runs the command, {@code codex-runner} starts the session itself instead. No route
-	 * starts a harness here, so the session ends as a launch refusal, which the optimizer does not retry.
+	 * Verifies that each of the optimizer's sessions takes its route: to the host session's request server when Codex
+	 * runs the command, and refused when only Claude Code runs it or when it runs in a CAT run that lets its session
+	 * request no sessions. On the refused routes, {@code codex-runner} gives a launch from the same command the same
+	 * refusal. No route starts a harness here, so the session ends as a launch refusal, which the optimizer does not
+	 * retry.
 	 *
 	 * @param variables        the harness and run variables of the command's environment
 	 * @param reason           the start of the reason on the route
@@ -1341,11 +1341,13 @@ public final class CodexSessionsTest
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), home.toString());
 			environment.put("CODEX_HOME", home.resolve(".codex").toString());
+			// The source is the host session's CAT project, so that the route looks for its request server there
+			Files.createDirectories(source.resolve(".cat"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
-				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(),
+				Optional.empty(), source);
 
-			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
-				new FixedGitIdentity("Ada", "ada@example.com"));
+			CodexSessions sessions = new CodexSessions(settings);
 
 			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.JUDGE,
 				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
@@ -1527,8 +1529,7 @@ public final class CodexSessionsTest
 		environment.put("CODEX_HOME", home.resolve(".codex").toString());
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
 			environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
-			new FixedGitIdentity("Ada", "ada@example.com"));
+		return new CodexSessions(settings);
 	}
 
 	/**

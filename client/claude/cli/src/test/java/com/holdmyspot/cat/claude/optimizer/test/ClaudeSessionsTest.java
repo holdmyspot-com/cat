@@ -2,7 +2,6 @@ package com.holdmyspot.cat.claude.optimizer.test;
 
 import com.holdmyspot.cat.common.JvmScope;
 
-import com.holdmyspot.cat.common.fakes.test.FixedGitIdentity;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
@@ -1447,21 +1446,21 @@ public final class ClaudeSessionsTest
 	{
 		return new Object[][]
 		{
-			// Claude Code runs the command, so the optimizer's session goes to the session launcher, which serves
-			// none here, while claude-runner starts the session itself
-			{Map.of("CLAUDECODE", "1"), "No CAT session launcher serves this session", false},
+			// Claude Code runs the command, so the optimizer's session goes to the session's request server, and no
+			// request server serves it here
+			{Map.of("CLAUDECODE", "1"), "No request server serves this session", false},
 			{Map.of("CODEX_THREAD_ID", "thread"), "CAT cannot start the session: Codex runs this command, and " +
-				"CAT's Claude Code plugin cannot read a Codex session's sandbox policy.", true},
+				"CAT's Claude Code plugin holds no request server for a Codex session.", true},
 			{Map.of("CAT_RUN", "1", "CLAUDECODE", "1"), "claude-runner refuses to start a session", true}
 		};
 	}
 
 	/**
-	 * Verifies that each of the optimizer's sessions takes its route: to the Claude Code process's session launcher
-	 * when Claude Code runs the command, and refused when only Codex runs it or when it runs in a CAT run that lets its
-	 * session request no sessions. On the refused routes, {@code claude-runner} gives a launch from the same command
-	 * the same refusal; when Claude Code runs the command, {@code claude-runner} starts the session itself instead. No
-	 * route starts a harness here, so the session ends as a launch refusal, which the optimizer does not retry.
+	 * Verifies that each of the optimizer's sessions takes its route: to the host session's request server when Claude
+	 * Code runs the command, and refused when only Codex runs it or when it runs in a CAT run that lets its session
+	 * request no sessions. On the refused routes, {@code claude-runner} gives a launch from the same command the same
+	 * refusal. No route starts a harness here, so the session ends as a launch refusal, which the optimizer does not
+	 * retry.
 	 *
 	 * @param variables        the harness and run variables of the command's environment
 	 * @param reason           the start of the reason on the route
@@ -1490,8 +1489,7 @@ public final class ClaudeSessionsTest
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
 				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 
-			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
-				new FixedGitIdentity("Ada", "ada@example.com"));
+			ClaudeSessions sessions = new ClaudeSessions(settings);
 
 			SessionResult result = await(sessions.start(new SessionRequest(SessionRole.JUDGE,
 				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
@@ -1671,8 +1669,7 @@ public final class ClaudeSessionsTest
 		environment.put(Platform.current().homeVariable(), home.toString());
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
 			environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
-			new FixedGitIdentity("Ada", "ada@example.com"));
+		return new ClaudeSessions(settings);
 	}
 
 	/**

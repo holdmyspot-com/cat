@@ -1,23 +1,33 @@
 package com.holdmyspot.cat.codex.runner.test;
 
-import com.holdmyspot.cat.codex.runner.CodexDirectLaunch;
+import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
+import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
+import com.holdmyspot.cat.codex.runner.CodexServedSession;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.runner.RequestServer;
+import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Tests the reason that a runner launcher gives when a Codex session runs it inside the session's sandbox, through
- * {@link CodexDirectLaunch#sandboxed(Path, Map, Path, Path)}. The rollouts' records follow those of Codex 0.160.0.
+ * Tests how the request server identifies the Codex session that runs it, and the reason that it gives when a Codex
+ * session runs it inside the session's sandbox, through {@link CodexServedSession#sandboxed(Path, Map, Path, Path)}.
+ * The rollouts' records follow those of Codex 0.160.0.
  */
-public final class CodexDirectLaunchTest
+public final class CodexServedSessionTest
 {
 	/**
 	 * The session's identifier.
@@ -27,12 +37,73 @@ public final class CodexDirectLaunchTest
 	 * Writes JSON strings.
 	 */
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * A process table in which no process runs, which no identification reads.
+	 */
+	private static final HarnessProcesses NO_PROCESSES = _ -> Optional.empty();
 
 	/**
 	 * Creates the test.
 	 */
-	public CodexDirectLaunchTest()
+	public CodexServedSessionTest()
 	{
+	}
+
+	/**
+	 * Verifies that the server identifies the session by the thread's rollout, takes the project from it, and takes
+	 * the harness process that it outlives no longer than from the nearest Codex process among its ancestors.
+	 *
+	 * @throws IOException   if the fixture cannot be written
+	 * @throws PolicyRefusal if the session cannot be identified
+	 */
+	@Test
+	public void identifiesSessionAndHarnessProcess() throws IOException, PolicyRefusal
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.rollout("", "");
+			List<ProcessDescription> ancestors = List.of(
+				new ProcessDescription(4300, Optional.of("1731067201"), Optional.of("/bin/bash"),
+					Optional.of(List.of("-c", fixture.server.toString()))),
+				new ProcessDescription(4200, Optional.of("1731067200"), Optional.of("/opt/codex/bin/codex"),
+					Optional.of(List.of())));
+
+			RequestServer.Session session = CodexServedSession.sessions(fixture.environment(), fixture.home,
+				NO_PROCESSES, ancestors, fixture.reader()).find();
+
+			requireThat(session.transcript(), "transcript").isEqualTo(fixture.rolloutFile());
+			requireThat(session.project(), "project").isEqualTo(fixture.project);
+			requireThat(session.askingThread(), "askingThread").isEmpty();
+			requireThat(session.harness(), "harness").isEqualTo(new ProcessIdentity(4200, "1731067200"));
+		}
+	}
+
+	/**
+	 * Verifies that the server refuses a session whose commands no Codex process runs, because it could not tell
+	 * when the session ends.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusesSessionWithoutCodexProcess() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.rollout("", "");
+			List<ProcessDescription> ancestors = List.of(new ProcessDescription(4300, Optional.of("1731067201"),
+				Optional.of("/bin/bash"), Optional.of(List.of("-c", fixture.server.toString()))));
+			RequestServer.SessionFinder finder = CodexServedSession.sessions(fixture.environment(), fixture.home,
+				NO_PROCESSES, ancestors, fixture.reader());
+			try
+			{
+				finder.find();
+				throw new AssertionError("The session was identified");
+			}
+			catch (PolicyRefusal e)
+			{
+				requireThat(e.reason(), "reason").contains("cannot find the Codex process");
+			}
+		}
 	}
 
 	/**
@@ -51,17 +122,18 @@ public final class CodexDirectLaunchTest
 				,{"path":{"type":"path","path":%s},"access":"deny"}""".formatted(json(secret)),
 				",\"active_permission_profile\":{\"id\":\"private-reads\"}");
 
-			String reason = CodexDirectLaunch.sandboxed(fixture.launcher, fixture.environment(), fixture.home, null);
+			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
 			requireThat(reason, "reason").contains("openai/codex#38318").
 				contains("the permissions profile private-reads").contains("\"" + secret + "\"").
-				contains(fixture.launcher.toString());
+				contains("Remove those entries from the profile and start a new Codex session, or start the session " +
+					"from a terminal.");
 		}
 	}
 
 	/**
 	 * Verifies that when the thread's latest turn denies no read, the reason names the rule that install adds and the
-	 * launcher's path, and does not blame denied reads.
+	 * server's path, and does not blame denied reads.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -73,16 +145,16 @@ public final class CodexDirectLaunchTest
 			fixture.installed();
 			fixture.rollout("", "");
 
-			String reason = CodexDirectLaunch.sandboxed(fixture.launcher, fixture.environment(), fixture.home, null);
+			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
-			requireThat(reason, "reason").contains("the rule that CAT's install adds for " + fixture.launcher).
-				doesNotContain("openai/codex#38318").doesNotContain("No rule in").doesNotContain("ran the launcher as");
+			requireThat(reason, "reason").contains("the rule that CAT's install adds for " + fixture.server).
+				doesNotContain("openai/codex#38318").doesNotContain("No rule in").doesNotContain("ran the request server as");
 		}
 	}
 
 	/**
-	 * Verifies that a launcher whose thread cannot be identified still gets the reason that names the rule and the
-	 * launcher's path.
+	 * Verifies that a server whose thread cannot be identified still gets the reason that names the rule and the
+	 * server's path.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -92,9 +164,9 @@ public final class CodexDirectLaunchTest
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.installed();
-			String reason = CodexDirectLaunch.sandboxed(fixture.launcher, fixture.environment(), fixture.home, null);
+			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
-			requireThat(reason, "reason").contains("the rule that CAT's install adds for " + fixture.launcher);
+			requireThat(reason, "reason").contains("the rule that CAT's install adds for " + fixture.server);
 		}
 	}
 
@@ -115,15 +187,15 @@ public final class CodexDirectLaunchTest
 				,{"path":{"type":"glob_pattern","pattern":%s},"access":"deny"}""".formatted(JSON.writeValueAsString(pattern)),
 				"");
 
-			String reason = CodexDirectLaunch.sandboxed(fixture.launcher, fixture.environment(), fixture.home, null);
+			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
 			requireThat(reason, "reason").contains("openai/codex#38318").contains("\"" + pattern + "\"");
 		}
 	}
 
 	/**
-	 * Verifies that when no rule in Codex's rules folder names the launcher, the reason says so and names the folder
-	 * and the launcher, and does not list the other causes.
+	 * Verifies that when no rule in Codex's rules folder names the server, the reason says so and names the folder
+	 * and the server, and does not list the other causes.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -137,16 +209,16 @@ public final class CodexDirectLaunchTest
 				"prefix_rule(pattern=[\"git\", \"status\"], decision=\"allow\")\n");
 			fixture.rollout("", "");
 
-			String reason = CodexDirectLaunch.sandboxed(fixture.launcher, fixture.environment(), fixture.home, null);
+			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
 			requireThat(reason, "reason").contains("No rule in " + fixture.codexHome.resolve("rules") + " names " +
-				fixture.launcher).doesNotContain("A session that started before that install");
+				fixture.server).doesNotContain("A session that started before that install");
 		}
 	}
 
 	/**
-	 * Verifies that when the thread's latest command that names the launcher's file name names the launcher by
-	 * another path, the reason names that path and the launcher's absolute path. The latest command is in a script
+	 * Verifies that when the thread's latest command that names the server's file name names the server by another
+	 * path, the reason names that path and the server's absolute path. The latest command is in a script
 	 * of the code-mode tool, after one that names the absolute path.
 	 *
 	 * @throws IOException if the fixture cannot be written
@@ -158,10 +230,10 @@ public final class CodexDirectLaunchTest
 		{
 			fixture.installed();
 			fixture.rollout("", "");
-			String exact = JSON.writeValueAsString(JSON.writeValueAsString(Map.of("cmd", fixture.launcher +
-				" --prompt-file task.md")));
+			String exact = JSON.writeValueAsString(JSON.writeValueAsString(Map.of("cmd",
+				fixture.server.toString())));
 			String script = JSON.writeValueAsString("const r = await tools.exec_command({cmd:" +
-				JSON.writeValueAsString("cd " + fixture.project + " && ./plugin/bin/codex-runner --prompt-file task.md") +
+				JSON.writeValueAsString("cd " + fixture.project + " && ./plugin/bin/request-server") +
 				"}); text(r.output);\n");
 			Files.writeString(fixture.rolloutFile(), """
 				{"timestamp":"2026-11-05T12:00:02.000Z","type":"response_item","payload":{"type":"function_call",\
@@ -170,10 +242,11 @@ public final class CodexDirectLaunchTest
 				"status":"completed","call_id":"call_2","name":"exec","input":%s}}
 				""".formatted(exact, script), StandardOpenOption.APPEND);
 
-			String reason = CodexDirectLaunch.sandboxed(fixture.launcher, fixture.environment(), fixture.home, null);
+			String reason = CodexServedSession.sandboxed(fixture.server, fixture.environment(), fixture.home, null);
 
-			requireThat(reason, "reason").contains("The command ran the launcher as ./plugin/bin/codex-runner, but " +
-				"the rule that CAT's install adds matches only a command whose first word is " + fixture.launcher).
+			requireThat(reason, "reason").contains("The command ran the request server as ./plugin/bin/request-server, " +
+				"but the rule that CAT's install adds matches only the command " + fixture.server + ", spelled exactly " +
+				"so. Run " + fixture.server + " alone").
 				doesNotContain("No rule in");
 		}
 	}
@@ -190,7 +263,7 @@ public final class CodexDirectLaunchTest
 	}
 
 	/**
-	 * A user's home folder, Codex's home, a project and a launcher's path.
+	 * A user's home folder, Codex's home, a project and the request server's path.
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
@@ -211,9 +284,9 @@ public final class CodexDirectLaunchTest
 		 */
 		final Path project;
 		/**
-		 * The launcher's absolute path.
+		 * The request server's absolute path.
 		 */
-		final Path launcher;
+		final Path server;
 
 		/**
 		 * Creates the fixture.
@@ -225,13 +298,13 @@ public final class CodexDirectLaunchTest
 			Path root;
 			try (TestJvmScope jvm = new TestJvmScope())
 			{
-				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-direct-")).
+				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-served-")).
 					toRealPath();
 			}
 			home = Files.createDirectory(root.resolve("home"));
 			codexHome = Files.createDirectory(home.resolve(".codex"));
 			project = Files.createDirectory(root.resolve("project"));
-			launcher = root.resolve("plugin/bin/codex-runner");
+			server = root.resolve("plugin/bin/request-server");
 		}
 
 		/**
@@ -245,7 +318,17 @@ public final class CodexDirectLaunchTest
 		}
 
 		/**
-		 * Writes the rules file that install writes, with the rule that runs the launcher outside the sandbox.
+		 * Returns a reader of the session's policy, for a machine without Codex configuration.
+		 *
+		 * @return the reader
+		 */
+		CodexPolicyReader reader()
+		{
+			return new CodexPolicyReader(new CodexSystemFiles(home.resolve("etc"), List.of(), null));
+		}
+
+		/**
+		 * Writes the rules file that install writes, with the rule that runs the server outside the sandbox.
 		 *
 		 * @throws IOException if the file cannot be written
 		 */
@@ -253,7 +336,7 @@ public final class CodexDirectLaunchTest
 		{
 			Files.createDirectories(codexHome.resolve("rules"));
 			Files.writeString(codexHome.resolve("rules/cat-installer.rules"), "prefix_rule(pattern=[" +
-				JSON.writeValueAsString(launcher.toString()) + "], decision=\"allow\")\n");
+				JSON.writeValueAsString(server.toString()) + "], decision=\"allow\")\n");
 		}
 
 		/**

@@ -3,13 +3,12 @@ package com.holdmyspot.cat.claude.secrets;
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
-import com.holdmyspot.cat.common.runner.launcher.client.GitIdentity;
 
 import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Exposes the creation of Claude session ports around a given bridge or Git identity reader to the module's tests.
+ * Exposes the creation of Claude session ports around a given bridge to the module's tests.
  */
 public interface ClaudeSessionsAccess
 {
@@ -34,15 +33,4 @@ public interface ClaudeSessionsAccess
 	 */
 	ClaudeSessions newClaudeSessions(RunnerSessions.Settings settings, Bridge bridge,
 		List<Path> managedSettings);
-
-	/**
-	 * Creates a port that runs sessions through the real Claude runner, reading each project's Git identity with the
-	 * given reader.
-	 *
-	 * @param settings how the runner is configured
-	 * @param git      reads the project's Git identity
-	 * @return the port
-	 * @throws NullPointerException if any argument is null
-	 */
-	ClaudeSessions newClaudeSessions(RunnerSessions.Settings settings, GitIdentity git);
 }

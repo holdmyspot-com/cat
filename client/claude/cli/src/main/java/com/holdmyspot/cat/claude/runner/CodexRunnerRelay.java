@@ -11,28 +11,24 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.runner.DirectLaunch;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
-import com.holdmyspot.cat.common.runner.RequestedRunner;
-import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
 import com.holdmyspot.cat.common.runner.RunnerRelay;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.file.Path;
-import java.util.List;
 import java.util.Map;
 
 /**
  * Runs {@code codex-runner} from the Claude plugin, so that a session can run Codex through the same launcher and
  * options as in the Codex plugin. Each launch goes along the route that
  * {@link com.holdmyspot.cat.common.runner.LaunchRoute} gives it: inside a run that may request sessions, it requests a
- * Codex session from the run's runner; when Claude Code runs the command, which it runs outside the session's
- * sandbox, it bounds the launch by that session's policy and has the runner of the Codex CAT artifact that
- * {@code CodexArtifact} selects serve the session within that bound; when only Codex runs it, it refuses the launch
- * and names the Codex plugin's runner; and otherwise it runs that runner with the caller's options.
+ * Codex session from the run's runner; when Claude Code runs the command outside a run, it requests the session
+ * from the Claude Code session's request server; when only Codex runs it, it refuses the launch and names the Codex
+ * plugin's runner; and otherwise it runs the runner of the Codex CAT artifact that {@code CodexArtifact} selects with
+ * the caller's options.
  */
 public final class CodexRunnerRelay
 {
@@ -70,35 +66,11 @@ public final class CodexRunnerRelay
 						Thread.currentThread().interrupt();
 						throw new IOException("Interrupted while waiting for the runner", e);
 					}
-				}, bound(scope, environment), new InputStreamReader(System.in, UTF_8), scope.waiting(), System.out,
-				new PrintWriter(System.err, true, UTF_8));
+				}, PluginDirectory.of(CodexRunnerRelay.class), () -> ToolScope.forSession(Path.of(""), environment,
+					SessionHarness.installed(), scope.waiting()), new InputStreamReader(System.in, UTF_8), scope.waiting(),
+				System.out, new PrintWriter(System.err, true, UTF_8));
 		}
 		System.exit(status);
-	}
-
-	/**
-	 * Returns how the relay bounds a launch that a Claude Code session runs: by that session's policy, as
-	 * {@link ClaudeDirectLaunch} identifies the session, and by what a Codex session needs, as the Codex artifact's
-	 * runner reports it.
-	 *
-	 * @param scope       the process scope, which starts the runner that reports the needs
-	 * @param environment the relay's environment
-	 * @return the bound
-	 */
-	private static RunnerRelay.LaunchBound bound(JvmScope scope, Map<String, String> environment)
-	{
-		Path plugin = PluginDirectory.of(CodexRunnerRelay.class);
-		return (runner, args, cleanup) ->
-		{
-			RequestedSessionStarter starter = (_, arguments, directory) -> new RequestedRunner(scope, runner,
-				List.of("serve")).start(arguments, directory, ClaudeRunnerCli.MARKERS.without(environment));
-			DirectLaunch.SessionFinder sessions = DirectLaunch.refusingHomeProject(
-				ClaudeDirectLaunch.sessions(environment), args, Path.of("").toAbsolutePath(), environment, Platform.current());
-			return DirectLaunch.boundArguments(CODEX_ID, args, plugin, sessions,
-				project -> ToolScope.forSession(project, environment, SessionHarness.installed(), scope.waiting()),
-				DirectLaunch.runnerNeeds(starter, cleanup), () -> ClaudeDirectLaunch.sandboxed(
-					plugin.resolve(PluginDirectory.BIN).resolve("codex-runner"), environment), cleanup);
-		};
 	}
 
 	/**

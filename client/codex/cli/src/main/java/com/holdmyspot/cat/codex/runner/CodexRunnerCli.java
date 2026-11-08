@@ -25,9 +25,9 @@ import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
-import com.holdmyspot.cat.common.runner.DirectLaunch;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
+import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
@@ -104,14 +104,13 @@ public final class CodexRunnerCli
 	 * sandbox the session, whose project is the user's home folder or contains it, or from a Codex sandbox that has
 	 * network off.
 	 * <p>
-	 * With {@code --verify-artifact} and an artifact, it verifies the artifact and prints its folder, unless
-	 * {@link #refusesArtifactRead} refuses the verification, with the same status.
+	 * With {@code --verify-artifact} and an artifact, it verifies the artifact and prints its folder.
 	 * <p>
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
 	 * PrintWriter)} describes, and the launcher exits with the launch's status.
 	 * <p>
 	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, it writes what a Codex child session needs to
-	 * that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the session launcher that asks before it
+	 * that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the request server that asks before it
 	 * starts the child, and starts nothing.
 	 *
 	 * @param args the command and its options
@@ -131,9 +130,6 @@ public final class CodexRunnerCli
 		}
 		if (args.length == 2 && args[0].equals("--verify-artifact"))
 		{
-			if (refusesArtifactRead(args, environment, errors(), () -> PluginDirectory.of(CodexRunnerCli.class),
-				CodexDirectLaunch.sessions(environment)))
-				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".codex-plugin/plugin.json")));
 			return;
 		}
@@ -141,7 +137,7 @@ public final class CodexRunnerCli
 		{
 			if (!MARKERS.running(environment).isEmpty())
 			{
-				errors().println(DirectLaunch.internalOptionRefusal(args).orElseThrow());
+				errors().println(LaunchRoute.internalOptionRefusal(args).orElseThrow());
 				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			}
 			CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(args[2]));
@@ -163,10 +159,12 @@ public final class CodexRunnerCli
 	 *   <li>Inside a run whose runner lets its session request none, the launch is refused.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass is
 	 *   refused.</li>
-	 *   <li>When Codex runs the command, which it runs outside the session's sandbox, the launch serves its session in
-	 *   this process within the bound that {@link #directArguments} gives it.</li>
-	 *   <li>When only Claude Code runs the command, the launch is refused: this plugin cannot read a Claude Code
-	 *   session's sandbox policy, and the message names the Claude Code plugin's runner instead.</li>
+	 *   <li>When Codex runs the command outside a run, the launch becomes a request to the session's
+	 *   {@link RequestServer}, which starts the session outside the session's sandbox, and this command writes its
+	 *   transcript, receipt and kept run. Without a request server that serves the session, the launch is refused.
+	 *   </li>
+	 *   <li>When only Claude Code runs the command, the launch is refused: this plugin's request server serves no
+	 *   Claude Code session, and the message names the Claude Code plugin's runner instead.</li>
 	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as CAT's own starters, such as a run's runner, name
 	 *   it, serves its session in this process within that bound.</li>
 	 *   <li>When no harness runs the command, no harness sandbox confines it, and the launch serves its session in
@@ -190,7 +188,7 @@ public final class CodexRunnerCli
 	{
 		requireThat(environment, "environment").isNotNull();
 		return launch(args, environment, waiting, input, output, errors,
-			() -> PluginDirectory.of(CodexRunnerCli.class), CodexDirectLaunch.sessions(environment));
+			() -> PluginDirectory.of(CodexRunnerCli.class), () -> toolScope(Path.of(""), environment, waiting));
 	}
 
 	/**
@@ -204,7 +202,8 @@ public final class CodexRunnerCli
 	 * @param output      receives the session's records when the launch names no {@code --output}
 	 * @param errors      receives why the launch was refused or did not complete
 	 * @param plugin      returns the absolute folder of the plugin that holds the launcher
-	 * @param sessions    identifies the Codex session that runs the command
+	 * @param scopes      opens the tool scope of the session that runs the command, which gives its CAT session
+	 *                    directory
 	 * @return the launch's exit status: {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if it is refused
 	 * @throws NullPointerException      if any of the arguments are null
 	 * @throws InvalidArgumentsException if the launch's options are invalid
@@ -212,11 +211,11 @@ public final class CodexRunnerCli
 	 *                                   forwarded or bounded, or runner startup, the harness, or bridge I/O fails
 	 */
 	public static int launch(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
-		OutputStream output, PrintWriter errors, Supplier<Path> plugin, DirectLaunch.SessionFinder sessions)
+		OutputStream output, PrintWriter errors, Supplier<Path> plugin, RequestServer.SessionScope scopes)
 		throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
-		requireThat(sessions, "sessions").isNotNull();
+		requireThat(scopes, "scopes").isNotNull();
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
@@ -235,23 +234,8 @@ public final class CodexRunnerCli
 				errors.println(reason);
 				yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
-			case LaunchRoute.Launcher _ ->
-			{
-				try (TemporaryDirectories cleanup = new TemporaryDirectories())
-				{
-					List<String> bounded;
-					try
-					{
-						bounded = directArguments(options, environment, waiting, plugin.get(), sessions, cleanup);
-					}
-					catch (SessionRefusedException e)
-					{
-						errors.println(e.getMessage());
-						yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
-					}
-					yield serveInProcess(bounded.toArray(String[]::new), environment, waiting, input, output, errors);
-				}
-			}
+			case LaunchRoute.Served _ -> RequestServer.forward(HARNESS_ID, options, plugin.get(), scopes, input,
+				waiting.every(REQUEST_POLL), output, errors);
 			case LaunchRoute.Bounded _ -> serveInProcess(args, environment, waiting, input, output, errors);
 			case LaunchRoute.InPlace _ ->
 			{
@@ -271,43 +255,6 @@ public final class CodexRunnerCli
 				}
 			}
 		};
-	}
-
-	/**
-	 * Bounds a launch that a Codex session runs, as {@link DirectLaunch#boundArguments(String, String[], Path,
-	 * DirectLaunch.SessionFinder, java.util.function.Function, LaunchRoute.NeedsReport, Supplier,
-	 * TemporaryDirectories)} bounds it, with what a Codex session needs, as {@link CodexRunner#childNeeds(Map)}
-	 * reports it.
-	 *
-	 * @param args        the launch's options
-	 * @param environment the launcher's environment
-	 * @param waiting     how the command waits between the attempts of a retried operation
-	 * @param plugin      the absolute folder of the plugin that holds the launcher
-	 * @param sessions    identifies the Codex session that runs the command
-	 * @param cleanup     receives the folder that holds the bound's file, which the session reads when it starts
-	 * @return {@code args} followed by the options that bound the session
-	 * @throws NullPointerException      if any of the arguments are null
-	 * @throws SessionRefusedException   if a check of the launch fails, such as when the new session's project is the
-	 *                                   user's home folder or contains it, as
-	 *                                   {@link DirectLaunch#refusingHomeProject} decides; the message says why and how
-	 *                                   to fix it
-	 * @throws InvalidArgumentsException if an option lacks its value, a denied read is not absolute, or the file of
-	 *                                   extra permissions is invalid
-	 * @throws IOException               if what the session needs cannot be determined, or the bound cannot be
-	 *                                   written
-	 */
-	public static List<String> directArguments(String[] args, Map<String, String> environment, Waiting waiting,
-		Path plugin, DirectLaunch.SessionFinder sessions, TemporaryDirectories cleanup) throws IOException
-	{
-		requireThat(environment, "environment").isNotNull();
-		requireThat(waiting, "waiting").isNotNull();
-		requireThat(plugin, "plugin").isNotNull();
-		DirectLaunch.SessionFinder outsideHome = DirectLaunch.refusingHomeProject(sessions, args,
-			Path.of("").toAbsolutePath(), environment, Platform.current());
-		return DirectLaunch.boundArguments(HARNESS_ID, args, plugin, outsideHome,
-			project -> toolScope(project, environment, waiting), () -> CodexRunner.childNeeds(environment),
-			() -> CodexDirectLaunch.sandboxed(plugin.resolve(PluginDirectory.BIN).resolve("codex-runner"),
-				environment), cleanup);
 	}
 
 	/**
@@ -390,54 +337,6 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Refuses verifying an artifact when Codex runs the command outside a run, which it runs outside the
-	 * session's sandbox, and the session's sandbox does not let its commands read the artifact, as
-	 * {@link DirectLaunch#requireReadable} decides. Any other command runs inside a sandbox that confines what it
-	 * reads, such as a run's, or outside every harness session.
-	 *
-	 * @param args        the command: {@code --verify-artifact} and the artifact
-	 * @param environment the launcher's environment
-	 * @param errors      receives the reason for a refusal
-	 * @param plugin      returns the absolute folder of the plugin that holds the launcher
-	 * @param sessions    identifies the Codex session that runs the command
-	 * @return {@code true} if the verification is refused, after the reason is written to {@code errors}
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code args} is not {@code --verify-artifact} and an artifact
-	 * @throws IOException              if a source that identifies the session, or a symbolic link in the artifact's
-	 *                                  path, cannot be read
-	 */
-	public static boolean refusesArtifactRead(String[] args, Map<String, String> environment, PrintWriter errors,
-		Supplier<Path> plugin, DirectLaunch.SessionFinder sessions) throws IOException
-	{
-		requireThat(args, "args").isNotNull();
-		if (args.length != 2 || !args[0].equals("--verify-artifact"))
-		{
-			throw new IllegalArgumentException("args must be --verify-artifact and an artifact: " +
-				Arrays.toString(args));
-		}
-		requireThat(environment, "environment").isNotNull();
-		requireThat(errors, "errors").isNotNull();
-		requireThat(plugin, "plugin").isNotNull();
-		requireThat(sessions, "sessions").isNotNull();
-		if (!(LaunchRoute.decide(HARNESS_ID, HARNESS_ID, MARKERS.running(environment), args, environment) instanceof
-			LaunchRoute.Launcher))
-			return false;
-		Path pluginFolder = plugin.get();
-		try
-		{
-			DirectLaunch.requireReadable(HARNESS_ID, args[0], Path.of(args[1]), pluginFolder, sessions,
-				() -> CodexDirectLaunch.sandboxed(pluginFolder.resolve(PluginDirectory.BIN).resolve("codex-runner"),
-					environment));
-			return false;
-		}
-		catch (SessionRefusedException e)
-		{
-			errors.println(e.getMessage());
-			return true;
-		}
-	}
-
-	/**
 	 * Refuses a launch that names {@code --artifact}, other than inside a run whose runner lets its session request
 	 * sessions. There every launch becomes a session request, whose runner ignores the option.
 	 *
@@ -462,10 +361,8 @@ public final class CodexRunnerCli
 	 * {@code --artifact}, as {@link #refusesOverride} refuses it, any launch on a platform where CAT does not let Codex
 	 * confine the session in a sandbox, as {@link CodexSessionSandbox} decides, any launch whose project is the user's
 	 * home folder or contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides, and any launch from a
-	 * Codex sandbox that has network off, whose session could not reach its model. A launch that Codex runs is not
-	 * refused for its project here: its project can come from the session's transcript, so {@link #directArguments}
-	 * refuses it. Printing the usage and verifying an artifact start no session, so they are never refused for the
-	 * platform, the project or the sandbox.
+	 * Codex sandbox that has network off, whose session could not reach its model. Printing the usage and verifying an
+	 * artifact start no session, so they are never refused for the platform, the project or the sandbox.
 	 *
 	 * @param args             the command and its options
 	 * @param workingDirectory the directory from which the launcher was started
@@ -495,11 +392,7 @@ public final class CodexRunnerCli
 			errors.println(refusal.get());
 			return true;
 		}
-		// A launch that Codex runs takes its project from the session's transcript, which the launch checks
-		boolean projectFromTranscript = LaunchRoute.decide(HARNESS_ID, HARNESS_ID, MARKERS.running(environment), args,
-			environment) instanceof LaunchRoute.Launcher;
-		return !projectFromTranscript &&
-			HarnessRunnerOptions.refusesHomeProject(args, workingDirectory, environment, platform, errors) ||
+		return HarnessRunnerOptions.refusesHomeProject(args, workingDirectory, environment, platform, errors) ||
 			ParentSandbox.refusesNetworkOff(HARNESS_ID, environment, errors);
 	}
 
@@ -651,8 +544,8 @@ public final class CodexRunnerCli
 	{
 		if (options.policyBound() == null)
 		{
-			throw new SessionRefusedException("codex-runner starts a session only through CAT's session launcher, " +
-				"which names the policy that bounds the session's sandbox with " + PolicyBoundFile.OPTION + ", and " +
+			throw new SessionRefusedException("codex-runner starts a session only through CAT's own starters, " +
+				"which name the policy that bounds the session's sandbox with " + PolicyBoundFile.OPTION + ", and " +
 				"this launch names none, so CAT does not start the session. Start the session from a Claude Code or " +
 				"Codex session in which CAT is installed");
 		}

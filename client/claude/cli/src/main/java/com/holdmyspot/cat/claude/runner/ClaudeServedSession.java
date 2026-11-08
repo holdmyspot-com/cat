@@ -5,8 +5,9 @@ import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.runner.DirectLaunch;
+import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.LauncherSpelling;
+import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
@@ -27,12 +28,12 @@ import tools.jackson.databind.json.JsonMapper;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Identifies the Claude Code session that runs one of the Claude plugin's runner launchers, which Claude Code runs
- * outside the session's sandbox, and says why a launcher that the session runs inside its sandbox is refused.
+ * Identifies the Claude Code session that runs the Claude plugin's request server, which Claude Code runs outside the
+ * session's sandbox, and says why a request server that the session runs inside its sandbox is refused.
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
-public final class ClaudeDirectLaunch
+public final class ClaudeServedSession
 {
 	/**
 	 * The name of Claude Code's user settings file in its configuration folder.
@@ -46,7 +47,7 @@ public final class ClaudeDirectLaunch
 	/**
 	 * Prevents instantiation.
 	 */
-	private ClaudeDirectLaunch()
+	private ClaudeServedSession()
 	{
 	}
 
@@ -57,7 +58,7 @@ public final class ClaudeDirectLaunch
 	 * @return the finder
 	 * @throws NullPointerException if {@code environment} is null
 	 */
-	public static DirectLaunch.SessionFinder sessions(Map<String, String> environment)
+	public static RequestServer.SessionFinder sessions(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
 		String userName = System.getProperty("user.name", "");
@@ -68,7 +69,7 @@ public final class ClaudeDirectLaunch
 
 	/**
 	 * Returns the finder of the Claude Code session that runs a command, as {@link ClaudeCommandSession} finds it,
-	 * whose policy {@link ClaudePolicyReader} reads.
+	 * whose policy {@link ClaudePolicyReader} reads, and whose harness process is the session's Claude Code process.
 	 *
 	 * @param environment the command's environment
 	 * @param userHome    the user's absolute home folder
@@ -79,7 +80,7 @@ public final class ClaudeDirectLaunch
 	 * @return the finder
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static DirectLaunch.SessionFinder sessions(Map<String, String> environment, Path userHome,
+	public static RequestServer.SessionFinder sessions(Map<String, String> environment, Path userHome,
 		String userName, HarnessProcesses processes, List<ProcessDescription> ancestors, JsonMapper json)
 	{
 		requireThat(environment, "environment").isNotNull();
@@ -93,20 +94,21 @@ public final class ClaudeDirectLaunch
 		return () ->
 		{
 			ClaudeCommandSession found = ClaudeCommandSession.find(copy, userHome, userName, chain, json);
-			return new DirectLaunch.Session(ClaudeSessionLauncherCli.policySource(new ClaudePolicyReader(processes),
-				found::session), found.transcript(), found.session().projectDirectory(), Optional.empty());
+			ProcessIdentity harness = RequestServer.harnessIdentity(found.session().processId(), chain);
+			return new RequestServer.Session(ClaudeRequestServerCli.policySource(new ClaudePolicyReader(processes),
+				found::session), found.transcript(), found.session().projectDirectory(), Optional.empty(), harness);
 		};
 	}
 
 	/**
-	 * Returns why a runner launcher that this process's Claude Code session runs inside its sandbox is refused.
+	 * Returns why a request server that this process's Claude Code session runs inside its sandbox is refused.
 	 *
-	 * @param launcher    the absolute path of the launcher
+	 * @param server      the absolute path of the request server
 	 * @param environment the process's environment
 	 * @return the reason
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static String sandboxed(Path launcher, Map<String, String> environment)
+	public static String sandboxed(Path server, Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
 		Path userHome;
@@ -119,17 +121,17 @@ public final class ClaudeDirectLaunch
 			// The account's home stands in for a home that the environment does not name
 			userHome = Path.of(System.getProperty("user.home")).toAbsolutePath();
 		}
-		return sandboxed(launcher, environment, userHome, System.getProperty("user.name", ""),
+		return sandboxed(server, environment, userHome, System.getProperty("user.name", ""),
 			HarnessProcesses.ancestorsOf(ProcessHandle.current()), JsonMapper.builder().build());
 	}
 
 	/**
-	 * Returns why a runner launcher that a Claude Code session runs inside its sandbox is refused. The reason names
-	 * each cause that it finds: the user settings name no sandbox exception for the launcher, or the session's latest
-	 * Bash command that names the launcher's file name names it by another path. When it finds none, it lists the
-	 * causes that keep the launcher sandboxed. Each reason names the path to run.
+	 * Returns why a request server that a Claude Code session runs inside its sandbox is refused. The reason names
+	 * each cause that it finds: the user settings name no sandbox exception for the server, or the session's latest
+	 * Bash command that names the server's file name names it by another path. When it finds none, it lists the
+	 * causes that keep the server sandboxed. Each reason names the path to run.
 	 *
-	 * @param launcher    the absolute path of the launcher
+	 * @param server      the absolute path of the request server
 	 * @param environment the command's environment
 	 * @param userHome    the user's absolute home folder
 	 * @param userName    the user's login name
@@ -138,17 +140,17 @@ public final class ClaudeDirectLaunch
 	 * @return the reason
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static String sandboxed(Path launcher, Map<String, String> environment, Path userHome, String userName,
+	public static String sandboxed(Path server, Map<String, String> environment, Path userHome, String userName,
 		List<ProcessDescription> ancestors, JsonMapper json)
 	{
-		requireThat(launcher, "launcher").isNotNull();
+		requireThat(server, "server").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(userHome, "userHome").isNotNull();
 		requireThat(userName, "userName").isNotNull();
 		requireThat(ancestors, "ancestors").isNotNull();
 		requireThat(json, "json").isNotNull();
 		List<String> causes = new ArrayList<>();
-		missingException(launcher, environment, userHome, json).ifPresent(causes::add);
+		missingException(server, environment, userHome, json).ifPresent(causes::add);
 		ClaudeCommandSession found;
 		try
 		{
@@ -160,33 +162,33 @@ public final class ClaudeDirectLaunch
 		}
 		if (found != null)
 		{
-			latestCommand(found.transcript(), launcher.getFileName().toString(), json).
-				flatMap(command -> LauncherSpelling.otherSpelling(command, launcher)).ifPresent(word -> causes.add(
-					"The command ran the launcher as " + word + ", but the sandbox exception that CAT's install adds " +
-					"matches only a command whose first word is " + launcher + ", spelled exactly so. Run " + launcher +
-					" followed by the launcher's options, with nothing in front of it and no pipe or redirection."));
+			latestCommand(found.transcript(), server.getFileName().toString(), json).
+				flatMap(command -> LauncherSpelling.otherSpelling(command, server)).ifPresent(word -> causes.add(
+					"The command ran the request server as " + word + ", but the sandbox exception that CAT's install " +
+					"adds matches only the command " + server + ", spelled exactly so. Run " + server + " alone, " +
+					"with nothing in front of it or after it."));
 		}
-		String start = "CAT cannot start the session: this Claude Code session runs the launcher inside its sandbox, " +
+		String start = "CAT cannot start the request server: this Claude Code session runs it inside its sandbox, " +
 			"where no session that a harness sandboxes can start. ";
 		if (!causes.isEmpty())
 			return start + String.join(" ", causes);
-		return start + "Claude Code runs the launcher outside its sandbox only through the sandbox exception that " +
-			"CAT's install adds for " + launcher + ", and only for a command that is that absolute path followed by " +
-			"the launcher's options, with nothing in front of it and no pipe or redirection. A session that started " +
-			"before that install has no such exception. Run " + launcher + " as such a command, or start a new " +
-			"session and run it there.";
+		return start + "Claude Code runs the request server outside its sandbox only through the sandbox exception " +
+			"that CAT's install adds for " + server + ", and only for a command that is that absolute path alone, " +
+			"with nothing in front of it or after it. A session that started before that install has no such " +
+			"exception. Run " + server + " in the background as such a command, or start a new session and run it " +
+			"there.";
 	}
 
 	/**
-	 * Returns the cause of a sandboxed launch when the user settings name no sandbox exception for a launcher.
+	 * Returns the cause of a sandboxed request server when the user settings name no sandbox exception for it.
 	 *
-	 * @param launcher    the absolute path of the launcher
+	 * @param server      the absolute path of the request server
 	 * @param environment the command's environment
 	 * @param userHome    the user's absolute home folder
 	 * @param json        parses the settings
-	 * @return the cause and its fix, or empty if an exception names the launcher or the settings cannot be read
+	 * @return the cause and its fix, or empty if an exception names the server or the settings cannot be read
 	 */
-	private static Optional<String> missingException(Path launcher, Map<String, String> environment, Path userHome,
+	private static Optional<String> missingException(Path server, Map<String, String> environment, Path userHome,
 		JsonMapper json)
 	{
 		Path settings;
@@ -199,7 +201,7 @@ public final class ClaudeDirectLaunch
 					"Claude Code's user settings")).path("sandbox").path("excludedCommands");
 				for (JsonNode entry : excluded)
 				{
-					if (entry.asString("").contains(launcher.toString()))
+					if (entry.asString("").contains(server.toString()))
 						return Optional.empty();
 				}
 			}
@@ -208,8 +210,8 @@ public final class ClaudeDirectLaunch
 		{
 			return Optional.empty();
 		}
-		return Optional.of("The user settings " + settings + " name no sandbox exception for " + launcher + ". Run " +
-			"CAT's install again, then run " + launcher + " as a command of its own.");
+		return Optional.of("The user settings " + settings + " name no sandbox exception for " + server + ". Run " +
+			"CAT's install again, then run " + server + " in the background as a command of its own.");
 	}
 
 	/**

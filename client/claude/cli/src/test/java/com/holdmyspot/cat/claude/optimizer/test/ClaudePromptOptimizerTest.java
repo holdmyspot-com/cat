@@ -49,7 +49,7 @@ public final class ClaudePromptOptimizerTest
 	private static final Path FIXTURE = Path.of("../../common/cli/src/test/resources/optimizer/cli/campaign.json");
 	private static final String CAMPAIGN = "fixture-campaign";
 	private static final String SESSION_ID = "2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b";
-	private static final String LAUNCH_REFUSAL = "No CAT session launcher serves this session";
+	private static final String LAUNCH_REFUSAL = "No request server serves this session";
 	private static final String MISSING_TARGET = "The target does not exist: ";
 
 	/**
@@ -285,8 +285,8 @@ public final class ClaudePromptOptimizerTest
 	}
 
 	/**
-	 * Returns environments of a harness session's {@code start}, each with how its refusal begins when no session
-	 * launcher serves the session that runs it.
+	 * Returns environments of a harness session's {@code start}, each with how its refusal begins when no request
+	 * server serves the session that runs it.
 	 *
 	 * @return the environments and the beginnings of the refusals
 	 */
@@ -295,7 +295,7 @@ public final class ClaudePromptOptimizerTest
 	{
 		return new Object[][]
 		{
-			// Claude Code runs the command, so its sessions go to the session launcher, and none serves the session
+			// Claude Code runs the command, so its sessions go to its request server, and none serves the session
 			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"), LAUNCH_REFUSAL},
 			// Only Codex runs the command, so each of its sessions is refused, with the reason, when it starts
 			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CODEX_THREAD_ID", "thread"), MISSING_TARGET}
@@ -303,16 +303,16 @@ public final class ClaudePromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that {@code start} is refused, before it starts any session, for want of a session launcher only when
-	 * its sessions go to the session launcher. On every other route the command goes on, here to refuse the target
-	 * that does not exist.
+	 * Verifies that {@code start} is refused, before it starts any session, for want of a request server only when
+	 * its sessions go to the session's request server. On every other route the command goes on, here to refuse the
+	 * target that does not exist.
 	 *
 	 * @param variables the environment's variables, besides the home folder
 	 * @param refusal   how the refusal begins
 	 * @throws IOException if a file cannot be written
 	 */
 	@Test(dataProvider = "launchRoutes")
-	public void startNeedsLauncherOnLauncherRoute(Map<String, String> variables, String refusal)
+	public void startNeedsServerOnServedRoute(Map<String, String> variables, String refusal)
 		throws IOException
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())

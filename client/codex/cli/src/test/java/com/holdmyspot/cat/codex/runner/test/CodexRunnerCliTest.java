@@ -14,7 +14,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
-import com.holdmyspot.cat.common.runner.DirectLaunch;
+import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -24,13 +24,9 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
-import com.holdmyspot.cat.common.runner.policy.HostAccess;
-import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
-import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -45,7 +41,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
@@ -1072,157 +1067,60 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that Codex runs inside the session's sandbox, where the launcher cannot
-	 * write its plugin's folder, is refused with the refusal status and a reason that names the launcher's absolute
-	 * path, before the launcher identifies the session or starts anything.
+	 * Verifies that a launch from a command that Codex runs outside a run is refused with the refusal status when no
+	 * request server serves the session, with a reason that names the command that starts the server, before the
+	 * launcher writes a request or starts anything.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void refusesCodexLaunchInsideSandbox() throws IOException
+	public void refusesCodexLaunchWithoutServer() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path plugin = home.resolve("unwritable plugin");
+			Path project = Files.createDirectories(home.resolve("project/.cat")).getParent();
+			Path plugin = home.resolve("plugin");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID",
-				"019a0000-0000-7000-8000-000000000000");
+				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID", THREAD_ID);
 			StringWriter errors = new StringWriter();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--model",
 					"gpt-6-luna", "--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
-				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin, () ->
-				{
-					throw new AssertionError("No session is identified");
-				});
+				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin,
+				() -> ToolScope.forSession(project, environment, SessionHarness.installed(), Yielding.waiting(),
+					GitProjects.IGNORING));
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("runs the launcher inside its sandbox").
-				contains(plugin.resolve("bin/codex-runner").toString());
+			requireThat(errors.toString(), "errors").contains("No request server serves this session").
+				contains(plugin.resolve("bin/request-server").toString());
 			requireThat(output.size(), "outputSize").isZero();
+			requireThat(Files.exists(project.resolve(".cat/sessions").resolve(THREAD_ID).resolve("requests")),
+				"requestsExist").isFalse();
+			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies that a launch from a command that Codex runs outside the session's sandbox is refused with the refusal
-	 * status and the reason when its sources identify no session, and starts nothing.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
+	 * Verifies that a launch from a command that Codex runs is refused with the refusal status, before the launcher
+	 * sends a request, when the folder that the command runs in, which the new session would take as its project, is
+	 * the user's home folder.
 	 */
 	@Test
-	public void refusesLaunchFromUnknownSession() throws IOException
+	public void refusesHomeProjectFromCodexSession()
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path plugin = Files.createDirectory(home.resolve("plugin"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID",
-				"019a0000-0000-7000-8000-000000000000");
-			StringWriter errors = new StringWriter();
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
+		Path home = Path.of("/home/user").toAbsolutePath();
+		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+			"CODEX_THREAD_ID", THREAD_ID);
+		StringWriter errors = new StringWriter();
 
-			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--model",
-					"gpt-6-luna", "--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
-				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin, () ->
-				{
-					throw new PolicyRefusal("no rollout of the thread is in the sessions folder",
-						"Run the launcher from a Codex session");
-				});
+		boolean refused = CodexRunnerCli.refusesLaunch(new String[]{"serve", "--model", "gpt-6-luna", "--effort",
+			"low"}, home, environment, Platform.LINUX_X64, new PrintWriter(errors, true));
 
-			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("no rollout of the thread").
-				contains("Run the launcher from a Codex session");
-			requireThat(output.size(), "outputSize").isZero();
-		}
-	}
-
-	/**
-	 * Verifies that verifying an artifact is refused with a reason when Codex runs the command outside a run and
-	 * the session's sandbox does not let its commands read the artifact, is not refused for an artifact that the
-	 * session may read, and is not checked when no harness session runs the command.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesUnreadableArtifact() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path secrets = Files.createDirectory(home.resolve("secrets"));
-			Path plugin = Files.createDirectory(home.resolve("plugin"));
-			Path transcript = Files.writeString(home.resolve("session.jsonl"), "");
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID",
-				"019a0000-0000-7000-8000-000000000000");
-			DirectLaunch.Session session = new DirectLaunch.Session(denyingPolicy(project, secrets), transcript,
-				project, Optional.empty());
-			String[] denied = {"--verify-artifact", secrets.resolve("artifact").toString()};
-			StringWriter errors = new StringWriter();
-
-			boolean refused = CodexRunnerCli.refusesArtifactRead(denied, environment, new PrintWriter(errors, true),
-				() -> plugin, () -> session);
-
-			requireThat(refused, "refused").isTrue();
-			requireThat(errors.toString(), "errors").contains("--verify-artifact").
-				contains("does not let its commands read " + secrets.resolve("artifact"));
-			String[] readable = {"--verify-artifact", project.resolve("artifact").toString()};
-			requireThat(CodexRunnerCli.refusesArtifactRead(readable, environment, new PrintWriter(new StringWriter(), true),
-				() -> plugin, () -> session), "readableRefused").isFalse();
-			requireThat(CodexRunnerCli.refusesArtifactRead(denied, Map.of(), new PrintWriter(new StringWriter(), true),
-				() -> plugin, () ->
-				{
-					throw new AssertionError("No session is identified");
-				}), "outsideSessionRefused").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies that a launch from a command that Codex runs is not refused for the folder that the command runs
-	 * in, and is refused with the refusal status when the project folder that the session's transcript names, which
-	 * the new session would take, is the user's home folder, before the launcher writes anything for it.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesHomeProjectFromTranscript() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path plugin = Files.createDirectory(home.resolve("plugin"));
-			Path transcript = Files.writeString(home.resolve("session.jsonl"), "");
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID",
-				"019a0000-0000-7000-8000-000000000000");
-			String[] args = {"serve", "--model", "gpt-6-luna", "--effort", "low"};
-			StringWriter checkErrors = new StringWriter();
-
-			boolean refused = CodexRunnerCli.refusesLaunch(args, home, environment, Platform.current(),
-				new PrintWriter(checkErrors, true));
-
-			requireThat(refused, "refused").isFalse();
-			requireThat(checkErrors.toString(), "checkErrors").isEmpty();
-
-			StringWriter errors = new StringWriter();
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-			DirectLaunch.Session session = new DirectLaunch.Session(unreadPolicy(), transcript, home, Optional.empty());
-
-			int status = CodexRunnerCli.launch(args, environment, Yielding.waiting(), new StringReader(""), output,
-				new PrintWriter(errors, true), () -> plugin, () -> session);
-
-			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("cannot be a CAT project").
-				contains("Open a folder below the home folder");
-			requireThat(output.size(), "outputSize").isZero();
-			requireThat(Files.exists(home.resolve(".cat")), "homeCatExists").isFalse();
-		}
+		requireThat(refused, "refused").isTrue();
+		requireThat(errors.toString(), "errors").contains("cannot be a CAT project").
+			contains("Open a folder below the home folder");
 	}
 
 	/**
@@ -1268,8 +1166,8 @@ public final class CodexRunnerCliTest
 	{
 		return new Object[][]
 		{
-			{Map.of("CLAUDECODE", "1"), "Claude Code runs this command, and CAT's Codex plugin cannot read a Claude " +
-				"Code session's sandbox policy. Run the runner of CAT's Claude Code plugin instead."},
+			{Map.of("CLAUDECODE", "1"), "Claude Code runs this command, and CAT's Codex plugin holds no request " +
+				"server for a Claude Code session. Run the runner of CAT's Claude Code plugin instead."},
 			{Map.of("CAT_RUN", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session"}
 		};
 	}
@@ -1327,66 +1225,5 @@ public final class CodexRunnerCliTest
 		Files.writeString(agents.resolve(AGENT + ".toml"), "name = \"" + AGENT + "\"\n" + fields +
 			"developer_instructions = '''\nReview the change.\n'''\n");
 		return artifact;
-	}
-	/**
-	 * Returns a sandbox policy source whose policy lets the session's commands write one folder and denies them reads
-	 * of another.
-	 *
-	 * @param writable the folder that the commands may write
-	 * @param denied   the folder that the commands may not read
-	 * @return the source
-	 */
-	private static ParentPolicySource denyingPolicy(Path writable, Path denied)
-	{
-		return new ParentPolicySource()
-		{
-			@Override
-			public String harnessName()
-			{
-				return "Codex";
-			}
-
-			@Override
-			public String permissionEntries(List<Path> writes, Set<String> hosts)
-			{
-				throw new AssertionError("No permission entries are named");
-			}
-
-			@Override
-			public ParentPolicy read(Optional<String> thread)
-			{
-				return new ParentPolicy(true, List.of(writable), List.of(), List.of(denied), List.of(), HostAccess.ALL,
-					false, List.of());
-			}
-		};
-	}
-
-	/**
-	 * Returns a sandbox policy source that no check-failing launch may read.
-	 *
-	 * @return the source
-	 */
-	private static ParentPolicySource unreadPolicy()
-	{
-		return new ParentPolicySource()
-		{
-			@Override
-			public String harnessName()
-			{
-				return "Codex";
-			}
-
-			@Override
-			public String permissionEntries(List<Path> writes, Set<String> hosts)
-			{
-				throw new AssertionError("No permission entries are named");
-			}
-
-			@Override
-			public ParentPolicy read(Optional<String> thread)
-			{
-				throw new AssertionError("No policy is read");
-			}
-		};
 	}
 }

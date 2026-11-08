@@ -2,7 +2,7 @@ package com.holdmyspot.cat.codex.runner.test;
 
 import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 
-import com.holdmyspot.cat.codex.runner.CodexSessionLauncherCli;
+import com.holdmyspot.cat.codex.runner.CodexRequestServerCli;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.fakes.test.FakeProcessLauncher;
@@ -66,7 +66,7 @@ public final class CodexRequestedSessionStarterTest extends RequestedSessionStar
 			}, new ManualClock(Instant.EPOCH), processes);
 			this.jvm = new TestJvmScope(build.temporaryDirectory(), executables);
 			Path artifact = Path.of("/plugins/cat/1.0").toAbsolutePath();
-			this.starter = CodexSessionLauncherCli.starter(jvm, artifact, Map.of());
+			this.starter = CodexRequestServerCli.starter(jvm, artifact, Map.of());
 			String launcherName = "codex-runner";
 			if (Platform.current().isWindows())
 				launcherName += ".cmd";
