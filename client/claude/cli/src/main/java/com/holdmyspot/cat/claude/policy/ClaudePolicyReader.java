@@ -119,8 +119,8 @@ public final class ClaudePolicyReader
 		throws IOException, PolicyRefusal
 	{
 		long processId = session.processId();
-		ProcessDescription process = processes.find(processId).orElseThrow(() -> new PolicyRefusal("the Claude Code " +
-			"process " + processId + " that the hook environment's CLAUDE_PID names is not running", PROCESS_FIX));
+		ProcessDescription process = processes.find(processId).orElseThrow(() -> new PolicyRefusal("the session's " +
+			"Claude Code process " + processId + " is not running", PROCESS_FIX));
 		String start = process.start().orElseThrow(() -> new PolicyRefusal("the operating system does not report " +
 			"when the Claude Code process " + processId + " started, so CAT cannot tell it from a later process " +
 			"with the same ID", PROCESS_FIX));

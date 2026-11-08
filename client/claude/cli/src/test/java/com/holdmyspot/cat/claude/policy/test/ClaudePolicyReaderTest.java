@@ -455,7 +455,8 @@ public final class ClaudePolicyReaderTest
 
 	/**
 	 * Verifies that a process that is not running, or that started at another instant than the session's process,
-	 * is refused.
+	 * is refused, and that the reason for a process that is not running names the session's process without naming a
+	 * hook, since a runner launcher's reading gives it as well.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the first reading is refused
@@ -479,7 +480,8 @@ public final class ClaudePolicyReaderTest
 				requireThat(e.getMessage(), "refusal").contains("another process");
 			}
 			fixture.running = false;
-			requireThat(fixture.refusal(), "refusal").contains("not running");
+			requireThat(fixture.refusal(), "refusal").contains("the session's Claude Code process").
+				contains("is not running").doesNotContain("hook");
 		}
 	}
 
