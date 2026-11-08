@@ -22,6 +22,10 @@
 	only the context and focused checks it needs and each large enough that its own work outweighs a subagent's fixed
 	cost, so independent work proceeds concurrently, no delegate spends its time on context or checks that belong to
 	other work, and the full build runs once, after integration.
+<!-- A parent gave one implementer five parts of a work item and a reading list of whole design sections; after more
+     than two hours the implementer had committed nothing. -->
+- Point each subtask at the exact passages its decisions depend on, so that it spends its time on its deliverable
+	rather than on searching documents for them.
 <!-- A coordinator briefed every unit of a multi-unit implementation to its most costly implementer, although several
      units were mechanical, such as a configuration-path change, a rename and applying a ready patch, because each brief
      mixed open design choices with the edits that follow from them. -->
@@ -87,7 +91,8 @@ the higher-level model the high-judgment work listed near the end of this rule. 
 agents runs a delegated task, lazy load `delegation/implementer-agents.md`.
 
 Give each subtask its own task contract that carries only what that subtask needs, including a reading list limited to
-the files its decisions depend on. Do not send several subtasks one shared reading list. A subtask's gates are its
+the files its decisions depend on. Name in each entry the sections, declarations or line ranges that hold those
+decisions, rather than a whole document or a section that it must search. Do not send several subtasks one shared reading list. A subtask's gates are its
 focused checks: the compilation, static analysis and tests that its owned paths affect. The parent runs the full build
 once, after integrating the subtasks' results, so that concurrent subtasks neither run it nor wait for one another's.
 
