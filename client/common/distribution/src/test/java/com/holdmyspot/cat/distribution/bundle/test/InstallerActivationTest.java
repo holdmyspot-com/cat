@@ -221,19 +221,19 @@ public final class InstallerActivationTest
 			Path launcher = versionFolder.resolve("bin").resolve("installer");
 			if (platform.isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
-			// The runner launchers run outside the sandbox where the harnesses sandbox commands
-			String runners = "";
+			// The request server runs outside the sandbox where the harnesses sandbox commands
+			String server = "";
 			if (!platform.isWindows())
-				runners = "claude-runner, codex-runner, ";
+				server = ", request-server";
 			requireThat(installed, "installed").
 				contains("CAT 1.0 is installed for " + integration.productName() + ". Restart " +
 					integration.productName() + " for the changes to take effect.").
 				contains("Uninstalling CAT undoes these changes.").
 				contains("Runs without asking").
-				contains("    " + runners + "installer install, installer status" + lineSeparator).
+				contains("    installer install, installer status" + server + lineSeparator).
 				contains("Runs outside the sandbox").
-				contains("    " + runners + "installer install, installer status, installer uninstall" +
-					lineSeparator).
+				contains("    installer install, installer status, installer uninstall" + server + lineSeparator).
+				doesNotContain("claude-runner").doesNotContain("codex-runner").
 				contains("The sandbox may write to").contains("    " + String.join(fake.user.getFileSystem().
 					getSeparator(), "~", ".cat", "locks") + lineSeparator).
 				contains("  where ~         = " + fake.user + lineSeparator).
