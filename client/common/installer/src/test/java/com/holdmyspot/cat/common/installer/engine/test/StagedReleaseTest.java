@@ -15,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.List;
-import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -354,13 +353,15 @@ public final class StagedReleaseTest
 	}
 
 	/**
-	 * A regular plugin-info file without execute permission is refused on filesystems with POSIX modes.
+	 * A regular plugin-info file without execute permission is refused on filesystems with POSIX modes. On a
+	 * filesystem without them, such as native Windows, a file cannot lose its execute permission, so the staged release
+	 * is accepted.
 	 *
-	 * @throws IOException if fixture files cannot be written or read
-	 * @throws TrustException expected refusal for a nonexecutable file
+	 * @throws IOException    if fixture files cannot be written or read
+	 * @throws TrustException if a release that must be accepted is refused
 	 */
-	@Test(expectedExceptions = TrustException.class, expectedExceptionsMessageRegExp = ".*plugin-info.*")
-	public void refusesNonExecutablePluginInfo() throws IOException, TrustException
+	@Test
+	public void checksExecutePermissionOfPluginInfo() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -368,9 +369,21 @@ public final class StagedReleaseTest
 			writeRelease(tree);
 			Path executable = tree.resolve("bin/plugin-info");
 			if (!PortableFiles.hasModes(executable))
-				throw new SkipException("This filesystem has no POSIX execute permissions");
+			{
+				requireThat(StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64"), "version").
+					isEqualTo("1.1");
+				return;
+			}
 			PortableFiles.setMode(executable, PosixFilePermissions.fromString("rw-------"));
-			StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64");
+			try
+			{
+				StagedRelease.validate(tree, "1.1", "plugin.json", "linux-x64");
+				throw new AssertionError("A nonexecutable plugin-info was accepted");
+			}
+			catch (TrustException e)
+			{
+				requireThat(e.getMessage(), "message").contains("plugin-info");
+			}
 		}
 	}
 

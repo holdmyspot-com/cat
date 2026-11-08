@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Map;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -179,15 +178,29 @@ public final class CodexInstallationTest
 
 	/**
 	 * A {@code CODEX_HOME} that is blank but not empty names a folder, as Codex reads it, so a blank value neither
-	 * falls back to the default home nor names an existing folder until a folder of that name exists.
+	 * falls back to the default home nor names an existing folder until a folder of that name exists. On Windows, which
+	 * refuses a file name that ends in a space, a blank value is refused as Codex refuses it there: as a value that
+	 * cannot be read, not as a folder that does not exist, so that the installer does not try to create it.
 	 *
 	 * @throws IOException if the temporary directories cannot be created
 	 */
 	@Test
-	public void blankVariableNamesAFolder() throws IOException
+	public void blankVariableIsHandledAsThePlatformDoes() throws IOException
 	{
 		if (Platform.current().isWindows())
-			throw new SkipException("Windows refuses a file name that ends in a space, so no folder has a blank name");
+			windowsRefusesBlankVariable();
+		else
+			blankVariableNamesAFolder();
+	}
+
+	/**
+	 * Verifies that a blank {@code CODEX_HOME} names a folder on a platform that allows a file name that ends in a
+	 * space.
+	 *
+	 * @throws IOException if the temporary directories cannot be created
+	 */
+	private static void blankVariableNamesAFolder() throws IOException
+	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path user = cleanup.add(Files.createTempDirectory("cat-user-"));
@@ -210,17 +223,12 @@ public final class CodexInstallationTest
 	}
 
 	/**
-	 * On Windows, which refuses a file name that ends in a space, a blank {@code CODEX_HOME} is refused as Codex refuses
-	 * it there: as a value that cannot be read, not as a folder that does not exist, so that the installer does not
-	 * try to create it.
+	 * Verifies that a blank {@code CODEX_HOME} is refused on Windows as a value that cannot be read.
 	 *
 	 * @throws IOException if the temporary directories cannot be created
 	 */
-	@Test
-	public void windowsRefusesBlankVariable() throws IOException
+	private static void windowsRefusesBlankVariable() throws IOException
 	{
-		if (!Platform.current().isWindows())
-			throw new SkipException("Only Windows refuses a file name that ends in a space");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path user = cleanup.add(Files.createTempDirectory("cat-user-"));
