@@ -240,8 +240,15 @@ public final class InstallerActivationTest
 				contains("        installer = " + launcher + lineSeparator).
 				endsWith("Run installer status --verbose to see the exact entries." + lineSeparator).
 				doesNotContain("\"result\"");
+			// Codex's rules file holds each launcher path as a quoted string literal, which escapes backslashes
+			String entryLauncher = launcher.toString();
+			if (harness.equals("codex"))
+			{
+				String literal = MAPPER.writeValueAsString(entryLauncher);
+				entryLauncher = literal.substring(1, literal.length() - 1);
+			}
 			requireThat(exact, "exact").contains("Uninstalling CAT undoes these changes.").
-				contains("Runs without asking").contains(launcher.toString()).doesNotContain("installer =").
+				contains("Runs without asking").contains(entryLauncher).doesNotContain("installer =").
 				doesNotContain("--verbose").doesNotContain("\"result\"");
 		}
 	}
