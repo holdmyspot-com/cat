@@ -61,8 +61,9 @@ public final class ExecutableDiscovery
 	 * @return the path at which the program was found, with its command prefix, and its complete environment
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code program} is blank
-	 * @throws IOException              if {@code SystemRoot} is not an absolute directory on Windows, or the program is
-	 *                                  not on the recorded search path
+	 * @throws ProgramNotFoundException if the program is not on the recorded search path; the message names the
+	 *                                  program and the search path
+	 * @throws IOException              if {@code SystemRoot} is not an absolute directory on Windows
 	 */
 	public HarnessCommand find(String program, Map<String, String> environment, Map<String, String> variables)
 		throws IOException
@@ -123,9 +124,10 @@ public final class ExecutableDiscovery
 	 * @param lookup     the install environment
 	 * @param searchPath the recorded search path
 	 * @return the absolute path at which the first match was found, with its links unresolved
-	 * @throws IOException if no program is found
+	 * @throws ProgramNotFoundException if no program is found
 	 */
-	private Path findProgram(String program, Map<String, String> lookup, String searchPath) throws IOException
+	private Path findProgram(String program, Map<String, String> lookup, String searchPath)
+		throws ProgramNotFoundException
 	{
 		Map<String, String> search = new HashMap<>();
 		search.put("PATH", searchPath);
@@ -145,8 +147,8 @@ public final class ExecutableDiscovery
 		String found = platform.findProgram(program, search);
 		if (found.equals(program))
 		{
-			throw new IOException("The program \"" + program + "\" is not on PATH (" + searchPath + "). Install the " +
-				"harness, or add its directory to PATH, and run CAT's install again.");
+			throw new ProgramNotFoundException("The program \"" + program + "\" was not found on PATH in the " +
+				"installer's environment (" + searchPath + ").");
 		}
 		return Path.of(found).toAbsolutePath().normalize();
 	}

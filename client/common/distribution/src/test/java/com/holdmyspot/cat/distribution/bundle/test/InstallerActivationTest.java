@@ -288,6 +288,42 @@ public final class InstallerActivationTest
 	}
 
 	/**
+	 * A first install whose PATH holds no program of the harness is refused, because running it again in the same
+	 * environment finds no program either. The message names the harness and the program that was searched for, says
+	 * that it was not found on PATH in the installer's environment, tells the user to install the harness or run the
+	 * installer with the PATH that its sessions use, and then to run the same command again, without asking for a run
+	 * of the entry command.
+	 *
+	 * @param harness the packaged harness to exercise
+	 * @throws IOException if a fixture file cannot be written or read
+	 */
+	@Test(dataProvider = "harnesses")
+	public void missingProgramIsRefused(String harness) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope scope = new TestJvmScope())
+		{
+			Path root = cleanup.add(fixtureDirectory("installer-missing-program-"));
+			Platform platform = Platform.current();
+			HarnessIntegration integration = provider(HarnessIntegration.class, harness);
+			String product = integration.productName();
+			FakeHarness fake = new FakeHarness(harness, platform, root);
+			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
+			Path empty = Files.createDirectories(root.resolve("empty"));
+			fake.environment.put("PATH", empty.toString());
+
+			JsonNode refused = fake.runProgram(first, "--home", fake.home.toString(), "install", "--harness", harness);
+
+			requireThat(refused.path("result").asString(), "result").withContext(refused, "output").
+				isEqualTo("refused");
+			requireThat(refused.path("message").asString(), "message").isEqualTo("The program \"" +
+				integration.programName() + "\" was not found on PATH in the installer's environment (" + empty +
+				"). Install " + product + ", or run the installer with the PATH your " + product + " sessions use, " +
+				"then run the same command again.");
+		}
+	}
+
+	/**
 	 * A program on PATH that runs but does not answer {@code --version} as the harness's program does is reported as
 	 * not the harness's program.
 	 *

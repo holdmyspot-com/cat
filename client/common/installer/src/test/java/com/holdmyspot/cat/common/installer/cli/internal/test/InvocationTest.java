@@ -422,6 +422,40 @@ public final class InvocationTest
 	}
 
 	/**
+	 * When the installer's PATH holds no program of the harness, a first install is refused before anything changes,
+	 * because running it again in the same environment finds no program either. The refusal does not ask for a run of
+	 * the CAT entry command.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the release's policy is invalid
+	 */
+	@Test
+	public void refusesFirstInstallWithoutHarnessProgram() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Archive archive = new Archive(cleanup.add(testDirectory("invocation-no-program-")));
+			Path empty = Files.createDirectories(archive.root.resolve("empty"));
+			Map<String, String> environment = new HashMap<>(archive.environment);
+			environment.put("PATH", empty.toString());
+			Map<String, String> before = Releases.snapshot(archive.root);
+			RecordingIntegration integration = new RecordingIntegration();
+
+			Run run = run(archive.plugin, archive.project, environment, List.of(new LiveProvider()), integration,
+				"--home", archive.home.toString(), "install", "--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(run.result().path("message").stringValue(), "message").isEqualTo("The program " +
+				"\"harness-a\" was not found on PATH in the installer's environment (" + empty + "). Install " +
+				"Product harness-a, or run the installer with the PATH your Product harness-a sessions use, then run " +
+				"the same command again.");
+			requireThat(integration.calls(), "calls").isEmpty();
+			requireThat(Releases.snapshot(archive.root), "after").isEqualTo(before);
+		}
+	}
+
+	/**
 	 * When the recorded harness program no longer exists, the CAT entry command's install from an extracted plugin
 	 * archive takes no other program from the search path: it is refused before anything changes, telling the user how
 	 * to start over.

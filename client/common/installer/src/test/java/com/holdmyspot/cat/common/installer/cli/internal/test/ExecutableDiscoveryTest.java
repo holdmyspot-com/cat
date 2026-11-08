@@ -61,12 +61,13 @@ public final class ExecutableDiscoveryTest
 	}
 
 	/**
-	 * Install reports the program's name and the search path when no program is found.
+	 * Discovery reports the program's name and the search path when no program is found.
 	 *
 	 * @throws IOException if the fixture cannot be created or discovery fails
 	 */
 	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "The program \"harness-a\" is not on PATH.*Install the harness.*")
+		expectedExceptionsMessageRegExp = "The program \"harness-a\" was not found on PATH in the installer's " +
+			"environment \\(.*empty\\)\\.")
 	public void refusesMissingProgram() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
