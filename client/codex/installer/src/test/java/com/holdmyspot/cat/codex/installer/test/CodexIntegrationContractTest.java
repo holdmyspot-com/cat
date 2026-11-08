@@ -141,8 +141,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.placesInstallationAtHome(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -157,8 +157,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.recordsProgramHome(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -183,7 +183,7 @@ public final class CodexIntegrationContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.acceptsFreshConfiguration(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.acceptsFreshConfiguration(cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -197,7 +197,7 @@ public final class CodexIntegrationContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.registersVersion(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.registersVersion(cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -211,7 +211,7 @@ public final class CodexIntegrationContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.refusesMissingPlugin(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.refusesMissingPlugin(cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -226,8 +226,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.unregistersKeepingDataOnRequest(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -250,8 +250,8 @@ public final class CodexIntegrationContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.installsReadOnlyEntriesOnce(cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-user-home-")));
+			CONTRACT.installsReadOnlyEntriesOnce(cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-user-home-").toRealPath()));
 		}
 	}
 
@@ -265,7 +265,7 @@ public final class CodexIntegrationContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.installsPermissionsOnce(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.installsPermissionsOnce(cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -280,8 +280,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.installsSandboxEntriesOnce(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -296,8 +296,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.asksConsentOnce(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -312,8 +312,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.describesSharedEntriesOnce(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -328,8 +328,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.leavesChangedEntry(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -343,7 +343,7 @@ public final class CodexIntegrationContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.describesNothingAdded(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.describesNothingAdded(cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 
@@ -359,8 +359,8 @@ public final class CodexIntegrationContractTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CONTRACT.groupsRecordedEntries(
-				cleanup.add(Files.createTempDirectory("cat-integration-")),
-				cleanup.add(Files.createTempDirectory("cat-integration-")));
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()),
+				cleanup.add(Files.createTempDirectory("cat-integration-").toRealPath()));
 		}
 	}
 }
