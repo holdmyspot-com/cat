@@ -51,7 +51,8 @@ Each harness gets its own installation of CAT, and the two may run different CAT
 also use the POSIX command in Git Bash; Codex on Windows needs the PowerShell command. CAT's runners and prompt
 optimization are not available on native Windows; to use them, run your harness and CAT inside WSL2. If the command
 cannot write a required path, run it outside the agent sandbox. Restart the harness: a session that was already running
-has no CAT session launcher, so it cannot start runner sessions or prompt optimization trials.
+has none of the sandbox exceptions that the install adds for CAT's runner launchers, so it cannot start runner sessions
+or prompt optimization trials.
 
 ## Choosing where CAT installs
 
@@ -90,9 +91,12 @@ harness home and the installer reads `USERPROFILE`. The installation records its
 these variables does not redirect an update; the full list of what the installer writes is in the
 [installation guide](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md#installed-locations).
 
-CAT's runners need no sandbox exception: each session's CAT session launcher starts runner sessions inside their
-harness's own sandbox, never wider than the session that asked for them. The command removes the runner exceptions that
-earlier installation instructions asked you to add, and reports each removal.
+The command lets your sessions run CAT's two runner launchers outside their sandbox, by their absolute paths only, and
+reports those entries as running outside the sandbox. It also makes your shell startup files, such as `.bashrc` and
+`.zshrc`, read-only to the harness's sandboxed commands. A runner launcher identifies the session that runs it, checks
+every path that the launch names against that session's sandbox policy, and starts the runner session inside its
+harness's own sandbox, never wider than the session that asked for it. In Codex, a permissions profile that denies any
+read keeps the launchers sandboxed (openai/codex#38318), and the launchers then say which entries to remove.
 
 ## Install another release, check CAT and uninstall with your agent
 

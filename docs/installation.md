@@ -148,9 +148,9 @@ permission.
 ### Codex hook trust
 
 Codex runs a plugin's hook only after `config.toml` records the hash that Codex computes for the hook, which Codex
-records when you review and trust the hook. CAT's SessionStart hook starts the session launcher, and its other hooks
-serve the runners and subagents, so without the record a fresh Codex runs none of them and CAT's runners report that no
-session launcher is running. The Codex install therefore writes the record for each hook that it installs: a
+records when you review and trust the hook. CAT's SessionStart hook starts the session launcher that the prompt
+optimizer uses, and its other hooks serve the runners and subagents, so without the record a fresh Codex runs none of
+them. The Codex install therefore writes the record for each hook that it installs: a
 `[hooks.state."cat@cat:hooks/hooks.json:<event>:<group>:<handler>"]` table in `config.toml` that holds `trusted_hash`,
 the hash of that hook. With the record, Codex runs CAT's hooks without asking you, and the install result says so.
 
@@ -253,11 +253,16 @@ folder. Each harness's entries name that harness's own installer.
 	stays sandboxed. Earlier versions ran the whole command line outside the sandbox when one command matched a wildcard
 	entry, so CAT's Claude Code support needs Claude Code 2.1.277 or later. An install of a release that the agent names,
 	such as `install --harness claude v1.1`, matches the wildcard entry and the allowed entry, so it runs outside the
-	sandbox and without a prompt.
+	sandbox and without a prompt. On Linux and macOS, the install also adds the entry `<launcher> *` to
+	`sandbox.excludedCommands` and `Bash(<launcher> *)` to `permissions.allow` for each of the two runner launchers
+	`claude-runner` and `codex-runner` beside the installer, so that a session runs them outside its sandbox and without
+	a prompt; see [Let sessions run CAT's runners](#let-sessions-run-cats-runners).
 - In Codex, the install writes the CAT-owned file `rules/cat-installer.rules` in your Codex home, which allows
 	`install --harness codex` and `status` and keeps Codex's prompt for `uninstall --harness codex`, and adds the lock
 	folder as described in [Codex permission profile](#codex-permission-profile). It also trusts CAT's hooks, as
-	described in [Codex hook trust](#codex-hook-trust).
+	described in [Codex hook trust](#codex-hook-trust). On Linux and macOS, the same rules file also allows the two
+	runner launchers `claude-runner` and `codex-runner` beside the installer, each with any options, so that Codex runs
+	them outside its sandbox and without asking; see [Let sessions run CAT's runners](#let-sessions-run-cats-runners).
 
 An install refuses, before changing anything, a harness configuration that it cannot change safely, such as a malformed
 `settings.json` or a symbolic link in its place.
@@ -484,27 +489,62 @@ the session runs under the model and the reasoning effort that the definition na
 together with `--model` or `--effort`, and an agent definition that does not name both a model and an effort. A session
 that a runner started cannot pass `--agent`.
 
-The runners need no configuration. When a Claude Code or Codex session starts, CAT's SessionStart hook starts a session
-launcher for it: a process outside the session's sandbox that serves that session until it ends. A runner launcher that
-the session runs asks its session launcher to start the new session, and the session launcher starts it inside that
-harness's own sandbox, so that the new session can read, write and reach no more than the session that asked for it.
-The session launcher reads the asking session's sandbox policy from that harness's own settings and command line, never
-from the request. A launcher always runs its own CAT artifact and the `claude` or `codex` command that your `PATH`
-finds: a launch that names `--artifact` exits with status 2 and starts nothing. A runner launcher that no harness runs,
-such as one that you run in a terminal, starts the new session itself, inside that harness's own sandbox, with exactly
-what the session needs. A runner launcher run by the harness whose plugin did not provide it starts nothing and names
-the plugin to use instead.
+The runners need no configuration. A session runs a runner launcher outside its own sandbox, because a session that a
+harness sandboxes cannot start inside another sandbox. `install` lets it: it adds a sandbox exception for each runner
+launcher's absolute path, which it reports with its other settings entries as running outside the sandbox (see
+[Permission boundary and installed locations](#permission-boundary-and-installed-locations)), and it keeps the session's
+commands from writing the shell startup files in the harness's home folder (`.bashrc`, `.bash_profile`, `.bash_login`,
+`.bash_logout`, `.profile`, `.zshrc`, `.zshenv`, `.zprofile` and `.zlogin`), because a shell that runs the launcher
+loads them first. In Claude Code these are `sandbox.filesystem.denyWrite` and `permissions.deny` `Edit(//<file>)`
+entries; in Codex they are `read` entries in the permissions profile that `default_permissions` selects, and Codex
+without such a profile gets none. `uninstall` removes what `install` added. A command matches the exception only when it
+is the launcher's absolute path followed by its options, with nothing in front of it, such as a variable assignment or
+`env`, and no pipe or redirection.
 
-A session that was already running when you installed or updated CAT has no session launcher, so its runner launchers
-start nothing and print: "No CAT session launcher serves this session. CAT starts one when a session starts; sessions
-started before CAT was installed or updated have none. Start a new Claude Code session and run the command again." (or
-"Codex session" in Codex). Start a new session and run the task there.
+A runner launcher that a session runs treats its options, inputs and environment as the session's and checks them
+before it starts anything. It identifies the session from its harness process and the session or thread ID that the
+harness puts in the command's environment (`CLAUDE_CODE_SESSION_ID` in Claude Code, `CODEX_THREAD_ID` in Codex), finds
+the session's transcript by that ID in the harness's home, and takes the session's project folder from the working
+directory that the transcript names; a launch without `--project` uses that folder, not the command's working directory.
+It reads the session's sandbox policy from that harness's own settings and command line, never from the launch. Every
+path that the launch names for reading, such as the project, the input or the `--extra-permissions` file, must be one
+the session may read, and every path that it writes, such as the output, the conversation folder and the run root, one
+the session may write. It removes the variables that make a program load other code, such as `LD_PRELOAD`,
+`LD_LIBRARY_PATH`, `DYLD_*`, `BASH_ENV` and the Java option variables, before Java starts. It then starts the new
+session itself, inside that harness's own sandbox, so that the new session can read, write and reach no more than the
+session that asked for it, and it stops the new session's processes when it ends. A launch from a session that names
+an option that only CAT itself passes, such as `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name` or
+`--git-email`, exits with status 2 and starts nothing. A launcher always runs its own CAT artifact and the `claude` or
+`codex` command that your `PATH` finds: a launch that names `--artifact` exits with status 2 and starts nothing. A
+runner launcher that no harness runs, such as one that you run in a terminal, starts the new session itself, inside
+that harness's own sandbox, with exactly what the session needs. A runner launcher run by the harness whose plugin did
+not provide it starts nothing and names the plugin to use instead.
 
-A Codex session that runs in Codex's shared background server, which Codex uses unless it starts with `--no-daemon`,
-has no session launcher either, because the server outlives the session and would keep its launcher running after the
-session ends. Codex's message then adds: "A Codex session that runs in Codex's shared background server, which Codex
-uses unless it starts with --no-daemon, has none either; start Codex with --no-daemon." Start Codex with
-`--no-daemon`, then start a new session.
+When the launcher finds that it runs inside the session's sandbox, it starts nothing and exits with status 2. Its
+message begins "CAT cannot start the session:" and says why:
+
+- A session that was already running when you installed or updated CAT has no exception for the launcher. Start a new
+	session and run the task there.
+- A command that does not match the exception, such as one that runs the launcher by another path, behind a variable
+	assignment or through a pipe, stays sandboxed. Run the launcher's absolute path, which the message names, as a
+	command of its own.
+- A Claude Code session in `dontAsk` mode keeps the command sandboxed. Start a session in another mode.
+- Codex 0.160.0 runs a command that a rule allows outside its sandbox only when the session's filesystem permissions
+	deny no reads ([openai/codex#38318](https://github.com/openai/codex/issues/38318)). When your permissions profile
+	denies any read, the message names the profile and each denied entry. Remove those entries and start a new Codex
+	session, or start the session from a terminal.
+
+The launcher also refuses, with status 2, a session that it cannot identify: one whose environment names no session
+or thread ID, whose transcript it finds nowhere or more than once, or whose transcript the session's commands could
+write. A Codex session on Codex's shared background server, which Codex uses unless it starts with `--no-daemon`, takes
+the latest sandbox policy that its rollout records, and is refused until it records one, so run the launcher after the
+session's first turn.
+
+The prompt optimizer's sessions do not go through a runner launcher yet: they still go through the session launcher
+that CAT's SessionStart hook starts for each harness process, outside the session's sandbox. A session that started
+before you installed or updated CAT has none, and the optimizer's sessions then report "No CAT session launcher serves
+this session"; start a new session. A Codex session on Codex's shared background server has none either; start Codex
+with `--no-daemon` for prompt optimization.
 
 When CAT cannot read a session's sandbox policy safely, its runner launchers start nothing either. The message begins
 "CAT cannot start the session: it cannot read this Claude Code session's sandbox policy safely:" (or "this Codex
@@ -529,11 +569,9 @@ requested. The extra writes and hosts are treated like the session's own: when y
 launch is refused with the message above, which lists them. The prompt optimizer's `start` takes the same option and
 applies the file to every session of the campaign.
 
-Earlier versions of this guide told you to exempt the two runner launchers from your harness's sandbox. They no longer
-need that exception, so `install` removes it and reports each removal: in Claude Code, the
-runner entries in `sandbox.excludedCommands` and `permissions.allow` of your user settings; in Codex, the file
-`rules/cat.rules` in your Codex home when it holds only those runner rules. When that file also holds other content,
-`install` leaves it as it is and lists the runner rules for you to remove; remove them, then restart Codex.
+Earlier versions of `install` removed the runner exceptions that older versions of this guide asked you to add. It no
+longer removes them: it adds its own entries for the launchers' absolute paths, and an entry that you added yourself
+stays as it is.
 
 Sessions that a runner starts need no configuration either. When you pass `--session-requests <count>`, and
 `--request-depth <levels>` for deeper levels, such a session runs the same launchers, which ask the runner that started
