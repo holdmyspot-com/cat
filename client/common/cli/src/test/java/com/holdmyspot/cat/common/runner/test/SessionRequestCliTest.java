@@ -49,7 +49,8 @@ public final class SessionRequestCliTest
 	}
 
 	/**
-	 * Verifies that a submission becomes a versioned request and times out with an actionable await command.
+	 * Verifies that a submission becomes a versioned request and times out with an actionable await command, and that
+	 * waiting again exits 0 for a completed session, 2 for a refused request and 1 for a failed session.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -118,7 +119,14 @@ public final class SessionRequestCliTest
 						{
 							throw new AssertionError("Response exists");
 						}, new PrintWriter(new StringWriter())),
-						"refused").isEqualTo(1);
+						"refused").isEqualTo(2);
+					Files.writeString(response, "{\"status\":\"failed\"}");
+					requireThat(SessionRequestCli.execute(new String[]{"--await", id}, requests, time,
+						() ->
+						{
+							throw new AssertionError("Response exists");
+						}, new PrintWriter(new StringWriter())),
+						"failed").isEqualTo(1);
 				}
 			}
 		}

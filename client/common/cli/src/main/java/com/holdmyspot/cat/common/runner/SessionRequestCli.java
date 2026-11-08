@@ -75,7 +75,8 @@ public final class SessionRequestCli
 	 * @param clock    measures the wait bound
 	 * @param pause    paces response checks
 	 * @param output   receives response paths or timeout instructions
-	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
+	 * @return 0 for completed, 2 for refused, 1 for another response status, or 3 after the wait bound (default 300
+	 *         seconds)
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
 	 * @throws IOException              if request I/O fails or a pause is cut short
 	 */
@@ -97,7 +98,8 @@ public final class SessionRequestCli
 	 * @param clock      measures the wait bound
 	 * @param pause      paces response checks
 	 * @param output     receives response paths or timeout instructions
-	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
+	 * @return 0 for completed, 2 for refused, 1 for another response status, or 3 after the wait bound (default 300
+	 *         seconds)
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
 	 * @throws IOException              if request I/O fails or a pause is cut short
 	 */
@@ -122,7 +124,8 @@ public final class SessionRequestCli
 	 * @param clock      measures the wait bound
 	 * @param pause      paces response checks
 	 * @param output     receives response paths or timeout instructions
-	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
+	 * @return 0 for completed, 2 for refused, 1 for another response status, or 3 after the wait bound (default 300
+	 *         seconds)
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
 	 * @throws IOException              if request I/O fails, a pause is cut short, or the request exceeds
 	 *                                  {@code limits}
@@ -148,7 +151,8 @@ public final class SessionRequestCli
 	 * @param clock      measures the wait bound
 	 * @param pause      paces response checks
 	 * @param output     receives response paths or timeout instructions
-	 * @return 0 for completed, 1 for another response status, or 3 after the wait bound (default 300 seconds)
+	 * @return 0 for completed, 2 for refused, 1 for another response status, or 3 after the wait bound (default 300
+	 *         seconds)
 	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
 	 * @throws IOException              if request I/O fails or a pause is cut short or the request exceeds
 	 *                                  {@code limits}
@@ -230,9 +234,7 @@ public final class SessionRequestCli
 			JsonNode result = SessionRequestForwarder.converse(json, request, requests, id, conversation, nullDevice,
 				limits, pause, OutputStream.nullOutputStream(), null);
 			output.println(responseFile(requests, id));
-			if (result.path("status").asString().equals("completed"))
-				return 0;
-			return 1;
+			return exitStatus(result);
 		}
 		if (id.isEmpty())
 		{
@@ -267,9 +269,7 @@ public final class SessionRequestCli
 				{
 					JsonNode result = json.readTree(response.toFile());
 					output.println(response);
-					if (result.path("status").asString().equals("completed"))
-						return 0;
-					return 1;
+					return exitStatus(result);
 				}
 				catch (JacksonException e)
 				{
@@ -293,6 +293,23 @@ public final class SessionRequestCli
 			}
 			pause.pause();
 		}
+	}
+
+	/**
+	 * Returns the exit status of a request that its response ended.
+	 *
+	 * @param response the request's response
+	 * @return 0 if the requested session completed, {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the run's
+	 *   runner refused the request, or 1 otherwise
+	 */
+	private static int exitStatus(JsonNode response)
+	{
+		return switch (response.path("status").asString(""))
+		{
+			case "completed" -> 0;
+			case "refused" -> HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+			default -> 1;
+		};
 	}
 
 	/**
