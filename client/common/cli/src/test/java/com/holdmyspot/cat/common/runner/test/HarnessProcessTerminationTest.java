@@ -9,7 +9,6 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -32,9 +31,9 @@ public final class HarnessProcessTerminationTest
 	@Test
 	public void terminatesVisibleChildren() throws IOException
 	{
-		FakeProcessHandle grandchild = new FakeProcessHandle(3, Instant.EPOCH, true);
-		FakeProcessHandle child = new FakeProcessHandle(2, Instant.EPOCH, true, grandchild);
-		FakeProcessHandle parent = new FakeProcessHandle(1, Instant.EPOCH, true, child);
+		FakeProcessHandle grandchild = new FakeProcessHandle(3, "1", true);
+		FakeProcessHandle child = new FakeProcessHandle(2, "1", true, grandchild);
+		FakeProcessHandle parent = new FakeProcessHandle(1, "1", true, child);
 
 		HarnessProcessTermination.terminate(new FakeProcess(parent), "harness");
 
@@ -49,9 +48,9 @@ public final class HarnessProcessTerminationTest
 	@Test
 	public void immediatelyTerminatesVisibleChildren()
 	{
-		FakeProcessHandle grandchild = new FakeProcessHandle(3, Instant.EPOCH, true);
-		FakeProcessHandle child = new FakeProcessHandle(2, Instant.EPOCH, true, grandchild);
-		FakeProcessHandle parent = new FakeProcessHandle(1, Instant.EPOCH, true, child);
+		FakeProcessHandle grandchild = new FakeProcessHandle(3, "1", true);
+		FakeProcessHandle child = new FakeProcessHandle(2, "1", true, grandchild);
+		FakeProcessHandle parent = new FakeProcessHandle(1, "1", true, child);
 
 		HarnessProcessTermination.terminateImmediately(new FakeProcess(parent));
 

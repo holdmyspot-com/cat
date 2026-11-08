@@ -13,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -60,8 +59,7 @@ public final class FakeRunner
 	private final int exitStatus;
 	private final Optional<Path> run;
 	private final List<String> output = new ArrayList<>();
-	private final FakeProcessHandle descendant = new FakeProcessHandle(Long.MAX_VALUE,
-		Instant.parse("2026-11-05T12:00:00Z"), true);
+	private final FakeProcessHandle descendant = new FakeProcessHandle(Long.MAX_VALUE, "1", true);
 	private final List<String> records = new ArrayList<>();
 	private final CountDownLatch exited = new CountDownLatch(1);
 	private final OutputStream input = new RunnerInput();
@@ -461,7 +459,7 @@ public final class FakeRunner
 		@Override
 		public ProcessHandle toHandle()
 		{
-			return new FakeProcessHandle(Long.MAX_VALUE - 1, Instant.parse("2026-11-05T12:00:00Z"), true, descendant);
+			return new FakeProcessHandle(Long.MAX_VALUE - 1, "1", true, descendant);
 		}
 
 		@Override

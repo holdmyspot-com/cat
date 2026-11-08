@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
 
 import java.io.IOException;
@@ -12,8 +13,6 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -31,10 +30,10 @@ import tools.jackson.databind.json.JsonMapper;
  * project. A run is left over only when it is still marked {@code running} and its owner process no longer exists:
  * a run whose owner is alive belongs to a running driver, of this or another campaign.
  * <p>
- * A manifest that cannot be parsed, or that lacks a process's start time, identifies no process: without the start
- * time, a reused process identifier cannot be told apart from the recorded process. A run whose owner process is
- * not identified is therefore not left over, and a leftover run whose harness process is not identified yields
- * nothing.
+ * A manifest that cannot be parsed, or that lacks a process's {@link ProcessDescription#start() start} or holds
+ * another form of it, identifies no process: without the start, a reused process identifier cannot be told apart
+ * from the recorded process. A run whose owner process is not identified is therefore not left over, and a leftover
+ * run whose harness process is not identified yields nothing.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -83,7 +82,7 @@ public final class LeftoverRuns
 	 * Finds the harness processes of the runs, under every run root that the session port declares, that are still
 	 * marked {@code running} although their owner process no longer exists.
 	 *
-	 * @return the harness processes whose identifiers and start times can be parsed, in run root and directory
+	 * @return the harness processes whose identifiers and starts can be parsed, in run root and directory
 	 *   order; empty if no run root exists
 	 * @throws IOException if the run directories cannot be listed
 	 */
@@ -150,7 +149,7 @@ public final class LeftoverRuns
 		if (root == null || !root.isObject() || !text(root, "state").equals(Optional.of("running")))
 			return Optional.empty();
 		Optional<RecordedProcess> owner = process(root, "owner_pid", "owner_started_at");
-		if (owner.isEmpty() || liveness.isAlive(owner.get().pid(), owner.get().startedAt()))
+		if (owner.isEmpty() || liveness.isAlive(owner.get().pid(), owner.get().start()))
 			return Optional.empty();
 		return process(root, "harness_pid", "harness_started_at");
 	}
@@ -160,10 +159,10 @@ public final class LeftoverRuns
 	 *
 	 * @param root the manifest
 	 * @param pidField the name of the process identifier's field, a number or a string of digits
-	 * @param startedAtField the name of the start time's field
+	 * @param startField the name of the start's field
 	 * @return the process, or empty if either field is missing, null or malformed
 	 */
-	private static Optional<RecordedProcess> process(JsonNode root, String pidField, String startedAtField)
+	private static Optional<RecordedProcess> process(JsonNode root, String pidField, String startField)
 	{
 		JsonNode pidNode = root.get(pidField);
 		if (pidNode == null)
@@ -177,17 +176,8 @@ public final class LeftoverRuns
 			return Optional.empty();
 		if (pid <= 0)
 			return Optional.empty();
-		Optional<String> startedAt = text(root, startedAtField);
-		if (startedAt.isEmpty())
-			return Optional.empty();
-		try
-		{
-			return Optional.of(new RecordedProcess(pid, Instant.parse(startedAt.get())));
-		}
-		catch (DateTimeParseException _)
-		{
-			return Optional.empty();
-		}
+		return text(root, startField).filter(start -> start.matches(ProcessDescription.START_PATTERN)).
+			map(start -> new RecordedProcess(pid, start));
 	}
 
 	/**
@@ -211,22 +201,23 @@ public final class LeftoverRuns
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param pid the process identifier
-	 * @param startedAt the process's recorded start time
+	 * @param start the process's recorded {@link ProcessDescription#start() start}
 	 */
-	public record RecordedProcess(long pid, Instant startedAt)
+	public record RecordedProcess(long pid, String start)
 	{
 		/**
 		 * Creates a recorded process.
 		 *
 		 * @param pid the process identifier
-		 * @param startedAt the process's recorded start time
-		 * @throws NullPointerException if {@code startedAt} is null
-		 * @throws IllegalArgumentException if {@code pid} is not positive
+		 * @param start the process's recorded start
+		 * @throws NullPointerException if {@code start} is null
+		 * @throws IllegalArgumentException if {@code pid} is not positive, or {@code start} does not match
+		 *   {@link ProcessDescription#START_PATTERN}
 		 */
 		public RecordedProcess
 		{
 			requireThat(pid, "pid").isPositive();
-			requireThat(startedAt, "startedAt").isNotNull();
+			requireThat(start, "start").matches(ProcessDescription.START_PATTERN);
 		}
 	}
 }

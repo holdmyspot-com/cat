@@ -4,7 +4,6 @@ import com.holdmyspot.cat.common.ExecutableFiles.ProcessLauncher;
 import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -18,7 +17,7 @@ import java.util.concurrent.CountDownLatch;
  */
 public final class FakeProcessLauncher implements ProcessLauncher
 {
-	private static final Instant STARTED_AT = Instant.parse("2026-11-05T12:00:00Z");
+	private static final String START = "1";
 	private final List<ProcessBuilder> started = new ArrayList<>();
 
 	/**
@@ -68,7 +67,7 @@ public final class FakeProcessLauncher implements ProcessLauncher
 		 */
 		RunningProcess(long pid)
 		{
-			this.handle = new FakeProcessHandle(pid, STARTED_AT, true);
+			this.handle = new FakeProcessHandle(pid, START, true);
 		}
 
 		@Override

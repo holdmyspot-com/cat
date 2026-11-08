@@ -61,6 +61,7 @@ import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator.ProcessLookup;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleTerminatorSecrets;
@@ -155,7 +156,7 @@ public final class DriverHarness
 	/**
 	 * The driver's own process, which no recorded run names and which the driver never terminates.
 	 */
-	private final FakeProcessHandle driver = new FakeProcessHandle(1, Instant.EPOCH, true);
+	private final FakeProcessHandle driver = new FakeProcessHandle(1, "1", true);
 	private final FileInventory fork;
 	/**
 	 * The base worktree that deliveries write, or {@code null} if the harness has none.
@@ -299,16 +300,18 @@ public final class DriverHarness
 		environment.remove(MeasurementCondition.REASONING);
 		environment.remove(MeasurementCondition.PROMPT_SOURCES);
 		environment.putAll(environmentChanges);
-		LongFunction<Optional<ProcessHandle>> table = FakeProcessHandle.table(
-			processes.toArray(FakeProcessHandle[]::new));
-		ProcessHandleLiveness liveness = ProcessHandleLivenessSecrets.getProcessHandleLivenessAccess().create(table);
+		FakeProcessHandle[] table = processes.toArray(FakeProcessHandle[]::new);
+		HarnessProcesses starts = FakeProcessHandle.processes(table);
+		LongFunction<Optional<ProcessHandle>> handles = FakeProcessHandle.table(table);
+		ProcessHandleLiveness liveness = ProcessHandleLivenessSecrets.getProcessHandleLivenessAccess().create(starts,
+			handles);
 		ProcessHandleTerminator terminator = ProcessHandleTerminatorSecrets.getProcessHandleTerminatorAccess().
-			create(new ProcessLookup()
+			create(starts, new ProcessLookup()
 			{
 				@Override
 				public Optional<ProcessHandle> find(long pid)
 				{
-					return table.apply(pid);
+					return handles.apply(pid);
 				}
 
 				@Override

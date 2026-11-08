@@ -2,14 +2,16 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.function.LongFunction;
 
 /**
- * Checks whether a Java {@link ProcessHandle} still identifies the process recorded for a harness execution.
+ * Checks whether a Java {@link ProcessHandle} still identifies the process recorded for a harness execution. The
+ * process's start comes from {@link HarnessProcesses#system()}, whose start every process that reads it agrees on.
  */
 public final class ProcessHandleLiveness implements HarnessProcessLiveness
 {
@@ -19,58 +21,66 @@ public final class ProcessHandleLiveness implements HarnessProcessLiveness
 	}
 
 	/**
+	 * Reports the start of a running process.
+	 */
+	private final HarnessProcesses processes;
+	/**
 	 * Finds a process of the operating system's process table by its identifier.
 	 */
-	private final LongFunction<Optional<ProcessHandle>> processes;
+	private final LongFunction<Optional<ProcessHandle>> handles;
 
 	/**
 	 * Creates a checker of the operating system's processes.
 	 */
 	public ProcessHandleLiveness()
 	{
-		this(ProcessHandle::of);
+		this(HarnessProcesses.system(), ProcessHandle::of);
 	}
 
 	/**
-	 * Creates a checker that finds processes through the supplied lookup.
+	 * Creates a checker that finds processes through the supplied lookups.
 	 *
-	 * @param processes finds the process with an identifier, or nothing if no such process exists
-	 * @throws NullPointerException if {@code processes} is null
+	 * @param processes reports the start of a running process
+	 * @param handles   finds the process with an identifier, or nothing if no such process exists
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private ProcessHandleLiveness(LongFunction<Optional<ProcessHandle>> processes)
+	private ProcessHandleLiveness(HarnessProcesses processes, LongFunction<Optional<ProcessHandle>> handles)
 	{
 		requireThat(processes, "processes").isNotNull();
+		requireThat(handles, "handles").isNotNull();
 		this.processes = processes;
+		this.handles = handles;
 	}
 
 	@Override
-	public boolean isAlive(long pid, Instant startedAt)
+	public boolean isAlive(long pid, String start)
 	{
 		assert pid > 0;
-		assert startedAt != null;
-		return matchingProcess(pid, startedAt).filter(ProcessHandle::isAlive).isPresent();
+		assert start != null;
+		return matchingProcess(pid, start).isPresent();
 	}
 
 	@Override
-	public boolean terminate(long pid, Instant startedAt)
+	public boolean terminate(long pid, String start)
 	{
 		assert pid > 0;
-		assert startedAt != null;
-		return matchingProcess(pid, startedAt).filter(ProcessHandle::isAlive).map(ProcessHandle::destroy).orElse(false);
+		assert start != null;
+		return matchingProcess(pid, start).map(ProcessHandle::destroy).orElse(false);
 	}
 
 	/**
-	 * Finds a process only if both its identifier and start marker match.
+	 * Finds a live process only if both its identifier and start match.
 	 *
-	 * @param pid       the positive process identifier
-	 * @param startedAt the process start marker
+	 * @param pid   the positive process identifier
+	 * @param start the process's start
 	 * @return the matching process, if present
 	 */
-	private Optional<ProcessHandle> matchingProcess(long pid, Instant startedAt)
+	private Optional<ProcessHandle> matchingProcess(long pid, String start)
 	{
 		assert pid > 0;
-		assert startedAt != null;
-		return processes.apply(pid).filter(handle -> handle.info().startInstant().filter(startedAt::equals).
-			isPresent());
+		assert start != null;
+		if (processes.find(pid).flatMap(ProcessDescription::start).filter(start::equals).isEmpty())
+			return Optional.empty();
+		return handles.apply(pid).filter(ProcessHandle::isAlive);
 	}
 }

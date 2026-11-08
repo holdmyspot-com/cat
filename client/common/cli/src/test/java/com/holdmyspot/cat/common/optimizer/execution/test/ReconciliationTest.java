@@ -33,7 +33,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -486,25 +485,25 @@ public final class ReconciliationTest
 			Path directory = cleanup.add(Files.createTempDirectory("reconcile"));
 			DriverHarness harness = new DriverHarness(directory, developing().build());
 			List<Path> runRoots = harness.sessions().runRoots();
-			Instant ownerStart = Instant.parse("2026-10-01T11:00:00Z");
-			Instant harnessStart = Instant.parse("2026-10-01T11:00:01Z");
+			String ownerStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5000";
+			String harnessStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125";
 			FakeProcessHandle orphan1 = new FakeProcessHandle(4002, harnessStart, true);
 			FakeProcessHandle orphan2 = new FakeProcessHandle(4004, harnessStart, true);
 			FakeProcessHandle completed = new FakeProcessHandle(5002, harnessStart, true);
 			FakeProcessHandle owned = new FakeProcessHandle(6002, harnessStart, true);
 			harness.processes(new FakeProcessHandle(6001, ownerStart, true), orphan1, orphan2, completed, owned);
 			writeManifest(runRoots.get(0).resolve("claude/run-1"), """
-				{"state": "running", "owner_pid": 4001, "owner_started_at": "2026-10-01T11:00:00Z",
-				"harness_pid": "4002", "harness_started_at": "2026-10-01T11:00:01Z"}""");
+				{"state": "running", "owner_pid": 4001, "owner_started_at": "%s",
+				"harness_pid": "4002", "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
 			writeManifest(runRoots.get(1).resolve("claude/run-2"), """
-				{"state": "running", "owner_pid": 4003, "owner_started_at": "2026-10-01T11:00:00Z",
-				"harness_pid": 4004, "harness_started_at": "2026-10-01T11:00:01Z"}""");
+				{"state": "running", "owner_pid": 4003, "owner_started_at": "%s",
+				"harness_pid": 4004, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
 			writeManifest(runRoots.get(0).resolve("claude/run-3"), """
-				{"state": "completed", "owner_pid": 5001, "owner_started_at": "2026-10-01T11:00:00Z",
-				"harness_pid": 5002, "harness_started_at": "2026-10-01T11:00:01Z"}""");
+				{"state": "completed", "owner_pid": 5001, "owner_started_at": "%s",
+				"harness_pid": 5002, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
 			writeManifest(runRoots.get(1).resolve("claude/run-4"), """
-				{"state": "running", "owner_pid": 6001, "owner_started_at": "2026-10-01T11:00:00Z",
-				"harness_pid": 6002, "harness_started_at": "2026-10-01T11:00:01Z"}""");
+				{"state": "running", "owner_pid": 6001, "owner_started_at": "%s",
+				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
 			try (Driver _ = harness.open())
 			{
 				requireThat(orphan1.stopRequested(), "orphan1.stopRequested").isTrue();

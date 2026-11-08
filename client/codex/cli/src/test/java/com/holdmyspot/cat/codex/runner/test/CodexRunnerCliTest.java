@@ -286,10 +286,10 @@ public final class CodexRunnerCliTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path manifest = createRun(jvm, root.resolve("runs"));
-			// A start time that differs from the one of the process holding the recorded identifier means that the
+			// A start that differs from the one of the process holding the recorded identifier means that the
 			// identifier now belongs to another process, so the runner that created the run has ended
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst("\"owner_started_at\": \"[^\"]+\"",
-				"\"owner_started_at\": \"2000-01-01T00:00:00Z\""));
+				"\"owner_started_at\": \"0\""));
 
 			startUntilCapacityIsRequested(jvm, root);
 

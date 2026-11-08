@@ -249,7 +249,7 @@ public final class ClaudeRunner
 			ClaudeProcess process = new ClaudeProcess(scope, watch.process(), projectDirectory, transcripts);
 			try
 			{
-				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
+				manager.recordHarnessProcess(run, process.pid(), process.processStart());
 				return new HarnessRunSession(run, watch.guard(process), scope, lock);
 			}
 			catch (IOException e)

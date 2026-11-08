@@ -15,6 +15,8 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerAccess;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerSecrets;
 
@@ -83,9 +85,9 @@ public final class HarnessRunManager
 		  "state": "(?<state>running|completed|failed)",
 		  "phase": "(?<phase>initializing|idle|working|completed|failed)",
 		  "owner_pid": "?(?<ownerPid>[1-9][0-9]*)"?,
-		  "owner_started_at": "(?<ownerStartedAt>[^\"]+)",
+		  "owner_started_at": (?<ownerStart>null|"(?<ownerStartValue>[^\"]+)"),
 		  "harness_pid": (?<harnessPid>null|[1-9][0-9]*),
-		  "harness_started_at": (?<harnessStartedAt>null|"(?<harnessStartedAtValue>[^\"]+)"),
+		  "harness_started_at": (?<harnessStart>null|"(?<harnessStartValue>[^\"]+)"),
 		  "created_at": "(?<createdAt>[^\"]+)",
 		  "artifact_path": "(?<artifactPath>[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+)",
 		  "project_path": "(?<projectPath>[^"\\\\]*+(?:\\\\.[^"\\\\]*+)*+)",
@@ -201,8 +203,9 @@ public final class HarnessRunManager
 		Files.createFile(directory.resolve(".lock"));
 		HarnessRun run = new HarnessRun(harness, id, directory);
 		ProcessHandle owner = ProcessHandle.current();
-		Instant ownerStartedAt = owner.info().startInstant().orElse(clock.instant());
-		writeManifest(new Manifest(harness, id, "running", "initializing", owner.pid(), ownerStartedAt, null, null,
+		// An owner without a start cannot be told apart from a later process, so its run is never taken for abandoned
+		String ownerStart = HarnessProcesses.system().find(owner.pid()).flatMap(ProcessDescription::start).orElse(null);
+		writeManifest(new Manifest(harness, id, "running", "initializing", owner.pid(), ownerStart, null, null,
 			clock.instant(),
 			"", "", "", "", null, 0, null, null, ""), directory);
 		return run;
@@ -231,7 +234,7 @@ public final class HarnessRunManager
 			throw new IOException("Cannot initialize a terminal run");
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 			previous.ownerPid(),
-			previous.ownerStartedAt(), previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(),
+			previous.ownerStart(), previous.harnessPid(), previous.harnessStart(), previous.createdAt(),
 			artifact.toAbsolutePath().normalize().toString(), project.toAbsolutePath().normalize().toString(), transport,
 			redact(command), clock.instant(), previous.turnNumber(), previous.exitCode(), previous.finishedAt(),
 			previous.diagnostic()), run.directory());
@@ -313,22 +316,23 @@ public final class HarnessRunManager
 	 *
 	 * @param run the owned run
 	 * @param harnessPid the positive harness process identifier
-	 * @param harnessStartedAt the harness process start marker
-	 * @throws NullPointerException if {@code run} or {@code harnessStartedAt} are null
-	 * @throws IllegalArgumentException if {@code harnessPid} is not positive
+	 * @param harnessStart the harness process's {@link ProcessDescription#start() start}
+	 * @throws NullPointerException if {@code run} or {@code harnessStart} are null
+	 * @throws IllegalArgumentException if {@code harnessPid} is not positive, or {@code harnessStart} does not match
+	 *   {@link ProcessDescription#START_PATTERN}
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	public void recordHarnessProcess(HarnessRun run, long harnessPid, Instant harnessStartedAt) throws IOException
+	public void recordHarnessProcess(HarnessRun run, long harnessPid, String harnessStart) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
-		requireThat(harnessStartedAt, "harnessStartedAt").isNotNull();
+		requireThat(harnessStart, "harnessStart").matches(ProcessDescription.START_PATTERN);
 		requireThat(harnessPid, "harnessPid").isPositive();
 		Manifest previous = readManifest(run);
 		if (!previous.state().equals("running"))
 			throw new IOException("Cannot record a harness process for a terminal run");
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 			previous.ownerPid(),
-			previous.ownerStartedAt(), harnessPid, harnessStartedAt, previous.createdAt(), previous.artifactPath(),
+			previous.ownerStart(), harnessPid, harnessStart, previous.createdAt(), previous.artifactPath(),
 			previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
 			previous.turnNumber(), previous.exitCode(), previous.finishedAt(), previous.diagnostic()), run.directory());
 	}
@@ -380,7 +384,7 @@ public final class HarnessRunManager
 		Manifest previous = readManifest(run);
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 			previous.ownerPid(),
-			previous.ownerStartedAt(), previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(),
+			previous.ownerStart(), previous.harnessPid(), previous.harnessStart(), previous.createdAt(),
 			previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
 			previous.startedAt(), turnNumber, result.exitCode(), previous.finishedAt(), previous.diagnostic()),
 			run.directory());
@@ -895,7 +899,7 @@ public final class HarnessRunManager
 					return false;
 			}
 			writeManifest(new Manifest(manifest.harness(), manifest.id(), "failed", "failed", manifest.ownerPid(),
-				manifest.ownerStartedAt(), manifest.harnessPid(), manifest.harnessStartedAt(), manifest.createdAt(),
+				manifest.ownerStart(), manifest.harnessPid(), manifest.harnessStart(), manifest.createdAt(),
 				manifest.artifactPath(), manifest.projectPath(), manifest.transport(), manifest.harnessCommand(),
 				manifest.startedAt(), manifest.turnNumber(), manifest.exitCode(), clock.instant(),
 				"Runner process ended without recording a terminal result"), run.directory());
@@ -941,8 +945,8 @@ public final class HarnessRunManager
 		Instant finishedAt = null;
 		if (!state.equals("running"))
 			finishedAt = clock.instant();
-		writeManifest(new Manifest(run.harness(), run.id(), state, state, previous.ownerPid(), previous.ownerStartedAt(),
-			previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(), previous.artifactPath(),
+		writeManifest(new Manifest(run.harness(), run.id(), state, state, previous.ownerPid(), previous.ownerStart(),
+			previous.harnessPid(), previous.harnessStart(), previous.createdAt(), previous.artifactPath(),
 			previous.projectPath(), previous.transport(), previous.harnessCommand(), previous.startedAt(),
 			previous.turnNumber(), previous.exitCode(), finishedAt, diagnostic), run.directory());
 	}
@@ -962,7 +966,7 @@ public final class HarnessRunManager
 		if (!previous.state().equals("running"))
 			throw new IOException("Cannot update the phase of a terminal run");
 		writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), phase, previous.ownerPid(),
-			previous.ownerStartedAt(), previous.harnessPid(), previous.harnessStartedAt(), previous.createdAt(),
+			previous.ownerStart(), previous.harnessPid(), previous.harnessStart(), previous.createdAt(),
 			previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
 			previous.startedAt(), previous.turnNumber(), previous.exitCode(), previous.finishedAt(),
 			previous.diagnostic()), run.directory());
@@ -984,15 +988,15 @@ public final class HarnessRunManager
 			"\",\n  \"harness\": \"" + manifest.harness() + "\",\n  \"id\": \"" + manifest.id() +
 			"\",\n  \"state\": \"" + manifest.state() + "\",\n  \"phase\": \"" + manifest.phase() +
 			"\",\n  \"owner_pid\": " + manifest.ownerPid() +
-			",\n  \"owner_started_at\": \"" + manifest.ownerStartedAt() + "\",\n  \"harness_pid\": " +
+			",\n  \"owner_started_at\": " + nullableString(manifest.ownerStart()) + ",\n  \"harness_pid\": " +
 			nullableNumber(manifest.harnessPid()) + ",\n  \"harness_started_at\": " +
-			nullableInstant(manifest.harnessStartedAt()) + ",\n  \"created_at\": \"" + manifest.createdAt() +
+			nullableString(manifest.harnessStart()) + ",\n  \"created_at\": \"" + manifest.createdAt() +
 			"\",\n  \"artifact_path\": \"" + escape(manifest.artifactPath()) + "\",\n  \"project_path\": \"" +
 			escape(manifest.projectPath()) + "\",\n  \"transport\": \"" + escape(manifest.transport()) +
 			"\",\n  \"harness_command\": \"" + escape(manifest.harnessCommand()) + "\",\n  \"started_at\": " +
-			nullableInstant(manifest.startedAt()) + ",\n  \"turn_number\": " + manifest.turnNumber() +
+			nullableString(manifest.startedAt()) + ",\n  \"turn_number\": " + manifest.turnNumber() +
 			",\n  \"exit_code\": " + nullableNumber(manifest.exitCode()) + ",\n  \"finished_at\": " +
-			nullableInstant(manifest.finishedAt()) + ",\n  \"diagnostic\": \"" +
+			nullableString(manifest.finishedAt()) + ",\n  \"diagnostic\": \"" +
 			escape(manifest.diagnostic()) + "\"\n}\n";
 		writeAtomically(directory.resolve("run.json"), content);
 		if (!manifest.state().equals("running"))
@@ -1037,14 +1041,16 @@ public final class HarnessRunManager
 		try
 		{
 			long ownerPid = Long.parseLong(matcher.group("ownerPid"));
-			Instant ownerStartedAt = Instant.parse(matcher.group("ownerStartedAt"));
+			String ownerStart = null;
+			if (!matcher.group("ownerStart").equals("null"))
+				ownerStart = matcher.group("ownerStartValue");
 			Long harnessPid = null;
 			if (!matcher.group("harnessPid").equals("null"))
 				harnessPid = Long.parseLong(matcher.group("harnessPid"));
-			Instant harnessStartedAt = null;
-			if (!matcher.group("harnessStartedAt").equals("null"))
-				harnessStartedAt = Instant.parse(matcher.group("harnessStartedAtValue"));
-			if ((harnessPid == null) != (harnessStartedAt == null))
+			String harnessStart = null;
+			if (!matcher.group("harnessStart").equals("null"))
+				harnessStart = matcher.group("harnessStartValue");
+			if ((harnessPid == null) != (harnessStart == null))
 				throw new IOException("Run manifest has an incomplete harness process identity: " + file);
 			Instant createdAt = Instant.parse(matcher.group("createdAt"));
 			Instant startedAt = null;
@@ -1065,7 +1071,7 @@ public final class HarnessRunManager
 			if (!state.equals("running") && !phase.equals(state))
 				throw new IOException("Run manifest has an invalid terminal phase: " + file);
 			return new Manifest(matcher.group("harness"), matcher.group("id"), state, phase, ownerPid,
-				ownerStartedAt, harnessPid, harnessStartedAt, createdAt, unescape(matcher.group("artifactPath")),
+				ownerStart, harnessPid, harnessStart, createdAt, unescape(matcher.group("artifactPath")),
 				unescape(matcher.group("projectPath")), unescape(matcher.group("transport")),
 				unescape(matcher.group("harnessCommand")), startedAt, Integer.parseInt(matcher.group("turnNumber")),
 				exitCode, finishedAt, "");
@@ -1081,15 +1087,20 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Indicates whether the recorded owner process still exists with the same start marker.
+	 * Indicates whether the recorded owner process might still be alive.
 	 *
 	 * @param manifest the validated run manifest
-	 * @return {@code true} if the original owner remains alive
+	 * @return {@code true} if the original owner remains alive, or if the manifest records no
+	 *   {@link ProcessDescription#start() start} for it, because the owner cannot then be told apart from a later
+	 *   process
 	 */
 	private boolean isOwnerAlive(Manifest manifest)
 	{
 		assert manifest != null;
-		return processLiveness.isAlive(manifest.ownerPid(), manifest.ownerStartedAt());
+		String start = manifest.ownerStart();
+		if (start == null || !start.matches(ProcessDescription.START_PATTERN))
+			return true;
+		return processLiveness.isAlive(manifest.ownerPid(), start);
 	}
 
 	/**
@@ -1102,7 +1113,7 @@ public final class HarnessRunManager
 	{
 		assert manifest != null;
 		return manifest.harnessPid() != null && processLiveness.isAlive(manifest.harnessPid(),
-			manifest.harnessStartedAt());
+			manifest.harnessStart());
 	}
 
 	/**
@@ -1114,7 +1125,7 @@ public final class HarnessRunManager
 	{
 		assert manifest != null;
 		assert manifest.harnessPid() != null;
-		processLiveness.terminate(manifest.harnessPid(), manifest.harnessStartedAt());
+		processLiveness.terminate(manifest.harnessPid(), manifest.harnessStart());
 	}
 
 	/**
@@ -1131,12 +1142,12 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Formats an optional JSON timestamp.
+	 * Formats an optional JSON string whose text needs no escaping.
 	 *
-	 * @param value the optional timestamp
+	 * @param value the optional value, whose text is the string
 	 * @return the JSON representation
 	 */
-	private static String nullableInstant(Instant value)
+	private static String nullableString(Object value)
 	{
 		if (value == null)
 			return "null";
@@ -1151,9 +1162,10 @@ public final class HarnessRunManager
 	 * @param state the lifecycle state
 	 * @param phase the current activity or terminal phase
 	 * @param ownerPid the orchestrator process identifier
-	 * @param ownerStartedAt the orchestrator process start marker
+	 * @param ownerStart the orchestrator process's {@link ProcessDescription#start() start} as the manifest records it,
+	 *   or null if the system reported none
 	 * @param harnessPid the harness process identifier, if started
-	 * @param harnessStartedAt the harness process start marker, if started
+	 * @param harnessStart the harness process's start as the manifest records it, if started
 	 * @param createdAt the immutable creation timestamp
 	 * @param artifactPath the complete artifact path
 	 * @param projectPath the source project path
@@ -1165,8 +1177,8 @@ public final class HarnessRunManager
 	 * @param finishedAt the terminal timestamp, if terminal
 	 * @param diagnostic the optional diagnostic
 	 */
-	private record Manifest(String harness, String id, String state, String phase, long ownerPid, Instant ownerStartedAt,
-		Long harnessPid, Instant harnessStartedAt, Instant createdAt, String artifactPath, String projectPath,
+	private record Manifest(String harness, String id, String state, String phase, long ownerPid, String ownerStart,
+		Long harnessPid, String harnessStart, Instant createdAt, String artifactPath, String projectPath,
 		String transport, String harnessCommand, Instant startedAt, int turnNumber, Integer exitCode, Instant finishedAt,
 		String diagnostic)
 	{

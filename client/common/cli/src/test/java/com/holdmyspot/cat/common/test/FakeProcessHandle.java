@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.test;
 
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -9,7 +11,8 @@ import java.util.function.LongFunction;
 import java.util.stream.Stream;
 
 /**
- * Models the identity, liveness and descendants described by the JDK's {@link ProcessHandle} contract.
+ * Models the identity, liveness and descendants described by the JDK's {@link ProcessHandle} contract, and the
+ * {@link ProcessDescription#start() start} that {@link HarnessProcesses#system()} reports for a process.
  * Both JDK termination operations record the same request; no operating-system process is created or stopped.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe, as the JDK's process handles are.
@@ -30,8 +33,24 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 		return pid -> table.stream().filter(process -> process.pid == pid).map(ProcessHandle.class::cast).findFirst();
 	}
 
+	/**
+	 * Returns the starts of exactly the given processes, as {@link HarnessProcesses#system()} reports the starts of
+	 * the operating system's processes: it finds each of them that is running, with the start it was created with,
+	 * and finds no process for any other identifier.
+	 *
+	 * @param processes the processes, each with its own identifier
+	 * @return the processes' starts
+	 */
+	public static HarnessProcesses processes(FakeProcessHandle... processes)
+	{
+		List<FakeProcessHandle> table = List.of(processes);
+		return pid -> table.stream().filter(process -> process.pid == pid && process.running).findFirst().
+			map(process -> new ProcessDescription(pid, Optional.ofNullable(process.start), Optional.empty(),
+				Optional.empty()));
+	}
+
 	private final long pid;
-	private final Instant startedAt;
+	private final String start;
 	private volatile boolean running;
 	private final List<FakeProcessHandle> children;
 
@@ -43,15 +62,16 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	/**
 	 * Creates a process with controlled identity and lifecycle inputs.
 	 *
-	 * @param pid       the process identifier
-	 * @param startedAt the reported start time, or null when the operating system does not report it
-	 * @param running   indicates whether the process is still running
-	 * @param children  the processes it started
+	 * @param pid      the process identifier
+	 * @param start    the reported {@link ProcessDescription#start() start}, or null when the operating system does
+	 *                 not report it
+	 * @param running  indicates whether the process is still running
+	 * @param children the processes it started
 	 */
-	public FakeProcessHandle(long pid, Instant startedAt, boolean running, FakeProcessHandle... children)
+	public FakeProcessHandle(long pid, String start, boolean running, FakeProcessHandle... children)
 	{
 		this.pid = pid;
-		this.startedAt = startedAt;
+		this.start = start;
 		this.running = running;
 		this.children = List.of(children);
 	}
@@ -81,7 +101,7 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	@Override
 	public Optional<Instant> startInstant()
 	{
-		return Optional.ofNullable(startedAt);
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

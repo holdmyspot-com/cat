@@ -18,7 +18,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -465,14 +464,14 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
-	 * Returns the harness process start marker.
+	 * Returns the harness process's start, which tells it apart from a later process with its identifier.
 	 *
-	 * @return the harness process start marker
-	 * @throws IOException if the operating system does not expose a start marker
+	 * @return the harness process's start
+	 * @throws IOException if the process has ended or the operating system does not report its start
 	 */
-	public Instant startedAt() throws IOException
+	public String processStart() throws IOException
 	{
-		return HarnessProcessStarter.startedAt(process);
+		return HarnessProcessStarter.startOf(process);
 	}
 
 	/**

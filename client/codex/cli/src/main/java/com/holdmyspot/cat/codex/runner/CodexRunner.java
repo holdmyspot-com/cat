@@ -220,7 +220,7 @@ public final class CodexRunner
 				isolatedEnvironment, executables), scope, installCat, transcripts);
 			try
 			{
-				manager.recordHarnessProcess(run, process.pid(), process.startedAt());
+				manager.recordHarnessProcess(run, process.pid(), process.processStart());
 				String selectedModel = model;
 				String agentInstructions = "";
 				String selectedEffort = effort;

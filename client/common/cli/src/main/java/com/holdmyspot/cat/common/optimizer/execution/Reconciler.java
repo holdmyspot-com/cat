@@ -56,7 +56,7 @@ public final class Reconciler
 	static Campaign reconcile(DriverContext context, Campaign campaign, Instant now) throws IOException
 	{
 		for (RecordedProcess process : context.leftoverRuns().find())
-			context.terminator().terminate(process.pid(), process.startedAt());
+			context.terminator().terminate(process.pid(), process.start());
 
 		Candidate previous = campaign.development().working();
 		Campaign reconciled = recover(campaign, context.store().listUnadoptedOutcomes(campaign), now);

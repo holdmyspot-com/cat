@@ -2,13 +2,14 @@ package com.holdmyspot.cat.common.runner;
 
 import java.io.IOException;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -52,21 +53,21 @@ public final class HarnessProcessStarter
 	}
 
 	/**
-	 * Gets the stable start marker for a started harness process.
+	 * Gets the start of a started harness process, as {@link HarnessProcesses#system()} reports it.
 	 *
 	 * @param process the started harness process
 	 *
-	 * @return the process start marker
+	 * @return the process's {@link ProcessDescription#start() start}
 	 *
 	 * @throws NullPointerException if {@code process} is null
 	 *
-	 * @throws IOException if the operating system does not expose a start marker
+	 * @throws IOException if the process has ended or the operating system does not report its start
 	 */
-	public static Instant startedAt(Process process) throws IOException
+	public static String startOf(Process process) throws IOException
 	{
 		requireThat(process, "process").isNotNull();
-		return process.toHandle().info().startInstant().orElseThrow(() ->
-			new IOException("Unable to determine the harness process start time"));
+		return HarnessProcesses.system().find(process.pid()).flatMap(ProcessDescription::start).orElseThrow(() ->
+			new IOException("Unable to determine the harness process's start"));
 	}
 
 	/**
