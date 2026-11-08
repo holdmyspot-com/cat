@@ -2742,10 +2742,16 @@ reason when a check fails:
   why"). For any other reason that leaves it sandboxed, such as a Claude Code session in `dontAsk` mode, an entry that
   `install` has not added yet, or a spelling that does not match, it names the cause and the absolute path to run.
 - **The session.** It identifies the session from sources that the session's commands cannot change: the harness
-  process among its own ancestors and, for a Codex thread on Codex's shared background server, the thread that Codex
-  names in the command's environment. Neither harness lets a command that its exception covers set its own variables,
-  because a variable assignment or `env` in front of the launcher keeps the command sandboxed. A command whose session
-  it cannot identify is refused.
+  process among its own ancestors, and the session or thread ID that the harness puts in the command's environment
+  (Claude Code's `CLAUDE_CODE_SESSION_ID`, Codex's `CODEX_THREAD_ID`). Neither harness lets a command that its exception
+  covers set its own variables, because a variable assignment or `env` in front of the launcher keeps the command
+  sandboxed. It finds the session's transcript by that ID in the harness's home (Claude Code's
+  `projects/<folder>/<session-id>.jsonl`, Codex's rollout under `sessions/`) and takes the session's project folder from
+  the working directory that the transcript's first record names, because a Bash command's environment names no
+  project folder and the launcher's own working directory is one that the session chose. It refuses when it finds no
+  transcript, more than one, or one that the session's commands could write. A thread on Codex's shared background
+  server is identified the same way, and its policy comes from the latest turn policy that its rollout records; one
+  whose rollout records none is refused.
 - **The policy.** It reads the session's sandbox policy from that harness's settings files and from the harness
   process's command line: Claude Code's `--settings`, `--setting-sources`, `--add-dir` and `--disallowedTools`, and
   Codex's profile, `-c` overrides and sandbox options. It refuses an option that it does not know, by name. For Codex
@@ -2754,14 +2760,19 @@ reason when a check fails:
   unless the harness itself keeps that file from its commands, as Claude Code keeps its settings files.
 - **The bound.** The new session's sandbox is the intersection of that policy and the new session's needs (its run
   folder, the denied reads, the writes and hosts that its harness's runner reports, and any `--extra-permissions`),
-  and the session never supplies it: the launcher refuses `--policy-bound`. Every path the launcher reads, such as the
+  and the session never supplies it: the launcher refuses `--policy-bound` and every other option that only CAT's own
+  starters pass, such as `--capacity-held`, `--child-needs` and the `--git-*` options. CAT's own starters, the run's
+  runner among them, remove the harness's markers from the environment of the runners they start, so that those are
+  not taken for a harness session's launch. Every path the launcher reads, such as the
   project, the input or conversation folder, the plugins, the workspace files, the read-only evidence and the
   `--extra-permissions` file, must be one the policy lets the session read, and every path it writes, such as the
   output, the receipt, the run root and the conversation folder, one the policy lets it write. It passes the new
   session no harness option that the session named. A need that the policy lacks is refused with the message and
   settings entries given above.
 - **The environment.** It removes the variables that make a program load other code, such as `LD_PRELOAD`,
-  `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_*`, `BASH_ENV`, `ENV` and the Java option variables, before it starts anything.
+  `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_*`, `BASH_ENV`, `ENV` and the Java option variables, before it starts anything:
+  the runner launchers' scripts remove them before they start the JVM, and the JVM removes them again from the
+  environment of every process it starts.
 
 It then starts the new session itself, inside that harness's own sandbox, as its own descendant, and stops the new
 session's whole process tree when it ends. A child session's settings never hold a sandbox exception, and its commands
