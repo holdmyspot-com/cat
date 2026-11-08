@@ -170,16 +170,17 @@ public final class RecordingIntegrationContractTest
 	}
 
 	/**
-	 * Verifies that the runner exceptions of the installation guide are removed once.
+	 * Verifies that the entries that keep sessions from changing files are added once and removed completely.
 	 *
 	 * @throws IOException if a home cannot be created, written or read
 	 */
 	@Test
-	public void removesRunnerExceptionsOnce() throws IOException
+	public void installsReadOnlyEntriesOnce() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.removesRunnerExceptionsOnce(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.installsReadOnlyEntriesOnce(cleanup.add(Files.createTempDirectory("cat-integration-")),
+				cleanup.add(Files.createTempDirectory("cat-user-home-")));
 		}
 	}
 
@@ -377,9 +378,9 @@ public final class RecordingIntegrationContractTest
 		}
 
 		@Override
-		public void arrangeRunnerExceptions(HarnessIntegration integration, Path home)
+		public void arrangeReadOnlyEntries(HarnessIntegration integration, Path home)
 		{
-			((RecordingIntegration) integration).removingRunnerExceptions(List.of("CAT removed the runner exception."));
+			((RecordingIntegration) integration).denyingWrites();
 		}
 
 		@Override

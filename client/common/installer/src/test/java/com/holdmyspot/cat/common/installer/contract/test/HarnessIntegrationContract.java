@@ -236,21 +236,26 @@ public final class HarnessIntegrationContract
 	}
 
 	/**
-	 * Verifies that a home without runner exceptions reports no removal, and that the runner exceptions that the
-	 * installation guide told users to add are removed and reported once.
+	 * Verifies that keeping sessions from changing files adds exactly the maintained entries, that a repeat adds none,
+	 * and that removing them removes them completely, so that adding them again adds them again.
 	 *
-	 * @param home an empty absolute directory
+	 * @param home     an empty absolute directory
+	 * @param userHome another empty absolute directory, standing for the user's home folder
 	 * @throws IOException if the configuration cannot be changed
 	 */
-	public void removesRunnerExceptionsOnce(Path home) throws IOException
+	public void installsReadOnlyEntriesOnce(Path home, Path userHome) throws IOException
 	{
 		HarnessIntegration integration = subject.integration();
-		requireThat(integration.removeRunnerExceptions(home, REPLACER), "fresh").isEmpty();
+		subject.arrangeReadOnlyEntries(integration, home);
+		List<Path> files = List.of(userHome.resolve(".bashrc"), userHome.resolve(".zshenv"));
+		Map<String, List<String>> maintained = integration.readOnlyEntries(home, files);
 
-		subject.arrangeRunnerExceptions(integration, home);
-
-		requireThat(integration.removeRunnerExceptions(home, REPLACER), "removed").isNotEmpty();
-		requireThat(integration.removeRunnerExceptions(home, REPLACER), "again").isEmpty();
+		Map<String, List<String>> added = integration.installReadOnlyEntries(home, files, REPLACER);
+		requireThat(added, "added").isEqualTo(maintained);
+		requireThat(integration.installReadOnlyEntries(home, files, REPLACER), "again").isEmpty();
+		integration.removePermissions(home, added, REPLACER);
+		requireThat(integration.describeRetained(home, added), "retained").isEmpty();
+		requireThat(integration.installReadOnlyEntries(home, files, REPLACER), "restored").isEqualTo(added);
 	}
 
 	/**
@@ -406,6 +411,14 @@ public final class HarnessIntegrationContract
 			REPLACER));
 		Map<String, List<String>> sandbox = integration.installSandboxEntries(home, integration.installation(otherHome),
 			otherHome.resolve("locks"), otherHome.resolve("sessions"), REPLACER);
+		sandbox = new LinkedHashMap<>(sandbox);
+		for (Map.Entry<String, List<String>> entry : integration.installReadOnlyEntries(home,
+			List.of(otherHome.resolve(".bashrc")), REPLACER).entrySet())
+		{
+			List<String> values = new ArrayList<>(sandbox.getOrDefault(entry.getKey(), List.of()));
+			values.addAll(entry.getValue());
+			sandbox.put(entry.getKey(), values);
+		}
 		for (Map.Entry<String, List<String>> entry : sandbox.entrySet())
 		{
 			List<String> values = new ArrayList<>(recorded.getOrDefault(entry.getKey(), List.of()));
@@ -456,7 +469,13 @@ public final class HarnessIntegrationContract
 		}
 		for (String item : group.items())
 		{
-			requireThat(recorded.contains(item) || group.entries().stream().anyMatch(entry -> entry.contains(item)),
+			// An operation's item names the launcher before the operation, such as "installer install", whose entry
+			// names the launcher by its path
+			String named = item;
+			if (group.effect().items() == EntryEffect.Items.OPERATIONS)
+				named = item.substring(item.lastIndexOf(' ') + 1);
+			String word = named;
+			requireThat(recorded.contains(item) || group.entries().stream().anyMatch(entry -> entry.contains(word)),
 				"namedItem").withContext(item, "item").withContext(group, "group").isTrue();
 			if (group.effect().items() == EntryEffect.Items.PATHS)
 			{
@@ -565,13 +584,14 @@ public final class HarnessIntegrationContract
 		boolean selectsByName();
 
 		/**
-		 * Adds to a home the runner exceptions that CAT's installation guide told users to add.
+		 * Configures a home so that {@link HarnessIntegration#installReadOnlyEntries} adds entries, if the harness needs
+		 * a configuration for it.
 		 *
 		 * @param integration the integration under contract
 		 * @param home        the absolute harness home
 		 * @throws IOException if the configuration cannot be written
 		 */
-		void arrangeRunnerExceptions(HarnessIntegration integration, Path home) throws IOException;
+		void arrangeReadOnlyEntries(HarnessIntegration integration, Path home) throws IOException;
 
 		/**
 		 * Configures a home so that install must ask for consent, if the harness has such a configuration.

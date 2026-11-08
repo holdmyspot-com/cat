@@ -119,8 +119,8 @@ public final class PluginInstall
 
 	/**
 	 * Makes the change that the user allowed, when {@code consented}, removes the recorded entries that the
-	 * integration no longer maintains and the runner entries that CAT's installation guide told the user to add, then
-	 * adds the permission entries and the sandbox entries and records the added ones.
+	 * integration no longer maintains, then adds the permission entries, the sandbox entries and the entries that keep
+	 * the harness's sessions from changing the shell startup files, and records the added ones.
 	 *
 	 * @param home          the harness home
 	 * @param installer     the installer launcher in the version folder
@@ -128,6 +128,7 @@ public final class PluginInstall
 	 * @param others        the CAT installations of the other harnesses
 	 * @param catLocks      the directory of the capacity locks
 	 * @param launcherState the directory that holds the session launcher's state
+	 * @param startupFiles  the shell startup files that the harness's sessions may not change
 	 * @param consented     true if the user allowed the change that {@link HarnessIntegration#consentRequest} asks
 	 *                      about
 	 * @return the recorded entries, and what the user needs to know about the entries that this call removed and added
@@ -135,7 +136,8 @@ public final class PluginInstall
 	 * @throws IOException          if an entry or the record cannot be read or written
 	 */
 	public InstalledEntries installEntries(Path home, Path installer, HarnessInstallation installation,
-		List<HarnessInstallation> others, Path catLocks, Path launcherState, boolean consented) throws IOException
+		List<HarnessInstallation> others, Path catLocks, Path launcherState, List<Path> startupFiles, boolean consented)
+		throws IOException
 	{
 		requireThat(home, "home").isNotNull();
 		requireThat(installer, "installer").isNotNull();
@@ -143,6 +145,7 @@ public final class PluginInstall
 		requireThat(others, "others").isNotNull();
 		requireThat(catLocks, "catLocks").isNotNull();
 		requireThat(launcherState, "launcherState").isNotNull();
+		requireThat(startupFiles, "startupFiles").isNotNull();
 		Path record = InstallerState.of(installation.dataDirectory(), integration.harness()).permissions();
 		Map<String, List<String>> added = new LinkedHashMap<>();
 		if (consented)
@@ -151,20 +154,20 @@ public final class PluginInstall
 		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(installer));
 		for (HarnessInstallation other : others)
 			merge(maintained, integration.sandboxEntries(home, other, catLocks, launcherState));
+		merge(maintained, integration.readOnlyEntries(home, startupFiles));
 		Map<String, List<String>> obsolete = PermissionRecord.obsolete(record, maintained);
 		if (!obsolete.isEmpty())
 		{
 			integration.removePermissions(home, obsolete, replacer);
 			PermissionRecord.remove(record, obsolete);
 		}
-		List<String> notices = new ArrayList<>(integration.removeRunnerExceptions(home, replacer));
 		merge(added, integration.installPermissions(home, installer, replacer));
 		for (HarnessInstallation other : others)
 			merge(added, integration.installSandboxEntries(home, other, catLocks, launcherState,
 				replacer));
+		merge(added, integration.installReadOnlyEntries(home, startupFiles, replacer));
 		Map<String, List<String>> recorded = PermissionRecord.add(record, added);
-		notices.addAll(integration.describeAdded(home, added));
-		return new InstalledEntries(recorded, notices);
+		return new InstalledEntries(recorded, integration.describeAdded(home, added));
 	}
 
 	/**
@@ -191,8 +194,7 @@ public final class PluginInstall
 	 * The permission and sandbox entries after an install.
 	 *
 	 * @param recorded every entry that the installer has recorded, by entry key
-	 * @param notices  the sentences that tell the user which runner entries this install removed and what the entries
-	 *                 that it added change beyond CAT
+	 * @param notices  the sentences that tell the user what the entries that this install added change beyond CAT
 	 */
 	public record InstalledEntries(Map<String, List<String>> recorded, List<String> notices)
 	{
@@ -200,8 +202,8 @@ public final class PluginInstall
 		 * Creates the entries.
 		 *
 		 * @param recorded every entry that the installer has recorded, by entry key
-		 * @param notices  the sentences that tell the user which runner entries this install removed and what the
-		 *                 entries that it added change beyond CAT
+		 * @param notices  the sentences that tell the user what the entries that this install added change beyond
+		 *                 CAT
 		 * @throws NullPointerException if any of the arguments are null
 		 */
 		public InstalledEntries

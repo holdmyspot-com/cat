@@ -6,6 +6,8 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
@@ -367,6 +369,71 @@ public final class SandboxEntriesTest
 	}
 
 	/**
+	 * When {@code config.toml} selects a permission profile that it defines, the read-only entries add a read entry
+	 * for each file to that profile, keep the user's own entry for a file, are reported as paths that the sandbox may
+	 * not write, and are removed completely; repeating the call adds nothing.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void readOnlyEntriesNarrowProfile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path userHome = home.resolveSibling("user");
+			Path bashrc = userHome.resolve(".bashrc");
+			Path zshenv = userHome.resolve(".zshenv");
+			Path profile = userHome.resolve(".profile");
+			Path configuration = home.resolve("config.toml");
+			String original = "default_permissions = \"cat\"\n\n[permissions.cat.filesystem]\n" + quote(profile) +
+				" = \"write\"\n";
+			Files.writeString(configuration, original);
+			List<Path> files = List.of(bashrc, zshenv, profile);
+
+			Map<String, List<String>> added = provider().installReadOnlyEntries(home, files, replacer());
+
+			String key = "config.toml#permissions.cat.filesystem" + READ_SUFFIX;
+			requireThat(added, "added").isEqualTo(Map.of(key, List.of(bashrc.toString(), zshenv.toString())));
+			requireThat(provider().readOnlyEntries(home, files), "maintained").
+				isEqualTo(Map.of(key, List.of(bashrc.toString(), zshenv.toString(), profile.toString())));
+			requireThat(provider().installReadOnlyEntries(home, files, replacer()), "repeated").isEmpty();
+			requireThat(Files.readString(configuration), "edited").contains(quote(bashrc) + " = \"read\"\n").
+				contains(quote(zshenv) + " = \"read\"\n").contains(quote(profile) + " = \"write\"\n");
+			List<EntryGroup> groups = provider().describeEntries(added, home.resolve("bin/installer"));
+			requireThat(groups, "groups").isEqualTo(List.of(new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE,
+				Path.of("config.toml"), "permissions.cat.filesystem", added.get(key),
+				List.of(quote(bashrc) + " = \"read\"", quote(zshenv) + " = \"read\""))));
+
+			provider().removePermissions(home, added, replacer());
+			requireThat(Files.readString(configuration), "removed").isEqualTo(original);
+		}
+	}
+
+	/**
+	 * Without a selected permission profile that {@code config.toml} defines, Codex's sandbox settings cannot deny a
+	 * path, so the read-only entries add nothing.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void readOnlyEntriesNeedProfile() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path configuration = home.resolve("config.toml");
+			String original = "[sandbox_workspace_write]\nwritable_roots = []\n";
+			Files.writeString(configuration, original);
+			List<Path> files = List.of(home.resolveSibling("user/.bashrc"));
+
+			requireThat(provider().installReadOnlyEntries(home, files, replacer()), "added").isEmpty();
+			requireThat(provider().readOnlyEntries(home, files), "maintained").isEmpty();
+			requireThat(Files.readString(configuration), "content").isEqualTo(original);
+		}
+	}
+
+	/**
 	 * Uninstall removes the recorded profile entry and keeps the entries that the user added after install.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
@@ -496,11 +563,11 @@ public final class SandboxEntriesTest
 				launcher = launcher.resolveSibling("installer.ps1");
 			HarnessInstallation installation = provider.installation(home);
 			install.installEntries(home, launcher, installation, List.of(other()), wrongLocks,
-				launcherState(wrongLocks), false);
+				launcherState(wrongLocks), List.of(), false);
 			requireThat(Files.readString(configuration), "granted").contains(quote(wrongLocks));
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, installation,
-				List.of(other()), locks, launcherState(locks), false);
+				List.of(other()), locks, launcherState(locks), List.of(), false);
 
 			requireThat(Files.readString(configuration), "reinstalled").contains(quote(locks)).
 				doesNotContain(quote(wrongLocks)).contains(kept);

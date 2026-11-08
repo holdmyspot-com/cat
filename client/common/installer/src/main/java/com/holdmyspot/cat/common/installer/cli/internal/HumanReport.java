@@ -143,7 +143,7 @@ public final class HumanReport
 	/**
 	 * Adds the sections that list the permission and sandbox entries: the files that hold them, a group for each
 	 * effect of each setting, under the effect's heading and the setting, and the meaning of the abbreviations.
-	 * Without {@link ReportedEntries#exact()}, a group lists the installer operations, paths or names that its entries
+	 * Without {@link ReportedEntries#exact()}, a group lists the CAT commands, paths or names that its entries
 	 * name, and a last section says how to list the entries exactly.
 	 *
 	 * @param entries  the entries
@@ -231,7 +231,7 @@ public final class HumanReport
 	 * @param group        the group
 	 * @param exact        {@code true} to list each entry as the configuration holds it
 	 * @param abbreviation names the paths that the group lists
-	 * @return the lines, empty when the group lists nothing: installer operations on one line, separated by commas,
+	 * @return the lines, empty when the group lists nothing: CAT commands on one line, separated by commas,
 	 * 	and each other item on its own line, in alphabetical order without repeats
 	 */
 	private static List<String> lines(EntryGroup group, boolean exact, Abbreviation abbreviation)
@@ -249,9 +249,8 @@ public final class HumanReport
 		{
 			switch (kind)
 			{
-				case OPERATIONS -> items.add("installer " + item);
+				case OPERATIONS, NAMES -> items.add(item);
 				case PATHS -> items.add(abbreviation.of(Path.of(item)));
-				case NAMES -> items.add(item);
 			}
 		}
 		if (items.isEmpty())

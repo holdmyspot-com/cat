@@ -18,6 +18,7 @@ import com.holdmyspot.cat.common.installer.engine.InstallerState;
 import com.holdmyspot.cat.common.installer.engine.MigrationRunner;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall.InstalledEntries;
+import com.holdmyspot.cat.common.installer.engine.ShellStartupFiles;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
@@ -206,7 +207,7 @@ public final class Install
 			map(other -> other.installation(environment, userHome)).toList();
 		Path launcherState = new SessionLauncherChannel(userHome).stateRoot();
 		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
-			launcherState, consentRequest.isPresent());
+			launcherState, ShellStartupFiles.in(userHome), consentRequest.isPresent());
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}
 

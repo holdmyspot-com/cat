@@ -126,8 +126,9 @@ public interface HarnessIntegration
 	void requireIdentity(CommandResult version) throws IOException;
 
 	/**
-	 * Fails, changing nothing, when a configuration file that {@link #installPermissions} or
-	 * {@link #installSandboxEntries} would change is malformed, is a symbolic link or cannot be changed safely.
+	 * Fails, changing nothing, when a configuration file that {@link #installPermissions},
+	 * {@link #installSandboxEntries} or {@link #installReadOnlyEntries} would change is malformed, is a symbolic link
+	 * or cannot be changed safely.
 	 *
 	 * @param home the absolute, normalized harness home from the trust policy
 	 * @throws NullPointerException if {@code home} is null
@@ -165,25 +166,9 @@ public interface HarnessIntegration
 	void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException;
 
 	/**
-	 * Removes the entries that CAT's installation guide told users to add so that CAT's runners ran outside the
-	 * harness's sandbox, which they no longer do. Removes only the exact forms that the guide gave, leaves a user's
-	 * configuration that holds other settings in the same place unchanged, and leaves a configuration without such
-	 * entries as it is. Install calls this before {@link #installPermissions}; uninstall never does.
-	 *
-	 * @param home     the absolute, normalized harness home from the trust policy
-	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
-	 *                 replacement
-	 * @return the sentences that tell the user what this call removed, or which entries the user must remove; empty
-	 * 	when there was nothing to remove
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative
-	 * @throws IOException              if the configuration cannot be changed
-	 */
-	List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException;
-
-	/**
-	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox.
-	 * Idempotent.
+	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox,
+	 * and that let the harness's sessions run the runner launchers beside the installer outside the sandbox without a
+	 * prompt, so that each launcher can start a session inside that harness's own sandbox. Idempotent.
 	 *
 	 * @param home      the absolute, normalized harness home from the trust policy
 	 * @param installer the absolute path of the installer launcher in the active version folder
@@ -276,12 +261,42 @@ public interface HarnessIntegration
 		Path launcherState);
 
 	/**
+	 * Adds the settings that keep the harness's sessions from changing the given files, both through sandboxed commands
+	 * and through the harness's own file tools. Idempotent.
+	 *
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param files    the absolute files, which need not exist
+	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                 replacement
+	 * @return the entries that this call added, keyed as {@link #installPermissions} keys them; entries that already
+	 * 	existed are not returned
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or a file is relative
+	 * @throws IOException              if the configuration cannot be changed
+	 */
+	Map<String, List<String>> installReadOnlyEntries(Path home, List<Path> files, FileReplacer replacer)
+		throws IOException;
+
+	/**
+	 * Returns every entry that {@link #installReadOnlyEntries} maintains for the given files, whether or not the
+	 * configuration already holds it.
+	 *
+	 * @param home  the absolute, normalized harness home from the trust policy
+	 * @param files the absolute files
+	 * @return the entries keyed as {@link #installPermissions} keys them
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or a file is relative
+	 */
+	Map<String, List<String>> readOnlyEntries(Path home, List<Path> files);
+
+	/**
 	 * Returns the sentences that tell the user what entries that install added change beyond CAT, such as a setting
 	 * that other projects share.
 	 *
 	 * @param home  the absolute, normalized harness home from the trust policy
 	 * @param added the entries that this install added, as {@link #installPermissions},
-	 *              {@link #installConsentedEntries} and {@link #installSandboxEntries} returned them
+	 *              {@link #installConsentedEntries}, {@link #installSandboxEntries} and
+	 *              {@link #installReadOnlyEntries} returned them
 	 * @return the sentences, empty when the entries need no explanation
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} is relative
@@ -291,8 +306,9 @@ public interface HarnessIntegration
 
 	/**
 	 * Groups the entries that install recorded by what they let the harness do, for the installer's report to a
-	 * person. The items of a group of installer operations name only the operations of {@code installer}; an entry
-	 * that names another program is in the group's entries only.
+	 * person. The items of a group of operations name the operations of {@code installer}, such as
+	 * {@code installer install}, and the runner launchers beside it, by their file names; an entry that names another
+	 * program is in the group's entries only.
 	 *
 	 * @param recorded  the recorded entries, keyed as {@link #installPermissions} keys them
 	 * @param installer the absolute path of the installer launcher that the entries name
@@ -320,7 +336,8 @@ public interface HarnessIntegration
 	 * Removes previously added entries that are still present, leaving everything else.
 	 *
 	 * @param home     the absolute, normalized harness home from the trust policy
-	 * @param added    the entries that {@link #installPermissions} or {@link #installSandboxEntries} returned
+	 * @param added    the entries that {@link #installPermissions}, {@link #installSandboxEntries} or
+	 *                 {@link #installReadOnlyEntries} returned
 	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
 	 *                 replacement
 	 * @throws NullPointerException if any of the arguments are null

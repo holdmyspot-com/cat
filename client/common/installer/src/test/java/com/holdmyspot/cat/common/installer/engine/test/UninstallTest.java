@@ -298,7 +298,7 @@ public final class UninstallTest
 			RecordingIntegration integration = new RecordingIntegration().
 				maintain(Map.of("settings.json", List.of("entry"))).fail("unregister");
 			InstallRequest request = new InstallRequest(integration.session(), root.resolve("download/plugin"),
-				List.of(), root.resolve("user/.cat/locks"), root.resolve("user/.cat/sessions"), _ -> false);
+				List.of(), root.resolve("user/.cat/locks"), root.resolve("user/.cat/sessions"), List.of(), _ -> false);
 			requireThat(engine.install("v1.1", request).result(), "installed").
 				isEqualTo(Result.INSTALLED);
 			Uninstaller uninstaller = new Uninstaller(data, trust, new RegisteredProvider(), integration.session(),

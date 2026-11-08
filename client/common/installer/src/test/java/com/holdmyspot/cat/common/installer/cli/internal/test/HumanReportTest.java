@@ -235,12 +235,13 @@ public final class HumanReportTest
 				List.of(userHome.resolve(".codex").resolve("data").toString(), elsewhere.toString()),
 				List.of("deny-one", "deny-two")),
 			new EntryGroup(EntryEffect.RUNS_OUTSIDE_SANDBOX, settings, "sandbox.excludedCommands",
-				List.of("uninstall", "install", "status", "install"), List.of("excluded")),
+				List.of("installer uninstall", "installer install", "installer status", "harness-a-runner",
+					"installer install"), List.of("excluded")),
 			new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, settings, "sandbox.filesystem.allowWrite",
 				List.of(userHome.resolve(".cat").resolve("locks").toString()), List.of("allow-write")),
 			new EntryGroup(EntryEffect.SETS_VALUE, settings, "unused", List.of(), List.of()),
 			new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, settings, "permissions.allow",
-				List.of("status", "install"), List.of("allowed")));
+				List.of("installer status", "installer install"), List.of("allowed")));
 		ObjectNode result = result(Result.INSTALLED, "CAT is installed for harness-a.");
 		result.put("version", "2.3");
 
@@ -258,7 +259,7 @@ public final class HumanReportTest
 			"    installer install, installer status",
 			"",
 			"  Runs outside the sandbox       (sandbox.excludedCommands)",
-			"    installer install, installer status, installer uninstall",
+			"    harness-a-runner, installer install, installer status, installer uninstall",
 			"",
 			"  The sandbox may write to       (sandbox.filesystem.allowWrite)",
 			"    ~" + separator + ".cat" + separator + "locks",
@@ -288,7 +289,7 @@ public final class HumanReportTest
 		List<EntryGroup> groups = List.of(
 			new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, configuration, "sandbox_workspace_write.writable_roots",
 				List.of(userHome.resolve("locks").toString()), List.of("\"" + userHome.resolve("locks") + "\"")),
-			new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, rules, "", List.of("install"),
+			new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, rules, "", List.of("installer install"),
 				List.of("prefix_rule(install)")));
 		ObjectNode result = result(Result.STATUS, "The installation state was read.");
 		result.put("version", "2.3");

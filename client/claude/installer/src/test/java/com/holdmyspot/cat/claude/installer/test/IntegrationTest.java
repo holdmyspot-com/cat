@@ -13,6 +13,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
@@ -22,6 +24,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
@@ -579,7 +582,8 @@ public final class IntegrationTest
 
 			String quoted = launcherCommand(launcher);
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
-			requireThat(allowed, "allowed").isEqualTo(List.of(
+			requireThat(allowed, "allowed").isEqualTo(platformEntries(launcher).get(SETTINGS_KEY_ALLOW));
+			requireThat(allowed.subList(0, 4), "installerAllowed").isEqualTo(List.of(
 				"Bash(" + quoted + " install --harness claude)",
 				"Bash(" + pattern(quoted + " install --harness claude") + ")",
 				"Bash(" + quoted + " status)",
@@ -595,11 +599,13 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The only sandbox exclusion with a wildcard is the one for {@code install --harness claude} followed by a release
-	 * argument, so that an install of a named release runs outside the sandbox without a prompt. Claude Code 2.1.277
-	 * and later keep a call in the sandbox unless every command in it matches an exclusion; earlier versions ran the
-	 * whole call outside it when one command matched a wildcard exclusion, so CAT requires 2.1.277 or later. Every
-	 * other exclusion is one exact command, because no other operation takes a release.
+	 * The only installer exclusion with a wildcard is the one for {@code install --harness claude} followed by a
+	 * release argument, so that an install of a named release runs outside the sandbox without a prompt. Claude Code
+	 * 2.1.277 and later keep a call in the sandbox unless every command in it matches an exclusion; earlier versions
+	 * ran the whole call outside it when one command matched a wildcard exclusion, so CAT requires 2.1.277 or later.
+	 * Every other installer exclusion is one exact command, because no other operation takes a release. Except on
+	 * Windows, each runner launcher beside the installer runs outside the sandbox and without a prompt with any
+	 * arguments, named by its absolute path.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
@@ -616,13 +622,22 @@ public final class IntegrationTest
 			String quoted = launcherCommand(launcher);
 			String installWildcard = pattern(quoted + " install --harness claude");
 			List<String> excluded = added.get(SETTINGS_KEY_EXCLUDED);
-			List<String> wildcards = excluded.stream().filter(entry -> entry.contains("*")).toList();
-			requireThat(wildcards, "wildcards").isEqualTo(List.of(installWildcard));
-			requireThat(excluded, "excluded").containsExactly(List.of(quoted + " install --harness claude",
+			List<String> runners = List.of();
+			if (!Platform.current().isWindows())
+				runners = runnerEntries(launcher);
+			List<String> wildcards = new ArrayList<>(List.of(installWildcard));
+			wildcards.addAll(runners);
+			requireThat(excluded.stream().filter(entry -> entry.contains("*")).toList(), "wildcards").
+				isEqualTo(wildcards);
+			List<String> expected = new ArrayList<>(List.of(quoted + " install --harness claude",
 				quoted + " install --harness claude latest", installWildcard, quoted + " status",
 				quoted + " status --harness claude", quoted + " uninstall --harness claude",
 				quoted + " uninstall --harness claude --delete-data"));
+			expected.addAll(runners);
+			requireThat(excluded, "excluded").containsExactly(expected);
 			requireThat(added.get(SETTINGS_KEY_ALLOW), "allowed").contains("Bash(" + installWildcard + ")");
+			for (String runner : runners)
+				requireThat(added.get(SETTINGS_KEY_ALLOW), "allowed").contains("Bash(" + runner + ")");
 		}
 	}
 
@@ -861,11 +876,11 @@ public final class IntegrationTest
 				json(userEntry.toString()) + "]}}}");
 			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
 			install.installEntries(home, launcher(home), claude, List.of(codex), wrongLocks,
-				userHome.resolve("account/.cat/sessions"), false);
+				userHome.resolve("account/.cat/sessions"), List.of(), false);
 			requireThat(Files.readString(home.resolve("settings.json")), "granted").contains(json(wrongLocks.toString()));
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
-				List.of(codex), catLocks, userHome.resolve(".cat/sessions"), false);
+				List.of(codex), catLocks, userHome.resolve(".cat/sessions"), List.of(), false);
 
 			requireThat(Files.readString(home.resolve("settings.json")), "settings").
 				contains(json(userEntry.toString())).contains(json(catLocks.toString())).
@@ -899,17 +914,125 @@ public final class IntegrationTest
 			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"denyWrite\":[" +
 				json(userEntry.toString()) + "]}}}");
 			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
-			install.installEntries(home, launcher(home), claude, List.of(codex), catLocks, wrongState, false);
+			install.installEntries(home, launcher(home), claude, List.of(codex), catLocks, wrongState, List.of(), false);
 			requireThat(Files.readString(home.resolve("settings.json")), "denied").contains(json(wrongState.toString()));
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
-				List.of(codex), catLocks, launcherState, false);
+				List.of(codex), catLocks, launcherState, List.of(), false);
 
 			requireThat(Files.readString(home.resolve("settings.json")), "settings").
 				contains(json(userEntry.toString())).contains(json(launcherState.toString())).
 				doesNotContain(json(wrongState.toString()));
 			requireThat(entries.recorded().get(SETTINGS_KEY_DENY_WRITE), "recorded").
 				contains(launcherState.toString()).doesNotContain(userEntry.toString());
+		}
+	}
+
+	/**
+	 * The read-only entries deny sandboxed commands and Claude Code's file tools writing each file, are reported as
+	 * paths that the sandbox may not write, keep a user's own entry of the same setting, and are removed completely;
+	 * repeating the call adds nothing.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void readOnlyEntriesDenyWritingFiles() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory());
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Path settings = Files.writeString(home.resolve("settings.json"),
+				"{\"permissions\":{\"deny\":[\"Bash(rm *)\"]}}\n");
+			List<Path> files = List.of(userHome.resolve(".bashrc"), userHome.resolve(".zshenv"));
+			Integration integration = new Integration(Platform.LINUX_X64);
+
+			Map<String, List<String>> added = integration.installReadOnlyEntries(home, files, replacer());
+
+			Map<String, List<String>> expected = Map.of(
+				SETTINGS_KEY_DENY_WRITE, List.of(files.get(0).toString(), files.get(1).toString()),
+				"settings.json#permissions.deny", List.of("Edit(/" + files.get(0) + ")", "Edit(/" + files.get(1) + ")"));
+			requireThat(added, "added").isEqualTo(expected);
+			requireThat(integration.readOnlyEntries(home, files), "maintained").isEqualTo(expected);
+			requireThat(integration.installReadOnlyEntries(home, files, replacer()), "repeated").isEmpty();
+			requireThat(MAPPER.readTree(Files.readString(settings)).path("permissions").path("deny").toString(),
+				"denied").isEqualTo(MAPPER.writeValueAsString(List.of("Bash(rm *)", "Edit(/" + files.get(0) + ")",
+					"Edit(/" + files.get(1) + ")")));
+			List<EntryGroup> groups = integration.describeEntries(added, launcher(home));
+			requireThat(groups, "groups").containsExactly(List.of(
+				new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, Path.of("settings.json"), "sandbox.filesystem.denyWrite",
+					expected.get(SETTINGS_KEY_DENY_WRITE), expected.get(SETTINGS_KEY_DENY_WRITE)),
+				new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, Path.of("settings.json"), "permissions.deny",
+					expected.get(SETTINGS_KEY_DENY_WRITE), expected.get("settings.json#permissions.deny"))));
+
+			integration.removePermissions(home, added, replacer());
+
+			requireThat(Files.readString(settings), "settings").isEqualTo("""
+				{
+				  "permissions": {
+				    "deny": [
+				      "Bash(rm *)"
+				    ]
+				  },
+				  "sandbox": {
+				    "filesystem": {
+				      "denyWrite": []
+				    }
+				  }
+				}
+				""");
+		}
+	}
+
+	/**
+	 * Claude Code has no sandbox on Windows, so no runner launcher runs outside one there and no file needs to be
+	 * read-only.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void readOnlyEntriesAbsentOnWindows() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path userHome = cleanup.add(testDirectory());
+			Path home = Files.createDirectories(userHome.resolve(".claude"));
+			Integration integration = new Integration(Platform.WINDOWS_X64);
+			List<Path> files = List.of(userHome.resolve(".bashrc"));
+
+			requireThat(integration.installReadOnlyEntries(home, files, replacer()), "added").isEmpty();
+			requireThat(integration.readOnlyEntries(home, files), "maintained").isEmpty();
+			requireThat(Files.exists(home.resolve("settings.json")), "settingsCreated").isFalse();
+		}
+	}
+
+	/**
+	 * The report names each installer operation and each runner launcher that the recorded entries let Claude Code
+	 * run outside its sandbox and without asking.
+	 *
+	 * @throws IOException if the fixture cannot be created or the settings cannot be written
+	 */
+	@Test
+	public void reportNamesRunnerLaunchers() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = home.resolve("plugins/cache/cat/cat/1.0/bin/installer");
+			Integration integration = new Integration(Platform.LINUX_X64);
+			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
+
+			List<EntryGroup> groups = integration.describeEntries(added, launcher);
+
+			Map<String, List<String>> items = new HashMap<>();
+			for (EntryGroup group : groups)
+				items.put(group.setting(), group.items());
+			requireThat(items, "items").isEqualTo(Map.of(
+				"sandbox.excludedCommands", List.of("installer install", "installer install", "installer install",
+					"installer status", "installer status", "installer uninstall", "installer uninstall", "claude-runner",
+					"codex-runner"),
+				"permissions.allow", List.of("installer install", "installer install", "installer status",
+					"installer status", "claude-runner", "codex-runner")));
 		}
 	}
 
@@ -1078,137 +1201,8 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Install removes each runner exclusion and runner permission that CAT's installation guide told users to add,
-	 * keeps every other entry and member, and names the removed entries and the file.
-	 *
-	 * @param launcher the runner launcher relative to CAT's plugin folder
-	 * @throws IOException if the fixture cannot be created or the settings cannot be written
-	 */
-	@Test(dataProvider = "runnerLaunchers")
-	public void removesRunnerExceptions(String launcher) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			String runner = new ClaudeInstallation(home).marketplacePlugin().resolve(launcher).toString();
-			Path settings = Files.writeString(home.resolve("settings.json"), "{\"model\":\"opus\"," +
-				"\"sandbox\":{\"excludedCommands\":[\"docker *\"," + json(runner + " *") + "]}," +
-				"\"permissions\":{\"allow\":[" + json("Bash(" + runner + " *)") + ",\"Bash(ls)\"]}}");
-
-			List<String> notices = integration().removeRunnerExceptions(home, replacer());
-
-			requireThat(Files.readString(settings), "settings").isEqualTo("""
-				{
-				  "model": "opus",
-				  "sandbox": {
-				    "excludedCommands": [
-				      "docker *"
-				    ]
-				  },
-				  "permissions": {
-				    "allow": [
-				      "Bash(ls)"
-				    ]
-				  }
-				}
-				""");
-			requireThat(notices, "notices").size().isEqualTo(2);
-			requireThat(notices.get(0), "excludedNotice").contains(json(runner + " *")).
-				contains("sandbox.excludedCommands").contains(settings.toString());
-			requireThat(notices.get(1), "allowNotice").contains(json("Bash(" + runner + " *)")).
-				contains("permissions.allow").contains(settings.toString());
-		}
-	}
-
-	/**
-	 * Supplies each runner launcher that CAT's installation guide named: in the plugin folder, as the released guide
-	 * gave it, or in a version folder, as the current guide gives it, for both harnesses and with Windows's
-	 * {@code .cmd} extension.
-	 *
-	 * @return the launchers relative to CAT's plugin folder
-	 */
-	@DataProvider
-	public Object[][] runnerLaunchers()
-	{
-		return new Object[][]
-			{
-				{"bin/claude-runner"},
-				{"bin/codex-runner"},
-				{"bin/claude-runner.cmd"},
-				{"bin/codex-runner.cmd"},
-				{VERSION + "/bin/claude-runner"},
-				{VERSION + "/bin/codex-runner"},
-				{VERSION + "/bin/claude-runner.cmd"},
-				{VERSION + "/bin/codex-runner.cmd"}
-			};
-	}
-
-	/**
-	 * Install leaves settings without a documented runner entry byte for byte as they are, including entries that
-	 * only resemble one.
-	 *
-	 * @throws IOException if the fixture cannot be created or the settings cannot be written
-	 */
-	@Test
-	public void keepsSettingsWithoutRunnerExceptions() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-			Path plugin = new ClaudeInstallation(home).marketplacePlugin();
-			Path otherHome = home.resolveSibling(home.getFileName() + "-other");
-			List<String> lookalikes = List.of(
-				plugin.resolve("bin/claude-runner").toString(),
-				plugin.resolve("bin/claude-runner") + " --help",
-				plugin.resolve("bin/claude-runner") + ":*",
-				plugin.resolve("bin/installer") + " *",
-				plugin.resolve("a/b/bin/codex-runner") + " *",
-				plugin.resolve("../cat/bin/codex-runner") + " *",
-				plugin + "//bin/codex-runner *",
-				new ClaudeInstallation(otherHome).marketplacePlugin().resolve("bin/codex-runner") + " *",
-				"bin/codex-runner *");
-			StringJoiner excluded = new StringJoiner(",");
-			StringJoiner allowed = new StringJoiner(",");
-			for (String lookalike : lookalikes)
-			{
-				excluded.add(json(lookalike));
-				allowed.add(json("Bash(" + lookalike + ")"));
-			}
-			allowed.add(json(plugin.resolve("bin/claude-runner") + " *"));
-			excluded.add(json("Bash(" + plugin.resolve("bin/claude-runner") + " *)"));
-			String content = "{\"sandbox\":{\"excludedCommands\":[" + excluded + "]},\"permissions\":{\"allow\":[" +
-				allowed + "]}}";
-			Path settings = Files.writeString(home.resolve("settings.json"), content);
-
-			List<String> notices = integration().removeRunnerExceptions(home, replacer());
-
-			requireThat(notices, "notices").isEmpty();
-			requireThat(Files.readString(settings), "settings").isEqualTo(content);
-		}
-	}
-
-	/**
-	 * Install changes nothing when there is no settings file.
-	 *
-	 * @throws IOException if the fixture cannot be created or removal fails
-	 */
-	@Test
-	public void runnerRemovalAcceptsAbsentSettings() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(testDirectory());
-
-			List<String> notices = integration().removeRunnerExceptions(home, replacer());
-
-			requireThat(notices, "notices").isEmpty();
-			requireThat(Files.exists(home.resolve("settings.json")), "settingsCreated").isFalse();
-		}
-	}
-
-	/**
-	 * Uninstall leaves the runner entries that the user added, as it leaves every entry that CAT did not record, and
-	 * says nothing about them.
+	 * Install leaves the runner entries that the user added before it, which equal its own, unrecorded, so uninstall
+	 * leaves them, as it leaves every entry that CAT did not record, and says nothing about them.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
@@ -1360,7 +1354,7 @@ public final class IntegrationTest
 	 */
 	private static Map<String, List<String>> posixEntries(Path launcher)
 	{
-		return entries(posixCommand(launcher));
+		return entries(posixCommand(launcher), runnerEntries(launcher));
 	}
 
 	/**
@@ -1371,24 +1365,42 @@ public final class IntegrationTest
 	 */
 	private static Map<String, List<String>> platformEntries(Path launcher)
 	{
-		return entries(launcherCommand(launcher));
+		if (Platform.current().isWindows())
+			return entries(launcherCommand(launcher), List.of());
+		return entries(launcherCommand(launcher), runnerEntries(launcher));
+	}
+
+	/**
+	 * Returns the entries that let the runner launchers beside a POSIX installer launcher run with any arguments.
+	 *
+	 * @param launcher the installer launcher's absolute path
+	 * @return the entry of {@code claude-runner}, then that of {@code codex-runner}, without {@code Bash(...)}
+	 */
+	private static List<String> runnerEntries(Path launcher)
+	{
+		return List.of(pattern(posixCommand(launcher.resolveSibling("claude-runner"))),
+			pattern(posixCommand(launcher.resolveSibling("codex-runner"))));
 	}
 
 	/**
 	 * Returns the entries for a launcher command.
 	 *
 	 * @param command the shell text that runs the launcher
+	 * @param runners the entries of the runner launchers beside it, without {@code Bash(...)}
 	 * @return the entries keyed as {@link HarnessIntegration#installPermissions} returns them
 	 */
-	private static Map<String, List<String>> entries(String command)
+	private static Map<String, List<String>> entries(String command, List<String> runners)
 	{
 		String install = command + " install --harness claude";
-		List<String> excluded = List.of(install, install + " latest", pattern(install), command + " status",
-			command + " status --harness claude", command + " uninstall --harness claude",
-			command + " uninstall --harness claude --delete-data");
-		List<String> allowed = List.of("Bash(" + install + ")", "Bash(" + pattern(install) + ")",
-			"Bash(" + command + " status)", "Bash(" + command + " status --harness claude)");
-		return Map.of(SETTINGS_KEY_EXCLUDED, excluded, SETTINGS_KEY_ALLOW, allowed);
+		List<String> excluded = new ArrayList<>(List.of(install, install + " latest", pattern(install),
+			command + " status", command + " status --harness claude", command + " uninstall --harness claude",
+			command + " uninstall --harness claude --delete-data"));
+		excluded.addAll(runners);
+		List<String> allowed = new ArrayList<>(List.of("Bash(" + install + ")", "Bash(" + pattern(install) + ")",
+			"Bash(" + command + " status)", "Bash(" + command + " status --harness claude)"));
+		for (String runner : runners)
+			allowed.add("Bash(" + runner + ")");
+		return Map.of(SETTINGS_KEY_EXCLUDED, List.copyOf(excluded), SETTINGS_KEY_ALLOW, List.copyOf(allowed));
 	}
 
 	/**

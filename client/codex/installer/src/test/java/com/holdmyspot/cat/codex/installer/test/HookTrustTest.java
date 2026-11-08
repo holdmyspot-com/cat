@@ -393,7 +393,7 @@ public final class HookTrustTest
 			HarnessInstallation installation = provider.installation(home);
 			Path earlier = plugin(home, VERSION, CAT_HOOKS);
 			install.installEntries(home, earlier, installation, List.of(), locks, locks.resolveSibling("sessions"),
-				false);
+				List.of(), false);
 			requireThat(Files.readString(configuration), "installed").contains(SESSION_START_HASH).
 				contains(POST_TOOL_USE_HASH).contains(SUBAGENT_START_HASH).doesNotContain(staleByHand);
 			ObjectNode withoutPostToolUse = (ObjectNode) JSON.readTree(CAT_HOOKS);
@@ -402,7 +402,7 @@ public final class HookTrustTest
 			Path newer = plugin(home, LATER_VERSION, later);
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, newer, installation, List.of(),
-				locks, locks.resolveSibling("sessions"), false);
+				locks, locks.resolveSibling("sessions"), List.of(), false);
 
 			String content = Files.readString(configuration);
 			requireThat(content, "updated").contains("model = \"gpt\"").contains(other).

@@ -80,11 +80,6 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static final String RULES_KEY = "rules/cat-installer.rules#";
 	/**
-	 * The execution-policy file, in Codex's rules directory, in which CAT's installation guide told users to write the
-	 * rules that let CAT's runners run outside the sandbox.
-	 */
-	private static final String RUNNER_RULES_FILE = "cat.rules";
-	/**
 	 * The execution-policy file, in Codex's rules directory, that CAT wrote before its installer was called the
 	 * installer.
 	 */
@@ -473,44 +468,6 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Removes the runner rules that CAT's installation guide told users to write into {@code rules/cat.rules}: each
-	 * {@code prefix_rule} whose pattern is only the {@code claude-runner} or {@code codex-runner} launcher, with or
-	 * without {@code .cmd}, in {@code bin} of one of CAT's version folders in this home, and whose decision is
-	 * {@code allow}. Deletes the file when it holds nothing but such rules. Otherwise leaves it as it is, because CAT
-	 * does not rewrite the user's rules, and names the rules to remove.
-	 *
-	 * @return a sentence saying that the file was deleted, or which rules to remove from it; empty when the file is
-	 * 	absent, not a regular file, reached through a symbolic link, larger than 1 MiB or holds no such rule
-	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
-	 * @throws IOException              if the file cannot be read or deleted
-	 */
-	@Override
-	public List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException
-	{
-		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
-		requireThat(replacer, "replacer").isNotNull();
-		CodexInstallation installation = new CodexInstallation(home);
-		Path file = installation.rules().resolve(RUNNER_RULES_FILE);
-		if (Files.isSymbolicLink(home) || Files.isSymbolicLink(file.getParent()) ||
-			!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > MAX_METADATA_BYTES)
-		{
-			return List.of();
-		}
-		InstallerRules.RunnerRules found = InstallerRules.findRunnerRules(read(file), installation.versionFolders());
-		if (found.rules().isEmpty())
-			return List.of();
-		if (!found.other())
-		{
-			Files.delete(file);
-			return List.of("CAT deleted " + file + ", which held only the rules that CAT's installation guide told " +
-				"you to write for its runners; CAT's runners no longer run outside the sandbox.");
-		}
-		return List.of("CAT left " + file + " as it is, because it also holds other content. CAT's runners no " +
-			"longer run outside the sandbox, so remove these rules, which CAT's installation guide told you to write " +
-			"for them, then restart Codex:\n" + String.join("\n", found.rules()));
-	}
-
-	/**
 	 * Returns the content of {@code rules/cat-installer.rules} that {@link #installPermissions} writes, and the hash of
 	 * each hook of the plugin that holds {@code installer}, which it records in {@code config.toml}.
 	 *
@@ -720,6 +677,101 @@ public final class CodexIntegration implements HarnessIntegration
 			entries.put(catProfileKey(builtIn.get()), List.of(builtIn.get()));
 		}
 		return Map.copyOf(entries);
+	}
+
+	/**
+	 * Keeps sandboxed commands from writing the given files. When {@code config.toml} selects with
+	 * {@code default_permissions} a permission profile that it defines, adds {@code "<file>" = "read"} for each file to
+	 * that profile's {@code filesystem} table, creating the table when it is absent, unless the profile already has an
+	 * entry for the file. Codex applies the most specific entry, so a read entry keeps the commands from writing the
+	 * file even when the profile lets them write a folder that contains it. Otherwise adds nothing, because the
+	 * writable roots that Codex's other sandbox settings name cannot deny a path inside them.
+	 *
+	 * @param home     the absolute Codex home
+	 * @param files    the absolute files
+	 * @param replacer replaces Codex's configuration
+	 * @return {@code {"config.toml#permissions.<profile>.filesystem.read": [<file>...]}} with the files whose entry
+	 * 	this call added; empty when it added none
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or a file is relative or not normalized
+	 * @throws IOException              if {@code config.toml} is a symbolic link, not a regular file, not valid TOML or
+	 *                                  in a form whose selected permission profile CAT does not edit, or cannot be
+	 *                                  written
+	 */
+	@Override
+	public Map<String, List<String>> installReadOnlyEntries(Path home, List<Path> files, FileReplacer replacer)
+		throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireNormalized(files);
+		requireThat(replacer, "replacer").isNotNull();
+		validateSandboxEntry(home);
+
+		Path file = new CodexInstallation(home).configuration();
+		if (Files.notExists(file, LinkOption.NOFOLLOW_LINKS))
+			return Map.of();
+		String content = read(file);
+		Optional<String> profile = PermissionProfile.selected(TomlText.parse(content, file));
+		if (profile.isEmpty())
+			return Map.of();
+		String edited = content;
+		List<String> added = new ArrayList<>();
+		for (Path readOnly : files)
+		{
+			String denied = PermissionProfile.add(edited, profile.get(), readOnly.toString(), Access.READ, file);
+			if (!denied.equals(edited))
+				added.add(readOnly.toString());
+			edited = denied;
+		}
+		if (added.isEmpty())
+			return Map.of();
+		write(file, edited, replacer);
+		return Map.of(profileKey(profile.get()) + READ_SUFFIX, List.copyOf(added));
+	}
+
+	/**
+	 * Returns the entries that {@link #installReadOnlyEntries} adds to the current {@code config.toml}.
+	 *
+	 * @param home  the absolute Codex home
+	 * @param files the absolute files
+	 * @return {@code {"config.toml#permissions.<profile>.filesystem.read": [<file>...]}} when {@code config.toml}
+	 * 	selects a permission profile that it defines, otherwise empty
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or a file is relative or not normalized
+	 * @throws UncheckedIOException     if {@code config.toml} cannot be read or is not valid TOML
+	 */
+	@Override
+	public Map<String, List<String>> readOnlyEntries(Path home, List<Path> files)
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireNormalized(files);
+		ObjectNode document;
+		try
+		{
+			document = readDocument(new CodexInstallation(home).configuration());
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+		Optional<String> profile = PermissionProfile.selected(document);
+		if (profile.isEmpty() || files.isEmpty())
+			return Map.of();
+		return Map.of(profileKey(profile.get()) + READ_SUFFIX, files.stream().map(Path::toString).toList());
+	}
+
+	/**
+	 * Checks that every file is absolute and normalized.
+	 *
+	 * @param files the files
+	 * @throws NullPointerException     if {@code files} or a file is null
+	 * @throws IllegalArgumentException if a file is relative or not normalized
+	 */
+	private static void requireNormalized(List<Path> files)
+	{
+		requireThat(files, "files").isNotNull();
+		for (Path file : files)
+			requireThat(file, "file").isAbsolute().isEqualTo(file.normalize());
 	}
 
 	/**

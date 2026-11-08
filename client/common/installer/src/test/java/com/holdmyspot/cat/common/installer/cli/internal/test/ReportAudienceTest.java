@@ -108,7 +108,8 @@ public final class ReportAudienceTest
 			add("Bash(entry-two)");
 		Path home = FileSystems.getDefault().getRootDirectories().iterator().next().resolve("user").resolve("home");
 		List<EntryGroup> groups = List.of(new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, Path.of("settings.json"),
-			"permissions.allow", List.of("install", "status"), List.of("Bash(entry-one)", "Bash(entry-two)")));
+			"permissions.allow", List.of("installer install", "installer status"),
+			List.of("Bash(entry-one)", "Bash(entry-two)")));
 
 		String text = ReportAudience.text(result, true, Optional.of("Product harness-a"),
 			new ReportedEntries(groups, home, home, home.resolve("installer"), false));

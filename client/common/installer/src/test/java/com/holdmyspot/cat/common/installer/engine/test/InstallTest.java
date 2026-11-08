@@ -119,7 +119,7 @@ public final class InstallTest
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
-				fixture.root.resolve("user/.cat/sessions"), question ->
+				fixture.root.resolve("user/.cat/sessions"), List.of(), question ->
 				{
 					questions.add(question);
 					return false;
@@ -154,7 +154,7 @@ public final class InstallTest
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
-				fixture.root.resolve("user/.cat/sessions"), _ -> true));
+				fixture.root.resolve("user/.cat/sessions"), List.of(), _ -> true));
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UPDATED);
@@ -168,33 +168,34 @@ public final class InstallTest
 	}
 
 	/**
-	 * An update removes the runner entries that CAT's installation guide told the user to add before it adds its own
-	 * entries, and tells the user what it removed in the updated message.
+	 * An update keeps the harness's sessions from changing the shell startup files of the request, after it adds the
+	 * permission entries.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
 	 */
 	@Test
-	public void updateReportsRemovedRunnerExceptions() throws IOException, TrustException
+	public void updateMakesStartupFilesReadOnly() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-runner-")),
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-startup-")),
 				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
 			// Stands for the install of 1.0 that the harness ran before this update
 			fixture.registerExisting(Releases.pluginVersion("1.0"));
-			fixture.integration.removingRunnerExceptions(List.of("CAT removed the runner entries."));
+			List<Path> startupFiles = List.of(fixture.root.resolve("user/.bashrc"),
+				fixture.root.resolve("user/.zshenv"));
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
-				fixture.root.resolve("user/.cat/sessions"), _ -> true));
+				fixture.root.resolve("user/.cat/sessions"), startupFiles, _ -> true));
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.UPDATED);
-			requireThat(result.message(), "message").isEqualTo("CAT was updated. CAT removed the runner entries.");
-			List<String> calls = fixture.integration.calls();
-			requireThat(calls.lastIndexOf("removeRunnerExceptions"), "removed").isNotNegative().
-				isLessThan(calls.lastIndexOf("installPermissions"));
+			List<String> calls = fixture.integration.callsWithSubjects();
+			requireThat(calls, "calls").contains("installReadOnlyEntries " + startupFiles);
+			requireThat(fixture.integration.calls().lastIndexOf("installReadOnlyEntries"), "denied").
+				isGreaterThan(fixture.integration.calls().lastIndexOf("installPermissions"));
 		}
 	}
 
@@ -222,7 +223,7 @@ public final class InstallTest
 
 			UpdateResult result = engine.install("v1.1", new InstallRequest(integration.session(),
 				root.resolve("download/plugin"), List.of(), root.resolve("user/.cat/locks"),
-				root.resolve("user/.cat/sessions"), _ -> false));
+				root.resolve("user/.cat/sessions"), List.of(), _ -> false));
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.INSTALLED);

@@ -187,8 +187,9 @@ public final class InstallerActivationTest
 
 	/**
 	 * A person who installs CAT reads which files CAT changed and what their entries let the harness do, grouped by
-	 * effect, with the installer's operations by name, the paths in the user's home directory relative to {@code ~} and
-	 * the command that lists the entries exactly. That command lists each entry as the harness configuration holds it.
+	 * effect, with the installer's operations and the runner launchers by name, the paths in the user's home directory
+	 * relative to {@code ~} and the command that lists the entries exactly. That command lists each entry as the
+	 * harness configuration holds it.
 	 *
 	 * @param harness the packaged harness to exercise
 	 * @throws IOException if a fixture file cannot be written or read
@@ -220,13 +221,19 @@ public final class InstallerActivationTest
 			Path launcher = versionFolder.resolve("bin").resolve("installer");
 			if (platform.isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
+			// The runner launchers run outside the sandbox where the harnesses sandbox commands
+			String runners = "";
+			if (!platform.isWindows())
+				runners = "claude-runner, codex-runner, ";
 			requireThat(installed, "installed").
 				contains("CAT 1.0 is installed for " + integration.productName() + ". Restart " +
 					integration.productName() + " for the changes to take effect.").
 				contains("Uninstalling CAT undoes these changes.").
-				contains("Runs without asking").contains("installer install, installer status" + lineSeparator).
+				contains("Runs without asking").
+				contains("    " + runners + "installer install, installer status" + lineSeparator).
 				contains("Runs outside the sandbox").
-				contains("installer install, installer status, installer uninstall" + lineSeparator).
+				contains("    " + runners + "installer install, installer status, installer uninstall" +
+					lineSeparator).
 				contains("The sandbox may write to").contains("    " + String.join(fake.user.getFileSystem().
 					getSeparator(), "~", ".cat", "locks") + lineSeparator).
 				contains("  where ~         = " + fake.user + lineSeparator).

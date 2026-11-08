@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
 import com.holdmyspot.cat.common.installer.engine.ProcessMigrationRunner;
 import com.holdmyspot.cat.common.installer.engine.ReleaseConnection;
+import com.holdmyspot.cat.common.installer.engine.ShellStartupFiles;
 import com.holdmyspot.cat.common.installer.engine.StagedInstall;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
@@ -781,7 +782,7 @@ public final class Invocation
 			filter(provider -> !provider.harness().equals(harness)).
 			map(provider -> provider.installation(environment, userHome)).toList();
 		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome),
-			new SessionLauncherChannel(userHome).stateRoot(), consent);
+			new SessionLauncherChannel(userHome).stateRoot(), ShellStartupFiles.in(userHome), consent);
 	}
 
 	/**

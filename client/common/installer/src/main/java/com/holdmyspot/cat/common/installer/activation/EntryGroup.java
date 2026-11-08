@@ -12,9 +12,10 @@ import java.util.List;
  * @param effect  what the entries let the harness do
  * @param file    the configuration file that holds the entries, relative to the harness home
  * @param setting the setting in {@code file} that holds the entries, or empty when CAT owns the whole file
- * @param items   what the entries name, of the kind that {@link EntryEffect#items()} states: an installer operation,
- *                such as {@code install}, an absolute path, or a name; each item names one or more entries. The text
- *                form is kept because an item names a path only for some effects.
+ * @param items   what the entries name, of the kind that {@link EntryEffect#items()} states: a CAT command, such as
+ *                {@code installer install} or a runner launcher's file name, an absolute path, or a name; each item
+ *                names one or more entries. The text form is kept because an item names a path only for some
+ *                effects.
  * @param entries the entries as the configuration holds them
  */
 public record EntryGroup(EntryEffect effect, Path file, String setting, List<String> items, List<String> entries)

@@ -2,7 +2,6 @@ package com.holdmyspot.cat.claude.installer.test;
 
 import com.holdmyspot.cat.claude.installer.Activation;
 import com.holdmyspot.cat.claude.installer.Integration;
-import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
@@ -15,10 +14,10 @@ import com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContr
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import org.testng.annotations.Test;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Runs the {@link HarnessIntegrationContract} against {@link Integration}, with Claude Code's program as
@@ -26,10 +25,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ClaudeIntegrationContractTest
 {
-	/**
-	 * Writes JSON strings.
-	 */
-	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	/**
 	 * The contract over the integration.
 	 */
@@ -79,11 +74,9 @@ public final class ClaudeIntegrationContractTest
 			}
 
 			@Override
-			public void arrangeRunnerExceptions(HarnessIntegration integration, Path home) throws IOException
+			public void arrangeReadOnlyEntries(HarnessIntegration integration, Path home)
 			{
-				Path launcher = new ClaudeInstallation(home).marketplacePlugin().resolve("bin/claude-runner");
-				Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" +
-					MAPPER.writeValueAsString(launcher + " *") + "]}}\n");
+				// Claude Code's settings need no configuration for the entries
 			}
 
 			@Override
@@ -108,11 +101,15 @@ public final class ClaudeIntegrationContractTest
 			@Override
 			public Map<String, Set<EntryEffect>> effects()
 			{
-				return Map.of(
+				Map<String, Set<EntryEffect>> effects = new HashMap<>(Map.of(
 					"settings.json#permissions.allow", Set.of(EntryEffect.RUNS_WITHOUT_ASKING),
 					"settings.json#sandbox.excludedCommands", Set.of(EntryEffect.RUNS_OUTSIDE_SANDBOX),
 					"settings.json#sandbox.filesystem.allowWrite", Set.of(EntryEffect.SANDBOX_MAY_WRITE),
-					"settings.json#sandbox.filesystem.denyWrite", Set.of(EntryEffect.SANDBOX_MAY_NOT_WRITE));
+					"settings.json#sandbox.filesystem.denyWrite", Set.of(EntryEffect.SANDBOX_MAY_NOT_WRITE)));
+				// Claude Code has no sandbox on Windows, so no session there runs a runner launcher outside one
+				if (!Platform.current().isWindows())
+					effects.put("settings.json#permissions.deny", Set.of(EntryEffect.SANDBOX_MAY_NOT_WRITE));
+				return effects;
 			}
 		});
 
@@ -243,16 +240,17 @@ public final class ClaudeIntegrationContractTest
 	}
 
 	/**
-	 * Verifies that the runner exceptions of the installation guide are removed once.
+	 * Verifies that the entries that keep sessions from changing files are added once and removed completely.
 	 *
 	 * @throws IOException if a home cannot be created, written or read
 	 */
 	@Test
-	public void removesRunnerExceptionsOnce() throws IOException
+	public void installsReadOnlyEntriesOnce() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.removesRunnerExceptionsOnce(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.installsReadOnlyEntriesOnce(cleanup.add(Files.createTempDirectory("cat-integration-")),
+				cleanup.add(Files.createTempDirectory("cat-user-home-")));
 		}
 	}
 

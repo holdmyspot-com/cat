@@ -17,10 +17,11 @@ import java.util.List;
  * @param others        the CAT installations of the other harnesses
  * @param catLocks      the directory of the capacity locks, which the sandbox entries name
  * @param launcherState the directory that holds the session launcher's state, which the sandbox entries name
+ * @param startupFiles  the shell startup files that the harness's sessions may not change
  * @param consent       decides whether the user allows a change that needs their permission
  */
 public record InstallRequest(HarnessSession session, Path image, List<HarnessInstallation> others, Path catLocks,
-	Path launcherState, Consent consent)
+	Path launcherState, List<Path> startupFiles, Consent consent)
 {
 	/**
 	 * Creates the request.
@@ -30,6 +31,7 @@ public record InstallRequest(HarnessSession session, Path image, List<HarnessIns
 	 * @param others        the CAT installations of the other harnesses
 	 * @param catLocks      the directory of the capacity locks, which the sandbox entries name
 	 * @param launcherState the directory that holds the session launcher's state, which the sandbox entries name
+	 * @param startupFiles  the shell startup files that the harness's sessions may not change
 	 * @param consent       decides whether the user allows a change that needs their permission
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -40,6 +42,7 @@ public record InstallRequest(HarnessSession session, Path image, List<HarnessIns
 		others = List.copyOf(others);
 		requireThat(catLocks, "catLocks").isNotNull();
 		requireThat(launcherState, "launcherState").isNotNull();
+		startupFiles = List.copyOf(startupFiles);
 		requireThat(consent, "consent").isNotNull();
 	}
 }

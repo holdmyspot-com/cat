@@ -2,7 +2,6 @@ package com.holdmyspot.cat.codex.installer.test;
 
 import com.holdmyspot.cat.codex.installer.CodexActivation;
 import com.holdmyspot.cat.codex.installer.CodexIntegration;
-import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -17,7 +16,6 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.Set;
 import org.testng.annotations.Test;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Runs the {@link HarnessIntegrationContract} against {@link CodexIntegration}, with Codex's program as
@@ -25,10 +23,6 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class CodexIntegrationContractTest
 {
-	/**
-	 * Writes JSON strings.
-	 */
-	private static final JsonMapper MAPPER = JsonMapper.builder().build();
 	/**
 	 * The contract over the integration.
 	 */
@@ -78,13 +72,11 @@ public final class CodexIntegrationContractTest
 			}
 
 			@Override
-			public void arrangeRunnerExceptions(HarnessIntegration integration, Path home) throws IOException
+			public void arrangeReadOnlyEntries(HarnessIntegration integration, Path home) throws IOException
 			{
-				Path launcher = new CodexInstallation(home).versionFolder(PluginVersion.parse("1.0+b0123456789ab")).
-					resolve("bin/codex-runner");
-				Path rules = Files.createDirectories(home.resolve("rules")).resolve("cat.rules");
-				Files.writeString(rules, "prefix_rule(\n\tpattern = [" + MAPPER.writeValueAsString(launcher.toString()) +
-					"],\n\tdecision = \"allow\",\n)\n");
+				// Codex denies a write only through the selected permission profile
+				Files.writeString(home.resolve("config.toml"), "default_permissions = \"mine\"\n\n" +
+					"[permissions.mine]\nextends = \":workspace\"\n");
 			}
 
 			@Override
@@ -249,16 +241,17 @@ public final class CodexIntegrationContractTest
 	}
 
 	/**
-	 * Verifies that the runner exceptions of the installation guide are removed once.
+	 * Verifies that the entries that keep sessions from changing files are added once and removed completely.
 	 *
 	 * @throws IOException if a home cannot be created, written or read
 	 */
 	@Test
-	public void removesRunnerExceptionsOnce() throws IOException
+	public void installsReadOnlyEntriesOnce() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.removesRunnerExceptionsOnce(cleanup.add(Files.createTempDirectory("cat-integration-")));
+			CONTRACT.installsReadOnlyEntriesOnce(cleanup.add(Files.createTempDirectory("cat-integration-")),
+				cleanup.add(Files.createTempDirectory("cat-user-home-")));
 		}
 	}
 

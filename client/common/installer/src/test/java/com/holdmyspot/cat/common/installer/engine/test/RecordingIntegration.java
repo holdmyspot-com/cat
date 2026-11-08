@@ -104,9 +104,9 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	private final Map<String, String> changed = new LinkedHashMap<>();
 	/**
-	 * The sentences that the next {@code removeRunnerExceptions} call returns.
+	 * Whether {@code installReadOnlyEntries} adds entries for its files.
 	 */
-	private List<String> runnerRemovals = List.of();
+	private boolean readOnly;
 	/**
 	 * The {@code keepData} argument of each {@code unregister} call, in call order.
 	 */
@@ -256,15 +256,13 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Adds the runner exceptions that CAT's installation guide told users to add, which the next runner exception
-	 * removal removes.
+	 * Makes {@code installReadOnlyEntries} add an entry for each of its files.
 	 *
-	 * @param sentences the sentences that the next {@code removeRunnerExceptions} call returns
 	 * @return this integration
 	 */
-	public RecordingIntegration removingRunnerExceptions(List<String> sentences)
+	public RecordingIntegration denyingWrites()
 	{
-		this.runnerRemovals = List.copyOf(sentences);
+		this.readOnly = true;
 		return this;
 	}
 
@@ -568,18 +566,6 @@ public final class RecordingIntegration implements HarnessIntegration
 		return greatestName && candidate.toString().compareTo(active.toString()) > 0;
 	}
 
-	/**
-	 * Records the call and returns the sentences that the test set.
-	 */
-	@Override
-	public List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException
-	{
-		record("removeRunnerExceptions", home);
-		List<String> sentences = runnerRemovals;
-		runnerRemovals = List.of();
-		return sentences;
-	}
-
 	@Override
 	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
 		throws IOException
@@ -615,6 +601,29 @@ public final class RecordingIntegration implements HarnessIntegration
 		Map<String, List<String>> entries = new LinkedHashMap<>(sandbox);
 		entries.putAll(consented);
 		return entries;
+	}
+
+	/**
+	 * Records the call with the files, and adds the entries that {@code readOnlyEntries} returns.
+	 */
+	@Override
+	public Map<String, List<String>> installReadOnlyEntries(Path home, List<Path> files, FileReplacer replacer)
+		throws IOException
+	{
+		record("installReadOnlyEntries", files.toString());
+		return add(home, readOnlyEntries(home, files));
+	}
+
+	/**
+	 * Returns an entry {@code read-only.json#denied} for each file once the test called {@link #denyingWrites()},
+	 * otherwise none.
+	 */
+	@Override
+	public Map<String, List<String>> readOnlyEntries(Path home, List<Path> files)
+	{
+		if (!readOnly || files.isEmpty())
+			return Map.of();
+		return Map.of("read-only.json#denied", files.stream().map(Path::toString).toList());
 	}
 
 	/**

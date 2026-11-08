@@ -14,10 +14,8 @@ import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -43,8 +41,9 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Registers CAT's version folders with Claude Code through its {@code claude} program, lets agents run the trusted
- * installer through entries in Claude Code's user {@code settings.json}, and keeps sandboxed commands from writing the
- * other harness's CAT installation.
+ * installer, and the runner launchers outside the sandbox, through entries in Claude Code's user {@code settings.json},
+ * and keeps sandboxed commands from writing the other harness's CAT installation and sessions from changing the shell
+ * startup files.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. Its methods change files that Claude Code also writes; the installer
  * holds its harness lock while calling them, but a running Claude Code session can still rewrite {@code settings.json}.
@@ -69,6 +68,10 @@ public final class Integration implements HarnessIntegration
 	 */
 	private static final String ALLOWED_TOOLS = "permissions.allow";
 	/**
+	 * The tool uses that Claude Code refuses.
+	 */
+	private static final String DENIED_TOOLS = "permissions.deny";
+	/**
 	 * The paths that sandboxed commands may not write, even inside a path that they may write.
 	 */
 	private static final String DENY_WRITE = "sandbox.filesystem.denyWrite";
@@ -79,13 +82,18 @@ public final class Integration implements HarnessIntegration
 	/**
 	 * Every setting that this integration adds entries to.
 	 */
-	private static final List<String> MAINTAINED_SETTINGS = List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS, DENY_WRITE,
-		ALLOW_WRITE);
+	private static final List<String> MAINTAINED_SETTINGS = List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS, DENIED_TOOLS,
+		DENY_WRITE, ALLOW_WRITE);
 	/**
-	 * The file names of the runner launchers that CAT's installation guide told users to add entries for.
+	 * The file names of the runner launchers beside the installer launcher, which Claude Code runs outside its
+	 * sandbox.
 	 */
-	private static final Set<String> RUNNER_LAUNCHERS = Set.of("claude-runner", "codex-runner", "claude-runner.cmd",
-		"codex-runner.cmd");
+	private static final List<String> RUNNER_LAUNCHERS = List.of("claude-runner", "codex-runner");
+	/**
+	 * The prefix of a {@code permissions.deny} entry that refuses Claude Code's file tools a path, which an absolute
+	 * path follows after one more slash.
+	 */
+	private static final String EDIT_DENIAL = "Edit(/";
 	/**
 	 * The marketplace metadata that a plugin version folder ships, relative to that folder.
 	 */
@@ -523,118 +531,6 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Removes from {@code settings.json} the runner entries that CAT's installation guide told users to add: each
-	 * {@code sandbox.excludedCommands} entry {@code <launcher> *} and each {@code permissions.allow} entry
-	 * {@code Bash(<launcher> *)}, where {@code <launcher>} is the {@code claude-runner} or {@code codex-runner}
-	 * launcher, with or without {@code .cmd}, in {@code bin} of CAT's plugin folder or of one of its version folders.
-	 * CAT's runners no longer run outside the sandbox. Every other entry stays, and settings without such an entry
-	 * stay as they are.
-	 *
-	 * @param home     the absolute Claude Code configuration directory recorded in policy
-	 * @param replacer replaces {@code settings.json}
-	 * @return one sentence for each setting that lost entries, naming the entries and the file; empty when nothing
-	 * 	was removed
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative
-	 * @throws IOException              if the settings cannot be changed safely
-	 */
-	@Override
-	public List<String> removeRunnerExceptions(Path home, FileReplacer replacer) throws IOException
-	{
-		requireThat(replacer, "replacer").isNotNull();
-		Path settings = settingsFile(home);
-		if (Files.notExists(settings, LinkOption.NOFOLLOW_LINKS))
-			return List.of();
-		ObjectNode root = readSettings(home);
-		Path plugin = new ClaudeInstallation(home.normalize()).marketplacePlugin();
-
-		List<String> sentences = new ArrayList<>();
-		for (String setting : List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS))
-		{
-			Optional<ArrayNode> found = findArray(root, setting);
-			if (found.isEmpty())
-				continue;
-			ArrayNode array = found.get();
-			List<String> removed = new ArrayList<>();
-			for (int index = array.size() - 1; index >= 0; --index)
-			{
-				JsonNode element = array.get(index);
-				if (element.isString() && isRunnerException(setting, element.asString(), plugin))
-				{
-					array.remove(index);
-					removed.addFirst(MAPPER.writeValueAsString(element.asString()));
-				}
-			}
-			if (!removed.isEmpty())
-			{
-				sentences.add("CAT removed " + String.join(", ", removed) + " from " + setting + " in " + settings +
-					", which CAT's installation guide told you to add for its runners; CAT's runners no longer run " +
-					"outside the sandbox.");
-			}
-		}
-		if (!sentences.isEmpty())
-			writeSettings(home, root, replacer);
-		return List.copyOf(sentences);
-	}
-
-	/**
-	 * Reports whether a setting's entry is a runner entry that CAT's installation guide told users to add.
-	 *
-	 * @param setting the entry's dotted setting name, {@code sandbox.excludedCommands} or {@code permissions.allow}
-	 * @param entry   the entry
-	 * @param plugin  CAT's plugin folder in the configuration directory
-	 * @return true if the entry is {@code <launcher> *} in {@code sandbox.excludedCommands} or
-	 * 	{@code Bash(<launcher> *)} in {@code permissions.allow}, for a runner launcher of {@code plugin}
-	 */
-	private static boolean isRunnerException(String setting, String entry, Path plugin)
-	{
-		String command;
-		if (setting.equals(EXCLUDED_COMMANDS))
-			command = entry;
-		else if (entry.startsWith("Bash(") && entry.endsWith(")"))
-			command = entry.substring("Bash(".length(), entry.length() - 1);
-		else
-			return false;
-		return command.endsWith(" *") &&
-			isRunnerLauncher(command.substring(0, command.length() - " *".length()), plugin);
-	}
-
-	/**
-	 * Reports whether a path names a runner launcher in {@code bin} of CAT's plugin folder or of one of its version
-	 * folders, spelled exactly as that path.
-	 *
-	 * @param text   the path
-	 * @param plugin CAT's plugin folder in the configuration directory
-	 * @return true if {@code text} names {@code claude-runner} or {@code codex-runner}, with or without {@code .cmd}
-	 */
-	private static boolean isRunnerLauncher(String text, Path plugin)
-	{
-		Path launcher;
-		try
-		{
-			launcher = Path.of(text);
-		}
-		catch (InvalidPathException _)
-		{
-			return false;
-		}
-		// Windows accepts either separator; any other difference in spelling is not the documented entry
-		if (!launcher.isAbsolute() || !launcher.equals(launcher.normalize()) ||
-			!launcher.toString().equals(text.replace('/', File.separatorChar)))
-		{
-			return false;
-		}
-		Path bin = launcher.getParent();
-		if (!RUNNER_LAUNCHERS.contains(launcher.getFileName().toString()) || bin == null ||
-			bin.getFileName() == null || !bin.getFileName().toString().equals("bin"))
-		{
-			return false;
-		}
-		Path folder = bin.getParent();
-		return folder.equals(plugin) || plugin.equals(folder.getParent());
-	}
-
-	/**
 	 * Adds the entries that a setting's array lacks, creating the file, objects and arrays when absent, and writes the
 	 * settings only when something was added.
 	 *
@@ -716,7 +612,11 @@ public final class Integration implements HarnessIntegration
 	 * in it matches an exclusion, and a redirect, a {@code cd} or a command substitution keeps the call sandboxed, so
 	 * a command chained after the launcher stays inside the sandbox. Earlier versions ran the whole call outside the
 	 * sandbox when one command matched a wildcard exclusion, so CAT's Claude Code support requires 2.1.277 or later.
-	 * Every other exclusion stays exact, because no other operation takes a release.
+	 * Every other exclusion stays exact, because no other operation takes a release. Except on Windows, where the
+	 * runner launchers start no session, each runner launcher beside the installer also runs outside the sandbox
+	 * without a prompt with any arguments, so that it can start a session inside Claude Code's own sandbox, which a
+	 * sandboxed command cannot do. Claude Code matches the path only as spelled, so a command that names the launcher
+	 * any other way, or puts a variable assignment in front of it, stays sandboxed.
 	 *
 	 * @param installer the absolute path of the installer launcher in the plugin's version folder
 	 * @return the sandbox exclusions and the prompt-free permissions, in a stable order
@@ -741,6 +641,15 @@ public final class Integration implements HarnessIntegration
 		List<String> allowed = new ArrayList<>();
 		for (String entry : promptFree)
 			allowed.add("Bash(" + entry + ")");
+		if (!platform.isWindows())
+		{
+			for (String name : RUNNER_LAUNCHERS)
+			{
+				String runner = versionPattern(launcherCommand(installer.resolveSibling(name)));
+				excluded.add(runner);
+				allowed.add("Bash(" + runner + ")");
+			}
+		}
 		Map<String, List<String>> entries = new LinkedHashMap<>();
 		entries.put(EXCLUDED_COMMANDS, List.copyOf(excluded));
 		entries.put(ALLOWED_TOOLS, List.copyOf(allowed));
@@ -748,7 +657,7 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the shell text that runs the installer launcher.
+	 * Returns the shell text that runs a launcher.
 	 *
 	 * @param installer the launcher's absolute path
 	 * @return on Windows, PowerShell's fixed non-interactive form for the launcher script; elsewhere, the quoted path
@@ -937,6 +846,76 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
+	 * Merges into {@code settings.json} a {@code sandbox.filesystem.denyWrite} entry for each file, which keeps
+	 * sandboxed commands from writing it, and a {@code permissions.deny} entry {@code Edit(//<file>)}, which keeps
+	 * Claude Code's own file tools, which run outside the sandbox, from changing it, creating the file and members
+	 * when absent. Adds nothing on Windows, where Claude Code has no sandbox and no runner launcher runs outside one.
+	 *
+	 * @param home     the absolute Claude Code configuration directory
+	 * @param files    the absolute files
+	 * @param replacer replaces {@code settings.json}
+	 * @return the added entries, keyed {@code settings.json#sandbox.filesystem.denyWrite} and
+	 * 	{@code settings.json#permissions.deny}; a key is absent when nothing was added to it
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or a file is relative
+	 * @throws IOException              if the settings cannot be changed safely
+	 */
+	@Override
+	public Map<String, List<String>> installReadOnlyEntries(Path home, List<Path> files, FileReplacer replacer)
+		throws IOException
+	{
+		requireThat(replacer, "replacer").isNotNull();
+		return addEntries(home, readOnly(home, files), replacer);
+	}
+
+	/**
+	 * Returns the entries that {@link #installReadOnlyEntries} merges into {@code settings.json}.
+	 *
+	 * @param home  the absolute Claude Code configuration directory
+	 * @param files the absolute files
+	 * @return the entries, keyed {@code settings.json#sandbox.filesystem.denyWrite} and
+	 * 	{@code settings.json#permissions.deny}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or a file is relative
+	 */
+	@Override
+	public Map<String, List<String>> readOnlyEntries(Path home, List<Path> files)
+	{
+		return keyed(readOnly(home, files));
+	}
+
+	/**
+	 * Returns the entries that keep sessions from changing files, for each setting.
+	 *
+	 * @param home  the absolute Claude Code configuration directory
+	 * @param files the absolute files
+	 * @return the denied paths and the denied file-tool uses, by dotted setting name, in the order of {@code files};
+	 * 	empty on Windows, where Claude Code has no sandbox and no runner launcher runs outside one
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code home} or a file is relative
+	 */
+	private Map<String, List<String>> readOnly(Path home, List<Path> files)
+	{
+		requireThat(home, "home").isAbsolute();
+		requireThat(files, "files").isNotNull();
+		if (platform.isWindows())
+			return Map.of();
+		List<String> denied = new ArrayList<>();
+		List<String> edits = new ArrayList<>();
+		for (Path file : files)
+		{
+			requireThat(file, "file").isAbsolute();
+			denied.add(file.toString());
+			// Claude Code reads a rule path that starts with two slashes as an absolute path
+			edits.add(EDIT_DENIAL + file + ")");
+		}
+		Map<String, List<String>> entries = new LinkedHashMap<>();
+		entries.put(DENY_WRITE, List.copyOf(denied));
+		entries.put(DENIED_TOOLS, List.copyOf(edits));
+		return entries;
+	}
+
+	/**
 	 * Asks nothing: install adds every entry that Claude Code needs to settings that only CAT's entries change.
 	 *
 	 * @return empty
@@ -980,10 +959,10 @@ public final class Integration implements HarnessIntegration
 
 	/**
 	 * Groups the recorded entries of {@code settings.json} by setting: {@code permissions.allow} names the installer
-	 * operations that Claude Code runs without asking, {@code sandbox.excludedCommands} the operations that it runs
-	 * outside its sandbox, {@code sandbox.filesystem.allowWrite} the paths that sandboxed commands may write, and
-	 * {@code sandbox.filesystem.denyWrite} the paths that they may not write. Any other setting is a group of the
-	 * values that it records.
+	 * operations and runner launchers that Claude Code runs without asking, {@code sandbox.excludedCommands} the ones
+	 * that it runs outside its sandbox, {@code sandbox.filesystem.allowWrite} the paths that sandboxed commands may
+	 * write, and {@code sandbox.filesystem.denyWrite} and {@code permissions.deny} the paths that sessions may not
+	 * write. Any other setting is a group of the values that it records.
 	 *
 	 * @throws IllegalArgumentException if {@code installer} is relative
 	 * @throws IOException              if, on Windows, the launcher path holds {@code "}, {@code $} or {@code `}
@@ -994,6 +973,7 @@ public final class Integration implements HarnessIntegration
 		requireThat(recorded, "recorded").isNotNull();
 		requireThat(installer, "installer").isAbsolute();
 		String launcher = launcherCommand(installer) + " ";
+		Map<String, String> runners = runnerEntries(installer);
 		List<EntryGroup> groups = new ArrayList<>();
 		for (Map.Entry<String, List<String>> entry : recorded.entrySet())
 		{
@@ -1005,9 +985,12 @@ public final class Integration implements HarnessIntegration
 			EntryGroup group = switch (setting)
 			{
 				case ALLOWED_TOOLS -> new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, file, setting,
-					operations(values.stream().map(Integration::allowedCommand).toList(), launcher), values);
+					operations(values.stream().map(Integration::allowedCommand).toList(), launcher, runners),
+					values);
 				case EXCLUDED_COMMANDS -> new EntryGroup(EntryEffect.RUNS_OUTSIDE_SANDBOX, file, setting,
-					operations(values, launcher), values);
+					operations(values, launcher, runners), values);
+				case DENIED_TOOLS -> new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, setting,
+					deniedPaths(values), values);
 				case ALLOW_WRITE -> new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, setting, values, values);
 				case DENY_WRITE -> new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, setting, values, values);
 				default -> new EntryGroup(EntryEffect.SETS_VALUE, file, setting, values, values);
@@ -1031,21 +1014,58 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the installer operations that commands run.
+	 * Returns the entries that let each runner launcher beside the installer run with any arguments.
 	 *
-	 * @param commands the commands
-	 * @param launcher the shell text that runs the installer launcher, followed by a space
-	 * @return the first word after {@code launcher} of each command that starts with it, such as {@code install}
+	 * @param installer the absolute path of the installer launcher
+	 * @return each launcher's entry without {@code Bash(...)}, mapped to the launcher's name
+	 * @throws IOException if, on Windows, the launcher path holds {@code "}, {@code $} or {@code `}
 	 */
-	private static List<String> operations(List<String> commands, String launcher)
+	private Map<String, String> runnerEntries(Path installer) throws IOException
+	{
+		Map<String, String> entries = new LinkedHashMap<>();
+		for (String name : RUNNER_LAUNCHERS)
+			entries.put(versionPattern(launcherCommand(installer.resolveSibling(name))), name);
+		return entries;
+	}
+
+	/**
+	 * Returns the CAT commands that entries run.
+	 *
+	 * @param entries  the entries, without {@code Bash(...)}
+	 * @param launcher the shell text that runs the installer launcher, followed by a space
+	 * @param runners  the entry of each runner launcher, mapped to the launcher's name
+	 * @return for each entry that runs the installer, {@code installer} and the first word after {@code launcher},
+	 * 	such as {@code installer install}, and for each runner launcher's entry, the launcher's name
+	 */
+	private static List<String> operations(List<String> entries, String launcher, Map<String, String> runners)
 	{
 		List<String> operations = new ArrayList<>();
-		for (String command : commands)
+		for (String entry : entries)
 		{
-			if (command.startsWith(launcher))
-				operations.add(command.substring(launcher.length()).split(" ", 2)[0]);
+			String runner = runners.get(entry);
+			if (runner != null)
+				operations.add(runner);
+			else if (entry.startsWith(launcher))
+				operations.add("installer " + entry.substring(launcher.length()).split(" ", 2)[0]);
 		}
 		return operations;
+	}
+
+	/**
+	 * Returns the paths that {@code permissions.deny} entries keep Claude Code's file tools from changing.
+	 *
+	 * @param entries the entries
+	 * @return the absolute path of each {@code Edit(//<path>)} entry
+	 */
+	private static List<String> deniedPaths(List<String> entries)
+	{
+		List<String> paths = new ArrayList<>();
+		for (String entry : entries)
+		{
+			if (entry.startsWith(EDIT_DENIAL + "/") && entry.endsWith(")"))
+				paths.add(entry.substring(EDIT_DENIAL.length(), entry.length() - 1));
+		}
+		return paths;
 	}
 
 	/**
@@ -1067,11 +1087,13 @@ public final class Integration implements HarnessIntegration
 	 * Removes the given entries that {@code settings.json} still holds, keeping every other member and entry.
 	 *
 	 * @param home     the absolute Claude Code configuration directory recorded in policy
-	 * @param added    the entries that {@link #installPermissions} or {@link #installSandboxEntries} returned
+	 * @param added    the entries that {@link #installPermissions}, {@link #installSandboxEntries} or
+	 *                 {@link #installReadOnlyEntries} returned
 	 * @param replacer replaces {@code settings.json}
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home} is relative or {@code added} has a key that neither
-	 *                                  {@link #installPermissions} nor {@link #installSandboxEntries} returns
+	 * @throws IllegalArgumentException if {@code home} is relative or {@code added} has a key that none of
+	 *                                  {@link #installPermissions}, {@link #installSandboxEntries} and
+	 *                                  {@link #installReadOnlyEntries} returns
 	 * @throws IOException              if the settings cannot be changed safely
 	 */
 	@Override
