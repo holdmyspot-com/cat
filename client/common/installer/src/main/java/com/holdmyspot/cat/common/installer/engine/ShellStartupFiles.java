@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * The shell startup files in a home folder, which install makes read-only to a harness's sessions. Each harness runs
- * CAT's runner launchers outside its sandbox when a command names one by its absolute path, after it strips a few
+ * CAT's request server outside its sandbox when a command names it by its absolute path, after it strips a few
  * wrapper words such as {@code nohup}. A session that could write a startup file could define a function under such a
  * wrapper's name there, and the shell that runs the next such command would load it and run the session's own code
  * outside the sandbox.

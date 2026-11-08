@@ -42,7 +42,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Registers CAT's version folders with Claude Code through its {@code claude} program, lets agents run the trusted
- * installer, and the runner launchers outside the sandbox, through entries in Claude Code's user {@code settings.json},
+ * installer, and the request server outside the sandbox, through entries in Claude Code's user {@code settings.json},
  * and keeps sandboxed commands from writing the other harness's CAT installation and sessions from changing the shell
  * startup files.
  * <p>
@@ -86,10 +86,9 @@ public final class Integration implements HarnessIntegration
 	private static final List<String> MAINTAINED_SETTINGS = List.of(EXCLUDED_COMMANDS, ALLOWED_TOOLS, DENIED_TOOLS,
 		DENY_WRITE, ALLOW_WRITE);
 	/**
-	 * The file names of the runner launchers beside the installer launcher, which Claude Code runs outside its
-	 * sandbox.
+	 * The file name of the request server beside the installer launcher, which Claude Code runs outside its sandbox.
 	 */
-	private static final List<String> RUNNER_LAUNCHERS = List.of("claude-runner", "codex-runner");
+	private static final String REQUEST_SERVER = "request-server";
 	/**
 	 * The prefix of a {@code permissions.deny} entry that refuses Claude Code's file tools a path, which an absolute
 	 * path follows after one more slash.
@@ -613,11 +612,12 @@ public final class Integration implements HarnessIntegration
 	 * in it matches an exclusion, and a redirect, a {@code cd} or a command substitution keeps the call sandboxed, so
 	 * a command chained after the launcher stays inside the sandbox. Earlier versions ran the whole call outside the
 	 * sandbox when one command matched a wildcard exclusion, so CAT's Claude Code support requires 2.1.277 or later.
-	 * Every other exclusion stays exact, because no other operation takes a release. Except on Windows, where the
-	 * runner launchers start no session, each runner launcher beside the installer also runs outside the sandbox
-	 * without a prompt with any arguments, so that it can start a session inside Claude Code's own sandbox, which a
-	 * sandboxed command cannot do. Claude Code matches the path only as spelled, so a command that names the launcher
-	 * any other way, or puts a variable assignment in front of it, stays sandboxed.
+	 * Every other exclusion stays exact, because no other operation takes a release. Except on Windows, where Claude
+	 * Code has no sandbox, the request server beside the installer also runs outside the sandbox without a prompt,
+	 * exactly as its absolute path with no arguments, so that it can start the sessions that the session's sandboxed
+	 * commands request inside Claude Code's own sandbox, which a sandboxed command cannot do. Claude Code matches the
+	 * path only as spelled, so a command that names the server any other way, or puts a variable assignment in front
+	 * of it, stays sandboxed.
 	 *
 	 * @param installer the absolute path of the installer launcher in the plugin's version folder
 	 * @return the sandbox exclusions and the prompt-free permissions, in a stable order
@@ -644,12 +644,9 @@ public final class Integration implements HarnessIntegration
 			allowed.add("Bash(" + entry + ")");
 		if (!platform.isWindows())
 		{
-			for (String name : RUNNER_LAUNCHERS)
-			{
-				String runner = versionPattern(launcherCommand(installer.resolveSibling(name)));
-				excluded.add(runner);
-				allowed.add("Bash(" + runner + ")");
-			}
+			String server = launcherCommand(installer.resolveSibling(REQUEST_SERVER));
+			excluded.add(server);
+			allowed.add("Bash(" + server + ")");
 		}
 		Map<String, List<String>> entries = new LinkedHashMap<>();
 		entries.put(EXCLUDED_COMMANDS, List.copyOf(excluded));
@@ -850,7 +847,7 @@ public final class Integration implements HarnessIntegration
 	 * Merges into {@code settings.json} a {@code sandbox.filesystem.denyWrite} entry for each file, which keeps
 	 * sandboxed commands from writing it, and a {@code permissions.deny} entry {@code Edit(//<file>)}, which keeps
 	 * Claude Code's own file tools, which run outside the sandbox, from changing it, creating the file and members
-	 * when absent. Adds nothing on Windows, where Claude Code has no sandbox and no runner launcher runs outside one.
+	 * when absent. Adds nothing on Windows, where Claude Code has no sandbox and no command runs outside one.
 	 *
 	 * @param home     the absolute Claude Code configuration directory
 	 * @param files    the absolute files
@@ -891,7 +888,7 @@ public final class Integration implements HarnessIntegration
 	 * @param home  the absolute Claude Code configuration directory
 	 * @param files the absolute files
 	 * @return the denied paths and the denied file-tool uses, by dotted setting name, in the order of {@code files};
-	 * 	empty on Windows, where Claude Code has no sandbox and no runner launcher runs outside one
+	 * 	empty on Windows, where Claude Code has no sandbox and no command runs outside one
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} or a file is relative
 	 */
@@ -960,7 +957,7 @@ public final class Integration implements HarnessIntegration
 
 	/**
 	 * Groups the recorded entries of {@code settings.json} by setting: {@code permissions.allow} names the installer
-	 * operations and runner launchers that Claude Code runs without asking, {@code sandbox.excludedCommands} the ones
+	 * operations and the request server that Claude Code runs without asking, {@code sandbox.excludedCommands} the ones
 	 * that it runs outside its sandbox, {@code sandbox.filesystem.allowWrite} the paths that sandboxed commands may
 	 * write, and {@code sandbox.filesystem.denyWrite} and {@code permissions.deny} the paths that sessions may not
 	 * write. Any other setting is a group of the values that it records.
@@ -974,7 +971,7 @@ public final class Integration implements HarnessIntegration
 		requireThat(recorded, "recorded").isNotNull();
 		requireThat(installer, "installer").isAbsolute();
 		String launcher = launcherCommand(installer) + " ";
-		Map<String, String> runners = runnerEntries(installer);
+		Map<String, String> servers = Map.of(launcherCommand(installer.resolveSibling(REQUEST_SERVER)), REQUEST_SERVER);
 		List<EntryGroup> groups = new ArrayList<>();
 		for (Map.Entry<String, List<String>> entry : recorded.entrySet())
 		{
@@ -986,10 +983,10 @@ public final class Integration implements HarnessIntegration
 			EntryGroup group = switch (setting)
 			{
 				case ALLOWED_TOOLS -> new EntryGroup(EntryEffect.RUNS_WITHOUT_ASKING, file, setting,
-					operations(values.stream().map(Integration::allowedCommand).toList(), launcher, runners),
+					operations(values.stream().map(Integration::allowedCommand).toList(), launcher, servers),
 					values);
 				case EXCLUDED_COMMANDS -> new EntryGroup(EntryEffect.RUNS_OUTSIDE_SANDBOX, file, setting,
-					operations(values, launcher, runners), values);
+					operations(values, launcher, servers), values);
 				case DENIED_TOOLS -> new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, setting,
 					deniedPaths(values), values);
 				case ALLOW_WRITE -> new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, setting, values, values);
@@ -1015,37 +1012,22 @@ public final class Integration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the entries that let each runner launcher beside the installer run with any arguments.
-	 *
-	 * @param installer the absolute path of the installer launcher
-	 * @return each launcher's entry without {@code Bash(...)}, mapped to the launcher's name
-	 * @throws IOException if, on Windows, the launcher path holds {@code "}, {@code $} or {@code `}
-	 */
-	private Map<String, String> runnerEntries(Path installer) throws IOException
-	{
-		Map<String, String> entries = new LinkedHashMap<>();
-		for (String name : RUNNER_LAUNCHERS)
-			entries.put(versionPattern(launcherCommand(installer.resolveSibling(name))), name);
-		return entries;
-	}
-
-	/**
 	 * Returns the CAT commands that entries run.
 	 *
 	 * @param entries  the entries, without {@code Bash(...)}
 	 * @param launcher the shell text that runs the installer launcher, followed by a space
-	 * @param runners  the entry of each runner launcher, mapped to the launcher's name
+	 * @param servers  the entry of the request server, mapped to the server's name
 	 * @return for each entry that runs the installer, {@code installer} and the first word after {@code launcher},
-	 * 	such as {@code installer install}, and for each runner launcher's entry, the launcher's name
+	 * 	such as {@code installer install}, and for the request server's entry, the server's name
 	 */
-	private static List<String> operations(List<String> entries, String launcher, Map<String, String> runners)
+	private static List<String> operations(List<String> entries, String launcher, Map<String, String> servers)
 	{
 		List<String> operations = new ArrayList<>();
 		for (String entry : entries)
 		{
-			String runner = runners.get(entry);
-			if (runner != null)
-				operations.add(runner);
+			String server = servers.get(entry);
+			if (server != null)
+				operations.add(server);
 			else if (entry.startsWith(launcher))
 				operations.add("installer " + entry.substring(launcher.length()).split(" ", 2)[0]);
 		}

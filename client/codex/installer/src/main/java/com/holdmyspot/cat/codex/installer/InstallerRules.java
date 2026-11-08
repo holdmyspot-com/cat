@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Writes and recognizes the CAT-owned Codex execution-policy file that lets an agent run the installer launcher of the
- * active version folder, and recognizes the runner rules that CAT's installation guide told users to write.
+ * active version folder and the request server beside it.
  * <p>
  * Each rule is a {@code prefix_rule}. Codex applies a prefix rule to every command that starts with its pattern, so
  * the installer validates its complete argument list itself. Every rule that allows a command names this harness
@@ -53,7 +53,12 @@ public final class InstallerRules
 	 */
 	private static final String RULE_FUNCTION = "prefix_rule";
 	/**
-	 * The file names of the runner launchers beside the installer launcher, which Codex runs outside its sandbox.
+	 * The file name of the request server beside the installer launcher, which Codex runs outside its sandbox.
+	 */
+	private static final String REQUEST_SERVER = "request-server";
+	/**
+	 * The file names of the runner launchers beside the installer launcher, which earlier installers let Codex run
+	 * outside its sandbox.
 	 */
 	private static final List<String> RUNNER_LAUNCHERS = List.of("claude-runner", "codex-runner");
 	/**
@@ -70,9 +75,9 @@ public final class InstallerRules
 
 	/**
 	 * Returns the file content that permits the agent operations on one installer launcher and, except on Windows,
-	 * where the runner launchers start no session, lets the runner launchers beside it run with any arguments without
-	 * asking and outside the sandbox, so that each can start a session inside Codex's own sandbox, which a sandboxed
-	 * command cannot do. Codex matches each launcher's path only as spelled.
+	 * where no session starts through a request server, lets the request server beside it run without asking and
+	 * outside the sandbox, so that it can start the sessions that the session's sandboxed commands request inside
+	 * Codex's own sandbox, which a sandboxed command cannot do. Codex matches each path only as spelled.
 	 *
 	 * @param launcher the absolute, normalized path of the installer launcher in the active version folder
 	 * @param windows  {@code true} to name the launcher script through PowerShell, as Windows runs it
@@ -82,12 +87,25 @@ public final class InstallerRules
 	 */
 	public static String render(Path launcher, boolean windows)
 	{
-		return render(HEADER, launcher, windows, false, !windows);
+		return render(HEADER, launcher, windows, false, siblings(windows));
+	}
+
+	/**
+	 * Returns the launchers beside the installer launcher that {@link #render} lets Codex run outside its sandbox.
+	 *
+	 * @param windows {@code true} if the rules name the launcher script through PowerShell
+	 * @return the request server, or none on Windows
+	 */
+	private static List<String> siblings(boolean windows)
+	{
+		if (windows)
+			return List.of();
+		return List.of(REQUEST_SERVER);
 	}
 
 	/**
 	 * Groups the rules that {@link #render} writes for a launcher by what they let Codex do. Codex runs an operation
-	 * or runner launcher that a rule allows without asking and outside its sandbox, and runs the operation of the rule
+	 * or the request server that a rule allows without asking and outside its sandbox, and runs the operation of the rule
 	 * that keeps its prompt outside its sandbox once the user agrees.
 	 *
 	 * @param content  the content of the rules file, as {@link #render} wrote it
@@ -111,8 +129,8 @@ public final class InstallerRules
 		allowed.put(ruleLine(command, List.of("install", "--harness", CodexActivation.HARNESS), ALLOW),
 			"installer install");
 		allowed.put(ruleLine(command, List.of("status"), ALLOW), "installer status");
-		for (String name : RUNNER_LAUNCHERS)
-			allowed.put(ruleLine(List.of(launcher.resolveSibling(name).toString()), List.of(), ALLOW), name);
+		allowed.put(ruleLine(List.of(launcher.resolveSibling(REQUEST_SERVER).toString()), List.of(), ALLOW),
+			REQUEST_SERVER);
 		Map<String, String> prompted = Map.of(
 			ruleLine(command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION),
 			"installer uninstall");
@@ -164,10 +182,11 @@ public final class InstallerRules
 	 * @param windows  {@code true} to name the launcher script through PowerShell
 	 * @param update   {@code true} to add the rule for the removed {@code update} command, as CAT wrote it into
 	 *                 {@code rules/cat-updater.rules}
-	 * @param runners  {@code true} to add the rule for each runner launcher beside {@code launcher}
+	 * @param siblings the file names of the launchers beside {@code launcher} that a rule lets run
 	 * @return the complete file content, ending with a line feed
 	 */
-	private static String render(String header, Path launcher, boolean windows, boolean update, boolean runners)
+	private static String render(String header, Path launcher, boolean windows, boolean update,
+		List<String> siblings)
 	{
 		requireThat(launcher, "launcher").isAbsolute().isEqualTo(launcher.normalize());
 		List<String> command = new ArrayList<>();
@@ -181,18 +200,15 @@ public final class InstallerRules
 			rule(content, command, List.of("update", "--harness", CodexActivation.HARNESS), ALLOW);
 		rule(content, command, List.of("status"), ALLOW);
 		rule(content, command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
-		if (runners)
-		{
-			for (String name : RUNNER_LAUNCHERS)
-				rule(content, List.of(launcher.resolveSibling(name).toString()), List.of(), ALLOW);
-		}
+		for (String name : siblings)
+			rule(content, List.of(launcher.resolveSibling(name).toString()), List.of(), ALLOW);
 		return content.toString();
 	}
 
 	/**
 	 * Reports whether a file's content is exactly what {@link #render} writes for the launcher that its first rule
-	 * names, or what CAT's installer wrote before it added the runner launchers' rules, so that the installer may
-	 * replace the file.
+	 * names, what an earlier installer wrote with the runner launchers' rules instead of the request server's, or
+	 * what CAT's installer wrote before it added either, so that the installer may replace the file.
 	 *
 	 * @param content the file's content
 	 * @param windows {@code true} if the file names the launcher through PowerShell
@@ -201,8 +217,9 @@ public final class InstallerRules
 	 */
 	public static boolean isWrittenByCat(String content, boolean windows)
 	{
-		return isRenderedUnder(HEADER, content, windows, false, !windows) ||
-			isRenderedUnder(HEADER, content, windows, false, false);
+		return isRenderedUnder(HEADER, content, windows, false, siblings(windows)) ||
+			!windows && isRenderedUnder(HEADER, content, false, false, RUNNER_LAUNCHERS) ||
+			isRenderedUnder(HEADER, content, windows, false, List.of());
 	}
 
 	/**
@@ -216,7 +233,7 @@ public final class InstallerRules
 	 */
 	public static boolean isUpdaterLeftover(String content, boolean windows)
 	{
-		return isRenderedUnder(UPDATER_HEADER, content, windows, true, false);
+		return isRenderedUnder(UPDATER_HEADER, content, windows, true, List.of());
 	}
 
 	/**
@@ -226,11 +243,11 @@ public final class InstallerRules
 	 * @param content the file's content
 	 * @param windows {@code true} if the file names the launcher through PowerShell
 	 * @param update  {@code true} if the rules include the one for the removed {@code update} command
-	 * @param runners {@code true} if the rules include the runner launchers' rules
+	 * @param siblings the file names of the launchers beside the launcher whose rules the content includes
 	 * @return {@code true} if the content equals the rendered rules
 	 */
 	private static boolean isRenderedUnder(String header, String content, boolean windows, boolean update,
-		boolean runners)
+		List<String> siblings)
 	{
 		String[] lines = content.split("\n", -1);
 		if (lines.length < 2 || !lines[0].equals(header))
@@ -257,7 +274,7 @@ public final class InstallerRules
 		Path launcher = Path.of(pattern.path(launcherIndex).stringValue());
 		if (!launcher.isAbsolute() || !launcher.equals(launcher.normalize()))
 			return false;
-		return content.equals(render(header, launcher, windows, update, runners));
+		return content.equals(render(header, launcher, windows, update, siblings));
 	}
 	/**
 	 * Appends one prefix rule.

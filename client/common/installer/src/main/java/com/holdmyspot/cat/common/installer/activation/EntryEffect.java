@@ -7,11 +7,11 @@ package com.holdmyspot.cat.common.installer.activation;
 public enum EntryEffect
 {
 	/**
-	 * The harness runs the installer operations and runner launchers that the entries name without asking the user.
+	 * The harness runs the installer operations and the request server that the entries name without asking the user.
 	 */
 	RUNS_WITHOUT_ASKING("Runs without asking", Items.OPERATIONS),
 	/**
-	 * The harness runs the installer operations and runner launchers that the entries name outside its sandbox.
+	 * The harness runs the installer operations and the request server that the entries name outside its sandbox.
 	 */
 	RUNS_OUTSIDE_SANDBOX("Runs outside the sandbox", Items.OPERATIONS),
 	/**
@@ -72,7 +72,7 @@ public enum EntryEffect
 	public enum Items
 	{
 		/**
-		 * A CAT command: an installer operation, such as {@code installer install}, or a runner launcher's file name.
+		 * A CAT command: an installer operation, such as {@code installer install}, or the request server's file name.
 		 */
 		OPERATIONS,
 		/**

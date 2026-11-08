@@ -167,8 +167,8 @@ public interface HarnessIntegration
 
 	/**
 	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox,
-	 * and that let the harness's sessions run the runner launchers beside the installer outside the sandbox without a
-	 * prompt, so that each launcher can start a session inside that harness's own sandbox. Idempotent.
+	 * and that let the harness's sessions run the request server beside the installer outside the sandbox without a
+	 * prompt, so that it can start the sessions that they request inside that harness's own sandbox. Idempotent.
 	 *
 	 * @param home      the absolute, normalized harness home from the trust policy
 	 * @param installer the absolute path of the installer launcher in the active version folder
@@ -308,7 +308,7 @@ public interface HarnessIntegration
 	/**
 	 * Groups the entries that install recorded by what they let the harness do, for the installer's report to a
 	 * person. The items of a group of operations name the operations of {@code installer}, such as
-	 * {@code installer install}, and the runner launchers beside it, by their file names; an entry that names another
+	 * {@code installer install}, and the request server beside it, by its file name; an entry that names another
 	 * program is in the group's entries only.
 	 *
 	 * @param recorded  the recorded entries, keyed as {@link #installPermissions} keys them

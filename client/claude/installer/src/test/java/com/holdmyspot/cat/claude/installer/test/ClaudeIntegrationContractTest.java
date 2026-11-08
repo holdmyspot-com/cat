@@ -106,7 +106,7 @@ public final class ClaudeIntegrationContractTest
 					"settings.json#sandbox.excludedCommands", Set.of(EntryEffect.RUNS_OUTSIDE_SANDBOX),
 					"settings.json#sandbox.filesystem.allowWrite", Set.of(EntryEffect.SANDBOX_MAY_WRITE),
 					"settings.json#sandbox.filesystem.denyWrite", Set.of(EntryEffect.SANDBOX_MAY_NOT_WRITE)));
-				// Claude Code has no sandbox on Windows, so no session there runs a runner launcher outside one
+				// Claude Code has no sandbox on Windows, so no command there runs outside one
 				if (!Platform.current().isWindows())
 					effects.put("settings.json#permissions.deny", Set.of(EntryEffect.SANDBOX_MAY_NOT_WRITE));
 				return effects;

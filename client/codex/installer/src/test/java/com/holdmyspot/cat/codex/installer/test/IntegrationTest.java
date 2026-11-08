@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.EntryEffect;
+import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -402,9 +404,10 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The rules file permits installing into Codex and status without asking, asks before uninstall, lets each runner
-	 * launcher beside the installer run without asking and outside the sandbox, except on Windows, and is reported as
-	 * added only by the call that wrote it.
+	 * The rules file permits installing into Codex and status without asking, asks before uninstall, lets the request
+	 * server beside the installer, and no runner launcher, run without asking and outside the sandbox, except on
+	 * Windows, reports the server among the operations it lets run that way, and is reported as added only by the call
+	 * that wrote it.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -419,7 +422,16 @@ public final class IntegrationTest
 
 			Map<String, List<String>> added = provider().installPermissions(home, launcher, replacer());
 			requireThat(added, "added").isEqualTo(Map.of("rules/cat-installer.rules#", List.of(expected)));
-			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").isEqualTo(expected);
+			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").isEqualTo(expected).
+				doesNotContain("-runner");
+			if (!Platform.current().isWindows())
+			{
+				for (EntryGroup group : provider().describeEntries(added, launcher))
+				{
+					if (group.effect() == EntryEffect.RUNS_WITHOUT_ASKING || group.effect() == EntryEffect.RUNS_OUTSIDE_SANDBOX)
+						requireThat(group.items(), "items").contains("request-server");
+				}
+			}
 			requireThat(provider().installPermissions(home, launcher, replacer()), "repeated").isEmpty();
 			provider().validateConfiguration(home);
 		}
@@ -593,19 +605,44 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Install accepts the rules file that an earlier CAT wrote without the runner launchers' rules, and replaces it
-	 * with one that holds them.
+	 * Install accepts the rules file that an earlier CAT wrote without the request server's rule, and replaces it with
+	 * one that holds it.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void replacesRulesWithoutRunners() throws IOException
+	public void replacesRulesWithoutServer() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path launcher = installer(home, EARLIER_VERSION);
 			write(home.resolve("rules/cat-installer.rules"), earlierRules(launcher));
+			provider().validateConfiguration(home);
+
+			provider().installPermissions(home, launcher, replacer());
+
+			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
+				isEqualTo(rules(launcher));
+		}
+	}
+
+	/**
+	 * Install accepts the rules file that an earlier CAT wrote with the runner launchers' rules, and replaces it with
+	 * one that lets only the request server run outside the sandbox, so that no runner launcher's rule remains.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void replacesRunnerRules() throws IOException
+	{
+		if (Platform.current().isWindows())
+			return;
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			Path launcher = installer(home, VERSION);
+			write(home.resolve("rules/cat-installer.rules"), runnerRules(launcher));
 			provider().validateConfiguration(home);
 
 			provider().installPermissions(home, launcher, replacer());
@@ -726,33 +763,33 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * Uninstall leaves the runner rules that the user wrote into {@code rules/cat.rules}, as it leaves every rule that
-	 * CAT did not record, and says nothing about them.
+	 * Uninstall leaves the request server rule that the user wrote into {@code rules/cat.rules}, as it leaves every
+	 * rule that CAT did not record, and says nothing about it.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
 	@Test
-	public void uninstallKeepsRunnerRules() throws IOException
+	public void uninstallKeepsUserServerRule() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path runnerRules = home.resolve("rules/cat.rules");
+			Path userRules = home.resolve("rules/cat.rules");
 			String content = """
 				prefix_rule(
 					pattern = [%s],
 					decision = "allow",
-					justification = "CAT's runner starts an isolated Codex session with your login",
+					justification = "CAT's request server starts the sessions that this session requests",
 				)
-				""".formatted(MAPPER.writeValueAsString(installer(home, VERSION).resolveSibling("codex-runner").
+				""".formatted(MAPPER.writeValueAsString(installer(home, VERSION).resolveSibling("request-server").
 				toString()));
-			write(runnerRules, content);
+			write(userRules, content);
 			Map<String, List<String>> added = provider().installPermissions(home, installer(home, VERSION), replacer());
 
 			provider().removePermissions(home, added, replacer());
 			List<String> retained = provider().describeRetained(home, added);
 
-			requireThat(Files.readString(runnerRules), "runnerRules").isEqualTo(content);
+			requireThat(Files.readString(userRules), "userRules").isEqualTo(content);
 			requireThat(retained, "retained").isEmpty();
 		}
 	}
@@ -770,14 +807,28 @@ public final class IntegrationTest
 			return installerRules;
 		return installerRules + """
 			prefix_rule(pattern=[%s], decision="allow")
+			""".formatted(MAPPER.writeValueAsString(launcher.resolveSibling("request-server").toString()));
+	}
+
+	/**
+	 * Returns the rules file that an earlier CAT wrote for a POSIX launcher when it let the runner launchers run
+	 * outside the sandbox.
+	 *
+	 * @param launcher the installer launcher in the version folder
+	 * @return the file content
+	 */
+	private static String runnerRules(Path launcher)
+	{
+		return earlierRules(launcher) + """
+			prefix_rule(pattern=[%s], decision="allow")
 			prefix_rule(pattern=[%s], decision="allow")
 			""".formatted(MAPPER.writeValueAsString(launcher.resolveSibling("claude-runner").toString()),
 			MAPPER.writeValueAsString(launcher.resolveSibling("codex-runner").toString()));
 	}
 
 	/**
-	 * Returns the rules file that CAT wrote for a launcher on the platform that runs the test before it let the runner
-	 * launchers run outside the sandbox.
+	 * Returns the rules file that CAT wrote for a launcher on the platform that runs the test before it let any launcher
+	 * beside the installer run outside the sandbox.
 	 *
 	 * @param launcher the installer launcher in the version folder
 	 * @return the file content
