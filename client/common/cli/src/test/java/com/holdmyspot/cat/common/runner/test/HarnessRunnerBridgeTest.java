@@ -31,6 +31,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.fakes.test.ManualTicker;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
@@ -221,7 +222,7 @@ public final class HarnessRunnerBridgeTest
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
-				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, false, null,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
 				null, null);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
@@ -263,7 +264,7 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", null, true, null, false, false, 1,
-				List.of(), List.of(), null, List.of(), 0, null, 0, input, null, false, null,
+				List.of(), List.of(), null, List.of(), 0, null, 0, input, null, null, false, null,
 				null, null);
 			StringWriter output = new StringWriter();
 
@@ -272,6 +273,61 @@ public final class HarnessRunnerBridgeTest
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
 			requireThat(output.toString(), "output").contains("\"type\":\"completed\"");
+		}
+	}
+
+	/**
+	 * Verifies that a runner that no harness runs holds a conversation in place: the bridge serves the messages that
+	 * the asking session appended to {@code to-child.jsonl} as its records, an interrupt ends only the turn in
+	 * progress although the harness fails that turn, as Claude Code does, and {@code from-child.jsonl} receives the
+	 * bridge's records, a {@code turn_end} line after each turn and an {@code ended} line last.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000)
+	public void holdsConversationInPlace() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		List<String> received = new CopyOnWriteArrayList<>();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted(), Turn.replies("two")),
+				received, InterruptedTurn.FAILS);
+			StringReader standardInput = new StringReader(""))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createDirectories(run.directory().resolve("project"));
+			Path folder = Files.createDirectory(cleanup.add(Files.createTempDirectory("cat-asking-")).
+				resolve("conversation"));
+			// The asking session may write its messages before it starts the runner
+			Files.writeString(folder.resolve("to-child.jsonl"), "{\"turn\": \"first\"}\n{\"interrupt\": true}\n" +
+				"{\"turn\": \"second\"}\n{\"end\": true}\n");
+			HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
+				root.resolve("artifact").toString(), "--run-root", root.toString(), "--keep-run", "--model", "model-a",
+				"--effort", "effort-a", "--conversation", folder.toString()}, "harness",
+				HarnessTemporaryRoot.of(root));
+			StringWriter output = new StringWriter();
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, output);
+
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
+			JsonMapper json = JsonMapper.builder().build();
+			List<String> fromChild = new ArrayList<>();
+			for (String line : Files.readAllLines(folder.resolve("from-child.jsonl")))
+			{
+				String type = json.readTree(line).path("type").asString("");
+				if (type.isEmpty())
+					fromChild.add(line);
+				else if (List.of("interrupted", "turn_failed", "turn_completed", "completed").contains(type))
+					fromChild.add(type);
+			}
+			requireThat(fromChild, "fromChild").isEqualTo(List.of("interrupted", "turn_failed",
+				"{\"turn_end\":1,\"status\":\"interrupted\"}", "turn_completed",
+				"{\"turn_end\":2,\"status\":\"completed\"}", "completed", "{\"ended\":\"completed\"}"));
+			requireThat(output.toString(), "output").contains("\"assistant_response\":\"two\"");
 		}
 	}
 
@@ -302,7 +358,7 @@ public final class HarnessRunnerBridgeTest
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, true, false, 1,
-				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, false, null,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
 				null, null);
 			JsonMapper json = JsonMapper.builder().build();
 			// The harness writes the session's transcript in its home as it works on the session
@@ -353,7 +409,7 @@ public final class HarnessRunnerBridgeTest
 			Path receipt = evidence.resolve("receipt.json");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
-				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, false, null,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
 				null, null);
 			JsonMapper json = JsonMapper.builder().build();
 

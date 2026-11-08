@@ -38,6 +38,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessRunnerBridge
 {
 	/**
+	 * How often the bridge checks a conversation for the asking session's next message.
+	 */
+	private static final Duration CONVERSATION_POLL = Duration.ofMillis(100);
+
+	/**
 	 * Starts one session and serves turn and completion messages until completion. Harness events are written once as
 	 * {@code harness_event} responses; the terminal response records the status, error, final assistant response
 	 * and every assistant message in order. A turn that fails ends with a {@code turn_failed} response that records
@@ -125,6 +130,46 @@ public final class HarnessRunnerBridge
 		requireThat(starter, "starter").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
+		if (options == null || options.conversation() == null)
+			return serve(starter, manager, keepRun, input, output, options, requestedStarter, null);
+		// The folder is checked before the session starts
+		try (Conversation conversation = Conversation.open(options.conversation()))
+		{
+			// However the session ends, the asking session learns that no further turn_end comes
+			String status = "failed";
+			try
+			{
+				HarnessRun run = serve(starter, manager, keepRun, input, conversation.childWriter(output), options,
+					requestedStarter, conversation);
+				status = "completed";
+				return run;
+			}
+			finally
+			{
+				conversation.end(status);
+			}
+		}
+	}
+
+	/**
+	 * Serves a bridge with optional requested-session ownership, reading its records from {@code input} or from a
+	 * conversation.
+	 *
+	 * @param starter starts the parent session
+	 * @param manager the lifecycle manager
+	 * @param keepRun indicates whether the completed run is retained
+	 * @param input the bridge input when {@code conversation} is null
+	 * @param output the bridge output
+	 * @param options the runner options, null when the caller does not serve the session as a runner
+	 * @param requestedStarter starts child runners, null only when no request broker starts
+	 * @param conversation the conversation whose messages are the bridge's records, or null to read {@code input}
+	 * @return the completed parent run
+	 * @throws IOException if the bridge or a request broker fails
+	 */
+	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter,
+		Conversation conversation) throws IOException
+	{
 		HarnessRun run = null;
 		boolean completed = false;
 		int turnNumber = 0;
@@ -145,115 +190,122 @@ public final class HarnessRunnerBridge
 					if (manager != null)
 						manager.markIdle(run);
 					client.write(event(session.scope(), "started").put("run_id", session.run().id()));
-					BufferedReader lines = new BufferedReader(input);
-					String line = lines.readLine();
-					while (line != null)
+					try (BufferedReader lines = lines(session, input, conversation))
 					{
-						JsonNode request = read(session.scope(), line);
-						String type = requiredText(request, "type");
-						if (type.equals("turn"))
+						String line = lines.readLine();
+						while (line != null)
 						{
-							awaitActiveTurn(activeTurn);
-							String prompt = requiredText(request, "prompt");
-							int currentTurn = turnNumber + 1;
-							CountDownLatch turnStarted = new CountDownLatch(1);
-							AtomicBoolean turnInterrupted = new AtomicBoolean();
-							// An interrupt that this thread reads next must stop this turn even if the turn's thread has not
-							// yet sent it to the harness
-							session.prepareTurn();
-							client.startTurn();
-							activeTurn = new FutureTask<>(() ->
+							JsonNode request = read(session.scope(), line);
+							String type = requiredText(request, "type");
+							if (type.equals("turn"))
 							{
-								try
+								awaitActiveTurn(activeTurn);
+								String prompt = requiredText(request, "prompt");
+								int currentTurn = turnNumber + 1;
+								CountDownLatch turnStarted = new CountDownLatch(1);
+								AtomicBoolean turnInterrupted = new AtomicBoolean();
+								// An interrupt that this thread reads next must stop this turn even if the turn's thread has not
+								// yet sent it to the harness
+								session.prepareTurn();
+								client.startTurn();
+								activeTurn = new FutureTask<>(() ->
 								{
-									turnStarted.countDown();
-									HarnessProcessResult result;
 									try
 									{
-										if (manager != null)
-											manager.markWorking(session.run());
-										result = session.sendTurn(prompt, harnessEvent ->
+										turnStarted.countDown();
+										HarnessProcessResult result;
+										try
 										{
 											if (manager != null)
-												manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
-											forwardHarnessEvent(session, client, harnessEvent);
+												manager.markWorking(session.run());
+											result = session.sendTurn(prompt, harnessEvent ->
+											{
+												if (manager != null)
+													manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
+												forwardHarnessEvent(session, client, harnessEvent);
+												recordSessionTranscript(session, client, transcriptRecorded);
+											});
 											recordSessionTranscript(session, client, transcriptRecorded);
-										});
-										recordSessionTranscript(session, client, transcriptRecorded);
+											if (manager != null)
+												manager.writeTurnOutput(session.run(), currentTurn, result);
+											if (!result.completed())
+												throw harnessTurnFailure(result);
+										}
+										catch (IOException | RuntimeException e)
+										{
+											if (broker != null)
+												broker.stopChildren();
+											reportTurnFailure(session, client, e);
+											// The interrupt ended only this turn, and the harness serves the next one
+											if (turnInterrupted.get() && session.processIsAlive())
+											{
+												if (manager != null)
+													manager.markIdle(session.run());
+												return null;
+											}
+											throw e;
+										}
 										if (manager != null)
-											manager.writeTurnOutput(session.run(), currentTurn, result);
-										if (!result.completed())
-											throw harnessTurnFailure(result);
+											manager.markIdle(session.run());
+										ObjectNode response = event(session.scope(), "turn_completed");
+										response.put("run_id", session.run().id());
+										response.put("exit_code", result.exitCode());
+										response.put("error", result.standardError());
+										response.put("assistant_response", result.assistantResponse());
+										ArrayNode reply = response.putArray("assistant_messages");
+										for (String message : result.assistantMessages())
+											reply.add(message);
+										client.endTurn(response);
+										return null;
 									}
-									catch (IOException | RuntimeException e)
+									finally
+									{
+										client.endTurn();
+									}
+								});
+								Thread.ofPlatform().start(activeTurn);
+								activeTurnStarted = turnStarted;
+								activeTurnInterrupted = turnInterrupted;
+								turnNumber = currentTurn;
+							}
+							else if (type.equals("steer"))
+							{
+								if (!client.turnActive())
+									throw new IOException("Bridge has no active turn to steer");
+								awaitRequestedTurnStart(request, activeTurnStarted);
+								session.steer(requiredText(request, "prompt"));
+								client.write(event(session.scope(), "steered").put("run_id", session.run().id()));
+							}
+							else if (type.equals("interrupt"))
+							{
+								// A client cannot know whether its interrupt reaches the bridge before or after the turn ends. Once the
+								// turn has ended there is nothing to stop, so the request is ignored and the session keeps serving.
+								if (client.turnActive())
+								{
+									awaitRequestedTurnStart(request, activeTurnStarted);
+									activeTurnInterrupted.set(true);
+									// The record precedes the end of the turn that it stops, so a client can tell which turn the
+									// interrupt ended
+									if (client.writeInTurn(event(session.scope(), "interrupted").
+										put("run_id", session.run().id())))
 									{
 										if (broker != null)
 											broker.stopChildren();
-										reportTurnFailure(session, client, e);
-										// The interrupt ended only this turn, and the harness serves the next one
-										if (turnInterrupted.get() && session.processIsAlive())
-										{
-											if (manager != null)
-												manager.markIdle(session.run());
-											return null;
-										}
-										throw e;
+										session.interrupt();
 									}
-									if (manager != null)
-										manager.markIdle(session.run());
-									ObjectNode response = event(session.scope(), "turn_completed");
-									response.put("run_id", session.run().id());
-									response.put("exit_code", result.exitCode());
-									response.put("error", result.standardError());
-									response.put("assistant_response", result.assistantResponse());
-									ArrayNode reply = response.putArray("assistant_messages");
-									for (String message : result.assistantMessages())
-										reply.add(message);
-									client.endTurn(response);
-									return null;
 								}
-								finally
-								{
-									client.endTurn();
-								}
-							});
-							Thread.ofPlatform().start(activeTurn);
-							activeTurnStarted = turnStarted;
-							activeTurnInterrupted = turnInterrupted;
-							turnNumber = currentTurn;
-						}
-						else if (type.equals("steer"))
-						{
-							if (!client.turnActive())
-								throw new IOException("Bridge has no active turn to steer");
-							awaitRequestedTurnStart(request, activeTurnStarted);
-							session.steer(requiredText(request, "prompt"));
-							client.write(event(session.scope(), "steered").put("run_id", session.run().id()));
-						}
-						else if (type.equals("interrupt"))
-						{
-							// A client cannot know whether its interrupt reaches the bridge before or after the turn ends. Once the
-							// turn has ended there is nothing to stop, so the request is ignored and the session keeps serving.
-							if (client.turnActive())
-							{
-								awaitRequestedTurnStart(request, activeTurnStarted);
-								if (broker != null)
-									broker.stopChildren();
-								activeTurnInterrupted.set(true);
-								session.interrupt();
-								client.write(event(session.scope(), "interrupted").put("run_id", session.run().id()));
 							}
+							else if (type.equals("complete"))
+							{
+								awaitActiveTurn(activeTurn);
+								client.write(event(session.scope(), "completed").put("run_id", session.run().id()));
+								completed = true;
+								break;
+							}
+							else
+								throw new IOException("Unsupported bridge message type: " + type);
+							line = lines.readLine();
 						}
-						else if (type.equals("complete"))
-						{
-							awaitActiveTurn(activeTurn);
-							client.write(event(session.scope(), "completed").put("run_id", session.run().id()));
-							completed = true;
-							break;
-						}
-						else
-							throw new IOException("Unsupported bridge message type: " + type);
-						line = lines.readLine();
 					}
 					// Input that ends without complete means that the requester has gone away, so no one reads the rest of
 					// the turn: the failure below stops it instead of waiting for it
@@ -291,6 +343,21 @@ public final class HarnessRunnerBridge
 		{
 			stopTurn(activeTurn);
 		}
+	}
+
+	/**
+	 * Returns the bridge's records as lines.
+	 *
+	 * @param session      the live harness session, whose scope paces the checks for a conversation's next message
+	 * @param input        the bridge input when {@code conversation} is null
+	 * @param conversation the conversation whose messages are the bridge's records, or null to read {@code input}
+	 * @return the lines
+	 */
+	private static BufferedReader lines(HarnessRunSession session, Reader input, Conversation conversation)
+	{
+		if (conversation == null)
+			return new BufferedReader(input);
+		return new BufferedReader(conversation.records(session.scope().waiting().every(CONVERSATION_POLL)));
 	}
 
 	/**
@@ -453,7 +520,10 @@ public final class HarnessRunnerBridge
 
 	/**
 	 * Serves a managed bridge with requested child sessions, then writes its retained-evidence receipt. The bridge
-	 * reads its records from the options' input file when they name one, and from {@code input} otherwise.
+	 * reads its records from the options' input file when they name one, from their {@link Conversation} when they
+	 * name one, and from {@code input} otherwise. A conversation also receives the bridge's records, and its last line,
+	 * however the session ends, is {@code {"ended": "completed"}} when the bridge completed and
+	 * {@code {"ended": "failed"}} otherwise.
 	 *
 	 * @param starter starts the parent session
 	 * @param manager the lifecycle manager
@@ -801,6 +871,26 @@ public final class HarnessRunnerBridge
 				writeLine(event);
 				lastResponse = clock.instant();
 				nextWaiting = lastResponse.plus(QUIET_INTERVAL);
+			}
+		}
+
+		/**
+		 * Writes one response while a turn is active, so that it precedes the turn's {@code turn_completed} or
+		 * {@code turn_failed} response.
+		 *
+		 * @param event the response
+		 * @return {@code false} if no turn is active, in which case nothing is written
+		 * @throws IOException if output fails
+		 */
+		boolean writeInTurn(ObjectNode event) throws IOException
+		{
+			assert event != null;
+			synchronized (lock)
+			{
+				if (!turnActive)
+					return false;
+				write(event);
+				return true;
 			}
 		}
 

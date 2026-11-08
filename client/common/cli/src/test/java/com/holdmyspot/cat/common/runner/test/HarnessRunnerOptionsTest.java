@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import static com.holdmyspot.cat.common.test.SessionHarnesses.HARNESS_A;
 import static com.holdmyspot.cat.common.test.SessionHarnesses.HARNESS_B;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
@@ -165,7 +166,7 @@ public final class HarnessRunnerOptionsTest
 			contains("[--session-transcripts]").
 			contains("[--session-requests <count>]").
 			contains("[--request-depth <levels>]").
-			contains("[--input <file>]").
+			contains("[--input <file> | --conversation <folder>]").
 			contains("[--capacity-wait <seconds>]");
 	}
 
@@ -216,6 +217,25 @@ public final class HarnessRunnerOptionsTest
 	public void refusesUnsupportedOption(String[] launch)
 	{
 		HarnessRunnerOptions.parse(launch, "harness", SESSION);
+	}
+
+	/**
+	 * Verifies that {@code --conversation} names the folder of a conversation, which is absent unless given, and that a
+	 * launch that also names {@code --input} is refused.
+	 */
+	@Test
+	public void parsesConversation()
+	{
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--conversation", absolute("talk")), "harness",
+			SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(), "harness", SESSION);
+		IllegalArgumentException both = expectThrows(IllegalArgumentException.class, () ->
+			HarnessRunnerOptions.parse(launch("--conversation", absolute("talk"), "--input", absolute("turns")),
+				"harness", SESSION));
+
+		requireThat(result.conversation(), "conversation").isEqualTo(Path.of(absolute("talk")));
+		requireThat(without.conversation(), "without").isNull();
+		requireThat(both.getMessage(), "both").isEqualTo("--conversation and --input cannot be used together");
 	}
 
 	/**

@@ -1,8 +1,11 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.Pause;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.Reader;
+import java.io.Writer;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
@@ -356,6 +359,35 @@ public final class Conversation implements TurnSource
 	}
 
 	/**
+	 * Returns the records of the asking session's messages as lines that a reader blocks for: each read waits, a
+	 * pause at a time, until a record arrives, and the reader ends after the {@code complete} record that
+	 * {@code end} yields.
+	 *
+	 * @param pause paces the checks for the next message
+	 * @return the reader
+	 * @throws NullPointerException if {@code pause} is null
+	 */
+	public Reader records(Pause pause)
+	{
+		requireThat(pause, "pause").isNotNull();
+		return new RecordReader(pause);
+	}
+
+	/**
+	 * Returns a writer that receives the child's records as text, one per line, and writes them both to a transcript
+	 * and, as each line ends, to this conversation.
+	 *
+	 * @param transcript receives the text as it is written
+	 * @return the writer
+	 * @throws NullPointerException if {@code transcript} is null
+	 */
+	public Writer childWriter(Writer transcript)
+	{
+		requireThat(transcript, "transcript").isNotNull();
+		return new ChildWriter(transcript);
+	}
+
+	/**
 	 * Appends a line to {@value #FROM_CHILD_FILE}.
 	 *
 	 * @param line the line, without its terminator
@@ -370,6 +402,121 @@ public final class Conversation implements TurnSource
 	public void close()
 	{
 		// Each read and write opens the files for itself
+	}
+
+	/**
+	 * The records of the asking session's messages, a line each.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is not thread-safe.
+	 */
+	private final class RecordReader extends Reader
+	{
+		private final Pause pause;
+		/**
+		 * The line that is being read, with its terminator.
+		 */
+		private String line = "";
+		/**
+		 * How many characters of {@link #line} were read.
+		 */
+		private int position;
+
+		/**
+		 * Creates the reader.
+		 *
+		 * @param pause paces the checks for the next message
+		 */
+		RecordReader(Pause pause)
+		{
+			this.pause = pause;
+		}
+
+		@Override
+		public int read(char[] buffer, int offset, int length) throws IOException
+		{
+			if (length == 0)
+				return 0;
+			while (position == line.length())
+			{
+				Optional<String> next = poll();
+				if (next.isPresent())
+				{
+					line = next.get() + "\n";
+					position = 0;
+				}
+				else if (ended())
+					return -1;
+				else
+					pause.pause();
+			}
+			int count = Math.min(length, line.length() - position);
+			line.getChars(position, position + count, buffer, offset);
+			position += count;
+			return count;
+		}
+
+		@Override
+		public void close()
+		{
+			// The conversation's files are opened for each read
+		}
+	}
+
+	/**
+	 * The child's records as text, which go to a transcript and, a line at a time, to the conversation.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 */
+	private final class ChildWriter extends Writer
+	{
+		private final Writer transcript;
+		/**
+		 * The text of the record whose line has not ended yet; guarded by this writer.
+		 */
+		private final StringBuilder line = new StringBuilder();
+
+		/**
+		 * Creates the writer.
+		 *
+		 * @param transcript receives the text as it is written
+		 */
+		ChildWriter(Writer transcript)
+		{
+			this.transcript = transcript;
+		}
+
+		@Override
+		public void write(char[] buffer, int offset, int length) throws IOException
+		{
+			synchronized (this)
+			{
+				transcript.write(buffer, offset, length);
+				for (int index = offset; index < offset + length; ++index)
+				{
+					char value = buffer[index];
+					if (value != '\n')
+					{
+						line.append(value);
+						continue;
+					}
+					String record = line.toString();
+					line.setLength(0);
+					childRecord(record);
+				}
+			}
+		}
+
+		@Override
+		public void flush() throws IOException
+		{
+			transcript.flush();
+		}
+
+		@Override
+		public void close() throws IOException
+		{
+			transcript.close();
+		}
 	}
 
 	/**

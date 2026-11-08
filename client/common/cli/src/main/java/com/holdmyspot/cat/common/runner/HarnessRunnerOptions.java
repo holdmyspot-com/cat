@@ -44,6 +44,8 @@ import tools.jackson.databind.json.JsonMapper;
  * @param requestDepth how many levels of requested sessions below the session may request sessions in turn, each
  *   with the session's own {@code sessionRequests}; {@code 0} lets the session's requested sessions request none
  * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
+ * @param conversation the folder of a {@link Conversation} whose messages are the run's records, and to which the
+ *   bridge's records go too, or {@code null} if the run holds none
  * @param policyBound the file of the policy that bounds the session's sandbox policy, which the session launcher
  *   writes, or {@code null} if the launch names none
  * @param capacityHeld indicates whether the requester holds the session's capacity slot itself, so that the runner
@@ -56,8 +58,8 @@ import tools.jackson.databind.json.JsonMapper;
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
-	Duration capacityWait, int requestDepth, Path input, Path policyBound, boolean capacityHeld, String gitName,
-	String gitEmail, Path extraPermissions)
+	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
+	String gitName, String gitEmail, Path extraPermissions)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -79,7 +81,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--run-root", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
-		ExtraPermissions.OPTION);
+		ExtraPermissions.OPTION, Conversation.OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -228,6 +230,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.gitEmail = value;
 			else if (option.equals(ExtraPermissions.OPTION))
 				options.extraPermissions = Path.of(value);
+			else if (option.equals(Conversation.OPTION))
+				options.conversation = Path.of(value).toAbsolutePath();
 			else
 				options.input = Path.of(value);
 			index += 2;
@@ -240,13 +244,15 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new InvalidArgumentsException("--session-transcripts requires --keep-run");
 		if (options.requestDepth > 0 && options.sessionRequests == 0)
 			throw new InvalidArgumentsException("--request-depth requires --session-requests");
+		if (options.input != null && options.conversation != null)
+			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
 		requireProfile(harness, model, effort);
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, model, effort, options.output,
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
-			options.capacityWait, options.requestDepth, options.input, options.policyBound, options.capacityHeld,
-			options.gitName, options.gitEmail, options.extraPermissions);
+			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
+			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions);
 	}
 
 	/**
@@ -555,8 +561,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
-			"[--session-requests <count>] [--request-depth <levels>] [--input <file>] [--capacity-wait <seconds>] " +
-			"[--extra-permissions <file>]";
+			"[--session-requests <count>] [--request-depth <levels>] [--input <file> | --conversation <folder>] " +
+			"[--capacity-wait <seconds>] [--extra-permissions <file>]";
 	}
 
 	/**
@@ -582,6 +588,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
 	 * @param requestDepth how many levels of requested sessions below the session may request sessions in turn
 	 * @param input the file that holds the run's JSON Lines records, or {@code null} to read standard input
+	 * @param conversation the folder of a conversation whose messages are the run's records, or {@code null} if the
+	 *   run holds none
 	 * @param policyBound the file of the policy that bounds the session's sandbox policy, or {@code null} if the
 	 *   launch names none
 	 * @param capacityHeld whether the requester holds the session's capacity slot itself
@@ -590,8 +598,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, or
 	 *   {@code null} if the launch asks for none
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
-	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code policyBound}, {@code gitName},
-	 *   {@code gitEmail} and {@code extraPermissions}
+	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
+	 *   {@code gitName}, {@code gitEmail} and {@code extraPermissions}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
 	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
@@ -723,6 +731,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Duration capacityWait;
 		private int requestDepth;
 		private Path input;
+		private Path conversation;
 		private Path policyBound;
 		private boolean capacityHeld;
 		private String gitName;
