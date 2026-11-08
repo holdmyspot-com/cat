@@ -11,7 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -228,16 +230,28 @@ public final class ProcessElevation
 	 */
 	private static void stopWithDescendants(Process process) throws InterruptedException
 	{
-		// The descendants must be listed before their parent ends, because an orphaned process no longer
-		// belongs to its parent's tree
-		List<ProcessHandle> descendants = process.descendants().toList();
+		// The descendants must be listed and stopped before their parent ends, because an orphaned process no
+		// longer belongs to its parent's tree. A parent that is still starting a child when the list is taken
+		// (a slow runner can take most of the limit to start one) would leave that child running, so the list is
+		// taken again until a pass finds no process that has not already been stopped.
 		List<CompletableFuture<?>> exits = new ArrayList<>();
 		exits.add(process.onExit());
-		for (ProcessHandle descendant : descendants)
+		Set<Long> stopped = new HashSet<>();
+		boolean foundNew;
+		do
 		{
-			descendant.destroyForcibly();
-			exits.add(descendant.onExit());
+			foundNew = false;
+			for (ProcessHandle descendant : process.descendants().toList())
+			{
+				if (stopped.add(descendant.pid()))
+				{
+					foundNew = true;
+					descendant.destroyForcibly();
+					exits.add(descendant.onExit());
+				}
+			}
 		}
+		while (foundNew);
 		process.destroyForcibly();
 		try
 		{
