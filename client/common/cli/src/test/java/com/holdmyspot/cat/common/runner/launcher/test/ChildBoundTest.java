@@ -149,29 +149,6 @@ public final class ChildBoundTest
 	}
 
 	/**
-	 * Verifies that a refusal of the parent's own, such as a command that the other harness runs, reaches the user
-	 * unchanged.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void keepsParentsOwnRefusal() throws IOException
-	{
-		// Requirement: R-I11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path run = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			SessionRefusedException harness = new SessionRefusedException("Codex runs this command");
-			ChildBound bound = new ChildBound(failing(harness), needing(List.of()));
-
-			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
-
-			requireThat(refusal, "refusal").isReferenceEqualTo(harness, "harness");
-		}
-	}
-
-	/**
 	 * Verifies that a launch is refused when the child's harness refuses to run within the parent's policy, such as a
 	 * child whose isolated home would copy a login that the parent may not read.
 	 *

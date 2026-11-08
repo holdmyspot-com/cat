@@ -173,10 +173,6 @@ public final class ChildBound
 		{
 			throw new SessionRefusedException(e.messageFor(parent.harnessName()), e);
 		}
-		catch (SessionRefusedException e)
-		{
-			throw e;
-		}
 		catch (IOException e)
 		{
 			throw new SessionRefusedException(unreadablePolicy(parent.harnessName(), e), e);
