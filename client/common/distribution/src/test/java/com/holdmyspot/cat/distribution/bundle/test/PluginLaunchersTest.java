@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +25,6 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
-import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -153,28 +154,46 @@ public final class PluginLaunchersTest
 
 	/**
 	 * Verifies that a POSIX launcher runs the bound {@code java} with the plugin's module path and the caller's
-	 * arguments, discarding the JVM options that the environment supplies.
+	 * arguments, discarding the JVM options that the environment supplies. On Windows, the launcher runs in Git Bash, as
+	 * Claude Code runs it, and starts the runtime's {@code java.exe}.
 	 */
 	@Test
 	public void launcherRunsBoundJava() throws IOException, InterruptedException
 	{
-		if (Platform.current().isWindows())
-			throw new SkipException("The POSIX launcher runs in a POSIX shell");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("plugin launchers ")).toRealPath();
 			Path bin = plugin.resolve("bin");
 			PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, bin);
 			Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
-			Path java = Files.writeString(runtime.resolve("bin/java"), """
+			String javaName = "java";
+			if (Platform.current().isWindows())
+				javaName = "java.exe";
+			// The launcher runs java.exe on Windows, so the fake script takes that name; Git Bash starts it by its #! line
+			Path java = Files.writeString(runtime.resolve("bin").resolve(javaName), """
 				#!/bin/sh
 				printf '%s|' "JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS-unset}" "$@"
 				""");
-			requireThat(java.toFile().setExecutable(true, false), "executable").isTrue();
+			if (PortableFiles.hasModes(java))
+				Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
 			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
-			ProcessBuilder builder = new ProcessBuilder(bin.resolve("read-part").toString(), "first arg",
-				"second").redirectErrorStream(true);
+			List<String> command = new ArrayList<>();
+			String modulePath = bin + "/runtime/modules";
+			if (Platform.current().isWindows())
+			{
+				// Git Bash takes the launcher's own folder from its path, which needs / separators, and prints the
+				// folder as /<drive>/<path>
+				command.add("sh");
+				command.add(bin.resolve("read-part").toString().replace('\\', '/'));
+				String windowsBin = bin.toString().replace('\\', '/');
+				modulePath = "/" + Character.toLowerCase(windowsBin.charAt(0)) + windowsBin.substring(2) +
+					"/runtime/modules";
+			}
+			else
+				command.add(bin.resolve("read-part").toString());
+			command.addAll(List.of("first arg", "second"));
+			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 			builder.environment().put("JAVA_TOOL_OPTIONS", "-Dinjected=true");
 			builder.environment().put("LC_ALL", "C.UTF-8");
 			String output;
@@ -186,8 +205,8 @@ public final class PluginLaunchersTest
 			}
 
 			requireThat(output, "output").isEqualTo("JAVA_TOOL_OPTIONS=unset|" +
-				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + bin +
-				"/runtime/modules|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
+				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + modulePath +
+				"|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
 		}
 	}
 
