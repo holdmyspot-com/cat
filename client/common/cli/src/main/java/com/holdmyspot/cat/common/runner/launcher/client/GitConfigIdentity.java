@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.launcher.client;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.CodeLoadingVariables;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ProcessBuilder.Redirect;
@@ -67,7 +68,7 @@ public final class GitConfigIdentity implements GitIdentity
 		requireThat(project, "project").isNotNull();
 		ProcessBuilder builder = new ProcessBuilder("git", "-C", project.toString(), "config", "--get", key).
 			redirectError(Redirect.DISCARD);
-		try (Process process = builder.start())
+		try (Process process = CodeLoadingVariables.start(builder))
 		{
 			// Git reads no input here. Closing the pipe gives it an empty input on every platform, which a null
 			// device file would not: Windows names it NUL, not /dev/null.

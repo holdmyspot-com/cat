@@ -59,7 +59,7 @@ public final class SessionIgnore
 	 * Answers {@link #ensure(Path)}'s questions by running Git in the project, as every CAT session directory that a
 	 * harness's hook or tool opens asks them.
 	 */
-	public static final GitQueries GIT_PROCESS = gitProcess(ProcessBuilder::start);
+	public static final GitQueries GIT_PROCESS = gitProcess(CodeLoadingVariables::start);
 
 	/**
 	 * Prevents instantiation.

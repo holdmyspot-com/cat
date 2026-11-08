@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.launcher;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.CodeLoadingVariables;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.ExecutableFiles.ProcessLauncher;
 import com.holdmyspot.cat.common.FileLocks;
@@ -70,7 +71,7 @@ public final class SessionLauncherStart
 	/**
 	 * Starts operating-system processes, which inherit the starter's environment and working directory.
 	 */
-	public static final DetachedStarter PROCESSES = processes(ProcessBuilder::start);
+	public static final DetachedStarter PROCESSES = processes(CodeLoadingVariables::start);
 
 	static
 	{

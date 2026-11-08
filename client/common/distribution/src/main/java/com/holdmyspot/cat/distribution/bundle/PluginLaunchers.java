@@ -26,7 +26,9 @@ import java.util.Set;
  * {@value #UNUSABLE_BINDING_STATUS}. Otherwise it runs {@code java} with fixed JVM options, the plugin's
  * {@code bin/runtime/modules} as the module path, {@code org.slf4j.nop} added so that logging never depends on
  * incidental service binding, and the program's module and main class, followed by the caller's arguments. It discards
- * the JVM options that the environment can supply.
+ * the JVM options that the environment can supply, and the POSIX launcher also discards the variables by which the
+ * environment can load code into Java or the shells that Java starts: {@code LD_PRELOAD}, {@code LD_LIBRARY_PATH},
+ * {@code LD_AUDIT}, {@code BASH_ENV}, {@code ENV} and every {@code DYLD_} variable.
  * <p>
  * When the plugin holds its installation-written {@link StartupCache startup cache}, a launcher passes it to Java with
  * {@code -XX:AOTCache}. Java skips a cache that it cannot use, such as one trained at another path or a truncated one,
@@ -93,6 +95,13 @@ public final class PluginLaunchers
 		#!/bin/sh
 		# Starts %1$s on the Java runtime that the plugin's bin/runtime-binding names.
 		unset JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS CLASSPATH JLINK_VM_OPTIONS
+		unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT BASH_ENV ENV
+		for name in $(env | sed -n 's/=.*//p'); do
+		  case $name in
+		    DYLD_*[!A-Za-z0-9_]*) ;;
+		    DYLD_*) unset "$name" ;;
+		  esac
+		done
 		self=$0
 		while [ -L "$self" ]; do
 		  link=$(readlink -- "$self")

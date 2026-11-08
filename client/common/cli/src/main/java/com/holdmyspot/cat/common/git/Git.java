@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.git;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.CodeLoadingVariables;
 import com.holdmyspot.cat.common.ExecutableFiles;
 
 import java.io.ByteArrayOutputStream;
@@ -32,7 +33,7 @@ public final class Git
 	 */
 	public Git(Path repository)
 	{
-		this(repository, ProcessBuilder::start);
+		this(repository, CodeLoadingVariables::start);
 	}
 
 	/**

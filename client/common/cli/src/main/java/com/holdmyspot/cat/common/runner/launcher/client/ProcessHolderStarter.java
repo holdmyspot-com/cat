@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.launcher.client;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.CodeLoadingVariables;
 import com.holdmyspot.cat.common.ExecutableFiles.ProcessLauncher;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.secrets.ProcessHolderStarterSecrets;
@@ -32,7 +33,7 @@ public final class ProcessHolderStarter implements HolderStarter
 	 */
 	ProcessHolderStarter()
 	{
-		this(ProcessBuilder::start);
+		this(CodeLoadingVariables::start);
 	}
 
 	/**

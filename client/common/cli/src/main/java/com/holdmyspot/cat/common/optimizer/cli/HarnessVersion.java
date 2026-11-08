@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.CodeLoadingVariables;
 import com.holdmyspot.cat.common.Platform;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -57,7 +58,7 @@ public final class HarnessVersion
 			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 			List<String> resolved = new ArrayList<>(command);
 			resolved.set(0, Platform.current().findProgram(command.getFirst(), builder.environment()));
-			Process process = builder.command(resolved).start();
+			Process process = CodeLoadingVariables.start(builder.command(resolved));
 			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 			if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS))
 			{

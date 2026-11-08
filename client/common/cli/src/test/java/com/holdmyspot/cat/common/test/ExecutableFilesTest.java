@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.test;
 
+import com.holdmyspot.cat.common.CodeLoadingVariables;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
@@ -8,6 +9,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.testng.annotations.Test;
@@ -161,5 +165,38 @@ public final class ExecutableFilesTest
 		{
 			requireThat(attempts.get(), "attempts").isEqualTo(1);
 		}
+	}
+
+	/**
+	 * Verifies that a process that CAT starts gets none of the variables that make a program load code that its caller
+	 * chose, whatever its builder holds, and keeps every other variable.
+	 *
+	 * @throws IOException if the simulated process start fails
+	 */
+	@Test
+	public void startsProcessWithoutCodeLoadingVariables() throws IOException
+	{
+		List<Map<String, String>> started = new ArrayList<>();
+		ExecutableFiles executables = ExecutableFilesSecrets.getExecutableFilesAccess().create(() ->
+		{
+			throw new AssertionError("A start that succeeds does not pause");
+		}, FIXED, builder ->
+		{
+			started.add(Map.copyOf(builder.environment()));
+			return null;
+		});
+		ProcessBuilder builder = new ProcessBuilder("program");
+		Map<String, String> environment = builder.environment();
+		environment.clear();
+		environment.put("PATH", "programs");
+		environment.put("HARNESS_SETTING", "kept");
+		for (String name : CodeLoadingVariables.NAMES)
+			environment.put(name, "injected");
+		environment.put("DYLD_INSERT_LIBRARIES", "injected");
+		environment.put("DYLD_FRAMEWORK_PATH", "injected");
+
+		executables.run(builder);
+
+		requireThat(started, "started").isEqualTo(List.of(Map.of("PATH", "programs", "HARNESS_SETTING", "kept")));
 	}
 }

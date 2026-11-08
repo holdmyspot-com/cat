@@ -77,7 +77,7 @@ public final class ExecutableFiles
 	 */
 	public ExecutableFiles(Pause pause, Clock clock)
 	{
-		this(pause, clock, ProcessBuilder::start);
+		this(pause, clock, CodeLoadingVariables::start);
 	}
 
 	/**
@@ -100,7 +100,8 @@ public final class ExecutableFiles
 	}
 
 	/**
-	 * Runs a configured executable process, retrying only a transient text-file-busy failure.
+	 * Runs a configured executable process, retrying only a transient text-file-busy failure. The process's
+	 * environment lacks the variables that {@link CodeLoadingVariables} names, whatever the builder holds.
 	 *
 	 * @param builder the configured process builder
 	 * @return the started process
@@ -110,6 +111,7 @@ public final class ExecutableFiles
 	public Process run(ProcessBuilder builder) throws IOException
 	{
 		requireThat(builder, "builder").isNotNull();
+		CodeLoadingVariables.removeFrom(builder.environment());
 		return run(() -> launcher.start(builder));
 	}
 

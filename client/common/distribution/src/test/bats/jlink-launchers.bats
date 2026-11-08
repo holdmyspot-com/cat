@@ -49,6 +49,9 @@ create_echo_runtime_plugin()
 	mkdir -p "${runtime}/bin"
 	cat > "${runtime}/bin/java" <<'SCRIPT'
 #!/bin/sh
+for name in LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT BASH_ENV ENV DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH; do
+	eval "printf '%s=%s\\n' \"\${name}\" \"\${${name}-unset}\""
+done
 printf 'JAVA_TOOL_OPTIONS=%s\n' "${JAVA_TOOL_OPTIONS-unset}"
 printf 'JDK_JAVA_OPTIONS=%s\n' "${JDK_JAVA_OPTIONS-unset}"
 printf 'CLASSPATH=%s\n' "${CLASSPATH-unset}"
@@ -79,12 +82,23 @@ assert_unusable_binding()
 @test "a launcher passes its JVM options, the plugin's module path and its arguments to the bound java" {
 	create_echo_runtime_plugin
 
+	# The loader variables are empty or name no file, so that the commands that run before the launcher removes them
+	# load nothing
 	run env JAVA_TOOL_OPTIONS=-Dinjected=1 JDK_JAVA_OPTIONS=-Dinjected=2 CLASSPATH=/injected LC_ALL=C.UTF-8 \
+		LD_PRELOAD= LD_LIBRARY_PATH="${TEST_ROOT}/no libraries" LD_AUDIT= BASH_ENV="${TEST_ROOT}/no script" \
+		ENV="${TEST_ROOT}/no script" DYLD_INSERT_LIBRARIES= DYLD_LIBRARY_PATH="${TEST_ROOT}/no libraries" \
 		"${PLUGIN}/bin/plugin-info" "first argument" '' 'quote " and $dollar'
 
 	[ "${status}" -eq 0 ]
 	modules="$(cd -P "${PLUGIN}/bin/runtime/modules" && pwd -P)"
-	expected="JAVA_TOOL_OPTIONS=unset
+	expected="LD_PRELOAD=unset
+LD_LIBRARY_PATH=unset
+LD_AUDIT=unset
+BASH_ENV=unset
+ENV=unset
+DYLD_INSERT_LIBRARIES=unset
+DYLD_LIBRARY_PATH=unset
+JAVA_TOOL_OPTIONS=unset
 JDK_JAVA_OPTIONS=unset
 CLASSPATH=unset
 [-Xlog:all=off:stdout]
