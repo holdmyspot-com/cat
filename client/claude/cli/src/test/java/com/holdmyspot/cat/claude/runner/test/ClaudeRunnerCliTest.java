@@ -925,7 +925,7 @@ public final class ClaudeRunnerCliTest
 	public void refusesHomeProjectFromClaudeSession()
 	{
 		Path home = Path.of("/home/user").toAbsolutePath();
-		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+		Map<String, String> environment = Map.of("PATH", "", Platform.LINUX_X64.homeVariable(), home.toString(),
 			"CLAUDECODE", "1");
 		StringWriter errors = new StringWriter();
 

@@ -1111,7 +1111,7 @@ public final class CodexRunnerCliTest
 	public void refusesHomeProjectFromCodexSession()
 	{
 		Path home = Path.of("/home/user").toAbsolutePath();
-		Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+		Map<String, String> environment = Map.of("PATH", "", Platform.LINUX_X64.homeVariable(), home.toString(),
 			"CODEX_THREAD_ID", THREAD_ID);
 		StringWriter errors = new StringWriter();
 
