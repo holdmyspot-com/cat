@@ -16,6 +16,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Resolves the paths of a Claude Code session's settings to the files that they name, as the release's sandbox does.
@@ -23,6 +25,11 @@ import java.util.Set;
  * An entry that grants access counts only when it names exactly one folder or file. An entry that denies access
  * denies every path that it may name, and a pattern denies each existing path that it matches, as the release's
  * sandbox matches patterns against the files that exist.
+ * <p>
+ * When the session's paths are Windows paths, an entry that starts at a drive, such as {@code C:\Users} or
+ * {@code C:/Users}, or at a network share, such as {@code \\server\share}, names that absolute path in every
+ * syntax, and a permission rule names a drive as Claude Code does, as {@code //c/Users} for {@code C:\Users}. Names
+ * are separated by {@code /} wherever a pattern is matched.
  */
 final class ClaudePaths
 {
@@ -41,6 +48,15 @@ final class ClaudePaths
 	private static final String PATH_FIX = "Spell the path from the root folder or from \"~/\", then start a new " +
 		"session";
 	/**
+	 * A path that starts at a Windows drive, such as {@code C:\Users} or {@code C:/Users}, or at a Windows network
+	 * share, such as {@code \\server\share}.
+	 */
+	private static final Pattern WINDOWS_ABSOLUTE = Pattern.compile("^(?:[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\])");
+	/**
+	 * The form that a permission rule gives a Windows drive, as {@code /c/Users} names {@code C:\Users}.
+	 */
+	private static final Pattern RULE_DRIVE = Pattern.compile("^/([A-Za-z])(/.*)?$");
+	/**
 	 * The project folder of the session.
 	 */
 	private final Path projectDirectory;
@@ -48,6 +64,11 @@ final class ClaudePaths
 	 * The user's home folder.
 	 */
 	private final Path userHome;
+	/**
+	 * {@code true} if the paths of the session are Windows paths, which separate names with a backslash and start at a
+	 * drive or a network share.
+	 */
+	private final boolean windows;
 
 	/**
 	 * The syntaxes of paths in Claude Code settings.
@@ -79,6 +100,7 @@ final class ClaudePaths
 		assert userHome.isAbsolute() : userHome;
 		this.projectDirectory = projectDirectory;
 		this.userHome = userHome;
+		this.windows = projectDirectory.getFileSystem().getSeparator().equals("\\");
 	}
 
 	/**
@@ -145,14 +167,22 @@ final class ClaudePaths
 	 */
 	private Candidates candidates(String entry, Syntax syntax, Path settingsRoot)
 	{
-		if (entry.equals("~") || entry.startsWith("~/"))
-			return new Candidates(List.of(join(userHome, entry.substring(1))), true);
-		if (entry.startsWith("~"))
+		// A Windows path names its folders with backslashes, which this class reads as forward slashes
+		String spelled = entry;
+		if (windows)
+		{
+			if (WINDOWS_ABSOLUTE.matcher(entry).find())
+				return new Candidates(List.of(entry.replace('\\', '/')), true);
+			spelled = entry.replace('\\', '/');
+		}
+		if (spelled.equals("~") || spelled.startsWith("~/"))
+			return new Candidates(List.of(join(userHome, spelled.substring(1))), true);
+		if (spelled.startsWith("~"))
 			return null;
 		return switch (syntax)
 		{
-			case SANDBOX -> sandboxCandidates(entry, settingsRoot);
-			case RULE -> ruleCandidates(entry, settingsRoot);
+			case SANDBOX -> sandboxCandidates(spelled, settingsRoot);
+			case RULE -> ruleCandidates(spelled, settingsRoot);
 		};
 	}
 
@@ -187,7 +217,7 @@ final class ClaudePaths
 	private Candidates ruleCandidates(String entry, Path settingsRoot)
 	{
 		if (entry.startsWith("//"))
-			return new Candidates(List.of(entry.substring(1)), true);
+			return new Candidates(List.of(ruleDrive(entry.substring(1))), true);
 		if (entry.startsWith("/"))
 		{
 			String fromRoot = join(settingsRoot, entry);
@@ -209,15 +239,37 @@ final class ClaudePaths
 	}
 
 	/**
+	 * Returns the path that a permission rule names with the form of a POSIX path, as the path of the rule's Windows
+	 * drive when the session's paths are Windows paths, such as {@code C:/Users} for {@code /c/Users}.
+	 *
+	 * @param path the path, starting with {@code /}
+	 * @return the path that the session's file system reaches
+	 */
+	private String ruleDrive(String path)
+	{
+		if (!windows)
+			return path;
+		Matcher drive = RULE_DRIVE.matcher(path);
+		if (!drive.matches())
+			return path;
+		String rest = drive.group(2);
+		if (rest == null)
+			rest = "/";
+		return Character.toUpperCase(drive.group(1).charAt(0)) + ":" + rest;
+	}
+
+	/**
 	 * Appends a path to a folder.
 	 *
 	 * @param folder the folder
 	 * @param path   the path, empty or starting with {@code /}
-	 * @return the joined path
+	 * @return the joined path, which separates names with {@code /}
 	 */
-	private static String join(Path folder, String path)
+	private String join(Path folder, String path)
 	{
 		String prefix = folder.toString();
+		if (windows)
+			prefix = prefix.replace('\\', '/');
 		if (prefix.endsWith("/"))
 			prefix = prefix.substring(0, prefix.length() - 1);
 		String joined = prefix + path;
@@ -324,16 +376,19 @@ final class ClaudePaths
 	 */
 	private static Path literalAncestor(String pattern)
 	{
-		Path literal = Path.of("/");
-		for (String name : pattern.split("/"))
+		int firstGlob = pattern.length();
+		for (int i = 0; i < pattern.length(); ++i)
 		{
-			if (name.isEmpty())
-				continue;
-			if (isPattern(name))
+			if (GLOB_CHARACTERS.indexOf(pattern.charAt(i)) >= 0)
+			{
+				firstGlob = i;
 				break;
-			literal = literal.resolve(name);
+			}
 		}
-		return literal.normalize();
+		String literal = pattern.substring(0, pattern.lastIndexOf('/', firstGlob) + 1);
+		if (literal.isEmpty())
+			literal = "/";
+		return Path.of(literal).normalize();
 	}
 
 	/**
