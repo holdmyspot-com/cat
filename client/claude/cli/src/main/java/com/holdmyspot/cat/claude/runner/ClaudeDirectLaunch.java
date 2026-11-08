@@ -119,35 +119,32 @@ public final class ClaudeDirectLaunch
 			// The account's home stands in for a home that the environment does not name
 			userHome = Path.of(System.getProperty("user.home")).toAbsolutePath();
 		}
-		return sandboxed(launcher, environment, userHome, System.getProperty("user.name", ""), HarnessProcesses.system(),
+		return sandboxed(launcher, environment, userHome, System.getProperty("user.name", ""),
 			HarnessProcesses.ancestorsOf(ProcessHandle.current()), JsonMapper.builder().build());
 	}
 
 	/**
 	 * Returns why a runner launcher that a Claude Code session runs inside its sandbox is refused. The reason names
-	 * each cause that it finds: the user settings name no sandbox exception for the launcher, the session's latest
-	 * Bash command that names the launcher's file name names it by another path, or the session started in the
-	 * {@code dontAsk} permission mode. When it finds none, it lists the causes that keep the launcher sandboxed. Each
-	 * reason names the path to run.
+	 * each cause that it finds: the user settings name no sandbox exception for the launcher, or the session's latest
+	 * Bash command that names the launcher's file name names it by another path. When it finds none, it lists the
+	 * causes that keep the launcher sandboxed. Each reason names the path to run.
 	 *
 	 * @param launcher    the absolute path of the launcher
 	 * @param environment the command's environment
 	 * @param userHome    the user's absolute home folder
 	 * @param userName    the user's login name
-	 * @param processes   describes the session's Claude Code process
 	 * @param ancestors   the processes that run the command, from its parent up
 	 * @param json        parses the session's settings and transcripts
 	 * @return the reason
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public static String sandboxed(Path launcher, Map<String, String> environment, Path userHome, String userName,
-		HarnessProcesses processes, List<ProcessDescription> ancestors, JsonMapper json)
+		List<ProcessDescription> ancestors, JsonMapper json)
 	{
 		requireThat(launcher, "launcher").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(userHome, "userHome").isNotNull();
 		requireThat(userName, "userName").isNotNull();
-		requireThat(processes, "processes").isNotNull();
 		requireThat(ancestors, "ancestors").isNotNull();
 		requireThat(json, "json").isNotNull();
 		List<String> causes = new ArrayList<>();
@@ -168,11 +165,6 @@ public final class ClaudeDirectLaunch
 					"The command ran the launcher as " + word + ", but the sandbox exception that CAT's install adds " +
 					"matches only a command whose first word is " + launcher + ", spelled exactly so. Run " + launcher +
 					" followed by the launcher's options, with nothing in front of it and no pipe or redirection."));
-			if (dontAsk(processes, found))
-			{
-				causes.add("The session runs in the dontAsk permission mode, which keeps the command sandboxed. " +
-					"Start a session in another mode and run " + launcher + " there.");
-			}
 		}
 		String start = "CAT cannot start the session: this Claude Code session runs the launcher inside its sandbox, " +
 			"where no session that a harness sandboxes can start. ";
@@ -181,9 +173,8 @@ public final class ClaudeDirectLaunch
 		return start + "Claude Code runs the launcher outside its sandbox only through the sandbox exception that " +
 			"CAT's install adds for " + launcher + ", and only for a command that is that absolute path followed by " +
 			"the launcher's options, with nothing in front of it and no pipe or redirection. A session that started " +
-			"before that install has no such exception, and a session in dontAsk mode keeps the command sandboxed. " +
-			"Run " + launcher + " as such a command, or start a new session that is not in dontAsk mode and run it " +
-			"there.";
+			"before that install has no such exception. Run " + launcher + " as such a command, or start a new " +
+			"session and run it there.";
 	}
 
 	/**
@@ -287,25 +278,5 @@ public final class ClaudeDirectLaunch
 			return Optional.empty();
 		}
 		return Optional.ofNullable(latest);
-	}
-
-	/**
-	 * Returns whether a session started in the {@code dontAsk} permission mode.
-	 *
-	 * @param processes describes the session's Claude Code process
-	 * @param found     the session
-	 * @return {@code true} if its command line or its settings name that mode, or {@code false} if they do not or
-	 *   its policy cannot be read
-	 */
-	private static boolean dontAsk(HarnessProcesses processes, ClaudeCommandSession found)
-	{
-		try
-		{
-			return new ClaudePolicyReader(processes).read(found.session()).dontAsk();
-		}
-		catch (IOException | PolicyRefusal _)
-		{
-			return false;
-		}
 	}
 }

@@ -52,10 +52,6 @@ public final class ClaudePolicyReader
 	 */
 	private static final String PROCESS_FIX = "Start a new Claude Code session";
 	/**
-	 * The permission mode that denies every tool call that would otherwise ask the user.
-	 */
-	private static final String DONT_ASK = "dontAsk";
-	/**
 	 * The running processes.
 	 */
 	private final HarnessProcesses processes;
@@ -204,7 +200,6 @@ public final class ClaudePolicyReader
 
 		ParentPolicy policy = null;
 		Set<String> portLimitedDomains = new LinkedHashSet<>();
-		boolean dontAsk = true;
 		for (int subset = 0; subset < 1 << uncertain.size(); ++subset)
 		{
 			List<SettingsLayer> layers = new ArrayList<>(certain);
@@ -217,7 +212,6 @@ public final class ClaudePolicyReader
 			layers.sort(Comparator.comparing(SettingsLayer::scope));
 			ClaudePolicyComputation.Computed computed = ClaudePolicyComputation.compute(layers, commandLine, session);
 			portLimitedDomains.addAll(computed.portLimitedDomains());
-			dontAsk &= permissionMode(layers, commandLine).equals(Optional.of(DONT_ASK));
 			if (policy == null)
 				policy = computed.policy();
 			else
@@ -226,28 +220,7 @@ public final class ClaudePolicyReader
 		assert policy != null;
 		for (Path source : sources)
 			policy.requireTrusted(source);
-		return new ClaudePolicyReading(policy, start, sources, portLimitedDomains, dontAsk);
-	}
-
-	/**
-	 * Returns the permission mode that a session starts in: the one that the command line names, or else the
-	 * {@code permissions.defaultMode} of the layer with the highest precedence that names one.
-	 *
-	 * @param layers      the settings layers, from the highest precedence to the lowest
-	 * @param commandLine the command line
-	 * @return the mode, or empty if neither names one
-	 */
-	private static Optional<String> permissionMode(List<SettingsLayer> layers, ClaudeCommandLine commandLine)
-	{
-		if (commandLine.permissionMode().isPresent())
-			return commandLine.permissionMode();
-		for (SettingsLayer layer : layers)
-		{
-			JsonNode mode = layer.settings().path("permissions").path("defaultMode");
-			if (mode.isString())
-				return Optional.of(mode.stringValue());
-		}
-		return Optional.empty();
+		return new ClaudePolicyReading(policy, start, sources, portLimitedDomains);
 	}
 
 	/**

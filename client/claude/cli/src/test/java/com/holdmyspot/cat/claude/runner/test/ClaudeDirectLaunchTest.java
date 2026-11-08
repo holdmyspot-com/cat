@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -23,9 +22,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * Tests the reason that a runner launcher gives when a Claude Code session runs it inside the session's sandbox,
- * through {@link ClaudeDirectLaunch#sandboxed(Path, Map, Path, String,
- * com.holdmyspot.cat.common.runner.policy.HarnessProcesses, List, JsonMapper)}. The transcripts' records follow those
- * of Claude Code 2.1.
+ * through {@link ClaudeDirectLaunch#sandboxed(Path, Map, Path, String, List, JsonMapper)}. The transcripts' records
+ * follow those of Claude Code 2.1.
  */
 public final class ClaudeDirectLaunchTest
 {
@@ -83,7 +81,7 @@ public final class ClaudeDirectLaunchTest
 			requireThat(reason, "reason").startsWith(START).
 				contains("The user settings " + fixture.configuration.resolve("settings.json") + " name no sandbox " +
 					"exception for " + fixture.launcher).
-				doesNotContain("ran the launcher as").doesNotContain("dontAsk");
+				doesNotContain("ran the launcher as");
 		}
 	}
 
@@ -107,30 +105,7 @@ public final class ClaudeDirectLaunchTest
 			requireThat(reason, "reason").startsWith(START).
 				contains("The command ran the launcher as ~/plugin/bin/claude-runner, but the sandbox exception that " +
 					"CAT's install adds matches only a command whose first word is " + fixture.launcher).
-				doesNotContain("name no sandbox exception").doesNotContain("dontAsk");
-		}
-	}
-
-	/**
-	 * Verifies that when the session runs in the {@code dontAsk} permission mode, which its command line names, the
-	 * reason names that mode and no other cause.
-	 *
-	 * @throws IOException if the fixture cannot be written
-	 */
-	@Test
-	public void namesDontAskMode() throws IOException
-	{
-		try (Fixture fixture = new Fixture())
-		{
-			fixture.installed();
-			fixture.transcript(fixture.command(ShellQuoting.posix(fixture.launcher.toString())));
-			fixture.arguments.addAll(List.of("--permission-mode", "dontAsk"));
-
-			String reason = fixture.reason();
-
-			requireThat(reason, "reason").startsWith(START).
-				contains("The session runs in the dontAsk permission mode, which keeps the command sandboxed").
-				doesNotContain("name no sandbox exception").doesNotContain("ran the launcher as");
+				doesNotContain("name no sandbox exception");
 		}
 	}
 
@@ -152,7 +127,7 @@ public final class ClaudeDirectLaunchTest
 
 			requireThat(reason, "reason").startsWith(START).
 				contains("only through the sandbox exception that CAT's install adds for " + fixture.launcher).
-				contains("a session in dontAsk mode keeps the command sandboxed");
+				contains("A session that started before that install has no such exception");
 		}
 	}
 
@@ -182,10 +157,6 @@ public final class ClaudeDirectLaunchTest
 		 * The launcher's absolute path.
 		 */
 		final Path launcher;
-		/**
-		 * The arguments of the session's Claude Code process.
-		 */
-		final List<String> arguments = new ArrayList<>();
 
 		/**
 		 * Creates the fixture.
@@ -286,13 +257,7 @@ public final class ClaudeDirectLaunchTest
 					"launcher"))),
 				new ProcessDescription(PROCESS_ID, Optional.empty(), Optional.of("/opt/claude/claude"),
 					Optional.of(List.of())));
-			return ClaudeDirectLaunch.sandboxed(launcher, environment, home, "user", processId ->
-			{
-				if (processId != PROCESS_ID)
-					return Optional.empty();
-				return Optional.of(new ProcessDescription(processId, Optional.of("1t4200000"),
-					Optional.of("/opt/claude/claude"), Optional.of(List.copyOf(arguments))));
-			}, ancestors, JSON);
+			return ClaudeDirectLaunch.sandboxed(launcher, environment, home, "user", ancestors, JSON);
 		}
 
 		@Override

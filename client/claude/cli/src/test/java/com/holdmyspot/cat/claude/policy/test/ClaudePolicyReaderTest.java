@@ -625,35 +625,4 @@ public final class ClaudePolicyReaderTest
 			fixture.policy().requireTrusted(state);
 		}
 	}
-
-	/**
-	 * Verifies that the reading says the session runs in the {@code dontAsk} permission mode when the command line
-	 * names that mode, or when it names none and the settings layer with the highest precedence that names one names
-	 * that mode, and not otherwise.
-	 *
-	 * @throws IOException   if the fixture cannot be created
-	 * @throws PolicyRefusal if the policy is refused
-	 */
-	@Test
-	public void readsDontAskMode() throws IOException, PolicyRefusal
-	{
-		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
-		{
-			fixture.userSettings("""
-				{"sandbox": {"enabled": true}, "permissions": {"defaultMode": "dontAsk"}}""");
-			requireThat(fixture.read().dontAsk(), "dontAskFromUserSettings").isTrue();
-
-			fixture.projectSettings("""
-				{"permissions": {"defaultMode": "acceptEdits"}}""");
-			requireThat(fixture.read().dontAsk(), "dontAskBelowProjectSettings").isFalse();
-
-			fixture.arguments.addAll(List.of("--permission-mode", "dontAsk"));
-			requireThat(fixture.read().dontAsk(), "dontAskFromCommandLine").isTrue();
-
-			fixture.arguments.clear();
-			fixture.arguments.add("--permission-mode=default");
-			fixture.projectSettings("{}");
-			requireThat(fixture.read().dontAsk(), "dontAskOverriddenByCommandLine").isFalse();
-		}
-	}
 }

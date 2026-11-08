@@ -13,7 +13,6 @@ import static com.holdmyspot.cat.claude.policy.ClaudeOption.Arity.VARIADIC;
 import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.ADD_DIRECTORIES;
 import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.DENIED_TOOLS;
 import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.NONE;
-import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.PERMISSION_MODE;
 import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.RESTRICTED;
 import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.SETTINGS;
 import static com.holdmyspot.cat.claude.policy.ClaudeOption.Effect.SETTING_SOURCES;
@@ -79,7 +78,7 @@ final class ClaudeRelease
 		option(FLAG, NONE, "--no-chrome"),
 		option(FLAG, NONE, "--no-session-persistence"),
 		option(VALUE, NONE, "--output-format"),
-		option(VALUE, PERMISSION_MODE, "--permission-mode"),
+		option(VALUE, NONE, "--permission-mode"),
 		option(VALUE, NONE, "--permission-prompts"),
 		option(VALUE, NONE, "--plugin-dir"),
 		option(VALUE, NONE, "--plugin-url"),

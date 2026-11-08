@@ -531,7 +531,6 @@ can find none:
 - A command that does not match the exception, such as one that runs the launcher by another path, behind a variable
 	assignment or through a pipe, stays sandboxed. Run the launcher's absolute path, which the message names, as a
 	command of its own.
-- A Claude Code session in `dontAsk` mode keeps the command sandboxed. Start a session in another mode.
 - Codex 0.160.0 runs a command that a rule allows outside its sandbox only when the session's filesystem permissions
 	deny no reads ([openai/codex#38318](https://github.com/openai/codex/issues/38318)). When your permissions profile
 	denies any read, the message names the profile and each denied path and pattern. Remove those entries and start a

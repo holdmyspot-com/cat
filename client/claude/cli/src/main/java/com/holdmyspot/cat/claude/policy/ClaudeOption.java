@@ -88,11 +88,6 @@ record ClaudeOption(List<String> names, Arity arity, Effect effect)
 		 */
 		DENIED_TOOLS,
 		/**
-		 * The option names the session's permission mode, which decides whether a command that runs outside the
-		 * sandbox needs an allow rule.
-		 */
-		PERMISSION_MODE,
-		/**
 		 * The option changes the sandbox policy in a way that CAT cannot read, so CAT refuses the session.
 		 */
 		UNSUPPORTED

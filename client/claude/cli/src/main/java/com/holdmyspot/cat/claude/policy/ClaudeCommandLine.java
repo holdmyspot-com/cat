@@ -20,10 +20,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * @param addDirectories  the values of {@code --add-dir}, in order
  * @param restricted      {@code true} if {@code --restricted} is present
  * @param deniedTools     the permission rules that {@code --disallowedTools} lists, in order
- * @param permissionMode  the value of the last {@code --permission-mode}, or empty if the option is absent
  */
 record ClaudeCommandLine(Optional<String> settings, Optional<Set<SettingsScope>> settingSources,
-	List<String> addDirectories, boolean restricted, List<String> deniedTools, Optional<String> permissionMode)
+	List<String> addDirectories, boolean restricted, List<String> deniedTools)
 {
 	/**
 	 * The fix of a refusal that the command line causes.
@@ -42,13 +41,11 @@ record ClaudeCommandLine(Optional<String> settings, Optional<Set<SettingsScope>>
 	 * @param addDirectories the values of {@code --add-dir}, in order
 	 * @param restricted     {@code true} if {@code --restricted} is present
 	 * @param deniedTools    the permission rules that {@code --disallowedTools} lists, in order
-	 * @param permissionMode the value of the last {@code --permission-mode}, or empty if the option is absent
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	ClaudeCommandLine
 	{
 		requireThat(settings, "settings").isNotNull();
-		requireThat(permissionMode, "permissionMode").isNotNull();
 		requireThat(settingSources, "settingSources").isNotNull();
 		settingSources = settingSources.map(Set::copyOf);
 		addDirectories = List.copyOf(addDirectories);
@@ -88,7 +85,7 @@ record ClaudeCommandLine(Optional<String> settings, Optional<Set<SettingsScope>>
 		Parser parser = new Parser(List.copyOf(arguments));
 		parser.run();
 		return new ClaudeCommandLine(Optional.ofNullable(parser.settings), Optional.ofNullable(parser.settingSources),
-			parser.addDirectories, parser.restricted, parser.deniedTools, Optional.ofNullable(parser.permissionMode));
+			parser.addDirectories, parser.restricted, parser.deniedTools);
 	}
 
 	/**
@@ -124,10 +121,6 @@ record ClaudeCommandLine(Optional<String> settings, Optional<Set<SettingsScope>>
 		 * The values of {@code --disallowedTools}.
 		 */
 		private final List<String> deniedTools = new ArrayList<>();
-		/**
-		 * The value of the last {@code --permission-mode}, or null.
-		 */
-		private String permissionMode;
 
 		/**
 		 * Creates a parser.
@@ -274,7 +267,6 @@ record ClaudeCommandLine(Optional<String> settings, Optional<Set<SettingsScope>>
 					for (String value : values)
 						deniedTools.addAll(splitRules(value));
 				}
-				case PERMISSION_MODE -> permissionMode = values.getFirst();
 				case UNSUPPORTED -> throw new PolicyRefusal("Claude Code was started with " + name + ", whose " +
 					"effect on the session's sandbox CAT cannot read", COMMAND_LINE_FIX);
 			}
