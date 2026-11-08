@@ -3,6 +3,7 @@ package com.holdmyspot.cat.claude.policy.test;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
+import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -87,6 +88,31 @@ final class ClaudeSessionFixture implements AutoCloseable
 		managed = root.resolve("etc/claude-code");
 		otherManaged = root.resolve("mnt/c/Program Files/ClaudeCode");
 		unreadableManaged = root.resolve("Library/Managed Preferences/com.anthropic.claudecode.plist");
+	}
+
+	/**
+	 * Returns a path as the text of a JSON string spells it. A Windows path holds backslashes, which a JSON string
+	 * spells with another backslash each.
+	 *
+	 * @param path the path
+	 * @return the text between the quotes of the JSON string
+	 */
+	static String json(Path path)
+	{
+		return path.toString().replace("\\", "\\\\");
+	}
+
+	/**
+	 * Returns the absolute path that a permission rule names as {@code //} and the path's form on a POSIX file system,
+	 * which is the form that Claude Code gives a Windows path, such as {@code //c/Users/alice} for
+	 * {@code C:\Users\alice}.
+	 *
+	 * @param path an absolute path
+	 * @return the text that follows {@code Read(} or {@code Edit(} in a rule that names {@code path}
+	 */
+	static String rule(Path path)
+	{
+		return "/" + ClaudeConnectionSettings.rulePath(path);
 	}
 
 	/**
