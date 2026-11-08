@@ -758,11 +758,11 @@ public final class SessionRequestBrokerTest
 						"--model", "haiku", "--effort", "low", "--conversation", folder.toString()}, new StringReader(""),
 					fixture.requests, () ->
 					{
-						if (checks.incrementAndGet() > 10_000)
+						if (checks.incrementAndGet() > 1_000_000)
 							throw new IOException("The conversation did not end");
 						ask(folder, messages, sent);
 						broker.scan();
-						sleep();
+						Thread.yield();
 					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true));
 			}
 			requireThat(status, "status").isEqualTo(0);
@@ -813,11 +813,11 @@ public final class SessionRequestBrokerTest
 					fixture.project.toString(), "--model", "haiku", "--effort", "low", "--conversation",
 					folder.toString()}, fixture.requests, Clock.systemUTC(), () ->
 				{
-					if (checks.incrementAndGet() > 10_000)
+					if (checks.incrementAndGet() > 1_000_000)
 						throw new IOException("The conversation did not end");
 					ask(folder, messages, sent);
 					broker.scan();
-					sleep();
+					Thread.yield();
 				}, new PrintWriter(printed, true));
 			}
 			requireThat(status, "status").isEqualTo(0);
@@ -860,13 +860,13 @@ public final class SessionRequestBrokerTest
 				IOException stopped = expectThrows(IOException.class, () -> SessionRequestForwarder.forward("claude",
 					launch, new StringReader(""), fixture.requests, () ->
 					{
-						if (checks.incrementAndGet() > 10_000)
+						if (checks.incrementAndGet() > 1_000_000)
 							throw new IOException("The requested session never received its turn");
 						broker.scan();
 						FakeHarnessCli process = child.get();
 						if (process != null && !process.requests().isEmpty())
 							throw new IOException("The launcher was stopped");
-						sleep();
+						Thread.yield();
 					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
 				requireThat(stopped.getMessage(), "stopped").isEqualTo("The launcher was stopped");
 				broker.scan();
@@ -1022,24 +1022,6 @@ public final class SessionRequestBrokerTest
 				summaries.add(line);
 		}
 		return summaries;
-	}
-
-	/**
-	 * Lets the requested session's thread run before the next check.
-	 *
-	 * @throws IOException if the thread is interrupted
-	 */
-	private static void sleep() throws IOException
-	{
-		try
-		{
-			Thread.sleep(1);
-		}
-		catch (InterruptedException e)
-		{
-			Thread.currentThread().interrupt();
-			throw new IOException("Interrupted", e);
-		}
 	}
 
 	/**
