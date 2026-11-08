@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - '**'
+      - '!debug/**'
     tags-ignore:
       - 'v*'
   pull_request:

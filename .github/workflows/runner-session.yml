@@ -1,0 +1,61 @@
+name: Runner session
+
+# An interactive Upterm session on a Windows runner, for debugging a failure that only that platform shows.
+on:
+  push:
+    branches:
+      - 'debug/**'
+
+permissions:
+  contents: read
+
+jobs:
+  session:
+    name: windows-x64 session
+    runs-on: windows-2025
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      UPTERM_VERSION: v0.38.0
+      UPTERM_SHA256: 5018c29562341f4982135145b3ef9384e24b7bdf39d4cbc263f9e9ba4db9a698
+      REMOTE_SESSION_DIR: ${{ runner.temp }}/remote-session
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '27'
+          cache: maven
+          cache-dependency-path: client/pom.xml
+      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
+      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
+      - name: Install test tools on Windows
+        run: |
+          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
+          archive="${shellcheck_directory}/shellcheck.zip"
+          mkdir -p "${shellcheck_directory}"
+          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
+          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
+            sha256sum --check --strict
+          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
+            '$(cygpath --windows "${shellcheck_directory}")'"
+          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
+          "${shellcheck_directory}/shellcheck.exe" --version
+          npm install --global bats@1.11.1
+          bats --version
+      - name: Start remote session
+        run: ci/remote-session/start.sh
+      - name: Publish the join command
+        uses: actions/upload-artifact@v7
+        with:
+          name: remote-session
+          path: ${{ runner.temp }}/remote-session/session.json
+      - name: Hold worker
+        if: always()
+        run: ci/remote-session/hold.sh
+      - name: Clean up
+        if: always()
+        run: rm -rf "${REMOTE_SESSION_DIR}"
