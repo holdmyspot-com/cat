@@ -2784,8 +2784,10 @@ by its own harness's exception and starts the other harness with the bound of th
 the other harness runs is refused and names the plugin to use. The runner launchers refuse every launch on native
 Windows.
 
-The session launcher that CAT's SessionStart hook started for each harness process up to this ruling is gone, with its
-inbox, holder and `~/.cat/sessions` state folder. `install` removes that folder's write denial and the folder, and a
+The runner launchers no longer use the session launcher that CAT's SessionStart hook starts for each harness process.
+Until the user decides how the prompt optimizer starts its sessions outside a run (open, 2026-11-08), only the
+optimizer uses it, and it keeps its inbox, holder, `~/.cat/sessions` state folder and that folder's write denial. Once
+that route exists, the session launcher goes, and `install` removes the state folder and its write denial. A
 runner launcher refuses a session that started before the update, because that session's sandbox has no exception for
 it, and says to start a new session.
 
