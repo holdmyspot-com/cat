@@ -319,6 +319,31 @@ public final class DirectLaunchTest
 	}
 
 	/**
+	 * Verifies that a command that a harness session runs outside its sandbox is refused, naming its option and the
+	 * path, when it would read a path that the session's sandbox denies, and is not refused for a path that the
+	 * session may read.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusesUnreadableCommandPath() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			DirectLaunch.Session session = fixture.session(Optional.empty());
+			Path denied = fixture.secrets.resolve("artifact");
+
+			SessionRefusedException refusal = refusal(() -> DirectLaunch.requireReadable("harness-a",
+				"--verify-artifact", denied, fixture.plugin, () -> session, () -> SANDBOXED));
+
+			requireThat(refusal.getMessage(), "message").contains("--verify-artifact").
+				contains("does not let its commands read " + denied);
+			DirectLaunch.requireReadable("harness-a", "--verify-artifact", fixture.project.resolve("artifact"),
+				fixture.plugin, () -> session, () -> SANDBOXED);
+		}
+	}
+
+	/**
 	 * Returns the session that a finder finds.
 	 *
 	 * @param sessions the finder

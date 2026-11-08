@@ -52,6 +52,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -91,6 +92,9 @@ public final class ClaudeRunnerCli
 	 * refuses, with the same status, any launch that starts a session on a platform where Claude Code cannot sandbox
 	 * the session, or whose project is the user's home folder or contains it.
 	 * <p>
+	 * With {@code --verify-artifact} and an artifact, it verifies the artifact and prints its folder, unless
+	 * {@link #refusesArtifactRead} refuses the verification, with the same status.
+	 * <p>
 	 * Every other launch goes along its route, as {@link #launch(String[], Map, Waiting, Reader, OutputStream,
 	 * PrintWriter)} describes, and the launcher exits with the launch's status.
 	 * <p>
@@ -116,6 +120,9 @@ public final class ClaudeRunnerCli
 		}
 		if (args.length == 2 && args[0].equals("--verify-artifact"))
 		{
+			if (refusesArtifactRead(args, environment, errors(), () -> PluginDirectory.of(ClaudeRunnerCli.class),
+				ClaudeDirectLaunch.sessions(environment)))
+				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			System.out.println(HarnessArtifact.validate(Path.of(args[1]), Path.of(".claude-plugin/plugin.json")));
 			return;
 		}
@@ -405,6 +412,53 @@ public final class ClaudeRunnerCli
 		{
 			errors.println(e.getMessage());
 			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+		}
+	}
+
+	/**
+	 * Refuses verifying an artifact when Claude Code runs the command outside a run, which it runs outside the
+	 * session's sandbox, and the session's sandbox does not let its commands read the artifact, as
+	 * {@link DirectLaunch#requireReadable} decides. Any other command runs inside a sandbox that confines what it
+	 * reads, such as a run's, or outside every harness session.
+	 *
+	 * @param args        the command: {@code --verify-artifact} and the artifact
+	 * @param environment the launcher's environment
+	 * @param errors      receives the reason for a refusal
+	 * @param plugin      returns the absolute folder of the plugin that holds the launcher
+	 * @param sessions    identifies the Claude Code session that runs the command
+	 * @return {@code true} if the verification is refused, after the reason is written to {@code errors}
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code args} is not {@code --verify-artifact} and an artifact
+	 * @throws IOException              if a source that identifies the session, or a symbolic link in the artifact's
+	 *                                  path, cannot be read
+	 */
+	public static boolean refusesArtifactRead(String[] args, Map<String, String> environment, PrintWriter errors,
+		Supplier<Path> plugin, DirectLaunch.SessionFinder sessions) throws IOException
+	{
+		requireThat(args, "args").isNotNull();
+		if (args.length != 2 || !args[0].equals("--verify-artifact"))
+		{
+			throw new IllegalArgumentException("args must be --verify-artifact and an artifact: " +
+				Arrays.toString(args));
+		}
+		requireThat(environment, "environment").isNotNull();
+		requireThat(errors, "errors").isNotNull();
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(sessions, "sessions").isNotNull();
+		if (!(LaunchRoute.decide(HARNESS_ID, HARNESS_ID, MARKERS.running(environment), args, environment) instanceof
+			LaunchRoute.Launcher))
+			return false;
+		Path pluginFolder = plugin.get();
+		try
+		{
+			DirectLaunch.requireReadable(HARNESS_ID, args[0], Path.of(args[1]), pluginFolder, sessions,
+				() -> ClaudeDirectLaunch.sandboxed(pluginFolder.resolve(PluginDirectory.BIN).resolve("claude-runner")));
+			return false;
+		}
+		catch (SessionRefusedException e)
+		{
+			errors.println(e.getMessage());
+			return true;
 		}
 	}
 

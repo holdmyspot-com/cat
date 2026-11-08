@@ -123,6 +123,62 @@ public final class DirectLaunch
 	}
 
 	/**
+	 * Refuses a command that a harness session runs outside its sandbox, such as verifying an artifact, when it would
+	 * read a path that the session's sandbox does not let the session's commands read. The command checks, as
+	 * {@link #boundArguments} does, that it runs outside the session's sandbox, which session runs it, and that
+	 * session's policy.
+	 *
+	 * @param harness   the identifier of the harness whose session runs the command
+	 * @param option    the option that names the path, which a refusal names
+	 * @param path      the path that the command would read; a relative path resolves against the process's working
+	 *                  directory
+	 * @param plugin    the absolute folder of the plugin that holds the command's launcher, which the session's
+	 *                  commands must not be able to write
+	 * @param sessions  identifies the session that runs the command
+	 * @param sandboxed returns why the command runs inside the session's sandbox, which a refusal states
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code harness} or {@code option} are blank, or {@code plugin} is not
+	 *                                  absolute
+	 * @throws SessionRefusedException  if a check fails; the message says why and how to fix it
+	 * @throws IOException              if a source that identifies the session, or a symbolic link in the path,
+	 *                                  cannot be read
+	 */
+	public static void requireReadable(String harness, String option, Path path, Path plugin, SessionFinder sessions,
+		Supplier<String> sandboxed) throws IOException
+	{
+		requireThat(harness, "harness").isNotBlank();
+		requireThat(option, "option").isNotBlank();
+		requireThat(path, "path").isNotNull();
+		requireThat(plugin, "plugin").isNotNull().isAbsolute();
+		requireThat(sessions, "sessions").isNotNull();
+		requireThat(sandboxed, "sandboxed").isNotNull();
+		requireOutsideSandbox(plugin, sandboxed);
+		Session session;
+		try
+		{
+			session = sessions.find();
+		}
+		catch (PolicyRefusal e)
+		{
+			throw new SessionRefusedException(e.messageFor(productName(harness)), e);
+		}
+		ParentPolicySource source = session.policy();
+		ChildNeedsSource noNeeds = (_, _, _, _) ->
+		{
+			throw new AssertionError("A read check asks for no needs");
+		};
+		ParentPolicy policy = new ChildBound(source, noNeeds).snapshot(session.transcript()).snapshot(plugin).
+			parentPolicy(session.askingThread());
+		Path absolute = path.toAbsolutePath().normalize();
+		if (!policy.mayRead(absolute))
+		{
+			throw new SessionRefusedException("CAT refuses " + option + ": this " + source.harnessName() +
+				" session's sandbox does not let its commands read " + absolute + ". Name a path that the session " +
+				"may read.");
+		}
+	}
+
+	/**
 	 * Returns a finder that refuses a launch whose new session would take the user's home folder, or a folder that
 	 * contains it, as its project, which {@link HarnessRunnerOptions#refusesHomeProject} refuses. That project is the
 	 * folder that the launch's {@code --project} names, resolved against {@code workingDirectory}, or else the project

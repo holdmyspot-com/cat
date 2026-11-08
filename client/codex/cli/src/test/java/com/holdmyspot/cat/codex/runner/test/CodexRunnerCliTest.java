@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -1141,6 +1142,48 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
+	 * Verifies that verifying an artifact is refused with a reason when Codex runs the command outside a run and
+	 * the session's sandbox does not let its commands read the artifact, is not refused for an artifact that the
+	 * session may read, and is not checked when no harness session runs the command.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesUnreadableArtifact() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Path secrets = Files.createDirectory(home.resolve("secrets"));
+			Path plugin = Files.createDirectory(home.resolve("plugin"));
+			Path transcript = Files.writeString(home.resolve("session.jsonl"), "");
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CODEX_HOME", Files.createDirectory(home.resolve(".codex")).toString(), "CODEX_THREAD_ID",
+				"019a0000-0000-7000-8000-000000000000");
+			DirectLaunch.Session session = new DirectLaunch.Session(denyingPolicy(project, secrets), transcript,
+				project, Optional.empty());
+			String[] denied = {"--verify-artifact", secrets.resolve("artifact").toString()};
+			StringWriter errors = new StringWriter();
+
+			boolean refused = CodexRunnerCli.refusesArtifactRead(denied, environment, new PrintWriter(errors, true),
+				() -> plugin, () -> session);
+
+			requireThat(refused, "refused").isTrue();
+			requireThat(errors.toString(), "errors").contains("--verify-artifact").
+				contains("does not let its commands read " + secrets.resolve("artifact"));
+			String[] readable = {"--verify-artifact", project.resolve("artifact").toString()};
+			requireThat(CodexRunnerCli.refusesArtifactRead(readable, environment, new PrintWriter(new StringWriter(), true),
+				() -> plugin, () -> session), "readableRefused").isFalse();
+			requireThat(CodexRunnerCli.refusesArtifactRead(denied, Map.of(), new PrintWriter(new StringWriter(), true),
+				() -> plugin, () ->
+				{
+					throw new AssertionError("No session is identified");
+				}), "outsideSessionRefused").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a launch from a command that Codex runs is not refused for the folder that the command runs
 	 * in, and is refused with the refusal status when the project folder that the session's transcript names, which
 	 * the new session would take, is the user's home folder, before the launcher writes anything for it.
@@ -1285,6 +1328,39 @@ public final class CodexRunnerCliTest
 			"developer_instructions = '''\nReview the change.\n'''\n");
 		return artifact;
 	}
+	/**
+	 * Returns a sandbox policy source whose policy lets the session's commands write one folder and denies them reads
+	 * of another.
+	 *
+	 * @param writable the folder that the commands may write
+	 * @param denied   the folder that the commands may not read
+	 * @return the source
+	 */
+	private static ParentPolicySource denyingPolicy(Path writable, Path denied)
+	{
+		return new ParentPolicySource()
+		{
+			@Override
+			public String harnessName()
+			{
+				return "Codex";
+			}
+
+			@Override
+			public String permissionEntries(List<Path> writes, Set<String> hosts)
+			{
+				throw new AssertionError("No permission entries are named");
+			}
+
+			@Override
+			public ParentPolicy read(Optional<String> thread)
+			{
+				return new ParentPolicy(true, List.of(writable), List.of(), List.of(denied), List.of(), HostAccess.ALL,
+					false, List.of());
+			}
+		};
+	}
+
 	/**
 	 * Returns a sandbox policy source that no check-failing launch may read.
 	 *
