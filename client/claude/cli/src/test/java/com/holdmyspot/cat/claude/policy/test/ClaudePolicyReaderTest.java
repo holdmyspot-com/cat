@@ -3,7 +3,6 @@ package com.holdmyspot.cat.claude.policy.test;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
-import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -12,10 +11,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.testng.SkipException;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.json;
+import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.rule;
 import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.write;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -44,20 +43,6 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
-	 * Skips the tests on native Windows, where Claude Code has no sandbox and no request server serves a session, so that
-	 * no Claude Code session's sandbox policy is read there.
-	 */
-	@BeforeClass
-	public void requireSandboxPlatform()
-	{
-		if (Platform.current().isWindows())
-		{
-			throw new SkipException("Claude Code has no sandbox on native Windows, so CAT reads no session's " +
-				"policy there");
-		}
-	}
-
-	/**
 	 * Returns settings that let commands write a folder.
 	 *
 	 * @param folder the folder
@@ -66,7 +51,7 @@ public final class ClaudePolicyReaderTest
 	private static String allowWrite(Path folder)
 	{
 		return """
-			{"sandbox": {"filesystem": {"allowWrite": ["%s"]}}}""".formatted(folder);
+			{"sandbox": {"filesystem": {"allowWrite": ["%s"]}}}""".formatted(json(folder));
 	}
 
 	/**
@@ -141,14 +126,14 @@ public final class ClaudePolicyReaderTest
 			Path root = fixture.root;
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]},
-				  "network": {"allowedDomains": ["user.example.com"]}}}""".formatted(root.resolve("w-user")));
+				  "network": {"allowedDomains": ["user.example.com"]}}}""".formatted(json(root.resolve("w-user"))));
 			fixture.projectSettings(allowWrite(root.resolve("w-project")));
 			fixture.localSettings(allowWrite(root.resolve("w-local")));
 			Path flagFile = write(root.resolve("flag/settings.json"), allowWrite(root.resolve("w-flag")));
 			fixture.arguments.addAll(List.of("--settings", flagFile.toString()));
 			write(fixture.managed.resolve("managed-settings.json"), """
 				{"sandbox": {"filesystem": {"allowWrite": ["%s"]},
-				  "network": {"allowedDomains": ["*.managed.example.com"]}}}""".formatted(root.resolve("w-managed")));
+				  "network": {"allowedDomains": ["*.managed.example.com"]}}}""".formatted(json(root.resolve("w-managed"))));
 			write(fixture.managed.resolve("managed-settings.d/10-drop-in.json"),
 				allowWrite(root.resolve("w-drop-in")));
 
@@ -176,7 +161,7 @@ public final class ClaudePolicyReaderTest
 		{
 			Path folder = fixture.root.resolve("w-inline");
 			fixture.arguments.addAll(List.of("-p", "a prompt", "--settings", """
-				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""".formatted(folder),
+				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""".formatted(json(folder)),
 				"--output-format", "text"));
 			requireThat(fixture.policy().writeRoots(), "writeRoots").contains(folder);
 		}
@@ -197,7 +182,7 @@ public final class ClaudePolicyReaderTest
 			Path root = fixture.root;
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""".formatted(
-				root.resolve("w-user")));
+				json(root.resolve("w-user"))));
 			fixture.projectSettings(allowWrite(root.resolve("w-project")));
 			fixture.localSettings(allowWrite(root.resolve("w-local")));
 			fixture.arguments.addAll(List.of("--setting-sources", "user"));
@@ -251,8 +236,8 @@ public final class ClaudePolicyReaderTest
 			Path secret = write(fixture.project.resolve("deep/er/.env"), "");
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true, "filesystem": {"denyRead": ["%s"]}},
-				 "permissions": {"deny": ["Read(//%s)", "Read(~/keys)", "Read(.env)", "Bash(rm:*)"]}}""".formatted(
-				fixture.root.resolve("sandbox-denied"), fixture.root.resolve("absolute").toString().substring(1)));
+				 "permissions": {"deny": ["Read(%s)", "Read(~/keys)", "Read(.env)", "Bash(rm:*)"]}}""".formatted(
+				json(fixture.root.resolve("sandbox-denied")), rule(fixture.root.resolve("absolute"))));
 			fixture.projectSettings("""
 				{"permissions": {"deny": ["Read(./private/**)"]}}""");
 			fixture.arguments.addAll(List.of("--disallowedTools", "Read(./cli-denied) Edit(./x)"));
@@ -283,8 +268,8 @@ public final class ClaudePolicyReaderTest
 			Path editable = fixture.root.resolve("editable");
 			fixture.userSettings("""
 				{"sandbox": {"enabled": true, "network": {"allowedDomains": ["*.example.com", "example.org"]}},
-				 "permissions": {"allow": ["Edit(/%s/**)", "WebFetch(domain:fetch.example.net)"],
-				   "deny": ["Edit(./generated)", "WebFetch(domain:bad.example.com)"]}}""".formatted(editable));
+				 "permissions": {"allow": ["Edit(%s/**)", "WebFetch(domain:fetch.example.net)"],
+				   "deny": ["Edit(./generated)", "WebFetch(domain:bad.example.com)"]}}""".formatted(rule(editable)));
 
 			ParentPolicy policy = fixture.policy();
 			requireThat(policy.writeRoots(), "writeRoots").contains(editable);
@@ -442,7 +427,7 @@ public final class ClaudePolicyReaderTest
 		try
 		{
 			ClaudeSession session = ClaudeSession.fromHookEnvironment(Map.of("CLAUDE_PROJECT_DIR", "/work"),
-				Path.of("/home/user"), "user");
+				Path.of("/home/user").toAbsolutePath(), "user");
 			throw new AssertionError("The session was not refused: " + session);
 		}
 		catch (PolicyRefusal e)
@@ -505,7 +490,7 @@ public final class ClaudePolicyReaderTest
 			fixture.projectSettings("""
 				{"sandbox": {"filesystem": {"allowWrite": ["%s"], "denyWrite": ["%s"], "denyRead": ["%s"]},
 				  "network": {"allowedDomains": ["new.example.com"], "allowLocalBinding": true}}}""".formatted(
-				widened, denied, denied));
+				json(widened), json(denied), json(denied)));
 
 			ParentPolicy policy = fixture.reader().reread(fixture.session(), snapshot);
 			requireThat(policy.sandboxed(), "sandboxed").isTrue();
@@ -535,8 +520,8 @@ public final class ClaudePolicyReaderTest
 			Path widened = fixture.root.resolve("widened");
 			Path denied = fixture.project.resolve("denied");
 			write(fixture.configuration.resolve("remote-settings.json"), """
-				{"sandbox": {"filesystem": {"allowWrite": ["%s"], "denyWrite": ["%s"]}}}""".formatted(widened,
-				denied));
+				{"sandbox": {"filesystem": {"allowWrite": ["%s"], "denyWrite": ["%s"]}}}""".formatted(json(widened),
+				json(denied)));
 			ParentPolicy policy = fixture.policy();
 			requireThat(policy.writeRoots(), "writeRoots").doesNotContain(widened);
 			requireThat(policy.writeDenials(), "writeDenials").contains(denied);

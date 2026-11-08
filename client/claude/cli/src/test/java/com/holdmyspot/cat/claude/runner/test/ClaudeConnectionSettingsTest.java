@@ -5,7 +5,6 @@ import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
-import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -22,7 +21,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -1086,11 +1084,6 @@ public final class ClaudeConnectionSettingsTest
 	@Test(dataProvider = "wideningSettings")
 	public void refusesWideningSettings(String content, String setting) throws IOException
 	{
-		if (content.contains("SECRETS") && Platform.current().isWindows())
-		{
-			throw new SkipException("The settings name a folder in Claude Code's POSIX path form, and Claude Code " +
-				"has no sandbox on native Windows, so CAT checks no session's settings there");
-		}
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1100,8 +1093,9 @@ public final class ClaudeConnectionSettingsTest
 			ChildPolicy policy = new ChildPolicy(List.of(run), List.of(), List.of(secrets), List.of(),
 				Set.of("api.example"), false);
 			Path narrow = Files.writeString(root.resolve("narrow.json"), "{\"sandbox\": {\"enabled\": true}}");
+			// A Windows path holds backslashes, which a JSON string spells with another backslash each
 			Path widening = Files.writeString(root.resolve("widening.json"), content.replace("SECRETS",
-				secrets.toString()));
+				secrets.toString().replace("\\", "\\\\")));
 
 			Optional<String> refusal = ClaudeConnectionSettings.findWidening(scope.json(), List.of(narrow, widening),
 				policy, run.resolve("home"));
@@ -1119,11 +1113,6 @@ public final class ClaudeConnectionSettingsTest
 	@Test
 	public void acceptsSettingsWithinPolicy() throws IOException
 	{
-		if (Platform.current().isWindows())
-		{
-			throw new SkipException("The settings name the run's folder in Claude Code's POSIX rule form, and " +
-				"Claude Code has no sandbox on native Windows, so CAT checks no session's settings there");
-		}
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -1139,9 +1128,10 @@ public final class ClaudeConnectionSettingsTest
 				    "filesystem": {"allowWrite": ["%s"], "denyRead": ["/elsewhere"]},
 				    "network": {"allowedDomains": ["API.example"]}
 				  },
-				  "permissions": {"allow": ["Bash(git status:*)", "Edit(//%s/**)"], "deny": ["Bash(curl *)"]}
+				  "permissions": {"allow": ["Bash(git status:*)", "Edit(/%s/**)"], "deny": ["Bash(curl *)"]}
 				}
-				""".formatted(run.resolve("work"), run.toString().substring(1)));
+				""".formatted(run.resolve("work").toString().replace("\\", "\\\\"),
+				ClaudeConnectionSettings.rulePath(run)));
 
 			Optional<String> refusal = ClaudeConnectionSettings.findWidening(scope.json(), List.of(settings,
 				root.resolve("missing.json")), policy, run.resolve("home"));

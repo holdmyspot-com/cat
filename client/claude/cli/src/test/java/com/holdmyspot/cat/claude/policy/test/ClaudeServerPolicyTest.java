@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.runner.ClaudeRequestServerCli;
-import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.contract.test.ParentPolicySourceContract;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -17,8 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import org.testng.SkipException;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -60,20 +57,6 @@ public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 	protected Session session() throws IOException
 	{
 		return new ClaudeContractSession();
-	}
-
-	/**
-	 * Skips the tests on native Windows, where Claude Code has no sandbox and no request server serves a session, so that
-	 * no Claude Code session's sandbox policy is read there.
-	 */
-	@BeforeClass
-	public void requireSandboxPlatform()
-	{
-		if (Platform.current().isWindows())
-		{
-			throw new SkipException("Claude Code has no sandbox on native Windows, so CAT reads no session's " +
-				"policy there");
-		}
 	}
 
 	/**
@@ -127,13 +110,15 @@ public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 	@DataProvider
 	public Object[][] grantInstructions()
 	{
+		Path m2 = Path.of("/data/m2");
+		Path gradle = Path.of("/data/gradle");
 		return new Object[][]
 			{
-				{List.of(Path.of("/data/m2"), Path.of("/data/gradle")), Set.of("a.example.com", "b.example.com"),
-					"add \"/data/m2\", \"/data/gradle\" to sandbox.filesystem.allowWrite and \"a.example.com\", " +
+				{List.of(m2, gradle), Set.of("a.example.com", "b.example.com"),
+					"add \"" + m2 + "\", \"" + gradle + "\" to sandbox.filesystem.allowWrite and \"a.example.com\", " +
 						"\"b.example.com\" to sandbox.network.allowedDomains in your Claude Code settings"},
-				{List.of(Path.of("/data/m2")), Set.of(),
-					"add \"/data/m2\" to sandbox.filesystem.allowWrite in your Claude Code settings"},
+				{List.of(m2), Set.of(),
+					"add \"" + m2 + "\" to sandbox.filesystem.allowWrite in your Claude Code settings"},
 				{List.of(), Set.of("api.example.com"),
 					"add \"api.example.com\" to sandbox.network.allowedDomains in your Claude Code settings"}
 			};
