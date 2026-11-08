@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess.InterruptedTurn;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -42,7 +43,10 @@ import java.util.concurrent.CountDownLatch;
  * (Lifecycle Overview and Interrupt an active turn): interruption produces a terminal notification and may have no
  * final assistant message. Claude interrupt support is documented by Agent SDK v0.2.163's
  * <a href="https://github.com/anthropics/claude-agent-sdk-python/blob/v0.2.163/src/claude_agent_sdk/client.py">
- * ClaudeSDKClient.interrupt</a>; these tests do not establish the exact Claude completion after interruption.
+ * ClaudeSDKClient.interrupt</a>; Claude Code 2.1.304's recorded interrupted judge turn,
+ * {@code client/claude/cli/src/test/resources/optimizer/sessions/interrupted-judge-turn-1.jsonl}, ends with an
+ * {@code error_during_execution} result, which fails the turn, so a session that plays Claude fails an interrupted
+ * turn.
  * Agent SDK v0.2.163's
  * <a href="https://github.com/anthropics/claude-agent-sdk-python/blob/v0.2.163/src/claude_agent_sdk/types.py">
  * RateLimitInfo and ResultMessage</a> also document rate-limit rejection, error-result fields, interruption's terminal
@@ -91,19 +95,41 @@ public final class ScriptedHarness
 	public static void serve(Path runRoot, String harness, List<Turn> script, Reader input, Writer output,
 		List<String> requests) throws IOException
 	{
+		serve(runRoot, harness, script, input, output, requests, InterruptedTurn.COMPLETES);
+	}
+
+	/**
+	 * Serves one session whose harness ends an interrupted turn a given way, and records the requests CAT sends to the
+	 * harness, in turn order.
+	 *
+	 * @param runRoot         the directory that holds the run directories
+	 * @param harness         the harness name
+	 * @param script          what the harness does for each turn, in turn order
+	 * @param input           the bridge requests
+	 * @param output          the bridge responses
+	 * @param requests        receives each turn prompt and steering direction, in the order the harness receives them
+	 * @param interruptedTurn how the harness ends a turn that the caller interrupts
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if the bridge fails
+	 */
+	public static void serve(Path runRoot, String harness, List<Turn> script, Reader input, Writer output,
+		List<String> requests, InterruptedTurn interruptedTurn) throws IOException
+	{
 		requireThat(runRoot, "runRoot").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(script, "script").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(requests, "requests").isNotNull();
+		requireThat(interruptedTurn, "interruptedTurn").isNotNull();
 		HarnessRunManager manager = new HarnessRunManager(new FileLocks(), runRoot,
 			Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRunnerBridge.serve(() ->
 		{
 			HarnessRun run = manager.create(harness);
 			manager.initialize(run, runRoot, runRoot, "scripted", List.of("scripted"));
-			return new HarnessRunSession(run, new ScriptedProcess(script, requests), new TestHarnessRunnerScope());
+			return new HarnessRunSession(run, new ScriptedProcess(script, requests, interruptedTurn),
+				new TestHarnessRunnerScope());
 		}, manager, true, input, output);
 	}
 
@@ -162,8 +188,9 @@ public final class ScriptedHarness
 			 */
 			REJECTED,
 			/**
-			 * The turn does not end until it is interrupted. The interrupt then ends it with a terminal result whose
-			 * response is empty.
+			 * The turn does not end until it is interrupted. The interrupt then ends it the way the process's
+			 * {@link ScriptedProcess.InterruptedTurn} says: with a terminal result whose response is empty, or with a
+			 * failure.
 			 */
 			BLOCKS_UNTIL_INTERRUPTED
 		}
@@ -274,7 +301,8 @@ public final class ScriptedHarness
 		}
 
 		/**
-		 * Returns a turn that continues until it is interrupted and then ends with a terminal result.
+		 * Returns a turn that continues until it is interrupted and then ends the way the process's
+		 * {@link ScriptedProcess.InterruptedTurn} says.
 		 *
 		 * @param events the harness event lines that the harness prints before it blocks
 		 * @return the turn

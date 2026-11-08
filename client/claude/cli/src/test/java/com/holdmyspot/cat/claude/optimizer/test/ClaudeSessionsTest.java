@@ -45,6 +45,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess.InterruptedTurn;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -149,8 +150,9 @@ public final class ClaudeSessionsTest
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
+			// Claude fails a turn that the caller interrupts
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude", script, input,
-				output, requests);
+				output, requests, InterruptedTurn.FAILS);
 		});
 	}
 

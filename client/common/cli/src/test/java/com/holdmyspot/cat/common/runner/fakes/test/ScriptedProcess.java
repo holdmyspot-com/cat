@@ -21,8 +21,8 @@ import java.util.concurrent.CountDownLatch;
  * <p>
  * {@link HarnessProcessContract} checks this behavior on this class and on each harness module's real adapter over a
  * stand-in for the harness program, so the double has only behavior that the adapters show. The adapters differ where
- * the contract says so: one harness fails a turn that the caller interrupts while this process completes it, and one
- * harness rejects mid-turn steering while this process accepts it.
+ * the contract says so: Codex completes a turn that the caller interrupts while Claude fails it, which this process
+ * does as its {@link InterruptedTurn} says, and Codex rejects mid-turn steering while this process accepts it.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -30,6 +30,7 @@ public final class ScriptedProcess implements HarnessProcess
 {
 	private final List<Turn> script;
 	private final List<String> received;
+	private final InterruptedTurn interruptedTurn;
 	private final Path transcript;
 	private final HarnessSessionTranscripts transcripts;
 	private final Object lock = new Object();
@@ -48,7 +49,7 @@ public final class ScriptedProcess implements HarnessProcess
 	private volatile boolean closed;
 
 	/**
-	 * Creates a process that keeps no session transcript.
+	 * Creates a process that keeps no session transcript and completes a turn that the caller interrupts.
 	 *
 	 * @param script   what the harness does for each turn, in turn order
 	 * @param received receives each turn prompt and each steering direction, in the order the harness receives them
@@ -56,16 +57,32 @@ public final class ScriptedProcess implements HarnessProcess
 	 */
 	public ScriptedProcess(List<Turn> script, List<String> received)
 	{
+		this(script, received, InterruptedTurn.COMPLETES);
+	}
+
+	/**
+	 * Creates a process that keeps no session transcript.
+	 *
+	 * @param script          what the harness does for each turn, in turn order
+	 * @param received        receives each turn prompt and each steering direction, in the order the harness receives
+	 *                        them
+	 * @param interruptedTurn how the harness ends a turn that the caller interrupts
+	 * @throws NullPointerException if any argument is null
+	 */
+	public ScriptedProcess(List<Turn> script, List<String> received, InterruptedTurn interruptedTurn)
+	{
 		requireThat(script, "script").isNotNull();
 		requireThat(received, "received").isNotNull();
+		requireThat(interruptedTurn, "interruptedTurn").isNotNull();
 		this.script = List.copyOf(script);
 		this.received = received;
+		this.interruptedTurn = interruptedTurn;
 		this.transcript = null;
 		this.transcripts = null;
 	}
 
 	/**
-	 * Creates a process that keeps a session transcript.
+	 * Creates a process that keeps a session transcript and completes a turn that the caller interrupts.
 	 *
 	 * @param script      what the harness does for each turn, in turn order
 	 * @param received    receives each turn prompt and each steering direction, in the order the harness receives
@@ -77,12 +94,31 @@ public final class ScriptedProcess implements HarnessProcess
 	public ScriptedProcess(List<Turn> script, List<String> received, Path transcript,
 		HarnessSessionTranscripts transcripts)
 	{
+		this(script, received, InterruptedTurn.COMPLETES, transcript, transcripts);
+	}
+
+	/**
+	 * Creates a process that keeps a session transcript.
+	 *
+	 * @param script          what the harness does for each turn, in turn order
+	 * @param received        receives each turn prompt and each steering direction, in the order the harness receives
+	 *                        them
+	 * @param interruptedTurn how the harness ends a turn that the caller interrupts
+	 * @param transcript      the file in which the harness writes the session's transcript
+	 * @param transcripts     the transcripts that closing the process copies
+	 * @throws NullPointerException if any argument is null
+	 */
+	public ScriptedProcess(List<Turn> script, List<String> received, InterruptedTurn interruptedTurn,
+		Path transcript, HarnessSessionTranscripts transcripts)
+	{
 		requireThat(script, "script").isNotNull();
 		requireThat(received, "received").isNotNull();
+		requireThat(interruptedTurn, "interruptedTurn").isNotNull();
 		requireThat(transcript, "transcript").isNotNull();
 		requireThat(transcripts, "transcripts").isNotNull();
 		this.script = List.copyOf(script);
 		this.received = received;
+		this.interruptedTurn = interruptedTurn;
 		this.transcript = transcript;
 		this.transcripts = transcripts;
 	}
@@ -93,15 +129,17 @@ public final class ScriptedProcess implements HarnessProcess
 	 * The turn gives each of its event lines to the listener, then ends by its kind: a reply completes the turn with
 	 * exit status 0 and the turn's messages, the last of which is its response; a harness that exits fails the turn
 	 * with the turn's exit status and a description on standard error, and stays ended; a rejected turn throws; and a
-	 * turn that blocks waits until the caller interrupts it and then completes with no messages.
+	 * turn that blocks waits until the caller interrupts it and then completes with no messages or throws, as the
+	 * process's {@link InterruptedTurn} says.
 	 *
 	 * @param request  the non-blank user prompt
 	 * @param listener receives each harness event line
 	 * @return the turn's result
 	 * @throws NullPointerException     if any argument is null
 	 * @throws IllegalArgumentException if {@code request} is blank
-	 * @throws IOException              if the script has no turn left, the harness rejects the turn, the thread is
-	 *                                  interrupted while the turn blocks, or the turn's checkpoint fails
+	 * @throws IOException              if the script has no turn left, the harness rejects the turn, the harness
+	 *                                  fails the turn that the caller interrupted, the thread is interrupted while
+	 *                                  the turn blocks, or the turn's checkpoint fails
 	 */
 	@Override
 	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
@@ -148,6 +186,8 @@ public final class ScriptedProcess implements HarnessProcess
 				case BLOCKS_UNTIL_INTERRUPTED ->
 				{
 					await(interrupt);
+					if (interruptedTurn == InterruptedTurn.FAILS)
+						throw new IOException("The harness failed the turn that the caller interrupted");
 					yield new HarnessProcessResult(0, output.toString(), "", true, "", List.of());
 				}
 			};
@@ -254,5 +294,21 @@ public final class ScriptedProcess implements HarnessProcess
 			Thread.currentThread().interrupt();
 			throw new IOException("Interrupted while the scripted turn was running", e);
 		}
+	}
+
+	/**
+	 * How a harness ends a turn that the caller interrupts.
+	 */
+	public enum InterruptedTurn
+	{
+		/**
+		 * The turn completes with no messages, as Codex's app-server ends an interrupted turn with status
+		 * {@code interrupted}.
+		 */
+		COMPLETES,
+		/**
+		 * The turn fails, as Claude ends an interrupted turn with an {@code error_during_execution} result.
+		 */
+		FAILS
 	}
 }
