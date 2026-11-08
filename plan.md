@@ -885,6 +885,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-139 | `optimize-high` | Changes the trial record, the campaign snapshot and the status; an error records 0 where a harness cannot observe a value, counts a session twice, mixes the phases or attempts that a status reports, or makes an existing campaign fail to load. |
 | WI-140 | `optimize-high` | Changes how many trials run at once for every purpose, the campaign snapshot and the status; an error wastes trials after a failure that ends work, holds work at one trial after failures that end nothing, or makes an existing campaign fail to load. |
 | WI-141 | `optimize-xhigh` | Changes how a runner launcher sends turns to a requested session and how CAT commands inside a run start sessions; an error lets a child outlive the command that holds it, delivers a turn twice or out of order, loses the child's output, or lets a child start more sessions than its caller allowed. |
+| WI-142 | `optimize-xhigh` | Moves the boundary between a sandboxed session and the sessions it starts into the runner launchers and changes what `install` writes to both harnesses' settings; an error lets a session's command run unsandboxed code, start a session wider than its own sandbox, read or write a path its sandbox denies, or leaves a user's settings with an exception that `uninstall` does not remove. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -1168,7 +1169,8 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-138 | Done 2026-10-29 (Claude `optimize-xhigh`). Record: [history](plan-history.md). |
 | WI-139 | Done 2026-10-31 (Claude `optimize-high`; `9d2f926d54`). Record: [history](plan-history.md). |
 | WI-140 | Done 2026-10-31 (Claude `optimize-high`; `9131428c90`). Record: [history](plan-history.md). |
-| WI-141 | Not started (user rulings, 2026-11-07). |
+| WI-141 | Done 2026-11-08 (Claude `optimize-xhigh`; `0f275126f3`..`e42e901aaa`). |
+| WI-142 | Not started (user rulings, 2026-11-08). |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
 | Final gates (§9), interim audit on `c64f57c9b3` | Gate 3: source inventory (374 test sources, 23 POMs) and a process trace found no real Codex/Claude/model launch and no native group/profile; retained processes exercise packaged boundaries or controlled shell, Git and Java fixtures. The traced run is process-audit evidence only: ptrace caused two 30-second request-input tests to time out, while the subsequent untraced focused run passed all nine checks. No timeout or security restriction was relaxed. Audit source hashes and complete execution evidence are retained in orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/java-harness-audit-obirnizd/`. Gate 2: class-level inventory has 136 requirements, 134 tagged, with R-I1 and R-I6 untagged and no unknown tags. Passing class reports do not establish exact tagged-method/data-provider execution; live E receipts are not reconciled. Gate 2 remains unmet. Current G9 execution is recorded under WI-127. Gates 4, 5, 7 and 8 remain unmet. |
@@ -4387,6 +4389,36 @@ selection and download it describes are unchanged.
 - **Exit:** tests and the clean build pass on the committed revision; E1 then runs in both harnesses from a session
 	through `--conversation`. Closes D132.
 
+### WI-142 — Runner launchers outside the sandbox through a sandbox exception (user rulings, 2026-11-08)
+
+- **Problem:** a session outside a run starts a session only through the session launcher that CAT's SessionStart hook
+	starts outside the sandbox for every harness process, with an inbox, a holder process and a state folder, whether or
+	not the session ever starts one.
+- **Scope:** `client/common/cli/` (runner launchers, the policy reader, the session launcher and its hook start), the
+	installer and its settings integrations for both harnesses, both harnesses' runners, both plugins' runner instructions,
+	this design and plan.
+- **Change:** as `design.md` "Runner launches outside a run" and D133 define it. `install` adds, reports and `uninstall`
+	removes, for each of the plugin's runner launchers by absolute path, Claude Code's `sandbox.excludedCommands` and
+	`permissions.allow` entries and Codex's `allow` prefix rule, stops removing runner exceptions, and write-denies the
+	harness home's shell startup files. A runner launcher that a harness session runs confirms that it runs outside the
+	sandbox (refusing a Codex session whose permissions deny any read, with the explanation and the denied entries),
+	identifies the session from its ancestor harness process and, on Codex's shared background server, its thread, reads
+	the policy as the session launcher does, checks every option, path and environment variable it accepts, and starts
+	the session inside its harness's sandbox with the intersection, as its own descendant. The session launcher, its hook
+	start, inbox, holder and `~/.cat/sessions` state go; `install` removes the state folder and its write denial. Inside a
+	run nothing changes.
+- **Verification:** requirement-level tests with CAT's real classes and the contracted harness process doubles: the
+	entries that `install` writes, reports and `uninstall` removes in both harnesses, an existing user entry kept; each
+	refusal (sandboxed, Codex denied reads, unidentified session, unreadable policy, a path outside the policy, a refused
+	option, `--policy-bound`) with its message and status 2; the environment variables removed; the child bounded by the
+	intersection and stopped when the launcher ends; `--conversation` outside a run. Then the clean full offline build,
+	reporting every test taking at least one second. Then live checks in both harnesses through the installed artifacts,
+	which no Java test may replace: the exception runs the launcher outside the sandbox by its absolute path, and keeps it
+	sandboxed behind a variable assignment, `env`, a second command, a relative path and a background command; a Codex
+	profile that denies a read is refused with the explanation; a session on Codex's shared background server is
+	identified; a run's Claude session can append to `to-child.jsonl`.
+- **Exit:** tests, the clean build and the live checks pass on the committed revision. Closes D133.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -4524,6 +4556,7 @@ blocks only the part of a work item that it names.
 | WI-139 | WI-137 |
 | WI-140 | WI-3 |
 | WI-141 | WI-140 |
+| WI-142 | WI-141 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
