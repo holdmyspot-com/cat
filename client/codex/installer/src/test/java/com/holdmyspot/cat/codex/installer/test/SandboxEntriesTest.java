@@ -6,7 +6,6 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
-import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
@@ -491,7 +490,7 @@ public final class SandboxEntriesTest
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, original);
 			HarnessIntegration provider = provider();
-			PluginInstall install = new PluginInstall(provider, _ -> new CommandResult(0, ""), replacer());
+			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
 			Path launcher = home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer");
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");

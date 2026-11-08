@@ -859,7 +859,7 @@ public final class IntegrationTest
 			Path userEntry = userHome.resolve("shared");
 			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
 				json(userEntry.toString()) + "]}}}");
-			PluginInstall install = new PluginInstall(integration(), _ -> new CommandResult(0, ""), replacer());
+			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
 			install.installEntries(home, launcher(home), claude, List.of(codex), wrongLocks,
 				userHome.resolve("account/.cat/sessions"), false);
 			requireThat(Files.readString(home.resolve("settings.json")), "granted").contains(json(wrongLocks.toString()));
@@ -898,7 +898,7 @@ public final class IntegrationTest
 			Path userEntry = userHome.resolve("private");
 			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"denyWrite\":[" +
 				json(userEntry.toString()) + "]}}}");
-			PluginInstall install = new PluginInstall(integration(), _ -> new CommandResult(0, ""), replacer());
+			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
 			install.installEntries(home, launcher(home), claude, List.of(codex), catLocks, wrongState, false);
 			requireThat(Files.readString(home.resolve("settings.json")), "denied").contains(json(wrongState.toString()));
 

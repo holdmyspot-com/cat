@@ -26,6 +26,8 @@ import com.holdmyspot.cat.common.installer.engine.PermissionRecord;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
 import com.holdmyspot.cat.common.installer.engine.test.Releases;
+import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
+import com.holdmyspot.cat.common.installer.secrets.ProcessHarnessCliSecrets;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import java.io.ByteArrayOutputStream;
@@ -408,7 +410,8 @@ public final class InvocationTest
 				new RecordingIntegration(), _ -> Optional.empty(), Platform.LINUX_X64, command ->
 				{
 					throw new AssertionError("Started " + command);
-				}, (command, home) -> arguments -> new CommandResult(127, "node: nvm is not installed\n"), "install",
+				}, (command, home) -> ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(command, home,
+					_ -> new ExitedProgram(new CommandResult(127, "node: nvm is not installed\n"))), "install",
 				"--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);

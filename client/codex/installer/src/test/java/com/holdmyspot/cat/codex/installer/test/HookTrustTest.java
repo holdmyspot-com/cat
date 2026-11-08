@@ -6,7 +6,6 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
-import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -390,7 +389,7 @@ public final class HookTrustTest
 			Files.writeString(configuration, "model = \"gpt\"\n\n" + other + "\n" + trusted(SUBAGENT_START,
 				staleByHand));
 			HarnessIntegration provider = provider();
-			PluginInstall install = new PluginInstall(provider, _ -> new CommandResult(0, ""), replacer());
+			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
 			HarnessInstallation installation = provider.installation(home);
 			Path earlier = plugin(home, VERSION, CAT_HOOKS);
 			install.installEntries(home, earlier, installation, List.of(), locks, locks.resolveSibling("sessions"),
