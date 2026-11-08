@@ -2744,7 +2744,7 @@ reason when a check fails:
   session's permissions deny any read, the launcher refuses at once: its message says that Codex keeps a rule-allowed
   command sandboxed while any read is denied, names the profile and each denied entry, and says to remove them or to
   start the session from a terminal (user ruling, 2026-11-08: "lets fail fast if denied reads is detected and explain
-  why"). For any other reason that leaves it sandboxed, such as a Claude Code session in `dontAsk` mode, an entry that
+  why"). For any other reason that leaves it sandboxed, such as an entry that
   `install` has not added yet, or a spelling that does not match, it names the cause and the absolute path to run.
 - **The session.** It identifies the session from sources that the session's commands cannot change: the harness
   process among its own ancestors, and the session or thread ID that the harness puts in the command's environment
