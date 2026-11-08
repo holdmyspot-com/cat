@@ -17,8 +17,9 @@ import org.testng.annotations.Test;
 /**
  * The behaviour that every {@link ParentPolicySource} shares: it names its harness, tells the user which settings
  * entries quote the writes and hosts that a session lacks, reads the policy that the session's settings give its
- * commands, gives a thread that has a policy of its own that policy and every other thread the session's, and refuses
- * once the session's harness process has ended. A test class of each source extends this class and gives it a session
+ * commands, gives a thread that has a policy of its own that policy and every other thread the session's, fails to
+ * read settings that cannot be read, and refuses settings that cannot be parsed and a session whose harness process
+ * has ended. A test class of each source extends this class and gives it a session
  * of its harness whose settings the test changes.
  */
 public abstract class ParentPolicySourceContract
@@ -72,6 +73,20 @@ public abstract class ParentPolicySourceContract
 		 * @throws IOException if the thread's records cannot be written
 		 */
 		Optional<String> readOnlyThread() throws IOException;
+
+		/**
+		 * Replaces the session's settings file with something that cannot be read as a file.
+		 *
+		 * @throws IOException if the settings cannot be replaced
+		 */
+		void unreadableSettings() throws IOException;
+
+		/**
+		 * Replaces the content of the session's settings file with text that the harness cannot parse.
+		 *
+		 * @throws IOException if the settings cannot be written
+		 */
+		void unparsableSettings() throws IOException;
 
 		/**
 		 * Ends the session's harness process.
@@ -276,6 +291,60 @@ public abstract class ParentPolicySourceContract
 			ParentPolicy threadPolicy = session.source().read(Optional.of(thread.orElse(UNKNOWN_THREAD)));
 			requireThat(writes(threadPolicy, allowed), "threadWritesAllowed").isEqualTo(thread.isEmpty());
 			requireThat(writes(session.source().read(Optional.empty()), allowed), "mainWritesAllowed").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a reading fails with an I/O error, not a refusal, when the session's settings cannot be read.
+	 *
+	 * @throws IOException if the session cannot be created
+	 */
+	@Test
+	public void failsReadingUnreadableSettings() throws IOException
+	{
+		// Requirement: R-I11
+		try (Session session = session())
+		{
+			session.unreadableSettings();
+
+			try
+			{
+				ParentPolicy policy = session.source().read(Optional.empty());
+				throw new AssertionError("The reading did not fail: " + policy);
+			}
+			catch (PolicyRefusal e)
+			{
+				throw new AssertionError("The reading was refused instead of failing", e);
+			}
+			catch (IOException _)
+			{
+				// The reading failed, as it must
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a reading is refused when the session's settings cannot be parsed.
+	 *
+	 * @throws IOException if the session cannot be created
+	 */
+	@Test
+	public void refusesUnparsableSettings() throws IOException
+	{
+		// Requirement: R-I11
+		try (Session session = session())
+		{
+			session.unparsableSettings();
+
+			try
+			{
+				ParentPolicy policy = session.source().read(Optional.empty());
+				throw new AssertionError("The reading was not refused: " + policy);
+			}
+			catch (PolicyRefusal _)
+			{
+				// The source refused, as it must
+			}
 		}
 	}
 

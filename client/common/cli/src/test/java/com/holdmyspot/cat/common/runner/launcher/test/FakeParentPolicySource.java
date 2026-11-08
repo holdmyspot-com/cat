@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,7 +18,7 @@ import java.util.TreeSet;
 /**
  * Stands in for the sandbox policy source of a harness session whose settings the test sets. Like the Codex
  * session launcher's source, each reading gives the session's policy as it is now, a thread that has a policy of its
- * own reads that policy, and every reading after the session has ended is refused.
+ * own reads that policy, and every reading after the session has ended, or its settings became unusable, fails.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -26,7 +27,10 @@ public final class FakeParentPolicySource implements ParentPolicySource
 	private final String harnessName;
 	private final Map<String, ParentPolicy> threads = new HashMap<>();
 	private ParentPolicy session;
-	private PolicyRefusal refusal;
+	/**
+	 * The {@link PolicyRefusal} or {@link IOException} that every reading throws, or {@code null} if readings succeed.
+	 */
+	private Exception failure;
 
 	/**
 	 * Creates a source.
@@ -78,10 +82,10 @@ public final class FakeParentPolicySource implements ParentPolicySource
 	}
 
 	/**
-	 * Makes every later reading fail, as it does once the session's harness process has ended or its settings
-	 * cannot be used.
+	 * Makes every later reading refused, as it is once the session's harness process has ended or its settings cannot
+	 * be parsed.
 	 *
-	 * @param refusal the failure
+	 * @param refusal the refusal
 	 * @throws NullPointerException if {@code refusal} is null
 	 */
 	public void refuse(PolicyRefusal refusal)
@@ -89,7 +93,22 @@ public final class FakeParentPolicySource implements ParentPolicySource
 		requireThat(refusal, "refusal").isNotNull();
 		synchronized (this)
 		{
-			this.refusal = refusal;
+			failure = refusal;
+		}
+	}
+
+	/**
+	 * Makes every later reading fail to read the session's settings, as it does once a settings file cannot be read.
+	 *
+	 * @param failure the failure
+	 * @throws NullPointerException if {@code failure} is null
+	 */
+	public void failReading(IOException failure)
+	{
+		requireThat(failure, "failure").isNotNull();
+		synchronized (this)
+		{
+			this.failure = failure;
 		}
 	}
 
@@ -129,13 +148,15 @@ public final class FakeParentPolicySource implements ParentPolicySource
 	}
 
 	@Override
-	public ParentPolicy read(Optional<String> askingThread) throws PolicyRefusal
+	public ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal
 	{
 		requireThat(askingThread, "askingThread").isNotNull();
 		synchronized (this)
 		{
-			if (refusal != null)
+			if (failure instanceof PolicyRefusal refusal)
 				throw refusal;
+			if (failure instanceof IOException e)
+				throw e;
 			return askingThread.map(threads::get).orElse(session);
 		}
 	}

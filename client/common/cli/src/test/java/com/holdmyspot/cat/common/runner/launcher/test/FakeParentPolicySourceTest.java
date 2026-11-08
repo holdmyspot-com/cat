@@ -98,6 +98,19 @@ public final class FakeParentPolicySourceTest extends ParentPolicySourceContract
 		}
 
 		@Override
+		public void unreadableSettings()
+		{
+			source.failReading(new IOException(folder.resolve("settings") + ": Is a directory"));
+		}
+
+		@Override
+		public void unparsableSettings()
+		{
+			source.refuse(new PolicyRefusal("the settings file " + folder.resolve("settings") + " cannot be parsed",
+				"Fix the file, then start a new session"));
+		}
+
+		@Override
 		public void end()
 		{
 			source.refuse(new PolicyRefusal("the session has ended", "Start a new session"));

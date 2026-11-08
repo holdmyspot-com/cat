@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.runner.launcher.test;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.launcher.ChildBound;
 import com.holdmyspot.cat.common.runner.launcher.ChildNeedsSource;
-import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -14,8 +13,6 @@ import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
-import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -50,54 +47,32 @@ public final class ChildBoundTest
 	}
 
 	/**
-	 * Returns a source of the parent's policy whose readings answer in turn with a policy or throw a failure; once only
-	 * the last answer remains, every later reading repeats it. The source stands for the harness settings and records
-	 * that a real source reads, and each answer for the policy that they hold at that reading.
+	 * Returns a source of the parent's policy whose settings give a policy.
 	 *
-	 * @param answers the {@link ParentPolicy} that each reading returns, or the {@link IOException},
-	 *                {@link PolicyRefusal} or {@link SessionRefusedException} that it throws
+	 * @param policy the policy
 	 * @return the source
 	 */
-	private static ParentPolicySource parent(Object... answers)
+	private static FakeParentPolicySource parent(ParentPolicy policy)
 	{
-		Deque<Object> remaining = new ArrayDeque<>(List.of(answers));
-		return new ParentPolicySource()
+		return new FakeParentPolicySource(HARNESS_NAME, policy);
+	}
+
+	/**
+	 * Returns a source of the parent's policy whose readings fail.
+	 *
+	 * @param failure the {@link PolicyRefusal} or {@link IOException} that each reading throws
+	 * @return the source
+	 */
+	private static FakeParentPolicySource failing(Exception failure)
+	{
+		FakeParentPolicySource parent = parent(ParentPolicy.UNSANDBOXED);
+		switch (failure)
 		{
-			@Override
-			public String harnessName()
-			{
-				return HARNESS_NAME;
-			}
-
-			@Override
-			public String permissionEntries(List<Path> writes, Set<String> hosts)
-			{
-				return "add " + writes + " and " + new TreeSet<>(hosts) + " to the settings of " + HARNESS_NAME;
-			}
-
-			@Override
-			public ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal
-			{
-				Object answer;
-				synchronized (remaining)
-				{
-					if (remaining.size() > 1)
-						answer = remaining.removeFirst();
-					else
-						answer = remaining.getFirst();
-				}
-				switch (answer)
-				{
-					case ParentPolicy policy ->
-					{
-						return policy;
-					}
-					case IOException e -> throw e;
-					case PolicyRefusal e -> throw e;
-					default -> throw new AssertionError(answer);
-				}
-			}
-		};
+			case PolicyRefusal refusal -> parent.refuse(refusal);
+			case IOException e -> parent.failReading(e);
+			default -> throw new AssertionError(failure);
+		}
+		return parent;
 	}
 
 	/**
@@ -161,7 +136,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			ChildBound bound = new ChildBound(parent(failure), (_, _, _, _) ->
+			ChildBound bound = new ChildBound(failing(failure), (_, _, _, _) ->
 			{
 				throw new AssertionError("The child's needs were asked for");
 			});
@@ -187,7 +162,7 @@ public final class ChildBoundTest
 		{
 			Path run = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
 			SessionRefusedException harness = new SessionRefusedException("Codex runs this command");
-			ChildBound bound = new ChildBound(parent(harness), needing(List.of()));
+			ChildBound bound = new ChildBound(failing(harness), needing(List.of()));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> bound.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
@@ -249,9 +224,9 @@ public final class ChildBoundTest
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " and reach " +
-				"other.example, zeta.example, which the requested session needs. To allow this, add [" + cache +
-				"] and [other.example, zeta.example] to the settings of " + HARNESS_NAME + ", then start a new " +
-				HARNESS_NAME + " session.");
+				"other.example, zeta.example, which the requested session needs. To allow this, add \"" + cache +
+				"\" to the writes and \"other.example\", \"zeta.example\" to the hosts in the settings of " +
+				HARNESS_NAME + ", then start a new " + HARNESS_NAME + " session.");
 		}
 	}
 
@@ -360,9 +335,9 @@ public final class ChildBoundTest
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " and reach " +
-				"registry.example, which the requested session needs. To allow this, add [" + cache + "] and " +
-				"[registry.example] to the settings of " + HARNESS_NAME + ", then start a new " + HARNESS_NAME +
-				" session.");
+				"registry.example, which the requested session needs. To allow this, add \"" + cache + "\" to the " +
+				"writes and \"registry.example\" to the hosts in the settings of " + HARNESS_NAME + ", then start a " +
+				"new " + HARNESS_NAME + " session.");
 		}
 	}
 
@@ -381,7 +356,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path state = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			ChildBound bound = new ChildBound(parent(failure), needing(List.of()));
+			ChildBound bound = new ChildBound(failing(failure), needing(List.of()));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () -> bound.snapshot(state));
 
@@ -407,10 +382,10 @@ public final class ChildBoundTest
 			Path state = Files.createDirectory(root.resolve("state"));
 			Path snapshotCache = Files.createDirectory(root.resolve("snapshot cache"));
 			Path launchCache = Files.createDirectory(root.resolve("launch cache"));
-			ChildBound bound = new ChildBound(parent(
-				sandboxed(List.of(run, snapshotCache), List.of(), Set.of("snapshot.example")),
-				sandboxed(List.of(run, launchCache), List.of(), Set.of("launch.example"))), needing(List.of())).
-				snapshot(state);
+			FakeParentPolicySource parent = parent(sandboxed(List.of(run, snapshotCache), List.of(),
+				Set.of("snapshot.example")));
+			ChildBound bound = new ChildBound(parent, needing(List.of())).snapshot(state);
+			parent.allow(sandboxed(List.of(run, launchCache), List.of(), Set.of("launch.example")));
 			ExtraPermissions extra = new ExtraPermissions(List.of(snapshotCache, launchCache),
 				Set.of("snapshot.example", "launch.example"));
 
@@ -420,8 +395,9 @@ public final class ChildBoundTest
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + snapshotCache + ", " +
 				launchCache + " and reach launch.example, snapshot.example, which the requested session needs. To " +
-				"allow this, add [" + snapshotCache + ", " + launchCache + "] and [launch.example, snapshot.example] " +
-				"to the settings of " + HARNESS_NAME + ", then start a new " + HARNESS_NAME + " session.");
+				"allow this, add \"" + snapshotCache + "\", \"" + launchCache + "\" to the writes and " +
+				"\"launch.example\", \"snapshot.example\" to the hosts in the settings of " + HARNESS_NAME +
+				", then start a new " + HARNESS_NAME + " session.");
 		}
 	}
 
@@ -456,15 +432,20 @@ public final class ChildBoundTest
 			Path run = Files.createDirectory(root.resolve("run"));
 			Path state = Files.createDirectory(root.resolve("state"));
 			ParentPolicy writesState = sandboxed(List.of(root), List.of(), Set.of());
-			ParentPolicySource parent;
+			ParentPolicy atSnapshot;
 			if (reading.equals("snapshot"))
-				parent = parent(writesState);
+				atSnapshot = writesState;
 			else
-				parent = parent(sandboxed(List.of(run), List.of(), Set.of()), writesState);
+				atSnapshot = sandboxed(List.of(run), List.of(), Set.of());
+			FakeParentPolicySource parent = parent(atSnapshot);
 			ChildBound bound = new ChildBound(parent, needing(List.of()));
 
-			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.snapshot(state).bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty()));
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
+			{
+				ChildBound snapshot = bound.snapshot(state);
+				parent.allow(writesState);
+				snapshot.bound("codex", run, List.of(), ExtraPermissions.NONE, Optional.empty());
+			});
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: it cannot read " +
 				"this " + HARNESS_NAME + " session's sandbox policy safely: the session's sandbox lets its commands " +

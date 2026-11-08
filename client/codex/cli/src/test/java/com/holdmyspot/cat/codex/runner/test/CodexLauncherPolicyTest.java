@@ -429,6 +429,28 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		}
 
 		/**
+		 * Replaces the session's configuration file with a folder, which cannot be read as a file.
+		 *
+		 * @throws IOException if the file cannot be replaced
+		 */
+		void unreadableConfiguration() throws IOException
+		{
+			Path configuration = home.resolve(".codex/config.toml");
+			Files.delete(configuration);
+			Files.createDirectory(configuration);
+		}
+
+		/**
+		 * Rewrites the session's configuration file with text that is not valid TOML.
+		 *
+		 * @throws IOException if the file cannot be written
+		 */
+		void unparsableConfiguration() throws IOException
+		{
+			Files.writeString(home.resolve(".codex/config.toml"), "sandbox_mode = \n");
+		}
+
+		/**
 		 * Writes, in Codex's home, the rollout of a thread whose latest turn may read every file and write none.
 		 *
 		 * @param threadId  the thread
@@ -542,6 +564,18 @@ public final class CodexLauncherPolicyTest extends ParentPolicySourceContract
 		{
 			fixture.readOnlyRollout(SUBAGENT_THREAD, SESSION_ID);
 			return Optional.of(SUBAGENT_THREAD);
+		}
+
+		@Override
+		public void unreadableSettings() throws IOException
+		{
+			fixture.unreadableConfiguration();
+		}
+
+		@Override
+		public void unparsableSettings() throws IOException
+		{
+			fixture.unparsableConfiguration();
 		}
 
 		@Override

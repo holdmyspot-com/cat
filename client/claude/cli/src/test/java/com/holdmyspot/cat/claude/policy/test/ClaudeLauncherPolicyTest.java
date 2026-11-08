@@ -241,6 +241,20 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 		}
 
 		@Override
+		public void unreadableSettings() throws IOException
+		{
+			Path settings = fixture.configuration.resolve("settings.json");
+			Files.delete(settings);
+			Files.createDirectory(settings);
+		}
+
+		@Override
+		public void unparsableSettings() throws IOException
+		{
+			fixture.userSettings("{\"sandbox\": ");
+		}
+
+		@Override
 		public void end()
 		{
 			fixture.running = false;
