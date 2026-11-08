@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.secrets.CommandsSecrets;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -42,6 +43,16 @@ import java.util.regex.Pattern;
  */
 public final class Commands
 {
+	static
+	{
+		CommandsSecrets.setCommandsAccess((commands, result) ->
+		{
+			requireThat(commands, "commands").isNotNull();
+			requireThat(result, "result").isNotNull();
+			return commands.render(result);
+		});
+	}
+
 	private static final String MAX_CONCURRENCY = "--max-concurrency";
 	private static final String GOAL = "--goal";
 	private static final String EXTRA_PERMISSIONS = ExtraPermissions.OPTION;

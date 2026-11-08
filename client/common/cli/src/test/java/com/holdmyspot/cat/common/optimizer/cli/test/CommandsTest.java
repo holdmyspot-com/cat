@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
@@ -20,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.cli.CommandResult;
 import com.holdmyspot.cat.common.optimizer.cli.Commands;
 import com.holdmyspot.cat.common.optimizer.cli.Core;
 import com.holdmyspot.cat.common.optimizer.cli.InvalidCommandException;
+import com.holdmyspot.cat.common.optimizer.cli.OptimizerCore;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
@@ -32,6 +34,8 @@ import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
+import com.holdmyspot.cat.common.secrets.CommandsSecrets;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -41,6 +45,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -54,7 +59,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Tests {@link Commands} with a fake {@link Core}.
+ * Tests {@link Commands} over the real {@link OptimizerCore} of a project without campaigns.
  */
 public final class CommandsTest
 {
@@ -81,168 +86,237 @@ public final class CommandsTest
 	}
 
 	/**
-	 * A core that records its calls.
+	 * A Git work tree with the prompt file {@code CLAUDE.md} and neither a campaign nor a prompt test configuration,
+	 * whose commands run on the real core of a new command scope. Each call that a command makes to the core is
+	 * recorded with its arguments. Without a campaign or a configuration, the core refuses every command that reaches
+	 * it, so no command starts a session.
 	 */
-	private static final class FakeCore implements Core
+	private static final class Project
 	{
+		private final Path root;
 		private final List<String> calls = new ArrayList<>();
-		private final StatusReport status = StatusReport.of(new Builder().confirmed().build(),
-			ReportEvidence.NONE);
-		private CommandResult result = CommandResult.of(status, Harness.CLAUDE);
-		private Exception failure;
 		private int ceiling;
 		private String goal;
 		private Path extraPermissions;
 
 		/**
-		 * Returns the result, or throws the scripted failure.
+		 * Creates a project.
 		 *
-		 * @param call the call, for the record
-		 * @return the result
-		 * @throws CommandRefusedException if the failure is a refusal
-		 * @throws IOException if the failure is an I/O error
+		 * @param root the project directory
 		 */
-		private CommandResult answer(String call) throws CommandRefusedException, IOException
+		private Project(Path root)
 		{
-			calls.add(call);
-			if (failure instanceof CommandRefusedException refused)
-				throw refused;
-			if (failure instanceof IOException io)
-				throw io;
-			return result;
+			this.root = root;
 		}
 
-		@Override
-		public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
-			throws CommandRefusedException, IOException
+		/**
+		 * Creates a project in a new temporary directory.
+		 *
+		 * @param cleanup removes the directory
+		 * @return the project
+		 * @throws IOException if the project cannot be written
+		 */
+		static Project create(TemporaryDirectories cleanup) throws IOException
 		{
-			this.ceiling = ceiling;
-			this.goal = goal;
-			this.extraPermissions = extraPermissions;
-			return answer("start " + target);
+			Path root = cleanup.add(Files.createTempDirectory("commands")).toRealPath();
+			Files.createDirectory(root.resolve(".git"));
+			Files.writeString(root.resolve("CLAUDE.md"), "Be brief.\n");
+			return new Project(root);
 		}
 
-		@Override
-		public CommandResult run(String campaign) throws CommandRefusedException, IOException
+		/**
+		 * Runs a command on Linux, where the trials are sandboxed.
+		 *
+		 * @param args   the arguments
+		 * @param output receives the printed JSON
+		 * @return the exit code
+		 */
+		int run(List<String> args, StringBuilder output)
 		{
-			return answer("run " + campaign);
+			return run(_ -> Optional.empty(), Platform.LINUX_X64, args, output);
 		}
 
-		@Override
-		public CommandResult status(String campaign) throws CommandRefusedException, IOException
+		/**
+		 * Runs a command on a platform.
+		 *
+		 * @param trialSandbox decides whether the harness of the campaign's trials sandboxes them on {@code platform}
+		 * @param platform     the platform that runs the command
+		 * @param args         the arguments
+		 * @param output       receives the printed JSON
+		 * @return the exit code
+		 */
+		int run(HarnessSandbox trialSandbox, Platform platform, List<String> args, StringBuilder output)
 		{
-			return answer("status " + campaign);
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			int exit;
+			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, root);
+				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				exit = new Commands(new RecordingCore(new OptimizerCore(scope)), JSON, ZoneOffset.UTC, trialSandbox,
+					platform).execute(args, out);
+			}
+			output.append(bytes.toString(StandardCharsets.UTF_8));
+			return exit;
 		}
 
-		@Override
-		public CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException,
-			IOException
+		/**
+		 * Validates the arguments of a command.
+		 *
+		 * @param args the arguments
+		 * @return the command
+		 * @throws InvalidCommandException if the arguments are not a well-formed command
+		 */
+		Command parse(List<String> args)
 		{
-			return answer("confirm " + campaign + " " + scope.id());
+			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
+			{
+				return new Commands(new RecordingCore(new OptimizerCore(scope)), JSON, ZoneOffset.UTC,
+					_ -> Optional.empty(), Platform.LINUX_X64).parse(args);
+			}
 		}
 
-		@Override
-		public CommandResult revise(String campaign, String feedback) throws CommandRefusedException, IOException
+		/**
+		 * Renders a result as a command prints it.
+		 *
+		 * @param zone   the user's time zone
+		 * @param result the result
+		 * @return the JSON text
+		 */
+		String render(ZoneId zone, CommandResult result)
 		{
-			return answer("revise " + campaign + " " + feedback);
+			try (TestOptimizerCommandScope<FakeSessionPort> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, root))
+			{
+				Commands commands = new Commands(new OptimizerCore(scope), JSON, zone, _ -> Optional.empty(),
+					Platform.LINUX_X64);
+				return CommandsSecrets.getCommandsAccess().render(commands, result);
+			}
 		}
 
-		@Override
-		public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
-			throws CommandRefusedException, IOException
+		/**
+		 * Records each call of the commands and passes it on to the real core.
+		 */
+		private final class RecordingCore implements Core
 		{
-			return answer("choose " + campaign + " " + choice + " " + attempt + " " + reviewPoint);
-		}
+			private final Core core;
 
-		@Override
-		public CommandResult resolveConflict(String campaign, int resolution)
-			throws CommandRefusedException, IOException
-		{
-			return answer("resolve " + campaign + " " + resolution);
-		}
+			/**
+			 * Creates a recorder.
+			 *
+			 * @param core the core that answers each call
+			 */
+			RecordingCore(Core core)
+			{
+				this.core = core;
+			}
 
-		@Override
-		public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
-		{
-			return answer("cancel " + campaign);
-		}
-	}
+			@Override
+			public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
+				throws CommandRefusedException, IOException, InterruptedException
+			{
+				calls.add("start " + target);
+				Project.this.ceiling = ceiling;
+				Project.this.goal = goal;
+				Project.this.extraPermissions = extraPermissions;
+				return core.start(target, ceiling, goal, extraPermissions);
+			}
 
-	/**
-	 * Runs a command.
-	 *
-	 * @param core the core
-	 * @param args the arguments
-	 * @param output receives the printed JSON
-	 * @return the exit code
-	 */
-	private static int run(FakeCore core, List<String> args, StringBuilder output)
-	{
-		return run(core, _ -> Optional.empty(), Platform.LINUX_X64, args, output);
-	}
+			@Override
+			public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
+			{
+				calls.add("run " + campaign);
+				return core.run(campaign);
+			}
 
-	/**
-	 * Runs a command on a platform.
-	 *
-	 * @param core         the core
-	 * @param trialSandbox decides whether the harness of the campaign's trials sandboxes them on {@code platform}
-	 * @param platform     the platform that runs the command
-	 * @param args         the arguments
-	 * @param output       receives the printed JSON
-	 * @return the exit code
-	 */
-	private static int run(FakeCore core, HarnessSandbox trialSandbox, Platform platform, List<String> args,
-		StringBuilder output)
-	{
-		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-		int exit;
-		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
-		{
-			exit = new Commands(core, JSON, ZoneOffset.UTC, trialSandbox, platform).execute(args, out);
+			@Override
+			public CommandResult status(String campaign) throws CommandRefusedException, IOException
+			{
+				calls.add("status " + campaign);
+				return core.status(campaign);
+			}
+
+			@Override
+			public CommandResult confirm(String campaign, CertificationScope scope) throws CommandRefusedException,
+				IOException
+			{
+				calls.add("confirm " + campaign + " " + scope.id());
+				return core.confirm(campaign, scope);
+			}
+
+			@Override
+			public CommandResult revise(String campaign, String feedback)
+				throws CommandRefusedException, IOException, InterruptedException
+			{
+				calls.add("revise " + campaign + " " + feedback);
+				return core.revise(campaign, feedback);
+			}
+
+			@Override
+			public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
+				throws CommandRefusedException, IOException, InterruptedException
+			{
+				calls.add("choose " + campaign + " " + choice + " " + attempt + " " + reviewPoint);
+				return core.choose(campaign, choice, attempt, reviewPoint);
+			}
+
+			@Override
+			public CommandResult resolveConflict(String campaign, int resolution)
+				throws CommandRefusedException, IOException, InterruptedException
+			{
+				calls.add("resolve " + campaign + " " + resolution);
+				return core.resolveConflict(campaign, resolution);
+			}
+
+			@Override
+			public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
+			{
+				calls.add("cancel " + campaign);
+				return core.cancel(campaign);
+			}
 		}
-		output.append(bytes.toString(StandardCharsets.UTF_8));
-		return exit;
 	}
 
 	/**
 	 * Verifies that each command reaches the core with its validated arguments.
 	 */
 	@Test
-	public void dispatchesEveryCommand()
+	public void dispatchesEveryCommand() throws IOException
 	{
 		// Requirement: R-I2
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		List<List<String>> commands = List.of(
-			List.of("start", "prompts/a.md"),
-			List.of("run", "c1"),
-			List.of("status", "c1"),
-			List.of("status", "prompts/a.md"),
-			List.of("confirm", "c1"),
-			List.of("confirm", "c1", "weakest_cell"),
-			List.of("confirm", "c1", "latest_versions"),
-			List.of("confirm", "c1", "described"),
-			List.of("revise", "c1", "tighten the contract"),
-			List.of("choose", "c1", "keep_improvement", "--attempt", "2"),
-			List.of("choose", "c1", "more_evidence", "--review-point", "3"),
-			List.of("choose", "c1", "stop"),
-			List.of("cancel", "c1"));
-		for (List<String> command : commands)
-			requireThat(run(core, command, output), "exit").isEqualTo(0);
-		requireThat(core.calls, "calls").isEqualTo(List.of(
-			"start " + Path.of("prompts/a.md"),
-			"run c1",
-			"status c1",
-			"status prompts/a.md",
-			"confirm c1 weakest_cell",
-			"confirm c1 weakest_cell",
-			"confirm c1 latest_versions",
-			"confirm c1 described",
-			"revise c1 tighten the contract",
-			"choose c1 KEEP_IMPROVEMENT 2 0",
-			"choose c1 MORE_EVIDENCE 0 3",
-			"choose c1 STOP 0 0",
-			"cancel c1"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			List<List<String>> commands = List.of(
+				List.of("start", "prompts/a.md"),
+				List.of("run", "c1"),
+				List.of("status", "c1"),
+				List.of("status", "prompts/a.md"),
+				List.of("confirm", "c1"),
+				List.of("confirm", "c1", "weakest_cell"),
+				List.of("confirm", "c1", "latest_versions"),
+				List.of("confirm", "c1", "described"),
+				List.of("revise", "c1", "tighten the contract"),
+				List.of("choose", "c1", "keep_improvement", "--attempt", "2"),
+				List.of("choose", "c1", "more_evidence", "--review-point", "3"),
+				List.of("choose", "c1", "stop"),
+				List.of("cancel", "c1"));
+			for (List<String> command : commands)
+				requireThat(project.run(command, output), "exit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEqualTo(List.of(
+				"start " + Path.of("prompts/a.md"),
+				"run c1",
+				"status c1",
+				"status prompts/a.md",
+				"confirm c1 weakest_cell",
+				"confirm c1 weakest_cell",
+				"confirm c1 latest_versions",
+				"confirm c1 described",
+				"revise c1 tighten the contract",
+				"choose c1 KEEP_IMPROVEMENT 2 0",
+				"choose c1 MORE_EVIDENCE 0 3",
+				"choose c1 STOP 0 0",
+				"cancel c1"));
+		}
 	}
 
 	/**
@@ -271,15 +345,18 @@ public final class CommandsTest
 	 * @param args the arguments
 	 */
 	@Test(dataProvider = "campaignCommands")
-	public void refusesCampaignWithoutTrialSandbox(List<String> args)
+	public void refusesCampaignWithoutTrialSandbox(List<String> args) throws IOException
 	{
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		requireThat(run(core, WINDOWS_REFUSAL, Platform.WINDOWS_X64, args, output), "exit").isEqualTo(1);
-		requireThat(core.calls, "calls").isEmpty();
-		JsonNode result = JSON.readTree(output.toString());
-		requireThat(result.get("status").asString(), "status").isEqualTo("refused");
-		requireThat(result.get("message").asString(), "message").isEqualTo(WINDOWS_REFUSAL_REASON);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			requireThat(project.run(WINDOWS_REFUSAL, Platform.WINDOWS_X64, args, output), "exit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEmpty();
+			JsonNode result = JSON.readTree(output.toString());
+			requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(result.get("message").asString(), "message").isEqualTo(WINDOWS_REFUSAL_REASON);
+		}
 	}
 
 	/**
@@ -289,15 +366,18 @@ public final class CommandsTest
 	 * @param args the arguments
 	 */
 	@Test(dataProvider = "campaignCommands")
-	public void runsCampaignCommandWithTrialSandbox(List<String> args)
+	public void runsCampaignCommandWithTrialSandbox(List<String> args) throws IOException
 	{
-		for (Platform platform : List.of(Platform.WINDOWS_X64, Platform.LINUX_X64, Platform.MACOS_ARM64))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeCore core = new FakeCore();
-			StringBuilder output = new StringBuilder();
-			requireThat(run(core, _ -> Optional.empty(), platform, args, output), "exit").
-				withContext(platform, "platform").isEqualTo(0);
-			requireThat(core.calls, "calls").withContext(platform, "platform").size().isEqualTo(1);
+			for (Platform platform : List.of(Platform.WINDOWS_X64, Platform.LINUX_X64, Platform.MACOS_ARM64))
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				requireThat(project.run(_ -> Optional.empty(), platform, args, output), "exit").
+					withContext(platform, "platform").isEqualTo(1);
+				requireThat(project.calls, "calls").withContext(platform, "platform").size().isEqualTo(1);
+			}
 		}
 	}
 
@@ -306,47 +386,56 @@ public final class CommandsTest
 	 * that runs the campaign's trials cannot sandbox them.
 	 */
 	@Test
-	public void runsStatusAndCancelWithoutTrialSandbox()
+	public void runsStatusAndCancelWithoutTrialSandbox() throws IOException
 	{
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		requireThat(run(core, WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("status", "c1"), output),
-			"statusExit").isEqualTo(0);
-		requireThat(run(core, WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("cancel", "c1"), output),
-			"cancelExit").isEqualTo(0);
-		requireThat(core.calls, "calls").isEqualTo(List.of("status c1", "cancel c1"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			requireThat(project.run(WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("status", "c1"), output),
+				"statusExit").isEqualTo(1);
+			requireThat(project.run(WINDOWS_REFUSAL, Platform.WINDOWS_ARM64, List.of("cancel", "c1"), output),
+				"cancelExit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEqualTo(List.of("status c1", "cancel c1"));
+		}
 	}
 
 	/**
 	 * Verifies that {@code confirm} with an unknown certification scope is refused with every choice named.
 	 */
 	@Test
-	public void confirmNamesEveryScopeChoice()
+	public void confirmNamesEveryScopeChoice() throws IOException
 	{
 		// Requirement: R-C15
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		requireThat(run(core, List.of("confirm", "c1", "all_models"), output), "exit").isEqualTo(2);
-		requireThat(core.calls, "calls").isEmpty();
-		String message = JSON.readTree(output.toString()).get("message").asString();
-		requireThat(message, "message").contains("weakest_cell").contains("latest_versions").contains("described");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			requireThat(project.run(List.of("confirm", "c1", "all_models"), output), "exit").isEqualTo(2);
+			requireThat(project.calls, "calls").isEmpty();
+			String message = JSON.readTree(output.toString()).get("message").asString();
+			requireThat(message, "message").contains("weakest_cell").contains("latest_versions").contains("described");
+		}
 	}
 
 	/**
 	 * Verifies that the campaign ceiling accepts both endpoints of its range.
 	 */
 	@Test
-	public void acceptsCampaignCeiling()
+	public void acceptsCampaignCeiling() throws IOException
 	{
 		// Requirement: R-E4
-		for (String ceiling : List.of("1", "16"))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeCore core = new FakeCore();
-			StringBuilder output = new StringBuilder();
-			requireThat(run(core, List.of("start", "prompts/a.md", "--max-concurrency", ceiling), output),
-				"exit").isEqualTo(0);
-			requireThat(core.calls, "calls").isEqualTo(List.of("start " + Path.of("prompts/a.md")));
-			requireThat(core.ceiling, "ceiling").isEqualTo(Integer.parseInt(ceiling));
+			for (String ceiling : List.of("1", "16"))
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				requireThat(project.run(List.of("start", "prompts/a.md", "--max-concurrency", ceiling), output),
+					"exit").isEqualTo(1);
+				requireThat(project.calls, "calls").isEqualTo(List.of("start " + Path.of("prompts/a.md")));
+				requireThat(project.ceiling, "ceiling").isEqualTo(Integer.parseInt(ceiling));
+			}
 		}
 	}
 
@@ -355,25 +444,28 @@ public final class CommandsTest
 	 * option is absent.
 	 */
 	@Test
-	public void passesTheGoal()
+	public void passesTheGoal() throws IOException
 	{
 		// Requirement: R-C24
-		String goal = "Read files whole without slowing searches.";
-		List<List<String>> commands = List.of(
-			List.of("start", "prompts/a.md", "--goal", goal),
-			List.of("start", "prompts/a.md", "--goal", goal, "--max-concurrency", "3"),
-			List.of("start", "prompts/a.md", "--max-concurrency", "3", "--goal", goal));
-		for (List<String> command : commands)
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeCore core = new FakeCore();
-			StringBuilder output = new StringBuilder();
-			requireThat(run(core, command, output), "exit").isEqualTo(0);
-			requireThat(core.calls, "calls").isEqualTo(List.of("start " + Path.of("prompts/a.md")));
-			requireThat(core.goal, "goal").isEqualTo(goal);
+			String goal = "Read files whole without slowing searches.";
+			List<List<String>> commands = List.of(
+				List.of("start", "prompts/a.md", "--goal", goal),
+				List.of("start", "prompts/a.md", "--goal", goal, "--max-concurrency", "3"),
+				List.of("start", "prompts/a.md", "--max-concurrency", "3", "--goal", goal));
+			for (List<String> command : commands)
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				requireThat(project.run(command, output), "exit").isEqualTo(1);
+				requireThat(project.calls, "calls").isEqualTo(List.of("start " + Path.of("prompts/a.md")));
+				requireThat(project.goal, "goal").isEqualTo(goal);
+			}
+			Project project = Project.create(cleanup);
+			requireThat(project.run(List.of("start", "prompts/a.md"), new StringBuilder()), "exit").isEqualTo(1);
+			requireThat(project.goal, "absentGoal").isNull();
 		}
-		FakeCore core = new FakeCore();
-		requireThat(run(core, List.of("start", "prompts/a.md"), new StringBuilder()), "exit").isEqualTo(0);
-		requireThat(core.goal, "absentGoal").isNull();
 	}
 
 	/**
@@ -381,23 +473,26 @@ public final class CommandsTest
 	 * the option is absent.
 	 */
 	@Test
-	public void passesTheExtraPermissionsFile()
+	public void passesTheExtraPermissionsFile() throws IOException
 	{
 		// Requirement: R-I11
-		List<List<String>> commands = List.of(
-			List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json"),
-			List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json", "--goal", "Be brief."),
-			List.of("start", "prompts/a.md", "--max-concurrency", "3", "--extra-permissions", "needs/registry.json",
-				"--goal", "Be brief."));
-		for (List<String> command : commands)
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeCore core = new FakeCore();
-			requireThat(run(core, command, new StringBuilder()), "exit").isEqualTo(0);
-			requireThat(core.extraPermissions, "extraPermissions").isEqualTo(Path.of("needs/registry.json"));
+			List<List<String>> commands = List.of(
+				List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json"),
+				List.of("start", "prompts/a.md", "--extra-permissions", "needs/registry.json", "--goal", "Be brief."),
+				List.of("start", "prompts/a.md", "--max-concurrency", "3", "--extra-permissions", "needs/registry.json",
+					"--goal", "Be brief."));
+			for (List<String> command : commands)
+			{
+				Project project = Project.create(cleanup);
+				requireThat(project.run(command, new StringBuilder()), "exit").isEqualTo(1);
+				requireThat(project.extraPermissions, "extraPermissions").isEqualTo(Path.of("needs/registry.json"));
+			}
+			Project project = Project.create(cleanup);
+			requireThat(project.run(List.of("start", "prompts/a.md"), new StringBuilder()), "exit").isEqualTo(1);
+			requireThat(project.extraPermissions, "absentExtraPermissions").isNull();
 		}
-		FakeCore core = new FakeCore();
-		requireThat(run(core, List.of("start", "prompts/a.md"), new StringBuilder()), "exit").isEqualTo(0);
-		requireThat(core.extraPermissions, "absentExtraPermissions").isNull();
 	}
 
 	/**
@@ -405,23 +500,26 @@ public final class CommandsTest
 	 * core.
 	 */
 	@Test
-	public void rejectsInvalidExtraPermissionsOption()
+	public void rejectsInvalidExtraPermissionsOption() throws IOException
 	{
 		// Requirement: R-I11
-		List<List<String>> options = List.of(
-			List.of("--extra-permissions"),
-			List.of("--extra-permissions", " "),
-			List.of("--extra-permissions", "a.json", "--extra-permissions", "b.json"));
-		for (List<String> option : options)
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeCore core = new FakeCore();
-			StringBuilder output = new StringBuilder();
-			List<String> args = new ArrayList<>(List.of("start", "prompts/a.md"));
-			args.addAll(option);
-			requireThat(run(core, args, output), "exit").isEqualTo(2);
-			requireThat(core.calls, "calls").isEmpty();
-			requireThat(JSON.readTree(output.toString()).get("message").asString(), "message").
-				contains("--extra-permissions");
+			List<List<String>> options = List.of(
+				List.of("--extra-permissions"),
+				List.of("--extra-permissions", " "),
+				List.of("--extra-permissions", "a.json", "--extra-permissions", "b.json"));
+			for (List<String> option : options)
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				List<String> args = new ArrayList<>(List.of("start", "prompts/a.md"));
+				args.addAll(option);
+				requireThat(project.run(args, output), "exit").isEqualTo(2);
+				requireThat(project.calls, "calls").isEmpty();
+				requireThat(JSON.readTree(output.toString()).get("message").asString(), "message").
+					contains("--extra-permissions");
+			}
 		}
 	}
 
@@ -429,25 +527,28 @@ public final class CommandsTest
 	 * Verifies that malformed ceilings are refused with the range before calling the core.
 	 */
 	@Test
-	public void rejectsInvalidCampaignCeiling()
+	public void rejectsInvalidCampaignCeiling() throws IOException
 	{
 		// Requirement: R-E4
-		List<List<String>> options = List.of(
-			List.of("--max-concurrency", "0"),
-			List.of("--max-concurrency", "17"),
-			List.of("--max-concurrency", "x"),
-			List.of("--max-concurrency", "1", "--max-concurrency", "16"),
-			List.of("--max-concurrency"));
-		for (List<String> option : options)
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeCore core = new FakeCore();
-			StringBuilder output = new StringBuilder();
-			List<String> args = new ArrayList<>(List.of("start", "prompts/a.md"));
-			args.addAll(option);
-			requireThat(run(core, args, output), "exit").isEqualTo(2);
-			requireThat(core.calls, "calls").isEmpty();
-			String message = JSON.readTree(output.toString()).get("message").asString();
-			requireThat(message.lines().findFirst().orElseThrow(), "message").contains("1..16");
+			List<List<String>> options = List.of(
+				List.of("--max-concurrency", "0"),
+				List.of("--max-concurrency", "17"),
+				List.of("--max-concurrency", "x"),
+				List.of("--max-concurrency", "1", "--max-concurrency", "16"),
+				List.of("--max-concurrency"));
+			for (List<String> option : options)
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				List<String> args = new ArrayList<>(List.of("start", "prompts/a.md"));
+				args.addAll(option);
+				requireThat(project.run(args, output), "exit").isEqualTo(2);
+				requireThat(project.calls, "calls").isEmpty();
+				String message = JSON.readTree(output.toString()).get("message").asString();
+				requireThat(message.lines().findFirst().orElseThrow(), "message").contains("1..16");
+			}
 		}
 	}
 
@@ -467,24 +568,28 @@ public final class CommandsTest
 	 * spelling it shows reaches the core.
 	 */
 	@Test
-	public void usageListsAcceptedScopes()
+	public void usageListsAcceptedScopes() throws IOException
 	{
 		// Requirement: R-C15
-		String line = Commands.USAGE.lines().map(String::strip).filter(text -> text.startsWith("confirm ")).
-			findFirst().orElseThrow();
-		String alternatives = line.substring(line.lastIndexOf('<') + 1, line.lastIndexOf('>'));
-		List<String> shown = new ArrayList<>();
-		for (String alternative : alternatives.split("\\|"))
-			shown.add(alternative.strip());
-		List<String> accepted = new ArrayList<>();
-		for (CertificationScope scope : CertificationScope.values())
-			accepted.add(scope.id());
-		requireThat(shown, "shown").isEqualTo(accepted);
-		for (String scope : shown)
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeCore core = new FakeCore();
-			StringBuilder output = new StringBuilder();
-			requireThat(run(core, List.of("confirm", "c1", scope), output), "exit").isEqualTo(0);
+			String line = Commands.USAGE.lines().map(String::strip).filter(text -> text.startsWith("confirm ")).
+				findFirst().orElseThrow();
+			String alternatives = line.substring(line.lastIndexOf('<') + 1, line.lastIndexOf('>'));
+			List<String> shown = new ArrayList<>();
+			for (String alternative : alternatives.split("\\|"))
+				shown.add(alternative.strip());
+			List<String> accepted = new ArrayList<>();
+			for (CertificationScope scope : CertificationScope.values())
+				accepted.add(scope.id());
+			requireThat(shown, "shown").isEqualTo(accepted);
+			for (String scope : shown)
+			{
+				Project project = Project.create(cleanup);
+				StringBuilder output = new StringBuilder();
+				requireThat(project.run(List.of("confirm", "c1", scope), output), "exit").isEqualTo(1);
+				requireThat(project.calls, "calls").isEqualTo(List.of("confirm c1 " + scope));
+			}
 		}
 	}
 
@@ -513,27 +618,33 @@ public final class CommandsTest
 	 * @param choice the choice that the refusal names
 	 */
 	@Test(dataProvider = "mismatchedChoiceOptions")
-	public void optionRefusalNamesAcceptedChoice(List<String> args, String choice)
+	public void optionRefusalNamesAcceptedChoice(List<String> args, String choice) throws IOException
 	{
 		// Requirement: R-I2
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		requireThat(run(core, args, output), "exit").isEqualTo(2);
-		String message = JSON.readTree(output.toString()).get("message").asString();
-		requireThat(message.lines().findFirst().orElseThrow(), "message").contains(choice);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			requireThat(project.run(args, output), "exit").isEqualTo(2);
+			String message = JSON.readTree(output.toString()).get("message").asString();
+			requireThat(message.lines().findFirst().orElseThrow(), "message").contains(choice);
+		}
 	}
 
 	/**
 	 * Verifies that the authority-warning choice that continues within the confirmed authority reaches the core.
 	 */
 	@Test
-	public void dispatchesAuthorityWarningChoices()
+	public void dispatchesAuthorityWarningChoices() throws IOException
 	{
 		// Requirement: R-W4
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		requireThat(run(core, List.of("choose", "c1", "use_authorized_source"), output), "exit").isEqualTo(0);
-		requireThat(core.calls, "calls").isEqualTo(List.of("choose c1 USE_AUTHORIZED_SOURCE 0 0"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			requireThat(project.run(List.of("choose", "c1", "use_authorized_source"), output), "exit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEqualTo(List.of("choose c1 USE_AUTHORIZED_SOURCE 0 0"));
+		}
 	}
 
 	/**
@@ -541,62 +652,79 @@ public final class CommandsTest
 	 * {@code --target} an unknown option, each rejected before the core is called.
 	 */
 	@Test
-	public void rejectsExternalTargetAuthorization()
+	public void rejectsExternalTargetAuthorization() throws IOException
 	{
 		// Requirement: R-W4
-		FakeCore core = new FakeCore();
-		StringBuilder choiceOutput = new StringBuilder();
-		int choiceExit = run(core, List.of("choose", "c1", "authorize_target", "--target", "/external/shared.md"),
-			choiceOutput);
-		StringBuilder optionOutput = new StringBuilder();
-		int optionExit = run(core, List.of("choose", "c1", "use_authorized_source", "--target", "/external/shared.md"),
-			optionOutput);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder choiceOutput = new StringBuilder();
+			int choiceExit = project.run(List.of("choose", "c1", "authorize_target", "--target", "/external/shared.md"),
+				choiceOutput);
+			StringBuilder optionOutput = new StringBuilder();
+			int optionExit = project.run(List.of("choose", "c1", "use_authorized_source", "--target",
+				"/external/shared.md"), optionOutput);
 
-		requireThat(choiceExit, "choiceExit").isEqualTo(2);
-		requireThat(JSON.readTree(choiceOutput.toString()).get("message").asString(), "choiceMessage").
-			contains("Unknown choice: 'authorize_target'");
-		requireThat(optionExit, "optionExit").isEqualTo(2);
-		requireThat(JSON.readTree(optionOutput.toString()).get("message").asString(), "optionMessage").
-			contains("unknown option --target");
-		requireThat(core.calls, "calls").isEmpty();
-		requireThat(Commands.USAGE, "usage").doesNotContain("--target");
+			requireThat(choiceExit, "choiceExit").isEqualTo(2);
+			requireThat(JSON.readTree(choiceOutput.toString()).get("message").asString(), "choiceMessage").
+				contains("Unknown choice: 'authorize_target'");
+			requireThat(optionExit, "optionExit").isEqualTo(2);
+			requireThat(JSON.readTree(optionOutput.toString()).get("message").asString(), "optionMessage").
+				contains("unknown option --target");
+			requireThat(project.calls, "calls").isEmpty();
+			requireThat(Commands.USAGE, "usage").doesNotContain("--target");
+		}
 	}
 
 	/**
 	 * Verifies that a numbered conflict resolution is accepted by the command parser.
 	 */
 	@Test
-	public void parsesConflictResolution()
+	public void parsesConflictResolution() throws IOException
 	{
 		// Requirement: R-D13
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		requireThat(run(core, List.of("choose", "c1", "resolution_2"), output), "exit").isEqualTo(0);
-		requireThat(core.calls, "calls").isEqualTo(List.of("resolve c1 2"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			requireThat(project.run(List.of("choose", "c1", "resolution_2"), output), "exit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEqualTo(List.of("resolve c1 2"));
+		}
 	}
 
 	/**
 	 * Verifies the output schema: the status object plus harness, summary, proposal, deliveryResult and message.
 	 */
 	@Test
-	public void printsStatusObjectWithExtensions()
+	public void printsStatusObjectWithExtensions() throws IOException
 	{
 		// Requirement: R-I2
-		FakeCore core = new FakeCore();
-		core.result = new CommandResult(core.status, Harness.CODEX, "the proposal", null, "a notice");
-		StringBuilder output = new StringBuilder();
-		int exit = run(core, List.of("status", "c1"), output);
-		requireThat(exit, "exit").isEqualTo(0);
-		JsonNode json = JSON.readTree(output.toString());
-		requireThat(json.get("status").asString(), "status").isEqualTo(core.status.status().label());
-		requireThat(json.get("campaign").asString(), "campaign").isEqualTo(core.status.campaignId());
-		requireThat(json.has("choices"), "hasChoices").isTrue();
-		requireThat(json.get("harness").asString(), "harness").isEqualTo("codex");
-		requireThat(json.get("summary").asString(), "summary").isEqualTo(core.status.summary(ZoneOffset.UTC));
-		requireThat(json.get("proposal").asString(), "proposal").isEqualTo("the proposal");
-		requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
-		requireThat(json.get("message").asString(), "message").isEqualTo("a notice");
-		requireThat(output.toString().strip().lines().count(), "lines").isEqualTo(1L);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			StatusReport status = status();
+			String text = Project.create(cleanup).render(ZoneOffset.UTC,
+				new CommandResult(status, Harness.CODEX, "the proposal", null, "a notice"));
+			JsonNode json = JSON.readTree(text);
+			requireThat(json.get("status").asString(), "status").isEqualTo(status.status().label());
+			requireThat(json.get("campaign").asString(), "campaign").isEqualTo(status.campaignId());
+			requireThat(json.has("choices"), "hasChoices").isTrue();
+			requireThat(json.get("harness").asString(), "harness").isEqualTo("codex");
+			requireThat(json.get("summary").asString(), "summary").isEqualTo(status.summary(ZoneOffset.UTC));
+			requireThat(json.get("proposal").asString(), "proposal").isEqualTo("the proposal");
+			requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
+			requireThat(json.get("message").asString(), "message").isEqualTo("a notice");
+			requireThat(text.lines().count(), "lines").isEqualTo(1L);
+		}
+	}
+
+	/**
+	 * Returns the status of a confirmed campaign without evidence.
+	 *
+	 * @return the status
+	 */
+	private static StatusReport status()
+	{
+		return StatusReport.of(new Builder().confirmed().build(), ReportEvidence.NONE);
 	}
 
 	/**
@@ -604,32 +732,26 @@ public final class CommandsTest
 	 * object keeps the UTC instant.
 	 */
 	@Test
-	public void printsSummaryTimesInUserTimeZone()
+	public void printsSummaryTimesInUserTimeZone() throws IOException
 	{
-		FakeCore core = new FakeCore();
-		StatusReport held = StatusReport.of(new Builder().confirmed().
-			throttle(new Throttle(Instant.parse("2026-10-09T21:13:08Z"), 2, 1, 2)).build(), ReportEvidence.NONE);
-		core.result = CommandResult.of(held, Harness.CLAUDE);
-		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-		int exit;
-		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			exit = new Commands(core, JSON, ZoneId.of("America/Toronto"), _ -> Optional.empty(), Platform.LINUX_X64).
-				execute(List.of("status", "c1"), out);
-		}
+			StatusReport held = StatusReport.of(new Builder().confirmed().
+				throttle(new Throttle(Instant.parse("2026-10-09T21:13:08Z"), 2, 1, 2)).build(), ReportEvidence.NONE);
+			JsonNode json = JSON.readTree(Project.create(cleanup).render(ZoneId.of("America/Toronto"),
+				CommandResult.of(held, Harness.CLAUDE)));
 
-		requireThat(exit, "exit").isEqualTo(0);
-		JsonNode json = JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
-		requireThat(json.path("concurrency").path("hold_until").asString(), "holdUntil").
-			isEqualTo("2026-10-09T21:13:08Z");
-		requireThat(json.get("summary").asString(), "summary").contains("hold until 2026-10-09T17:13:08-04:00");
+			requireThat(json.path("concurrency").path("hold_until").asString(), "holdUntil").
+				isEqualTo("2026-10-09T21:13:08Z");
+			requireThat(json.get("summary").asString(), "summary").contains("hold until 2026-10-09T17:13:08-04:00");
+		}
 	}
 
 	/**
 	 * Verifies that a delivery appears with its diff, base-only changes and applicability, and with no other field.
 	 */
 	@Test
-	public void printsDelivery()
+	public void printsDelivery() throws IOException
 	{
 		// Requirement: R-I2
 		DeliveryResult.Delivered delivered = new DeliveryResult.Delivered(Outcome.CERTIFIED,
@@ -639,32 +761,32 @@ public final class CommandsTest
 			List.of(new DeliveryChange.Create(4, Path.of("prompts/a.md"),
 				new FileContent("x".getBytes(StandardCharsets.UTF_8)), Set.of())),
 			"diff --git a/prompts/a.md b/prompts/a.md");
-		FakeCore core = new FakeCore();
-		core.result = new CommandResult(core.status, Harness.CLAUDE, null,
-			new DeliveryReport(delivered, delivered.applicability()), null);
-		StringBuilder output = new StringBuilder();
-		run(core, List.of("run", "c1"), output);
-		JsonNode delivery = JSON.readTree(output.toString()).get("delivery_result");
-		requireThat(delivery.get("result").asString(), "result").isEqualTo("delivered");
-		requireThat(delivery.get("label").asString(), "label").isEqualTo("certified");
-		requireThat(delivery.get("diff").asString(), "diff").isEqualTo("diff --git a/prompts/a.md b/prompts/a.md");
-		requireThat(delivery.get("base_only_changes").get(0).asString(), "baseOnly").isEqualTo("notes.md");
-		requireThat(delivery.get("changed_prompt_sources").get(0).asString(), "sources").
-			isEqualTo(Path.of("prompts/a.md").toString());
-		JsonNode applicability = delivery.get("applicability");
-		requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
-		requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
-		requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("model");
-		requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("prompt_sources");
-		requireThat(new HashSet<>(delivery.propertyNames()), "fields").isEqualTo(Set.of("result", "label",
-			"applicability", "changed_prompt_sources", "base_only_changes", "diff"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String text = Project.create(cleanup).render(ZoneOffset.UTC, new CommandResult(status(), Harness.CLAUDE,
+				null, new DeliveryReport(delivered, delivered.applicability()), null));
+			JsonNode delivery = JSON.readTree(text).get("delivery_result");
+			requireThat(delivery.get("result").asString(), "result").isEqualTo("delivered");
+			requireThat(delivery.get("label").asString(), "label").isEqualTo("certified");
+			requireThat(delivery.get("diff").asString(), "diff").isEqualTo("diff --git a/prompts/a.md b/prompts/a.md");
+			requireThat(delivery.get("base_only_changes").get(0).asString(), "baseOnly").isEqualTo("notes.md");
+			requireThat(delivery.get("changed_prompt_sources").get(0).asString(), "sources").
+				isEqualTo(Path.of("prompts/a.md").toString());
+			JsonNode applicability = delivery.get("applicability");
+			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
+			requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
+			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("model");
+			requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("prompt_sources");
+			requireThat(new HashSet<>(delivery.propertyNames()), "fields").isEqualTo(Set.of("result", "label",
+				"applicability", "changed_prompt_sources", "base_only_changes", "diff"));
+		}
 	}
 
 	/**
 	 * Verifies that a certified delivery shows the environment that the certification was measured in.
 	 */
 	@Test
-	public void printsCertifiedEnvironment()
+	public void printsCertifiedEnvironment() throws IOException
 	{
 		// Requirement: R-M7
 		Applicability applicability = new Applicability(Applicability.Status.CURRENT, false, List.of(), List.of(),
@@ -673,16 +795,15 @@ public final class CommandsTest
 			List.of(Path.of("CLAUDE.md")), List.of(), List.of(), "diff --git a/CLAUDE.md b/CLAUDE.md");
 		CertifiedEnvironment environment = CertifiedEnvironment.of(certificationRecord(1),
 			applicability.unchecked());
-		FakeCore core = new FakeCore();
-		core.result = new CommandResult(core.status, Harness.CLAUDE, null,
-			new DeliveryReport(delivered, applicability, environment), null);
-		StringBuilder output = new StringBuilder();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String text = Project.create(cleanup).render(ZoneOffset.UTC, new CommandResult(status(), Harness.CLAUDE,
+				null, new DeliveryReport(delivered, applicability, environment), null));
 
-		run(core, List.of("run", "c1"), output);
-
-		JsonNode delivery = JSON.readTree(output.toString()).get("delivery_result");
-		requireThat(delivery.get("environment").asString(), "environment").
-			isEqualTo(String.join("\n", environment.lines()));
+			JsonNode delivery = JSON.readTree(text).get("delivery_result");
+			requireThat(delivery.get("environment").asString(), "environment").
+				isEqualTo(String.join("\n", environment.lines()));
+		}
 	}
 
 	/**
@@ -691,22 +812,20 @@ public final class CommandsTest
 	 * names them, and no campaign, harness, proposal or delivery.
 	 */
 	@Test
-	public void printsCertificationRecord()
+	public void printsCertificationRecord() throws IOException
 	{
 		// Requirement: R-M6
 		CertificationRecord first = certificationRecord(1);
 		CertificationRecord record = certificationRecord(2);
 		Applicability applicability = new Applicability(Applicability.Status.HISTORICAL, true,
 			List.of(MeasurementCondition.JUDGE), List.of(), List.of(MeasurementCondition.MODEL));
-		FakeCore core = new FakeCore();
-		core.result = CommandResult.of(new CertificationStatus(
-			List.of(new CertificationStatus.Latest(record, applicability)), List.of(first)));
-		StringBuilder output = new StringBuilder();
+		JsonNode json;
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			json = JSON.readTree(Project.create(cleanup).render(ZoneOffset.UTC, CommandResult.of(new CertificationStatus(
+				List.of(new CertificationStatus.Latest(record, applicability)), List.of(first)))));
+		}
 
-		requireThat(run(core, List.of("status", "CLAUDE.md"), output), "exit").isEqualTo(0);
-
-		requireThat(core.calls, "calls").isEqualTo(List.of("status CLAUDE.md"));
-		JsonNode json = JSON.readTree(output.toString());
 		requireThat(json.get("status").asString(), "status").isEqualTo("certified");
 		requireThat(json.get("campaign").isNull(), "campaignIsNull").isTrue();
 		requireThat(json.get("target").asString(), "target").isEqualTo("CLAUDE.md");
@@ -770,35 +889,35 @@ public final class CommandsTest
 	 * Verifies that a command's notices follow the status summary, one per line.
 	 */
 	@Test
-	public void appendsNoticesToSummary()
+	public void appendsNoticesToSummary() throws IOException
 	{
 		// Requirement: R-W9
-		FakeCore core = new FakeCore();
-		core.result = CommandResult.of(core.status, Harness.CLAUDE).withNotices(List.of("First notice.",
-			"Second notice."));
-		StringBuilder output = new StringBuilder();
+		StatusReport status = status();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String text = Project.create(cleanup).render(ZoneOffset.UTC, CommandResult.of(status, Harness.CLAUDE).
+				withNotices(List.of("First notice.", "Second notice.")));
 
-		requireThat(run(core, List.of("run", "c1"), output), "exit").isEqualTo(0);
-
-		requireThat(JSON.readTree(output.toString()).get("summary").asString(), "summary").
-			isEqualTo(core.status.summary(ZoneOffset.UTC) + "\nFirst notice.\nSecond notice.");
+			requireThat(JSON.readTree(text).get("summary").asString(), "summary").
+				isEqualTo(status.summary(ZoneOffset.UTC) + "\nFirst notice.\nSecond notice.");
+		}
 	}
 
 	/**
 	 * Verifies that a failed delivery names why nothing was delivered.
 	 */
 	@Test
-	public void printsFailedDelivery()
+	public void printsFailedDelivery() throws IOException
 	{
 		// Requirement: R-I2
-		FakeCore core = new FakeCore();
-		core.result = new CommandResult(core.status, Harness.CLAUDE, null,
-			new DeliveryReport(new DeliveryResult.VerificationFailed(List.of(Path.of("a.md"))), null), null);
-		StringBuilder output = new StringBuilder();
-		run(core, List.of("run", "c1"), output);
-		JsonNode delivery = JSON.readTree(output.toString()).get("delivery_result");
-		requireThat(delivery.get("result").asString(), "result").isEqualTo("verification_failed");
-		requireThat(delivery.get("mismatched").get(0).asString(), "mismatched").isEqualTo("a.md");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String text = Project.create(cleanup).render(ZoneOffset.UTC, new CommandResult(status(), Harness.CLAUDE,
+				null, new DeliveryReport(new DeliveryResult.VerificationFailed(List.of(Path.of("a.md"))), null), null));
+			JsonNode delivery = JSON.readTree(text).get("delivery_result");
+			requireThat(delivery.get("result").asString(), "result").isEqualTo("verification_failed");
+			requireThat(delivery.get("mismatched").get(0).asString(), "mismatched").isEqualTo("a.md");
+		}
 	}
 
 	/**
@@ -852,17 +971,20 @@ public final class CommandsTest
 	 * @param args the arguments
 	 */
 	@Test(dataProvider = "invalidInput")
-	public void rejectsInvalidInput(List<String> args)
+	public void rejectsInvalidInput(List<String> args) throws IOException
 	{
 		// Requirement: R-I2
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		int exit = run(core, args, output);
-		requireThat(exit, "exit").isEqualTo(2);
-		requireThat(core.calls, "calls").isEmpty();
-		JsonNode json = JSON.readTree(output.toString());
-		requireThat(json.get("status").asString(), "status").isEqualTo("invalid_input");
-		requireThat(json.get("message").asString(), "message").contains("usage:");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			int exit = project.run(args, output);
+			requireThat(exit, "exit").isEqualTo(2);
+			requireThat(project.calls, "calls").isEmpty();
+			JsonNode json = JSON.readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("invalid_input");
+			requireThat(json.get("message").asString(), "message").contains("usage:");
+		}
 	}
 
 	/**
@@ -889,33 +1011,38 @@ public final class CommandsTest
 	 * @param args the arguments
 	 */
 	@Test(dataProvider = "helpRequests")
-	public void printsUsageOnRequest(List<String> args)
+	public void printsUsageOnRequest(List<String> args) throws IOException
 	{
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		int exit = run(core, args, output);
-		requireThat(exit, "exit").isEqualTo(0);
-		requireThat(core.calls, "calls").isEmpty();
-		JsonNode json = JSON.readTree(output.toString());
-		requireThat(json.get("status").asString(), "status").isEqualTo("help");
-		requireThat(json.get("message").asString(), "message").isEqualTo(Commands.USAGE);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			int exit = project.run(args, output);
+			requireThat(exit, "exit").isEqualTo(0);
+			requireThat(project.calls, "calls").isEmpty();
+			JsonNode json = JSON.readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("help");
+			requireThat(json.get("message").asString(), "message").isEqualTo(Commands.USAGE);
+		}
 	}
 
 	/**
 	 * Verifies that a refusal is printed as JSON with a nonzero exit code.
 	 */
 	@Test
-	public void printsRefusal()
+	public void printsRefusal() throws IOException
 	{
 		// Requirement: R-L1
-		FakeCore core = new FakeCore();
-		core.failure = new CommandRefusedException("Campaign c1 was started by codex.");
-		StringBuilder output = new StringBuilder();
-		int exit = run(core, List.of("run", "c1"), output);
-		requireThat(exit, "exit").isEqualTo(1);
-		JsonNode json = JSON.readTree(output.toString());
-		requireThat(json.get("status").asString(), "status").isEqualTo("refused");
-		requireThat(json.get("message").asString(), "message").contains("codex");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			int exit = project.run(List.of("run", "c1"), output);
+			requireThat(exit, "exit").isEqualTo(1);
+			JsonNode json = JSON.readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(json.get("message").asString(), "message").startsWith("No campaign has the identifier c1");
+		}
 	}
 
 	/**
@@ -923,39 +1050,44 @@ public final class CommandsTest
 	 * the file to write, with a nonzero exit code.
 	 */
 	@Test
-	public void printsStartRefusalNamingConfiguration()
+	public void printsStartRefusalNamingConfiguration() throws IOException
 	{
 		// Requirement: R-W12
-		FakeCore core = new FakeCore();
-		Path file = PromptConfiguration.location(Path.of("CLAUDE.md"));
-		core.failure = new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) +
-			" does not exist.");
-		StringBuilder output = new StringBuilder();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			Path file = PromptConfiguration.location(Path.of("CLAUDE.md"));
+			StringBuilder output = new StringBuilder();
 
-		int exit = run(core, List.of("start", "CLAUDE.md"), output);
+			int exit = project.run(List.of("start", "CLAUDE.md"), output);
 
-		requireThat(exit, "exit").isEqualTo(1);
-		requireThat(core.calls, "calls").isEqualTo(List.of("start CLAUDE.md"));
-		JsonNode json = JSON.readTree(output.toString());
-		requireThat(json.get("status").asString(), "status").isEqualTo("refused");
-		requireThat(json.get("message").asString(), "message").contains(PortablePaths.text(file));
+			requireThat(exit, "exit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEqualTo(List.of("start CLAUDE.md"));
+			JsonNode json = JSON.readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(json.get("message").asString(), "message").contains(PortablePaths.text(file));
+		}
 	}
 
 	/**
-	 * Verifies that an I/O failure is printed as JSON with a nonzero exit code.
+	 * Verifies that an I/O failure, here a file where the project's CAT session directories belong, is printed as JSON
+	 * with a nonzero exit code.
 	 */
 	@Test
-	public void printsFailure()
+	public void printsFailure() throws IOException
 	{
 		// Requirement: R-I2
-		FakeCore core = new FakeCore();
-		core.failure = new IOException("disk full");
-		StringBuilder output = new StringBuilder();
-		int exit = run(core, List.of("run", "c1"), output);
-		requireThat(exit, "exit").isEqualTo(1);
-		JsonNode json = JSON.readTree(output.toString());
-		requireThat(json.get("status").asString(), "status").isEqualTo("error");
-		requireThat(json.get("message").asString(), "message").contains("disk full");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			Path blocked = Files.writeString(project.root.resolve(".cat"), "");
+			StringBuilder output = new StringBuilder();
+			int exit = project.run(List.of("run", "c1"), output);
+			requireThat(exit, "exit").isEqualTo(1);
+			JsonNode json = JSON.readTree(output.toString());
+			requireThat(json.get("status").asString(), "status").isEqualTo("error");
+			requireThat(json.get("message").asString(), "message").contains(blocked.toString());
+		}
 	}
 
 	/**
@@ -986,30 +1118,32 @@ public final class CommandsTest
 	 * Verifies that both contract tools are parsed with their arguments, and that a malformed form is refused.
 	 */
 	@Test
-	public void parsesContractTools()
+	public void parsesContractTools() throws IOException
 	{
 		// Requirement: R-C27
-		Commands commands = new Commands(new FakeCore(), JSON, ZoneOffset.UTC, _ -> Optional.empty(),
-			Platform.LINUX_X64);
-		requireThat(commands.parse(List.of("contract", "check", "cat-contract.json")), "check").
-			isEqualTo(new Command.ContractCheck(Path.of("cat-contract.json")));
-		requireThat(commands.parse(List.of("contract", "workspace", "cat-contract.json", ".cat/tests/CLAUDE/notes", "2",
-			"../sized")), "workspace").isEqualTo(new Command.ContractWorkspace(Path.of("cat-contract.json"),
-			Path.of(".cat/tests/CLAUDE/notes"), 2, Path.of("../sized")));
-		for (List<String> malformed : List.of(List.of("contract"), List.of("contract", "verify", "cat-contract.json"),
-			List.of("contract", "check"), List.of("contract", "check", "a.json", "b.json"),
-			List.of("contract", "workspace", "cat-contract.json", "notes", "0", "out"),
-			List.of("contract", "workspace", "cat-contract.json", "notes", "first", "out"),
-			List.of("contract", "workspace", "cat-contract.json", "notes", "1")))
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			try
+			Project project = Project.create(cleanup);
+			requireThat(project.parse(List.of("contract", "check", "cat-contract.json")), "check").
+				isEqualTo(new Command.ContractCheck(Path.of("cat-contract.json")));
+			requireThat(project.parse(List.of("contract", "workspace", "cat-contract.json", ".cat/tests/CLAUDE/notes",
+				"2", "../sized")), "workspace").isEqualTo(new Command.ContractWorkspace(Path.of("cat-contract.json"),
+				Path.of(".cat/tests/CLAUDE/notes"), 2, Path.of("../sized")));
+			for (List<String> malformed : List.of(List.of("contract"), List.of("contract", "verify", "cat-contract.json"),
+				List.of("contract", "check"), List.of("contract", "check", "a.json", "b.json"),
+				List.of("contract", "workspace", "cat-contract.json", "notes", "0", "out"),
+				List.of("contract", "workspace", "cat-contract.json", "notes", "first", "out"),
+				List.of("contract", "workspace", "cat-contract.json", "notes", "1")))
 			{
-				commands.parse(malformed);
-				throw new AssertionError("Accepted " + malformed);
-			}
-			catch (InvalidCommandException _)
-			{
-				// Expected
+				try
+				{
+					project.parse(malformed);
+					throw new AssertionError("Accepted " + malformed);
+				}
+				catch (InvalidCommandException _)
+				{
+					// Expected
+				}
 			}
 		}
 	}
@@ -1019,14 +1153,17 @@ public final class CommandsTest
 	 * a nonzero status.
 	 */
 	@Test
-	public void contractToolBypassesCore()
+	public void contractToolBypassesCore() throws IOException
 	{
 		// Requirement: R-C27
-		FakeCore core = new FakeCore();
-		StringBuilder output = new StringBuilder();
-		int exit = run(core, List.of("contract", "check", "missing-cat-contract.json"), output);
-		requireThat(exit, "exit").isEqualTo(1);
-		requireThat(core.calls, "calls").isEmpty();
-		requireThat(output.toString(), "output").contains("missing-cat-contract.json");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			StringBuilder output = new StringBuilder();
+			int exit = project.run(List.of("contract", "check", "missing-cat-contract.json"), output);
+			requireThat(exit, "exit").isEqualTo(1);
+			requireThat(project.calls, "calls").isEmpty();
+			requireThat(output.toString(), "output").contains("missing-cat-contract.json");
+		}
 	}
 }
