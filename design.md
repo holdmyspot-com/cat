@@ -2647,8 +2647,9 @@ absent there, its settings file's `env`.
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
 request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
 trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
-with the harness, a project directory, one or more prompt files, a model and an effort and, optionally, plugins and
-`--session-transcripts`; the launcher refuses a request without a model or an effort, and the runner refuses such a
+with the harness, a project directory, one or more prompt files or `--conversation <folder>`, a model and an effort
+and, optionally, plugins and `--session-transcripts`. It exits `0` when the session completed, `2` when CAT refused the
+request, `3` when its wait ended first, and `1` otherwise; the launcher refuses a request without a model or an effort, and the runner refuses such a
 request before it starts anything (D119). Every input and result passes as a file path, never as content: the launcher, which runs as
 one of the session's own commands and therefore inside its sandbox, packs the request and its inputs into one archive
 file in the run's `requests` directory, the one directory outside its project and home that the session may write. The runner answers in the run's `responses` directory, which the session may read but not write, so a link
@@ -2696,10 +2697,11 @@ request a session by running either runner launcher, as it would outside a run. 
 session's instructions and, for Claude, grants exactly those commands. The launcher sees the run's requests directory
 in its environment, starts no harness, and packs the launch as a session request with the launch's turns as prompt
 files; it waits for the response, writes the requested session's transcript to `--output` or standard output and its
-receipt to `--receipt`, and exits `0` when the session completed, `75` when no capacity was free, and `1` otherwise. The
+receipt to `--receipt`, and exits `0` when the session completed, `75` when no capacity was free, `2` when CAT refused
+the launch, and `1` otherwise. The
 parent runner chooses the run root, artifact, harness executable, denied reads and every limit, so the launcher refuses
 the options that would choose them and accepts only the project, plugins, model, effort, `--install-cat`,
-`--session-transcripts`, input, output and receipt. It requires the model and the effort, as outside a run, and refuses
+`--session-transcripts`, `--extra-permissions`, input or `--conversation`, output and receipt. It requires the model and the effort, as outside a run, and refuses
 a launch without either before it packs a request (D119). The session's commands stay sandboxed and read no login but the session's own copy. A
 runner launcher that a run's session runs starts no harness and asks no session launcher, because the run's runner
 counts the session's requests against the run's limit, passes its denied reads,
@@ -2778,25 +2780,43 @@ command, in Codex a command that keeps running. `<folder>` is a new or empty fol
 may write, such as one below its CAT session directory's `temp`. The asking session appends its messages to
 `<folder>/to-child.jsonl`, one JSON object per line: `{"turn": "<text>"}` asks for the child's next turn, which starts
 when the previous one has ended; `{"interrupt": true}` interrupts the turn in progress; and `{"end": true}` ends the
-conversation. A line that is not one of these is refused in `<folder>/from-child.jsonl` and changes nothing. The
-launcher writes the child's output to `<folder>/from-child.jsonl` as it arrives: the child's reply and tool events of
-each turn, then a line `{"turn_end": <n>, "status": "<status>"}` when turn `n` ends, so the asking session waits for that
-line before it reads the reply. Appended files are the channel in both directions, because they work in both harnesses'
+conversation. A line that is not one of these is answered in `<folder>/from-child.jsonl` with
+`{"refused": "<line>", "reason": "<reason>"}` and changes nothing. The folder may already hold `to-child.jsonl` when the
+launcher starts, so the asking session can write its first turn before it starts the command; any other file in it is
+refused before the child starts. The launcher writes the child's output to `<folder>/from-child.jsonl` as it arrives:
+the child's reply and tool events of each turn, then a line `{"turn_end": <n>, "status": "<status>"}` when turn `n`
+ends, where the status is `completed`, `interrupted` or `failed`, so the asking session waits for that line before it
+reads the reply. An interrupt ends only the turn in progress, with the status `interrupted`, in both harnesses, and the
+conversation continues; Claude Code reports an interrupted turn as failed, and the launcher reports it as interrupted and
+keeps the child. The last line the launcher writes, however the child ends, is `{"ended": "<response status>"}`, so an
+asking session that waits for a `turn_end` that never comes sees the end instead. Appended files are the channel in both directions, because they work in both harnesses'
 sandboxes on every platform and need no reader to be present when a message is written; a background command in
 Claude Code has no standard input that the session can write to. The launcher sends each turn to the session launcher, or
 inside a run to the run's runner, as the channel's next turn, so the bound, the holder and the request's evidence stay as
 above. The child ends when the conversation ends, when the launcher ends, which ends its holder, or at its time limit,
 whichever comes first. The launcher then writes the transcript and receipt as for `--input` and exits with the same
-statuses. A forwarded launch inside a run therefore carries later turns and interrupts too.
+statuses. A forwarded launch inside a run therefore carries later turns and interrupts too; inside a run the
+launcher holds an operating-system lock on a file beside its request from before it publishes the request until it
+ends, and the run's runner stops the child once that lock is free. `--conversation` works on every path that starts a
+session: through the session launcher, through a run's runner, and in place for a runner launcher that no harness runs.
 
 **Sessions that a requested session's commands start (user rulings, 2026-11-07):** inside a run whose caller allows
 requested sessions, every CAT command that starts sessions, the prompt optimizer included, sends each launch to the run's
-runner as the runner launchers do, and does not refuse because the run has no session launcher. Each such session counts
+runner as the runner launchers do, and does not refuse because the run has no session launcher. Such a request may
+carry the options that only narrow the requested session or describe its own inputs: further denied reads, the
+workspace files, the read-only evidence paths, the tool-output token limit, the instruction files and `--keep-run`.
+Each path it names must be one the requesting session's sandbox lets it read, and its contents travel inside the request
+archive. The run's runner copies a kept run into the requesting session's requested-runs root and names the copy in its
+response, so the optimizer reads its trial's run there. The run's runner also keeps `limits.json` in the responses
+directory, which the session may read and not write: `{"format_version": 1, "requests_allowed": <n>,
+"requests_used": <n>, "depth_remaining": <n>}`, rewritten whenever it accepts a request, so a command can tell before
+it changes anything whether the run allows any further session. Each such session counts
 against the run's request limit and request depth, so a caller that lets its child run a campaign passes a
 `--session-requests` large enough for that campaign's sessions and a `--request-depth` of at least 1. A command inside a
 run whose caller allows no requested sessions, or whose depth or limit is spent, is refused with status 2 before it
 changes anything, and its message names the caller's options that would allow the sessions; it does not suggest starting
-Codex with `--no-daemon`, which concerns only a session on Codex's shared background server.
+Codex with `--no-daemon`, which concerns only a session on Codex's shared background server. A campaign whose run's limit
+runs out after it started pauses with the same message instead of counting the refused session as a failure.
 
 **Source-only content in prompt files (user rulings, 2026-10-23):** a prompt file's `## Design Goals` section is the
 reference that its authors update the guidance from, and its HTML comments remind the plugin developers why a Design
