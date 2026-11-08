@@ -10,7 +10,10 @@ module com.holdmyspot.cat.common.installer.test
 	requires tools.jackson.databind;
 
 	exports com.holdmyspot.cat.common.installer.engine.test to org.testng;
-	exports com.holdmyspot.cat.common.installer.fakes.test to com.holdmyspot.cat.distribution.test;
+	exports com.holdmyspot.cat.common.installer.contract.test to com.holdmyspot.cat.claude.installer.test,
+		com.holdmyspot.cat.codex.installer.test;
+	exports com.holdmyspot.cat.common.installer.fakes.test to com.holdmyspot.cat.claude.installer.test,
+		com.holdmyspot.cat.codex.installer.test, com.holdmyspot.cat.distribution.test;
 	exports com.holdmyspot.cat.common.installer.engine.internal.test to org.testng;
 	exports com.holdmyspot.cat.common.installer.cli.internal.test to org.testng;
 	exports com.holdmyspot.cat.common.installer.trust.test to org.testng;

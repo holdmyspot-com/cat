@@ -13,7 +13,7 @@ import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.cli.internal.Install;
-import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
+import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingMigrations;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.engine.test.Releases;
@@ -129,7 +129,9 @@ public final class InstallCommandTest
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-newer-data-")));
 			fixture.register("1.1\tsplit.sh\n");
-			Files.writeString(fixture.provider.migrationVersionFile(fixture.home), "1.3\n");
+			Path dataVersion = fixture.provider.migrationVersionFile(fixture.home);
+			Files.createDirectories(dataVersion.getParent());
+			Files.writeString(dataVersion, "1.3\n");
 			Map<String, String> before = Releases.snapshot(fixture.root);
 
 			try
@@ -165,6 +167,7 @@ public final class InstallCommandTest
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("install-kept-data-")));
 			fixture.register("1.1\tsplit.sh\n");
 			Path dataVersion = fixture.provider.migrationVersionFile(fixture.home);
+			Files.createDirectories(dataVersion.getParent());
 			Files.writeString(dataVersion, "1.1\n");
 
 			fixture.install();
@@ -194,6 +197,7 @@ public final class InstallCommandTest
 			for (String script : List.of("split.sh", "split.ps1", "merge.sh", "merge.ps1"))
 				Files.writeString(scripts.resolve(script), "exit 0\n");
 			Path dataVersion = fixture.provider.migrationVersionFile(fixture.home);
+			Files.createDirectories(dataVersion.getParent());
 			Files.writeString(dataVersion, "1.1\n");
 
 			fixture.install();
@@ -552,7 +556,7 @@ public final class InstallCommandTest
 		private final Path user;
 		private final Map<String, String> environment = new HashMap<>();
 		private final RecordingIntegration integration = new RecordingIntegration();
-		private final LiveProvider provider = new LiveProvider();
+		private final RegisteredProvider provider = new RegisteredProvider();
 		private final RecordingMigrations migrations = new RecordingMigrations();
 		private final List<HarnessIntegration> others = new ArrayList<>();
 		private final HarnessCommand command;

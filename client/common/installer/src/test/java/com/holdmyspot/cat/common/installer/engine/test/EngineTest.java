@@ -213,17 +213,10 @@ public final class EngineTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(testDirectory("engine-marker-link-")).toRealPath();
-			RegisteredProvider provider = new RegisteredProvider()
-			{
-				@Override
-				public Path migrationVersionFile(Path home)
-				{
-					return home.resolve("marker-parent/migration-version");
-				}
-			};
-			EngineFixture fixture = new EngineFixture(root, new ReleaseCatalog("1.1", NO_MIGRATION), provider);
+			EngineFixture fixture = new EngineFixture(root, new ReleaseCatalog("1.1", NO_MIGRATION));
 			Path outside = Files.createDirectory(root.resolve("outside"));
-			Files.createSymbolicLink(fixture.home.resolve("marker-parent"), outside);
+			Files.createDirectories(fixture.data().getParent());
+			Files.createSymbolicLink(fixture.data(), outside);
 
 			UpdateResult result = fixture.install("v1.1");
 

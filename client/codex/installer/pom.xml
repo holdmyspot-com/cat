@@ -45,6 +45,18 @@
 			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-cli</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-common-installer</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-common-cli</artifactId>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>

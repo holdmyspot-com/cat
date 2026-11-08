@@ -16,7 +16,6 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
-import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import com.holdmyspot.cat.common.installer.cli.internal.HarnessCliFactory;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
@@ -24,7 +23,6 @@ import com.holdmyspot.cat.common.installer.cli.internal.ProcessStarter;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.common.installer.engine.InstallerState;
 import com.holdmyspot.cat.common.installer.engine.PermissionRecord;
-import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
 import com.holdmyspot.cat.common.installer.engine.test.Releases;
@@ -92,7 +90,8 @@ public final class InvocationTest
 				fakeHome.resolve("data").toString(), "XDG_CONFIG_HOME", fakeHome.resolve("config").toString(),
 				"LOCALAPPDATA", fakeHome.toString(), "HARNESS_A_HOME", fakeHome.toString());
 
-			Run run = installation.run(environment, List.of(new RecordedHomeProvider(installation.home)),
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			Run run = installation.run(environment, List.of(new RegisteredProvider()),
 				new RecordingIntegration(), "status", "--harness", "harness-a");
 
 			requireThat(run.status, "status").isEqualTo(0);
@@ -119,7 +118,7 @@ public final class InvocationTest
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-absent-")));
 			installation.writePolicy(installation.trustPolicy());
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
 				"--harness", "harness-a");
 
 			requireThat(run.status, "status").isEqualTo(0);
@@ -144,9 +143,9 @@ public final class InvocationTest
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-status-flat-")));
 			installation.writePolicy(installation.trustPolicy());
 
-			Run named = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+			Run named = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
 				"--harness", "harness-a");
-			Run unnamed = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
+			Run unnamed = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(),
 				"status");
 
 			requireThat(unnamed.status, "status").isEqualTo(0);
@@ -167,7 +166,8 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-no-policy-")));
 
-			Run run = installation.run(Map.of(), List.of(new RecordedHomeProvider(installation.home)),
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()),
 				new RecordingIntegration(), "status", "--harness", "harness-a");
 
 			requireThat(run.status, "status").isEqualTo(3);
@@ -192,7 +192,8 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-session-home-")));
 
-			Run run = installation.run(Map.of(), List.of(new RecordedHomeProvider(installation.home)),
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()),
 				new RecordingIntegration(), "status", "--harness", "harness-a");
 
 			requireThat(run.result().path("message").stringValue(), "message").
@@ -240,8 +241,8 @@ public final class InvocationTest
 			for (String[] arguments : List.of(new String[]{"status", "--harness", "harness-a"},
 				new String[]{"uninstall"}))
 			{
-				Run run = run(image, installation.root, Map.of(), List.of(new LiveProvider()), new RecordingIntegration(),
-					arguments);
+				Run run = run(image, installation.root, Map.of(), List.of(new RegisteredProvider()),
+					new RecordingIntegration(), arguments);
 
 				requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 				requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
@@ -269,7 +270,7 @@ public final class InvocationTest
 			installation.writePolicy(TrustPolicy.of(current.keys(), current.releaseBaseUrl(), current.minimum(),
 				current.maximumMajor(), current.harnesses()));
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status");
 
 			requireThat(run.status, "status").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
@@ -316,8 +317,8 @@ public final class InvocationTest
 				arguments = new String[]{"status", "--harness", "harness-b"};
 			}
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider(), new RecordedHomeProvider(installation.home,
-				"harness-b")), new RecordingIntegration(), arguments);
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider(),
+				new RegisteredProvider("harness-b")), new RecordingIntegration(), arguments);
 
 			requireThat(run.status, "status").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
@@ -343,7 +344,7 @@ public final class InvocationTest
 			Files.delete(installation.program);
 			RecordingIntegration integration = new RecordingIntegration();
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "install", "--harness",
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "install", "--harness",
 				"harness-a");
 
 			requireThat(run.status, "status").isEqualTo(3);
@@ -373,7 +374,7 @@ public final class InvocationTest
 			byte[] policy = Files.readAllBytes(installation.policyFile);
 			RecordingIntegration integration = new RecordingIntegration().fail("requireIdentity");
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "install", "--harness",
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "install", "--harness",
 				"harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
@@ -403,7 +404,7 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			byte[] policy = Files.readAllBytes(installation.policyFile);
 
-			Run run = run(installation.image, installation.root, Map.of(), List.of(new LiveProvider()),
+			Run run = run(installation.image, installation.root, Map.of(), List.of(new RegisteredProvider()),
 				new RecordingIntegration(), _ -> Optional.empty(), Platform.LINUX_X64, command ->
 				{
 					throw new AssertionError("Started " + command);
@@ -441,7 +442,7 @@ public final class InvocationTest
 			Map<String, String> before = Releases.snapshot(archive.root);
 			RecordingIntegration integration = new RecordingIntegration();
 
-			Run run = run(archive.plugin, archive.project, environment, List.of(new LiveProvider()), integration,
+			Run run = run(archive.plugin, archive.project, environment, List.of(new RegisteredProvider()), integration,
 				"--home", archive.home.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
@@ -507,18 +508,18 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-")));
 			installation.writePolicy(installation.trustPolicy());
-			Files.createDirectories(installation.home.resolve("live"));
-			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
 			RecordingIntegration integration = new RecordingIntegration();
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			requireThat(run.output.lines().count(), "lines").isEqualTo(1L);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
 			requireThat(run.result().path("unregistered").booleanValue(), "unregistered").isTrue();
 			requireThat(integration.calls(), "calls").contains("unregister");
-			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
+			requireThat(Files.exists(RecordingIntegration.registeredVersion(installation.home), NOFOLLOW_LINKS),
+				"registered").isFalse();
 			requireThat(installation.policyFile, "policy").isRegularFile();
 		}
 	}
@@ -538,11 +539,13 @@ public final class InvocationTest
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-uninstall-again-")));
 			installation.writePolicy(installation.trustPolicy());
 			RecordingIntegration integration = new RecordingIntegration();
-			Run first = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run first = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 			requireThat(first.status, "firstStatus").withContext(first.output, "output").isEqualTo(0);
 			int calls = integration.calls().size();
+			// The first uninstall deleted the version folder that it ran from; the second runs from a copy in its place
+			Files.createDirectories(installation.image);
 
-			Run again = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run again = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 
 			requireThat(again.status, "status").withContext(again.output, "output").isEqualTo(0);
 			requireThat(again.result().path("result").stringValue(), "result").isEqualTo("uninstalled");
@@ -568,7 +571,7 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			RecordingIntegration integration = new RecordingIntegration().fail("unregister");
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 
 			requireThat(run.status, "status").isEqualTo(9);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("uninstall_incomplete");
@@ -593,7 +596,7 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			RecordingIntegration integration = new RecordingIntegration().crash("unregister");
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 
 			requireThat(run.status, "status").isEqualTo(10);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("failed");
@@ -619,7 +622,7 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			Map<String, String> before = Releases.snapshot(installation.root);
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "rollback",
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "rollback",
 				"--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(2);
@@ -642,10 +645,9 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-status-fields-")));
 			installation.writePolicy(installation.trustPolicy());
-			Files.createDirectories(installation.home.resolve("live"));
-			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
 				"--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
@@ -672,8 +674,7 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-status-verbose-")));
 			installation.writePolicy(installation.trustPolicy());
-			Files.createDirectories(installation.home.resolve("live"));
-			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
 			PermissionRecord.add(InstallerState.of(installation.data, "harness-a").permissions(),
 				Map.of("settings.json#sandbox.excludedCommands", List.of("first entry", "second entry")));
 			Terminal person = new Terminal()
@@ -691,11 +692,11 @@ public final class InvocationTest
 				}
 			};
 
-			Run plain = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+			Run plain = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
 				"--harness", "harness-a");
-			Run verbose = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "status",
+			Run verbose = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
 				"--harness", "harness-a", "--verbose");
-			Run shown = run(installation.image, installation.root, Map.of(), List.of(new LiveProvider()),
+			Run shown = run(installation.image, installation.root, Map.of(), List.of(new RegisteredProvider()),
 				new RecordingIntegration(), person, Platform.current(), command ->
 				{
 					throw new AssertionError("Started " + command);
@@ -737,17 +738,16 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-verbose-home-")));
 			installation.writePolicy(installation.trustPolicy());
-			Files.createDirectories(installation.home.resolve("live"));
-			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
 			PermissionRecord.add(InstallerState.of(installation.data, "harness-a").permissions(),
 				Map.of("settings.json#sandbox.excludedCommands", List.of("first entry")));
 			Map<String, String> environment = Map.of("HOME", "relative-home");
 
-			Run install = installation.run(environment, List.of(new LiveProvider()), new RecordingIntegration(),
+			Run install = installation.run(environment, List.of(new RegisteredProvider()), new RecordingIntegration(),
 				"install", "--harness", "harness-a");
-			Run verbose = installation.run(environment, List.of(new LiveProvider()), new RecordingIntegration(),
+			Run verbose = installation.run(environment, List.of(new RegisteredProvider()), new RecordingIntegration(),
 				"status", "--harness", "harness-a", "--verbose");
-			Run plain = installation.run(environment, List.of(new LiveProvider()), new RecordingIntegration(),
+			Run plain = installation.run(environment, List.of(new RegisteredProvider()), new RecordingIntegration(),
 				"status", "--harness", "harness-a");
 
 			String refusal = "The user's home folder is wrong: relative-home is not an absolute path. CAT takes it " +
@@ -777,7 +777,7 @@ public final class InvocationTest
 			installation.writePolicy(installation.trustPolicy());
 			Map<String, String> before = Releases.snapshot(installation.root);
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), new RecordingIntegration(), "update",
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "update",
 				"--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(2);
@@ -804,7 +804,7 @@ public final class InvocationTest
 			RecordingIntegration integration = new RecordingIntegration();
 			Map<String, String> before = Releases.snapshot(installation.root);
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "--home",
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "--home",
 				other.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
@@ -829,12 +829,11 @@ public final class InvocationTest
 		{
 			Installation installation = new Installation(cleanup.add(testDirectory("invocation-no-program-")));
 			installation.writePolicy(installation.trustPolicy());
-			Files.createDirectories(installation.home.resolve("live"));
-			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
 			Files.delete(installation.program);
 			RecordingIntegration integration = new RecordingIntegration();
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			JsonNode result = run.result();
@@ -842,7 +841,8 @@ public final class InvocationTest
 			requireThat(result.path("unregistered").isBoolean(), "isBoolean").isTrue();
 			requireThat(result.path("unregistered").booleanValue(), "unregistered").isFalse();
 			requireThat(integration.calls(), "calls").doesNotContain("unregister");
-			requireThat(Files.exists(installation.home.resolve("live"), NOFOLLOW_LINKS), "live").isFalse();
+			requireThat(Files.exists(RecordingIntegration.registeredVersion(installation.home), NOFOLLOW_LINKS),
+				"registered").isFalse();
 			requireThat(installation.policyFile, "policy").isRegularFile();
 		}
 	}
@@ -867,7 +867,7 @@ public final class InvocationTest
 			Files.delete(installation.program);
 			RecordingIntegration integration = new RecordingIntegration();
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			JsonNode result = run.result();
@@ -899,7 +899,7 @@ public final class InvocationTest
 			Path tools = RecordingIntegration.program(root.resolve("tools")).getParent();
 			Map<String, String> environment = installEnvironment(user, tools);
 
-			Run run = run(archive, project, environment, List.of(new LiveProvider()), integration, Platform.current(),
+			Run run = run(archive, project, environment, List.of(new RegisteredProvider()), integration, Platform.current(),
 				command ->
 				{
 					throw new AssertionError("Started " + command);
@@ -1169,7 +1169,7 @@ public final class InvocationTest
 			RecordingIntegration integration = new RecordingIntegration().
 				retaining(List.of("CAT left the shared setting as you changed it."));
 
-			Run run = installation.run(Map.of(), List.of(new LiveProvider()), integration, "uninstall");
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "uninstall");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			requireThat(run.result().path("message").stringValue(), "message").
@@ -1502,7 +1502,7 @@ public final class InvocationTest
 			List<String> arguments = new ArrayList<>(List.of("--home", home.toString()));
 			arguments.addAll(List.of(options));
 			arguments.addAll(List.of("install", "--harness", "harness-a"));
-			return InvocationTest.run(plugin, project, environment, List.of(new LiveProvider()), integration,
+			return InvocationTest.run(plugin, project, environment, List.of(new RegisteredProvider()), integration,
 				terminal, Platform.current(), command ->
 				{
 					throw new AssertionError("Started " + command);
@@ -1536,79 +1536,5 @@ public final class InvocationTest
 		return new FileReplacer(Platform.current(), () ->
 		{
 		}, Clock.systemUTC());
-	}
-
-	/**
-	 * Represents an installed provider whose status is known only at its policy-recorded home.
-	 */
-	private static final class RecordedHomeProvider implements PluginActivation
-	{
-		private final Path home;
-		private final String harness;
-
-		/**
-		 * Creates the recorded provider of {@code harness-a}.
-		 *
-		 * @param home the only directory containing the represented installation
-		 */
-		private RecordedHomeProvider(Path home)
-		{
-			this(home, "harness-a");
-		}
-
-		/**
-		 * Creates the recorded provider.
-		 *
-		 * @param home    the only directory containing the represented installation
-		 * @param harness the provider's harness
-		 */
-		private RecordedHomeProvider(Path home, String harness)
-		{
-			this.home = home;
-			this.harness = harness;
-		}
-
-		@Override
-		public String harness()
-		{
-			return harness;
-		}
-
-		@Override
-		public String pluginManifest()
-		{
-			return "." + harness + "/plugin.json";
-		}
-
-		@Override
-		public InstalledState installed(Path home)
-		{
-			requireThat(home, "home").isEqualTo(this.home);
-			return new InstalledState(Optional.of("1.2"), true);
-		}
-
-		@Override
-		public void installCompanions(Path home, Path versionFolder)
-		{
-			throw new UnsupportedOperationException("The status-only provider does not install releases");
-		}
-
-		@Override
-		public Path migrationVersionFile(Path home)
-		{
-			return home.resolve("migration-version");
-		}
-
-		@Override
-		public List<Path> removalPaths(Path home)
-		{
-			return List.of();
-		}
-
-		@Override
-		public Path dataDirectory(Path home)
-		{
-			return home.resolve("plugin-data");
-		}
 	}
 }

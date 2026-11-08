@@ -16,7 +16,7 @@ import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessTerminal;
 import com.holdmyspot.cat.common.installer.cli.internal.ReportedEntries;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
-import com.holdmyspot.cat.common.installer.engine.test.LiveProvider;
+import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.ByteArrayOutputStream;
@@ -453,7 +453,7 @@ public final class HumanReportTest
 				PrintStream stderr = new PrintStream(diagnostics, false, UTF_8))
 			{
 				Invocation invocation = new Invocation(plugin, Platform.current(),
-					environment, null, List.of(new LiveProvider()), List.of(integration),
+					environment, null, List.of(new RegisteredProvider()), List.of(integration),
 					(command, harnessHome) -> RecordingIntegration.cli(), Clock.systemUTC(), interval -> () ->
 					{
 					}, new FileReplacer(Platform.current(), () ->

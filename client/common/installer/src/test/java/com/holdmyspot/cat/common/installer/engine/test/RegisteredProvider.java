@@ -16,7 +16,9 @@ import java.util.Optional;
 /**
  * Describes a generic harness, {@code harness-a} unless a test names another, as {@link RecordingIntegration}
  * installs CAT into it: the harness reports the version that it was last asked to install, and the installation is
- * consistent only when that version's folder holds the plugin of that version.
+ * consistent only when that version's folder holds the plugin of that version. A marketplace that the harness left
+ * without a reported version is an inconsistent installation. The plugin activation contract checks this behavior on
+ * this provider and on the Claude Code and Codex activations.
  */
 public class RegisteredProvider implements PluginActivation
 {
@@ -52,15 +54,11 @@ public class RegisteredProvider implements PluginActivation
 	}
 
 	/**
-	 * Records the version folder, which must exist because the harness installed it.
-	 *
-	 * @throws IOException if the version folder does not exist
+	 * Records the version folder; the generic harness has no companion files.
 	 */
 	@Override
-	public void installCompanions(Path home, Path versionFolder) throws IOException
+	public void installCompanions(Path home, Path versionFolder)
 	{
-		if (!Files.isDirectory(versionFolder))
-			throw new IOException("The version folder does not exist: " + versionFolder);
 		companions.add(versionFolder);
 	}
 
@@ -81,7 +79,11 @@ public class RegisteredProvider implements PluginActivation
 	{
 		Path registered = RecordingIntegration.registeredVersion(home);
 		if (!Files.isRegularFile(registered, NOFOLLOW_LINKS))
-			return new InstalledState(Optional.empty(), true);
+		{
+			boolean absent = Files.notExists(RecordingIntegration.layout(harness, home).marketplaceRoot(),
+				NOFOLLOW_LINKS);
+			return new InstalledState(Optional.empty(), absent);
+		}
 		String version = Files.readString(registered).strip();
 		PluginVersion plugin;
 		try
