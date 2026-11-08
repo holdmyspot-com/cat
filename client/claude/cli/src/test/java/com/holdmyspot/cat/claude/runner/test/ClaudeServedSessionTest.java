@@ -2,7 +2,6 @@ package com.holdmyspot.cat.claude.runner.test;
 
 import com.holdmyspot.cat.claude.policy.ClaudeCommandSession;
 import com.holdmyspot.cat.claude.runner.ClaudeServedSession;
-import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
@@ -17,8 +16,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.testng.SkipException;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -62,16 +59,6 @@ public final class ClaudeServedSessionTest
 	}
 
 	/**
-	 * Skips the tests on native Windows, where Claude Code has no sandbox, so that no request server runs inside one.
-	 */
-	@BeforeClass
-	public void requireSandboxPlatform()
-	{
-		if (Platform.current().isWindows())
-			throw new SkipException("Claude Code has no sandbox on native Windows, so no request server runs inside one");
-	}
-
-	/**
 	 * Verifies that the server identifies the session that runs it by the session's transcript, and ends with the
 	 * session's Claude Code process, which it identifies by the process's identifier and start.
 	 *
@@ -107,7 +94,8 @@ public final class ClaudeServedSessionTest
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.settings("{\"sandbox\": {\"enabled\": true, \"excludedCommands\": [\"git *\"]}}");
-			fixture.transcript(fixture.command(fixture.server.toString()));
+			// A path that holds a backslash, as every Windows path does, is quoted so that the shell reads it unchanged
+			fixture.transcript(fixture.command(ShellQuoting.posix(fixture.server.toString())));
 
 			String reason = fixture.reason();
 
