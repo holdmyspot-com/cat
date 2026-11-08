@@ -2770,6 +2770,34 @@ use. A command that hides which harness runs it gains nothing. One that claims n
 own descendant, inside the sandbox that confines it. One that claims a session it does not belong to is refused,
 because its holder runs outside that session's harness process tree.
 
+**Conversations with a requested session (user rulings, 2026-11-07):** a runner launcher started with
+`--conversation <folder>` in place of `--input` keeps the requested session running and lets the asking session send
+it turns while it runs, so a session can hold a conversation with its child without restarting it for each turn. The
+asking session runs the launcher as a command that keeps running across its turns: in Claude Code a background
+command, in Codex a command that keeps running. `<folder>` is a new or empty folder that the asking session's commands
+may write, such as one below its CAT session directory's `temp`. The asking session appends its messages to
+`<folder>/to-child.jsonl`, one JSON object per line: `{"turn": "<text>"}` asks for the child's next turn, which starts
+when the previous one has ended; `{"interrupt": true}` interrupts the turn in progress; and `{"end": true}` ends the
+conversation. A line that is not one of these is refused in `<folder>/from-child.jsonl` and changes nothing. The
+launcher writes the child's output to `<folder>/from-child.jsonl` as it arrives: the child's reply and tool events of
+each turn, then a line `{"turn_end": <n>, "status": "<status>"}` when turn `n` ends, so the asking session waits for that
+line before it reads the reply. Appended files are the channel in both directions, because they work in both harnesses'
+sandboxes on every platform and need no reader to be present when a message is written; a background command in
+Claude Code has no standard input that the session can write to. The launcher sends each turn to the session launcher, or
+inside a run to the run's runner, as the channel's next turn, so the bound, the holder and the request's evidence stay as
+above. The child ends when the conversation ends, when the launcher ends, which ends its holder, or at its time limit,
+whichever comes first. The launcher then writes the transcript and receipt as for `--input` and exits with the same
+statuses. A forwarded launch inside a run therefore carries later turns and interrupts too.
+
+**Sessions that a requested session's commands start (user rulings, 2026-11-07):** inside a run whose caller allows
+requested sessions, every CAT command that starts sessions, the prompt optimizer included, sends each launch to the run's
+runner as the runner launchers do, and does not refuse because the run has no session launcher. Each such session counts
+against the run's request limit and request depth, so a caller that lets its child run a campaign passes a
+`--session-requests` large enough for that campaign's sessions and a `--request-depth` of at least 1. A command inside a
+run whose caller allows no requested sessions, or whose depth or limit is spent, is refused with status 2 before it
+changes anything, and its message names the caller's options that would allow the sessions; it does not suggest starting
+Codex with `--no-daemon`, which concerns only a session on Codex's shared background server.
+
 **Source-only content in prompt files (user rulings, 2026-10-23):** a prompt file's `## Design Goals` section is the
 reference that its authors update the guidance from, and its HTML comments remind the plugin developers why a Design
 Goal was added; no model reads either. The build removes them from every Markdown file of both harnesses' plugin
@@ -3116,6 +3144,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D130 | A launch waits for the channel's response or acceptance while it cannot read the file yet and reports a failure only after reads keep failing for a bounded time; the launcher leaves a request or turn file it cannot copy for its next poll instead of declining it (`7dc5b4d271`, 2026-11-07, found by a Windows Build run). | Calling an unreadable response malformed turned a Windows sharing violation into a failed launch, and declining an uncopyable request left the client waiting for an acceptance that never came. Retrying without a bound was rejected: a file that never becomes readable must still fail the launch. | A file that stays unreadable delays the failure by the bounded wait. |
 | D129 | The user-run entry command adds the release's signing key to an existing installation trust policy that lists none, once its install succeeds, and keeps the policy's release source, version limits and harness entry; a policy that lists a key keeps it, and the installed installer never changes a policy (fix `4250ead480`, 2026-11-07, under the user ruling of 2026-11-04 that only setup changes trusted keys or policy). | Leaving an existing policy untouched kept a policy written by an earlier build keyless, so the installed installer refused every release and an agent could not install or update the plugin. Letting the installed installer add the key was rejected: it runs without a prompt and must not widen what it trusts. Replacing the whole policy was rejected: it would drop the user's release source and version limits. | A keyless policy is repaired only when the user reruns the entry command, and the entry command both installs and edits trust; its result names the added key. |
 | D131 | A harness's CAT plugin is one bundle of its Java runtime, its installer and its harness integration, installed, updated and removed together in the plugin's versioned folder of that harness's plugin cache; nothing is shared between harnesses. An update is prompt-free and never changes trusted keys or policy; only setup does. Uninstall goes through the harness's approval prompt, removes the whole installation and keeps plugin data unless the user chooses to remove it. Rollback is removed: an older release installs only when the active release's migration registry has no data migration after it (user rulings, 2026-11-04). | One managed Java installation per machine shared by both harnesses, with a separate updater, was the earlier requirement; the user replaced it. Rollback was removed because going back past a data migration would lose data. | Each harness carries its own Java runtime and installer, so a machine with both harnesses holds two copies and updates each separately; a plugin removed by other means is not recovered, and the user reruns the setup command. |
+| D132 | Let a runner launcher hold a conversation with its requested session through `--conversation <folder>`, with the asking session's messages and the child's output in appended JSON-line files, and let every CAT command inside a run that allows requested sessions, the prompt optimizer included, send its launches to the run's runner (user rulings, 2026-11-07: "Continue with the stream because it is a better, more flexible model"). | Turns fixed before the start kept a session from answering what its child asked, so an end-to-end check whose child runs the optimizer skill could not confirm a proposal or choose a resolution in the same child; restarting the child for each turn repeats its start and loses its process state. A named pipe works across both sandboxes but blocks until both ends open, and Claude Code gives a background command no writable standard input, so appended files are the one channel that works in both harnesses. The optimizer refused inside a run because it found no session launcher, although the run's runner already starts forwarded launches outside the child's sandbox. | Supersedes D107's rule that a forwarded launch carries only turns. A caller that lets a child run a campaign must allow enough requested sessions for it, and each of them counts against the caller's limits. The asking session must keep the conversation command running; ending it ends the child. |
 
 ## 14. Acceptance evidence
 
