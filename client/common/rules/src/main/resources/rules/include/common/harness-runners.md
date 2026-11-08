@@ -47,13 +47,13 @@ session was started by a runner that lets it start sessions: follow "Inside a ru
 `<harness>-artifact` or `--verify-artifact`, and do not check the prerequisites of "Outside a run". When it does not,
 skip "Inside a run".
 
-Run the launcher by its absolute path, as one command with no pipe or redirection. Before you run it, write the run's
-records with a file-writing tool into a file, one line per turn, `{"type":"turn","prompt":"<task>"}`, followed by one
-`{"type":"complete"}` line, and name that file with `--input <file>`. `--input` takes only that records file, never a
-prompt file; prompt files are for the `request-session` launcher. Use a command timeout of 600000 milliseconds and keep
-waiting while the run writes `waiting` records, which it repeats every 30 seconds while a turn writes nothing else.
-When a turn's prompt depends on the reply to the turn before it, hold a conversation instead, as "Conversations"
-describes.
+Run the launcher by its absolute path, as one command with nothing in front of it, such as a variable assignment, `env`
+or `cd`, and no pipe or redirection. Before you run it, write the run's records with a file-writing tool into a file,
+one line per turn, `{"type":"turn","prompt":"<task>"}`, followed by one `{"type":"complete"}` line, and name that file
+with `--input <file>`. `--input` takes only that records file, never a prompt file; prompt files are for the
+`request-session` launcher. Use a command timeout of 600000 milliseconds and keep waiting while the run writes `waiting`
+records, which it repeats every 30 seconds while a turn writes nothing else. When a turn's prompt depends on the reply
+to the turn before it, hold a conversation instead, as "Conversations" describes.
 
 Every run and every session request takes `--model <model>` and `--effort <effort>`, or for a run outside a run
 `--agent <name>` instead, and the launcher refuses a run or request without them. Always pass them yourself; never ask
@@ -156,13 +156,14 @@ writes. The runner tells it how. Add `--request-depth <levels>` when those sessi
 level below may request as many sessions, one level less deep. Without `--session-requests`, the session may start
 none. The receipt lists each requested session and its response path.
 
-Outside a run, the launcher does not start the harness itself. It asks the session launcher that CAT's
-SessionStart hook started for this session, outside this session's sandbox, to start the session inside its harness's
-own sandbox, and waits until it ends. It exits with `0` when the session completed, `75` when no capacity was free, `2`
-when CAT refused to start the session, and `1` otherwise, and prints the reason for any status other than `0`. Report
-that reason to the user. When it asks the user to start a new session, as it does when no CAT session launcher serves
-this session, ask the user to start a new session and run the task there. Do not start the run any other way, and do
-not change sandbox settings yourself.
+Outside a run, the launcher starts the session itself, inside its harness's own sandbox, and waits until it ends. It
+can do so only outside this session's sandbox, where CAT's install lets this harness run it only in the form that
+"Launcher" gives. Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name` or `--git-email`: only
+CAT itself passes them, and the launcher refuses them. It exits with `0` when the session completed, `75` when no
+capacity was free, `2` when CAT refused to start the session, and `1` otherwise, and prints the reason for any status
+other than `0`. Report that reason to the user. When it asks the user to start a new session or to change a setting,
+as it does when this session started before CAT was installed or updated, ask the user to do so and run the task in a
+new session. Do not start the run any other way, and do not change sandbox settings yourself.
 
 ### Conversations
 

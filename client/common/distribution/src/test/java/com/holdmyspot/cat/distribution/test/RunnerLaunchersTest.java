@@ -3,6 +3,7 @@ package com.holdmyspot.cat.distribution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.runner.DirectLaunch;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
@@ -358,6 +359,30 @@ public final class RunnerLaunchersTest
 			contains("`{\"type\":\"turn\",\"prompt\":\"<task>\"}`").
 			contains("`--input` takes only that records file, never a prompt file; prompt files are for the " +
 				"`request-session` launcher");
+	}
+
+	/**
+	 * Verifies that the bundled rule on running a harness tells the agent to run the launcher with nothing in front of
+	 * it, names every option that only CAT passes as one the agent never passes, and no longer sends a launch outside a
+	 * run through a session launcher.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleNamesOptionsOnlyCatPasses() throws IOException
+	{
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
+		requireThat(rule, "rule").
+			contains("as one command with nothing in front of it, such as a variable assignment, `env` or `cd`").
+			contains("Outside a run, the launcher starts the session itself").
+			doesNotContain("session launcher");
+		int never = rule.indexOf("Never pass ");
+		requireThat(never, "never").isNotNegative();
+		String refusal = rule.substring(never, rule.indexOf("the launcher refuses them", never));
+		for (String option : DirectLaunch.INTERNAL_OPTIONS)
+			requireThat(refusal, "refusal").contains("`" + option + "`");
 	}
 
 	/**
