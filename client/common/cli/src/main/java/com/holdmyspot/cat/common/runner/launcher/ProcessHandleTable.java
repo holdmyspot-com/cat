@@ -13,20 +13,13 @@ import java.util.stream.Stream;
  * {@link ProcessHandle#parent()}, and with command lines and starts from {@link HarnessProcesses}, which reads
  * {@code /proc} on Linux and asks {@link ProcessHandle} elsewhere, where Windows reports no command lines.
  * <p>
- * The session launcher's requester proof rests on these properties of the platforms and harnesses, which this class
- * is the one place to correct if a platform or harness release differs:
- * <ul>
- *   <li>a holder that a sandboxed command starts descends from the harness process, through the sandbox's own
- *     processes, so that the launcher finds it among {@link #descendants(ProcessIdentity)};</li>
- *   <li>the holder's command line is readable from outside the sandbox, a PID namespace included, whatever
- *     its length;</li>
- *   <li>a process's {@link ProcessDescription#start() start} is the same in every process that reads it for as long
- *     as the process lives, so that the hook that names the harness process, the launcher that serves it and a later
- *     hook of the same process agree on its identity, and the harness's end, and a later process that reuses its
- *     identifier, show as {@link #isAlive(ProcessIdentity)} returning {@code false}. The launcher polls this rather
- *     than waiting on {@link ProcessHandle#onExit()}, which on macOS reports the end of a process that is not the
- *     caller's child seconds late.</li>
- * </ul>
+ * The request server's end with its session rests on this property of the platforms, which this class is the one
+ * place to correct if a platform release differs: a process's {@link ProcessDescription#start() start} is the same in
+ * every process that reads it for as long as the process lives, so that the identity that the request server takes
+ * from its harness ancestor stays the harness's, and the harness's end, and a later process that reuses its
+ * identifier, show as {@link #isAlive(ProcessIdentity)} returning {@code false}. The server polls this rather than
+ * waiting on {@link ProcessHandle#onExit()}, which on macOS reports the end of a process that is not the caller's
+ * child seconds late.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */

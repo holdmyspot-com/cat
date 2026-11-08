@@ -17,7 +17,7 @@ import java.util.TreeSet;
 
 /**
  * Stands in for the sandbox policy source of a harness session whose settings the test sets. Like the Codex
- * session launcher's source, each reading gives the session's policy as it is now, a thread that has a policy of its
+ * request server's source, each reading gives the session's policy as it is now, a thread that has a policy of its
  * own reads that policy, and every reading after the session has ended, or its settings became unusable, fails.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.

@@ -93,7 +93,7 @@ public final class ClaudeRunnerTest
 
 	/**
 	 * Verifies that the Claude process environment marks the session as a CAT run, even when the caller's settings
-	 * file sets the marker's variable otherwise, so that the session's SessionStart hook starts no session launcher.
+	 * file sets the marker's variable otherwise, so that the session's commands send their sessions to the run's runner.
 	 *
 	 * @throws IOException if the environment cannot be built
 	 */

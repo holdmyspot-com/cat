@@ -18,7 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Runs the {@link RequestedSessionStarter} contract against the starter of the Codex session launcher, which starts
+ * Runs the {@link RequestedSessionStarter} contract against the starter of the Codex request server, which starts
  * the {@code codex-runner} launcher of its plugin with its {@code serve} command for a Codex session. A stand-in for
  * the operating system records the runner process that the starter starts, and no runner starts.
  */
@@ -44,7 +44,7 @@ public final class CodexRequestedSessionStarterTest extends RequestedSessionStar
 	}
 
 	/**
-	 * The session launcher's starter over a stand-in for the operating system's process start.
+	 * The request server's starter over a stand-in for the operating system's process start.
 	 */
 	private static final class LauncherStarts implements Starts
 	{

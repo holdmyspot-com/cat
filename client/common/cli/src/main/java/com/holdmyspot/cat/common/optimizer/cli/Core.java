@@ -20,7 +20,7 @@ public interface Core
 	 * @param target the prompt file or prompt system
 	 * @return the result, which presents the proposal that awaits confirmation
 	 * @throws NullPointerException if {@code target} is null
-	 * @throws CommandRefusedException if no session launcher serves the host session, the current harness cannot deny
+	 * @throws CommandRefusedException if no request server serves the host session, the current harness cannot deny
 	 *   its sessions reads of held-out content, the other harness started the target's campaign, another process runs
 	 *   the target's campaign, the target is not in the project, or the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
@@ -39,7 +39,7 @@ public interface Core
 	 * @return the result, which presents the proposal that awaits confirmation
 	 * @throws NullPointerException if {@code target} is null
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}]
-	 * @throws CommandRefusedException if no session launcher serves the host session, the current harness cannot deny
+	 * @throws CommandRefusedException if no request server serves the host session, the current harness cannot deny
 	 *   its sessions reads of held-out content, the other harness started the target's campaign, another process runs
 	 *   the target's campaign, the target is not in the project, or the base worktree has uncommitted changes
 	 * @throws IOException if the store, the workspace or a session fails
@@ -90,7 +90,7 @@ public interface Core
 	 * @throws NullPointerException if {@code target} is null
 	 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
 	 *   {@code goal} is blank
-	 * @throws CommandRefusedException if no session launcher serves the host session, the current harness cannot deny
+	 * @throws CommandRefusedException if no request server serves the host session, the current harness cannot deny
 	 *   its sessions reads of held-out content, the other harness started the target's campaign, another process runs
 	 *   the target's campaign, the target is not in the project, the base worktree has uncommitted changes, the file of
 	 *   extra permissions is missing or invalid, or the resumed campaign's goal or extra permissions differ from the
@@ -106,7 +106,7 @@ public interface Core
 	 *
 	 * @param campaign the campaign's identifier
 	 * @return the result, which reports the campaign as busy without changing it if another process runs it
-	 * @throws CommandRefusedException if no session launcher serves the host session, the campaign does not exist or
+	 * @throws CommandRefusedException if no request server serves the host session, the campaign does not exist or
 	 *   the other harness started it
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits

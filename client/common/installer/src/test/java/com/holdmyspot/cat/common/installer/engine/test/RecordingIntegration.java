@@ -603,20 +603,18 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Records the call with the other harness's home, the lock directory and the launcher's state directory, and
-	 * returns the entries that the test set.
+	 * Records the call with the other harness's home and the lock directory, and returns the entries that the test set.
 	 */
 	@Override
 	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		Path launcherState, FileReplacer replacer) throws IOException
+		FileReplacer replacer) throws IOException
 	{
-		record("installSandboxEntries", other.home() + " " + catLocks + " " + launcherState);
+		record("installSandboxEntries", other.home() + " " + catLocks);
 		return add(home, sandbox);
 	}
 
 	@Override
-	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		Path launcherState)
+	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
 	{
 		if (!consentedAdded(home))
 			return sandbox;

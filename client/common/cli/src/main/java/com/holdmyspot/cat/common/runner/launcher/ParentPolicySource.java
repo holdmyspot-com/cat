@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Reads the sandbox policy of the harness session that a session launcher serves, from that harness's own settings
+ * Reads the sandbox policy of the harness session that a request server serves, from that harness's own settings
  * and command line.
  * <p>
  * <b>Thread Safety:</b> Implementations must be thread-safe.

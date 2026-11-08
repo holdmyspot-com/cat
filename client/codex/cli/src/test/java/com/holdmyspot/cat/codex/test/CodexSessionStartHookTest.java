@@ -960,10 +960,7 @@ public final class CodexSessionStartHookTest
 			Path.of(System.getProperty("java.io.tmpdir"), "cat-absent-home").toString());
 		CodexSessionStartHookSecrets.getCodexSessionStartHookAccess().run(new String[0],
 			new ByteArrayInputStream(input.getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-			harnessEnvironment, workingDirectory, Yielding.waiting(), git, Platform.current(), List::of, (_, _) ->
-			{
-				throw new AssertionError("The hook started a session launcher");
-			});
+			harnessEnvironment, workingDirectory, Yielding.waiting(), git);
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
 

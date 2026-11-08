@@ -678,11 +678,8 @@ public final class CodexIntegration implements HarnessIntegration
 	/**
 	 * Lets sandboxed commands write {@code catLocks}. When {@code config.toml} selects with {@code default_permissions}
 	 * a permission profile that it defines, adds {@code "<catLocks>" = "write"} to that profile's {@code filesystem}
-	 * table, creating the table when it is absent, unless the profile already has an entry for {@code catLocks}, and
-	 * adds {@code "<launcherState>" = "read"} to the same table unless the profile already has an entry for
-	 * {@code launcherState}. The session launcher trusts its state only while no sandboxed command can write it, and
-	 * Codex applies the most specific entry, so the read entry keeps the commands from writing that folder even when
-	 * the profile lets them write a folder that contains it. Otherwise adds {@code catLocks} to
+	 * table, creating the table when it is absent, unless the profile already has an entry for {@code catLocks}.
+	 * Otherwise adds {@code catLocks} to
 	 * {@code sandbox_workspace_write.writable_roots}, creating the file or the table when it is absent, unless the
 	 * writable roots already hold it. Codex's own sandbox already keeps sandboxed commands from writing the other
 	 * harness's CAT installation, so this call adds nothing for it. When the selected profile is CAT's profile of
@@ -691,27 +688,24 @@ public final class CodexIntegration implements HarnessIntegration
 	 * for each writable folder, a read entry for {@code :tmpdir} and {@code :slash_tmp} when the settings exclude them,
 	 * and {@code enabled = true} in its {@code network} table when the settings allow network access.
 	 *
-	 * @param home          the absolute Codex home
-	 * @param other         the other harness's CAT installation
-	 * @param catLocks      the capacity lock directory
-	 * @param launcherState the directory that holds the session launcher's state
-	 * @param replacer      replaces Codex's configuration
+	 * @param home     the absolute Codex home
+	 * @param other    the other harness's CAT installation
+	 * @param catLocks the capacity lock directory
+	 * @param replacer replaces Codex's configuration
 	 * @return each entry that {@link #sandboxEntries} returns and that this call added
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative or
-	 *                                  not normalized
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
 	 * @throws IOException              if {@code config.toml} is a symbolic link, not a regular file, not valid TOML or
 	 *                                  in a form whose writable roots, or whose selected permission profile, CAT does
 	 *                                  not edit, or cannot be written
 	 */
 	@Override
 	public Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		Path launcherState, FileReplacer replacer) throws IOException
+		FileReplacer replacer) throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(other, "other").isNotNull();
 		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
-		requireThat(launcherState, "launcherState").isAbsolute().isEqualTo(launcherState.normalize());
 		requireThat(replacer, "replacer").isNotNull();
 		validateSandboxEntry(home);
 
@@ -727,9 +721,7 @@ public final class CodexIntegration implements HarnessIntegration
 		if (profile.isPresent())
 		{
 			Map<String, Access> wanted = new LinkedHashMap<>();
-			// Adding the read entry first leaves the write entry above it, below the table header
-			wanted.put(launcherState.toString(), Access.READ);
-			wanted.putIfAbsent(catLocks.toString(), Access.WRITE);
+			wanted.put(catLocks.toString(), Access.WRITE);
 			Optional<String> mode = SandboxModeProfile.extended(document, profile.get());
 			if (mode.isPresent())
 			{
@@ -767,33 +759,28 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Returns the sandbox entries for {@code catLocks} and {@code launcherState} that {@link #installSandboxEntries}
-	 * adds to the current {@code config.toml}.
+	 * Returns the sandbox entries for {@code catLocks} that {@link #installSandboxEntries} adds to the current
+	 * {@code config.toml}.
 	 *
-	 * @param home          the absolute Codex home
-	 * @param other         the other harness's CAT installation
-	 * @param catLocks      the capacity lock directory
-	 * @param launcherState the directory that holds the session launcher's state
-	 * @return {@code {"config.toml#permissions.<profile>.filesystem": [<catLocks>],
-	 * 	"config.toml#permissions.<profile>.filesystem.read": [<launcherState>]}} when {@code config.toml} selects a
+	 * @param home     the absolute Codex home
+	 * @param other    the other harness's CAT installation
+	 * @param catLocks the capacity lock directory
+	 * @return {@code {"config.toml#permissions.<profile>.filesystem": [<catLocks>]}} when {@code config.toml} selects a
 	 * 	permission profile that it defines, with the profile's name quoted when TOML requires it, otherwise
 	 * 	{@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}; when the selected profile is
 	 * 	CAT's profile of a built-in profile or of a sandbox mode, also the entries that {@link #installConsentedEntries}
 	 * 	returns for it, and for CAT's profile of {@code workspace-write} the entries that copy the current
 	 * 	{@code [sandbox_workspace_write]} settings
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative or
-	 *                                  not normalized
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
 	 * @throws UncheckedIOException     if {@code config.toml} cannot be read or is not valid TOML
 	 */
 	@Override
-	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		Path launcherState)
+	public Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks)
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(other, "other").isNotNull();
 		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
-		requireThat(launcherState, "launcherState").isAbsolute().isEqualTo(launcherState.normalize());
 		Path file = new CodexInstallation(home).configuration();
 		ObjectNode document;
 		try
@@ -809,7 +796,6 @@ public final class CodexIntegration implements HarnessIntegration
 			return Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
 		Map<String, List<String>> entries = new HashMap<>();
 		record(entries, profileKey(profile.get()), catLocks.toString());
-		record(entries, profileKey(profile.get()) + READ_SUFFIX, launcherState.toString());
 		Optional<String> builtIn = BuiltInProfile.extended(document, profile.get());
 		if (builtIn.isPresent())
 		{

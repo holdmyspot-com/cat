@@ -296,19 +296,17 @@ public final class HarnessIntegrationContract
 		HarnessIntegration integration = subject.integration();
 		HarnessInstallation other = integration.installation(otherHome);
 		Path catLocks = otherHome.resolve("locks");
-		Path launcherState = otherHome.resolve("sessions");
-		Map<String, List<String>> maintained = integration.sandboxEntries(home, other, catLocks, launcherState);
+		Map<String, List<String>> maintained = integration.sandboxEntries(home, other, catLocks);
 
-		Map<String, List<String>> added = integration.installSandboxEntries(home, other, catLocks, launcherState,
-			REPLACER);
+		Map<String, List<String>> added = integration.installSandboxEntries(home, other, catLocks, REPLACER);
 
 		requireThat(added, "added").isNotEmpty();
 		requireMaintained(added, maintained);
-		requireThat(integration.installSandboxEntries(home, other, catLocks, launcherState, REPLACER), "again").
+		requireThat(integration.installSandboxEntries(home, other, catLocks, REPLACER), "again").
 			isEmpty();
 		integration.removePermissions(home, added, REPLACER);
 		requireThat(integration.describeRetained(home, added), "retained").isEmpty();
-		requireThat(integration.installSandboxEntries(home, other, catLocks, launcherState, REPLACER), "restored").
+		requireThat(integration.installSandboxEntries(home, other, catLocks, REPLACER), "restored").
 			isEqualTo(added);
 	}
 
@@ -336,8 +334,7 @@ public final class HarnessIntegrationContract
 
 		requireThat(consented, "consented").isNotEmpty();
 		requireThat(integration.consentRequest(home, catLocks), "asked").isEmpty();
-		requireMaintained(consented, integration.sandboxEntries(home, integration.installation(otherHome), catLocks,
-			otherHome.resolve("sessions")));
+		requireMaintained(consented, integration.sandboxEntries(home, integration.installation(otherHome), catLocks));
 		requireThat(integration.describeAdded(home, consented), "described").isNotEmpty();
 		integration.removePermissions(home, consented, REPLACER);
 		requireThat(integration.describeRetained(home, consented), "retained").isEmpty();
@@ -358,14 +355,11 @@ public final class HarnessIntegrationContract
 			return;
 		HarnessInstallation other = integration.installation(otherHome);
 		Path catLocks = otherHome.resolve("locks");
-		Path launcherState = otherHome.resolve("sessions");
 
-		Map<String, List<String>> added = integration.installSandboxEntries(home, other, catLocks, launcherState,
-			REPLACER);
+		Map<String, List<String>> added = integration.installSandboxEntries(home, other, catLocks, REPLACER);
 
 		requireThat(integration.describeAdded(home, added), "described").isNotEmpty();
-		Map<String, List<String>> again = integration.installSandboxEntries(home, other, catLocks, launcherState,
-			REPLACER);
+		Map<String, List<String>> again = integration.installSandboxEntries(home, other, catLocks, REPLACER);
 		requireThat(integration.describeAdded(home, again), "describedAgain").isEmpty();
 	}
 
@@ -413,7 +407,7 @@ public final class HarnessIntegrationContract
 		Map<String, List<String>> recorded = new LinkedHashMap<>(integration.installPermissions(home, installer,
 			REPLACER));
 		Map<String, List<String>> sandbox = integration.installSandboxEntries(home, integration.installation(otherHome),
-			otherHome.resolve("locks"), otherHome.resolve("sessions"), REPLACER);
+			otherHome.resolve("locks"), REPLACER);
 		sandbox = new LinkedHashMap<>(sandbox);
 		for (Map.Entry<String, List<String>> entry : integration.installReadOnlyEntries(home,
 			List.of(otherHome.resolve(".bashrc")), REPLACER).entrySet())

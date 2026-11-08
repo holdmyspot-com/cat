@@ -128,12 +128,11 @@ public final class BuiltInProfileTest
 
 	/**
 	 * With the user's permission, install selects CAT's profile, which extends the built-in one and holds only the lock
-	 * folder's write entry and the session launcher state's read entry, changing nothing else. It tells the user so,
-	 * and a repeated install changes nothing and tells nothing. Uninstall then restores the original file.
+	 * folder's write entry, changing nothing else. It tells the user so, and a repeated install changes nothing and
+	 * tells nothing. Uninstall then restores the original file.
 	 *
 	 * @param original the existing {@code config.toml}
-	 * @param edited   the expected {@code config.toml} after install, with {@code %1$s} for the quoted lock folder and
-	 *                 {@code %2$s} for the quoted launcher state
+	 * @param edited   the expected {@code config.toml} after install, with {@code %1$s} for the quoted lock folder
 	 * @param removed  the expected {@code config.toml} after uninstall
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -149,13 +148,12 @@ public final class BuiltInProfileTest
 
 			Map<String, List<String>> recorded = install(home, locks);
 
-			String expected = edited.formatted(quote(locks), quote(launcherState(locks)));
+			String expected = edited.formatted(quote(locks));
 			requireThat(Files.readString(configuration), "edited").isEqualTo(expected);
 			requireThat(recorded, "recorded").isEqualTo(Map.of(
 				"config.toml#default_permissions", List.of(":workspace"),
 				"config.toml#permissions.cat-workspace", List.of(":workspace"),
-				"config.toml#permissions.cat-workspace.filesystem", List.of(locks.toString()),
-				"config.toml#permissions.cat-workspace.filesystem.read", List.of(launcherState(locks).toString())));
+				"config.toml#permissions.cat-workspace.filesystem", List.of(locks.toString())));
 			requireThat(provider().describeAdded(home, recorded), "notices").isEqualTo(List.of(
 				"CAT set default_permissions in " + configuration + " to its permission profile \"cat-workspace\", " +
 					"which extends \":workspace\" and lets sandboxed commands take CAT's capacity locks; " +
@@ -189,14 +187,14 @@ public final class BuiltInProfileTest
 					"network_access = true\n",
 					"model = \"gpt\"\ndefault_permissions = \"cat-workspace\"\n\n[sandbox_workspace_write]\n" +
 						"network_access = true\n\n[permissions.cat-workspace]\nextends = \":workspace\"\n\n" +
-						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n%2$s = \"read\"\n",
+						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n",
 					"model = \"gpt\"\ndefault_permissions = \":workspace\"\n\n[sandbox_workspace_write]\n" +
 						"network_access = true\n"},
 				// A literal string with a comment, and another profile of the user's
 				{"default_permissions = ':workspace' # mine\n\n[permissions.mine]\nextends = \":read-only\"\n",
 					"default_permissions = \"cat-workspace\" # mine\n\n[permissions.mine]\nextends = \":read-only\"\n\n" +
 						"[permissions.cat-workspace]\nextends = \":workspace\"\n\n" +
-						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n%2$s = \"read\"\n",
+						"[permissions.cat-workspace.filesystem]\n%1$s = \"write\"\n",
 					"default_permissions = \":workspace\" # mine\n\n[permissions.mine]\nextends = \":read-only\"\n"}
 			};
 	}
@@ -229,9 +227,7 @@ public final class BuiltInProfileTest
 				new EntryGroup(EntryEffect.SETS_VALUE, file, "permissions.cat-workspace",
 					List.of("extends = \":workspace\""), List.of("extends = \":workspace\"")),
 				new EntryGroup(EntryEffect.SANDBOX_MAY_WRITE, file, filesystem, List.of(locks.toString()),
-					List.of(quote(locks) + " = \"write\"")),
-				new EntryGroup(EntryEffect.SANDBOX_MAY_NOT_WRITE, file, filesystem,
-					List.of(launcherState(locks).toString()), List.of(quote(launcherState(locks)) + " = \"read\""))));
+					List.of(quote(locks) + " = \"write\""))));
 		}
 	}
 
@@ -398,18 +394,7 @@ public final class BuiltInProfileTest
 	}
 
 	/**
-	 * Returns the folder that holds the session launcher's state, beside the lock folder.
-	 *
-	 * @param locks the capacity lock folder
-	 * @return the folder
-	 */
-	private static Path launcherState(Path locks)
-	{
-		return locks.resolveSibling("sessions");
-	}
-
-	/**
-	 * Adds the sandbox entries for the lock folder and the launcher's state.
+	 * Adds the sandbox entries for the lock folder.
 	 *
 	 * @param home  the Codex home
 	 * @param locks the capacity lock folder
@@ -418,11 +403,11 @@ public final class BuiltInProfileTest
 	 */
 	private static Map<String, List<String>> installSandboxEntries(Path home, Path locks) throws IOException
 	{
-		return provider().installSandboxEntries(home, other(), locks, launcherState(locks), replacer());
+		return provider().installSandboxEntries(home, other(), locks, replacer());
 	}
 
 	/**
-	 * Returns the sandbox entries for the lock folder and the launcher's state.
+	 * Returns the sandbox entries for the lock folder.
 	 *
 	 * @param home  the Codex home
 	 * @param locks the capacity lock folder
@@ -431,7 +416,7 @@ public final class BuiltInProfileTest
 	 */
 	private static Map<String, List<String>> sandboxEntries(Path home, Path locks) throws IOException
 	{
-		return provider().sandboxEntries(home, other(), locks, launcherState(locks));
+		return provider().sandboxEntries(home, other(), locks);
 	}
 
 	/**

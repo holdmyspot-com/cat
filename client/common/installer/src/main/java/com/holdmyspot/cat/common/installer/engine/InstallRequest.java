@@ -12,27 +12,29 @@ import java.util.List;
  * installations, which the harness's sandbox entries name, and whether the user allows a change that needs their
  * permission.
  *
- * @param session       the harness that installs the plugin
- * @param image         the plugin folder that the running installer runs from
- * @param others        the CAT installations of the other harnesses
- * @param catLocks      the directory of the capacity locks, which the sandbox entries name
- * @param launcherState the directory that holds the session launcher's state, which the sandbox entries name
- * @param startupFiles  the shell startup files that the harness's sessions may not change
- * @param consent       decides whether the user allows a change that needs their permission
+ * @param session             the harness that installs the plugin
+ * @param image               the plugin folder that the running installer runs from
+ * @param others              the CAT installations of the other harnesses
+ * @param catLocks            the directory of the capacity locks, which the sandbox entries name
+ * @param formerLauncherState the folder in which the session launcher of earlier releases kept its state, which
+ *                            install deletes
+ * @param startupFiles        the shell startup files that the harness's sessions may not change
+ * @param consent             decides whether the user allows a change that needs their permission
  */
 public record InstallRequest(HarnessSession session, Path image, List<HarnessInstallation> others, Path catLocks,
-	Path launcherState, List<Path> startupFiles, Consent consent)
+	Path formerLauncherState, List<Path> startupFiles, Consent consent)
 {
 	/**
 	 * Creates the request.
 	 *
-	 * @param session       the harness that installs the plugin
-	 * @param image         the plugin folder that the running installer runs from
-	 * @param others        the CAT installations of the other harnesses
-	 * @param catLocks      the directory of the capacity locks, which the sandbox entries name
-	 * @param launcherState the directory that holds the session launcher's state, which the sandbox entries name
-	 * @param startupFiles  the shell startup files that the harness's sessions may not change
-	 * @param consent       decides whether the user allows a change that needs their permission
+	 * @param session             the harness that installs the plugin
+	 * @param image               the plugin folder that the running installer runs from
+	 * @param others              the CAT installations of the other harnesses
+	 * @param catLocks            the directory of the capacity locks, which the sandbox entries name
+	 * @param formerLauncherState the folder in which the session launcher of earlier releases kept its state, which
+	 *                            install deletes
+	 * @param startupFiles        the shell startup files that the harness's sessions may not change
+	 * @param consent             decides whether the user allows a change that needs their permission
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public InstallRequest
@@ -41,7 +43,7 @@ public record InstallRequest(HarnessSession session, Path image, List<HarnessIns
 		requireThat(image, "image").isNotNull();
 		others = List.copyOf(others);
 		requireThat(catLocks, "catLocks").isNotNull();
-		requireThat(launcherState, "launcherState").isNotNull();
+		requireThat(formerLauncherState, "formerLauncherState").isNotNull();
 		startupFiles = List.copyOf(startupFiles);
 		requireThat(consent, "consent").isNotNull();
 	}

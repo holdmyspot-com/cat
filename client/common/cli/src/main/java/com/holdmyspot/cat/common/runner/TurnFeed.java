@@ -1,8 +1,7 @@
-package com.holdmyspot.cat.common.runner.launcher.client;
+package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.runner.TurnSource;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;

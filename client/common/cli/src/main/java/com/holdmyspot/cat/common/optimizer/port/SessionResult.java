@@ -159,13 +159,13 @@ public sealed interface SessionResult
 	}
 
 	/**
-	 * No session started because CAT's session launcher refused it: no launcher serves the host session, or the
-	 * launcher or the child's runner refused the session. Every later session is refused the same way until the user
+	 * No session started because it was refused: no request server serves the host session, or the request server or
+	 * the child's runner refused the session. Every later session is refused the same way until the user
 	 * acts on the reason, so the session is not retried.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
-	 * @param reason why no session started and how the user fixes it, as the launcher states it
+	 * @param reason why no session started and how the user fixes it, as the refusal states it
 	 * @param windows the rate-limit windows that the harness reported during the session
 	 */
 	record LaunchRefused(String reason, List<RateLimitWindow> windows) implements SessionResult
@@ -173,7 +173,7 @@ public sealed interface SessionResult
 		/**
 		 * Creates a launch-refused result.
 		 *
-		 * @param reason why no session started and how the user fixes it, as the launcher states it
+		 * @param reason why no session started and how the user fixes it, as the refusal states it
 		 * @param windows the rate-limit windows that the harness reported during the session
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code reason} is blank

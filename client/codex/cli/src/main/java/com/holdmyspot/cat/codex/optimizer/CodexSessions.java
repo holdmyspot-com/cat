@@ -21,7 +21,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
 import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
 

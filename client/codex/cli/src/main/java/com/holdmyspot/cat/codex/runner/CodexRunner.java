@@ -305,7 +305,7 @@ public final class CodexRunner
 		isolatedEnvironment.putAll(caches.environment());
 		isolatedEnvironment.put(CODEX_HOME, isolatedHome.toString());
 		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, runDirectory);
-		// The session's SessionStart hook starts no session launcher
+		// The session's commands send their sessions to this run's runner
 		isolatedEnvironment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
 		if (platform.isLinux())
 		{
@@ -320,7 +320,7 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns what a Codex child session needs beyond its run folder, as a session launcher asks for it before it
+	 * Returns what a Codex child session needs beyond its run folder, as a request server asks for it before it
 	 * starts the child: the shared dependency caches, which the child writes; the host that the child's Codex sends
 	 * its model requests to, which its commands reach; and the caller's login file, which the child's isolated home
 	 * copies when it exists.

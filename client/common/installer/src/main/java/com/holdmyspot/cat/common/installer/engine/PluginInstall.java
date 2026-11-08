@@ -66,6 +66,19 @@ public final class PluginInstall
 	}
 
 	/**
+	 * Returns the folder in which the session launcher of earlier releases kept its state, which
+	 * {@link #installEntries} deletes.
+	 *
+	 * @param userHome the user's home directory
+	 * @return {@code <userHome>/.cat/sessions}
+	 * @throws NullPointerException if {@code userHome} is null
+	 */
+	public static Path formerLauncherState(Path userHome)
+	{
+		return userHome.resolve(".cat").resolve("sessions");
+	}
+
+	/**
 	 * Writes a plugin tree into CAT's marketplace in the harness home, bound to the Java runtime that the plugin will
 	 * have in its version folder, and asks the harness to install it into that version folder.
 	 *
@@ -119,32 +132,36 @@ public final class PluginInstall
 
 	/**
 	 * Makes the change that the user allowed, when {@code consented}, removes the recorded entries that the
-	 * integration no longer maintains, then adds the permission entries, the sandbox entries and the entries that keep
-	 * the harness's sessions from changing the shell startup files, and records the added ones.
+	 * integration no longer maintains and the folder in which the session launcher of earlier releases kept its state,
+	 * then adds the permission entries, the sandbox entries and the entries that keep the harness's sessions from
+	 * changing the shell startup files, and records the added ones. The recorded write denial of that folder is among
+	 * the removed entries.
 	 *
-	 * @param home          the harness home
-	 * @param installer     the installer launcher in the version folder
-	 * @param installation  the harness's CAT installation
-	 * @param others        the CAT installations of the other harnesses
-	 * @param catLocks      the directory of the capacity locks
-	 * @param launcherState the directory that holds the session launcher's state
-	 * @param startupFiles  the shell startup files that the harness's sessions may not change
-	 * @param consented     true if the user allowed the change that {@link HarnessIntegration#consentRequest} asks
-	 *                      about
+	 * @param home                the harness home
+	 * @param installer           the installer launcher in the version folder
+	 * @param installation        the harness's CAT installation
+	 * @param others              the CAT installations of the other harnesses
+	 * @param catLocks            the directory of the capacity locks
+	 * @param formerLauncherState the absolute folder that {@link #formerLauncherState(Path)} returns
+	 * @param startupFiles        the shell startup files that the harness's sessions may not change
+	 * @param consented           true if the user allowed the change that {@link HarnessIntegration#consentRequest}
+	 *                            asks about
 	 * @return the recorded entries, and what the user needs to know about the entries that this call removed and added
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if an entry or the record cannot be read or written
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code formerLauncherState} is relative
+	 * @throws IOException              if an entry or the record cannot be read or written, or the folder cannot be
+	 *                                  deleted or is a link
 	 */
 	public InstalledEntries installEntries(Path home, Path installer, HarnessInstallation installation,
-		List<HarnessInstallation> others, Path catLocks, Path launcherState, List<Path> startupFiles, boolean consented)
-		throws IOException
+		List<HarnessInstallation> others, Path catLocks, Path formerLauncherState, List<Path> startupFiles,
+		boolean consented) throws IOException
 	{
 		requireThat(home, "home").isNotNull();
 		requireThat(installer, "installer").isNotNull();
 		requireThat(installation, "installation").isNotNull();
 		requireThat(others, "others").isNotNull();
 		requireThat(catLocks, "catLocks").isNotNull();
-		requireThat(launcherState, "launcherState").isNotNull();
+		requireThat(formerLauncherState, "formerLauncherState").isAbsolute();
 		requireThat(startupFiles, "startupFiles").isNotNull();
 		Path record = InstallerState.of(installation.dataDirectory(), integration.harness()).permissions();
 		Map<String, List<String>> added = new LinkedHashMap<>();
@@ -153,7 +170,7 @@ public final class PluginInstall
 
 		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(installer));
 		for (HarnessInstallation other : others)
-			merge(maintained, integration.sandboxEntries(home, other, catLocks, launcherState));
+			merge(maintained, integration.sandboxEntries(home, other, catLocks));
 		merge(maintained, integration.readOnlyEntries(home, startupFiles));
 		Map<String, List<String>> obsolete = PermissionRecord.obsolete(record, maintained);
 		if (!obsolete.isEmpty())
@@ -161,10 +178,11 @@ public final class PluginInstall
 			integration.removePermissions(home, obsolete, replacer);
 			PermissionRecord.remove(record, obsolete);
 		}
+		Path stateParent = LinkSafeDeletion.resolveRoot(formerLauncherState.getParent());
+		LinkSafeDeletion.delete(stateParent.resolve(formerLauncherState.getFileName()), stateParent);
 		merge(added, integration.installPermissions(home, installer, replacer));
 		for (HarnessInstallation other : others)
-			merge(added, integration.installSandboxEntries(home, other, catLocks, launcherState,
-				replacer));
+			merge(added, integration.installSandboxEntries(home, other, catLocks, replacer));
 		merge(added, integration.installReadOnlyEntries(home, startupFiles, replacer));
 		Map<String, List<String>> recorded = PermissionRecord.add(record, added);
 		return new InstalledEntries(recorded, integration.describeAdded(home, added));

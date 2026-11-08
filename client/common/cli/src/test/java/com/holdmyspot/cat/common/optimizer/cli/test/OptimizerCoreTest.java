@@ -148,10 +148,10 @@ public final class OptimizerCoreTest
 	 */
 	private static final String OTHER_SESSION = "5a7c9e1b-3d2f-4a6b-8c0e-9f1d3b5a7c2e";
 	/**
-	 * Why the session launcher refuses the sessions of some tests, and how the user fixes it.
+	 * Why the sessions of some tests are refused, and how the user fixes it.
 	 */
-	private static final String LAUNCH_REFUSAL = "No session launcher serves this Claude Code session. Start a new " +
-		"Claude Code session, then run the command again.";
+	private static final String LAUNCH_REFUSAL = "No request server serves this Claude Code session. Start the " +
+		"request server, then run the command again.";
 
 	/**
 	 * Matches the identifier of each assertion that a judge request lists, which its turn holds as a JSON array of
@@ -1405,13 +1405,13 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code start} refuses with the session launcher's message, before it starts any session or
-	 * creates a campaign, when no session launcher serves the host session.
+	 * Verifies that {@code start} refuses with the refusal's message, before it starts any session or creates a
+	 * campaign, when no request server serves the host session.
 	 *
 	 * @throws Exception if the repository cannot be written or the command fails for another reason
 	 */
 	@Test
-	public void startRefusesWithoutLauncher() throws Exception
+	public void startRefusesWithoutServer() throws Exception
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
@@ -1430,13 +1430,13 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Verifies that {@code run} refuses with the session launcher's message, before it starts any session, when no
-	 * session launcher serves the host session.
+	 * Verifies that {@code run} refuses with the refusal's message, before it starts any session, when no request
+	 * server serves the host session.
 	 *
 	 * @throws Exception if the repository cannot be written or the command fails for another reason
 	 */
 	@Test
-	public void runRefusesWithoutLauncher() throws Exception
+	public void runRefusesWithoutServer() throws Exception
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{

@@ -494,8 +494,8 @@ public final class SessionRequestBroker implements Closeable
 	{
 		try
 		{
-			String reason = BoundedInput.readUtf8(directory.resolve("runner.stderr"), MAXIMUM_REFUSAL_BYTES,
-				"requested runner refusal").strip();
+			String reason = BoundedInput.readUtf8(directory.resolve(RequestedSessionStarter.ERROR_FILE),
+				MAXIMUM_REFUSAL_BYTES, "requested runner refusal").strip();
 			if (!reason.isEmpty())
 				return reason;
 		}

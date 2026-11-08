@@ -27,7 +27,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.RequestServer;
-import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;

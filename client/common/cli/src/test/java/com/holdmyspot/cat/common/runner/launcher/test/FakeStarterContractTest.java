@@ -1,13 +1,12 @@
 package com.holdmyspot.cat.common.runner.launcher.test;
 
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionStarterContract;
 import java.util.List;
 
 /**
- * Runs the {@link RequestedSessionStarter} contract against {@link FakeStarter}, so that the launcher tests that start
- * their children's runners through it see what the session launchers' starters do.
+ * Runs the {@link RequestedSessionStarter} contract against {@link FakeStarter}, so that the request server tests that
+ * start their children's runners through it see what the request servers' starters do.
  */
 public final class FakeStarterContractTest extends RequestedSessionStarterContract
 {
@@ -40,7 +39,7 @@ public final class FakeStarterContractTest extends RequestedSessionStarterContra
 			public List<StartedRunner> started()
 			{
 				return starter.runners().stream().map(runner -> new StartedRunner(runner.harness(), runner.arguments(),
-					runner.directory(), runner.directory().resolve(SessionLauncherChannel.RUNNER_STDERR_FILE))).toList();
+					runner.directory(), runner.directory().resolve(RequestedSessionStarter.ERROR_FILE))).toList();
 			}
 
 			@Override

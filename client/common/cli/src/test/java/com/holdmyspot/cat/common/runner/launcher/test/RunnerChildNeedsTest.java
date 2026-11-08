@@ -2,7 +2,6 @@ package com.holdmyspot.cat.common.runner.launcher.test;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.launcher.RunnerChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
@@ -26,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Tests that a session launcher learns a child's needs from the runner of the child's harness, and refuses a child
+ * Tests that a request server learns a child's needs from the runner of the child's harness, and refuses a child
  * whose isolated home would copy a login that the requesting session may not read.
  */
 public final class RunnerChildNeedsTest
@@ -54,7 +53,7 @@ public final class RunnerChildNeedsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path request = cleanup.add(Files.createTempDirectory("cat-request-")).toRealPath();
-			Path runFolder = request.resolve(SessionLauncherChannel.RUN_DIRECTORY);
+			Path runFolder = request.resolve("run");
 			Path cache = request.resolveSibling("cache");
 			Path denied = request.resolveSibling("denied");
 			List<List<String>> started = new ArrayList<>();
@@ -103,7 +102,7 @@ public final class RunnerChildNeedsTest
 			try
 			{
 				new RunnerChildNeeds(starter).needs("codex",
-					request.resolve(SessionLauncherChannel.RUN_DIRECTORY), List.of(), bound);
+					request.resolve("run"), List.of(), bound);
 				throw new AssertionError("The child was not refused");
 			}
 			catch (PolicyRefusal e)
@@ -127,13 +126,13 @@ public final class RunnerChildNeedsTest
 			Path request = cleanup.add(Files.createTempDirectory("cat-request-")).toRealPath();
 			RequestedSessionStarter starter = (_, _, directory) ->
 			{
-				Files.writeString(directory.resolve(SessionLauncherChannel.RUNNER_STDERR_FILE),
+				Files.writeString(directory.resolve(RequestedSessionStarter.ERROR_FILE),
 					"Codex has no CAT plugin of this release\n");
 				return new ExitedProcess(1);
 			};
 			try
 			{
-				new RunnerChildNeeds(starter).needs("codex", request.resolve(SessionLauncherChannel.RUN_DIRECTORY),
+				new RunnerChildNeeds(starter).needs("codex", request.resolve("run"),
 					List.of(), ParentPolicy.UNSANDBOXED);
 				throw new AssertionError("The needs were read");
 			}

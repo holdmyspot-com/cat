@@ -154,13 +154,13 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract HarnessSandbox trialSandbox();
 
 	/**
-	 * Returns why the session launcher that starts this command's nested sessions would refuse every session, found
-	 * without sending a request or starting a session. Only sessions that go to a session launcher need one.
+	 * Returns why the request server that starts this command's nested sessions would refuse every session, found
+	 * without sending a request or starting a session. Only sessions that go to the session's request server need one.
 	 *
-	 * @return the message that names the reason and the user's remedy, or empty if a launcher may start sessions or
-	 *   the sessions do not go to a session launcher
+	 * @return the message that names the reason and the user's remedy, or empty if a request server serves the host
+	 *   session or the sessions do not go to a request server
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException           if the launchers' state cannot be listed
+	 * @throws IOException           if the host session's CAT session directory cannot be opened
 	 */
 	protected abstract Optional<String> launchRefusal() throws IOException;
 

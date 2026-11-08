@@ -359,9 +359,9 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	}
 
 	/**
-	 * Makes the session launcher refuse every session of this scope's host session before any session starts.
+	 * Makes every session of this scope's host session before any session starts.
 	 *
-	 * @param refusal why the launcher refuses and how the user fixes it
+	 * @param refusal why the sessions are refused and how the user fixes it
 	 * @throws NullPointerException if {@code refusal} is null
 	 */
 	void refuseLaunches(String refusal)

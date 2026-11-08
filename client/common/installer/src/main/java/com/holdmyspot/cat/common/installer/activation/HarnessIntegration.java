@@ -231,35 +231,32 @@ public interface HarnessIntegration
 	 * Adds the sandbox settings that keep sandboxed commands from writing the other harness's CAT installation and
 	 * that let them take the capacity locks. Idempotent.
 	 *
-	 * @param home          the absolute, normalized harness home from the trust policy
-	 * @param other         where the other harness keeps CAT's installation
-	 * @param catLocks      the absolute directory of CAT's capacity locks
-	 * @param launcherState the absolute directory that holds the session launcher's state
-	 * @param replacer      replaces each configuration file that this call writes, retrying while Windows refuses the
-	 *                      replacement
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param other    where the other harness keeps CAT's installation
+	 * @param catLocks the absolute directory of CAT's capacity locks
+	 * @param replacer replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                 replacement
 	 * @return the entries that this call added, keyed as {@link #installPermissions} keys them; entries that already
 	 * 	existed are not returned
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
 	 * @throws IOException              if the configuration cannot be changed
 	 */
 	Map<String, List<String>> installSandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		Path launcherState, FileReplacer replacer) throws IOException;
+		FileReplacer replacer) throws IOException;
 
 	/**
 	 * Returns every entry that {@link #installSandboxEntries} maintains, whether or not the configuration already holds
 	 * it.
 	 *
-	 * @param home          the absolute, normalized harness home from the trust policy
-	 * @param other         where the other harness keeps CAT's installation
-	 * @param catLocks      the absolute directory of CAT's capacity locks
-	 * @param launcherState the absolute directory that holds the session launcher's state
+	 * @param home     the absolute, normalized harness home from the trust policy
+	 * @param other    where the other harness keeps CAT's installation
+	 * @param catLocks the absolute directory of CAT's capacity locks
 	 * @return the entries keyed as {@link #installPermissions} keys them
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative
+	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
 	 */
-	Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks,
-		Path launcherState);
+	Map<String, List<String>> sandboxEntries(Path home, HarnessInstallation other, Path catLocks);
 
 	/**
 	 * Adds the settings that keep the harness's sessions from changing the given files, both through sandboxed commands

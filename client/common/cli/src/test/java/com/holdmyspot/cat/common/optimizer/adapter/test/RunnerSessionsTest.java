@@ -31,7 +31,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
-import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
@@ -1037,8 +1037,8 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that a session that the session launcher refuses before it starts ends as a launch refusal that carries
-	 * the launcher's message, not as a failure that the optimizer retries.
+	 * Verifies that a session that is refused before it starts ends as a launch refusal that carries the refusal's
+	 * message, not as a failure that the optimizer retries.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -1046,7 +1046,7 @@ public final class RunnerSessionsTest
 	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void classifiesLauncherRefusalAsLaunchRefused()
+	public void classifiesRefusalAsLaunchRefused()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -1056,7 +1056,7 @@ public final class RunnerSessionsTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			String refusal = "No session launcher serves this session. Start a new session.";
+			String refusal = "No request server serves this session. Start the request server.";
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
 				throw new LaunchRefusedException(refusal);

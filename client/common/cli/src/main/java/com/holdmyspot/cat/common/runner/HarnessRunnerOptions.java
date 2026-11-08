@@ -46,7 +46,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
  * @param conversation the folder of a {@link Conversation} whose messages are the run's records, and to which the
  *   bridge's records go too, or {@code null} if the run holds none
- * @param policyBound the file of the policy that bounds the session's sandbox policy, which the session launcher
+ * @param policyBound the file of the policy that bounds the session's sandbox policy, which the request server
  *   writes, or {@code null} if the launch names none
  * @param capacityHeld indicates whether the requester holds the session's capacity slot itself, so that the runner
  *   takes none

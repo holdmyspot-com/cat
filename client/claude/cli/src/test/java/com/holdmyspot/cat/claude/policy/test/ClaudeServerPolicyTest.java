@@ -24,17 +24,17 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests the sandbox policy that the Claude Code session launcher serves its session with: the policy that the
- * session's settings give when the launcher starts, and later the policy of that same Claude Code process only. The
+ * Tests the sandbox policy that the Claude Code request server serves its session with: the policy that the
+ * session's settings give when the server starts, and later the policy of that same Claude Code process only. The
  * {@link ParentPolicySource} contract runs against the same source, over the session's settings and a stand-in for
  * the Claude Code process.
  */
-public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
+public final class ClaudeServerPolicyTest extends ParentPolicySourceContract
 {
 	/**
 	 * Creates the test.
 	 */
-	public ClaudeLauncherPolicyTest()
+	public ClaudeServerPolicyTest()
 	{
 	}
 
@@ -63,7 +63,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
-	 * Skips the tests on native Windows, where Claude Code has no sandbox and CAT starts no session launcher, so that
+	 * Skips the tests on native Windows, where Claude Code has no sandbox and no request server serves a session, so that
 	 * no Claude Code session's sandbox policy is read there.
 	 */
 	@BeforeClass
@@ -77,7 +77,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
-	 * Verifies that the launcher reads its session's policy from the session's settings, and refuses a later
+	 * Verifies that the server reads its session's policy from the session's settings, and refuses a later
 	 * reading once another process has taken the Claude Code process's identifier.
 	 *
 	 * @throws IOException   if the fixture cannot be created
@@ -140,7 +140,7 @@ public final class ClaudeLauncherPolicyTest extends ParentPolicySourceContract
 	}
 
 	/**
-	 * Verifies that the launcher tells the user which Claude Code settings to add a missing write and host to.
+	 * Verifies that the server tells the user which Claude Code settings to add a missing write and host to.
 	 *
 	 * @param writes   the paths that the session's sandbox lacks
 	 * @param hosts    the hosts that the session's sandbox lacks

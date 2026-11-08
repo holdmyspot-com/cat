@@ -14,8 +14,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Runs the {@link ParentPolicySource} contract against {@link FakeParentPolicySource}, so that the launcher tests
- * that read their sessions' policies through it see what the session launchers' sources do.
+ * Runs the {@link ParentPolicySource} contract against {@link FakeParentPolicySource}, so that the request server
+ * tests that read their sessions' policies through it see what the request servers' sources do.
  */
 public final class FakeParentPolicySourceTest extends ParentPolicySourceContract
 {

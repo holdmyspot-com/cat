@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.runner.launcher.test;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
+import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
 import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Plays a child's runner as a session launcher starts it, with the files that a runner writes. When it starts, it
+ * Plays a child's runner as a request server starts it, with the files that a runner writes. When it starts, it
  * creates its run at {@code <--run-root>/<harness>/}{@value #RUN_ID}, with a project that holds the files that the test
  * chose, a home folder, a manifest and a link, and writes its {@code started} record to the {@code --output} file. It
  * records each record that the launcher writes to its standard input and answers each {@code turn} record with a
@@ -342,7 +342,7 @@ public final class FakeRunner
 			Files.writeString(Path.of(receipt.get()), json.writeValueAsString(document));
 		}
 		if (exitStatus != 0)
-			Files.writeString(directory.resolve(SessionLauncherChannel.RUNNER_STDERR_FILE), reason(exitStatus) + "\n");
+			Files.writeString(directory.resolve(RequestedSessionStarter.ERROR_FILE), reason(exitStatus) + "\n");
 		exit(exitStatus);
 	}
 

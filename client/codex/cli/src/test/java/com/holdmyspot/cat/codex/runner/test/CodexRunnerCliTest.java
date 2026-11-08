@@ -834,7 +834,7 @@ public final class CodexRunnerCliTest
 
 	/**
 	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
-	 * run, since only the session launcher starts a session and it always bounds the session's policy.
+	 * run, since only a request server starts a session and it always bounds the session's policy.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */

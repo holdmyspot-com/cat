@@ -68,8 +68,8 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	}
 
 	/**
-	 * {@link ProcessHandle} reports no arguments of another process on Windows, where the session launcher is not
-	 * served, so the table reports none there.
+	 * {@link ProcessHandle} reports no arguments of another process on Windows, where no request server serves a
+	 * session, so the table reports none there.
 	 *
 	 * @return {@code false} on Windows
 	 */

@@ -9,9 +9,9 @@ import java.util.Optional;
 /**
  * Decides whether a folder may be a CAT project. The user's home folder never may, nor may any folder that contains
  * it, such as the filesystem's root: a project keeps its CAT session directories in the folder that
- * {@link SessionDirectory#ROOT} names, and in the home folder that folder holds the session launcher's state, which
- * sandboxed commands are denied writing. Every other folder may, including the folders below the home folder and the
- * folders outside the folders that contain it.
+ * {@link SessionDirectory#ROOT} names, and in the home folder that folder is beside CAT's user-level state, such as
+ * the capacity locks, which a project's files must not mix with. Every other folder may, including the folders below
+ * the home folder and the folders outside the folders that contain it.
  */
 public final class HomeProject
 {

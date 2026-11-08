@@ -146,9 +146,8 @@ public final class SandboxModeProfileTest
 	 * @param original the existing {@code config.toml}, with {@code %1$s} for the quoted folder {@code data} beside the
 	 *                 Codex home
 	 * @param edited   the expected {@code config.toml} after install, with {@code %1$s} as above, {@code %2$s} for the
-	 *                 quoted lock folder, {@code %3$s} for the quoted launcher state, {@code %4$s} and {@code %5$s}
-	 *                 for the quoted startup files, and {@code %6$s} for the quoted folder {@code projects} in the
-	 *                 Codex home
+	 *                 quoted lock folder, {@code %3$s} and {@code %4$s} for the quoted startup files, and {@code %5$s}
+	 *                 for the quoted folder {@code projects} in the Codex home
 	 * @param recorded the expected recorded entries of {@code config.toml}, with the same placeholders unquoted
 	 * @param notice   a part of the expected notice
 	 * @throws IOException if a fixture cannot be written or read
@@ -161,9 +160,9 @@ public final class SandboxModeProfileTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path configuration = home.resolve("config.toml");
-			Object[] quoted = {quote(home.resolveSibling("data")), quote(locks(home)), quote(launcherState(home)),
-				quote(startupFiles(home).get(0)), quote(startupFiles(home).get(1)), quote(home.resolve("projects"))};
-			Object[] paths = {home.resolveSibling("data"), locks(home), launcherState(home), startupFiles(home).get(0),
+			Object[] quoted = {quote(home.resolveSibling("data")), quote(locks(home)), quote(startupFiles(home).get(0)),
+				quote(startupFiles(home).get(1)), quote(home.resolve("projects"))};
+			Object[] paths = {home.resolveSibling("data"), locks(home), startupFiles(home).get(0),
 				startupFiles(home).get(1), home.resolve("projects")};
 			String before = original.formatted(quoted);
 			Files.writeString(configuration, before);
@@ -218,15 +217,14 @@ public final class SandboxModeProfileTest
 						"writable_roots = [%1$s, \"projects\", \"~/code\"]\nnetwork_access = true\n" +
 						"exclude_tmpdir_env_var = true\nexclude_slash_tmp = true\n\n" +
 						"[" + workspace + "]\nextends = \":workspace\"\n\n" +
-						"[" + workspace + ".filesystem]\n%5$s = \"read\"\n%4$s = \"read\"\n\":slash_tmp\" = \"read\"\n" +
-						"\":tmpdir\" = \"read\"\n\"~/code\" = \"write\"\n%6$s = \"write\"\n%1$s = \"write\"\n" +
-						"%2$s = \"write\"\n%3$s = \"read\"\n\n" +
+						"[" + workspace + ".filesystem]\n%4$s = \"read\"\n%3$s = \"read\"\n\":slash_tmp\" = \"read\"\n" +
+						"\":tmpdir\" = \"read\"\n\"~/code\" = \"write\"\n%5$s = \"write\"\n%1$s = \"write\"\n" +
+						"%2$s = \"write\"\n\n" +
 						"[" + workspace + ".network]\nenabled = true\n",
 					Map.of("config.toml#sandbox_mode", List.of("workspace-write"),
 						"config.toml#" + workspace, List.of("workspace-write"),
-						"config.toml#" + workspace + ".filesystem", List.of("%2$s", "%1$s", "%6$s", "~/code"),
-						"config.toml#" + workspace + ".filesystem.read",
-						List.of("%3$s", ":tmpdir", ":slash_tmp", "%4$s", "%5$s"),
+						"config.toml#" + workspace + ".filesystem", List.of("%2$s", "%1$s", "%5$s", "~/code"),
+						"config.toml#" + workspace + ".filesystem.read", List.of(":tmpdir", ":slash_tmp", "%3$s", "%4$s"),
 						"config.toml#" + workspace + ".network.enabled", List.of("true")),
 					"its permission profile \"cat-sandbox-workspace-write\", which extends \":workspace\" and holds a " +
 						"copy of your [sandbox_workspace_write] settings"},
@@ -234,12 +232,11 @@ public final class SandboxModeProfileTest
 				{"sandbox_mode = \"read-only\"\n",
 					"sandbox_mode = \"read-only\"\ndefault_permissions = \"cat-sandbox-read-only\"\n\n" +
 						"[" + readOnly + "]\nextends = \":read-only\"\n\n" +
-						"[" + readOnly + ".filesystem]\n%5$s = \"read\"\n%4$s = \"read\"\n%2$s = \"write\"\n" +
-						"%3$s = \"read\"\n",
+						"[" + readOnly + ".filesystem]\n%4$s = \"read\"\n%3$s = \"read\"\n%2$s = \"write\"\n",
 					Map.of("config.toml#sandbox_mode", List.of("read-only"),
 						"config.toml#" + readOnly, List.of("read-only"),
 						"config.toml#" + readOnly + ".filesystem", List.of("%2$s"),
-						"config.toml#" + readOnly + ".filesystem.read", List.of("%3$s", "%4$s", "%5$s")),
+						"config.toml#" + readOnly + ".filesystem.read", List.of("%3$s", "%4$s")),
 					"its permission profile \"cat-sandbox-read-only\", which extends \":read-only\", so that " +
 						"sandboxed commands cannot write"}
 			};
@@ -464,7 +461,7 @@ public final class SandboxModeProfileTest
 	}
 
 	/**
-	 * Returns the folder that holds the session launcher's state, beside the lock folder.
+	 * Returns the folder in which an earlier release's session launcher kept its state, beside the lock folder.
 	 *
 	 * @param home the Codex home
 	 * @return the folder

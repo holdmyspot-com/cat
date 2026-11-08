@@ -92,7 +92,7 @@ public record RequestedRunner(JvmScope scope, Path launcher, List<String> prefix
 		command.addAll(arguments);
 		ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).
 			redirectOutput(directory.resolve("runner.stdout").toFile()).
-			redirectError(directory.resolve("runner.stderr").toFile());
+			redirectError(directory.resolve(RequestedSessionStarter.ERROR_FILE).toFile());
 		builder.environment().clear();
 		builder.environment().putAll(environment);
 		return scope.executableFiles().run(builder);

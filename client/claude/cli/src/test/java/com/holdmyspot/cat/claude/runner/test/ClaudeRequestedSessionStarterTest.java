@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Runs the {@link RequestedSessionStarter} contract against the starter of the Claude Code session launcher, which
+ * Runs the {@link RequestedSessionStarter} contract against the starter of the Claude Code request server, which
  * starts the {@code claude-runner} launcher of its plugin for a Claude session. A stand-in for the operating system
  * records the runner process that the starter starts, and no runner starts.
  */
@@ -43,7 +43,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 	}
 
 	/**
-	 * The session launcher's starter over a stand-in for the operating system's process start.
+	 * The request server's starter over a stand-in for the operating system's process start.
 	 */
 	private static final class LauncherStarts implements Starts
 	{

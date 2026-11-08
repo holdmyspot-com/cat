@@ -380,8 +380,8 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that the app-server's environment marks the session as a CAT run, so that the session's SessionStart
-	 * hook starts no session launcher.
+	 * Verifies that the app-server's environment marks the session as a CAT run, so that the session's commands send
+	 * their sessions to the run's runner.
 	 */
 	@Test
 	public void marksCatRun()

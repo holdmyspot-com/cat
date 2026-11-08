@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.runner.launcher;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
@@ -155,7 +154,7 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 	 */
 	private static String stderrTail(Path directory) throws IOException
 	{
-		Path stderr = directory.resolve(SessionLauncherChannel.RUNNER_STDERR_FILE);
+		Path stderr = directory.resolve(RequestedSessionStarter.ERROR_FILE);
 		if (!Files.isRegularFile(stderr, LinkOption.NOFOLLOW_LINKS))
 			return "";
 		long size = Files.size(stderr);

@@ -38,7 +38,6 @@ import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
 import com.holdmyspot.cat.common.release.EntryCommand;
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.AccessDeniedException;
@@ -783,7 +782,7 @@ public final class Invocation
 			filter(provider -> !provider.harness().equals(harness)).
 			map(provider -> provider.installation(environment, userHome)).toList();
 		return new InstallRequest(managed.session(), plugin, others, CapacityLocks.root(userHome),
-			new SessionLauncherChannel(userHome).stateRoot(), ShellStartupFiles.in(userHome), consent);
+			PluginInstall.formerLauncherState(userHome), ShellStartupFiles.in(userHome), consent);
 	}
 
 	/**

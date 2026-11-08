@@ -293,11 +293,12 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Refuses the command before it starts a session if the session launcher would refuse every session.
+	 * Refuses the command before it starts a session if every session would be refused because no request server
+	 * serves the host session.
 	 *
-	 * @throws CommandRefusedException with the launcher's message, which names the reason and the user's remedy, if
-	 *   the launcher would refuse every session
-	 * @throws IOException if the launchers' state cannot be listed
+	 * @throws CommandRefusedException with the refusal's message, which names the reason and the user's remedy, if
+	 *   every session would be refused
+	 * @throws IOException if the host session's CAT session directory cannot be opened
 	 */
 	private void refuseUnlaunchable() throws CommandRefusedException, IOException
 	{

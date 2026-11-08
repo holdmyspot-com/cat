@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * The operating system's processes as the session launcher sees them. A process that has ended, or whose identifier a
+ * The operating system's processes as the request server sees them. A process that has ended, or whose identifier a
  * later process now uses, is absent from every answer.
  * <p>
  * <b>Thread Safety:</b> Implementations must be thread-safe.

@@ -44,22 +44,6 @@ public enum Harness
 	}
 
 	/**
-	 * Returns why a session of the harness may have no session launcher besides having started before CAT was
-	 * installed, with what the user does about it.
-	 *
-	 * @return a sentence, or empty if a session of the harness has no other reason
-	 */
-	public Optional<String> noLauncherReason()
-	{
-		return switch (this)
-		{
-			case CLAUDE -> Optional.empty();
-			case CODEX -> Optional.of("A Codex session that runs in Codex's shared background server, which Codex " +
-				"uses unless it starts with --no-daemon, has none either; start Codex with --no-daemon.");
-		};
-	}
-
-	/**
 	 * Returns the harness name used in commands and display text.
 	 *
 	 * @return the enum name in lower case using the root locale

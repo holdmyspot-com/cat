@@ -12,11 +12,16 @@ import java.util.List;
 public interface RequestedSessionStarter
 {
 	/**
+	 * The name of the file in a runner's directory that receives the runner's error output.
+	 */
+	String ERROR_FILE = "runner.stderr";
+
+	/**
 	 * Resolves the selected harness's runner and starts it with the supplied options, without invoking a shell.
 	 *
 	 * @param harness   the requested harness identifier
 	 * @param arguments runner options, including retained output and receipt destinations
-	 * @param directory the private response directory for process diagnostics
+	 * @param directory the private response directory, whose {@link #ERROR_FILE} receives the runner's error output
 	 * @return the child runner process
 	 * @throws IllegalArgumentException if the harness is unsupported
 	 * @throws IOException              if resolution or process startup fails

@@ -2,8 +2,6 @@ package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
-import com.holdmyspot.cat.common.runner.launcher.client.TurnFeed;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -251,7 +249,7 @@ public final class SessionRequestForwarder
 	 * directory once the session reports its start, so that what the command writes into the run while it runs has a
 	 * place. A run that allows no further session refuses the session before it publishes anything. The run's runner
 	 * installs its own CAT for {@code --install-cat}, so a launch that names another CAT as {@code --artifact} sends
-	 * that CAT as a plugin, as a session launcher's client does.
+	 * that CAT as a plugin, as a launch that goes to a request server does.
 	 *
 	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
 	 * @param harness     the harness of the session

@@ -673,7 +673,7 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a session launcher's options reach the runner: the file of the session's policy bound, that the
+	 * Verifies that a request server's options reach the runner: the file of the session's policy bound, that the
 	 * requester holds the session's capacity slot, and the Git identity of the copied project; and that a launch
 	 * without them has no bound, takes its own slot and reads the identity from the source project.
 	 */

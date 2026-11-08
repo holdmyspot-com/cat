@@ -5,7 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,7 +14,7 @@ import org.testng.annotations.Test;
 /**
  * The behaviour that every {@link RequestedSessionStarter} shares: it starts the runner of the requested harness with
  * the options and the folder that its caller gives, the runner's standard error goes to that folder's
- * {@value SessionLauncherChannel#RUNNER_STDERR_FILE}, and a harness that it has no runner for is refused. A test class
+ * {@value RequestedSessionStarter#ERROR_FILE}, and a harness that it has no runner for is refused. A test class
  * of each starter extends this class. A starter that starts a real runner does so through a stand-in for the operating
  * system's process start, so that no runner, harness or model starts.
  */
@@ -81,7 +80,7 @@ public abstract class RequestedSessionStarterContract
 	/**
 	 * Verifies that the starter starts the requested harness's runner with exactly the caller's options, in the
 	 * caller's folder, and with its standard error going to that folder's
-	 * {@value SessionLauncherChannel#RUNNER_STDERR_FILE}.
+	 * {@value RequestedSessionStarter#ERROR_FILE}.
 	 *
 	 * @throws IOException if the starter fails
 	 */
@@ -100,7 +99,7 @@ public abstract class RequestedSessionStarterContract
 			try (Process runner = starts.starter().start(harness(), options, directory))
 			{
 				requireThat(starts.started(), "started").isEqualTo(List.of(new StartedRunner(harness(), options,
-					directory, directory.resolve(SessionLauncherChannel.RUNNER_STDERR_FILE))));
+					directory, directory.resolve(RequestedSessionStarter.ERROR_FILE))));
 				runner.destroy();
 			}
 		}

@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Clock;
@@ -759,8 +760,8 @@ public final class IntegrationTest
 
 	/**
 	 * The sandbox entries deny sandboxed writes to the other harness's CAT folders, found through its own home
-	 * variable, and to the session launcher's state, and allow writes to the capacity locks, in Claude Code's
-	 * two-space layout; repeating the call adds nothing.
+	 * variable, and allow writes to the capacity locks, in Claude Code's two-space layout; repeating the call adds
+	 * nothing.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
@@ -776,22 +777,18 @@ public final class IntegrationTest
 			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of("CODEX_HOME", codexHome.toString()),
 				userHome);
 			Path catLocks = userHome.resolve(".cat/locks");
-			Path launcherState = userHome.resolve(".cat/sessions");
 			Integration integration = integration();
 
-			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, launcherState,
-				replacer());
-			Map<String, List<String>> repeated = integration.installSandboxEntries(home, codex, catLocks,
-				launcherState, replacer());
+			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, replacer());
+			Map<String, List<String>> repeated = integration.installSandboxEntries(home, codex, catLocks, replacer());
 
 			List<String> denied = List.of(codexHome.resolve("plugins/cat-marketplace").toString(),
-				codexHome.resolve("plugins/cache/cat/cat").toString(), codexHome.resolve("plugins/data/cat-cat").toString(),
-				launcherState.toString());
+				codexHome.resolve("plugins/cache/cat/cat").toString(),
+				codexHome.resolve("plugins/data/cat-cat").toString());
 			Map<String, List<String>> expected = Map.of(SETTINGS_KEY_DENY_WRITE, denied, SETTINGS_KEY_ALLOW_WRITE,
 				List.of(catLocks.toString()));
 			requireThat(added, "added").isEqualTo(expected);
-			requireThat(integration.sandboxEntries(home, codex, catLocks, launcherState),
-				"maintained").isEqualTo(expected);
+			requireThat(integration.sandboxEntries(home, codex, catLocks), "maintained").isEqualTo(expected);
 			requireThat(repeated, "repeated").isEmpty();
 			StringJoiner deniedLines = new StringJoiner(",\n", "", "\n");
 			for (String entry : denied)
@@ -825,14 +822,12 @@ public final class IntegrationTest
 			Path home = Files.createDirectories(userHome.resolve(".claude"));
 			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of(), userHome);
 			Path catLocks = userHome.resolve(".cat/locks");
-			Path launcherState = userHome.resolve(".cat/sessions");
 			String userSettings = "{\"sandbox\":{\"enabled\":true,\"filesystem\":{\"allowWrite\":[" +
 				json(userHome.toString()) + "," + json(catLocks.toString()) + "],\"denyWrite\":[\"/etc\"]}}}";
 			Path settings = Files.writeString(home.resolve("settings.json"), userSettings);
 			Integration integration = integration();
 
-			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, launcherState,
-				replacer());
+			Map<String, List<String>> added = integration.installSandboxEntries(home, codex, catLocks, replacer());
 			integration.removePermissions(home, added, replacer());
 
 			requireThat(added.keySet(), "addedKeys").isEqualTo(Set.of(SETTINGS_KEY_DENY_WRITE));
@@ -891,40 +886,39 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * A reinstall after CAT denied sandboxed writes to another launcher state folder, as an earlier installer did
-	 * from a wrong user home, leaves the settings denying only the new folder, keeps the user's own entry, and
-	 * records the new denial.
+	 * A reinstall after an earlier install denied sandboxed writes to the session launcher's state folder removes that
+	 * recorded denial and the folder, and keeps the user's own denial.
 	 *
 	 * @throws IOException if the fixture cannot be created or the settings cannot be written
 	 */
 	@Test
-	public void reinstallReplacesStaleStateDenial() throws IOException
+	public void reinstallRemovesLauncherState() throws IOException
 	{
-		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path userHome = cleanup.add(testDirectory());
 			Path home = Files.createDirectories(userHome.resolve(".claude"));
 			HarnessInstallation claude = new ClaudeInstallation(home);
 			HarnessInstallation codex = CodexInstallation.fromEnvironment(Map.of(), userHome);
-			Path catLocks = userHome.resolve(".cat/locks");
-			Path wrongState = userHome.resolve("account/.cat/sessions");
-			Path launcherState = userHome.resolve(".cat/sessions");
+			Path launcherState = PluginInstall.formerLauncherState(userHome);
+			Files.createDirectories(launcherState.resolve("claude/launchers/1234"));
+			Files.writeString(launcherState.resolve("claude/launchers/1234/heartbeat"), "1");
 			Path userEntry = userHome.resolve("private");
 			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"denyWrite\":[" +
-				json(userEntry.toString()) + "]}}}");
+				json(userEntry.toString()) + "," + json(launcherState.toString()) + "]}}}");
+			PermissionRecord.add(InstallerState.of(claude.dataDirectory(), "claude").permissions(),
+				Map.of(SETTINGS_KEY_DENY_WRITE, List.of(launcherState.toString())));
 			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
-			install.installEntries(home, launcher(home), claude, List.of(codex), catLocks, wrongState, List.of(), false);
-			requireThat(Files.readString(home.resolve("settings.json")), "denied").contains(json(wrongState.toString()));
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
-				List.of(codex), catLocks, launcherState, List.of(), false);
+				List.of(codex), userHome.resolve(".cat/locks"), launcherState, List.of(), false);
 
 			requireThat(Files.readString(home.resolve("settings.json")), "settings").
-				contains(json(userEntry.toString())).contains(json(launcherState.toString())).
-				doesNotContain(json(wrongState.toString()));
+				contains(json(userEntry.toString())).doesNotContain(json(launcherState.toString()));
 			requireThat(entries.recorded().get(SETTINGS_KEY_DENY_WRITE), "recorded").
-				contains(launcherState.toString()).doesNotContain(userEntry.toString());
+				doesNotContain(launcherState.toString()).doesNotContain(userEntry.toString());
+			requireThat(Files.exists(launcherState, LinkOption.NOFOLLOW_LINKS), "launcherStateExists").isFalse();
+			requireThat(Files.isDirectory(launcherState.getParent()), "catFolderExists").isTrue();
 		}
 	}
 
@@ -1336,7 +1330,7 @@ public final class IntegrationTest
 			requireRefusal(() -> integration.validateConfiguration(home));
 			requireRefusal(() -> integration.installPermissions(home, launcher(home), replacer()));
 			requireRefusal(() -> integration.installSandboxEntries(home, new CodexInstallation(home.resolve("codex")),
-				home.resolve("locks"), home.resolve("sessions"), replacer()));
+				home.resolve("locks"), replacer()));
 			requireThat(Files.readString(settings), "settings").isEqualTo(content);
 		}
 	}

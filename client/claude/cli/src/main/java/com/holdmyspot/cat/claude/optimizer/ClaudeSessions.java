@@ -17,7 +17,7 @@ import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 

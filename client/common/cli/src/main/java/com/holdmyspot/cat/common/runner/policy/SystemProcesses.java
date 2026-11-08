@@ -17,8 +17,8 @@ import java.util.Optional;
  * memory page (4 KiB), such as a harness started with long inline settings. The arguments of a Linux process
  * therefore come from its {@code cmdline} file in the process folder; a process whose file cannot be read reports
  * none, and every reader that needs them refuses. macOS reports every argument through {@link ProcessHandle}.
- * Windows reports none, so every reader that needs them refuses there; no session launcher is served on native
- * Windows.
+ * Windows reports none, so every reader that needs them refuses there; no request server serves a session on
+ * native Windows.
  * <p>
  * The {@link ProcessDescription#start() start} of a Linux process comes from the process folder too: the boot's
  * identifier from {@code sys/kernel/random/boot_id}, and the clock ticks since the boot from field 22 of

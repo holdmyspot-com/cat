@@ -4,7 +4,6 @@ import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
@@ -45,7 +44,7 @@ public final class ClaudePolicyReaderTest
 	}
 
 	/**
-	 * Skips the tests on native Windows, where Claude Code has no sandbox and CAT starts no session launcher, so that
+	 * Skips the tests on native Windows, where Claude Code has no sandbox and no request server serves a session, so that
 	 * no Claude Code session's sandbox policy is read there.
 	 */
 	@BeforeClass
@@ -576,53 +575,6 @@ public final class ClaudePolicyReaderTest
 				{"sandbox": {"enabled": true, "filesystem": {"disabled": true}}}""");
 			requireThat(fixture.refusal(), "refusal").startsWith(REFUSAL).
 				contains(fixture.configuration.resolve("settings.json").toString());
-		}
-	}
-
-	/**
-	 * Verifies that the session launcher's state folder is trusted by a session whose sandbox lets its commands write
-	 * the user's home, once the installer's {@code denyWrite} entry for the folder is in the user's settings, and is
-	 * refused before.
-	 *
-	 * @throws IOException   if the fixture cannot be created
-	 * @throws PolicyRefusal if the policy is refused
-	 */
-	@Test
-	public void trustsLauncherStateWithDenial() throws IOException, PolicyRefusal
-	{
-		// Requirement: R-I11
-		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
-		{
-			SessionLauncherChannel channel = new SessionLauncherChannel(fixture.home);
-			Path state = channel.stateRoot();
-			fixture.userSettings("""
-				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""".formatted(fixture.home));
-			try
-			{
-				fixture.policy().requireTrusted(state);
-				throw new AssertionError("The home's write grant must make " + state + " untrusted");
-			}
-			catch (PolicyRefusal e)
-			{
-				requireThat(e.getMessage(), "refusal").contains(state.toString());
-			}
-
-			fixture.userSettings("""
-				{
-				  "sandbox": {
-				    "enabled": true,
-				    "filesystem": {
-				      "denyWrite": [
-				        "%s"
-				      ],
-				      "allowWrite": [
-				        "%s",
-				        "%s"
-				      ]
-				    }
-				  }
-				}""".formatted(state, fixture.home, fixture.home.resolve(".cat/locks")));
-			fixture.policy().requireTrusted(state);
 		}
 	}
 }

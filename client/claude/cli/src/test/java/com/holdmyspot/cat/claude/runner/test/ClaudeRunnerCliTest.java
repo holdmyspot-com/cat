@@ -571,7 +571,7 @@ public final class ClaudeRunnerCliTest
 
 	/**
 	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
-	 * run, since only the session launcher starts a session and it always bounds the session's policy.
+	 * run, since only a request server starts a session and it always bounds the session's policy.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -843,7 +843,7 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that the runner that a session launcher asks for a child's needs writes them to the file it is given
+	 * Verifies that the runner that a request server asks for a child's needs writes them to the file it is given
 	 * and exits with status 0, and, when its model provider's base URL names no host, writes no file and exits with the
 	 * refusal status after one line that names the setting, without a stack trace.
 	 *

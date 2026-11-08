@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
@@ -1186,11 +1185,7 @@ public final class ClaudeSessionStartHookTest
 		{
 			ClaudeSessionStartHookSecrets.getClaudeSessionStartHookAccess().run(args,
 				new ByteArrayInputStream(sessionInput(input).getBytes(UTF_8)), output, new PrintStream(error, true, UTF_8),
-				withHome(environment, homes), workingDirectory, Yielding.waiting(), git, Platform.current(),
-				_ -> Optional.empty(), (_, _) ->
-				{
-					throw new AssertionError("The hook started a session launcher");
-				});
+				withHome(environment, homes), workingDirectory, Yielding.waiting(), git);
 		}
 		return new HookResult(output.toString(UTF_8), error.toString(UTF_8));
 	}
