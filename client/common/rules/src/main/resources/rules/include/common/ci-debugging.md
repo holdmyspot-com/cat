@@ -13,6 +13,10 @@
 - Before a fix is pushed, every check of the failed job has passed where the failure was reproduced, and the first run
 	of those checks there does not stop at a failure, so that the confirming hosted run does not show a failure that an
 	earlier failure hid.
+<!-- A parent delegated each Windows-only CI failure's fix to a subagent that could not open a runner session, and
+     pushed each returned fix, so four runs on all five platforms each tested one guess. -->
+- The agent that owns a remote failure holds the runner session and sends a delegate the reproduction and its result,
+	so that delegating a fix never replaces trying it where the failure occurs.
 - A session or diagnostic run covers only the failing platforms and jobs and the jobs whose output they consume, and
 	the complete required workflow runs once, after the fix passes, as the acceptance gate.
 - Preserve hosted acceptance evidence when the required platform, identity, artifact, or service boundary is unavailable
@@ -33,6 +37,9 @@ Windows-only failure on a Linux machine, open an interactive session on a runner
 `cat:remote-runner-session` skill before you push any fix attempt. Reproduce the failure there, find its cause, and
 try each fix there until it passes. Every push and hosted run costs minutes and API calls and tests only one guess, so
 do not use a hosted run to find out whether a guess works. Do not substitute a similar local command for that session.
+When you delegate the investigation or the fix, open the session yourself unless the delegate can open one, give the
+delegate the failure as reproduced there, and try its fix in the session before you push it; a fix that a delegate
+made without the session is a guess.
 
 Wherever you reproduce the failure, run every check of the failed job on that platform, meaning the build, test and
 other verification commands it runs and not only the one that failed, in a mode that continues after a failure, such as
