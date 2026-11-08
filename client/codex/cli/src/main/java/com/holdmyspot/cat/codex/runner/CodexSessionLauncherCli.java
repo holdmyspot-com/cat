@@ -94,7 +94,8 @@ public final class CodexSessionLauncherCli
 	 *
 	 * @param scope       the borrowed process scope, which starts each runner
 	 * @param artifact    this plugin's folder
-	 * @param environment the host environment, which each runner receives
+	 * @param environment the host environment, which each runner receives without the harness markers that
+	 *                    {@link CodexRunnerCli#MARKERS} reads, so that it is not taken for a harness session's launch
 	 * @return the starter
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -103,9 +104,54 @@ public final class CodexSessionLauncherCli
 		requireThat(scope, "scope").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		Map<String, String> copy = Map.copyOf(environment);
+		Map<String, String> copy = Map.copyOf(CodexRunnerCli.MARKERS.without(environment));
 		return (harness, arguments, directory) -> CodexRunnerCli.requestedRunner(scope, artifact, harness, copy).
 			start(arguments, directory, copy);
+	}
+
+	/**
+	 * Returns the Codex settings entries that let a session's commands write paths and reach hosts, as a
+	 * {@link ParentPolicySource#permissionEntries(List, Set)} names them.
+	 *
+	 * @param writes the paths
+	 * @param hosts  the hosts
+	 * @return the instruction that names the entries
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if both are empty
+	 */
+	public static String permissionEntries(List<Path> writes, Set<String> hosts)
+	{
+		requireThat(writes, "writes").isNotNull();
+		requireThat(hosts, "hosts").isNotNull();
+		if (writes.isEmpty() && hosts.isEmpty())
+			throw new IllegalArgumentException("writes and hosts may not both be empty");
+		List<String> additions = new ArrayList<>();
+		if (!writes.isEmpty())
+		{
+			List<String> entries = new ArrayList<>();
+			for (Path write : writes)
+				entries.add("\"" + TomlStrings.escape(write.toString()) + "\" = \"write\"");
+			additions.add(String.join(" and ", entries) + " under [permissions.<profile>.filesystem]");
+		}
+		if (!hosts.isEmpty())
+		{
+			List<String> entries = new ArrayList<>();
+			for (String host : new TreeSet<>(hosts))
+				entries.add("\"" + TomlStrings.escape(host) + "\" = \"allow\"");
+			additions.add(String.join(" and ", entries) + " under [permissions.<profile>.network.domains]");
+			// Codex's managed network proxy blocks these hosts unless the profile also lets commands bind local
+			// addresses, even when its domains allow them
+			if (hosts.stream().anyMatch(ChildPolicy::needsLocalBinding))
+				additions.add("allow_local_binding = true under [permissions.<profile>.network]");
+		}
+		String instruction = "add " + String.join(" and ", additions) + " in Codex's config.toml, where " +
+			"<profile> is the permissions profile that default_permissions names";
+		if (!writes.isEmpty())
+		{
+			instruction += "; a session that sets sandbox_mode instead lists the paths in " +
+				"sandbox_workspace_write.writable_roots";
+		}
+		return instruction;
 	}
 
 	/**
@@ -142,37 +188,7 @@ public final class CodexSessionLauncherCli
 			@Override
 			public String permissionEntries(List<Path> writes, Set<String> hosts)
 			{
-				requireThat(writes, "writes").isNotNull();
-				requireThat(hosts, "hosts").isNotNull();
-				if (writes.isEmpty() && hosts.isEmpty())
-					throw new IllegalArgumentException("writes and hosts may not both be empty");
-				List<String> additions = new ArrayList<>();
-				if (!writes.isEmpty())
-				{
-					List<String> entries = new ArrayList<>();
-					for (Path write : writes)
-						entries.add("\"" + TomlStrings.escape(write.toString()) + "\" = \"write\"");
-					additions.add(String.join(" and ", entries) + " under [permissions.<profile>.filesystem]");
-				}
-				if (!hosts.isEmpty())
-				{
-					List<String> entries = new ArrayList<>();
-					for (String host : new TreeSet<>(hosts))
-						entries.add("\"" + TomlStrings.escape(host) + "\" = \"allow\"");
-					additions.add(String.join(" and ", entries) + " under [permissions.<profile>.network.domains]");
-					// Codex's managed network proxy blocks these hosts unless the profile also lets commands bind local
-					// addresses, even when its domains allow them
-					if (hosts.stream().anyMatch(ChildPolicy::needsLocalBinding))
-						additions.add("allow_local_binding = true under [permissions.<profile>.network]");
-				}
-				String instruction = "add " + String.join(" and ", additions) + " in Codex's config.toml, where " +
-					"<profile> is the permissions profile that default_permissions names";
-				if (!writes.isEmpty())
-				{
-					instruction += "; a session that sets sandbox_mode instead lists the paths in " +
-						"sandbox_workspace_write.writable_roots";
-				}
-				return instruction;
+				return CodexSessionLauncherCli.permissionEntries(writes, hosts);
 			}
 
 			@Override

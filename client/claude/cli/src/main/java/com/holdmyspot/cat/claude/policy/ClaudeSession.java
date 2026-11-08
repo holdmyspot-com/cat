@@ -103,14 +103,30 @@ public record ClaudeSession(long processId, Path projectDirectory, Path userHome
 		Path projectDirectory = absolute(environment, "CLAUDE_PROJECT_DIR").orElseThrow(() ->
 			new PolicyRefusal("the hook environment does not name the session's project folder in " +
 				"CLAUDE_PROJECT_DIR", ENVIRONMENT_FIX));
-		Path configurationDirectory = userHome.resolve(".claude");
-		String configuration = environment.get("CLAUDE_CONFIG_DIR");
-		if (configuration != null && !configuration.isBlank())
-		{
-			configurationDirectory = absolute(environment, "CLAUDE_CONFIG_DIR").orElseThrow(() ->
-				new PolicyRefusal("the hook environment's CLAUDE_CONFIG_DIR \"" + configuration + "\" is not an " +
-					"absolute path", "Set CLAUDE_CONFIG_DIR to an absolute path, then start a new session"));
-		}
+		return of(environment, processId, projectDirectory, configurationDirectory(environment, userHome), userHome,
+			userName);
+	}
+
+	/**
+	 * Returns the session that runs a command, from the command's environment, the session's process and project
+	 * folder, and the computer's operating system.
+	 *
+	 * @param environment            the command's environment variables
+	 * @param processId              the identifier of the session's Claude Code process
+	 * @param projectDirectory       the session's absolute project folder
+	 * @param configurationDirectory the session's configuration folder, as
+	 *                               {@link #configurationDirectory(Map, Path)} returns it
+	 * @param userHome               the user's absolute home folder
+	 * @param userName               the user's login name
+	 * @return the session
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code processId} is not positive, or a folder is not absolute
+	 */
+	public static ClaudeSession of(Map<String, String> environment, long processId, Path projectDirectory,
+		Path configurationDirectory, Path userHome, String userName)
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(userName, "userName").isNotNull();
 		Optional<Path> temporaryDirectory = absolute(environment, ClaudeRelease.TEMPORARY_DIRECTORY_VARIABLE);
 
 		boolean macOs = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("mac");
@@ -130,6 +146,29 @@ public record ClaudeSession(long processId, Path projectDirectory, Path userHome
 		}
 		return new ClaudeSession(processId, projectDirectory, userHome, configurationDirectory, temporaryDirectory,
 			managedDirectory, otherManagedDirectories, unreadableManagedSources);
+	}
+
+	/**
+	 * Returns the configuration folder of the session that an environment belongs to: the folder that
+	 * {@code CLAUDE_CONFIG_DIR} names, or {@code .claude} in the user's home folder.
+	 *
+	 * @param environment the environment of the session's hook or command
+	 * @param userHome    the user's absolute home folder
+	 * @return the absolute folder
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code userHome} is not absolute
+	 * @throws PolicyRefusal            if {@code CLAUDE_CONFIG_DIR} names a path that is not absolute
+	 */
+	public static Path configurationDirectory(Map<String, String> environment, Path userHome) throws PolicyRefusal
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireAbsolute(userHome, "userHome");
+		String configuration = environment.get("CLAUDE_CONFIG_DIR");
+		if (configuration == null || configuration.isBlank())
+			return userHome.resolve(".claude");
+		return absolute(environment, "CLAUDE_CONFIG_DIR").orElseThrow(() ->
+			new PolicyRefusal("the session's CLAUDE_CONFIG_DIR \"" + configuration + "\" is not an absolute path",
+				"Set CLAUDE_CONFIG_DIR to an absolute path, then start a new session"));
 	}
 
 	/**

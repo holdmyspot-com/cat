@@ -167,6 +167,33 @@ public final class CodexParentSession
 	 */
 	public ParentPolicy readThread(Optional<String> threadId, String... arguments) throws IOException, PolicyRefusal
 	{
+		return reader().read(session(arguments), threadId);
+	}
+
+	/**
+	 * Reads the policy of one of the session's threads for a command that the thread runs, when Codex runs with some
+	 * arguments, as a runner launcher that the thread runs reads it.
+	 *
+	 * @param threadId  the thread that runs the command, or empty for the main thread
+	 * @param arguments the arguments of the Codex process after its executable
+	 * @return the policy
+	 * @throws IOException   if a file cannot be read
+	 * @throws PolicyRefusal if the reader refuses
+	 */
+	public ParentPolicy readForCommand(Optional<String> threadId, String... arguments) throws IOException,
+		PolicyRefusal
+	{
+		return reader().readForCommand(session(arguments), threadId);
+	}
+
+	/**
+	 * Returns the session when Codex runs with some arguments.
+	 *
+	 * @param arguments the arguments of the Codex process after its executable
+	 * @return the session
+	 */
+	private CodexSession session(String... arguments)
+	{
 		List<ProcessDescription> ancestors = List.of(
 			new ProcessDescription(101, Optional.empty(), Optional.of("/bin/sh"),
 				Optional.of(List.of("-c", "hook"))),
@@ -175,8 +202,16 @@ public final class CodexParentSession
 			new ProcessDescription(103, Optional.empty(), Optional.of("/usr/bin/node"),
 				Optional.of(List.of("/opt/codex/bin/codex.js"))));
 		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
-		CodexSession session = new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);
-		CodexSystemFiles systemFiles = new CodexSystemFiles(system, List.of(root.resolve("managed.plist")), slashTmp);
-		return new CodexPolicyReader(systemFiles).read(session, threadId);
+		return new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);
+	}
+
+	/**
+	 * Returns the reader of the session's policy, which reads the machine-wide files of this session's machine.
+	 *
+	 * @return the reader
+	 */
+	private CodexPolicyReader reader()
+	{
+		return new CodexPolicyReader(new CodexSystemFiles(system, List.of(root.resolve("managed.plist")), slashTmp));
 	}
 }

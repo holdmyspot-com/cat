@@ -1290,39 +1290,43 @@ public final class CodexSessionsTest
 
 	/**
 	 * Returns the environments of a command that runs the optimizer, one for each route on which a session is
-	 * refused here, and how the reason starts on that route.
+	 * refused here, how the reason starts on that route, and whether {@code codex-runner} takes the same route.
 	 *
-	 * @return the harness and run variables of the environment, and the start of the reason
+	 * @return the harness and run variables of the environment, the start of the reason, and whether the runner
+	 * 	launcher takes the same route
 	 */
 	@DataProvider
 	public static Object[][] launchRoutes()
 	{
 		return new Object[][]
 		{
-			// Codex runs the command, so the session goes to the session launcher, and none serves the session
-			{Map.of("CODEX_THREAD_ID", "thread"), "No CAT session launcher serves this session"},
+			// Codex runs the command, so the optimizer's session goes to the session launcher, which serves none
+			// here, while codex-runner starts the session itself
+			{Map.of("CODEX_THREAD_ID", "thread"), "No CAT session launcher serves this session", false},
 			{Map.of("CLAUDECODE", "1"), "CAT cannot start the session: Claude Code runs this command, and CAT's " +
-				"Codex plugin cannot read a Claude Code session's sandbox policy."},
-			{Map.of("CAT_RUN", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session"}
+				"Codex plugin cannot read a Claude Code session's sandbox policy.", true},
+			{Map.of("CAT_RUN", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session", true}
 		};
 	}
 
 	/**
-	 * Verifies that each of the optimizer's sessions takes the route that {@code codex-runner} gives a launch from
-	 * the same command: to the Codex process's session launcher when Codex runs the command, and refused when only
-	 * Claude Code runs it or when it runs in a CAT run that lets its session request no sessions. No route starts a
-	 * harness here, so the session ends as a launch refusal, which the optimizer does not retry, with the reason that
-	 * {@code codex-runner} prints.
+	 * Verifies that each of the optimizer's sessions takes its route: to the Codex process's session launcher when
+	 * Codex runs the command, and refused when only Claude Code runs it or when it runs in a CAT run that lets its
+	 * session request no sessions. On the refused routes, {@code codex-runner} gives a launch from the same command the
+	 * same refusal; when Codex runs the command, {@code codex-runner} starts the session itself instead. No route
+	 * starts a harness here, so the session ends as a launch refusal, which the optimizer does not retry.
 	 *
-	 * @param variables the harness and run variables of the command's environment
-	 * @param reason    the start of the reason on the route
+	 * @param variables        the harness and run variables of the command's environment
+	 * @param reason           the start of the reason on the route
+	 * @param sharedWithRunner {@code true} if {@code codex-runner} takes the same route, so that it prints the same
+	 *                         reason
 	 * @throws IOException          if a fixture cannot be created
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws ExecutionException   if the session cannot determine a result
 	 * @throws TimeoutException     if the session does not finish
 	 */
 	@Test(dataProvider = "launchRoutes", timeOut = 120_000)
-	public void sessionsFollowLaunchRoute(Map<String, String> variables, String reason)
+	public void sessionsFollowLaunchRoute(Map<String, String> variables, String reason, boolean sharedWithRunner)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -1339,10 +1343,6 @@ public final class CodexSessionsTest
 			environment.put("CODEX_HOME", home.resolve(".codex").toString());
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
 				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
-			StringWriter errors = new StringWriter();
-			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", source.toString(), "--run-root",
-				runRoot.toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment, jvm.waiting(),
-				new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
 
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
 				new FixedGitIdentity("Ada", "ada@example.com"));
@@ -1351,10 +1351,20 @@ public final class CodexSessionsTest
 				partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE,
 				List.of())));
 
-			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").startsWith(reason);
-			requireThat(result, "result").isEqualTo(new SessionResult.LaunchRefused(errors.toString().strip(),
-				List.of()));
+			requireThat(result, "result").isInstanceOf(SessionResult.LaunchRefused.class);
+			SessionResult.LaunchRefused refused = (SessionResult.LaunchRefused) result;
+			requireThat(refused.reason(), "reason").startsWith(reason);
+			requireThat(refused.windows(), "windows").isEmpty();
+			if (sharedWithRunner)
+			{
+				StringWriter errors = new StringWriter();
+				int status = CodexRunnerCli.launch(new String[]{"serve", "--project", source.toString(), "--run-root",
+					runRoot.toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment, jvm.waiting(),
+					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
+
+				requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+				requireThat(errors.toString().strip(), "errors").isEqualTo(refused.reason());
+			}
 		}
 	}
 

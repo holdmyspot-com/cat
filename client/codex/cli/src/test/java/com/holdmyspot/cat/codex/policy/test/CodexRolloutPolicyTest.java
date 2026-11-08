@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import org.testng.annotations.Test;
 
@@ -22,6 +23,10 @@ import org.testng.annotations.Test;
 public final class CodexRolloutPolicyTest
 {
 	private static final String SUBAGENT_THREAD = "01a1a8f0-1111-7222-8333-444455556666";
+	/**
+	 * The arguments with which Codex 0.160.0 starts its shared background server.
+	 */
+	private static final List<String> SHARED_SERVER = List.of("app-server", "--listen", "unix://", "--managed-daemon");
 
 	/**
 	 * Creates a test instance.
@@ -163,6 +168,112 @@ public final class CodexRolloutPolicyTest
 	}
 
 	/**
+	 * Verifies that a command of a session that Codex's shared background server runs, whose command line gives no
+	 * session's sandbox, gets the latest turn policy that the session's rollout records.
+	 */
+	@Test
+	public void sharedServerTakesRolloutPolicy() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path extra = configureExtraRoot(session);
+			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
+				projectOnlyEntries(session)));
+
+			ParentPolicy policy = session.readForCommand(Optional.empty(), sharedServer());
+
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+			requireThat(policy.writeRoots(), "writeRoots").contains(session.project()).doesNotContain(extra);
+		}
+	}
+
+	/**
+	 * Verifies that a command of a shared background server's session whose rollout records no turn policy is
+	 * refused, naming the rollout.
+	 */
+	@Test
+	public void sharedServerWithoutTurnRefused() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			configureExtraRoot(session);
+			Path rollout = writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
+				projectOnlyEntries(session));
+			String meta = Files.readAllLines(rollout).getFirst();
+			Files.writeString(rollout, meta + "\n");
+			session.transcript(rollout);
+
+			try
+			{
+				session.readForCommand(Optional.empty(), sharedServer());
+				throw new AssertionError("The session was not refused");
+			}
+			catch (PolicyRefusal e)
+			{
+				requireThat(e.reason(), "reason").contains("shared background server").contains(rollout.toString()).
+					contains("records no turn policy");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a command of a subagent thread of a shared background server's session gets the policy that the
+	 * thread's rollout records, narrowed by the session's.
+	 */
+	@Test
+	public void sharedServerThreadTakesItsRolloutPolicy() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path extra = configureExtraRoot(session);
+			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
+				projectOnlyEntries(session) + """
+					,
+					{"path":{"type":"path","path":%s},"access":"write"}""".formatted(json(extra))));
+			writeRollout(session, SUBAGENT_THREAD, CodexParentSession.SESSION_ID, projectOnlyEntries(session));
+
+			ParentPolicy main = session.readForCommand(Optional.empty(), sharedServer());
+			ParentPolicy thread = session.readForCommand(Optional.of(SUBAGENT_THREAD), sharedServer());
+
+			requireThat(main.writeRoots(), "mainWriteRoots").contains(extra);
+			requireThat(thread.writeRoots(), "threadWriteRoots").contains(session.project()).doesNotContain(extra);
+		}
+	}
+
+	/**
+	 * Verifies that a hook that the shared background server runs, which reads its session's policy when the session
+	 * starts and before any turn, is still refused with the fix that names {@code --no-daemon}, while a command of a
+	 * session that Codex's own command line describes reads the policy as a hook does.
+	 */
+	@Test
+	public void hookOfSharedServerStillRefused() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			Path extra = configureExtraRoot(session);
+			session.transcript(writeRollout(session, CodexParentSession.SESSION_ID, CodexParentSession.SESSION_ID,
+				projectOnlyEntries(session)));
+
+			try
+			{
+				session.read(sharedServer());
+				throw new AssertionError("The hook was not refused");
+			}
+			catch (PolicyRefusal e)
+			{
+				requireThat(e.fix(), "fix").contains("--no-daemon");
+			}
+			requireThat(session.readForCommand(Optional.empty(), "exec", "summarize"), "policy").
+				isEqualTo(session.read("exec", "summarize"));
+			requireThat(session.read("exec", "summarize").writeRoots(), "writeRoots").doesNotContain(extra);
+		}
+	}
+
+	/**
 	 * Configures the session to write the project and another folder, with network access.
 	 *
 	 * @param session the session
@@ -232,6 +343,16 @@ public final class CodexRolloutPolicyTest
 			"permission_profile":{"type":"managed","file_system":{"type":"restricted","entries":[%s]},\
 			"network":"enabled"},"model":"gpt-6.1-sol"}}
 			""".formatted(json(session.project()), json(session.project()), entries.replace("\n", ""));
+	}
+
+	/**
+	 * Returns the arguments with which Codex starts its shared background server.
+	 *
+	 * @return a new array of the arguments
+	 */
+	private static String[] sharedServer()
+	{
+		return SHARED_SERVER.toArray(String[]::new);
 	}
 
 	/**

@@ -101,7 +101,8 @@ public final class ClaudeSessionLauncherCli
 	 *
 	 * @param scope       the borrowed process scope, which starts each runner
 	 * @param artifact    this plugin's folder
-	 * @param environment the host environment, which each runner receives
+	 * @param environment the host environment, which each runner receives without the harness markers that
+	 *                    {@link ClaudeRunnerCli#MARKERS} reads, so that it is not taken for a harness session's launch
 	 * @return the starter
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -110,7 +111,7 @@ public final class ClaudeSessionLauncherCli
 		requireThat(scope, "scope").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		Map<String, String> copy = Map.copyOf(environment);
+		Map<String, String> copy = Map.copyOf(ClaudeRunnerCli.MARKERS.without(environment));
 		return (harness, arguments, directory) -> ClaudeRunnerCli.requestedRunner(scope, artifact, harness, copy).
 			start(arguments, directory, copy);
 	}

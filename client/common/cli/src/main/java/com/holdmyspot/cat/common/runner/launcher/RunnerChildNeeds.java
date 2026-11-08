@@ -76,6 +76,32 @@ public final class RunnerChildNeeds implements ChildNeedsSource
 		}
 		ChildNeedsReport report = ChildNeedsReport.read(json, file);
 		Files.deleteIfExists(file);
+		return needs(harness, report, runFolder, deniedReads, bound);
+	}
+
+	/**
+	 * Returns what a child needs, as its harness's runner reports it, once the parent's policy lets the parent's
+	 * commands read every login that the child copies: the child's commands could read the copy in its run folder.
+	 *
+	 * @param harness     the child's harness identifier
+	 * @param report      what the child's harness's runner reports
+	 * @param runFolder   the child's run folder
+	 * @param deniedReads the absolute paths that the launch denies the child
+	 * @param bound       the parent's policy
+	 * @return the child's needs
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code harness} is blank
+	 * @throws IOException              if a symbolic link in a login's path cannot be read
+	 * @throws PolicyRefusal            if the parent's policy denies reading a login
+	 */
+	public static ChildNeeds needs(String harness, ChildNeedsReport report, Path runFolder, List<Path> deniedReads,
+		ParentPolicy bound) throws IOException, PolicyRefusal
+	{
+		requireThat(harness, "harness").isNotBlank();
+		requireThat(report, "report").isNotNull();
+		requireThat(runFolder, "runFolder").isNotNull();
+		requireThat(deniedReads, "deniedReads").isNotNull();
+		requireThat(bound, "bound").isNotNull();
 		for (Path login : report.logins())
 		{
 			if (!bound.mayRead(login))

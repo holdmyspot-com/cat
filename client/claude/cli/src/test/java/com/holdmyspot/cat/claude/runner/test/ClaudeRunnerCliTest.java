@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -40,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static org.testng.Assert.expectThrows;
@@ -873,29 +875,106 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that Claude Code runs goes to the Claude Code process's session launcher,
-	 * and fails with the refusal status when no session launcher serves the session.
+	 * Verifies that a launch from a command that Claude Code runs inside the session's sandbox, where the launcher
+	 * cannot write its plugin's folder, is refused with the refusal status and a reason that names the launcher's
+	 * absolute path, before the launcher identifies the session or starts anything.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void sendsClaudeLaunchToLauncher() throws IOException
+	public void refusesClaudeLaunchInsideSandbox() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
 			Path project = Files.createDirectory(home.resolve("project"));
+			Path plugin = home.resolve("unwritable plugin");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
 				"CLAUDECODE", "1");
 			StringWriter errors = new StringWriter();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
-				"--effort", "low"}, environment, Yielding.waiting(), new StringReader(""), output,
-				new PrintWriter(errors, true));
+					"--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
+				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin, () ->
+				{
+					throw new AssertionError("No session is identified");
+				});
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("No CAT session launcher serves this session");
+			requireThat(errors.toString(), "errors").contains("runs the launcher inside its sandbox").
+				contains(plugin.resolve("bin/claude-runner").toString());
+			requireThat(output.size(), "outputSize").isZero();
+		}
+	}
+
+	/**
+	 * Verifies that a launch from a command that Claude Code runs outside the session's sandbox is refused with the
+	 * refusal status and the reason when its sources identify no session, and starts nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesLaunchFromUnknownSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Path plugin = Files.createDirectory(home.resolve("plugin"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CLAUDECODE", "1");
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
+					"--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
+				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin, () ->
+				{
+					throw new PolicyRefusal("no transcript of the session is in the projects folder",
+						"Run the launcher from a Claude Code session that keeps its transcript");
+				});
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("no transcript of the session").
+				contains("keeps its transcript");
+			requireThat(output.size(), "outputSize").isZero();
+			try (Stream<Path> files = Files.list(plugin))
+			{
+				requireThat(files.toList(), "pluginFiles").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch from a command that Claude Code runs is refused with the refusal status when it names an
+	 * option that only CAT's own starters pass, and starts nothing.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesInternalOptionFromClaudeSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				"CLAUDECODE", "1");
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", home.toString(), PolicyBoundFile.OPTION,
+					home.resolve("bound.json").toString()}, environment, Yielding.waiting(), new StringReader(""),
+				output, new PrintWriter(errors, true), () ->
+				{
+					throw new AssertionError("No plugin is found");
+				}, () ->
+				{
+					throw new AssertionError("No session is identified");
+				});
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("only CAT itself passes " + PolicyBoundFile.OPTION);
 			requireThat(output.size(), "outputSize").isZero();
 		}
 	}

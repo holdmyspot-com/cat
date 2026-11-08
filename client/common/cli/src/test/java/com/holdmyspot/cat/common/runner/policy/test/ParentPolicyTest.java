@@ -174,4 +174,32 @@ public final class ParentPolicyTest
 			requireThat(ParentPolicy.UNSANDBOXED.mayRead(login), "unsandboxedReadsDenied").isTrue();
 		}
 	}
+
+	/**
+	 * Verifies that the parent's commands may write a path inside a write root, also one that does not exist yet, and
+	 * not a path inside a write denial or outside every root, also through a link, and that an unsandboxed parent may
+	 * write every path.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void writesInsideRootsOutsideDenials() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path denied = Files.createDirectory(project.resolve("denied"));
+			Path outside = Files.createDirectory(root.resolve("outside"));
+			Path link = Files.createSymbolicLink(project.resolve("link"), outside);
+			ParentPolicy parent = new ParentPolicy(true, List.of(project), List.of(denied), List.of(), List.of(),
+				HostAccess.NONE, false, List.of());
+
+			requireThat(parent.mayWrite(project.resolve("new/output.jsonl")), "writesNewInsideRoot").isTrue();
+			requireThat(parent.mayWrite(denied.resolve("output.jsonl")), "writesDenied").isFalse();
+			requireThat(parent.mayWrite(outside), "writesOutside").isFalse();
+			requireThat(parent.mayWrite(link.resolve("output.jsonl")), "writesOutsideThroughLink").isFalse();
+			requireThat(ParentPolicy.UNSANDBOXED.mayWrite(outside), "unsandboxedWritesOutside").isTrue();
+		}
+	}
 }

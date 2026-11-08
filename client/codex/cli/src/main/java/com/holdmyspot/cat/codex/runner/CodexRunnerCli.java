@@ -25,7 +25,9 @@ import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
+import com.holdmyspot.cat.common.runner.DirectLaunch;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
@@ -39,7 +41,6 @@ import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
-import com.holdmyspot.cat.common.runner.launcher.client.SessionLauncherClient;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -60,6 +61,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -75,7 +77,7 @@ public final class CodexRunnerCli
 	/**
 	 * The identifier of the Claude Code harness.
 	 */
-	private static final String CLAUDE_ID = "claude";
+	static final String CLAUDE_ID = "claude";
 	/**
 	 * The markers of the harnesses whose sessions run a command: Codex sets its session variable,
 	 * {@code CODEX_THREAD_ID}, to the ID of the thread whose command it runs, and Claude Code sets {@code CLAUDECODE} to
@@ -131,10 +133,16 @@ public final class CodexRunnerCli
 		}
 		if (args.length == 3 && args[0].equals("serve") && args[1].equals(ChildNeedsReport.OPTION))
 		{
+			if (!MARKERS.running(environment).isEmpty())
+			{
+				errors().println(DirectLaunch.internalOptionRefusal(args).orElseThrow());
+				System.exit(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			}
 			CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(args[2]));
 			return;
 		}
 		String[] launch = args;
+		ProcessTreeStop.onExit();
 		System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> launch(launch, environment, Pause::sleeping,
 			new InputStreamReader(System.in, UTF_8), System.out, errors()), errors()));
 	}
@@ -147,12 +155,14 @@ public final class CodexRunnerCli
 	 *   run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
 	 *   receipt.</li>
 	 *   <li>Inside a run whose runner lets its session request none, the launch is refused.</li>
-	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as a session launcher or a run's runner names it,
-	 *   serves its session in this process within that bound.</li>
-	 *   <li>When Codex runs the command, the launch becomes a request to the session launcher of the Codex process,
-	 *   which starts the session outside the command's sandbox.</li>
+	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass is
+	 *   refused.</li>
+	 *   <li>When Codex runs the command, which it runs outside the session's sandbox, the launch serves its session in
+	 *   this process within the bound that {@link #directArguments} gives it.</li>
 	 *   <li>When only Claude Code runs the command, the launch is refused: this plugin cannot read a Claude Code
 	 *   session's sandbox policy, and the message names the Claude Code plugin's runner instead.</li>
+	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as CAT's own starters, such as a run's runner, name
+	 *   it, serves its session in this process within that bound.</li>
 	 *   <li>When no harness runs the command, no harness sandbox confines it, and the launch serves its session in
 	 *   this process within the bound that {@link #inPlaceArguments} gives it: exactly what the session needs.</li>
 	 * </ul>
@@ -163,16 +173,44 @@ public final class CodexRunnerCli
 	 * @param input       the launch's records when it names no {@code --input}
 	 * @param output      receives the session's records when the launch names no {@code --output}
 	 * @param errors      receives why the launch was refused or did not complete
-	 * @return the launch's exit status: {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if it is refused, or no
-	 *   session launcher serves the session that runs the command
+	 * @return the launch's exit status: {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if it is refused
 	 * @throws NullPointerException      if any of the arguments are null
 	 * @throws InvalidArgumentsException if the launch's options are invalid
 	 * @throws IOException               if what the session needs cannot be determined, the launch cannot be
-	 *                                   forwarded or sent, or runner startup, the harness, or bridge I/O fails
+	 *                                   forwarded or bounded, or runner startup, the harness, or bridge I/O fails
 	 */
 	public static int launch(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
 		OutputStream output, PrintWriter errors) throws IOException
 	{
+		requireThat(environment, "environment").isNotNull();
+		return launch(args, environment, waiting, input, output, errors,
+			() -> PluginDirectory.of(CodexRunnerCli.class), CodexDirectLaunch.sessions(environment));
+	}
+
+	/**
+	 * Runs one launch along the route that {@link LaunchRoute#decide(String, String, Set, String[], Map)} gives it,
+	 * as {@link #launch(String[], Map, Waiting, Reader, OutputStream, PrintWriter)} runs it.
+	 *
+	 * @param args        the command and its options
+	 * @param environment the launcher's environment
+	 * @param waiting     the process's waiting
+	 * @param input       the launch's records when it names no {@code --input}
+	 * @param output      receives the session's records when the launch names no {@code --output}
+	 * @param errors      receives why the launch was refused or did not complete
+	 * @param plugin      returns the absolute folder of the plugin that holds the launcher
+	 * @param sessions    identifies the Codex session that runs the command
+	 * @return the launch's exit status: {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if it is refused
+	 * @throws NullPointerException      if any of the arguments are null
+	 * @throws InvalidArgumentsException if the launch's options are invalid
+	 * @throws IOException               if what the session needs cannot be determined, the launch cannot be
+	 *                                   forwarded or bounded, or runner startup, the harness, or bridge I/O fails
+	 */
+	public static int launch(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
+		OutputStream output, PrintWriter errors, Supplier<Path> plugin, DirectLaunch.SessionFinder sessions)
+		throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		requireThat(sessions, "sessions").isNotNull();
 		requireThat(args, "args").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(waiting, "waiting").isNotNull();
@@ -191,8 +229,23 @@ public final class CodexRunnerCli
 				errors.println(reason);
 				yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
-			case LaunchRoute.Launcher _ -> SessionLauncherClient.launchFromMain(HARNESS_ID, options, environment,
-				waiting, input, output, errors);
+			case LaunchRoute.Launcher _ ->
+			{
+				try (TemporaryDirectories cleanup = new TemporaryDirectories())
+				{
+					List<String> bounded;
+					try
+					{
+						bounded = directArguments(options, environment, waiting, plugin.get(), sessions, cleanup);
+					}
+					catch (SessionRefusedException e)
+					{
+						errors.println(e.getMessage());
+						yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+					}
+					yield serveInProcess(bounded.toArray(String[]::new), environment, waiting, input, output, errors);
+				}
+			}
 			case LaunchRoute.Bounded _ -> serveInProcess(args, environment, waiting, input, output, errors);
 			case LaunchRoute.InPlace _ ->
 			{
@@ -212,6 +265,38 @@ public final class CodexRunnerCli
 				}
 			}
 		};
+	}
+
+	/**
+	 * Bounds a launch that a Codex session runs, as {@link DirectLaunch#boundArguments(String, String[], Path,
+	 * DirectLaunch.SessionFinder, java.util.function.Function, LaunchRoute.NeedsReport, Supplier,
+	 * TemporaryDirectories)} bounds it, with what a Codex session needs, as {@link CodexRunner#childNeeds(Map)}
+	 * reports it.
+	 *
+	 * @param args        the launch's options
+	 * @param environment the launcher's environment
+	 * @param waiting     how the command waits between the attempts of a retried operation
+	 * @param plugin      the absolute folder of the plugin that holds the launcher
+	 * @param sessions    identifies the Codex session that runs the command
+	 * @param cleanup     receives the folder that holds the bound's file, which the session reads when it starts
+	 * @return {@code args} followed by the options that bound the session
+	 * @throws NullPointerException      if any of the arguments are null
+	 * @throws SessionRefusedException   if a check of the launch fails; the message says why and how to fix it
+	 * @throws InvalidArgumentsException if an option lacks its value, a denied read is not absolute, or the file of
+	 *                                   extra permissions is invalid
+	 * @throws IOException               if what the session needs cannot be determined, or the bound cannot be
+	 *                                   written
+	 */
+	public static List<String> directArguments(String[] args, Map<String, String> environment, Waiting waiting,
+		Path plugin, DirectLaunch.SessionFinder sessions, TemporaryDirectories cleanup) throws IOException
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
+		requireThat(plugin, "plugin").isNotNull();
+		return DirectLaunch.boundArguments(HARNESS_ID, args, plugin, sessions,
+			project -> toolScope(project, environment, waiting), () -> CodexRunner.childNeeds(environment),
+			() -> CodexDirectLaunch.sandboxed(plugin.resolve(PluginDirectory.BIN).resolve("codex-runner"),
+				environment), cleanup);
 	}
 
 	/**
@@ -445,7 +530,8 @@ public final class CodexRunnerCli
 					options.gitName(), options.gitEmail(), extraPermissions),
 					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 					requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
-						boundArguments(scope.json(), arguments, directory, policy.get()), directory, environment));
+						boundArguments(scope.json(), arguments, directory, policy.get()), directory,
+						MARKERS.without(environment)));
 			}
 		}
 	}

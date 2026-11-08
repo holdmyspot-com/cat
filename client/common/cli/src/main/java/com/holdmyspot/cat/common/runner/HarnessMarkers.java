@@ -1,10 +1,14 @@
 package com.holdmyspot.cat.common.runner;
 
+import com.holdmyspot.cat.common.Platform;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -29,6 +33,29 @@ public record HarnessMarkers(List<Marker> markers)
 	{
 		requireThat(markers, "markers").isNotNull().doesNotContain(null);
 		markers = List.copyOf(markers);
+	}
+
+	/**
+	 * Returns an environment without the variables of these markers. CAT's own starters give it to the runners that
+	 * they start, so that a runner does not take its launch for one that a harness session made.
+	 *
+	 * @param environment the starter's environment
+	 * @return an unmodifiable copy of {@code environment} without the markers' variables, which on Windows
+	 *   matches names regardless of case, as the platform's environment does
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public Map<String, String> without(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		Map<String, String> copy;
+		if (Platform.current().isWindows())
+			copy = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+		else
+			copy = new HashMap<>();
+		copy.putAll(environment);
+		for (Marker marker : markers)
+			copy.remove(marker.variable());
+		return Collections.unmodifiableMap(copy);
 	}
 
 	/**

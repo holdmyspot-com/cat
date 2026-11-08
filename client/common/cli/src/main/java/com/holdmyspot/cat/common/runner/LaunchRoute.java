@@ -1,7 +1,6 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.runner.launcher.ChildBound;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
@@ -71,16 +70,18 @@ public sealed interface LaunchRoute
 	}
 
 	/**
-	 * The launch becomes a request to the session launcher of the harness process that runs the command, which starts
-	 * the session outside the command's sandbox.
+	 * A session of the plugin's own harness runs the command. A runner launcher, which that harness runs outside the
+	 * session's sandbox, starts the new session itself within the bound that {@link DirectLaunch} gives it; the prompt
+	 * optimizer sends its sessions to the session launcher of the harness process instead.
 	 */
 	record Launcher() implements LaunchRoute
 	{
 	}
 
 	/**
-	 * The launch names the policy that bounds its session with {@value PolicyBoundFile#OPTION}, as a session launcher
-	 * or a run's runner names it, and the runner serves the session in place within that bound.
+	 * The launch names the policy that bounds its session with {@value PolicyBoundFile#OPTION}, as CAT's own starters,
+	 * such as a run's runner, name it for a runner that no harness session runs, and the runner serves the session in
+	 * place within that bound.
 	 */
 	record Bounded() implements LaunchRoute
 	{
@@ -126,7 +127,7 @@ public sealed interface LaunchRoute
 			requireThat(cleanup, "cleanup").isNotNull();
 			InPlaceOptions options = InPlaceOptions.parse(args, temporaryRoot);
 			ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, options.extraPermissions());
-			String harnessName = productName(harness);
+			String harnessName = DirectLaunch.productName(harness);
 			ChildBound bound = new ChildBound(unconfined(harnessName), (_, runFolder, deniedReads, _) ->
 			{
 				ChildNeedsReport report;
@@ -202,12 +203,14 @@ public sealed interface LaunchRoute
 	 *   {@link Forward}.</li>
 	 *   <li>Inside a run whose runner lets its session request none, the launch is refused, as
 	 *   {@link HarnessEnvironment#inRunRefusal(String, Map)} says: {@link Refused}.</li>
-	 *   <li>A launch that names {@value PolicyBoundFile#OPTION} serves its session within that bound:
-	 *   {@link Bounded}.</li>
-	 *   <li>When the plugin's own harness runs the command, the launch goes to that harness's session launcher:
-	 *   {@link Launcher}. This holds even when the environment also names the other harness.</li>
+	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass, as
+	 *   {@link DirectLaunch#internalOptionRefusal(String[])} lists them, is refused: {@link Refused}.</li>
+	 *   <li>When the plugin's own harness runs the command, the launcher starts the session itself: {@link Launcher}.
+	 *   This holds even when the environment also names the other harness.</li>
 	 *   <li>When only the other harness runs the command, the launch is refused, since the plugin cannot read that
 	 *   harness's sandbox policy, and the message names the plugin to use instead: {@link Refused}.</li>
+	 *   <li>A launch that names {@value PolicyBoundFile#OPTION} serves its session within that bound:
+	 *   {@link Bounded}.</li>
 	 *   <li>When no harness runs the command, the session starts in place: {@link InPlace}.</li>
 	 * </ol>
 	 *
@@ -235,29 +238,24 @@ public sealed interface LaunchRoute
 		Optional<String> inRun = HarnessEnvironment.inRunRefusal(runner, environment);
 		if (inRun.isPresent())
 			return new Refused(inRun.get());
-		if (Arrays.asList(args).contains(PolicyBoundFile.OPTION))
-			return new Bounded();
+		if (!harnesses.isEmpty())
+		{
+			Optional<String> internal = DirectLaunch.internalOptionRefusal(args);
+			if (internal.isPresent())
+				return new Refused(internal.get());
+		}
 		if (harnesses.contains(plugin))
 			return new Launcher();
 		Optional<String> other = harnesses.stream().sorted().findFirst();
 		if (other.isPresent())
 		{
-			String otherName = productName(other.get());
+			String otherName = DirectLaunch.productName(other.get());
 			return new Refused("CAT cannot start the session: " + otherName + " runs this command, and CAT's " +
-				productName(plugin) + " plugin cannot read a " + otherName + " session's sandbox policy. Run the " +
-				"runner of CAT's " + otherName + " plugin instead.");
+				DirectLaunch.productName(plugin) + " plugin cannot read a " + otherName + " session's sandbox " +
+				"policy. Run the runner of CAT's " + otherName + " plugin instead.");
 		}
+		if (Arrays.asList(args).contains(PolicyBoundFile.OPTION))
+			return new Bounded();
 		return new InPlace();
-	}
-
-	/**
-	 * Returns the name of a harness as its users know it.
-	 *
-	 * @param harness the harness's identifier
-	 * @return the harness's product name, or {@code harness} if CAT knows no product of that identifier
-	 */
-	private static String productName(String harness)
-	{
-		return Harness.fromCommandName(harness).map(Harness::productName).orElse(harness);
 	}
 }

@@ -1,13 +1,16 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.runner.DirectLaunch;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -23,7 +26,7 @@ public final class LaunchRouteTest
 	private static final List<String> LAUNCH = List.of("--project", "project", "--model", "model-a", "--effort",
 		"effort-a");
 	/**
-	 * The options of a launch that a session launcher or a run's runner started.
+	 * The options of a launch that a run's runner started.
 	 */
 	private static final List<String> BOUND_LAUNCH = List.of("--project", "project", "--model", "model-a",
 		"--effort", "effort-a", PolicyBoundFile.OPTION, "/run/policy-bound.json");
@@ -73,22 +76,61 @@ public final class LaunchRouteTest
 	}
 
 	/**
-	 * Verifies that a launch that names a policy bound serves its session in place with that bound, though the
-	 * environment names the harness of the plugin, as it does for a runner that a session launcher started.
+	 * Verifies that a launch that names a policy bound, from a command that no harness runs, serves its session in
+	 * place with that bound, as it does for a runner that a run's runner started.
 	 */
 	@Test
 	public void servesBoundLaunch()
 	{
 		// Requirement: R-I11
-		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-a"),
+		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of(),
 			BOUND_LAUNCH.toArray(String[]::new), Map.of());
 
 		requireThat(route, "route").isEqualTo(new LaunchRoute.Bounded());
 	}
 
 	/**
-	 * Verifies that a launch from a command that the plugin's own harness runs goes to that harness's session
-	 * launcher.
+	 * Returns each option that only CAT's own starters pass, with the harnesses that run the command.
+	 *
+	 * @return the option and the harnesses
+	 */
+	@DataProvider
+	public Object[][] internalOptions()
+	{
+		List<Object[]> cases = new ArrayList<>();
+		for (String option : DirectLaunch.INTERNAL_OPTIONS)
+		{
+			cases.add(new Object[]{option, Set.of("harness-a")});
+			cases.add(new Object[]{option, Set.of("harness-b")});
+		}
+		return cases.toArray(Object[][]::new);
+	}
+
+	/**
+	 * Verifies that a launch from a command that a harness runs is refused, naming the option, when it names an
+	 * option that only CAT's own starters pass, because such an option would let the session choose what bounds the
+	 * new session.
+	 *
+	 * @param option    the option
+	 * @param harnesses the harnesses that run the command
+	 */
+	@Test(dataProvider = "internalOptions")
+	public void refusesInternalOptionFromHarness(String option, Set<String> harnesses)
+	{
+		List<String> launch = new ArrayList<>(LAUNCH);
+		launch.addAll(List.of(option, "value"));
+
+		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", harnesses, launch.toArray(String[]::new),
+			Map.of());
+
+		requireThat(route, "route").isInstanceOf(LaunchRoute.Refused.class);
+		requireThat(((LaunchRoute.Refused) route).reason(), "reason").contains("only CAT itself passes " + option).
+			contains("without " + option);
+	}
+
+	/**
+	 * Verifies that a launch from a command that the plugin's own harness runs takes the route on which the launcher
+	 * starts the session itself.
 	 */
 	@Test
 	public void sendsOwnHarnessToLauncher()
@@ -101,8 +143,8 @@ public final class LaunchRouteTest
 	}
 
 	/**
-	 * Verifies that when the environment names both harnesses, the plugin's own harness wins and the launch goes to
-	 * its session launcher.
+	 * Verifies that when the environment names both harnesses, the plugin's own harness wins and the launcher starts
+	 * the session itself.
 	 */
 	@Test
 	public void ownHarnessWinsOverOther()

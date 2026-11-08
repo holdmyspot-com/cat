@@ -32,7 +32,7 @@ public final class CodexPolicyReader
 	/**
 	 * The form of a Codex thread identifier.
 	 */
-	private static final Pattern THREAD_ID = Pattern.compile(
+	static final Pattern THREAD_ID = Pattern.compile(
 		"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 	private final CodexSystemFiles systemFiles;
 
@@ -46,6 +46,29 @@ public final class CodexPolicyReader
 	{
 		requireThat(systemFiles, "systemFiles").isNotNull();
 		this.systemFiles = systemFiles;
+	}
+
+	/**
+	 * Reads the policy of a session that runs a command, as {@link #read(CodexSession, Optional)} does, except that a
+	 * session that Codex's shared background server runs, whose command line gives no session's sandbox, has the
+	 * latest turn policy that the asking thread's rollout records, and a thread whose rollout records none is refused.
+	 * A command runs inside a turn, so its thread's rollout records that turn's policy before the command starts.
+	 *
+	 * @param session  the session
+	 * @param threadId the {@code CODEX_THREAD_ID} of the thread that asks, or empty for the session's main thread
+	 * @return the policy
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if a source of the policy cannot be read
+	 * @throws PolicyRefusal        if the policy cannot be established safely
+	 */
+	public ParentPolicy readForCommand(CodexSession session, Optional<String> threadId)
+		throws IOException, PolicyRefusal
+	{
+		requireThat(session, "session").isNotNull();
+		requireThat(threadId, "threadId").isNotNull();
+		if (CodexCommandLine.runsSharedServer(codexArguments(session)))
+			return readSharedServer(session, threadId);
+		return read(session, threadId);
 	}
 
 	/**
@@ -116,6 +139,67 @@ public final class CodexPolicyReader
 		}
 		if (policy.sandboxed() && reachesNoHost(policy.hosts()))
 			throw networkOff(resolved.profile());
+		return policy;
+	}
+
+	/**
+	 * Reads the policy of a session that Codex's shared background server runs. The server's command line and
+	 * configuration describe none of the sessions that it serves, so the policy is the latest turn policy that the
+	 * asking thread's rollout records, narrowed by the latest one that the session's rollout records.
+	 *
+	 * @param session  the session
+	 * @param threadId the thread that asks, or empty for the session's main thread
+	 * @return the policy
+	 * @throws IOException   if a rollout cannot be read
+	 * @throws PolicyRefusal if the asking thread's rollout records no turn policy, the policy cannot be parsed, a
+	 *                       rollout is one that the policy lets the session's commands write, or the session's network
+	 *                       is off
+	 */
+	private ParentPolicy readSharedServer(CodexSession session, Optional<String> threadId)
+		throws IOException, PolicyRefusal
+	{
+		Path codexHome = CodexInstallation.resolveHome(session.environment(), session.accountHome(), session.cwd());
+		List<Path> sources = new ArrayList<>();
+		session.transcript().filter(Files::isRegularFile).ifPresent(sources::add);
+		Optional<Path> threadRollout = threadRollout(codexHome, session, threadId);
+		threadRollout.ifPresent(sources::add);
+		Optional<Path> asking = threadRollout.or(() -> session.transcript().filter(Files::isRegularFile));
+		if (asking.isEmpty())
+		{
+			throw new PolicyRefusal("the session runs in Codex's shared background server, whose command line does " +
+				"not give its sandbox, and CAT cannot find its rollout", "Start a new Codex session");
+		}
+		List<ParentPolicy> claims = new ArrayList<>();
+		ParentPolicy policy = null;
+		for (Path source : sources)
+		{
+			Optional<CodexSandbox> turn = CodexRollout.latestTurn(source, session.environment(),
+				systemFiles.slashTmp());
+			if (turn.isEmpty())
+			{
+				if (source.equals(asking.get()))
+				{
+					throw new PolicyRefusal("the session runs in Codex's shared background server, whose command " +
+						"line does not give its sandbox, and its rollout " + source + " records no turn policy",
+						"Start a new Codex session");
+				}
+				continue;
+			}
+			ParentPolicy recorded = turn.get().toParentPolicy();
+			claims.add(recorded);
+			if (policy == null)
+				policy = recorded;
+			else
+				policy = policy.intersect(recorded);
+		}
+		assert policy != null;
+		for (ParentPolicy claim : claims)
+		{
+			for (Path source : sources)
+				claim.requireTrusted(source);
+		}
+		if (policy.sandboxed() && reachesNoHost(policy.hosts()))
+			throw networkOff(Optional.empty());
 		return policy;
 	}
 

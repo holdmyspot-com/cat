@@ -241,6 +241,28 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 	}
 
 	/**
+	 * Indicates whether the parent's commands may write a file or folder: it lies inside a write root and outside every
+	 * write denial. Every path is writable when the parent is not sandboxed.
+	 *
+	 * @param path the absolute path, which need not exist
+	 * @return {@code true} if the parent's commands may write {@code path}
+	 * @throws NullPointerException     if {@code path} is null
+	 * @throws IllegalArgumentException if {@code path} is not absolute
+	 * @throws IOException              if a symbolic link in a path cannot be read, or a path follows more than 40 links
+	 */
+	public boolean mayWrite(Path path) throws IOException
+	{
+		requireThat(path, "path").isNotNull();
+		if (!path.isAbsolute())
+			throw new IllegalArgumentException("path must be absolute: " + path);
+		if (!sandboxed)
+			return true;
+		Path file = RealPaths.resolve(path);
+		return RealPaths.isInsideAny(file, RealPaths.resolveAll(writeRoots)) &&
+			!RealPaths.isInsideAny(file, RealPaths.resolveAll(writeDenials));
+	}
+
+	/**
 	 * Checks that the parent's commands cannot have changed a file that CAT reads to establish the parent's policy or
 	 * to exchange data with it, such as a settings file or a state folder. The file is trusted when it lies outside the
 	 * parent's writable paths, or inside one of {@link #protectedSources()}; every file is trusted when the parent is
@@ -259,10 +281,8 @@ public record ParentPolicy(boolean sandboxed, List<Path> writeRoots, List<Path> 
 			throw new IllegalArgumentException("source must be absolute: " + source);
 		if (!sandboxed)
 			return;
-		Path file = RealPaths.resolve(source);
-		boolean writable = RealPaths.isInsideAny(file, RealPaths.resolveAll(writeRoots)) &&
-			!RealPaths.isInsideAny(file, RealPaths.resolveAll(writeDenials));
-		if (writable && !RealPaths.isInsideAny(file, RealPaths.resolveAll(protectedSources)))
+		if (mayWrite(source) && !RealPaths.isInsideAny(RealPaths.resolve(source),
+			RealPaths.resolveAll(protectedSources)))
 		{
 			throw new PolicyRefusal("the session's sandbox lets its commands write " + source + ", so they could " +
 				"change what CAT reads there", "Remove " + source + " from the paths that the session's sandbox lets " +

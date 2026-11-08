@@ -81,6 +81,36 @@ public final class CodexRollout
 	public static Optional<CodexSandbox> latestTurn(Path rollout, Map<String, String> environment, Path slashTmp)
 		throws IOException, PolicyRefusal
 	{
+		Optional<JsonNode> payload = latestTurnPayload(rollout);
+		if (payload.isEmpty())
+			return Optional.empty();
+		return Optional.of(sandbox(rollout, payload.get(), environment, slashTmp));
+	}
+
+	/**
+	 * Returns the name of the permissions profile that a thread's latest turn uses.
+	 *
+	 * @param rollout the rollout file
+	 * @return the profile's name, or empty if the rollout has no turn yet or its latest turn names no profile
+	 * @throws IOException   if the file cannot be read
+	 * @throws PolicyRefusal if the latest turn's record cannot be parsed
+	 */
+	public static Optional<String> latestProfile(Path rollout) throws IOException, PolicyRefusal
+	{
+		return latestTurnPayload(rollout).map(payload -> payload.path("active_permission_profile").path("id")).
+			filter(JsonNode::isString).map(JsonNode::stringValue);
+	}
+
+	/**
+	 * Returns the payload of a thread's latest {@code turn_context} record.
+	 *
+	 * @param rollout the rollout file
+	 * @return the payload, or empty if the rollout has no turn yet
+	 * @throws IOException   if the file cannot be read
+	 * @throws PolicyRefusal if the latest turn's record cannot be parsed
+	 */
+	private static Optional<JsonNode> latestTurnPayload(Path rollout) throws IOException, PolicyRefusal
+	{
 		String latest = "";
 		String previous = "";
 		boolean latestIsLastLine = false;
@@ -119,7 +149,7 @@ public final class CodexRollout
 		}
 		if (!record.path("type").asString("").equals("turn_context"))
 			return Optional.empty();
-		return Optional.of(sandbox(rollout, record.path("payload"), environment, slashTmp));
+		return Optional.of(record.path("payload"));
 	}
 
 	/**
