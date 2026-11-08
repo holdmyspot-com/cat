@@ -196,20 +196,21 @@ public interface HarnessIntegration
 	Map<String, List<String>> permissions(Path installer) throws IOException;
 
 	/**
-	 * Returns the question that install must put to the user before it lets sandboxed commands take the capacity
-	 * locks, because the only change that achieves it also changes a setting that is not CAT's alone. Install changes
-	 * nothing unless the user agrees, and then calls {@link #installConsentedEntries} before
-	 * {@link #installSandboxEntries}.
+	 * Returns the question that install must put to the user before it changes a setting that is not CAT's alone,
+	 * because only that change lets sandboxed commands take the capacity locks or keeps them from writing the shell
+	 * startup files. When the user agrees, install calls {@link #installConsentedEntries} before
+	 * {@link #installSandboxEntries}. When the user withholds permission, install changes nothing if the request is
+	 * {@link ConsentRequest#required() required}, and otherwise goes on without the change.
 	 *
 	 * @param home     the absolute, normalized harness home from the trust policy
 	 * @param catLocks the absolute directory of CAT's capacity locks
-	 * @return the question, which explains the problem, what fails without the change, and the change; empty when
-	 * 	install needs no permission
+	 * @return the request; empty when install needs no permission
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
-	 * @throws IOException              if the configuration cannot be read
+	 * @throws IOException              if the configuration cannot be read, or holds a setting that the change would
+	 *                                  need to copy in a form that CAT does not copy
 	 */
-	Optional<String> consentRequest(Path home, Path catLocks) throws IOException;
+	Optional<ConsentRequest> consentRequest(Path home, Path catLocks) throws IOException;
 
 	/**
 	 * Makes the change that {@link #consentRequest} asks the user to allow, once the user has allowed it. Does nothing

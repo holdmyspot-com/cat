@@ -137,13 +137,26 @@ in the Codex home, depends on what `default_permissions` selects:
 	`default_permissions` back to the built-in profile and deletes the profile that CAT created, unless that profile
 	holds settings that CAT did not write or `default_permissions` still names it; the uninstall result then says what
 	it left.
-- No profile: the installer adds the folder to `sandbox_workspace_write.writable_roots`.
+- No profile: only a selected profile can hold the `read` entries that keep sandboxed commands from writing the shell
+	startup files (see [Let sessions run CAT's runners](#let-sessions-run-cats-runners)), so the installer follows
+	`sandbox_mode`. For `workspace-write` or `read-only` it asks your permission to create the profile
+	`cat-sandbox-workspace-write`, which extends `:workspace`, or `cat-sandbox-read-only`, which extends `:read-only`,
+	and to add `default_permissions` to select it. For
+	`workspace-write` the profile also gets a copy of your `[sandbox_workspace_write]` settings: a `write` entry for
+	each writable folder, `enabled = true` in its network table for `network_access`, and a `read` entry for `:tmpdir`
+	and `:slash_tmp` for `exclude_tmpdir_env_var` and `exclude_slash_tmp`. Codex then uses the profile in place of
+	`sandbox_mode` in every project, unless a project's configuration or a command-line option selects another.
+	Uninstalling CAT removes the `default_permissions` line and the profile, with the same exceptions as above. Without
+	your permission, and with `danger-full-access` or no `sandbox_mode`, which no single profile matches in every
+	project, the installer adds the lock folder to `sandbox_workspace_write.writable_roots` instead, and its result
+	says that the startup files stay writable.
 
-The installer asks for the permission in the terminal, with `Allow this change? [y/N]`. Without your permission, or when
-it cannot ask, it changes nothing and refuses with a message that explains the change. When your agent ran the install,
-the refusal carries the exact command that gives the permission: the same installer command with `--create-profile`
-before `install`. The agent asks you first, and your harness asks you to approve that command, because it grants a
-permission.
+The installer asks for the permission in the terminal, with `Allow this change? [y/N]`. For a built-in profile, without
+your permission, or when it cannot ask, it changes nothing and refuses with a message that explains the change. When
+your agent ran the install, the refusal carries the exact command that gives the permission: the same installer command
+with `--create-profile` before `install`. The agent asks you first, and your harness asks you to approve that command,
+because it grants a permission. For `sandbox_mode`, the install goes on without the profile; run the installer again in
+a terminal, or with `--create-profile` before `install`, to create it later.
 
 ### Codex hook trust
 
@@ -496,10 +509,11 @@ launcher's absolute path, which it reports with its other settings entries as ru
 commands from writing the shell startup files in the harness's home folder (`.bashrc`, `.bash_profile`, `.bash_login`,
 `.bash_logout`, `.profile`, `.zshrc`, `.zshenv`, `.zprofile` and `.zlogin`), because a shell that runs the launcher
 loads them first. In Claude Code these are `sandbox.filesystem.denyWrite` and `permissions.deny` `Edit(//<file>)`
-entries; in Codex they are `read` entries in the permissions profile that `default_permissions` selects, and Codex
-without such a profile gets none. `uninstall` removes what `install` added. A command matches the exception only when it
-is the launcher's absolute path followed by its options, with nothing in front of it, such as a variable assignment or
-`env`, and no pipe or redirection.
+entries; in Codex they are `read` entries in the permissions profile that `default_permissions` selects, which the
+installer offers to create when your configuration selects none (see
+[Codex permission profile](#codex-permission-profile)), and Codex without such a profile gets none. `uninstall` removes
+what `install` added. A command matches the exception only when it is the launcher's absolute path followed by its
+options, with nothing in front of it, such as a variable assignment or `env`, and no pipe or redirection.
 
 A runner launcher that a session runs treats its options, inputs and environment as the session's and checks them before
 it starts anything. It identifies the session from its harness process and the session or thread ID that the harness

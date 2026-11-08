@@ -45,7 +45,11 @@ final class BuiltInProfile
 	/**
 	 * The table of a profile's filesystem entries.
 	 */
-	private static final String FILESYSTEM = "filesystem";
+	private static final String FILESYSTEM = PermissionProfile.FILESYSTEM;
+	/**
+	 * The table of a profile's network settings.
+	 */
+	private static final String NETWORK = PermissionProfile.NETWORK;
 	/**
 	 * The built-in profiles that limit which files commands may write. {@code :danger-full-access} does not.
 	 */
@@ -183,7 +187,7 @@ final class BuiltInProfile
 		String edited = text;
 		if (parse(text, file).path(SELECTION).asString("").equals(profile))
 			edited = select(text, profile, builtIn, file).orElse(text);
-		return removeProfile(edited, builtIn, file);
+		return removeProfile(edited, profile, builtIn, file);
 	}
 
 	/**
@@ -222,22 +226,26 @@ final class BuiltInProfile
 	}
 
 	/**
-	 * Removes CAT's profile of a built-in profile when it holds only {@code extends} and an empty filesystem table,
-	 * and the file does not select it. A comment in the profile's tables counts as the user's content.
+	 * Removes a profile of CAT's that extends a built-in profile when it holds only {@code extends} and empty
+	 * filesystem and network tables, and the file does not select it. A comment in the profile's tables counts as the
+	 * user's content.
 	 *
 	 * @param text    the file's content
-	 * @param builtIn the built-in profile
+	 * @param profile the name of CAT's profile
+	 * @param builtIn the built-in profile that it extends
 	 * @param file    the file, named in the refusal
 	 * @return the edited content, or {@code text} when the profile is absent, selected, holds other content or is in a
 	 * 	form that the editor does not change
 	 * @throws IOException if the content is not valid TOML
 	 */
-	private static String removeProfile(String text, String builtIn, Path file) throws IOException
+	static String removeProfile(String text, String profile, String builtIn, Path file) throws IOException
 	{
 		ObjectNode document = parse(text, file);
-		String profile = catProfile(builtIn);
-		if (!holdsOnlyCatContent(document, profile) || document.path(SELECTION).asString("").equals(profile))
+		if (!holdsOnlyCatContent(document, profile, builtIn) ||
+			document.path(SELECTION).asString("").equals(profile))
+		{
 			return text;
+		}
 		List<String> lines = lines(text);
 		ObjectNode extendsLine = TomlText.table();
 		extendsLine.put(EXTENDS, builtIn);
@@ -247,6 +255,10 @@ final class BuiltInProfile
 		if (!removeTable(lines, header, extendsLine, removed))
 			return text;
 		table.putObject(FILESYSTEM);
+		if (!removeTable(lines, header, extendsLine, removed))
+			return text;
+		table.remove(FILESYSTEM);
+		table.putObject(NETWORK);
 		if (!removeTable(lines, header, extendsLine, removed))
 			return text;
 		if (removed.isEmpty())
@@ -273,22 +285,24 @@ final class BuiltInProfile
 	}
 
 	/**
-	 * Returns whether a profile holds only the content that CAT writes, once its filesystem entries are removed.
+	 * Returns whether a profile holds only the content that CAT writes, once its filesystem and network entries are
+	 * removed.
 	 *
 	 * @param document the parsed file
 	 * @param profile  CAT's profile's name
-	 * @return true if the profile holds only {@code extends} of a built-in profile and an empty filesystem table
+	 * @param builtIn  the built-in profile that it extends
+	 * @return true if the profile holds only {@code extends} of {@code builtIn} and empty filesystem and network tables
 	 */
-	private static boolean holdsOnlyCatContent(ObjectNode document, String profile)
+	private static boolean holdsOnlyCatContent(ObjectNode document, String profile, String builtIn)
 	{
 		JsonNode table = document.path(PROFILES).path(profile);
-		if (!table.isObject() || extended(document, profile).isEmpty())
+		if (!table.isObject() || !table.path(EXTENDS).asString("").equals(builtIn))
 			return false;
 		for (String key : table.propertyNames())
 		{
 			if (key.equals(EXTENDS))
 				continue;
-			if (!key.equals(FILESYSTEM) || !table.get(key).isObject() || !table.get(key).isEmpty())
+			if (!Set.of(FILESYSTEM, NETWORK).contains(key) || !table.get(key).isObject() || !table.get(key).isEmpty())
 				return false;
 		}
 		return true;

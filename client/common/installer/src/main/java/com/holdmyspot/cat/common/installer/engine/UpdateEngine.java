@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
+import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -482,9 +483,14 @@ public final class UpdateEngine
 		DataMigration migration = DataMigration.plan(versionFolder, migrationFile, active.release().orElseThrow(),
 			active.release());
 		integration.validateConfiguration(home);
-		Optional<String> consentRequest = integration.consentRequest(home, request.catLocks());
-		if (consentRequest.isPresent() && !request.consent().grants(consentRequest.get()))
-			return result(Result.REFUSED, active.version(), null, consentRequest.get(), List.of());
+		Optional<ConsentRequest> consentRequest = integration.consentRequest(home, request.catLocks());
+		boolean consented = false;
+		if (consentRequest.isPresent())
+		{
+			consented = request.consent().grants(consentRequest.get().question());
+			if (!consented && consentRequest.get().required())
+				return result(Result.REFUSED, active.version(), null, consentRequest.get().question(), List.of());
+		}
 		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer());
 		PluginInstall.InstalledEntries entries;
 		try
@@ -492,8 +498,7 @@ public final class UpdateEngine
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
-				request.others(), request.catLocks(), request.launcherState(), request.startupFiles(),
-				consentRequest.isPresent());
+				request.others(), request.catLocks(), request.launcherState(), request.startupFiles(), consented);
 		}
 		catch (IOException e)
 		{
@@ -566,9 +571,14 @@ public final class UpdateEngine
 			}
 		}
 		integration.validateConfiguration(home);
-		Optional<String> consentRequest = integration.consentRequest(home, request.catLocks());
-		if (consentRequest.isPresent() && !request.consent().grants(consentRequest.get()))
-			return result(Result.REFUSED, active.version(), null, consentRequest.get(), List.of());
+		Optional<ConsentRequest> consentRequest = integration.consentRequest(home, request.catLocks());
+		boolean consented = false;
+		if (consentRequest.isPresent())
+		{
+			consented = request.consent().grants(consentRequest.get().question());
+			if (!consented && consentRequest.get().required())
+				return result(Result.REFUSED, active.version(), null, consentRequest.get().question(), List.of());
+		}
 		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer());
 		boolean startupCache;
 		PluginInstall.InstalledEntries entries;
@@ -579,8 +589,7 @@ public final class UpdateEngine
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			startupCache = trainer.train(versionFolder);
 			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
-				request.others(), request.catLocks(), request.launcherState(), request.startupFiles(),
-				consentRequest.isPresent());
+				request.others(), request.catLocks(), request.launcherState(), request.startupFiles(), consented);
 		}
 		catch (IOException e)
 		{

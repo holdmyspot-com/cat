@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
@@ -922,7 +923,7 @@ public final class Integration implements HarnessIntegration
 	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative
 	 */
 	@Override
-	public Optional<String> consentRequest(Path home, Path catLocks)
+	public Optional<ConsentRequest> consentRequest(Path home, Path catLocks)
 	{
 		requireThat(home, "home").isAbsolute();
 		requireThat(catLocks, "catLocks").isAbsolute();

@@ -49,6 +49,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -440,7 +441,7 @@ public final class Invocation
 				platform.id(), clock, waiting);
 			UserConsent consent = new UserConsent(arguments.createProfile());
 			UpdateResult result = engine.install(arguments.tag(), request(managed, locations.image(), consent));
-			if (result.result() == Result.REFUSED && consent.withheld())
+			if (result.result() == Result.REFUSED && consent.withheld(result.message()))
 				return print(result, withheld(result, consent, arguments, locations.image()), arguments, locations);
 			return print(result, arguments, locations);
 		}
@@ -607,7 +608,7 @@ public final class Invocation
 							activation, platform.id(), clock, waiting);
 						UserConsent consent = new UserConsent(arguments.createProfile());
 						UpdateResult result = engine.installFrom(image, request(managed, image, consent));
-						if (result.result() == Result.REFUSED && consent.withheld())
+						if (result.result() == Result.REFUSED && consent.withheld(result.message()))
 							return print(result, withheld(result, consent, arguments, null), arguments, null);
 						boolean succeeded = result.result().exitStatus() == 0;
 						if (succeeded && !releaseKeys.isEmpty())
@@ -833,7 +834,7 @@ public final class Invocation
 		}
 		catch (TrustException e)
 		{
-			if (!consent.withheld())
+			if (!consent.withheld(e.getMessage()))
 				throw e;
 			UpdateResult refusal = failure(Result.REFUSED, harness, e.getMessage(), List.of());
 			return new Printed(refusal, withheld(refusal, consent, arguments, installer));
@@ -873,7 +874,7 @@ public final class Invocation
 	{
 		String command = null;
 		String answer;
-		if (consent.declined())
+		if (consent.declined(refusal.message()))
 			answer = "You answered no, so CAT changed nothing.";
 		else if (plugin == null)
 		{
@@ -1067,8 +1068,14 @@ public final class Invocation
 	private final class UserConsent implements Consent
 	{
 		private final boolean given;
-		private boolean declined;
-		private boolean unasked;
+		/**
+		 * The questions that the user answered no to.
+		 */
+		private final Set<String> declined = new HashSet<>();
+		/**
+		 * The questions that install could not ask.
+		 */
+		private final Set<String> unasked = new HashSet<>();
 
 		/**
 		 * Creates the user's permission.
@@ -1090,30 +1097,32 @@ public final class Invocation
 			if (reply == ConsentReply.ALLOWED)
 				return true;
 			if (reply == ConsentReply.DECLINED)
-				declined = true;
+				declined.add(request);
 			else
-				unasked = true;
+				unasked.add(request);
 			return false;
 		}
 
 		/**
 		 * Returns whether the user withheld a permission that install asked for.
 		 *
+		 * @param request the question that install asked
 		 * @return true if the user answered no or install could not ask them
 		 */
-		boolean withheld()
+		boolean withheld(String request)
 		{
-			return declined || unasked;
+			return declined.contains(request) || unasked.contains(request);
 		}
 
 		/**
-		 * Returns whether the user answered no.
+		 * Returns whether the user answered no to a question.
 		 *
+		 * @param request the question that install asked
 		 * @return true if the user answered no in the terminal
 		 */
-		boolean declined()
+		boolean declined(String request)
 		{
-			return declined;
+			return declined.contains(request);
 		}
 	}
 

@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
@@ -101,6 +102,15 @@ public final class CodexIntegration implements HarnessIntegration
 	 * its own profile in its place.
 	 */
 	private static final String SELECTION_KEY = CONFIGURATION_KEY + BuiltInProfile.SELECTION;
+	/**
+	 * The record key of CAT's selection of its profile in place of the sandbox mode that {@code config.toml} sets,
+	 * whose value is the sandbox mode.
+	 */
+	private static final String MODE_KEY = CONFIGURATION_KEY + SandboxModeProfile.MODE;
+	/**
+	 * The shell startup files that the question and the notices name as examples.
+	 */
+	private static final String STARTUP_FILES = "your shell startup files, such as ~/.bashrc";
 	/**
 	 * Bounds a plugin manifest or marketplace metadata file to 1 MiB.
 	 */
@@ -266,8 +276,8 @@ public final class CodexIntegration implements HarnessIntegration
 	 *
 	 * @param home the Codex home
 	 * @throws IOException if the file is a symbolic link, not a regular file, not valid TOML, or in a form whose
-	 *                     writable roots, whose selected permission profile, or whose selection of a built-in profile
-	 *                     CAT does not edit
+	 *                     writable roots, whose selected permission profile, whose selection of a built-in profile, or
+	 *                     whose sandbox mode CAT does not edit
 	 */
 	private static void validateSandboxEntry(Path home) throws IOException
 	{
@@ -289,9 +299,17 @@ public final class CodexIntegration implements HarnessIntegration
 		}
 		Optional<String> profile = PermissionProfile.selected(document);
 		if (profile.isPresent())
+		{
 			PermissionProfile.requireEditable(content, profile.get(), file);
-		else
-			WritableRoots.requireEditable(content, file);
+			return;
+		}
+		WritableRoots.requireEditable(content, file);
+		Optional<String> mode = SandboxModeProfile.unselected(document);
+		if (mode.isPresent())
+		{
+			String created = SandboxModeProfile.create(content, mode.get(), file);
+			PermissionProfile.requireEditable(created, SandboxModeProfile.catProfile(mode.get()), file);
+		}
 	}
 
 	/**
@@ -488,37 +506,72 @@ public final class CodexIntegration implements HarnessIntegration
 
 	/**
 	 * Asks for permission to select a profile of CAT's when {@code config.toml} selects {@code :workspace} or
-	 * {@code :read-only}, which are built into Codex.
+	 * {@code :read-only}, which are built into Codex, and install stops without it. When {@code config.toml} selects no
+	 * permission profile and sets {@code sandbox_mode} to {@code workspace-write} or {@code read-only}, asks for
+	 * permission to select a profile of CAT's in place of that mode, and install goes on without it.
 	 *
 	 * @throws IllegalArgumentException if {@code home} or {@code catLocks} are relative or not normalized
 	 * @throws IOException              if {@code config.toml} cannot be read or is not valid TOML
 	 */
 	@Override
-	public Optional<String> consentRequest(Path home, Path catLocks) throws IOException
+	public Optional<ConsentRequest> consentRequest(Path home, Path catLocks) throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(catLocks, "catLocks").isAbsolute().isEqualTo(catLocks.normalize());
 		Path file = new CodexInstallation(home).configuration();
 		Optional<String> builtIn = selectedBuiltIn(file);
 		if (builtIn.isEmpty())
-			return Optional.empty();
+			return unselectedMode(file).map(mode -> new ConsentRequest(sandboxModeQuestion(file, mode), false));
 		String profile = TomlText.quote(BuiltInProfile.catProfile(builtIn.get()));
 		String quoted = TomlText.quote(builtIn.get());
-		return Optional.of("Codex's configuration " + file + " sets default_permissions to the permission profile " +
-			quoted + ", which is built into Codex, so CAT cannot add its capacity lock folder " + catLocks + " to it. " +
-			"Without write access to that folder, CAT's runners cannot start Codex or Claude Code sessions inside " +
-			"Codex's sandbox, because each session takes a capacity lock there. With your permission, CAT creates " +
-			"the permission profile " + profile + ", which extends " + quoted + " and adds only write access to " +
-			catLocks + ", and sets default_permissions to it. Uninstalling CAT sets it back to " + quoted + ".");
+		return Optional.of(new ConsentRequest("Codex's configuration " + file + " sets default_permissions to the " +
+			"permission profile " + quoted + ", which is built into Codex, so CAT cannot add its capacity lock folder " +
+			catLocks + " to it. Without write access to that folder, CAT's runners cannot start Codex or Claude Code " +
+			"sessions inside Codex's sandbox, because each session takes a capacity lock there. With your " +
+			"permission, CAT creates the permission profile " + profile + ", which extends " + quoted + " and adds " +
+			"only write access to " + catLocks + ", and sets default_permissions to it. Uninstalling CAT sets it back " +
+			"to " + quoted + ".", true));
+	}
+
+	/**
+	 * Returns the question that asks for permission to select CAT's profile in place of a sandbox mode.
+	 *
+	 * @param file the {@code config.toml}
+	 * @param mode the sandbox mode that it sets
+	 * @return the question
+	 */
+	private static String sandboxModeQuestion(Path file, String mode)
+	{
+		String profile = TomlText.quote(SandboxModeProfile.catProfile(mode));
+		String builtIn = TomlText.quote(SandboxModeProfile.builtIn(mode));
+		String copied = "";
+		if (mode.equals(SandboxModeProfile.WORKSPACE_WRITE))
+		{
+			copied = ", copies into it the writable folders, network access and temporary-folder exclusions of " +
+				"your [sandbox_workspace_write] table";
+		}
+		return "Codex's configuration " + file + " selects no permission profile, so nothing keeps sandboxed " +
+			"commands from writing " + STARTUP_FILES + ", which run outside the sandbox whenever a shell starts. " +
+			"With your permission, CAT creates the permission profile " + profile + ", which extends " + builtIn +
+			copied + ", adds read-only entries for those files and the entries that CAT's runners need, and sets " +
+			"default_permissions to it. Codex then uses that profile in place of sandbox_mode = " +
+			TomlText.quote(mode) + " in every project, unless a project's own configuration or a command-line option " +
+			"selects another. Uninstalling CAT removes the profile and the default_permissions line. If you answer " +
+			"no, CAT installs without them and the startup files stay writable.";
 	}
 
 	/**
 	 * Sets {@code default_permissions} to CAT's profile of the selected built-in profile, and creates that profile with
-	 * {@code extends} set to the built-in profile unless the file already defines it.
+	 * {@code extends} set to the built-in profile unless the file already defines it. When {@code config.toml} selects
+	 * no permission profile and sets {@code sandbox_mode} to {@code workspace-write} or {@code read-only}, adds a
+	 * {@code default_permissions} line that selects CAT's profile of that mode instead, and creates that profile with
+	 * {@code extends} set to {@code :workspace} or {@code :read-only}; {@link #installSandboxEntries} then copies the
+	 * {@code [sandbox_workspace_write]} settings into it.
 	 *
 	 * @return {@code {"config.toml#default_permissions": [<built-in>], "config.toml#permissions.cat-<name>":
-	 * 	[<built-in>]}}, or an empty map when {@code config.toml} selects no built-in profile that limits which files
-	 * 	commands may write
+	 * 	[<built-in>]}}, {@code {"config.toml#sandbox_mode": [<mode>], "config.toml#permissions.cat-sandbox-<mode>":
+	 * 	[<mode>]}}, or an empty map when {@code config.toml} selects neither a built-in profile that limits which files
+	 * 	commands may write nor, without a selected profile, such a sandbox mode
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if {@code config.toml} is in a form whose selection CAT does not edit, or
 	 *                                  cannot be read or written
@@ -531,11 +584,70 @@ public final class CodexIntegration implements HarnessIntegration
 		validateSandboxEntry(home);
 		Path file = new CodexInstallation(home).configuration();
 		Optional<String> builtIn = selectedBuiltIn(file);
-		if (builtIn.isEmpty())
+		if (builtIn.isPresent())
+		{
+			write(file, BuiltInProfile.create(read(file), builtIn.get(), file), replacer);
+			return Map.of(SELECTION_KEY, List.of(builtIn.get()),
+				catProfileKey(builtIn.get()), List.of(builtIn.get()));
+		}
+		Optional<String> mode = unselectedMode(file);
+		if (mode.isEmpty())
 			return Map.of();
-		write(file, BuiltInProfile.create(read(file), builtIn.get(), file), replacer);
-		return Map.of(SELECTION_KEY, List.of(builtIn.get()),
-			catProfileKey(builtIn.get()), List.of(builtIn.get()));
+		write(file, SandboxModeProfile.create(read(file), mode.get(), file), replacer);
+		return Map.of(MODE_KEY, List.of(mode.get()), sandboxProfileKey(mode.get()), List.of(mode.get()));
+	}
+
+	/**
+	 * Returns the sandbox mode of which CAT offers to select a profile, because a {@code config.toml} selects no
+	 * permission profile.
+	 *
+	 * @param file the {@code config.toml}
+	 * @return {@code workspace-write} or {@code read-only}, or empty when the file is absent, not a regular file, sets
+	 * 	{@code default_permissions} or sets no such mode
+	 * @throws IOException if the file cannot be read or is not valid TOML
+	 */
+	private static Optional<String> unselectedMode(Path file) throws IOException
+	{
+		if (Files.isSymbolicLink(file) || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		return SandboxModeProfile.unselected(TomlText.parse(read(file), file));
+	}
+
+	/**
+	 * Returns the record key of CAT's profile of a sandbox mode.
+	 *
+	 * @param mode the sandbox mode
+	 * @return {@code config.toml#permissions.cat-sandbox-<mode>}
+	 */
+	private static String sandboxProfileKey(String mode)
+	{
+		return CONFIGURATION_KEY + "permissions." + SandboxModeProfile.catProfile(mode);
+	}
+
+	/**
+	 * Returns the record key of the {@code enabled = true} entry that CAT adds to a profile's network table.
+	 *
+	 * @param profile the profile's name
+	 * @return {@code config.toml#permissions.<profile>.network.enabled}
+	 */
+	private static String networkKey(String profile)
+	{
+		return CONFIGURATION_KEY + PermissionProfile.tableKey(profile, PermissionProfile.NETWORK) + ".enabled";
+	}
+
+	/**
+	 * Adds a value to the values of a record key, once.
+	 *
+	 * @param entries the entries, by record key
+	 * @param key     the record key
+	 * @param value   the value
+	 */
+	private static void record(Map<String, List<String>> entries, String key, String value)
+	{
+		List<String> values = new ArrayList<>(entries.getOrDefault(key, List.of()));
+		if (!values.contains(value))
+			values.add(value);
+		entries.put(key, List.copyOf(values));
 	}
 
 	/**
@@ -573,7 +685,11 @@ public final class CodexIntegration implements HarnessIntegration
 	 * the profile lets them write a folder that contains it. Otherwise adds {@code catLocks} to
 	 * {@code sandbox_workspace_write.writable_roots}, creating the file or the table when it is absent, unless the
 	 * writable roots already hold it. Codex's own sandbox already keeps sandboxed commands from writing the other
-	 * harness's CAT installation, so this call adds nothing for it.
+	 * harness's CAT installation, so this call adds nothing for it. When the selected profile is CAT's profile of
+	 * {@code sandbox_mode = "workspace-write"}, also adds to it each entry that copies the user's
+	 * {@code [sandbox_workspace_write]} settings, unless the profile already has an entry for its path: a write entry
+	 * for each writable folder, a read entry for {@code :tmpdir} and {@code :slash_tmp} when the settings exclude them,
+	 * and {@code enabled = true} in its {@code network} table when the settings allow network access.
 	 *
 	 * @param home          the absolute Codex home
 	 * @param other         the other harness's CAT installation
@@ -604,18 +720,40 @@ public final class CodexIntegration implements HarnessIntegration
 		String content = "";
 		if (exists)
 			content = read(file);
-		Optional<String> profile = PermissionProfile.selected(TomlText.parse(content, file));
+		ObjectNode document = TomlText.parse(content, file);
+		Optional<String> profile = PermissionProfile.selected(document);
 		String edited;
 		Map<String, List<String>> entries = new HashMap<>();
 		if (profile.isPresent())
 		{
+			Map<String, Access> wanted = new LinkedHashMap<>();
 			// Adding the read entry first leaves the write entry above it, below the table header
-			String denied = PermissionProfile.add(content, profile.get(), launcherState.toString(), Access.READ, file);
-			if (!denied.equals(content))
-				entries.put(profileKey(profile.get()) + READ_SUFFIX, List.of(launcherState.toString()));
-			edited = PermissionProfile.add(denied, profile.get(), catLocks.toString(), Access.WRITE, file);
-			if (!edited.equals(denied))
-				entries.put(profileKey(profile.get()), List.of(catLocks.toString()));
+			wanted.put(launcherState.toString(), Access.READ);
+			wanted.putIfAbsent(catLocks.toString(), Access.WRITE);
+			Optional<String> mode = SandboxModeProfile.extended(document, profile.get());
+			if (mode.isPresent())
+			{
+				for (Map.Entry<String, Access> copied : SandboxModeProfile.filesystemEntries(document, mode.get(), home).
+					entrySet())
+				{
+					wanted.putIfAbsent(copied.getKey(), copied.getValue());
+				}
+			}
+			edited = content;
+			for (Map.Entry<String, Access> entry : wanted.entrySet())
+			{
+				String next = PermissionProfile.add(edited, profile.get(), entry.getKey(), entry.getValue(), file);
+				if (!next.equals(edited))
+					record(entries, entryKey(profile.get(), entry.getValue()), entry.getKey());
+				edited = next;
+			}
+			if (mode.isPresent() && SandboxModeProfile.networkAccess(document, mode.get()))
+			{
+				String next = PermissionProfile.enableNetwork(edited, profile.get(), file);
+				if (!next.equals(edited))
+					record(entries, networkKey(profile.get()), "true");
+				edited = next;
+			}
 		}
 		else
 		{
@@ -640,7 +778,9 @@ public final class CodexIntegration implements HarnessIntegration
 	 * 	"config.toml#permissions.<profile>.filesystem.read": [<launcherState>]}} when {@code config.toml} selects a
 	 * 	permission profile that it defines, with the profile's name quoted when TOML requires it, otherwise
 	 * 	{@code {"config.toml#sandbox_workspace_write.writable_roots": [<catLocks>]}}; when the selected profile is
-	 * 	CAT's profile of a built-in profile, also the entries that {@link #installConsentedEntries} returns for it
+	 * 	CAT's profile of a built-in profile or of a sandbox mode, also the entries that {@link #installConsentedEntries}
+	 * 	returns for it, and for CAT's profile of {@code workspace-write} the entries that copy the current
+	 * 	{@code [sandbox_workspace_write]} settings
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code home}, {@code catLocks} or {@code launcherState} are relative or
 	 *                                  not normalized
@@ -668,13 +808,26 @@ public final class CodexIntegration implements HarnessIntegration
 		if (profile.isEmpty())
 			return Map.of(WRITABLE_ROOTS_KEY, List.of(catLocks.toString()));
 		Map<String, List<String>> entries = new HashMap<>();
-		entries.put(profileKey(profile.get()), List.of(catLocks.toString()));
-		entries.put(profileKey(profile.get()) + READ_SUFFIX, List.of(launcherState.toString()));
+		record(entries, profileKey(profile.get()), catLocks.toString());
+		record(entries, profileKey(profile.get()) + READ_SUFFIX, launcherState.toString());
 		Optional<String> builtIn = BuiltInProfile.extended(document, profile.get());
 		if (builtIn.isPresent())
 		{
 			entries.put(SELECTION_KEY, List.of(builtIn.get()));
 			entries.put(catProfileKey(builtIn.get()), List.of(builtIn.get()));
+		}
+		Optional<String> mode = SandboxModeProfile.extended(document, profile.get());
+		if (mode.isPresent())
+		{
+			entries.put(MODE_KEY, List.of(mode.get()));
+			entries.put(sandboxProfileKey(mode.get()), List.of(mode.get()));
+			for (Map.Entry<String, Access> copied : SandboxModeProfile.filesystemEntries(document, mode.get(), home).
+				entrySet())
+			{
+				record(entries, entryKey(profile.get(), copied.getValue()), copied.getKey());
+			}
+			if (SandboxModeProfile.networkAccess(document, mode.get()))
+				entries.put(networkKey(profile.get()), List.of("true"));
 		}
 		return Map.copyOf(entries);
 	}
@@ -789,6 +942,20 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Returns the record key of the entries of an access that CAT adds to a permission profile.
+	 *
+	 * @param profile the profile's name
+	 * @param access  the entries' access
+	 * @return {@code config.toml#permissions.<profile>.filesystem}, followed by {@code .read} for read entries
+	 */
+	private static String entryKey(String profile, Access access)
+	{
+		if (access == Access.READ)
+			return profileKey(profile) + READ_SUFFIX;
+		return profileKey(profile);
+	}
+
+	/**
 	 * Returns the sandbox key of the write entry that CAT adds to a permission profile.
 	 *
 	 * @param profile the profile's name
@@ -800,8 +967,9 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Tells the user that CAT selected its profile of a built-in profile, and that a write entry that CAT added to a
-	 * profile of the user's applies to every project that uses the profile.
+	 * Tells the user that CAT selected its profile of a built-in profile or of a sandbox mode, that a write entry that
+	 * CAT added to a profile of the user's applies to every project that uses the profile, and that the shell startup
+	 * files stay writable when {@code config.toml} selects no permission profile.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if {@code config.toml} cannot be read or is not valid TOML
@@ -842,13 +1010,29 @@ public final class CodexIntegration implements HarnessIntegration
 				TomlText.quote(BuiltInProfile.catProfile(builtIn)) + ", which extends " + quoted + " and lets " +
 				"sandboxed commands take CAT's capacity locks; uninstalling CAT sets it back to " + quoted + ".");
 		}
+		List<String> modes = added.getOrDefault(MODE_KEY, List.of());
+		for (String mode : modes)
+		{
+			String copy = "";
+			if (mode.equals(SandboxModeProfile.WORKSPACE_WRITE))
+				copy = " and holds a copy of your [sandbox_workspace_write] settings";
+			sentences.add("CAT set default_permissions in " + file + " to its permission profile " +
+				TomlText.quote(SandboxModeProfile.catProfile(mode)) + ", which extends " +
+				TomlText.quote(SandboxModeProfile.builtIn(mode)) + copy + ", so that sandboxed commands cannot write " +
+				STARTUP_FILES + "; Codex uses it in place of sandbox_mode = " + TomlText.quote(mode) + " in every " +
+				"project, and uninstalling CAT removes it.");
+		}
+		ObjectNode document = readDocument(file);
+		describeUnprotected(document, file, !added.isEmpty()).ifPresent(sentences::add);
 		if (added.keySet().stream().noneMatch(key -> key.startsWith(CONFIGURATION_KEY + "permissions.")))
 			return List.copyOf(sentences);
-		ObjectNode document = readDocument(file);
 		for (String profile : document.path("permissions").propertyNames())
 		{
-			if (BuiltInProfile.extended(document, profile).filter(selected::contains).isPresent())
+			if (BuiltInProfile.extended(document, profile).filter(selected::contains).isPresent() ||
+				SandboxModeProfile.extended(document, profile).isPresent())
+			{
 				continue;
+			}
 			for (String path : added.getOrDefault(profileKey(profile), List.of()))
 			{
 				sentences.add("CAT added " + TomlText.quote(path) + " = \"write\" to the Codex permission profile " +
@@ -860,11 +1044,53 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
+	 * Tells the user that the shell startup files stay writable when {@code config.toml} selects no permission
+	 * profile, and why. The user hears it after each install that asked for permission to select CAT's profile and did
+	 * not get it, and otherwise after each install that added an entry, so that an install that changes nothing says
+	 * nothing.
+	 *
+	 * @param document the parsed {@code config.toml}
+	 * @param file     the {@code config.toml}
+	 * @param changed  whether the install added an entry
+	 * @return the sentence, or empty when the file sets {@code default_permissions}, sets a sandbox mode that CAT does
+	 * 	not know, or sets no sandbox mode that CAT follows and the install added nothing
+	 */
+	private static Optional<String> describeUnprotected(ObjectNode document, Path file, boolean changed)
+	{
+		if (document.has(BuiltInProfile.SELECTION))
+			return Optional.empty();
+		String writable = "sandboxed commands can still write " + STARTUP_FILES;
+		JsonNode mode = document.path(SandboxModeProfile.MODE);
+		if (!changed && !(mode.isString() && SandboxModeProfile.MODES.contains(mode.stringValue())))
+			return Optional.empty();
+		if (mode.isMissingNode())
+		{
+			return Optional.of("Codex's configuration " + file + " sets neither default_permissions nor " +
+				"sandbox_mode, so Codex chooses a built-in permission profile for each project and no single profile " +
+				"of CAT's matches them all; CAT created none, so " + writable + ".");
+		}
+		if (!mode.isString())
+			return Optional.empty();
+		if (mode.stringValue().equals("danger-full-access"))
+		{
+			return Optional.of("Codex's configuration " + file + " sets sandbox_mode to \"danger-full-access\", " +
+				"which runs commands without a sandbox, so CAT created no permission profile and commands can still " +
+				"write " + STARTUP_FILES + ".");
+		}
+		if (!SandboxModeProfile.MODES.contains(mode.stringValue()))
+			return Optional.empty();
+		return Optional.of("Codex's configuration " + file + " selects no permission profile, and CAT did not get " +
+			"your permission to create one in place of sandbox_mode = " + TomlText.quote(mode.stringValue()) + ", so " +
+			writable + "; run install again and allow it to protect them.");
+	}
+
+	/**
 	 * Groups the recorded entries: the rules of {@code rules/cat-installer.rules} as {@link InstallerRules} describes
 	 * them, the writable roots and each profile's write entries as paths that the sandbox may write, each profile's
 	 * read entries as paths that it may not write, the hooks whose hashes {@code config.toml} records, and
-	 * {@code default_permissions} and CAT's profile of a built-in profile as the values that they are set to, each
-	 * entry as {@code config.toml} writes it. Any other key is a group of the values that it records.
+	 * {@code default_permissions}, CAT's profile of a built-in profile or of a sandbox mode, and a profile's
+	 * {@code network.enabled} as the values that they are set to, each entry as {@code config.toml} writes it. Any
+	 * other key is a group of the values that it records.
 	 *
 	 * @throws IllegalArgumentException if {@code installer} is relative or not normalized
 	 */
@@ -925,6 +1151,26 @@ public final class CodexIntegration implements HarnessIntegration
 				List<String> lines = values.stream().map(BuiltInProfile::definition).toList();
 				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, setting, lines, lines));
 			}
+			else if (key.equals(MODE_KEY))
+			{
+				List<String> profiles = values.stream().map(SandboxModeProfile::catProfile).toList();
+				List<String> lines = profiles.stream().
+					map(profile -> BuiltInProfile.SELECTION + " = " + TomlText.quote(profile)).toList();
+				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, BuiltInProfile.SELECTION, profiles, lines));
+			}
+			else if (!values.isEmpty() && values.stream().allMatch(mode ->
+				SandboxModeProfile.MODES.contains(mode) && key.equals(sandboxProfileKey(mode))))
+			{
+				List<String> lines = values.stream().
+					map(mode -> BuiltInProfile.definition(SandboxModeProfile.builtIn(mode))).toList();
+				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, setting, lines, lines));
+			}
+			else if (key.endsWith("." + PermissionProfile.NETWORK + ".enabled"))
+			{
+				String table = setting.substring(0, setting.length() - ".enabled".length());
+				List<String> lines = values.stream().map(value -> "enabled = " + value).toList();
+				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, table, lines, lines));
+			}
 			else
 				groups.add(new EntryGroup(EntryEffect.SETS_VALUE, file, setting, values, values));
 		}
@@ -937,8 +1183,8 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Tells the user when uninstall left {@code default_permissions}, CAT's profile of a built-in profile, or the hash
-	 * of a hook that the user changed after install recorded it, in place.
+	 * Tells the user when uninstall left {@code default_permissions}, CAT's profile of a built-in profile or of a
+	 * sandbox mode, or the hash of a hook that the user changed after install recorded it, in place.
 	 *
 	 * @throws IllegalArgumentException if {@code home} is relative or not normalized
 	 * @throws IOException              if {@code config.toml} cannot be read or is not valid TOML
@@ -950,9 +1196,13 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(added, "added").isNotNull();
 		Path file = new CodexInstallation(home).configuration();
 		List<String> builtIns = recordedBuiltIns(added);
+		List<String> modes = recordedModes(added);
 		List<String> hooks = added.keySet().stream().map(HookTrust::hookOf).flatMap(Optional::stream).toList();
-		if ((builtIns.isEmpty() && hooks.isEmpty()) || Files.isSymbolicLink(home) || Files.isSymbolicLink(file))
+		if ((builtIns.isEmpty() && modes.isEmpty() && hooks.isEmpty()) || Files.isSymbolicLink(home) ||
+			Files.isSymbolicLink(file))
+		{
 			return List.of();
+		}
 		ObjectNode document = readDocument(file);
 		String selection = document.path(BuiltInProfile.SELECTION).asString("");
 		List<String> sentences = new ArrayList<>();
@@ -989,7 +1239,39 @@ public final class CodexIntegration implements HarnessIntegration
 					", because " + reason + ".");
 			}
 		}
+		for (String mode : modes)
+		{
+			String profile = SandboxModeProfile.catProfile(mode);
+			if (added.getOrDefault(MODE_KEY, List.of()).contains(mode) && selection.equals(profile))
+			{
+				sentences.add("CAT could not remove the line default_permissions = " + TomlText.quote(profile) +
+					" from " + file + ", because it cannot edit that line; remove it yourself.");
+			}
+			if (document.path("permissions").has(profile))
+			{
+				String reason = "it holds settings that CAT did not write";
+				if (selection.equals(profile))
+					reason = "default_permissions still names it";
+				sentences.add("CAT left its permission profile " + TomlText.quote(profile) + " in " + file +
+					", because " + reason + ".");
+			}
+		}
 		return List.copyOf(sentences);
+	}
+
+	/**
+	 * Returns the sandbox modes whose replacement by CAT's profile an install recorded.
+	 *
+	 * @param added the recorded entries, by entry key
+	 * @return the sandbox modes, without repeats
+	 */
+	private static List<String> recordedModes(Map<String, List<String>> added)
+	{
+		Set<String> modes = new TreeSet<>(added.getOrDefault(MODE_KEY, List.of()));
+		for (String mode : SandboxModeProfile.MODES)
+			modes.addAll(added.getOrDefault(sandboxProfileKey(mode), List.of()));
+		modes.retainAll(SandboxModeProfile.MODES);
+		return List.copyOf(modes);
 	}
 
 	/**
@@ -1010,9 +1292,11 @@ public final class CodexIntegration implements HarnessIntegration
 	/**
 	 * Deletes {@code rules/cat-installer.rules} when its content equals a recorded content, removes each recorded
 	 * writable root from {@code config.toml}, and removes each recorded write or read entry from the permission profile
-	 * that it was added to, when that entry still has the access that CAT gave it. Then sets
-	 * {@code default_permissions} back to the recorded built-in profile while it still names CAT's profile of it, and
-	 * removes CAT's profile while it holds only what CAT wrote and is not selected. Leaves a changed rules file, a file
+	 * that it was added to, when that entry still has the access that CAT gave it, and the recorded
+	 * {@code enabled = true} from a profile's network table. Then sets {@code default_permissions} back to the
+	 * recorded built-in profile while it still names CAT's profile of it, removes the {@code default_permissions} line
+	 * that CAT added in place of a sandbox mode while it still names CAT's profile of that mode, and removes CAT's
+	 * profiles while they hold only what CAT wrote and are not selected. Leaves a changed rules file, a file
 	 * reached through a symbolic link, the writable roots' array and table, each profile's filesystem table of the
 	 * user's profiles, and every other entry in place. Removes each recorded hook hash from {@code config.toml} while
 	 * the file still records it for its hook, with the hook's table when the hash was all that the table held.
@@ -1052,11 +1336,12 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	/**
-	 * Removes recorded writable roots and recorded profile write and read entries from {@code config.toml}, then sets
-	 * {@code default_permissions} back to a recorded built-in profile while it names CAT's profile of it, removes
-	 * CAT's profile while it holds only what CAT wrote, and removes each recorded hook hash that the file still records
-	 * for its hook. A recorded entry of a profile that the file no longer defines needs
-	 * no removal.
+	 * Removes recorded writable roots and recorded profile write, read and network entries from {@code config.toml},
+	 * then sets {@code default_permissions} back to a recorded built-in profile while it names CAT's profile of it,
+	 * removes the {@code default_permissions} line that CAT added in place of a sandbox mode while it names CAT's
+	 * profile of that mode, removes CAT's profiles while they hold only what CAT wrote, and removes each recorded
+	 * hook hash that the file still records for its hook. A recorded entry of a profile that the file no longer
+	 * defines needs no removal.
 	 *
 	 * @param home     the Codex home
 	 * @param added    the recorded entries, by entry key
@@ -1082,9 +1367,13 @@ public final class CodexIntegration implements HarnessIntegration
 				edited = PermissionProfile.remove(edited, profile, path, Access.WRITE, file);
 			for (String path : added.getOrDefault(profileKey(profile) + READ_SUFFIX, List.of()))
 				edited = PermissionProfile.remove(edited, profile, path, Access.READ, file);
+			if (added.getOrDefault(networkKey(profile), List.of()).contains("true"))
+				edited = PermissionProfile.disableNetwork(edited, profile, file);
 		}
 		for (String builtIn : recordedBuiltIns(added))
 			edited = BuiltInProfile.remove(edited, builtIn, file);
+		for (String mode : recordedModes(added))
+			edited = SandboxModeProfile.remove(edited, mode, file);
 		for (Map.Entry<String, List<String>> entry : added.entrySet())
 		{
 			Optional<String> hook = HookTrust.hookOf(entry.getKey());

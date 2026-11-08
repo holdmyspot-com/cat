@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.installer.engine.test;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
@@ -84,6 +85,10 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * The question that {@code consentRequest} returns, or null when install needs no permission.
 	 */
 	private String question;
+	/**
+	 * Whether install stops when the user withholds the permission that {@code question} asks for.
+	 */
+	private boolean required = true;
 	/**
 	 * The entries that {@code installConsentedEntries} adds, which {@code sandboxEntries} also reports as maintained
 	 * once they are added.
@@ -223,8 +228,25 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration asking(String question, Map<String, List<String>> entries, String notice)
 	{
 		this.question = question;
+		this.required = true;
 		this.consented = Map.copyOf(entries);
 		this.consentNotice = notice;
+		return this;
+	}
+
+	/**
+	 * Makes install ask the user a question before it changes anything, as {@link #asking} does, for a change without
+	 * which install goes on.
+	 *
+	 * @param question the question
+	 * @param entries  the entries that {@code installConsentedEntries} adds
+	 * @param notice   the sentence that tells the user that the entries change a shared setting
+	 * @return this integration
+	 */
+	public RecordingIntegration askingOptionally(String question, Map<String, List<String>> entries, String notice)
+	{
+		asking(question, entries, notice);
+		this.required = false;
 		return this;
 	}
 
@@ -630,11 +652,11 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * Returns the question that the test set, until the user's change was made.
 	 */
 	@Override
-	public Optional<String> consentRequest(Path home, Path catLocks)
+	public Optional<ConsentRequest> consentRequest(Path home, Path catLocks)
 	{
-		if (consentedAdded(home))
+		if (consentedAdded(home) || question == null)
 			return Optional.empty();
-		return Optional.ofNullable(question);
+		return Optional.of(new ConsentRequest(question, required));
 	}
 
 	/**

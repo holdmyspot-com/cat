@@ -134,6 +134,47 @@ public final class InstallTest
 	}
 
 	/**
+	 * An update goes on when the user does not allow a change without which CAT still works: it asks the question,
+	 * makes and records no consented entry, and adds the other entries.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void updateGoesOnWithoutOptionalConsent() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-optional-consent-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", NO_MIGRATION));
+			// Stands for the install of 1.0 that the harness ran before this update
+			fixture.registerExisting(Releases.pluginVersion("1.0"));
+			fixture.integration.askingOptionally("May CAT protect the startup files?", Map.of("config#selection",
+				List.of("built-in")), "CAT changed the shared setting.");
+			List<String> questions = new ArrayList<>();
+
+			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
+				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
+				fixture.root.resolve("user/.cat/sessions"), List.of(), question ->
+				{
+					questions.add(question);
+					return false;
+				}));
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UPDATED);
+			requireThat(questions, "questions").isEqualTo(List.of("May CAT protect the startup files?"));
+			List<String> calls = fixture.integration.calls();
+			requireThat(calls, "calls").doesNotContain("installConsentedEntries").contains("installPermissions");
+			Path record = InstallerState.of(fixture.data(), "harness-a").permissions();
+			String recorded = "";
+			if (Files.exists(record))
+				recorded = Files.readString(record);
+			requireThat(recorded, "record").doesNotContain("config#selection");
+		}
+	}
+
+	/**
 	 * An update that needs a change that the user allows makes it before it adds the sandbox entries, records its
 	 * entries, and tells the user about them in the updated message.
 	 *

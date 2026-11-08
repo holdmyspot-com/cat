@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
+import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
@@ -329,7 +330,8 @@ public final class HarnessIntegrationContract
 		if (!subject.arrangeConsent(integration, home))
 			return;
 
-		requireThat(integration.consentRequest(home, catLocks).orElse(""), "question").isNotBlank();
+		requireThat(integration.consentRequest(home, catLocks).map(ConsentRequest::question).orElse(""), "question").
+			isNotBlank();
 		Map<String, List<String>> consented = integration.installConsentedEntries(home, REPLACER);
 
 		requireThat(consented, "consented").isNotEmpty();
@@ -380,7 +382,8 @@ public final class HarnessIntegrationContract
 		HarnessIntegration integration = subject.integration();
 		if (!subject.arrangeConsent(integration, home))
 			return;
-		requireThat(integration.consentRequest(home, otherHome.resolve("locks")).orElse(""), "question").
+		requireThat(integration.consentRequest(home, otherHome.resolve("locks")).map(ConsentRequest::question).
+			orElse(""), "question").
 			isNotBlank();
 		Map<String, List<String>> consented = integration.installConsentedEntries(home, REPLACER);
 		subject.changeConsentedEntry(integration, home);

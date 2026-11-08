@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
+import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
@@ -57,10 +58,11 @@ public final class BuiltInProfileTest
 			Files.writeString(configuration, original);
 
 			provider().validateConfiguration(home);
-			Optional<String> question = provider().consentRequest(home, locks);
+			Optional<ConsentRequest> request = provider().consentRequest(home, locks);
 
-			requireThat(question.isPresent(), "asked").isTrue();
-			requireThat(question.get(), "question").contains(configuration.toString()).
+			requireThat(request.isPresent(), "asked").isTrue();
+			requireThat(request.get().required(), "required").isTrue();
+			requireThat(request.get().question(), "question").contains(configuration.toString()).
 				contains("\"" + builtIn + "\", which is built into Codex").contains(locks.toString()).
 				contains("cannot start Codex or Claude Code sessions").
 				contains("creates the permission profile \"" + catProfile + "\", which extends \"" + builtIn + "\"").

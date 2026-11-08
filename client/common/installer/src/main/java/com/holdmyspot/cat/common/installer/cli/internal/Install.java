@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
+import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -186,9 +187,14 @@ public final class Install
 		}
 		integration.validateConfiguration(home);
 		Path catLocks = CapacityLocks.root(userHome);
-		Optional<String> consentRequest = integration.consentRequest(home, catLocks);
-		if (consentRequest.isPresent() && !consent.grants(consentRequest.get()))
-			throw refusal(consentRequest.get());
+		boolean consented = false;
+		Optional<ConsentRequest> consentRequest = integration.consentRequest(home, catLocks);
+		if (consentRequest.isPresent())
+		{
+			consented = consent.grants(consentRequest.get().question());
+			if (!consented && consentRequest.get().required())
+				throw refusal(consentRequest.get().question());
+		}
 
 		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer);
 		Path versionFolder = steps.deliver(home, plugin, version);
@@ -207,7 +213,7 @@ public final class Install
 			map(other -> other.installation(environment, userHome)).toList();
 		Path launcherState = new SessionLauncherChannel(userHome).stateRoot();
 		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
-			launcherState, ShellStartupFiles.in(userHome), consentRequest.isPresent());
+			launcherState, ShellStartupFiles.in(userHome), consented);
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}
 
