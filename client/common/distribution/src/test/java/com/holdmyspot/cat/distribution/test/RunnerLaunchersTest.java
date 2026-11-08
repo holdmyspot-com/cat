@@ -378,6 +378,33 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
+	 * Verifies that the bundled rule on running a harness tells an agent how to hold a conversation with a new
+	 * session through any launcher: to keep the launcher running with {@code --conversation <folder>}, to append its
+	 * turn, interrupt and end messages to the folder's {@code to-child.jsonl}, to wait for a turn's {@code turn_end}
+	 * line in {@code from-child.jsonl} before it reads the reply, that the {@code ended} line comes last, and that the
+	 * session stops with the command. The rule keeps its guidance on a run's records file.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleCoversConversations() throws IOException
+	{
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
+		requireThat(rule, "rule").contains("Pass `--conversation <folder>` to either runner launcher").
+			contains("or to the `request-session` launcher in place of `--prompt` and `--wait`").
+			contains("in Claude Code, as a background command").
+			contains("`<folder>/to-child.jsonl`").contains("`{\"turn\": \"<prompt>\"}`").
+			contains("`{\"interrupt\": true}` ends the turn in progress, and the conversation goes on").
+			contains("`{\"end\": true}`").contains("`<folder>/from-child.jsonl`").
+			contains("`{\"turn_end\": <n>, \"status\": \"<status>\"}`").
+			contains("Before you read a turn's reply").contains("`{\"ended\": \"<status>\"}`").
+			contains("The new session stops when that command stops").
+			contains("name that file with `--input <file>`");
+	}
+
+	/**
 	 * Verifies that the bundled rule on running a harness says, before the launcher steps, that a runner is only for a
 	 * task that needs a separate, isolated session, names the kinds of task that need one, and leaves whether any
 	 * other task goes to a subagent to the agent's delegation rules instead of sending every such task to one.

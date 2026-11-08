@@ -13,6 +13,8 @@
 - Relay each turn's reply from the runner's transcript without reading the whole transcript.
 - Let a session that a runner started run either harness through the same launchers, or through the session-request
 	launcher that its instructions name, without a login or a sandbox exception.
+- Let a session send each turn of a new session after it reads the reply to the previous one, interrupt a turn, and end
+	the new session, through any of these launchers.
 
 ## Guidance
 
@@ -50,6 +52,8 @@ records with a file-writing tool into a file, one line per turn, `{"type":"turn"
 `{"type":"complete"}` line, and name that file with `--input <file>`. `--input` takes only that records file, never a
 prompt file; prompt files are for the `request-session` launcher. Use a command timeout of 600000 milliseconds and keep
 waiting while the run writes `waiting` records, which it repeats every 30 seconds while a turn writes nothing else.
+When a turn's prompt depends on the reply to the turn before it, hold a conversation instead, as "Conversations"
+describes.
 
 Every run and every session request takes `--model <model>` and `--effort <effort>`, or for a run outside a run
 `--agent <name>` instead, and the launcher refuses a run or request without them. Always pass them yourself; never ask
@@ -88,7 +92,8 @@ the limits, so pass only these options, which do not include `--agent`:
 [--install-cat] [--session-transcripts] [--extra-permissions <file>] [--output <transcript>] [--receipt <receipt>]
 ```
 
-The project and each plugin must contain no symbolic links. Inside a run, the launcher leaves out the files that the
+To hold a conversation, pass `--conversation <folder>` in place of `--input`. The project and each plugin must contain
+no symbolic links. Inside a run, the launcher leaves out the files that the
 sandbox hides behind the null device, so the requested session sees the project as the session does. It writes the
 session's transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the
 session completed, `75` when no capacity was free, and `1` otherwise, with the reason.
@@ -158,6 +163,29 @@ when CAT refused to start the session, and `1` otherwise, and prints the reason 
 that reason to the user. When it asks the user to start a new session, as it does when no CAT session launcher serves
 this session, ask the user to start a new session and run the task there. Do not start the run any other way, and do
 not change sandbox settings yourself.
+
+### Conversations
+
+A conversation keeps the new session running between its turns, so that you send each turn after you read the reply
+to the previous one. Pass `--conversation <folder>` to either runner launcher, inside or outside a run, in place of
+`--input`, or to the `request-session` launcher in place of `--prompt` and `--wait`. `<folder>` is a new or empty
+folder that your commands may write. Start the launcher as a command that keeps running across your turns: in Claude
+Code, as a background command, and in Codex, as a command that keeps running. The new session stops when that command
+stops, so leave it running until the conversation ends.
+
+Append one JSON object per line to `<folder>/to-child.jsonl` for each message:
+
+- `{"turn": "<prompt>"}` asks for the session's next turn, which starts once the previous turn has ended.
+- `{"interrupt": true}` ends the turn in progress, and the conversation goes on.
+- `{"end": true}` ends the conversation.
+
+The session's records go to `<folder>/from-child.jsonl` as they arrive. When turn `<n>` ends, the line
+`{"turn_end": <n>, "status": "<status>"}` follows its records, with the status `completed`, `interrupted` or `failed`.
+Before you read a turn's reply, search that file with your shell's search command until its `turn_end` line is there;
+then read the reply as "Replies" describes, from the same file. A line of yours that is not one of these messages is
+refused there with a `refused` line and changes nothing. The last line in that file, however the session ends, is
+`{"ended": "<status>"}`, with the status of the request; once it is there, no `turn_end` line that you wait for will
+come. The launcher then exits as it does without `--conversation`.
 
 ### Replies
 
