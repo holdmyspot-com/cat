@@ -32,10 +32,10 @@ import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.compress.archivers.tar.TarConstants;
 import org.apache.commons.compress.archivers.tar.TarUtils;
-import com.holdmyspot.cat.common.runner.HarnessProcess;
-import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -602,39 +603,20 @@ public final class SessionRequestBrokerTest
 			}))
 		{
 			CountDownLatch started = new CountDownLatch(1);
-			CountDownLatch interrupted = new CountDownLatch(1);
-			HarnessProcess parent = new HarnessProcess()
+			// The parent's session requests a child and waits until the broker starts it, then ends its turn the way
+			// the mode says
+			Turn parentTurn = switch (mode)
 			{
-				@Override
-				public HarnessProcessResult sendTurn(String request) throws IOException
-				{
-					fixture.request("child");
-					scope.heartbeatTicker().tick();
-					awaitStarted(started);
-					if (mode.equals("interrupt"))
-						awaitStarted(interrupted);
-					if (mode.equals("failure"))
-						throw new IOException("Parent turn failed");
-					return new HarnessProcessResult(0, "", "", true, "done", List.of("done"));
-				}
-
-				@Override
-				public void interrupt()
-				{
-					interrupted.countDown();
-				}
-
-				@Override
-				public boolean isAlive()
-				{
-					return true;
-				}
-
-				@Override
-				public void close()
-				{
-				}
+				case "interrupt" -> Turn.blocksUntilInterrupted();
+				case "failure" -> Turn.rejected();
+				default -> Turn.replies("done");
 			};
+			ScriptedProcess parent = new ScriptedProcess(List.of(parentTurn.withCheckpoint(_ ->
+			{
+				fixture.request("child");
+				scope.heartbeatTicker().tick();
+				awaitStarted(started);
+			})), new ArrayList<>());
 			String turn = "{\"type\":\"turn\",\"prompt\":\"test\"}\n";
 			String rest = "{\"type\":\"complete\"}\n";
 			if (mode.equals("interrupt"))
@@ -670,7 +652,7 @@ public final class SessionRequestBrokerTest
 				}
 				catch (IOException failure)
 				{
-					requireThat(failure.getMessage(), "failure").isEqualTo("Parent turn failed");
+					requireThat(failure.getMessage(), "failure").isEqualTo("The harness rejected the turn");
 					failed = true;
 				}
 				requireThat(failed, "failed").isEqualTo(mode.equals("failure"));
@@ -700,44 +682,21 @@ public final class SessionRequestBrokerTest
 			List<String> started = new CopyOnWriteArrayList<>();
 			AtomicReference<Integer> status = new AtomicReference<>();
 			StringWriter errors = new StringWriter();
-			HarnessProcess parent = new HarnessProcess()
+			AtomicInteger checks = new AtomicInteger();
+			// The session's command runs the claude-runner launcher, which forwards its launch while the session's
+			// runner checks for requests on each heartbeat
+			ScriptedProcess parent = new ScriptedProcess(List.of(Turn.replies("done").withCheckpoint(_ ->
 			{
-				private int checks;
-
-				@Override
-				public HarnessProcessResult sendTurn(String request) throws IOException
-				{
-					// The session's command runs the claude-runner launcher, which forwards its launch while the
-					// session's runner checks for requests on each heartbeat
-					status.set(SessionRequestForwarder.forward("claude", new String[]{"--project",
-						fixture.project.toString(), "--model", "haiku", "--effort", "low"},
-						new StringReader("{\"type\":\"turn\",\"prompt\":\"nested\"}\n{\"type\":\"complete\"}\n"),
-						fixture.requests, () ->
-						{
-							checks += 1;
-							if (checks > 100)
-								throw new IOException("The runner did not answer the forwarded launch");
-							scope.heartbeatTicker().tick();
-						}, OutputStream.nullOutputStream(), new PrintWriter(errors, true)));
-					return new HarnessProcessResult(0, "", "", true, "done", List.of("done"));
-				}
-
-				@Override
-				public void interrupt()
-				{
-				}
-
-				@Override
-				public boolean isAlive()
-				{
-					return true;
-				}
-
-				@Override
-				public void close()
-				{
-				}
-			};
+				status.set(SessionRequestForwarder.forward("claude", new String[]{"--project",
+					fixture.project.toString(), "--model", "haiku", "--effort", "low"},
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"nested\"}\n{\"type\":\"complete\"}\n"),
+					fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 100)
+							throw new IOException("The runner did not answer the forwarded launch");
+						scope.heartbeatTicker().tick();
+					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true)));
+			})), new ArrayList<>());
 			try (parent; Reader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"test\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 			{
