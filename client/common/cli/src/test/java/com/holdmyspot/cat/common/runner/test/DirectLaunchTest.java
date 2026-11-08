@@ -5,6 +5,9 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.common.runner.DirectLaunch;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.launcher.ChildNeedsSource;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
@@ -283,6 +286,44 @@ public final class DirectLaunchTest
 		}
 		requireThat(DirectLaunch.internalOptionRefusal(new String[]{"--project", "project", "--model", "model-a"}),
 			"reason").isEmpty();
+	}
+
+	/**
+	 * Verifies that a harness option that the session names, in any of its forms, never reaches the new session's
+	 * command line: the launcher bounds the launch as the session named it, and the runner that serves the bounded
+	 * launch refuses the option before it builds a command line.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void passesNoHarnessOption() throws IOException
+	{
+		for (List<String> option : List.of(List.of("--bypass-sandbox"), List.of("--sandbox-mode", "off"),
+			List.of("--sandbox-mode=off"), List.of("-c", "sandbox=off"), List.of("-yc")))
+		{
+			try (Fixture fixture = new Fixture();
+				TestToolScope tools = new TestToolScope())
+			{
+				List<String> args = new ArrayList<>(List.of("--model", "model-a", "--effort", "low", "--run-root",
+					fixture.runs.toString()));
+				args.addAll(option);
+				List<String> bounded = fixture.bound(args, fixture.session(Optional.empty()),
+					(_, runFolder, _, _) -> new ChildNeeds(runFolder, List.of(), List.of(), Set.of()));
+				requireThat(bounded, "bounded").containsAll(option);
+
+				try
+				{
+					HarnessRunnerOptions.parse(HarnessRunnerOptions.withArtifact(bounded.toArray(String[]::new),
+						fixture.plugin), "harness-b", HarnessTemporaryRoot.from(tools));
+				}
+				catch (InvalidArgumentsException e)
+				{
+					requireThat(e.getMessage(), "message").isEqualTo("Unsupported option: " + option.getFirst());
+					continue;
+				}
+				throw new AssertionError("The runner accepted " + option);
+			}
+		}
 	}
 
 	/**

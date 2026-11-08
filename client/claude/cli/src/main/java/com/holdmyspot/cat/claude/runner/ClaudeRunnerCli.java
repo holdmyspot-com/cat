@@ -383,7 +383,8 @@ public final class ClaudeRunnerCli
 	 * Serves the launch in this process.
 	 *
 	 * @param args        the command's options
-	 * @param environment the launcher's environment
+	 * @param environment the launcher's environment, which the launch keeps without the harness markers, so that
+	 *                    neither the runner nor the new session takes itself for the session that ran the launcher
 	 * @param waiting     the process's waiting
 	 * @param input       the bridge input
 	 * @param output      the bridge output
@@ -395,6 +396,7 @@ public final class ClaudeRunnerCli
 		OutputStream output, PrintWriter errors) throws IOException
 	{
 		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(ClaudeRunnerCli.class));
+		environment = MARKERS.without(environment);
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, waiting))
 		{

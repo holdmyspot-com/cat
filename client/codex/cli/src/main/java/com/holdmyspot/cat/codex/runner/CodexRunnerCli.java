@@ -355,7 +355,8 @@ public final class CodexRunnerCli
 	 * Serves the launch in this process.
 	 *
 	 * @param args        the command and its options
-	 * @param environment the launcher's environment
+	 * @param environment the launcher's environment, which the launch keeps without the harness markers, so that
+	 *                    neither the runner nor the new session takes itself for the session that ran the launcher
 	 * @param waiting     the process's waiting
 	 * @param input       the bridge input
 	 * @param output      the bridge output
@@ -367,6 +368,7 @@ public final class CodexRunnerCli
 		OutputStream output, PrintWriter errors) throws IOException
 	{
 		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(CodexRunnerCli.class));
+		environment = MARKERS.without(environment);
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, waiting))
 		{
