@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.launcher.client;
 
+import com.holdmyspot.cat.common.runner.Conversation;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -33,7 +34,8 @@ final class LaunchOptions
 	 */
 	private static final Set<String> SINGLE = Set.of("--artifact", "--project", "--run-root", "--model", "--effort",
 		"--agent", "--output", "--receipt", "--input", "--workspace", "--instruction-files", "--session-requests",
-		"--request-depth", "--capacity-wait", "--max-concurrency", "--tool-output-token-limit", ExtraPermissions.OPTION);
+		"--request-depth", "--capacity-wait", "--max-concurrency", "--tool-output-token-limit", ExtraPermissions.OPTION,
+		Conversation.OPTION);
 	/**
 	 * The directory against which relative paths resolve.
 	 */
@@ -74,6 +76,10 @@ final class LaunchOptions
 	 * The file of runner records, or empty when the records come from the launch's input stream.
 	 */
 	Optional<Path> input = Optional.empty();
+	/**
+	 * The folder of the launch's conversation, or empty.
+	 */
+	Optional<Path> conversation = Optional.empty();
 	/**
 	 * The workspace directory, or empty.
 	 */
@@ -150,7 +156,8 @@ final class LaunchOptions
 	 * @param workingDirectory the absolute directory against which relative paths resolve
 	 * @return the options
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws InvalidArgumentsException if an option is unknown, repeated or lacks its value, or a count is invalid
+	 * @throws InvalidArgumentsException if an option is unknown, repeated or lacks its value, a count is invalid, or
+	 *                                   the launch names both {@code --conversation} and {@code --input}
 	 */
 	static LaunchOptions parse(String[] args, Path workingDirectory)
 	{
@@ -175,6 +182,8 @@ final class LaunchOptions
 			index += 1;
 			options.value(option, args[index]);
 		}
+		if (options.conversation.isPresent() && options.input.isPresent())
+			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
 		return options;
 	}
 
@@ -214,6 +223,7 @@ final class LaunchOptions
 			case "--output" -> output = Optional.of(path(value));
 			case "--receipt" -> receipt = Optional.of(path(value));
 			case "--input" -> input = Optional.of(path(value));
+			case Conversation.OPTION -> conversation = Optional.of(path(value));
 			case "--workspace" -> workspace = Optional.of(path(value));
 			case "--instruction-files" -> instructionFiles = Optional.of(value);
 			case "--plugin" -> plugins.add(path(value));

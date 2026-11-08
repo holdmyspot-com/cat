@@ -15,12 +15,12 @@ import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Request;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Response;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
+import com.holdmyspot.cat.common.runner.TurnSource;
 import com.holdmyspot.cat.common.runner.launcher.client.HolderStarter.Holder;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
-import java.io.Reader;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystemException;
@@ -214,7 +214,8 @@ final class RequestExchange
 	 * Sends a request and follows it until its response, copying the child's records as they arrive.
 	 *
 	 * @param request      the request, whose {@code turns} is empty when the records come from {@code turns}
-	 * @param turns        the records to stream as turns, one per line, or empty when the request carries them
+	 * @param turns        the records to stream as turns, or empty when the request carries them; the caller closes
+	 *                     them
 	 * @param sink         receives the child runner's records
 	 * @param destinations where the request's results go
 	 * @return how the request ended, including a failure to copy the kept run in full
@@ -222,7 +223,7 @@ final class RequestExchange
 	 * @throws IOException            if the request cannot be sent, or its state, records or receipt cannot be read
 	 *                                or written
 	 */
-	Outcome exchange(Request request, Optional<Reader> turns, Sink sink, Destinations destinations)
+	Outcome exchange(Request request, Optional<TurnSource> turns, Sink sink, Destinations destinations)
 		throws IOException
 	{
 		String id = SessionLauncherChannel.newId();
@@ -230,8 +231,7 @@ final class RequestExchange
 		Path published = inbox.resolve(SessionLauncherChannel.requestFileName(id));
 		Holder requestHolder = publish(id, SessionLauncherChannel.REQUEST_MESSAGE, published,
 			staging -> RequestArchive.packSession(json, staging, request, NULL_DEVICE, RequestLimits.UNBOUNDED));
-		try (requestHolder;
-			TurnFeed feed = turns.map(TurnFeed::new).orElse(null))
+		try (requestHolder)
 		{
 			Path directory = channel.requestDirectory(id);
 			Optional<HeartbeatWatch> heartbeat = awaitAcceptance(directory);
@@ -243,7 +243,7 @@ final class RequestExchange
 			Relocation relocation = new Relocation(json, remoteRunRoot(id), destinations.runRoot(), request.harness());
 			Follower follower = new Follower(directory.resolve(SessionLauncherChannel.TRANSCRIPT_FILE), sink,
 				relocation);
-			Streamer streamer = new Streamer(id, directory, feed, requestHolder);
+			Streamer streamer = new Streamer(id, directory, turns.orElse(null), requestHolder);
 			PublishedResponse publishedResponse = new PublishedResponse(
 				directory.resolve(SessionLauncherChannel.RESPONSE_FILE));
 			Response response;
@@ -890,7 +890,7 @@ final class RequestExchange
 		/**
 		 * The records to stream, or {@code null} when the request carries them.
 		 */
-		private final TurnFeed feed;
+		private final TurnSource feed;
 		/**
 		 * The request's holder, which ends the request when it ends.
 		 */
@@ -916,7 +916,7 @@ final class RequestExchange
 		 * @param feed          the records to stream, or {@code null} when the request carries them
 		 * @param requestHolder the request's holder
 		 */
-		Streamer(String id, Path directory, TurnFeed feed, Holder requestHolder)
+		Streamer(String id, Path directory, TurnSource feed, Holder requestHolder)
 		{
 			this.id = id;
 			this.consumed = directory.resolve(SessionLauncherChannel.TURNS_FILE);

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.runner.launcher.client;
 
+import com.holdmyspot.cat.common.runner.TurnSource;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.Reader;
@@ -13,7 +14,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class TurnFeed implements AutoCloseable
+final class TurnFeed implements TurnSource
 {
 	/**
 	 * The records read and not yet taken, blank lines left out.
@@ -68,13 +69,8 @@ final class TurnFeed implements AutoCloseable
 		}
 	}
 
-	/**
-	 * Takes the next record that has arrived.
-	 *
-	 * @return the record, or empty if none has arrived
-	 * @throws IOException if the input could not be read
-	 */
-	Optional<String> poll() throws IOException
+	@Override
+	public Optional<String> poll() throws IOException
 	{
 		String record = records.poll();
 		if (record == null && failure != null)
@@ -82,13 +78,8 @@ final class TurnFeed implements AutoCloseable
 		return Optional.ofNullable(record);
 	}
 
-	/**
-	 * Indicates whether every record was taken and no record follows.
-	 *
-	 * @return {@code true} if the input ended and every record was taken
-	 * @throws IOException if the input could not be read
-	 */
-	boolean ended() throws IOException
+	@Override
+	public boolean ended() throws IOException
 	{
 		if (!ended || !records.isEmpty())
 			return false;
@@ -97,9 +88,6 @@ final class TurnFeed implements AutoCloseable
 		return true;
 	}
 
-	/**
-	 * Stops reading records.
-	 */
 	@Override
 	public void close()
 	{

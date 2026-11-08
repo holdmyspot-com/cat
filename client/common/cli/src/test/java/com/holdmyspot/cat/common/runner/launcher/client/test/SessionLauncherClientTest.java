@@ -1857,4 +1857,227 @@ public final class SessionLauncherClientTest
 		}
 		throw new AssertionError("The bridge completed");
 	}
+
+	/**
+	 * Plays the session that holds a conversation with its child: once the launcher has opened the conversation, it
+	 * appends each message to {@code to-child.jsonl} when {@code from-child.jsonl} holds as many {@code turn_end} lines
+	 * as the message waits for.
+	 */
+	private static final class AskingSession implements PollHook
+	{
+		private final Path folder;
+		private final List<Message> messages;
+		private int sent;
+
+		/**
+		 * Creates the session.
+		 *
+		 * @param folder   the conversation's folder
+		 * @param messages the messages, in the order in which they are sent
+		 */
+		AskingSession(Path folder, List<Message> messages)
+		{
+			this.folder = folder;
+			this.messages = messages;
+		}
+
+		@Override
+		public void act(Fixture fixture) throws IOException
+		{
+			Path fromChild = folder.resolve("from-child.jsonl");
+			if (!Files.isRegularFile(fromChild))
+				return;
+			long ended = lines(fromChild).stream().filter(line -> line.contains("\"turn_end\"")).count();
+			while (sent < messages.size() && messages.get(sent).afterTurnEnds() <= ended)
+			{
+				Files.writeString(folder.resolve("to-child.jsonl"), messages.get(sent).line() + "\n", UTF_8,
+					StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+				sent += 1;
+			}
+		}
+
+		/**
+		 * Returns the lines of a file.
+		 *
+		 * @param file the file
+		 * @return its lines
+		 * @throws IOException if it cannot be read
+		 */
+		static List<String> lines(Path file) throws IOException
+		{
+			return Files.readAllLines(file, UTF_8);
+		}
+	}
+
+	/**
+	 * One message of an asking session.
+	 *
+	 * @param afterTurnEnds how many {@code turn_end} lines the session waits for before it sends the message
+	 * @param line          the line that it appends
+	 */
+	private record Message(int afterTurnEnds, String line)
+	{
+	}
+
+	/**
+	 * Returns the type of each record of a conversation's {@code from-child.jsonl}, or for a {@code turn_end} line,
+	 * that line, and for a {@code turn_completed} record, its type and reply.
+	 *
+	 * @param folder the conversation's folder
+	 * @return the summaries, in order
+	 * @throws IOException if the file cannot be read
+	 */
+	private static List<String> fromChild(Path folder) throws IOException
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		List<String> summaries = new ArrayList<>();
+		for (String line : AskingSession.lines(folder.resolve("from-child.jsonl")))
+		{
+			JsonNode record = json.readTree(line);
+			if (record.has("turn_end") || record.has("refused"))
+				summaries.add(line);
+			else if (record.path("type").asString().equals("turn_completed"))
+				summaries.add("turn_completed " + record.path("assistant_messages").path(0).asString());
+			else
+				summaries.add(record.path("type").asString());
+		}
+		return summaries;
+	}
+
+	/**
+	 * Verifies that a launch with {@code --conversation} sends each turn that the asking session appends to
+	 * {@code to-child.jsonl} as the channel's next turn, writes the child's records to {@code from-child.jsonl} as they
+	 * arrive with a {@code turn_end} line after each turn, ends the session at {@code end}, and exits with status 0
+	 * after writing the transcript to {@code --output}. Each later turn is sent only after the asking session read the
+	 * previous turn's {@code turn_end}.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void conversationTurnsFollowTurnEnds() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			Path folder = fixture.root.resolve("conversation");
+			fixture.afterPoll(new AskingSession(folder, List.of(new Message(0, "{\"turn\": \"first\"}"),
+				new Message(1, "{\"turn\": \"second\"}"), new Message(2, "{\"turn\": \"third\"}"),
+				new Message(3, "{\"end\": true}"))));
+			Path output = fixture.root.resolve("out/transcript.jsonl");
+			StringWriter errors = new StringWriter();
+
+			int status = fixture.launch(errors, "--conversation", folder.toString(), "--project",
+				fixture.project.toString(), "--model", "m", "--effort", "e", "--output", output.toString());
+
+			requireThat(errors.toString(), "errors").isEmpty();
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(fixture.runner().records(), "records").isEqualTo(List.of(
+				"{\"type\":\"turn\",\"prompt\":\"first\"}", "{\"type\":\"turn\",\"prompt\":\"second\"}",
+				"{\"type\":\"turn\",\"prompt\":\"third\"}", "{\"type\":\"complete\"}"));
+			requireThat(fromChild(folder), "fromChild").isEqualTo(List.of("started", "session_transcript",
+				"turn_completed reply 1", "{\"turn_end\":1,\"status\":\"completed\"}", "turn_completed reply 2",
+				"{\"turn_end\":2,\"status\":\"completed\"}", "turn_completed reply 3",
+				"{\"turn_end\":3,\"status\":\"completed\"}", "completed"));
+			requireThat(Files.readString(output, UTF_8), "output").contains("reply 3").contains("\"type\":\"completed\"");
+			requireThat(fixture.holders.request().closed, "requestHolderClosed").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a conversation's {@code interrupt} reaches the child as an interrupt record, and that each line
+	 * that is not a conversation message is refused in {@code from-child.jsonl} and sends nothing.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void conversationInterruptsAndRefuses() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			Path folder = fixture.root.resolve("conversation");
+			fixture.afterPoll(new AskingSession(folder, List.of(new Message(0, "{\"turn\": \"first\"}"),
+				new Message(1, "not json"), new Message(1, "{\"interrupt\": true}"),
+				new Message(1, "{\"turn\": \"second\", \"model\": \"other\"}"), new Message(1, "{\"end\": true}"))));
+			StringWriter errors = new StringWriter();
+
+			int status = fixture.launch(errors, "--conversation", folder.toString(), "--project",
+				fixture.project.toString(), "--model", "m", "--effort", "e");
+
+			requireThat(errors.toString(), "errors").isEmpty();
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(fixture.runner().records(), "records").isEqualTo(List.of(
+				"{\"type\":\"turn\",\"prompt\":\"first\"}", "{\"type\":\"interrupt\"}",
+				"{\"type\":\"complete\"}"));
+			List<String> refused = fromChild(folder).stream().filter(line -> line.contains("\"refused\"")).toList();
+			requireThat(refused.size(), "refused.size()").isEqualTo(2);
+			requireThat(refused.get(0), "refused.get(0)").contains("not json");
+			requireThat(refused.get(1), "refused.get(1)").contains("other");
+		}
+	}
+
+	/**
+	 * Verifies that a conversation's child is stopped when the launch ends before the conversation does: its holder
+	 * ends, and the launcher stops the child's runner and its harness.
+	 *
+	 * @throws IOException          if the fixture cannot be written
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void conversationChildStopsWhenLaunchEnds() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			Path folder = fixture.root.resolve("conversation");
+			AskingSession asking = new AskingSession(folder, List.of(new Message(0, "{\"turn\": \"first\"}")));
+			// The launch ends once the child answered its first turn, while the conversation still goes on
+			fixture.afterPoll(polled ->
+			{
+				asking.act(polled);
+				if (Files.isRegularFile(folder.resolve("from-child.jsonl")) &&
+					fromChild(folder).contains("{\"turn_end\":1,\"status\":\"completed\"}"))
+				{
+					Thread.currentThread().interrupt();
+				}
+			});
+
+			expectThrows(InterruptedIOException.class, () -> fixture.launch(new StringWriter(), "--conversation",
+				folder.toString(), "--project", fixture.project.toString(), "--model", "m", "--effort", "e"));
+			Thread.interrupted();
+			fixture.poll();
+			fixture.awaitIdle();
+
+			requireThat(fixture.holders.request().closed, "closed").isTrue();
+			requireThat(fixture.runner().treeStopped(), "treeStopped").isTrue();
+			requireThat(fixture.runner().records(), "records").isEqualTo(List.of(
+				"{\"type\":\"turn\",\"prompt\":\"first\"}"));
+		}
+	}
+
+	/**
+	 * Verifies that a launch refuses a conversation folder that already holds a file, and {@code --conversation}
+	 * together with {@code --input}, before it sends anything.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void conversationNeedsNewOrEmptyFolder() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.serve();
+			Path folder = Files.createDirectory(fixture.root.resolve("conversation"));
+			Files.writeString(folder.resolve("notes.txt"), "notes");
+
+			expectThrows(InvalidArgumentsException.class, () -> fixture.launch(new StringWriter(), "--conversation",
+				folder.toString(), "--project", fixture.project.toString(), "--model", "m", "--effort", "e"));
+			expectThrows(InvalidArgumentsException.class, () -> fixture.launch(new StringWriter(), "--conversation",
+				fixture.root.resolve("other").toString(), "--input", fixture.records().toString(), "--project",
+				fixture.project.toString(), "--model", "m", "--effort", "e"));
+
+			requireThat(fixture.inbox(), "inbox").isEmpty();
+			requireThat(Files.exists(fixture.root.resolve("other")), "otherFolder").isFalse();
+		}
+	}
 }

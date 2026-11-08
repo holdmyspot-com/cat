@@ -11,11 +11,13 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.runner.Conversation;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Request;
+import com.holdmyspot.cat.common.runner.TurnSource;
 import com.holdmyspot.cat.common.runner.launcher.client.RequestExchange.Destinations;
 import com.holdmyspot.cat.common.runner.launcher.client.RequestExchange.Outcome;
 import com.holdmyspot.cat.common.runner.launcher.client.RequestExchange.Sink;
@@ -236,13 +238,14 @@ public final class SessionLauncherClient
 	 * or to {@code output}; its receipt goes to {@code --receipt}; with {@code --keep-run}, its run is copied into
 	 * the run root, as {@code <run root>/<harness>/<run id>}, without links and without the child's isolated home. A
 	 * file of the run that cannot be copied ends the copy; the launch then reports the file, the error and the
-	 * incomplete run after the session's own outcome.
+	 * incomplete run after the session's own outcome. A launch that names {@code --conversation} streams the messages
+	 * of that {@link Conversation} as its turns and writes the child's records to the conversation too.
 	 *
 	 * @param harness          the harness whose runner the launcher stands for
 	 * @param args             the launch's options
 	 * @param workingDirectory the absolute directory against which relative paths resolve
 	 * @param temporaryRoot    where the run is kept when the launch names no {@code --run-root}
-	 * @param input            the launch's records when it names no {@code --input}
+	 * @param input            the launch's records when it names neither {@code --input} nor {@code --conversation}
 	 * @param output           receives the child's records when the launch names no {@code --output}
 	 * @param errors           receives why the launch did not complete
 	 * @return {@code 0} if the child completed; {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch was
@@ -251,9 +254,10 @@ public final class SessionLauncherClient
 	 *   the child completed but its kept run could not be copied in full. When the session ended with another status,
 	 *   a failed copy leaves that status unchanged, and its message follows the status's reason.
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if the launch's options are invalid
-	 * @throws IOException              if the request cannot be sent or followed, or its records or receipt cannot
-	 *                                  be written
+	 * @throws IllegalArgumentException if the launch's options are invalid, or its conversation's folder is not new or
+	 *                                  empty
+	 * @throws IOException              if the request cannot be sent or followed, or its records, receipt or
+	 *                                  conversation cannot be read or written
 	 */
 	public int launch(String harness, String[] args, Path workingDirectory, HarnessTemporaryRoot temporaryRoot,
 		Reader input, OutputStream output, PrintWriter errors) throws IOException
@@ -278,22 +282,62 @@ public final class SessionLauncherClient
 		if (options.keepRun)
 			runRoot = Optional.of(options.runRoot.orElseGet(temporaryRoot::defaultRunRoot));
 		Destinations destinations = new Destinations(runRoot, options.receipt);
-		Optional<Reader> turns = Optional.of(input).filter(_ -> options.input.isEmpty());
 		Outcome outcome;
-		if (options.output.isPresent())
+		try (TurnSource turns = turns(options, input))
 		{
-			Path file = options.output.get();
-			Path parent = file.getParent();
-			if (parent != null)
-				Files.createDirectories(parent);
-			try (OutputStream records = Files.newOutputStream(file))
+			Optional<TurnSource> streamed = Optional.ofNullable(turns);
+			if (options.output.isPresent())
 			{
-				outcome = exchange.exchange(request, turns, sink(records), destinations);
+				Path file = options.output.get();
+				Path parent = file.getParent();
+				if (parent != null)
+					Files.createDirectories(parent);
+				try (OutputStream records = Files.newOutputStream(file))
+				{
+					outcome = exchange.exchange(request, streamed, conversationSink(sink(records), turns), destinations);
+				}
 			}
+			else
+				outcome = exchange.exchange(request, streamed, conversationSink(sink(output), turns), destinations);
 		}
-		else
-			outcome = exchange.exchange(request, turns, sink(output), destinations);
 		return report(outcome, errors);
+	}
+
+	/**
+	 * Returns the records that a launch streams as turns: its conversation's messages, the records of its input
+	 * stream, or none when it names {@code --input}.
+	 *
+	 * @param options the launch's options
+	 * @param input   the launch's input stream
+	 * @return the records, or {@code null} when the request carries them
+	 * @throws InvalidArgumentsException if the conversation's folder is not new or empty
+	 * @throws IOException               if the conversation cannot be opened
+	 */
+	private static TurnSource turns(LaunchOptions options, Reader input) throws IOException
+	{
+		if (options.conversation.isPresent())
+			return Conversation.open(options.conversation.get());
+		if (options.input.isPresent())
+			return null;
+		return new TurnFeed(input);
+	}
+
+	/**
+	 * Returns a sink that also writes each record to the launch's conversation, when it holds one.
+	 *
+	 * @param sink  the launch's sink
+	 * @param turns the records that the launch streams, or {@code null}
+	 * @return the sink
+	 */
+	private static Sink conversationSink(Sink sink, TurnSource turns)
+	{
+		if (!(turns instanceof Conversation conversation))
+			return sink;
+		return line ->
+		{
+			sink.line(line);
+			conversation.childRecord(line);
+		};
 	}
 
 	/**
@@ -329,8 +373,12 @@ public final class SessionLauncherClient
 			Optional<Outcome> refusal = exchange.refusal();
 			if (refusal.isPresent())
 				throw new LaunchRefusedException(refusal.get().message());
-			Outcome outcome = exchange.exchange(request, Optional.of(input), sink(output),
-				new Destinations(options.runRoot, Optional.empty()));
+			Outcome outcome;
+			try (TurnFeed turns = new TurnFeed(input))
+			{
+				outcome = exchange.exchange(request, Optional.of(turns), sink(output),
+					new Destinations(options.runRoot, Optional.empty()));
+			}
 			if (outcome.exitStatus() == SessionLauncherChannel.Status.REFUSED.exitStatus())
 				throw new LaunchRefusedException(outcome.message());
 			if (outcome.exitStatus() != 0)
