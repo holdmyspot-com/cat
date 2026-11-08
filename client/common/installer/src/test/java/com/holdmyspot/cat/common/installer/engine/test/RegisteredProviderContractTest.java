@@ -85,7 +85,7 @@ public final class RegisteredProviderContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.freshHomeHasNoVersion(cleanup.add(Files.createTempDirectory("cat-activation-")));
+			CONTRACT.freshHomeHasNoVersion(cleanup.add(Files.createTempDirectory("cat-activation-").toRealPath()));
 		}
 	}
 
@@ -99,7 +99,7 @@ public final class RegisteredProviderContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.readsInstalledVersion(cleanup.add(Files.createTempDirectory("cat-activation-")));
+			CONTRACT.readsInstalledVersion(cleanup.add(Files.createTempDirectory("cat-activation-").toRealPath()));
 		}
 	}
 
@@ -113,7 +113,8 @@ public final class RegisteredProviderContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.missingVersionFolderIsInconsistent(cleanup.add(Files.createTempDirectory("cat-activation-")));
+			CONTRACT.missingVersionFolderIsInconsistent(
+				cleanup.add(Files.createTempDirectory("cat-activation-").toRealPath()));
 		}
 	}
 
@@ -127,7 +128,8 @@ public final class RegisteredProviderContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.leftoverMarketplaceIsInconsistent(cleanup.add(Files.createTempDirectory("cat-activation-")));
+			CONTRACT.leftoverMarketplaceIsInconsistent(
+				cleanup.add(Files.createTempDirectory("cat-activation-").toRealPath()));
 		}
 	}
 
@@ -141,7 +143,7 @@ public final class RegisteredProviderContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.keepsDataInDataDirectory(cleanup.add(Files.createTempDirectory("cat-activation-")));
+			CONTRACT.keepsDataInDataDirectory(cleanup.add(Files.createTempDirectory("cat-activation-").toRealPath()));
 		}
 	}
 
@@ -155,7 +157,8 @@ public final class RegisteredProviderContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.removalLeavesNoInstallation(cleanup.add(Files.createTempDirectory("cat-activation-")));
+			CONTRACT.removalLeavesNoInstallation(
+				cleanup.add(Files.createTempDirectory("cat-activation-").toRealPath()));
 		}
 	}
 
@@ -169,7 +172,7 @@ public final class RegisteredProviderContractTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			CONTRACT.installsCompanionsAgain(cleanup.add(Files.createTempDirectory("cat-activation-")));
+			CONTRACT.installsCompanionsAgain(cleanup.add(Files.createTempDirectory("cat-activation-").toRealPath()));
 		}
 	}
 }
