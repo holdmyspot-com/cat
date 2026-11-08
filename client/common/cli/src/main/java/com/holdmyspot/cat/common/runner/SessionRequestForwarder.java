@@ -214,7 +214,8 @@ public final class SessionRequestForwarder
 	 * messages as the request's next record and copies the requested session's records to the conversation and to the
 	 * transcript, until the parent runner publishes its response. The sender's lock is held from before the request
 	 * appears until this method returns, however it returns, so the parent runner stops a session whose requester
-	 * ended.
+	 * ended. The conversation's last line names the response's status, or {@code failed} when the request cannot be
+	 * followed to its response.
 	 *
 	 * @param json       the manifest mapper
 	 * @param request    the request's manifest, without its records
@@ -236,16 +237,28 @@ public final class SessionRequestForwarder
 		try (Conversation messages = Conversation.open(folder);
 		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
 		{
-			request.put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM);
-			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
-				List.of(), nullDevice, limits);
-			Pause sending = () ->
+			// However the request ends, the asking session learns that no further turn_end comes
+			String status = "failed";
+			try
 			{
-				for (Optional<String> next = messages.poll(); next.isPresent(); next = messages.poll())
-					sender.send(next.get());
-				pause.pause();
-			};
-			return awaitTranscript(json, responses(requests, id), sending, output, transcript, messages::childOutput);
+				request.put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM);
+				RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
+					List.of(), nullDevice, limits);
+				Pause sending = () ->
+				{
+					for (Optional<String> next = messages.poll(); next.isPresent(); next = messages.poll())
+						sender.send(next.get());
+					pause.pause();
+				};
+				JsonNode response = awaitTranscript(json, responses(requests, id), sending, output, transcript,
+					messages::childOutput);
+				status = response.path("status").asString(status);
+				return response;
+			}
+			finally
+			{
+				messages.end(status);
+			}
 		}
 	}
 

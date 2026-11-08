@@ -1920,8 +1920,8 @@ public final class SessionLauncherClientTest
 	}
 
 	/**
-	 * Returns the type of each record of a conversation's {@code from-child.jsonl}, or for a {@code turn_end} line,
-	 * that line, and for a {@code turn_completed} record, its type and reply.
+	 * Returns the type of each record of a conversation's {@code from-child.jsonl}, or for a {@code turn_end},
+	 * {@code refused} or {@code ended} line, that line, and for a {@code turn_completed} record, its type and reply.
 	 *
 	 * @param folder the conversation's folder
 	 * @return the summaries, in order
@@ -1934,7 +1934,7 @@ public final class SessionLauncherClientTest
 		for (String line : AskingSession.lines(folder.resolve("from-child.jsonl")))
 		{
 			JsonNode record = json.readTree(line);
-			if (record.has("turn_end") || record.has("refused"))
+			if (record.has("turn_end") || record.has("refused") || record.has("ended"))
 				summaries.add(line);
 			else if (record.path("type").asString().equals("turn_completed"))
 				summaries.add("turn_completed " + record.path("assistant_messages").path(0).asString());
@@ -1947,7 +1947,8 @@ public final class SessionLauncherClientTest
 	/**
 	 * Verifies that a launch with {@code --conversation} sends each turn that the asking session appends to
 	 * {@code to-child.jsonl} as the channel's next turn, writes the child's records to {@code from-child.jsonl} as they
-	 * arrive with a {@code turn_end} line after each turn, ends the session at {@code end}, and exits with status 0
+	 * arrive with a {@code turn_end} line after each turn and an {@code ended} line last, ends the session at
+	 * {@code end}, and exits with status 0
 	 * after writing the transcript to {@code --output}. Each later turn is sent only after the asking session read the
 	 * previous turn's {@code turn_end}.
 	 *
@@ -1977,7 +1978,7 @@ public final class SessionLauncherClientTest
 			requireThat(fromChild(folder), "fromChild").isEqualTo(List.of("started", "session_transcript",
 				"turn_completed reply 1", "{\"turn_end\":1,\"status\":\"completed\"}", "turn_completed reply 2",
 				"{\"turn_end\":2,\"status\":\"completed\"}", "turn_completed reply 3",
-				"{\"turn_end\":3,\"status\":\"completed\"}", "completed"));
+				"{\"turn_end\":3,\"status\":\"completed\"}", "completed", "{\"ended\":\"completed\"}"));
 			requireThat(Files.readString(output, UTF_8), "output").contains("reply 3").contains("\"type\":\"completed\"");
 			requireThat(fixture.holders.request().closed, "requestHolderClosed").isTrue();
 		}
@@ -2018,7 +2019,8 @@ public final class SessionLauncherClientTest
 
 	/**
 	 * Verifies that a conversation's child is stopped when the launch ends before the conversation does: its holder
-	 * ends, and the launcher stops the child's runner and its harness.
+	 * ends, the launcher stops the child's runner and its harness, and the conversation's last line says that the
+	 * request failed for the launch.
 	 *
 	 * @throws IOException          if the fixture cannot be written
 	 * @throws InterruptedException if the test is interrupted
@@ -2052,6 +2054,31 @@ public final class SessionLauncherClientTest
 			requireThat(fixture.runner().treeStopped(), "treeStopped").isTrue();
 			requireThat(fixture.runner().records(), "records").isEqualTo(List.of(
 				"{\"type\":\"turn\",\"prompt\":\"first\"}"));
+			List<String> lines = fromChild(folder);
+			requireThat(lines.getLast(), "lastLine").isEqualTo("{\"ended\":\"failed\"}");
+		}
+	}
+
+	/**
+	 * Verifies that a conversation that no launcher serves ends with status 2 and that the conversation's last line
+	 * says that the request was refused, so an asking session that waits for a {@code turn_end} sees the end.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void refusedConversationEnds() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path folder = fixture.root.resolve("conversation");
+			StringWriter errors = new StringWriter();
+
+			int status = fixture.launch(errors, "--conversation", folder.toString(), "--project",
+				fixture.project.toString(), "--model", "m", "--effort", "e");
+
+			requireThat(status, "status").isEqualTo(2);
+			requireThat(fromChild(folder), "fromChild").isEqualTo(List.of("{\"ended\":\"refused\"}"));
+			requireThat(fixture.inbox(), "inbox").isEmpty();
 		}
 	}
 

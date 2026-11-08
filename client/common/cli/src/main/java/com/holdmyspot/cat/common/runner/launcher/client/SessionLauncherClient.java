@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel;
 import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Request;
+import com.holdmyspot.cat.common.runner.SessionLauncherChannel.Status;
 import com.holdmyspot.cat.common.runner.TurnSource;
 import com.holdmyspot.cat.common.runner.launcher.client.RequestExchange.Destinations;
 import com.holdmyspot.cat.common.runner.launcher.client.RequestExchange.Outcome;
@@ -239,7 +240,9 @@ public final class SessionLauncherClient
 	 * the run root, as {@code <run root>/<harness>/<run id>}, without links and without the child's isolated home. A
 	 * file of the run that cannot be copied ends the copy; the launch then reports the file, the error and the
 	 * incomplete run after the session's own outcome. A launch that names {@code --conversation} streams the messages
-	 * of that {@link Conversation} as its turns and writes the child's records to the conversation too.
+	 * of that {@link Conversation} as its turns and writes the child's records to the conversation too, and then,
+	 * however the request ends, its status as the conversation's last line: {@code failed} when the launch fails before
+	 * the request ends.
 	 *
 	 * @param harness          the harness whose runner the launcher stands for
 	 * @param args             the launch's options
@@ -274,33 +277,68 @@ public final class SessionLauncherClient
 		LaunchOptions options = LaunchOptions.parse(args, workingDirectory);
 		if (options.receipt.isPresent() && (!options.keepRun || options.output.isEmpty()))
 			throw new InvalidArgumentsException("--receipt requires --keep-run and --output");
-		Optional<Outcome> refusal = exchange.refusal();
-		if (refusal.isPresent())
-			return report(refusal.get(), errors);
+		Outcome outcome = null;
+		try (TurnSource turns = turns(options, input))
+		{
+			try
+			{
+				Optional<Outcome> refusal = exchange.refusal();
+				if (refusal.isPresent())
+				{
+					outcome = refusal.get();
+					return report(outcome, errors);
+				}
+				outcome = exchange(harness, options, turns, temporaryRoot, output);
+			}
+			finally
+			{
+				if (turns instanceof Conversation)
+				{
+					// However the request ends, the asking session learns that no further turn_end comes
+					Status status = Status.FAILED;
+					if (outcome != null)
+						status = outcome.status();
+					((Conversation) turns).end(status.value());
+				}
+			}
+		}
+		return report(outcome, errors);
+	}
+
+	/**
+	 * Sends a launch's request and follows it until its response.
+	 *
+	 * @param harness       the harness whose runner the launcher stands for
+	 * @param options       the launch's options
+	 * @param turns         the records that the launch streams, or {@code null} when the request carries them
+	 * @param temporaryRoot where the run is kept when the launch names no {@code --run-root}
+	 * @param output        receives the child's records when the launch names no {@code --output}
+	 * @return how the request ended
+	 * @throws IllegalArgumentException if the options do not form a valid request
+	 * @throws IOException              if the request cannot be sent or followed, or its records or receipt cannot be
+	 *                                  read or written
+	 */
+	private Outcome exchange(String harness, LaunchOptions options, TurnSource turns,
+		HarnessTemporaryRoot temporaryRoot, OutputStream output) throws IOException
+	{
 		Request request = request(harness, options, options.plugins, false);
 		Optional<Path> runRoot = Optional.empty();
 		if (options.keepRun)
 			runRoot = Optional.of(options.runRoot.orElseGet(temporaryRoot::defaultRunRoot));
 		Destinations destinations = new Destinations(runRoot, options.receipt);
-		Outcome outcome;
-		try (TurnSource turns = turns(options, input))
+		Optional<TurnSource> streamed = Optional.ofNullable(turns);
+		if (options.output.isPresent())
 		{
-			Optional<TurnSource> streamed = Optional.ofNullable(turns);
-			if (options.output.isPresent())
+			Path file = options.output.get();
+			Path parent = file.getParent();
+			if (parent != null)
+				Files.createDirectories(parent);
+			try (OutputStream records = Files.newOutputStream(file))
 			{
-				Path file = options.output.get();
-				Path parent = file.getParent();
-				if (parent != null)
-					Files.createDirectories(parent);
-				try (OutputStream records = Files.newOutputStream(file))
-				{
-					outcome = exchange.exchange(request, streamed, conversationSink(sink(records), turns), destinations);
-				}
+				return exchange.exchange(request, streamed, conversationSink(sink(records), turns), destinations);
 			}
-			else
-				outcome = exchange.exchange(request, streamed, conversationSink(sink(output), turns), destinations);
 		}
-		return report(outcome, errors);
+		return exchange.exchange(request, streamed, conversationSink(sink(output), turns), destinations);
 	}
 
 	/**

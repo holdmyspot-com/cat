@@ -35,6 +35,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * Every record of the child is appended to {@value #FROM_CHILD_FILE} as it arrives. When the child's turn {@code n}
  * ends, a line {@code {"turn_end": n, "status": "<status>"}} follows its last record, whose status is
  * {@code interrupted} when the turn was interrupted, {@code failed} when it failed and {@code completed} otherwise.
+ * The last line, however the child ends, is {@code {"ended": "<status>"}}, where the status is the request's: so an
+ * asking session that waits for a {@code turn_end} that never comes sees the end instead.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -308,6 +310,34 @@ public final class Conversation implements TurnSource
 				{
 				}
 			}
+		}
+	}
+
+	/**
+	 * Writes the conversation's last line, which says how the request ended.
+	 *
+	 * @param status the request's status, as its response spells it
+	 * @throws NullPointerException     if {@code status} is null
+	 * @throws IllegalArgumentException if {@code status} is blank
+	 * @throws IOException              if the line cannot be written
+	 */
+	public void end(String status) throws IOException
+	{
+		requireThat(status, "status").isNotBlank();
+		// A launch that an interrupt of its thread ends still writes its last line, which an interrupt would otherwise
+		// stop by closing the file's channel; the interrupt stays pending for the caller
+		boolean interrupted = Thread.interrupted();
+		try
+		{
+			synchronized (this)
+			{
+				append(json.createObjectNode().put("ended", status).toString());
+			}
+		}
+		finally
+		{
+			if (interrupted)
+				Thread.currentThread().interrupt();
 		}
 	}
 

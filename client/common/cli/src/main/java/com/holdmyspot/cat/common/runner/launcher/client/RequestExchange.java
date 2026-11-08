@@ -98,21 +98,36 @@ final class RequestExchange
 	/**
 	 * How one request ended for its sender.
 	 *
+	 * @param status     the request's status: its response's, or the status of a request that no response ended
 	 * @param exitStatus the runner launcher's exit status
 	 * @param message    why the request did not complete, or an empty string when it completed
 	 */
-	record Outcome(int exitStatus, String message)
+	record Outcome(Status status, int exitStatus, String message)
 	{
 		/**
 		 * Creates an outcome.
 		 *
+		 * @param status     the request's status: its response's, or the status of a request that no response ended
 		 * @param exitStatus the runner launcher's exit status
 		 * @param message    why the request did not complete, or an empty string when it completed
-		 * @throws NullPointerException if {@code message} is null
+		 * @throws NullPointerException if {@code status} or {@code message} are null
 		 */
 		Outcome
 		{
+			requireThat(status, "status").isNotNull();
 			requireThat(message, "message").isNotNull();
+		}
+
+		/**
+		 * Creates the outcome of a request that ended with a status, with the exit status that the status implies.
+		 *
+		 * @param status  the request's status
+		 * @param message why the request did not complete, or an empty string when it completed
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		Outcome(Status status, String message)
+		{
+			this(status, status.exitStatus(), message);
 		}
 	}
 
@@ -189,7 +204,7 @@ final class RequestExchange
 		}
 		catch (AccessDeniedException _)
 		{
-			return Optional.of(new Outcome(SessionLauncherChannel.Status.REFUSED.exitStatus(),
+			return Optional.of(new Outcome(Status.REFUSED,
 				channel.unreadableStateMessage()));
 		}
 		catch (NoSuchFileException _)
@@ -206,7 +221,7 @@ final class RequestExchange
 	 */
 	private Outcome noLauncher()
 	{
-		return new Outcome(SessionLauncherChannel.Status.REFUSED.exitStatus(),
+		return new Outcome(Status.REFUSED,
 			SessionLauncherChannel.noLauncherMessage(sessionProduct));
 	}
 
@@ -264,7 +279,7 @@ final class RequestExchange
 					streamer.step();
 					if (heartbeat.isPresent() && heartbeat.get().stale())
 					{
-						return new Outcome(SessionLauncherChannel.Status.STOPPED.exitStatus(),
+						return new Outcome(Status.STOPPED,
 							SessionLauncherChannel.stoppedLauncherMessage());
 					}
 					pause.pause();
@@ -289,14 +304,14 @@ final class RequestExchange
 		if (response.status() == Status.COMPLETED)
 		{
 			if (incompleteRun.isEmpty())
-				return new Outcome(0, "");
-			return new Outcome(Status.FAILED.exitStatus(), incompleteRun.get());
+				return new Outcome(Status.COMPLETED, "");
+			return new Outcome(Status.COMPLETED, Status.FAILED.exitStatus(), incompleteRun.get());
 		}
 		String ended = "The requested session ended with status " + response.status().value() + ": " +
 			response.reason();
 		if (incompleteRun.isEmpty())
-			return new Outcome(response.status().exitStatus(), ended);
-		return new Outcome(response.status().exitStatus(), ended + "\n" + incompleteRun.get());
+			return new Outcome(response.status(), ended);
+		return new Outcome(response.status(), ended + "\n" + incompleteRun.get());
 	}
 
 	/**

@@ -769,7 +769,7 @@ public final class SessionRequestBrokerTest
 			requireThat(fromChild(fixture.json, folder), "fromChild").isEqualTo(List.of("refused oops",
 				"turn_completed reply 1", "{\"turn_end\":1,\"status\":\"completed\"}", "interrupted",
 				"turn_completed reply 2", "{\"turn_end\":2,\"status\":\"interrupted\"}", "turn_completed reply 3",
-				"{\"turn_end\":3,\"status\":\"completed\"}", "completed"));
+				"{\"turn_end\":3,\"status\":\"completed\"}", "completed", "{\"ended\":\"completed\"}"));
 			requireThat(child.get().requests(), "records").isEqualTo(List.of("{\"type\":\"turn\",\"prompt\":\"first\"}",
 				"{\"type\":\"turn\",\"prompt\":\"second\"}", "{\"type\":\"interrupt\"}",
 				"{\"type\":\"turn\",\"prompt\":\"third\"}", "{\"type\":\"complete\"}"));
@@ -823,7 +823,7 @@ public final class SessionRequestBrokerTest
 			requireThat(status, "status").isEqualTo(0);
 			requireThat(fromChild(fixture.json, folder), "fromChild").isEqualTo(List.of("turn_completed reply 1",
 				"{\"turn_end\":1,\"status\":\"completed\"}", "turn_completed reply 2",
-				"{\"turn_end\":2,\"status\":\"completed\"}", "completed"));
+				"{\"turn_end\":2,\"status\":\"completed\"}", "completed", "{\"ended\":\"completed\"}"));
 			Path response = Path.of(printed.toString().strip());
 			requireThat(fixture.json.readTree(response.toFile()).path("status").asString(), "response").
 				isEqualTo("completed");
@@ -832,7 +832,8 @@ public final class SessionRequestBrokerTest
 
 	/**
 	 * Verifies that the run's runner stops a requested session that converses with a launcher once the launcher
-	 * ends, however it ends, and answers the request as stopped.
+	 * ends, however it ends, and answers the request as stopped, and that the launcher's last line in the
+	 * conversation says that the request failed for it.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -882,7 +883,46 @@ public final class SessionRequestBrokerTest
 					isEqualTo("The launcher that requested the session ended");
 				requireThat(child.get().requests(), "records").
 					isEqualTo(List.of("{\"type\":\"turn\",\"prompt\":\"hold\"}"));
+				// The launcher could not follow the request to its response
+				requireThat(fromChild(fixture.json, folder), "fromChild").
+					isEqualTo(List.of("{\"ended\":\"failed\"}"));
 			}
+		}
+	}
+
+	/**
+	 * Verifies that {@code request-session --conversation} exits with status 2 when the run allows no requested
+	 * session, and that the conversation's last line says that the request was refused.
+	 *
+	 * @throws IOException if fixture, broker or request I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void refusedConversationEnds() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "0"))
+		{
+			Path folder = fixture.root.resolve("conversation");
+			AtomicInteger checks = new AtomicInteger();
+			StringWriter printed = new StringWriter();
+			int status;
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					throw new AssertionError("The refused request started a session");
+				}))
+			{
+				status = SessionRequestCli.execute(new String[]{"--harness", "claude", "--project",
+					fixture.project.toString(), "--model", "haiku", "--effort", "low", "--conversation",
+					folder.toString()}, fixture.requests, Clock.systemUTC(), () ->
+				{
+					if (checks.incrementAndGet() > 1_000_000)
+						throw new IOException("The request was not answered");
+					broker.scan();
+					Thread.yield();
+				}, new PrintWriter(printed, true));
+			}
+			requireThat(status, "status").isEqualTo(2);
+			requireThat(fromChild(fixture.json, folder), "fromChild").isEqualTo(List.of("{\"ended\":\"refused\"}"));
 		}
 	}
 
