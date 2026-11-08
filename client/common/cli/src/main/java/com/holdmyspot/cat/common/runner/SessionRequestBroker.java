@@ -48,6 +48,10 @@ public final class SessionRequestBroker implements Closeable
 	 * The most bytes of a requested runner's refusal that the broker reads.
 	 */
 	private static final int MAXIMUM_REFUSAL_BYTES = 65_536;
+	/**
+	 * The name, in a response directory and in its response, of the copy of a kept run that the requester reads.
+	 */
+	static final String RUN_COPY = "run";
 	private final HarnessRun run;
 	private final HarnessRunnerOptions options;
 	private final RequestedSessionStarter starter;
@@ -61,6 +65,10 @@ public final class SessionRequestBroker implements Closeable
 	private final Map<String, String> harnesses = new HashMap<>();
 	private final Map<String, Path> childRoots = new HashMap<>();
 	private final Set<String> cancelled = new HashSet<>();
+	/**
+	 * The requests whose requester receives a copy of the requested session's kept run.
+	 */
+	private final Set<String> keptRuns = new HashSet<>();
 	/**
 	 * The records of each accepted request whose records follow it, by request identifier, until its child ends.
 	 */
@@ -179,6 +187,8 @@ public final class SessionRequestBroker implements Closeable
 					List<String> arguments = arguments(request, request.project(), request.plugins(), directory, accepted);
 					if (request.streamed())
 						streams.put(id, new Streamed(directory));
+					if (request.keepRun())
+						keptRuns.add(id);
 					children.submit(() -> execute(id, request, arguments, directory));
 				}
 				catch (IOException | IllegalArgumentException | JacksonException e)
@@ -281,9 +291,10 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Builds a child's runner options from private copies, retaining the parent's denied reads and capacity ceiling.
-	 * While the parent's request depth leaves a level below the child, the child may request as many sessions as the
-	 * parent, one level less deep; otherwise it may request none.
+	 * Builds a child's runner options from private copies, retaining the parent's denied reads and capacity ceiling
+	 * and adding the request's options, which only narrow the child or describe its own inputs. While the parent's
+	 * request depth leaves a level below the child, the child may request as many sessions as the parent, one level
+	 * less deep; otherwise it may request none.
 	 *
 	 * @param request   the validated request
 	 * @param project   the project snapshot
@@ -304,6 +315,14 @@ public final class SessionRequestBroker implements Closeable
 		for (Path denied : options.deniedReads())
 			arguments.addAll(List.of("--deny-read", denied.toString()));
 		arguments.addAll(List.of("--deny-read", options.runRoot().toString()));
+		for (Path denied : request.deniedReads())
+			arguments.addAll(List.of("--deny-read", denied.toString()));
+		request.workspace().ifPresent(workspace -> arguments.addAll(List.of("--workspace", workspace.toString())));
+		for (Path evidence : request.readOnlyEvidence())
+			arguments.addAll(List.of("--read-only-evidence", evidence.toString()));
+		request.instructionFiles().ifPresent(files -> arguments.addAll(List.of("--instruction-files", files)));
+		request.toolOutputTokenLimit().ifPresent(limit ->
+			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(limit))));
 		for (Path plugin : plugins)
 			arguments.addAll(List.of("--plugin", plugin.toString()));
 		arguments.addAll(List.of("--model", request.model(), "--effort", request.effort()));
@@ -468,7 +487,9 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Publishes a child's result after copying transcripts from its retained run.
+	 * Publishes a child's result after copying transcripts from its retained run and, when the request keeps its run,
+	 * the run itself, without its home, into the response directory's {@link #RUN_COPY}. A run that cannot be copied
+	 * in full makes a completed child fail, with the reason that names the file.
 	 *
 	 * @param id the request id
 	 * @param harness the requested harness
@@ -489,7 +510,24 @@ public final class SessionRequestBroker implements Closeable
 			String childRunId = copyChildEvidence(id, directory);
 			if (status.equals("completed") && !Files.isRegularFile(directory.resolve("receipt.json")))
 				throw new IOException("Requested runner completed without a retained-evidence receipt");
-			respond(id, harness, status, reason, childRunId, directory);
+			String outcome = status;
+			String diagnostic = reason;
+			if (keptRuns.contains(id) && !childRunId.isEmpty())
+			{
+				// The requester cannot read the requested runs, whose homes hold their logins, so it reads a copy
+				Optional<String> incomplete = KeptRunCopy.copy(childRoots.get(id).resolve(childRunId),
+					directory.resolve(RUN_COPY)).incomplete();
+				if (incomplete.isPresent())
+				{
+					if (diagnostic.isEmpty())
+						diagnostic = incomplete.get();
+					else
+						diagnostic += "\n" + incomplete.get();
+					if (outcome.equals("completed"))
+						outcome = "failed";
+				}
+			}
+			respond(id, harness, outcome, diagnostic, childRunId, directory);
 		}
 	}
 
@@ -594,6 +632,8 @@ public final class SessionRequestBroker implements Closeable
 				response.put(name.substring(0, name.indexOf('.')), directory.resolve(name).toString());
 		if (Files.isDirectory(directory.resolve("session-transcripts")))
 			response.put("session_transcripts", directory.resolve("session-transcripts").toString());
+		if (Files.isDirectory(directory.resolve(RUN_COPY), LinkOption.NOFOLLOW_LINKS))
+			response.put(RUN_COPY, directory.resolve(RUN_COPY).toString());
 		SessionRequestCli.write(json, directory.resolve("response.json"), response);
 	}
 

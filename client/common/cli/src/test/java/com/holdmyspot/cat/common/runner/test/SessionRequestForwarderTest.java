@@ -229,8 +229,8 @@ public final class SessionRequestForwarderTest
 	@DataProvider
 	public Object[][] parentOptions()
 	{
-		return new Object[][]{{List.of("--deny-read", "path")}, {List.of("--session-requests", "2")},
-			{List.of("--request-depth", "1")}, {List.of("--max-concurrency", "4")}, {List.of("--workspace", "path")}};
+		return new Object[][]{{List.of("--session-requests", "2")}, {List.of("--request-depth", "1")},
+			{List.of("--max-concurrency", "4")}, {List.of("--capacity-wait", "PT1M")}, {List.of("--agent", "agent-a")}};
 	}
 
 	/**

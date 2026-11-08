@@ -10,6 +10,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -86,7 +87,8 @@ public final class RequestArchive
 	static final String EXTRA_PERMISSIONS = "extra_permissions";
 	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
-		StreamedRequest.INPUT_FIELD);
+		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
+		"tool_output_token_limit", "keep_run");
 	private static final Set<String> SESSION_FIELDS = Set.of("format_version", "harness", "model", "effort", "agent",
 		"turns", "input", "project", "plugins", "workspace", "read_only_evidence", "install_cat", "session_transcripts",
 		"keep_run", "session_requests", "request_depth", "capacity_wait", "max_concurrency", "capacity",
@@ -97,7 +99,8 @@ public final class RequestArchive
 
 	/**
 	 * Publishes a request made inside a run with archive-relative manifest paths, packing prompt texts after the
-	 * request's prompt files.
+	 * request's prompt files. The request's {@code workspace} and {@code read_only_evidence}, when it names them,
+	 * travel inside the archive too.
 	 *
 	 * @param json        the manifest mapper
 	 * @param destination the final request file
@@ -130,6 +133,30 @@ public final class RequestArchive
 					else
 						packTree(archive, source, name, budget, nullDevice);
 					paths.set(index, json.getNodeFactory().stringNode(name));
+				}
+			}
+			if (request.has("workspace"))
+			{
+				packTree(archive, Path.of(request.path("workspace").asString()), "workspace", budget, nullDevice);
+				request.put("workspace", "workspace");
+			}
+			if (request.has("read_only_evidence"))
+			{
+				ArrayNode evidence = request.withArray("read_only_evidence");
+				if (evidence.size() > MAXIMUM_RUN_INPUTS)
+				{
+					throw new IOException("Request accepts at most " + MAXIMUM_RUN_INPUTS +
+						" inputs: read_only_evidence");
+				}
+				for (int index = 0; index < evidence.size(); ++index)
+				{
+					Path source = Path.of(evidence.get(index).asString());
+					String name = "read_only_evidence/" + index;
+					if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
+						packTree(archive, source, name, budget, nullDevice);
+					else
+						packFile(archive, source, name, limits.entryBytes(), budget);
+					evidence.set(index, json.getNodeFactory().stringNode(name));
 				}
 			}
 			ArrayNode names = request.withArray("prompts");
@@ -697,8 +724,53 @@ public final class RequestArchive
 		String model = optionalText(value, "model").orElse("");
 		String effort = optionalText(value, "effort").orElse("");
 		HarnessRunnerOptions.requireProfile(harness, model, effort);
+		Optional<Path> workspace = Optional.empty();
+		if (value.has("workspace"))
+			workspace = Optional.of(entry(value, inputs, "workspace", Kind.DIRECTORY));
+		List<Path> evidence = namedEntries(value, inputs, "read_only_evidence", Kind.ANY, MAXIMUM_RUN_INPUTS);
+		Optional<Integer> toolOutputTokenLimit = count(value, "tool_output_token_limit");
+		if (toolOutputTokenLimit.isPresent() && toolOutputTokenLimit.get() <= 0)
+			throw new IOException("tool_output_token_limit must be positive");
 		return new RunRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
-			flag(value, "install_cat"), extraPermissions(value), streamed);
+			flag(value, "install_cat"), extraPermissions(value), streamed, workspace, evidence,
+			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), toolOutputTokenLimit,
+			flag(value, "keep_run"));
+	}
+
+	/**
+	 * Reads an optional field that lists absolute paths.
+	 *
+	 * @param value the manifest
+	 * @param field the field
+	 * @return the paths, or an empty list when the field is absent
+	 * @throws IOException if the field is present but not an array of absolute paths
+	 */
+	private static List<Path> absolutePaths(JsonNode value, String field) throws IOException
+	{
+		if (!value.has(field))
+			return List.of();
+		JsonNode array = value.path(field);
+		if (!array.isArray() || array.size() > MAXIMUM_RUN_INPUTS)
+			throw new IOException(field + " must be an array of at most " + MAXIMUM_RUN_INPUTS + " absolute paths");
+		List<Path> paths = new ArrayList<>();
+		for (JsonNode element : array)
+		{
+			if (!element.isString())
+				throw new IOException(field + " must be an array of absolute paths: " + element);
+			Path path;
+			try
+			{
+				path = Path.of(element.asString());
+			}
+			catch (InvalidPathException e)
+			{
+				throw new IOException(field + " must be an array of absolute paths: " + e.getInput(), e);
+			}
+			if (!path.isAbsolute())
+				throw new IOException(field + " must be an array of absolute paths: " + path);
+			paths.add(path);
+		}
+		return paths;
 	}
 
 	/**
@@ -1019,10 +1091,17 @@ public final class RequestArchive
 	 * @param extraPermissions   the writes and hosts that the requested session needs beyond its harness's
 	 * @param streamed           indicates whether the request's records follow it, as {@link StreamedRequest}
 	 *                           publishes them, instead of its prompts
+	 * @param workspace          the extracted workspace files, or empty if the request names none
+	 * @param readOnlyEvidence   the extracted evidence files and directories that the session may read but not change
+	 * @param deniedReads        the further paths that the session may not read
+	 * @param instructionFiles   the instruction files that the session loads, or empty for its harness's default
+	 * @param toolOutputTokenLimit the most tokens of one tool's output, or empty for its harness's default
+	 * @param keepRun            indicates whether the requester receives a copy of the session's kept run
 	 */
 	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
-		boolean streamed)
+		boolean streamed, Optional<Path> workspace, List<Path> readOnlyEvidence, List<Path> deniedReads,
+		Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, boolean keepRun)
 	{
 	}
 

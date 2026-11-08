@@ -1,17 +1,22 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.runner.launcher.client.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.launcher.client.TurnFeed;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Reader;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -35,27 +40,33 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * as its own. With {@code --conversation}, the launch publishes the request without its records and sends each of the
  * conversation's messages as the request's next record while the session runs. When the parent's run may request no
  * further session, the parent refuses the request and the launch exits with status 2 and the reason. The parent
- * chooses the run root, the artifact, the denied reads and the limits of the sessions it requests, so a launch may not
- * choose them.
+ * chooses the run root, the artifact, its own denied reads and the limits of the sessions it requests, so a launch may
+ * not choose them. A launch may name the options that only narrow the requested session or describe its own inputs:
+ * further denied reads, the workspace files, the read-only evidence, the tool-output token limit, the instruction files
+ * and {@code --keep-run}. The files and directories that it names travel inside the request, so each must be one that
+ * the session's sandbox lets it read.
  */
 public final class SessionRequestForwarder
 {
 	/**
+	 * How often a served session's sender checks for its records and for the run's response.
+	 */
+	public static final Duration RESPONSE_POLL = Duration.ofMillis(100);
+	/**
 	 * Options that the parent runner chooses for the sessions it requests.
 	 */
-	private static final Set<String> PARENT_OPTIONS = Set.of("--deny-read", "--workspace", "--session-requests",
-		"--request-depth", "--max-concurrency", "--capacity-wait", "--agent", "--instruction-files",
-		"--read-only-evidence", "--tool-output-token-limit");
+	private static final Set<String> PARENT_OPTIONS = Set.of("--session-requests", "--request-depth",
+		"--max-concurrency", "--capacity-wait", "--agent");
 	/**
-	 * Options that a launch may name although the parent runner chooses their effect: the parent keeps every requested
-	 * run and chooses its run root and artifact.
+	 * Options that a launch may name more than once.
 	 */
-	private static final Set<String> IGNORED_OPTIONS = Set.of("--artifact", "--run-root");
+	private static final Set<String> REPEATABLE_OPTIONS = Set.of("--plugin", "--deny-read", "--read-only-evidence");
 	/**
 	 * The options that take a value and that a launch may name.
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--run-root", "--project", "--plugin",
-		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION, Conversation.OPTION);
+		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION, Conversation.OPTION,
+		"--deny-read", "--workspace", "--read-only-evidence", "--instruction-files", "--tool-output-token-limit");
 
 	/**
 	 * Forwards one launch and waits for its requested session to end.
@@ -73,8 +84,8 @@ public final class SessionRequestForwarder
 	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
 	 *                                  {@code --input} and {@code --conversation} are both given, or if the launch
 	 *                                  names no {@code --model} or no {@code --effort}
-	 * @throws IOException              if the records are invalid, or the request or response cannot be read or
-	 *                                  written
+	 * @throws IOException              if the records are invalid, a file or directory that the launch names cannot be
+	 *                                  read, or the request or response cannot be read or written
 	 */
 	public static int forward(String harness, String[] args, Reader input, Path requests, Pause pause,
 		OutputStream output, PrintWriter errors) throws IOException
@@ -87,6 +98,156 @@ public final class SessionRequestForwarder
 		requireThat(output, "output").isNotNull();
 		requireThat(errors, "errors").isNotNull();
 		JsonMapper json = JsonMapper.builder().build();
+		Launch launch = parse(json, harness, args);
+		ObjectNode request = launch.request();
+		String id = UUID.randomUUID().toString();
+		JsonNode response;
+		if (launch.conversation() == null)
+		{
+			List<String> prompts;
+			if (launch.records() == null)
+				prompts = prompts(json, input);
+			else
+			{
+				try (Reader file = Files.newBufferedReader(launch.records(), StandardCharsets.UTF_8))
+				{
+					prompts = prompts(json, file);
+				}
+			}
+			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
+				prompts, RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN);
+			response = awaitTranscript(json, responses(requests, id), pause, output, launch.transcript(),
+				Function.identity());
+		}
+		else
+		{
+			response = converse(json, request, requests, id, launch.conversation(), RequestArchive.NULL_DEVICE,
+				RequestLimits.IN_RUN, pause, output, launch.transcript());
+		}
+		Path childReceipt = responses(requests, id).resolve("receipt.json");
+		if (launch.receipt() != null && Files.isRegularFile(childReceipt))
+		{
+			Files.createDirectories(launch.receipt().toAbsolutePath().getParent());
+			Files.copy(childReceipt, launch.receipt(), StandardCopyOption.REPLACE_EXISTING);
+		}
+		String status = response.path("status").asString();
+		if (status.equals("completed"))
+			return 0;
+		errors.println("The requested session ended with status " + status + ": " +
+			response.path("reason").asString());
+		if (status.equals("capacity"))
+			return HarnessCapacityWaitExpiredException.EXIT_STATUS;
+		if (status.equals("refused"))
+			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
+		return 1;
+	}
+
+	/**
+	 * Serves one session of a CAT command, such as the prompt optimizer, through the run's runner: streams the
+	 * command's records to the requested session as it writes them, copies the session's records back as they arrive,
+	 * and copies the session's kept run, which the run's runner names in its response, into the launch's
+	 * {@code --run-root} as {@code <run root>/<harness>/<run id>}. The command creates that run's {@code artifacts}
+	 * directory once the session reports its start, so that what the command writes into the run while it runs has a
+	 * place. A run that allows no further session refuses the session before it publishes anything. The run's runner
+	 * installs its own CAT for {@code --install-cat}, so a launch that names another CAT as {@code --artifact} sends
+	 * that CAT as a plugin, as a session launcher's client does.
+	 *
+	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
+	 * @param harness     the harness of the session
+	 * @param ownArtifact the CAT artifact that the command runs from
+	 * @param arguments   the runner's options, which name {@code --run-root} and {@code --keep-run}
+	 * @param input       the {@code turn}, {@code interrupt} and {@code complete} records, one per line
+	 * @param output      receives the session's records, one per line
+	 * @param requests    the run's requests directory
+	 * @param pause       paces checks for the session's progress, and throws once the calling thread is
+	 *                    interrupted, which ends the request and stops the session
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
+	 *                                  the launch names {@code --input} or {@code --conversation}, or no
+	 *                                  {@code --run-root}, {@code --keep-run}, {@code --model} or {@code --effort}
+	 * @throws LaunchRefusedException   if the run allows no further session or its runner refused the session
+	 * @throws IOException              if the session did not complete, a file or directory that the launch names
+	 *                                  cannot be read, the request or response cannot be read or written, or the kept
+	 *                                  run cannot be copied in full
+	 */
+	public static void serve(String command, String harness, Path ownArtifact, List<String> arguments, Reader input,
+		Writer output, Path requests, Pause pause) throws IOException
+	{
+		requireThat(command, "command").isNotBlank();
+		requireThat(harness, "harness").isNotBlank();
+		requireThat(ownArtifact, "ownArtifact").isNotNull();
+		requireThat(arguments, "arguments").isNotNull();
+		requireThat(input, "input").isNotNull();
+		requireThat(output, "output").isNotNull();
+		requireThat(requests, "requests").isNotNull();
+		requireThat(pause, "pause").isNotNull();
+		JsonMapper json = JsonMapper.builder().build();
+		Launch launch = parse(json, harness, arguments.toArray(String[]::new));
+		if (launch.records() != null || launch.conversation() != null)
+			throw new InvalidArgumentsException("A served session takes its records from its input");
+		if (launch.runRoot() == null || !launch.keepRun())
+			throw new InvalidArgumentsException("A served session names --run-root and --keep-run");
+		Optional<String> refusal = SessionRequestAccess.furtherRequestRefusal(requests);
+		if (refusal.isPresent())
+			throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, refusal.get()));
+		String id = UUID.randomUUID().toString();
+		ObjectNode request = launch.request().put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM);
+		if (request.path("install_cat").asBoolean(false) && launch.artifact() != null &&
+			!isSame(launch.artifact(), ownArtifact))
+		{
+			request.withArray("plugins").insert(0, launch.artifact().toString());
+		}
+		JsonNode response;
+		try (TurnFeed records = new TurnFeed(input);
+		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
+		{
+			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
+				List.of(), RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN);
+			Pause sending = () ->
+			{
+				for (Optional<String> next = records.poll(); next.isPresent(); next = records.poll())
+					sender.send(next.get());
+				pause.pause();
+			};
+			response = await(json, responses(requests, id), sending,
+				new RecordCopy(json, output, launch.runRoot().resolve(harness)));
+		}
+		String status = response.path("status").asString("");
+		String reason = response.path("reason").asString("");
+		String run = response.path(SessionRequestBroker.RUN_COPY).asString("");
+		String runId = response.path("child_run_id").asString("");
+		if (!run.isEmpty() && RecordCopy.isRunId(runId))
+		{
+			Optional<String> incomplete = KeptRunCopy.copy(Path.of(run),
+				launch.runRoot().resolve(harness).resolve(runId)).incomplete();
+			if (incomplete.isPresent() && status.equals("completed"))
+				throw new IOException(incomplete.get());
+		}
+		else if (status.equals("completed"))
+			throw new IOException("The run's runner kept no run of the requested session");
+		if (status.equals("refused"))
+		{
+			if (SessionRequestAccess.isRequestLimit(reason))
+				throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, reason));
+			throw new LaunchRefusedException(reason);
+		}
+		if (!status.equals("completed"))
+			throw new IOException("The requested session ended with status " + status + ": " + reason);
+	}
+
+	/**
+	 * Reads a launch's options.
+	 *
+	 * @param json    the manifest mapper
+	 * @param harness the harness of the runner launcher
+	 * @param args    the launch's options
+	 * @return the launch
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
+	 *                                  {@code --input} and {@code --conversation} are both given, or if the launch
+	 *                                  names no {@code --model} or no {@code --effort}
+	 * @throws IOException              if the file of {@code --extra-permissions} cannot be read
+	 */
+	private static Launch parse(JsonMapper json, String harness, String[] args) throws IOException
+	{
 		ObjectNode request = json.createObjectNode().put("format_version", RequestArchive.VERSION).
 			put("harness", harness).put("project", Path.of("").toAbsolutePath().toString());
 		request.putArray("prompts");
@@ -95,6 +256,9 @@ public final class SessionRequestForwarder
 		Path conversation = null;
 		Path transcript = null;
 		Path receipt = null;
+		Path runRoot = null;
+		Path artifact = null;
+		boolean keepRun = false;
 		Set<String> scalars = new HashSet<>();
 		for (int index = 0; index < args.length; ++index)
 		{
@@ -104,12 +268,14 @@ public final class SessionRequestForwarder
 				throw new InvalidArgumentsException("Inside a run, the parent runner chooses " + option +
 					" for the sessions it starts");
 			}
-			if (!option.equals("--plugin") && !scalars.add(option))
+			if (!REPEATABLE_OPTIONS.contains(option) && !scalars.add(option))
 				throw new InvalidArgumentsException("Repeated option: " + option);
 			switch (option)
 			{
 				case "--keep-run" ->
 				{
+					keepRun = true;
+					request.put("keep_run", true);
 					continue;
 				}
 				case "--install-cat" ->
@@ -132,10 +298,12 @@ public final class SessionRequestForwarder
 				throw new InvalidArgumentsException("Missing value for " + option);
 			index += 1;
 			String value = args[index];
-			if (IGNORED_OPTIONS.contains(option))
-				continue;
 			switch (option)
 			{
+				// The parent runner chooses the artifact; a served session may send it as a plugin
+				case "--artifact" -> artifact = Path.of(value).toAbsolutePath();
+				// The parent runner chooses the run root; a served session's kept run is copied below it
+				case "--run-root" -> runRoot = Path.of(value).toAbsolutePath();
 				case "--project" -> request.put("project", Path.of(value).toAbsolutePath().toString());
 				case "--plugin" -> request.withArray("plugins").add(Path.of(value).toAbsolutePath().toString());
 				case "--model", "--effort" -> request.put(option.substring(2), value);
@@ -143,6 +311,12 @@ public final class SessionRequestForwarder
 				case Conversation.OPTION -> conversation = Path.of(value).toAbsolutePath();
 				case "--output" -> transcript = Path.of(value);
 				case "--receipt" -> receipt = Path.of(value);
+				case "--deny-read" -> request.withArray("deny_read").add(Path.of(value).toAbsolutePath().toString());
+				case "--read-only-evidence" ->
+					request.withArray("read_only_evidence").add(Path.of(value).toAbsolutePath().toString());
+				case "--workspace" -> request.put("workspace", Path.of(value).toAbsolutePath().toString());
+				case "--instruction-files" -> request.put("instruction_files", value);
+				case "--tool-output-token-limit" -> request.put("tool_output_token_limit", tokenLimit(value));
 				case ExtraPermissions.OPTION ->
 				{
 					ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, Path.of(value));
@@ -156,45 +330,61 @@ public final class SessionRequestForwarder
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
 		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
 			request.path("effort").asString(""));
-		String id = UUID.randomUUID().toString();
-		JsonNode response;
-		if (conversation == null)
+		return new Launch(request, records, conversation, transcript, receipt, runRoot, artifact, keepRun);
+	}
+
+	/**
+	 * Returns whether two paths name the same file or directory.
+	 *
+	 * @param first  a path
+	 * @param second another path
+	 * @return {@code true} if both exist and are the same file, or if neither exists and both are the same path
+	 * @throws IOException if the files cannot be compared
+	 */
+	private static boolean isSame(Path first, Path second) throws IOException
+	{
+		if (Files.exists(first) && Files.exists(second))
+			return Files.isSameFile(first, second);
+		return first.toAbsolutePath().normalize().equals(second.toAbsolutePath().normalize());
+	}
+
+	/**
+	 * Reads the value of {@code --tool-output-token-limit}.
+	 *
+	 * @param value the option's value
+	 * @return the limit
+	 * @throws IllegalArgumentException if the value is not a positive whole number
+	 */
+	private static int tokenLimit(String value)
+	{
+		try
 		{
-			List<String> prompts;
-			if (records == null)
-				prompts = prompts(json, input);
-			else
-			{
-				try (Reader file = Files.newBufferedReader(records, StandardCharsets.UTF_8))
-				{
-					prompts = prompts(json, file);
-				}
-			}
-			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
-				prompts, RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN);
-			response = awaitTranscript(json, responses(requests, id), pause, output, transcript, Function.identity());
+			int limit = Integer.parseInt(value);
+			if (limit > 0)
+				return limit;
 		}
-		else
+		catch (NumberFormatException _)
 		{
-			response = converse(json, request, requests, id, conversation, RequestArchive.NULL_DEVICE,
-				RequestLimits.IN_RUN, pause, output, transcript);
+			// Refused below
 		}
-		Path childReceipt = responses(requests, id).resolve("receipt.json");
-		if (receipt != null && Files.isRegularFile(childReceipt))
-		{
-			Files.createDirectories(receipt.toAbsolutePath().getParent());
-			Files.copy(childReceipt, receipt, StandardCopyOption.REPLACE_EXISTING);
-		}
-		String status = response.path("status").asString();
-		if (status.equals("completed"))
-			return 0;
-		errors.println("The requested session ended with status " + status + ": " +
-			response.path("reason").asString());
-		if (status.equals("capacity"))
-			return HarnessCapacityWaitExpiredException.EXIT_STATUS;
-		if (status.equals("refused"))
-			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
-		return 1;
+		throw new InvalidArgumentsException("--tool-output-token-limit must be a positive whole number: " + value);
+	}
+
+	/**
+	 * A launch's options.
+	 *
+	 * @param request      the request's manifest, naming the files and directories that the launch names
+	 * @param records      the file of {@code --input}, or null
+	 * @param conversation the folder of {@code --conversation}, or null
+	 * @param transcript   the file of {@code --output}, or null
+	 * @param receipt      the file of {@code --receipt}, or null
+	 * @param runRoot      the folder of {@code --run-root}, or null
+	 * @param artifact     the folder of {@code --artifact}, or null
+	 * @param keepRun      indicates whether the launch names {@code --keep-run}
+	 */
+	private record Launch(ObjectNode request, Path records, Path conversation, Path transcript, Path receipt,
+		Path runRoot, Path artifact, boolean keepRun)
+	{
 	}
 
 	/**
@@ -364,6 +554,92 @@ public final class SessionRequestForwarder
 			if (ended)
 				return json.readTree(response.toFile());
 			pause.pause();
+		}
+	}
+
+	/**
+	 * Copies the requested session's records, one per line, to a served command's output, creating the
+	 * {@code artifacts} directory of the session's run below the command's run root once the session reports its
+	 * start.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is not thread-safe.
+	 */
+	private static final class RecordCopy extends OutputStream
+	{
+		/**
+		 * The record mapper.
+		 */
+		private final JsonMapper json;
+		/**
+		 * Receives the records.
+		 */
+		private final Writer output;
+		/**
+		 * The folder of the command's runs of the session's harness.
+		 */
+		private final Path runs;
+		/**
+		 * The bytes of a record whose line terminator has not arrived.
+		 */
+		private final ByteArrayOutputStream partial = new ByteArrayOutputStream();
+
+		/**
+		 * Creates a copy.
+		 *
+		 * @param json   the record mapper
+		 * @param output receives the records
+		 * @param runs   the folder of the command's runs of the session's harness
+		 */
+		RecordCopy(JsonMapper json, Writer output, Path runs)
+		{
+			this.json = json;
+			this.output = output;
+			this.runs = runs;
+		}
+
+		/**
+		 * Indicates whether a text can name a run's directory.
+		 *
+		 * @param runId the text
+		 * @return {@code true} if it is a run identifier, which names no other directory
+		 */
+		static boolean isRunId(String runId)
+		{
+			return runId.matches("[A-Za-z0-9._-]+") && !runId.startsWith(".");
+		}
+
+		@Override
+		public void write(int value) throws IOException
+		{
+			if (value != '\n')
+			{
+				partial.write(value);
+				return;
+			}
+			String line = partial.toString(StandardCharsets.UTF_8);
+			partial.reset();
+			if (line.contains("\"started\""))
+			{
+				try
+				{
+					JsonNode record = json.readTree(line);
+					String runId = record.path("run_id").asString("");
+					if (record.path("type").asString("").equals("started") && isRunId(runId))
+						Files.createDirectories(runs.resolve(runId).resolve("artifacts"));
+				}
+				catch (JacksonException _)
+				{
+					// The command reports the malformed record when it reads it
+				}
+			}
+			output.write(line);
+			output.write('\n');
+		}
+
+		@Override
+		public void flush() throws IOException
+		{
+			output.flush();
 		}
 	}
 

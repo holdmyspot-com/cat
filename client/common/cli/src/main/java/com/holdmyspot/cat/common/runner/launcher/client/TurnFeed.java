@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.runner.launcher.client;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.common.runner.TurnSource;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -14,7 +16,7 @@ import java.util.concurrent.LinkedBlockingQueue;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-final class TurnFeed implements TurnSource
+public final class TurnFeed implements TurnSource
 {
 	/**
 	 * The records read and not yet taken, blank lines left out.
@@ -37,9 +39,11 @@ final class TurnFeed implements TurnSource
 	 * Starts reading records.
 	 *
 	 * @param input the records, one per line
+	 * @throws NullPointerException if {@code input} is null
 	 */
-	TurnFeed(Reader input)
+	public TurnFeed(Reader input)
 	{
+		requireThat(input, "input").isNotNull();
 		BufferedReader lines = new BufferedReader(input);
 		this.reader = Thread.ofPlatform().daemon().name("session-request-turns").start(() -> read(lines));
 	}

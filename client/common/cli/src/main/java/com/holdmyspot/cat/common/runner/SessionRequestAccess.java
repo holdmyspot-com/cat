@@ -65,10 +65,14 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public static final String LAUNCHER = "request-session";
 	/**
+	 * The start of each reason with which a runner refuses a request because its run allows no further session.
+	 */
+	private static final String NO_FURTHER_SESSIONS = "this run allows no further sessions";
+	/**
 	 * The reason with which a runner refuses each request of a session that may request no session, which names the
 	 * options of the run's caller that would allow it.
 	 */
-	public static final String NO_REQUESTS_REASON = "this run allows no further sessions. Its caller allows them " +
+	public static final String NO_REQUESTS_REASON = NO_FURTHER_SESSIONS + ". Its caller allows them " +
 		"with --session-requests <count>, and lets a requested session's commands start sessions too with " +
 		"--request-depth <levels>";
 
@@ -94,8 +98,37 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public static String limitReason(int sessionRequests)
 	{
-		return "this run allows no further sessions: it has requested all " + sessionRequests + " that its " +
+		return NO_FURTHER_SESSIONS + ": it has requested all " + sessionRequests + " that its " +
 			"caller's --session-requests allows. Its caller allows more with a larger --session-requests";
+	}
+
+	/**
+	 * Returns the message with which a CAT command that starts sessions refuses to start one inside a run that allows
+	 * no further session.
+	 *
+	 * @param command names the command, such as {@code "The prompt optimizer"}
+	 * @param reason  the reason of the run's runner, {@link #NO_REQUESTS_REASON} or {@link #limitReason(int)}
+	 * @return the message, which names the options of the run's caller that would allow the session
+	 * @throws NullPointerException if {@code command} or {@code reason} are null
+	 */
+	public static String refusalMessage(String command, String reason)
+	{
+		requireThat(command, "command").isNotNull();
+		requireThat(reason, "reason").isNotNull();
+		return command + " refuses to start a session: " + reason + ".";
+	}
+
+	/**
+	 * Indicates whether a runner refused a request because its run allows no further session.
+	 *
+	 * @param reason the runner's reason
+	 * @return {@code true} if the reason is {@link #NO_REQUESTS_REASON} or {@link #limitReason(int)}
+	 * @throws NullPointerException if {@code reason} is null
+	 */
+	public static boolean isRequestLimit(String reason)
+	{
+		requireThat(reason, "reason").isNotNull();
+		return reason.startsWith(NO_FURTHER_SESSIONS);
 	}
 
 	/**

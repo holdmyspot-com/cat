@@ -481,8 +481,7 @@ public final class SessionRequestBrokerTest
 	@DataProvider
 	public Object[][] sessionOnlyFields()
 	{
-		return new Object[][]{{"agent", "\"agent-a\""}, {"keep_run", "true"}, {"deny_read", "[\"/home/user\"]"},
-			{"turns", "\"turns\""}, {"capacity", "\"held\""}};
+		return new Object[][]{{"agent", "\"agent-a\""}, {"turns", "\"turns\""}, {"capacity", "\"held\""}};
 	}
 
 	/**
