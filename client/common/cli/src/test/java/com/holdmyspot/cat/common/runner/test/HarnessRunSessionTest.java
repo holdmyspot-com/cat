@@ -3,13 +3,17 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.HarnessProcess;
-import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import org.testng.annotations.Test;
 
 /**
@@ -26,14 +30,15 @@ public final class HarnessRunSessionTest
 	/**
 	 * Verifies multiple turns use one live harness process.
 	 *
-	 * @throws IOException if the fake process fails
+	 * @throws IOException if a turn fails
 	 */
 	@Test
 	public void sendsTurnsToSameProcess() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeProcess process = new FakeProcess();
+			List<String> received = new ArrayList<>();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			try (HarnessRunSession session = new HarnessRunSession(run, process, new TestHarnessRunnerScope()))
 			{
@@ -41,13 +46,14 @@ public final class HarnessRunSessionTest
 				session.sendTurn("second");
 			}
 
-			requireThat(process.turns, "turns").isEqualTo(2);
-			requireThat(process.closed, "closed").isTrue();
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
+			requireThat(process.isAlive(), "alive").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies repeated closure does not close the owned process more than once.
+	 * Verifies repeated closure does not close the owned process more than once. Closing the process copies its session
+	 * transcripts, so once the place for the copies is taken by a file, closing the process again would fail.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -56,55 +62,31 @@ public final class HarnessRunSessionTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			FakeProcess process = new FakeProcess();
+			Path directory = cleanup.add(Files.createTempDirectory("cat-session-"));
+			Path copies = directory.resolve("copies");
+			ScriptedProcess process = new ScriptedProcess(List.of(), new ArrayList<>(),
+				directory.resolve("home/session.jsonl"), new HarnessSessionTranscripts(directory.resolve("home"), copies,
+				name -> name.endsWith(".jsonl")));
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			try (HarnessRunSession session = new HarnessRunSession(run, process, new TestHarnessRunnerScope()))
 			{
-				closeTwice(session);
+				closeAndTakeCopiesPlace(session, copies);
 			}
-
-			requireThat(process.closeCalls, "closeCalls").isEqualTo(1);
 		}
 	}
 
 	/**
-	 * Closes a session twice to verify its idempotent lifecycle contract.
+	 * Closes a session and then puts a file where its process copies its session transcripts, so that closing the
+	 * process again would fail.
 	 *
-	 * @param session the session to close
-	 * @throws IOException if closure fails
+	 * @param session the session
+	 * @param copies  the directory that receives the copies of the process's session transcripts
+	 * @throws IOException if closing the session or replacing the directory fails
 	 */
-	private static void closeTwice(HarnessRunSession session) throws IOException
+	private static void closeAndTakeCopiesPlace(HarnessRunSession session, Path copies) throws IOException
 	{
-		assert session != null;
 		session.close();
-		session.close();
-	}
-
-	private static final class FakeProcess implements HarnessProcess
-	{
-		private int turns;
-		private boolean closed;
-		private int closeCalls;
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			assert request != null;
-			++turns;
-			return new HarnessProcessResult(0, "", "");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closeCalls += 1;
-			closed = true;
-		}
+		Files.delete(copies);
+		Files.writeString(copies, "");
 	}
 }

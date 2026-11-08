@@ -2,13 +2,17 @@ package com.holdmyspot.cat.common.runner.test;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.HarnessProcess;
-import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunSessions;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import org.testng.annotations.Test;
 
@@ -34,8 +38,9 @@ public final class HarnessRunSessionsTest
 	@Test
 	public void routesTurnsUntilCompletion() throws IOException
 	{
+		List<String> received = new ArrayList<>();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
 			HarnessRunSessions sessions = new HarnessRunSessions())
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
@@ -44,8 +49,8 @@ public final class HarnessRunSessionsTest
 			sessions.sendTurn("run-1", "second");
 			sessions.complete("run-1");
 
-			requireThat(process.turns, "turns").isEqualTo(2);
-			requireThat(process.closed, "closed").isTrue();
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
+			requireThat(process.isAlive(), "alive").isFalse();
 		}
 	}
 
@@ -62,10 +67,10 @@ public final class HarnessRunSessionsTest
 		{
 			sessions.add(new HarnessRunSession(new HarnessRun("harness", "run-1",
 				cleanup.add(Files.createTempDirectory("cat-run-"))),
-				new FailingProcess("first"), new TestHarnessRunnerScope()));
+				failingToClose(cleanup.add(Files.createTempDirectory("cat-session-"))), new TestHarnessRunnerScope()));
 			sessions.add(new HarnessRunSession(new HarnessRun("harness", "run-2",
 				cleanup.add(Files.createTempDirectory("cat-run-"))),
-				new FailingProcess("second"), new TestHarnessRunnerScope()));
+				failingToClose(cleanup.add(Files.createTempDirectory("cat-session-"))), new TestHarnessRunnerScope()));
 		}
 		catch (IOException e)
 		{
@@ -75,67 +80,17 @@ public final class HarnessRunSessionsTest
 		throw new AssertionError("Expected session shutdown to report both close failures");
 	}
 
-	private static final class FakeProcess implements HarnessProcess
-	{
-		private int turns;
-		private boolean closed;
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			assert request != null;
-			++turns;
-			return new HarnessProcessResult(0, "", "");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
-		}
-	}
-
 	/**
-	 * An harness process that fails during shutdown.
+	 * Returns a process that fails to close because a file takes the place where it copies its session transcripts.
+	 *
+	 * @param directory a new directory for the process's files
+	 * @return the process
+	 * @throws IOException if the file cannot be written
 	 */
-	private static final class FailingProcess implements HarnessProcess
+	private static ScriptedProcess failingToClose(Path directory) throws IOException
 	{
-		private final String name;
-
-		/**
-		 * Creates a process that fails with the supplied name.
-		 *
-		 * @param name the failure name
-		 */
-		private FailingProcess(String name)
-		{
-			assert name != null;
-			this.name = name;
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			assert request != null;
-			return new HarnessProcessResult(0, "", "");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return true;
-		}
-
-		@Override
-		public void close() throws IOException
-		{
-			throw new IOException(name);
-		}
+		Path copies = Files.writeString(directory.resolve("copies"), "");
+		return new ScriptedProcess(List.of(), new ArrayList<>(), directory.resolve("home/session.jsonl"),
+			new HarnessSessionTranscripts(directory.resolve("home"), copies, name -> name.endsWith(".jsonl")));
 	}
 }

@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.claude.runner.ClaudeProcess;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -17,14 +18,11 @@ import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -33,7 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Stream;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -703,7 +701,7 @@ public final class ClaudeRunnerTest
 		"https://code.claude.com/docs/en/sandboxing, or run `sudo sysctl -w " +
 		"kernel.apparmor_restrict_unprivileged_userns=0` (holds until reboot), then restart Claude Code. Set " +
 		"sandbox.failIfUnavailable=false to allow unsandboxed execution.\"]," +
-		"\"startup_failure_reason\":\"sandbox_required_unavailable\",\"result_index\":0}\n";
+		"\"startup_failure_reason\":\"sandbox_required_unavailable\",\"result_index\":0}";
 	/**
 	 * What Claude Code writes to its standard error when its sandbox is required but cannot start.
 	 */
@@ -717,9 +715,14 @@ public final class ClaudeRunnerTest
 		"here: bubblewrap is not installed\n  Commands will run WITHOUT sandboxing. Network and filesystem " +
 		"restrictions will NOT be enforced.\n";
 	/**
-	 * The event that starts a session's output.
+	 * The event that starts a turn's output: Claude Code reports that its session is running.
 	 */
-	private static final String INIT_EVENT = "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\"}\n";
+	private static final String RUNNING_EVENT = "{\"type\":\"system\",\"subtype\":\"session_state_changed\"," +
+		"\"state\":\"running\",\"session_id\":\"s\"}";
+	/**
+	 * The event that follows {@link #RUNNING_EVENT} at the start of a turn.
+	 */
+	private static final String INIT_EVENT = "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"s\"}";
 	/**
 	 * The event that Claude Code writes when, with its sandbox off, it asks to approve a command that writes outside
 	 * the session's working directories.
@@ -727,27 +730,26 @@ public final class ClaudeRunnerTest
 	private static final String UNCONFINED_COMMAND_EVENT = "{\"type\":\"system\",\"subtype\":\"permission_denied\"," +
 		"\"tool_name\":\"Bash\",\"tool_use_id\":\"t1\",\"message\":\"touch in '/work/O/q5.txt' needs approval. The " +
 		"path is outside the working directories for this session ('/work/W'). Allowing runs the command as " +
-		"written.\",\"session_id\":\"s\"}\n";
+		"written.\",\"session_id\":\"s\"}";
 	/**
 	 * The event that Claude Code writes when a deny rule denies a command, which a sandboxed session also writes.
 	 */
 	private static final String DENIED_COMMAND_EVENT = "{\"type\":\"system\",\"subtype\":\"permission_denied\"," +
 		"\"tool_name\":\"Bash\",\"tool_use_id\":\"t2\",\"decision_reason_type\":\"subcommandResults\"," +
 		"\"message\":\"Permission to use Bash with command cat /work/P/hidden.txt has been denied.\"," +
-		"\"session_id\":\"s\"}\n";
+		"\"session_id\":\"s\"}";
 
 	/**
 	 * Verifies that a session whose Claude Code exits because its required sandbox is unavailable is refused with
 	 * Claude Code's reason and a pointer to the installation guide, without Claude Code's advice to run commands
 	 * without the sandbox, rather than failing as a dead process.
 	 *
-	 * @throws IOException if the fake process fails
+	 * @throws IOException if the session fails other than by its refusal
 	 */
 	@Test
 	public void refusesSessionWhoseSandboxIsUnavailable() throws IOException
 	{
-		try (FakeProcess process = new FakeProcess(UNAVAILABLE_EVENT, UNAVAILABLE_NOTICE, false);
-			HarnessProcess session = watched(process))
+		try (HarnessProcess session = watched(endedAtStartup(UNAVAILABLE_EVENT, UNAVAILABLE_NOTICE)))
 		{
 			requireThat(session.isAlive(), "alive").isTrue();
 			try
@@ -767,15 +769,15 @@ public final class ClaudeRunnerTest
 	 * Verifies that a session whose Claude Code reports that it runs without its sandbox is stopped and refused with
 	 * Claude Code's reason, since its commands would otherwise run unconfined.
 	 *
-	 * @throws IOException if the fake process fails
+	 * @throws IOException if the session fails other than by its refusal
 	 */
-	@Test
+	@Test(timeOut = 10_000)
 	public void stopsSessionWhoseSandboxIsDisabled() throws IOException
 	{
-		try (FakeProcess process = new FakeProcess(INIT_EVENT, DISABLED_NOTICE, true);
-			HarnessProcess session = watched(process))
+		// Claude Code writes the notice at start-up; its turn prints nothing until the watch stops it
+		FakeHarnessCli claude = answering(DISABLED_NOTICE);
+		try (HarnessProcess session = watched(claude))
 		{
-			requireThat(process.destroyed, "destroyed").isTrue();
 			try
 			{
 				session.sendTurn("Hello");
@@ -785,6 +787,7 @@ public final class ClaudeRunnerTest
 			{
 				requireThat(e.getMessage(), "message").contains("bubblewrap is not installed");
 			}
+			requireThat(claude.isAlive(), "claudeAlive").isFalse();
 		}
 	}
 
@@ -792,15 +795,14 @@ public final class ClaudeRunnerTest
 	 * Verifies that a session whose Claude Code asks to approve a command that writes outside its working
 	 * directories, which it asks only when no sandbox confines the command, is stopped and refused.
 	 *
-	 * @throws IOException if the fake process fails
+	 * @throws IOException if the session fails other than by its refusal
 	 */
-	@Test
+	@Test(timeOut = 10_000)
 	public void stopsSessionWhoseCommandsRunUnconfined() throws IOException
 	{
-		try (FakeProcess process = new FakeProcess(INIT_EVENT + UNCONFINED_COMMAND_EVENT, "", true);
-			HarnessProcess session = watched(process))
+		FakeHarnessCli claude = answering("", RUNNING_EVENT, INIT_EVENT, UNCONFINED_COMMAND_EVENT);
+		try (HarnessProcess session = watched(claude))
 		{
-			requireThat(process.destroyed, "destroyed").isTrue();
 			try
 			{
 				session.sendTurn("Hello");
@@ -810,6 +812,7 @@ public final class ClaudeRunnerTest
 			{
 				requireThat(e.getMessage(), "message").contains("/work/O/q5.txt").contains("installation guide");
 			}
+			requireThat(claude.isAlive(), "claudeAlive").isFalse();
 		}
 	}
 
@@ -817,157 +820,77 @@ public final class ClaudeRunnerTest
 	 * Verifies that a session whose Claude Code shows no sign of running without its sandbox, including one whose
 	 * deny rule denies a command, runs its turns as usual.
 	 *
-	 * @throws IOException if the fake process fails
+	 * @throws IOException if the turn fails
 	 */
-	@Test
+	@Test(timeOut = 10_000)
 	public void keepsSessionWithWorkingSandbox() throws IOException
 	{
-		try (FakeProcess process = new FakeProcess(INIT_EVENT + DENIED_COMMAND_EVENT, "Starting\n", true);
-			HarnessProcess session = watched(process))
+		FakeHarnessCli claude = answering("Starting\n", RUNNING_EVENT, INIT_EVENT, DENIED_COMMAND_EVENT,
+			"{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\"," +
+				"\"text\":\"Hello back\"}]},\"parent_tool_use_id\":null,\"session_id\":\"s\"}",
+			"{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Hello back\"," +
+				"\"session_id\":\"s\"}",
+			"{\"type\":\"system\",\"subtype\":\"session_state_changed\",\"state\":\"idle\",\"session_id\":\"s\"}");
+		try (HarnessProcess session = watched(claude))
 		{
-			requireThat(process.destroyed, "destroyed").isFalse();
+			HarnessProcessResult result = session.sendTurn("Hello");
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("Hello back");
 			requireThat(session.isAlive(), "alive").isTrue();
-			requireThat(session.sendTurn("Hello").standardOutput(), "reply").isEqualTo("Hello");
+			requireThat(claude.isAlive(), "claudeAlive").isTrue();
 		}
 	}
 
 	/**
-	 * Returns a session that reads a process through a sandbox watch, which guards the session.
+	 * Returns a Claude Code stand-in that has written its output and standard error and exited with status 1 at
+	 * start-up, before it read a message.
 	 *
-	 * @param process the session's process
+	 * @param event         what it wrote on its output
+	 * @param standardError what it wrote on its standard error
+	 * @return the stand-in
+	 */
+	private static FakeHarnessCli endedAtStartup(String event, String standardError)
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		}, 1);
+		claude.emit(event);
+		claude.printError(standardError);
+		claude.exit();
+		return claude;
+	}
+
+	/**
+	 * Returns a Claude Code stand-in that writes text on its standard error at start-up and answers each user message
+	 * with the same lines.
+	 *
+	 * @param standardError what it writes on its standard error
+	 * @param lines         the lines, in the shape of those that Claude Code 2.1.286 printed in the timelines under
+	 *                      {@code runner/turn-boundary}
+	 * @return the stand-in
+	 */
+	private static FakeHarnessCli answering(String standardError, String... lines)
+	{
+		AtomicReference<FakeHarnessCli> claude = new AtomicReference<>();
+		claude.set(new FakeHarnessCli(request ->
+		{
+			if (request.contains("\"type\":\"user\""))
+				claude.get().emit(lines);
+		}));
+		claude.get().printError(standardError);
+		return claude.get();
+	}
+
+	/**
+	 * Returns a session that reads Claude Code through a sandbox watch, which guards the session.
+	 *
+	 * @param claude Claude Code's process
 	 * @return the guarded session
-	 * @throws IOException if the process's output cannot be read
 	 */
-	private static HarnessProcess watched(Process process) throws IOException
+	private static HarnessProcess watched(Process claude)
 	{
-		ClaudeRunner.SandboxWatch watch = new ClaudeRunner.SandboxWatch(process, JsonMapper.builder().build());
-		return watch.guard(new DrainingProcess(watch.process()));
-	}
-
-	/**
-	 * A Claude Code process that has written its output and standard error.
-	 */
-	private static final class FakeProcess extends Process
-	{
-		private final byte[] output;
-		private final byte[] standardError;
-		private volatile boolean alive;
-		private volatile boolean destroyed;
-
-		/**
-		 * Creates a process.
-		 *
-		 * @param output        what the process wrote to its output
-		 * @param standardError what the process wrote to its standard error
-		 * @param alive         {@code true} if the process is still running
-		 */
-		FakeProcess(String output, String standardError, boolean alive)
-		{
-			this.output = output.getBytes(UTF_8);
-			this.standardError = standardError.getBytes(UTF_8);
-			this.alive = alive;
-		}
-
-		@Override
-		public OutputStream getOutputStream()
-		{
-			return OutputStream.nullOutputStream();
-		}
-
-		@Override
-		public InputStream getInputStream()
-		{
-			return new ByteArrayInputStream(output);
-		}
-
-		@Override
-		public InputStream getErrorStream()
-		{
-			return new ByteArrayInputStream(standardError);
-		}
-
-		@Override
-		public int waitFor()
-		{
-			return exitValue();
-		}
-
-		@Override
-		public int exitValue()
-		{
-			if (alive)
-				throw new IllegalThreadStateException("The process is running");
-			return 1;
-		}
-
-		@Override
-		public void destroy()
-		{
-			destroyForcibly();
-		}
-
-		@Override
-		public Process destroyForcibly()
-		{
-			destroyed = true;
-			alive = false;
-			return this;
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return alive;
-		}
-
-		@Override
-		public Stream<ProcessHandle> descendants()
-		{
-			return Stream.empty();
-		}
-	}
-
-	/**
-	 * A harness process that drains its process's output and standard error when it starts, as Claude Code's process
-	 * reads them, and answers each turn with its request.
-	 */
-	private static final class DrainingProcess implements HarnessProcess
-	{
-		private final Process process;
-
-		/**
-		 * Creates a harness process.
-		 *
-		 * @param process the process
-		 * @throws IOException if the output or standard error cannot be read
-		 */
-		DrainingProcess(Process process) throws IOException
-		{
-			this.process = process;
-			try (InputStream output = process.getInputStream();
-				InputStream errors = process.getErrorStream())
-			{
-				output.transferTo(OutputStream.nullOutputStream());
-				errors.transferTo(OutputStream.nullOutputStream());
-			}
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			return new HarnessProcessResult(0, request, "");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return process.isAlive();
-		}
-
-		@Override
-		public void close()
-		{
-			process.destroyForcibly();
-		}
+		ClaudeRunner.SandboxWatch watch = new ClaudeRunner.SandboxWatch(claude, JsonMapper.builder().build());
+		return watch.guard(new ClaudeProcess(new TestHarnessRunnerScope(), watch.process()));
 	}
 }

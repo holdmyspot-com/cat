@@ -4,9 +4,6 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.runner.HarnessEventListener;
-import com.holdmyspot.cat.common.runner.HarnessProcess;
-import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
@@ -24,8 +21,8 @@ import java.util.concurrent.CountDownLatch;
 /**
  * Plays a harness behind the real runner bridge.
  * <p>
- * {@link #serve} runs {@link HarnessRunnerBridge} over a harness process that follows a script, so a test sees the
- * bridge's real protocol, manifest and failure behavior without starting a harness.
+ * {@link #serve} runs {@link HarnessRunnerBridge} over a {@link ScriptedProcess} that follows a script, so a test sees
+ * the bridge's real protocol, manifest and failure behavior without starting a harness.
  * <p>
  * Event inputs come from Claude Code 2.1.286's
  * {@code client/claude/cli/src/test/resources/optimizer/claude-single-turn.jsonl}, Claude Code 2.1.287 recordings
@@ -54,8 +51,9 @@ import java.util.concurrent.CountDownLatch;
  * The double scripts no
  * stopped-child events or interrupt response text.
  * <p>
- * Latches control when the test delivers input and observe the outgoing interrupt. They impose no elapsed-time
- * guarantee on a harness. Session tests verify CAT's classification given these inputs, not harness reactions.
+ * Latches and checkpoints control when the test delivers input and observe the outgoing interrupt. They impose no
+ * elapsed-time guarantee on a harness. Session tests verify CAT's classification given these inputs, not harness
+ * reactions.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -86,7 +84,7 @@ public final class ScriptedHarness
 	 * @param script what the harness does for each turn, in turn order
 	 * @param input the bridge requests
 	 * @param output the bridge responses
-	 * @param requests receives each decoded turn request before the turn's events are delivered
+	 * @param requests receives each turn prompt and steering direction, in the order the harness receives them
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the bridge fails
 	 */
@@ -138,13 +136,13 @@ public final class ScriptedHarness
 	/**
 	 * What the harness does for one turn.
 	 *
-	 * @param events the harness event lines that the harness prints during the turn
-	 * @param kind how the turn ends
-	 * @param response the final assistant response of a turn that completes
-	 * @param entered counted down once the turn has printed its events and is about to end or block, or {@code null}
+	 * @param events     the harness event lines that the harness prints during the turn
+	 * @param kind       how the turn ends
+	 * @param messages   the assistant messages of a turn that replies, in order; the last is the turn's response
+	 * @param exitStatus the exit status of a harness that exits during the turn
+	 * @param checkpoint runs the test's code while the harness works on the turn
 	 */
-	public record Turn(List<String> events, Kind kind, String response,
-		CountDownLatch entered)
+	public record Turn(List<String> events, Kind kind, List<String> messages, int exitStatus, Checkpoint checkpoint)
 	{
 		/**
 		 * How a turn ends.
@@ -156,9 +154,9 @@ public final class ScriptedHarness
 			 */
 			REPLIES,
 			/**
-			 * The harness ends the turn without a terminal result and with a representative nonzero exit status 1.
+			 * The harness exits without a terminal result.
 			 */
-			FAILS,
+			EXITS,
 			/**
 			 * The harness rejects the turn, so the turn fails without a result or an exit status.
 			 */
@@ -171,44 +169,96 @@ public final class ScriptedHarness
 		}
 
 		/**
+		 * Code that a test runs on the turn's thread while the harness works on the turn, to act at a known point of
+		 * the turn, such as moving a clock. It imposes no behavior on a harness.
+		 */
+		@FunctionalInterface
+		public interface Checkpoint
+		{
+			/**
+			 * Runs before the harness prints each event line of the turn, and once more after the last line, before the
+			 * turn ends or blocks.
+			 *
+			 * @param printed the number of the turn's event lines that the harness has printed
+			 * @throws IOException if the test's code fails, which fails the turn
+			 */
+			void reached(int printed) throws IOException;
+		}
+
+		/**
 		 * Creates a turn.
 		 *
-		 * @param events the harness event lines that the harness prints during the turn
-		 * @param kind how the turn ends
-		 * @param response the final assistant response of a turn that completes
-		 * @param entered counted down once the turn has printed its events and is about to end or block, or
-		 *   {@code null}
-		 * @throws NullPointerException if any argument other than {@code entered} is null
+		 * @param events     the harness event lines that the harness prints during the turn
+		 * @param kind       how the turn ends
+		 * @param messages   the assistant messages of a turn that replies, in order; the last is the turn's response
+		 * @param exitStatus the exit status of a harness that exits during the turn
+		 * @param checkpoint runs the test's code while the harness works on the turn
+		 * @throws NullPointerException     if any argument is null
+		 * @throws IllegalArgumentException if a turn that replies has no message
 		 */
 		public Turn
 		{
 			requireThat(events, "events").isNotNull();
 			requireThat(kind, "kind").isNotNull();
-			requireThat(response, "response").isNotNull();
+			requireThat(messages, "messages").isNotNull();
+			requireThat(checkpoint, "checkpoint").isNotNull();
+			if (kind == Kind.REPLIES)
+				requireThat(messages, "messages").isNotEmpty();
 			events = List.copyOf(events);
+			messages = List.copyOf(messages);
 		}
 
 		/**
-		 * Returns a turn that replies.
+		 * Returns a turn that replies with one message.
 		 *
 		 * @param response the final assistant response
-		 * @param events the harness event lines that the harness prints
+		 * @param events   the harness event lines that the harness prints
 		 * @return the turn
 		 */
 		public static Turn replies(String response, String... events)
 		{
-			return new Turn(List.of(events), Kind.REPLIES, response, null);
+			return replies(List.of(response), events);
 		}
 
 		/**
-		 * Returns a turn that ends of its own accord without a terminal result.
+		 * Returns a turn that replies with several messages.
+		 *
+		 * @param messages the assistant messages, in order; the last is the final response
+		 * @param events   the harness event lines that the harness prints
+		 * @return the turn
+		 * @throws IllegalArgumentException if {@code messages} is empty
+		 */
+		public static Turn replies(List<String> messages, String... events)
+		{
+			return new Turn(List.of(events), Kind.REPLIES, messages, 0, _ ->
+			{
+			});
+		}
+
+		/**
+		 * Returns a turn during which the harness exits with status 1, a representative failure status, without a
+		 * terminal result.
 		 *
 		 * @param events the harness event lines that the harness prints
 		 * @return the turn
 		 */
 		public static Turn fails(String... events)
 		{
-			return new Turn(List.of(events), Kind.FAILS, "", null);
+			return exits(1, events);
+		}
+
+		/**
+		 * Returns a turn during which the harness exits without a terminal result.
+		 *
+		 * @param exitStatus the harness's exit status
+		 * @param events     the harness event lines that the harness prints
+		 * @return the turn
+		 */
+		public static Turn exits(int exitStatus, String... events)
+		{
+			return new Turn(List.of(events), Kind.EXITS, List.of(), exitStatus, _ ->
+			{
+			});
 		}
 
 		/**
@@ -218,7 +268,9 @@ public final class ScriptedHarness
 		 */
 		public static Turn rejected()
 		{
-			return new Turn(List.of(), Kind.REJECTED, "", null);
+			return new Turn(List.of(), Kind.REJECTED, List.of(), 0, _ ->
+			{
+			});
 		}
 
 		/**
@@ -229,11 +281,13 @@ public final class ScriptedHarness
 		 */
 		public static Turn blocksUntilInterrupted(String... events)
 		{
-			return new Turn(List.of(events), Kind.BLOCKS_UNTIL_INTERRUPTED, "", null);
+			return new Turn(List.of(events), Kind.BLOCKS_UNTIL_INTERRUPTED, List.of(), 0, _ ->
+			{
+			});
 		}
 
 		/**
-		 * Returns a copy of this turn that tells the test when it has printed its events.
+		 * Returns a copy of this turn that tells the test when it has printed its events and is about to end or block.
 		 *
 		 * @param latch the latch to count down
 		 * @return the turn
@@ -242,118 +296,24 @@ public final class ScriptedHarness
 		public Turn announcing(CountDownLatch latch)
 		{
 			requireThat(latch, "latch").isNotNull();
-			return new Turn(events, kind, response, latch);
-		}
-	}
-
-	/**
-	 * A harness process that follows a script.
-	 */
-	private static final class ScriptedProcess implements HarnessProcess
-	{
-		private final List<Turn> script;
-		private final List<String> requests;
-		private final List<CountDownLatch> interrupts = new ArrayList<>();
-		private int turns;
-		private volatile boolean closed;
-
-		/**
-		 * Creates a process.
-		 *
-		 * @param script what the process does for each turn
-		 * @param requests receives each decoded turn request
-		 */
-		private ScriptedProcess(List<Turn> script, List<String> requests)
-		{
-			this.script = List.copyOf(script);
-			this.requests = requests;
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
-		{
-			requireThat(request, "request").isNotBlank();
-			Turn turn;
-			CountDownLatch interrupt = new CountDownLatch(1);
-			synchronized (interrupts)
+			int count = events.size();
+			return withCheckpoint(printed ->
 			{
-				if (turns >= script.size())
-					throw new IOException("The script has no turn " + (turns + 1));
-				requests.add(request);
-				turn = script.get(turns);
-				turns += 1;
-				interrupts.add(interrupt);
-			}
-			StringBuilder output = new StringBuilder();
-			for (String event : turn.events())
-			{
-				output.append(event).append('\n');
-				listener.accept(event);
-			}
-			if (turn.entered() != null)
-				turn.entered().countDown();
-			return switch (turn.kind())
-			{
-				case REPLIES -> new HarnessProcessResult(0, output.toString(), "", true, turn.response(),
-					List.of(turn.response()));
-				case FAILS -> new HarnessProcessResult(1, output.toString(), "scripted failure", false);
-				case REJECTED -> throw new IOException("The harness rejected the turn");
-				case BLOCKS_UNTIL_INTERRUPTED ->
-				{
-					await(interrupt);
-					yield new HarnessProcessResult(0, output.toString(), "", true, "", List.of());
-				}
-			};
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request) throws IOException
-		{
-			return sendTurn(request, _ ->
-			{
+				if (printed == count)
+					latch.countDown();
 			});
 		}
 
-		@Override
-		public void interrupt()
-		{
-			synchronized (interrupts)
-			{
-				if (interrupts.isEmpty())
-					return;
-				interrupts.get(interrupts.size() - 1).countDown();
-			}
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
-		}
-
 		/**
-		 * Waits for a latch.
+		 * Returns a copy of this turn that runs the test's code while the harness works on the turn.
 		 *
-		 * @param latch the latch
-		 * @throws IOException if the thread is interrupted
+		 * @param checkpoint the test's code
+		 * @return the turn
+		 * @throws NullPointerException if {@code checkpoint} is null
 		 */
-		private static void await(CountDownLatch latch) throws IOException
+		public Turn withCheckpoint(Checkpoint checkpoint)
 		{
-			try
-			{
-				latch.await();
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-				throw new IOException("Interrupted while the scripted turn was running", e);
-			}
+			return new Turn(events, kind, messages, exitStatus, checkpoint);
 		}
 	}
 }

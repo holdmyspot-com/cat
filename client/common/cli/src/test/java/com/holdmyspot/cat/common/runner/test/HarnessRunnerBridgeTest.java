@@ -14,8 +14,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -23,16 +23,17 @@ import java.util.concurrent.TimeoutException;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
-import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
-import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.fakes.test.ManualTicker;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -60,8 +61,10 @@ public final class HarnessRunnerBridgeTest
 	@Test
 	public void keepsOneHarnessProcessForMultipleTurns() throws IOException
 	{
+		List<String> received = new CopyOnWriteArrayList<>();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one", "harness event"),
+				Turn.replies("two", "harness event")), received);
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
 		{
@@ -71,8 +74,8 @@ public final class HarnessRunnerBridgeTest
 			HarnessRun result = HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
 				new TestHarnessRunnerScope()), input, output);
 
-			requireThat(process.turns, "turns").isEqualTo(2);
-			requireThat(process.closed, "closed").isTrue();
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
+			requireThat(process.isAlive(), "alive").isFalse();
 			requireThat(result, "result").isEqualTo(run);
 			requireThat(output.toString(), "output").contains("\"type\":\"started\"").
 				contains("\"type\":\"harness_event\"").contains("\"type\":\"turn_completed\"").
@@ -91,7 +94,8 @@ public final class HarnessRunnerBridgeTest
 	public void recordsFinalAssistantResponse() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess("result with an injected \"quote\"");
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("result with an injected \"quote\"")),
+				new ArrayList<>());
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
@@ -118,7 +122,8 @@ public final class HarnessRunnerBridgeTest
 	{
 		try (TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess(List.of("interim with a \"quote\"", "done"));
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies(List.of("interim with a \"quote\"",
+				"done"))), new ArrayList<>());
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
@@ -151,7 +156,7 @@ public final class HarnessRunnerBridgeTest
 	{
 		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(), new ArrayList<>());
 			StringReader input = new StringReader("{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
@@ -175,7 +180,7 @@ public final class HarnessRunnerBridgeTest
 	public void writesRetainedTranscript() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("done")), new ArrayList<>());
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
@@ -201,7 +206,7 @@ public final class HarnessRunnerBridgeTest
 	{
 		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("done")), new ArrayList<>());
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
@@ -242,8 +247,9 @@ public final class HarnessRunnerBridgeTest
 	public void servesTurnsFromInputFile() throws IOException
 	{
 		FileLocks fileLocks = new FileLocks();
+		List<String> received = new CopyOnWriteArrayList<>();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
 			StringReader standardInput = new StringReader(""))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
@@ -263,15 +269,15 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, output);
 
-			requireThat(process.turns, "turns").isEqualTo(2);
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
 			requireThat(output.toString(), "output").contains("\"type\":\"completed\"");
 		}
 	}
 
 	/**
-	 * Verifies that a bridge writes one {@code session_transcript} record with the native transcript's path as soon as
-	 * the session's transcript is known, not before and not twice, and that the receipt lists the transcript copies
-	 * that the session left in the run before the run's runtime files were pruned.
+	 * Verifies that a bridge writes one {@code session_transcript} record with the native transcript's path once the
+	 * process names the session's transcript, not once per turn, and that the receipt lists the transcript copies that
+	 * the session left in the run before the run's runtime files were pruned.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -298,8 +304,13 @@ public final class HarnessRunnerBridgeTest
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, false, null,
 				null, null);
 			JsonMapper json = JsonMapper.builder().build();
+			// The harness writes the session's transcript in its home as it works on the session
+			Files.createDirectories(nativeFile.getParent());
+			Files.writeString(nativeFile, "{}\n");
 
-			try (TranscriptProcess process = new TranscriptProcess(nativeFile, run.sessionTranscripts()))
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")),
+				new ArrayList<>(), nativeFile, new HarnessSessionTranscripts(run.directory().resolve("home"),
+				run.sessionTranscripts(), name -> name.endsWith(".jsonl"))))
 			{
 				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
 					manager, options, json, Yielding.fileReplacer(), input, new StringWriter());
@@ -316,8 +327,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a bridge whose options did not ask for session transcripts writes no record for them and lists none
-	 * in the receipt, even if the process reports a transcript path.
+	 * Verifies that a bridge whose options did not ask for session transcripts, and whose process therefore keeps none,
+	 * writes no record for them and lists none in the receipt.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -327,7 +338,7 @@ public final class HarnessRunnerBridgeTest
 		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			FakeProcess process = new FakeProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("done")), new ArrayList<>());
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
@@ -369,7 +380,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
-			try (FakeProcess process = new FakeProcess();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(), new ArrayList<>());
 				StringReader input = new StringReader("{\"type\":\"unknown\"}\n"))
 			{
 				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
@@ -403,7 +414,8 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
-			try (FailedProcess process = new FailedProcess();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.exits(143, "partial harness event")),
+				new ArrayList<>());
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 					"{\"type\":\"complete\"}\n"))
 			{
@@ -432,13 +444,14 @@ public final class HarnessRunnerBridgeTest
 	@Test(timeOut = 10_000)
 	public void reportsFailedTurnWhenItEnds() throws IOException
 	{
-		try (FailedProcess process = new FailedProcess())
+		try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.exits(143, "partial harness event")),
+			new ArrayList<>()))
 		{
 			requireTurnFailureReported(process, "exit status 143");
 		}
-		try (RejectingProcess process = new RejectingProcess())
+		try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.rejected()), new ArrayList<>()))
 		{
-			requireTurnFailureReported(process, "the harness rejected the turn");
+			requireTurnFailureReported(process, "The harness rejected the turn");
 		}
 	}
 
@@ -497,7 +510,8 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
-			try (CleanExitProcess process = new CleanExitProcess();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.exits(0, "partial harness event")),
+				new ArrayList<>());
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 					"{\"type\":\"complete\"}\n"))
 			{
@@ -526,9 +540,11 @@ public final class HarnessRunnerBridgeTest
 	@Test(timeOut = 30_000)
 	public void stopsRunningTurnWhenInputFails() throws IOException, InterruptedException
 	{
+		CountDownLatch started = new CountDownLatch(1);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			HangingProcess process = new HangingProcess();
-			FailingReader input = new FailingReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", process.started))
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted().announcing(started)),
+				new ArrayList<>());
+			FailingReader input = new FailingReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", started))
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			CompletableFuture<HarnessRun> serving = new CompletableFuture<>();
@@ -560,10 +576,11 @@ public final class HarnessRunnerBridgeTest
 			}
 			finally
 			{
-				process.release();
+				// Ends the turn, so that a test that failed does not leave a thread waiting
+				process.interrupt();
 			}
 
-			requireThat(process.closed, "closed").isTrue();
+			requireThat(process.isAlive(), "alive").isFalse();
 		}
 	}
 
@@ -579,10 +596,12 @@ public final class HarnessRunnerBridgeTest
 	@Test(timeOut = 30_000)
 	public void stopsRunningTurnWhenInputEnds() throws IOException, InterruptedException
 	{
+		CountDownLatch started = new CountDownLatch(1);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			HangingProcess process = new HangingProcess();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted().announcing(started)),
+				new ArrayList<>());
 			FailingReader input = FailingReader.ending("{\"type\":\"turn\",\"prompt\":\"first\"}\n",
-				process.started))
+				started))
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			CompletableFuture<HarnessRun> serving = new CompletableFuture<>();
@@ -614,26 +633,31 @@ public final class HarnessRunnerBridgeTest
 			}
 			finally
 			{
-				process.release();
+				// Ends the turn, so that a test that failed does not leave a thread waiting
+				process.interrupt();
 			}
 
-			requireThat(process.closed, "closed").isTrue();
+			requireThat(process.isAlive(), "alive").isFalse();
 		}
 	}
 
 	/**
-	 * Verifies a test can steer and interrupt an active turn before asking the bridge to complete the session.
+	 * Verifies a client can steer and interrupt an active turn before asking the bridge to complete the session. The
+	 * client sends its controls once the harness has printed the turn's first line.
 	 *
 	 * @throws IOException if the bridge protocol fails
 	 */
-	@Test
+	@Test(timeOut = 10_000)
 	public void acceptsActiveTurnControls() throws IOException
 	{
+		List<String> received = new CopyOnWriteArrayList<>();
+		CountDownLatch printed = new CountDownLatch(1);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			BlockingProcess process = new BlockingProcess();
-			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
-				"{\"type\":\"steer\",\"prompt\":\"change course\"}\n{\"type\":\"interrupt\"}\n" +
-				"{\"type\":\"complete\"}\n"))
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted("harness line").
+				announcing(printed)), received);
+			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", printed,
+				"{\"type\":\"steer\",\"prompt\":\"change course\"}\n{\"type\":\"interrupt\"}\n",
+				new CountDownLatch(1), "{\"type\":\"complete\"}\n"))
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
@@ -641,16 +665,15 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
-			requireThat(process.steers, "steers").isEqualTo(1);
-			requireThat(process.interrupts, "interrupts").isEqualTo(1);
+			requireThat(received, "received").isEqualTo(List.of("first", "change course"));
 			requireThat(output.toString(), "output").contains("\"type\":\"steered\"").
 				contains("\"type\":\"interrupted\"").contains("\"type\":\"turn_completed\"");
 		}
 	}
 
 	/**
-	 * Verifies an interrupt that reaches the bridge after its turn ended leaves the harness untouched and the bridge
-	 * keeps serving later requests. The bridge's turn thread is held right after it writes {@code turn_completed}
+	 * Verifies an interrupt that reaches the bridge after its turn ended is ignored and the bridge keeps serving later
+	 * requests. The bridge's turn thread is held right after it writes {@code turn_completed}
 	 * until the bridge has handled the interrupt, so the interrupt reaches the bridge while the thread that ran the
 	 * turn has not yet returned.
 	 *
@@ -662,8 +685,9 @@ public final class HarnessRunnerBridgeTest
 		// Requirement: R-E10, R-E15
 		CountDownLatch firstTurnCompleted = new CountDownLatch(1);
 		CountDownLatch interruptHandled = new CountDownLatch(1);
+		List<String> received = new CopyOnWriteArrayList<>();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			CountingInterruptProcess process = new CountingInterruptProcess(interruptHandled);
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
 			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", firstTurnCompleted,
 				"{\"type\":\"interrupt\"}\n", interruptHandled,
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
@@ -674,8 +698,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
-			requireThat(process.interrupts, "interrupts").isEqualTo(0);
-			requireThat(process.turns, "turns").isEqualTo(2);
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
 			requireThat(output.toString(), "output").doesNotContain("\"type\":\"interrupted\"").
 				contains("\"type\":\"completed\"");
 		}
@@ -716,8 +739,21 @@ public final class HarnessRunnerBridgeTest
 			ticker.tick();
 			ticker.tick();
 		};
+		// The turn stays quiet while the test moves the clock and runs the heartbeat, prints one harness event, stays
+		// quiet again and then completes
+		Turn.Checkpoint quietTurn = printed ->
+		{
+			if (printed == 0)
+			{
+				quiet(clock, ticker, 29);
+				quiet(clock, ticker, 1);
+			}
+			quiet(clock, ticker, 29);
+			quiet(clock, ticker, 1);
+		};
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			QuietProcess process = new QuietProcess(clock, ticker);
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("done", "harness line").
+				withCheckpoint(quietTurn)), new ArrayList<>());
 			Reader input = new QuietReader(quietBetweenTurns, "{\"type\":\"turn\",\"prompt\":\"first\"}\n",
 				turnCompleted, "{\"type\":\"complete\"}\n");
 			Writer output = new SignalingWriter("\"type\":\"turn_completed\"", turnCompleted, new CountDownLatch(0)))
@@ -746,66 +782,16 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * A process whose turn stays quiet while the test moves the clock and runs the heartbeat, prints one harness
-	 * event, stays quiet again and then completes.
+	 * Moves the clock forward and runs the heartbeat.
+	 *
+	 * @param clock   the bridge's clock
+	 * @param ticker  the bridge's heartbeat
+	 * @param seconds how far to move the clock
 	 */
-	private static final class QuietProcess implements HarnessProcess
+	private static void quiet(ManualClock clock, ManualTicker ticker, int seconds)
 	{
-		private final ManualClock clock;
-		private final ManualTicker ticker;
-
-		/**
-		 * Creates a process.
-		 *
-		 * @param clock  the bridge's clock
-		 * @param ticker the bridge's heartbeat
-		 */
-		private QuietProcess(ManualClock clock, ManualTicker ticker)
-		{
-			this.clock = clock;
-			this.ticker = ticker;
-		}
-
-		/**
-		 * Moves the clock forward and runs the heartbeat.
-		 *
-		 * @param seconds how far to move the clock
-		 */
-		private void quiet(int seconds)
-		{
-			clock.advance(Duration.ofSeconds(seconds));
-			ticker.tick();
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			throw new AssertionError("The bridge relays harness events");
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
-		{
-			quiet(29);
-			quiet(1);
-			quiet(29);
-			quiet(1);
-			listener.accept("harness line");
-			quiet(29);
-			quiet(1);
-			return new HarnessProcessResult(0, "harness line\n", "", true, "done", List.of("done"));
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return true;
-		}
-
-		@Override
-		public void close()
-		{
-		}
+		clock.advance(Duration.ofSeconds(seconds));
+		ticker.tick();
 	}
 
 	/**
@@ -986,364 +972,6 @@ public final class HarnessRunnerBridgeTest
 			{
 				Thread.currentThread().interrupt();
 			}
-		}
-	}
-
-	/**
-	 * A process that completes each turn immediately and counts interrupt requests.
-	 */
-	private static final class CountingInterruptProcess implements HarnessProcess
-	{
-		private final CountDownLatch interrupted;
-		private boolean closed;
-		private int turns;
-		private int interrupts;
-
-		/**
-		 * Creates a process.
-		 *
-		 * @param interrupted opened when the process receives an interrupt
-		 */
-		private CountingInterruptProcess(CountDownLatch interrupted)
-		{
-			this.interrupted = interrupted;
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			assert request != null;
-			turns += 1;
-			return new HarnessProcessResult(0, request + "\n", "");
-		}
-
-		@Override
-		public void interrupt()
-		{
-			interrupts += 1;
-			interrupted.countDown();
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
-		}
-	}
-
-	/**
-	 * A harness process that learns its session's transcript while serving its first turn and, when closed, copies the
-	 * transcript into the run as a process that was asked to keep session transcripts does.
-	 */
-	private static final class TranscriptProcess implements HarnessProcess
-	{
-		private final Path nativeTranscript;
-		private final Path copies;
-		private boolean known;
-		private boolean closed;
-
-		/**
-		 * Creates the process.
-		 *
-		 * @param nativeTranscript where the harness writes the session's transcript
-		 * @param copies the directory that receives the copy when the process closes
-		 */
-		private TranscriptProcess(Path nativeTranscript, Path copies)
-		{
-			this.nativeTranscript = nativeTranscript;
-			this.copies = copies;
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request) throws IOException
-		{
-			assert request != null;
-			Files.createDirectories(nativeTranscript.getParent());
-			Files.writeString(nativeTranscript, "{}\n");
-			known = true;
-			return new HarnessProcessResult(0, request, "", true, "done", List.of("done"));
-		}
-
-		@Override
-		public Optional<Path> sessionTranscript()
-		{
-			if (!known)
-				return Optional.empty();
-			return Optional.of(nativeTranscript);
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close() throws IOException
-		{
-			if (closed)
-				return;
-			closed = true;
-			Files.createDirectories(copies);
-			Files.copy(nativeTranscript, copies.resolve(nativeTranscript.getFileName()));
-		}
-	}
-
-	/**
-	 * A deterministic persistent harness process.
-	 */
-	private static final class FakeProcess implements HarnessProcess
-	{
-		/**
-		 * Indicates whether the bridge closed this process.
-		 */
-		private boolean closed;
-		/**
-		 * Every completed request in bridge order.
-		 */
-		private final List<String> requests = new ArrayList<>();
-		/**
-		 * Final assistant responses returned in turn order.
-		 */
-		private final List<String> assistantResponses;
-		private List<String> assistantMessages;
-		/**
-		 * The number of requests accepted by this process.
-		 */
-		private int turns;
-
-		/**
-		 * Creates a fake process with its terminal assistant responses.
-		 *
-		 * @param assistantMessages responses returned in request order
-		 */
-		private FakeProcess(String... assistantMessages)
-		{
-			this.assistantResponses = List.of(assistantMessages);
-		}
-
-		/**
-		 * Creates a fake supplying every message of one completed turn.
-		 *
-		 * @param assistantMessages the ordered interim and final messages
-		 */
-		private FakeProcess(List<String> assistantMessages)
-		{
-			this.assistantMessages = assistantMessages;
-			this.assistantResponses = List.of(assistantMessages.getLast());
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			assert request != null;
-			int responseIndex = turns;
-			turns += 1;
-			requests.add(request);
-			String response = "";
-			if (responseIndex < assistantResponses.size())
-				response = assistantResponses.get(responseIndex);
-			if (assistantMessages != null)
-				return new HarnessProcessResult(0, request, "", true, response, assistantMessages);
-			return new HarnessProcessResult(0, request, "", true, response, List.of(response));
-		}
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-		@Override
-		public void close()
-		{
-			closed = true;
-		}
-	}
-
-	/**
-	 * A harness process that has ended before returning a terminal turn result.
-	 */
-	private static final class FailedProcess implements HarnessProcess
-	{
-		private boolean closed;
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			assert request != null;
-			return new HarnessProcessResult(143, "partial harness event\n", "terminated before completion");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
-		}
-	}
-
-	/**
-	 * A harness process that rejects its turn.
-	 */
-	private static final class RejectingProcess implements HarnessProcess
-	{
-		private boolean closed;
-
-		@Override
-		public HarnessProcessResult sendTurn(String request) throws IOException
-		{
-			assert request != null;
-			throw new IOException("the harness rejected the turn");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
-		}
-	}
-
-	/**
-	 * A process that exits cleanly before emitting a terminal event for its turn.
-	 */
-	private static final class CleanExitProcess implements HarnessProcess
-	{
-		private boolean closed;
-
-		@Override
-		public HarnessProcessResult sendTurn(String request)
-		{
-			assert request != null;
-			return new HarnessProcessResult(0, "partial harness event\n", "ended before completion");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
-		}
-	}
-
-	/**
-	 * A process whose first turn remains active until the bridge sends an interruption.
-	 */
-	private static final class BlockingProcess implements HarnessProcess
-	{
-		private final CountDownLatch interrupted = new CountDownLatch(1);
-		private boolean closed;
-		private int steers;
-		private int interrupts;
-
-		@Override
-		public HarnessProcessResult sendTurn(String request) throws IOException
-		{
-			assert request != null;
-			try
-			{
-				interrupted.await();
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-				throw new IOException("Interrupted while waiting for bridge control", e);
-			}
-			return new HarnessProcessResult(0, "interrupted\n", "");
-		}
-
-		@Override
-		public void steer(String request)
-		{
-			assert request != null;
-			steers += 1;
-		}
-
-		@Override
-		public void interrupt()
-		{
-			interrupts += 1;
-			interrupted.countDown();
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
-			interrupted.countDown();
-		}
-	}
-
-	/**
-	 * A process whose turn does not end until the thread that runs it is interrupted.
-	 */
-	private static final class HangingProcess implements HarnessProcess
-	{
-		private final CountDownLatch started = new CountDownLatch(1);
-		private final CountDownLatch released = new CountDownLatch(1);
-		private volatile boolean closed;
-
-		/**
-		 * Lets the turn end, so that a test that failed does not leave a thread waiting.
-		 */
-		private void release()
-		{
-			released.countDown();
-		}
-
-		@Override
-		public HarnessProcessResult sendTurn(String request) throws IOException
-		{
-			assert request != null;
-			started.countDown();
-			try
-			{
-				released.await();
-			}
-			catch (InterruptedException e)
-			{
-				Thread.currentThread().interrupt();
-				throw new IOException("Interrupted while the turn was running", e);
-			}
-			return new HarnessProcessResult(0, "", "");
-		}
-
-		@Override
-		public boolean isAlive()
-		{
-			return !closed;
-		}
-
-		@Override
-		public void close()
-		{
-			closed = true;
 		}
 	}
 

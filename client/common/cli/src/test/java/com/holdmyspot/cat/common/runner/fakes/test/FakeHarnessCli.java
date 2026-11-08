@@ -42,6 +42,7 @@ import java.util.stream.Stream;
  * Explicit exit, output EOF, waiting, and termination model the generic JDK
  * <a href="https://docs.oracle.com/en/java/javase/27/docs/api/java.base/java/lang/Process.html">Process contract</a>:
  * output EOF and process termination are separate observations, and exit status is unavailable while alive.
+ * {@link #failOutput(String)} models the I/O error that the JDK's {@code InputStream.read} reports.
  * The delayed-exit option makes waiting observable without asserting a harness-specific delay. Successful exit status
  * 0 also appears in {@code docs/changelog/1.0/captures/base-codex-live/run.json} (codex-cli 0.147.0) and
  * {@code base-claude-live/run.json} (Claude Code 2.1.220), with versions named in the captures' README.
@@ -52,6 +53,11 @@ public final class FakeHarnessCli extends Process
 	 * Chunks of the child's standard output; an empty chunk marks the end of the stream.
 	 */
 	private final BlockingQueue<byte[]> standardOutput = new LinkedBlockingQueue<>();
+	/**
+	 * The chunk that marks where reading the child's standard output fails; compared by identity.
+	 */
+	private final byte[] readFailure = new byte[1];
+	private volatile String readFailureMessage = "";
 	private final List<String> requests = new ArrayList<>();
 	private final Consumer<String> requestHandler;
 	private final int exitStatus;
@@ -104,6 +110,19 @@ public final class FakeHarnessCli extends Process
 	public void printError(String text)
 	{
 		standardError = text.getBytes(UTF_8);
+	}
+
+	/**
+	 * Makes reading the child's standard output fail with an {@link IOException} that carries a message, once the
+	 * caller has read the lines emitted before this call. Reads after that failure report the end of the stream. The
+	 * child stays alive.
+	 *
+	 * @param message the failure's message
+	 */
+	public void failOutput(String message)
+	{
+		readFailureMessage = message;
+		standardOutput.add(readFailure);
 	}
 
 	/**
@@ -276,6 +295,12 @@ public final class FakeHarnessCli extends Process
 					throw new IOException("Interrupted while waiting for child output", e);
 				}
 				position = 0;
+				if (current == readFailure)
+				{
+					current = new byte[0];
+					ended = true;
+					throw new IOException(readFailureMessage);
+				}
 				if (current.length == 0)
 					ended = true;
 			}
