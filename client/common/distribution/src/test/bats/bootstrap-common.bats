@@ -382,6 +382,9 @@ v2.0" ''; do
 	[[ "${agent_paragraph}" == *"do not download, verify, extract or run \`cat.sh\`, \`cat.ps1\`, \`SHA256SUMS.txt\`"* ]]
 	[[ "${agent_paragraph}" == *"Reply at once with the entry command below"* ]]
 	[[ "${agent_paragraph}" == *"prefixed with \`! \`"* ]]
-	[[ "${agent_paragraph}" == *"${SINGLE_COMMAND_URL} | HOME=/path/to/session/home sh -s -- --harness claude"* ]]
+	[[ "${agent_paragraph}" == *"${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+	[[ "${agent_paragraph}" == *"Add an assignment after the pipe, before \`sh\`, in only these cases:"* ]]
+	[[ "${agent_paragraph}" == *"\`HOME=<your session's HOME>\`, when your session's \`HOME\` is not the account's home folder"* ]]
+	[[ "${agent_paragraph}" == *"Write no other variable."* ]]
 	[[ "${agent_paragraph}" == *"check the installed plugin and its version in your session's harness home"* ]]
 }
