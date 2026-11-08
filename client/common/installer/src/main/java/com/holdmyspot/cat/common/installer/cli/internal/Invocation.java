@@ -99,7 +99,7 @@ public final class Invocation
 	private String resolvedHarness;
 	/**
 	 * The user's home directory, which the environment names in the platform's home variable, as it does for the
-	 * runtime; known once install has checked that the environment sets it.
+	 * runtime; known once install or {@code status --verbose} has checked that the environment sets it.
 	 */
 	private Path userHome;
 	/**
@@ -311,7 +311,13 @@ public final class Invocation
 				UpdateResult status = engine.status();
 				ObjectNode object = encode(status);
 				if (arguments.verbose() && status.version().isPresent())
+				{
+					// The report abbreviates the user's home folder in the entries' paths
+					Optional<UpdateResult> homeRefusal = readUserHome(own);
+					if (homeRefusal.isPresent())
+						return print(homeRefusal.get(), arguments, locations);
 					addRecordedEntries(object, locations, managed.home());
+				}
 				return print(status, object, arguments, locations);
 			}
 		}
@@ -328,7 +334,7 @@ public final class Invocation
 	 * @param object    the status's encoding, which receives the entries
 	 * @param locations the installation's locations
 	 * @param home      the installation's harness home
-	 * @throws IOException if the record cannot be read, or the user's home directory cannot be determined
+	 * @throws IOException if the record cannot be read
 	 */
 	private void addRecordedEntries(ObjectNode object, Locations locations, Path home) throws IOException
 	{
@@ -339,8 +345,36 @@ public final class Invocation
 		HarnessIntegration integration = integrations.stream().
 			filter(provider -> provider.harness().equals(harness)).findFirst().orElseThrow();
 		Path installer = PluginInstall.installer(locations.image(), platform.isWindows());
-		reportedEntries = new ReportedEntries(integration.describeEntries(recorded, installer), home,
-			platform.homeDirectory(platform.environment(environment)), installer, true);
+		reportedEntries = new ReportedEntries(integration.describeEntries(recorded, installer), home, userHome,
+			installer, true);
+	}
+
+	/**
+	 * Reads the user's home folder from the environment into {@link #userHome}.
+	 *
+	 * @param harness the harness that the operation names
+	 * @return the refusal if the environment does not set the platform's home variable to an absolute path
+	 */
+	private Optional<UpdateResult> readUserHome(String harness)
+	{
+		String refusal;
+		try
+		{
+			Path home = platform.homeDirectory(platform.environment(environment));
+			if (home.isAbsolute())
+			{
+				userHome = home;
+				return Optional.empty();
+			}
+			refusal = home + " is not an absolute path";
+		}
+		catch (IOException e)
+		{
+			refusal = e.getMessage();
+		}
+		return Optional.of(failure(Result.REFUSED, harness, "The user's home folder is wrong: " + refusal +
+			". CAT takes it from " + platform.homeVariable() + " in the environment, as the runtime does; set it to " +
+			"an absolute path and run the command again.", List.of()));
 	}
 
 	/**
@@ -373,23 +407,9 @@ public final class Invocation
 	 */
 	private int install(Arguments arguments) throws IOException, TrustException
 	{
-		String refusal = null;
-		try
-		{
-			userHome = platform.homeDirectory(platform.environment(environment));
-			if (!userHome.isAbsolute())
-				refusal = userHome + " is not an absolute path";
-		}
-		catch (IOException e)
-		{
-			refusal = e.getMessage();
-		}
-		if (refusal != null)
-		{
-			return print(failure(Result.REFUSED, arguments.harness(), "The user's home folder is wrong: " + refusal +
-				". CAT takes it from " + platform.homeVariable() + " in the environment, as the runtime does; set it " +
-				"to an absolute path and run the command again.", List.of()), arguments, null);
-		}
+		Optional<UpdateResult> homeRefusal = readUserHome(arguments.harness());
+		if (homeRefusal.isPresent())
+			return print(homeRefusal.get(), arguments, null);
 		Locations locations;
 		try
 		{

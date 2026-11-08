@@ -690,6 +690,44 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Status with {@code --verbose}, whose report abbreviates the user's home folder, refuses a {@code HOME} that is not
+	 * an absolute path as install does, while status without it reports the installation.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void verboseStatusRefusesRelativeHome() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-verbose-home-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.createDirectories(installation.home.resolve("live"));
+			Files.writeString(installation.home.resolve("live/version"), "1.2");
+			PermissionRecord.add(InstallerState.of(installation.data, "harness-a").permissions(),
+				Map.of("settings.json#sandbox.excludedCommands", List.of("first entry")));
+			Map<String, String> environment = Map.of("HOME", "relative-home");
+
+			Run install = installation.run(environment, List.of(new LiveProvider()), new RecordingIntegration(),
+				"install", "--harness", "harness-a");
+			Run verbose = installation.run(environment, List.of(new LiveProvider()), new RecordingIntegration(),
+				"status", "--harness", "harness-a", "--verbose");
+			Run plain = installation.run(environment, List.of(new LiveProvider()), new RecordingIntegration(),
+				"status", "--harness", "harness-a");
+
+			String refusal = "The user's home folder is wrong: relative-home is not an absolute path. CAT takes it " +
+				"from HOME in the environment, as the runtime does; set it to an absolute path and run the command again.";
+			requireThat(install.status, "install").withContext(install.output, "output").isEqualTo(3);
+			requireThat(install.result().path("message").stringValue(), "installMessage").isEqualTo(refusal);
+			requireThat(verbose.status, "verbose").withContext(verbose.output, "output").isEqualTo(3);
+			requireThat(verbose.result().path("result").stringValue(), "result").isEqualTo("refused");
+			requireThat(verbose.result().path("message").stringValue(), "verboseMessage").isEqualTo(refusal);
+			requireThat(plain.status, "plain").withContext(plain.output, "output").isEqualTo(0);
+		}
+	}
+
+	/**
 	 * The installer has no update operation, which install performs: the command is refused as a usage error and
 	 * changes nothing.
 	 *
