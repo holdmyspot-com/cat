@@ -13,22 +13,30 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Reads the sandbox that Codex 0.160.0 resolved for the latest turn of a thread, from the {@code permission_profile}
  * of the last {@code turn_context} record in the thread's rollout file.
  * <p>
  * The reader refuses a record whose vocabulary it does not know, because an unknown entry could deny what the reader
- * would otherwise allow.
+ * would otherwise allow. It also reads the shell commands that the thread's model asked Codex to run.
  */
 public final class CodexRollout
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 	private static final String FIX = "Update CAT to a release that supports this Codex release, then start a new " +
 		"Codex session";
+	/**
+	 * The {@code cmd} string of a {@code tools.exec_command} call in a script, as a JSON string.
+	 */
+	private static final Pattern SCRIPT_COMMAND = Pattern.compile("\\bcmd\\s*:\\s*(\"(?:[^\"\\\\]|\\\\.)*\")");
 
 	/**
 	 * Prevents instantiation.
@@ -99,6 +107,147 @@ public final class CodexRollout
 	{
 		return latestTurnPayload(rollout).map(payload -> payload.path("active_permission_profile").path("id")).
 			filter(JsonNode::isString).map(JsonNode::stringValue);
+	}
+
+	/**
+	 * Returns the reads that a thread's latest turn denies, as its {@code permission_profile} entries name them: the
+	 * path of each denied path, and the pattern of each denied glob pattern, with the project roots' prefix replaced
+	 * by each workspace root. Unlike {@link #latestTurn(Path, Map, Path)}, a pattern is named whether or not it
+	 * matches an existing path.
+	 *
+	 * @param rollout     the rollout file
+	 * @param environment the environment of the session's Codex process
+	 * @param slashTmp    the folder that Codex's {@code slash_tmp} special path names, or {@code null} if the machine
+	 *                    has none
+	 * @return the denied paths and patterns, in the profile's order, or an empty list if the rollout has no turn yet
+	 *   or its latest turn's filesystem is not restricted
+	 * @throws IOException   if the file cannot be read
+	 * @throws PolicyRefusal if the latest turn's record cannot be parsed or holds a value that the reader does not
+	 *                       know
+	 */
+	public static List<String> latestDeniedReads(Path rollout, Map<String, String> environment, Path slashTmp)
+		throws IOException, PolicyRefusal
+	{
+		Optional<JsonNode> payload = latestTurnPayload(rollout);
+		if (payload.isEmpty())
+			return List.of();
+		JsonNode fileSystem = payload.get().path("permission_profile").path("file_system");
+		if (!fileSystem.path("type").asString("").equals("restricted"))
+			return List.of();
+		List<Path> workspaceRoots = new ArrayList<>();
+		for (JsonNode root : payload.get().path("workspace_roots"))
+			workspaceRoots.add(absolutePath(rollout, root.asString("")));
+		List<String> denied = new ArrayList<>();
+		for (JsonNode entry : fileSystem.path("entries"))
+		{
+			if (!entry.path("access").asString("").equals("deny"))
+				continue;
+			JsonNode path = entry.path("path");
+			switch (path.path("type").asString(""))
+			{
+				case "path" -> denied.add(absolutePath(rollout, path.path("path").asString("")).toString());
+				case "glob_pattern" -> denied.addAll(projectRootPatterns(path.path("pattern").asString(""),
+					workspaceRoots));
+				default ->
+				{
+					for (Path special : specialPaths(rollout, path.path("value"), workspaceRoots, environment, slashTmp))
+						denied.add(special.toString());
+				}
+			}
+		}
+		return denied;
+	}
+
+	/**
+	 * Returns the latest shell command that a thread's model asked Codex to run whose text contains some text. A
+	 * command is the {@code cmd} or {@code command} argument of a {@code function_call}, or the {@code cmd} string of
+	 * each {@code tools.exec_command} call in the script of a {@code custom_tool_call}. A {@code command} that is an
+	 * argument list is the script of a shell's {@code -c} or {@code -lc}, or else its arguments joined by spaces.
+	 *
+	 * @param rollout the rollout file
+	 * @param text    the text
+	 * @return the command, or empty if no call holds one that contains {@code text}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the file cannot be read
+	 */
+	public static Optional<String> latestCommandContaining(Path rollout, String text) throws IOException
+	{
+		requireThat(rollout, "rollout").isNotNull();
+		requireThat(text, "text").isNotNull();
+		String latest = null;
+		try (BufferedReader reader = Files.newBufferedReader(rollout))
+		{
+			for (String line = reader.readLine(); line != null; line = reader.readLine())
+			{
+				if (!line.contains("\"response_item\"") || !line.contains(text))
+					continue;
+				for (String command : commands(line))
+				{
+					if (command.contains(text))
+						latest = command;
+				}
+			}
+		}
+		return Optional.ofNullable(latest);
+	}
+
+	/**
+	 * Returns the shell commands of one rollout record, as {@link #latestCommandContaining(Path, String)} reads them.
+	 *
+	 * @param line the record's line
+	 * @return the commands, in order, or an empty list if the record is no call or cannot be parsed
+	 */
+	private static List<String> commands(String line)
+	{
+		List<String> commands = new ArrayList<>();
+		try
+		{
+			JsonNode payload = JSON.readTree(line).path("payload");
+			switch (payload.path("type").asString(""))
+			{
+				case "function_call" ->
+				{
+					JsonNode arguments = JSON.readTree(payload.path("arguments").asString("{}"));
+					JsonNode command = arguments.path("cmd");
+					if (command.isMissingNode())
+						command = arguments.path("command");
+					if (command.isString())
+						commands.add(command.stringValue());
+					else if (command.isArray())
+						commands.add(argumentList(command));
+				}
+				case "custom_tool_call" ->
+				{
+					Matcher matcher = SCRIPT_COMMAND.matcher(payload.path("input").asString(""));
+					while (matcher.find())
+						commands.add(JSON.readTree(matcher.group(1)).asString(""));
+				}
+				default ->
+				{
+				}
+			}
+		}
+		catch (JacksonException _)
+		{
+			// A record that cannot be parsed names no command
+		}
+		return commands;
+	}
+
+	/**
+	 * Returns the command of an argument list.
+	 *
+	 * @param arguments the argument list
+	 * @return the script of a shell's {@code -c} or {@code -lc}, or else the arguments joined by spaces
+	 */
+	private static String argumentList(JsonNode arguments)
+	{
+		List<String> words = new ArrayList<>();
+		for (JsonNode argument : arguments)
+			words.add(argument.asString(""));
+		if (words.size() == 3 && (words.get(1).equals("-c") || words.get(1).equals("-lc")))
+			return words.get(2);
+		return String.join(" ", words);
 	}
 
 	/**

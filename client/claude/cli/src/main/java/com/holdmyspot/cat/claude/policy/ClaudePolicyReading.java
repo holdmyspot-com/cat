@@ -16,9 +16,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * @param portLimitedDomains the allowed domains that the policy leaves out because they limit a host to one port, as
  *                           the settings spell them, such as {@code 127.0.0.1:2455}: a session that CAT bounds by the
  *                           policy reaches a host on every port
+ * @param dontAsk            {@code true} if the session started in the {@code dontAsk} permission mode, which its
+ *                           command line or its settings name
  */
 public record ClaudePolicyReading(ParentPolicy policy, String processStart, Set<Path> sources,
-	Set<String> portLimitedDomains)
+	Set<String> portLimitedDomains, boolean dontAsk)
 {
 	/**
 	 * Creates a reading.
@@ -27,6 +29,7 @@ public record ClaudePolicyReading(ParentPolicy policy, String processStart, Set<
 	 * @param processStart       the {@link ProcessDescription#start() start} of the session's Claude Code process
 	 * @param sources            the settings files that existed when CAT read the policy
 	 * @param portLimitedDomains the allowed domains that the policy leaves out because they limit a host to one port
+	 * @param dontAsk            {@code true} if the session started in the {@code dontAsk} permission mode
 	 * @throws NullPointerException if any of the arguments are null, or a set contains null
 	 */
 	public ClaudePolicyReading

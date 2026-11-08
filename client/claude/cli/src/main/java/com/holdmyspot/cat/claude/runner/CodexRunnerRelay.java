@@ -97,7 +97,7 @@ public final class CodexRunnerRelay
 			return DirectLaunch.boundArguments(CODEX_ID, args, plugin, sessions,
 				project -> ToolScope.forSession(project, environment, SessionHarness.installed(), scope.waiting()),
 				DirectLaunch.runnerNeeds(starter, cleanup), () -> ClaudeDirectLaunch.sandboxed(
-					plugin.resolve(PluginDirectory.BIN).resolve("codex-runner")), cleanup);
+					plugin.resolve(PluginDirectory.BIN).resolve("codex-runner"), environment), cleanup);
 		};
 	}
 

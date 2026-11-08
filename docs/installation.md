@@ -522,18 +522,20 @@ a terminal, starts the new session itself, inside that harness's own sandbox, wi
 runner launcher run by the harness whose plugin did not provide it starts nothing and names the plugin to use instead.
 
 When the launcher finds that it runs inside the session's sandbox, it starts nothing and exits with status 2. Its
-message begins "CAT cannot start the session:" and says why:
+message begins "CAT cannot start the session:" and names each of these causes that it finds, or lists them all when it
+can find none:
 
 - A session that was already running when you installed or updated CAT has no exception for the launcher. Start a new
-	session and run the task there.
+	session and run the task there. When Claude Code's user settings or Codex's rules folder hold no exception for the
+	launcher at all, the message names that file or folder: install CAT again first.
 - A command that does not match the exception, such as one that runs the launcher by another path, behind a variable
 	assignment or through a pipe, stays sandboxed. Run the launcher's absolute path, which the message names, as a
 	command of its own.
 - A Claude Code session in `dontAsk` mode keeps the command sandboxed. Start a session in another mode.
 - Codex 0.160.0 runs a command that a rule allows outside its sandbox only when the session's filesystem permissions
 	deny no reads ([openai/codex#38318](https://github.com/openai/codex/issues/38318)). When your permissions profile
-	denies any read, the message names the profile and each denied entry. Remove those entries and start a new Codex
-	session, or start the session from a terminal.
+	denies any read, the message names the profile and each denied path and pattern. Remove those entries and start a
+	new Codex session, or start the session from a terminal.
 
 The launcher also refuses, with status 2, a session that it cannot identify: one whose environment names no session
 or thread ID, whose transcript it finds nowhere or more than once, or whose transcript the session's commands could

@@ -1,25 +1,31 @@
 package com.holdmyspot.cat.codex.runner;
 
+import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.policy.CodexCommandSession;
 import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexRollout;
-import com.holdmyspot.cat.codex.policy.CodexSandbox;
 import com.holdmyspot.cat.codex.policy.CodexSession;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
-import com.holdmyspot.cat.codex.policy.PermissionEntry;
 import com.holdmyspot.cat.common.runner.DirectLaunch;
+import com.holdmyspot.cat.common.runner.LauncherSpelling;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -35,6 +41,10 @@ public final class CodexDirectLaunch
 	 * The name of the harness, as its users know it.
 	 */
 	private static final String HARNESS_NAME = "Codex";
+	/**
+	 * Writes a launcher's path as the JSON string that Codex's rules hold.
+	 */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Prevents instantiation.
@@ -136,8 +146,10 @@ public final class CodexDirectLaunch
 	/**
 	 * Returns why a runner launcher that a Codex session runs inside its sandbox is refused. When the latest turn of
 	 * the thread that runs it denies any read, the reason says that Codex keeps a command that a rule allows inside
-	 * its sandbox while the session's permissions deny a read, and names the profile and each denied entry.
-	 * Otherwise, it names the causes that keep the launcher sandboxed and the path to run.
+	 * its sandbox while the session's permissions deny a read, and names the profile and each denied path and
+	 * pattern. Otherwise, it names each cause that it finds: no rule in Codex's rules folder names the launcher, or the
+	 * thread's latest command that names the launcher's file name names it by another path. When it finds neither, it
+	 * lists the causes that keep the launcher sandboxed. Each reason names the path to run.
 	 *
 	 * @param launcher    the absolute path of the launcher
 	 * @param environment the command's environment
@@ -152,21 +164,20 @@ public final class CodexDirectLaunch
 		requireThat(launcher, "launcher").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(accountHome, "accountHome").isNotNull();
-		Optional<CodexSandbox> turn;
-		Optional<String> profile;
+		List<String> denied = List.of();
+		Optional<String> profile = Optional.empty();
+		Optional<String> command = Optional.empty();
 		try
 		{
 			CodexCommandSession found = CodexCommandSession.find(environment, accountHome, List.of());
-			turn = CodexRollout.latestTurn(found.rollout(), environment, slashTmp);
+			command = CodexRollout.latestCommandContaining(found.rollout(), launcher.getFileName().toString());
+			denied = CodexRollout.latestDeniedReads(found.rollout(), environment, slashTmp);
 			profile = CodexRollout.latestProfile(found.rollout());
 		}
 		catch (IOException | PolicyRefusal _)
 		{
-			turn = Optional.empty();
-			profile = Optional.empty();
+			// The thread's rollout cannot be read, so its permissions and commands name no cause
 		}
-		List<Path> denied = turn.map(CodexSandbox::entries).orElse(List.of()).stream().
-			filter(entry -> entry.access() == PermissionEntry.Access.DENY).map(PermissionEntry::path).toList();
 		if (!denied.isEmpty())
 		{
 			String named = profile.map(name -> "the permissions profile " + name).
@@ -178,12 +189,59 @@ public final class CodexDirectLaunch
 				"those entries from the profile and start a new Codex session, or start the session from a " +
 				"terminal by running " + launcher + " there.";
 		}
-		return "CAT cannot start the session: this Codex session runs the launcher inside its sandbox, where no " +
-			"session that a harness sandboxes can start. Codex runs the launcher outside its sandbox only through " +
-			"the rule that CAT's install adds for " + launcher + ", and only for a command that is that absolute " +
-			"path followed by the launcher's options, with nothing in front of it and no pipe or redirection. A " +
-			"session that started before that install has no such rule. Run " + launcher + " as such a command, " +
-			"or start a new Codex session and run it there.";
+		String start = "CAT cannot start the session: this Codex session runs the launcher inside its sandbox, where " +
+			"no session that a harness sandboxes can start. ";
+		List<String> causes = new ArrayList<>();
+		missingRule(launcher, environment, accountHome).ifPresent(causes::add);
+		command.flatMap(text -> LauncherSpelling.otherSpelling(text, launcher)).ifPresent(word -> causes.add(
+			"The command ran the launcher as " + word + ", but the rule that CAT's install adds matches only a " +
+			"command whose first word is " + launcher + ", spelled exactly so. Run " + launcher + " followed by " +
+			"the launcher's options, with nothing in front of it and no pipe or redirection."));
+		if (!causes.isEmpty())
+			return start + String.join(" ", causes);
+		return start + "Codex runs the launcher outside its sandbox only through the rule that CAT's install adds " +
+			"for " + launcher + ", and only for a command that is that absolute path followed by the launcher's " +
+			"options, with nothing in front of it and no pipe or redirection. A session that started before that " +
+			"install has no such rule. Run " + launcher + " as such a command, or start a new Codex session and run " +
+			"it there.";
+	}
+
+	/**
+	 * Returns the cause of a sandboxed launch when no rule in Codex's rules folder names a launcher.
+	 *
+	 * @param launcher    the absolute path of the launcher
+	 * @param environment the command's environment
+	 * @param accountHome the user's home folder in the account database
+	 * @return the cause and its fix, or empty if a rule names the launcher or Codex's rules cannot be read
+	 */
+	private static Optional<String> missingRule(Path launcher, Map<String, String> environment, Path accountHome)
+	{
+		Path rules;
+		String quoted;
+		try
+		{
+			rules = CodexInstallation.resolveHome(environment, accountHome, Path.of("").toAbsolutePath()).
+				resolve("rules");
+			quoted = JSON.writeValueAsString(launcher.toString());
+			if (Files.isDirectory(rules))
+			{
+				try (Stream<Path> files = Files.list(rules))
+				{
+					for (Path file : files.filter(file -> file.getFileName().toString().endsWith(".rules")).toList())
+					{
+						if (Files.readString(file).contains(quoted))
+							return Optional.empty();
+					}
+				}
+			}
+		}
+		catch (IOException | UncheckedIOException | JacksonException _)
+		{
+			return Optional.empty();
+		}
+		return Optional.of("No rule in " + rules + " names " + launcher + ", so Codex has no rule that runs it " +
+			"outside its sandbox. Run CAT's install again, then start a new Codex session, which reads the new rule, " +
+			"and run " + launcher + " there.");
 	}
 
 	/**

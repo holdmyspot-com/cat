@@ -334,7 +334,7 @@ public final class ClaudeRunnerCli
 		return DirectLaunch.boundArguments(HARNESS_ID, args, plugin, outsideHome, project -> ToolScope.forSession(
 				project, environment, SessionHarness.installed(), scope.waiting()), () -> ClaudeRunner.childNeeds(scope,
 				environment), () -> ClaudeDirectLaunch.sandboxed(plugin.resolve(PluginDirectory.BIN).
-				resolve("claude-runner")), cleanup);
+				resolve("claude-runner"), environment), cleanup);
 	}
 
 	/**
@@ -452,7 +452,8 @@ public final class ClaudeRunnerCli
 		try
 		{
 			DirectLaunch.requireReadable(HARNESS_ID, args[0], Path.of(args[1]), pluginFolder, sessions,
-				() -> ClaudeDirectLaunch.sandboxed(pluginFolder.resolve(PluginDirectory.BIN).resolve("claude-runner")));
+				() -> ClaudeDirectLaunch.sandboxed(pluginFolder.resolve(PluginDirectory.BIN).resolve("claude-runner"),
+					environment));
 			return false;
 		}
 		catch (SessionRefusedException e)
