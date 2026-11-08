@@ -20,7 +20,6 @@ jobs:
     env:
       UPTERM_VERSION: v0.38.0
       UPTERM_SHA256: 5018c29562341f4982135145b3ef9384e24b7bdf39d4cbc263f9e9ba4db9a698
-      REMOTE_SESSION_DIR: ${{ runner.temp }}/remote-session
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -47,7 +46,9 @@ jobs:
           npm install --global bats@1.11.1
           bats --version
       - name: Start remote session
-        run: ci/remote-session/start.sh
+        run: |
+          echo "REMOTE_SESSION_DIR=$(cygpath --unix "${RUNNER_TEMP}")/remote-session" >> "${GITHUB_ENV}"
+          REMOTE_SESSION_DIR="$(cygpath --unix "${RUNNER_TEMP}")/remote-session" ci/remote-session/start.sh
       - name: Publish the join command
         uses: actions/upload-artifact@v7
         with:
