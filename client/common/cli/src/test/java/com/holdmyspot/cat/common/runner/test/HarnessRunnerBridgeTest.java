@@ -672,6 +672,67 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies that an interrupt that the bridge handles after it started a turn but before the turn's thread sent the
+	 * turn to the harness stops that turn once the harness receives it. A session sends a turn while it holds the
+	 * process's monitor, so the test holds that monitor until the bridge has handled the interrupt, which keeps the
+	 * turn's thread from sending the turn until then. The bridge runs on its own thread so that a bridge that waits for
+	 * a turn that was never stopped fails the test instead of hanging it.
+	 *
+	 * @throws IOException          if filesystem setup fails
+	 * @throws InterruptedException if the test is interrupted while it waits
+	 */
+	@Test(timeOut = 30_000)
+	public void stopsTurnInterruptedBeforeSending() throws IOException, InterruptedException
+	{
+		CountDownLatch interruptHandled = new CountDownLatch(1);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted()), new ArrayList<>());
+			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", new CountDownLatch(0),
+				"{\"type\":\"interrupt\"}\n", interruptHandled, "{\"type\":\"complete\"}\n"))
+		{
+			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			StringWriter output = new StringWriter();
+			CompletableFuture<HarnessRun> serving = new CompletableFuture<>();
+			synchronized (process)
+			{
+				Thread.ofPlatform().daemon().name("bridge-under-test").start(() ->
+				{
+					try
+					{
+						serving.complete(HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
+							new TestHarnessRunnerScope()), input, output));
+					}
+					catch (IOException | RuntimeException e)
+					{
+						serving.completeExceptionally(e);
+					}
+				});
+				requireThat(interruptHandled.await(5, TimeUnit.SECONDS), "interruptHandled").isTrue();
+			}
+			try
+			{
+				serving.get(5, TimeUnit.SECONDS);
+			}
+			catch (ExecutionException e)
+			{
+				throw new AssertionError(e.getCause());
+			}
+			catch (TimeoutException e)
+			{
+				throw new AssertionError("The interrupt did not stop the turn that had not yet reached the harness", e);
+			}
+			finally
+			{
+				// Ends the turn, so that a test that failed does not leave a thread waiting
+				process.interrupt();
+			}
+
+			requireThat(output.toString(), "output").contains("\"type\":\"interrupted\"").
+				contains("\"type\":\"turn_completed\"").contains("\"type\":\"completed\"");
+		}
+	}
+
+	/**
 	 * Verifies an interrupt that reaches the bridge after its turn ended is ignored and the bridge keeps serving later
 	 * requests. The bridge's turn thread is held right after it writes {@code turn_completed}
 	 * until the bridge has handled the interrupt, so the interrupt reaches the bridge while the thread that ran the

@@ -54,6 +54,17 @@ public final class HarnessRunSession implements AutoCloseable
 	}
 
 	/**
+	 * Tells the harness process that the caller has started a turn that another thread is about to send, so that an
+	 * {@link #interrupt()} requested before the turn reaches the process stops that turn.
+	 *
+	 * @see HarnessProcess#prepareTurn()
+	 */
+	public void prepareTurn()
+	{
+		process.prepareTurn();
+	}
+
+	/**
 	 * Sends one turn to the already-running harness process.
 	 *
 	 * @param request the framed turn request

@@ -1152,6 +1152,12 @@ public final class ClaudeRunner
 			}
 
 			@Override
+			public void prepareTurn()
+			{
+				session.prepareTurn();
+			}
+
+			@Override
 			public HarnessProcessResult sendTurn(String request) throws IOException
 			{
 				return sendTurn(request, _ ->

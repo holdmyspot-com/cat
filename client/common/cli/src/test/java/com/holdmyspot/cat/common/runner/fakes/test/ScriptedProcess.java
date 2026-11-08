@@ -43,6 +43,14 @@ public final class ScriptedProcess implements HarnessProcess
 	 */
 	private CountDownLatch activeTurn;
 	/**
+	 * Indicates whether the caller has prepared a turn that it has not yet sent; guarded by {@link #lock}.
+	 */
+	private boolean turnPrepared;
+	/**
+	 * Indicates whether the caller interrupted the prepared turn before sending it; guarded by {@link #lock}.
+	 */
+	private boolean interruptPending;
+	/**
 	 * Indicates whether the harness ended during a turn; guarded by {@link #lock}.
 	 */
 	private boolean ended;
@@ -123,14 +131,24 @@ public final class ScriptedProcess implements HarnessProcess
 		this.transcripts = transcripts;
 	}
 
+	@Override
+	public void prepareTurn()
+	{
+		synchronized (lock)
+		{
+			turnPrepared = true;
+			interruptPending = false;
+		}
+	}
+
 	/**
 	 * Plays the script's next turn.
 	 * <p>
 	 * The turn gives each of its event lines to the listener, then ends by its kind: a reply completes the turn with
 	 * exit status 0 and the turn's messages, the last of which is its response; a harness that exits fails the turn
 	 * with the turn's exit status and a description on standard error, and stays ended; a rejected turn throws; and a
-	 * turn that blocks waits until the caller interrupts it and then completes with no messages or throws, as the
-	 * process's {@link InterruptedTurn} says.
+	 * turn that blocks waits until the caller interrupts it, during the turn or after preparing it, and then completes
+	 * with no messages or throws, as the process's {@link InterruptedTurn} says.
 	 *
 	 * @param request  the non-blank user prompt
 	 * @param listener receives each harness event line
@@ -156,6 +174,10 @@ public final class ScriptedProcess implements HarnessProcess
 			turn = script.get(turns);
 			turns += 1;
 			activeTurn = interrupt;
+			if (turnPrepared && interruptPending)
+				interrupt.countDown();
+			turnPrepared = false;
+			interruptPending = false;
 		}
 		try
 		{
@@ -227,7 +249,8 @@ public final class ScriptedProcess implements HarnessProcess
 	}
 
 	/**
-	 * Ends the turn in progress if it blocks until it is interrupted. Does nothing between turns.
+	 * Ends the turn in progress if it blocks until it is interrupted, or the prepared turn once it is sent. Does
+	 * nothing between turns.
 	 */
 	@Override
 	public void interrupt()
@@ -236,6 +259,8 @@ public final class ScriptedProcess implements HarnessProcess
 		{
 			if (activeTurn != null)
 				activeTurn.countDown();
+			else if (turnPrepared)
+				interruptPending = true;
 		}
 	}
 

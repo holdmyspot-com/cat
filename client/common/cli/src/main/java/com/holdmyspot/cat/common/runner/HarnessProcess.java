@@ -13,6 +13,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public interface HarnessProcess extends AutoCloseable
 {
 	/**
+	 * Tells the process that the caller has started a turn that it is about to send with
+	 * {@link #sendTurn(String, HarnessEventListener)}, typically from another thread. An {@link #interrupt()} requested
+	 * from then until the turn is sent stops that turn once it is sent, instead of being ignored as an interrupt
+	 * between turns. Sending the turn ends this state.
+	 */
+	void prepareTurn();
+
+	/**
 	 * Sends one turn without restarting the harness.
 	 *
 	 * @param request the framed turn request
@@ -61,7 +69,9 @@ public interface HarnessProcess extends AutoCloseable
 	}
 
 	/**
-	 * Stops the active turn while retaining the harness session when the harness supports it.
+	 * Stops the active turn while retaining the harness session when the harness supports it. An interrupt requested
+	 * after {@link #prepareTurn()} and before the prepared turn is sent stops that turn once it is sent. Does nothing
+	 * between turns.
 	 *
 	 * @throws IOException if the harness cannot interrupt the active turn
 	 */

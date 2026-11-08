@@ -57,14 +57,23 @@ public final class ClaudeProcess implements HarnessProcess
 	private final BlockingQueue<OutputLine> output = new LinkedBlockingQueue<>();
 	private final HarnessStandardError standardError;
 	/**
-	 * Guards {@link #turnActive} and {@link #interruptsSent} so an interrupt is requested only while a turn is in
-	 * progress.
+	 * Guards {@link #turnActive}, {@link #turnPrepared}, {@link #interruptPending} and {@link #interruptsSent} so an
+	 * interrupt is requested only while a turn is in progress, and only after the turn's user message.
 	 */
 	private final Object turnLock = new Object();
 	/**
 	 * Indicates whether a turn has been sent and has not yet ended.
 	 */
 	private boolean turnActive;
+	/**
+	 * Indicates whether the caller has prepared a turn that it has not yet sent.
+	 */
+	private boolean turnPrepared;
+	/**
+	 * Indicates whether the caller interrupted the prepared turn before sending it, so that the interrupt is requested
+	 * right after the turn's user message.
+	 */
+	private boolean interruptPending;
 	/**
 	 * How many interrupt requests have been written, which makes each request's identifier unique.
 	 */
@@ -150,6 +159,16 @@ public final class ClaudeProcess implements HarnessProcess
 		}
 	}
 
+	@Override
+	public void prepareTurn()
+	{
+		synchronized (turnLock)
+		{
+			turnPrepared = true;
+			interruptPending = false;
+		}
+	}
+
 	/**
 	 * Sends one user turn and reads Claude's output until the turn ends.
 	 * <p>
@@ -187,16 +206,24 @@ public final class ClaudeProcess implements HarnessProcess
 	{
 		requireThat(request, "request").isNotBlank();
 		requireThat(listener, "listener").isNotNull();
-		synchronized (turnLock)
-		{
-			turnActive = true;
-		}
 		try
 		{
-			synchronized (input)
+			synchronized (turnLock)
 			{
-				input.write(ClaudeStreamingProtocol.userTurn(request));
-				input.flush();
+				turnActive = true;
+				boolean interruptRequested = turnPrepared && interruptPending;
+				turnPrepared = false;
+				interruptPending = false;
+				synchronized (input)
+				{
+					input.write(ClaudeStreamingProtocol.userTurn(request));
+					if (interruptRequested)
+					{
+						++interruptsSent;
+						input.write(ClaudeStreamingProtocol.interrupt("cat-interrupt-" + interruptsSent));
+					}
+					input.flush();
+				}
 			}
 			StringBuilder events = new StringBuilder();
 			// Where the turn's own reply begins in events: after any follow-up reply that belongs to an earlier turn
@@ -388,8 +415,9 @@ public final class ClaudeProcess implements HarnessProcess
 	/**
 	 * Asks Claude to interrupt the turn in progress by writing a stream-json interrupt request to its standard input.
 	 * Unlike terminating the process, the request lets Claude stop the turn's work, including background tasks, and
-	 * report that it is idle while keeping the session for later turns. Does nothing when no turn is in progress, since
-	 * the turn the caller meant to stop has already ended.
+	 * report that it is idle while keeping the session for later turns. An interrupt of a prepared turn that has not
+	 * yet been sent is requested right after the turn's user message. Does nothing otherwise when no turn is in
+	 * progress, since the turn the caller meant to stop has already ended.
 	 *
 	 * @throws IOException if a turn is in progress but the process is no longer alive or the request cannot be written
 	 */
@@ -399,7 +427,11 @@ public final class ClaudeProcess implements HarnessProcess
 		synchronized (turnLock)
 		{
 			if (!turnActive)
+			{
+				if (turnPrepared)
+					interruptPending = true;
 				return;
+			}
 			if (!process.isAlive())
 				throw new IOException("Claude process is no longer alive");
 			++interruptsSent;

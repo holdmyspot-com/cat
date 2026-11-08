@@ -257,6 +257,82 @@ public abstract class HarnessProcessContract
 	}
 
 	/**
+	 * Verifies that sending a prepared turn ends its preparation: an interrupt after the turn ends changes nothing, and
+	 * the next turn completes with its reply.
+	 *
+	 * @throws IOException if a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void ignoresInterruptAfterPreparedTurnEnds() throws IOException
+	{
+		Harness harness = start(List.of(Turn.replies("one"), Turn.replies("two")), null);
+		try (HarnessProcess process = harness.process())
+		{
+			process.prepareTurn();
+			process.sendTurn("first");
+			process.interrupt();
+
+			HarnessProcessResult result = process.sendTurn("second");
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("two");
+		}
+	}
+
+	/**
+	 * Verifies that an interrupt requested once the caller has prepared a turn, before the turn is sent, stops that
+	 * turn once it is sent: it completes without a reply where the harness completes an interrupted turn, and fails
+	 * otherwise. The turn runs on its own thread so that a process that drops the interrupt fails the test instead of
+	 * leaving the test's thread waiting.
+	 *
+	 * @throws IOException          if the interrupt cannot be sent or the process cannot close
+	 * @throws InterruptedException if the test is interrupted while it waits for the turn
+	 */
+	@Test(timeOut = 10_000)
+	public void stopsPreparedTurnInterruptedEarly() throws IOException, InterruptedException
+	{
+		Harness harness = start(List.of(Turn.blocksUntilInterrupted("harness line")), null);
+		try (HarnessProcess process = harness.process())
+		{
+			process.prepareTurn();
+			process.interrupt();
+			CompletableFuture<HarnessProcessResult> turn = new CompletableFuture<>();
+			Thread.ofPlatform().daemon().name("turn-under-test").start(() ->
+			{
+				try
+				{
+					turn.complete(process.sendTurn("first"));
+				}
+				catch (IOException | RuntimeException e)
+				{
+					turn.completeExceptionally(e);
+				}
+			});
+			HarnessProcessResult result;
+			try
+			{
+				result = turn.get(5, TimeUnit.SECONDS);
+			}
+			catch (ExecutionException e)
+			{
+				requireThat(e.getCause(), "failure").isInstanceOf(IOException.class);
+				requireThat(completesInterruptedTurn(), "completesInterruptedTurn").withContext(e.getCause(), "failure").
+					isFalse();
+				return;
+			}
+			catch (TimeoutException e)
+			{
+				// Closing the process ends the harness, which ends the turn that dropped the interrupt
+				throw new AssertionError("The interrupt requested before the prepared turn was sent did not stop it", e);
+			}
+			requireThat(completesInterruptedTurn(), "completesInterruptedTurn").isTrue();
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEmpty();
+			requireThat(result.assistantMessages(), "assistantMessages").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that a turn in progress fails once the thread that runs it is interrupted, so that a caller can stop a
 	 * turn that would otherwise not end, and that the process restores the thread's interrupt status. The turn runs on
 	 * its own thread, which interrupts itself once the harness has printed a line, so that a process whose turn ignores

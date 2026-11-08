@@ -153,6 +153,9 @@ public final class HarnessRunnerBridge
 							String prompt = requiredText(request, "prompt");
 							int currentTurn = turnNumber + 1;
 							CountDownLatch turnStarted = new CountDownLatch(1);
+							// An interrupt that this thread reads next must stop this turn even if the turn's thread has not
+							// yet sent it to the harness
+							session.prepareTurn();
 							client.startTurn();
 							activeTurn = new FutureTask<>(() ->
 							{

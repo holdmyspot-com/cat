@@ -75,7 +75,12 @@ public final class CodexProcess implements HarnessProcess
 	 */
 	private String turnId;
 	/**
-	 * Indicates whether the caller asked to interrupt the active turn; guarded by {@link #input}.
+	 * Indicates whether the caller has prepared a turn that it has not yet sent; guarded by {@link #input}.
+	 */
+	private boolean turnPrepared;
+	/**
+	 * Indicates whether the caller asked to interrupt the active turn, or the prepared turn before sending it; guarded
+	 * by {@link #input}.
 	 */
 	private boolean interruptRequested;
 
@@ -205,6 +210,16 @@ public final class CodexProcess implements HarnessProcess
 		}
 	}
 
+	@Override
+	public void prepareTurn()
+	{
+		synchronized (input)
+		{
+			turnPrepared = true;
+			interruptRequested = false;
+		}
+	}
+
 	/**
 	 * Sends one text turn and reads through its completion notification.
 	 *
@@ -260,7 +275,9 @@ public final class CodexProcess implements HarnessProcess
 			input.flush();
 			turnActive = true;
 			turnId = null;
-			interruptRequested = false;
+			// An interrupt of the prepared turn is sent once Codex identifies the turn
+			interruptRequested = turnPrepared && interruptRequested;
+			turnPrepared = false;
 			startup = startupEvents.toString();
 			events = new StringBuilder(startup);
 			startupEvents.setLength(0);
@@ -370,7 +387,8 @@ public final class CodexProcess implements HarnessProcess
 	/**
 	 * Stops the active turn with a {@code turn/interrupt} request. Codex then ends the turn with status
 	 * {@code interrupted}, which completes the turn that {@link #sendTurn(String, HarnessEventListener)} is reading.
-	 * When Codex has not yet identified the requested turn, the request is sent as soon as it does. Does nothing when no
+	 * When Codex has not yet identified the requested turn, the request is sent as soon as it does, and an interrupt of a
+	 * prepared turn that has not yet been sent is sent once Codex identifies that turn. Does nothing otherwise when no
 	 * turn is in progress, since the turn the caller meant to stop has already ended.
 	 *
 	 * @throws IOException if the request cannot be written to Codex
@@ -380,8 +398,14 @@ public final class CodexProcess implements HarnessProcess
 	{
 		synchronized (input)
 		{
-			if (!turnActive || interruptRequested)
+			if (interruptRequested)
 				return;
+			if (!turnActive)
+			{
+				if (turnPrepared)
+					interruptRequested = true;
+				return;
+			}
 			interruptRequested = true;
 			if (turnId != null)
 				writeInterrupt();
