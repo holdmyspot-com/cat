@@ -156,6 +156,7 @@ public final class SessionRequestBroker implements Closeable
 
 	/**
 	 * Discovers new non-temporary request archives once. Invalid requests receive a refusal without starting a child.
+	 * A request whose archive another handle still holds open on Windows gets no response and is taken by a later scan.
 	 *
 	 * @throws IOException if discovery or response publication fails
 	 */
@@ -171,13 +172,15 @@ public final class SessionRequestBroker implements Closeable
 				if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS))
 					continue;
 				Files.createDirectory(directory);
+				boolean busy = false;
 				try
 				{
-					take(id, file, directory);
+					busy = !take(id, file, directory);
 				}
 				finally
 				{
-					site.taken(file);
+					if (!busy)
+						site.taken(file);
 				}
 			}
 			serveStreams(requests);
@@ -185,25 +188,28 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Answers or starts one request whose response directory this scan created.
+	 * Answers or starts one request whose response directory this scan created. When another handle to the request's
+	 * archive is open, the program that wrote it may not have closed it yet, so the request is not answered, counted or
+	 * released, and its response directory is removed so that a later scan takes it.
 	 *
 	 * @param id        the request ID
 	 * @param file      the request archive
 	 * @param directory the request's response directory
+	 * @return {@code true} if the request was answered or started, or {@code false} if its archive is busy
 	 * @throws IOException if a response cannot be published
 	 */
-	private void take(String id, Path file, Path directory) throws IOException
+	private boolean take(String id, Path file, Path directory) throws IOException
 	{
 		if (stopped)
 		{
 			respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
-			return;
+			return true;
 		}
 		Optional<String> refusal = site.refusal(accepted);
 		if (refusal.isPresent())
 		{
 			respond(id, "", "refused", refusal.get(), "", directory);
-			return;
+			return true;
 		}
 		try
 		{
@@ -221,10 +227,16 @@ public final class SessionRequestBroker implements Closeable
 				keptRuns.add(id);
 			children.submit(() -> execute(id, request, arguments, directory));
 		}
+		catch (RequestArchiveBusyException _)
+		{
+			Files.delete(directory);
+			return false;
+		}
 		catch (IOException | IllegalArgumentException | JacksonException e)
 		{
 			respond(id, "", "refused", e.getMessage(), "", directory);
 		}
+		return true;
 	}
 
 	/**
@@ -289,10 +301,11 @@ public final class SessionRequestBroker implements Closeable
 		// directories would let it swap a link or junction into the path and make us read a file it may not read.
 		// The launcher packs inside its sandbox, which refuses that read. We open only this single archive in
 		// requests, whose path has no session-controlled directory, without following links and with one hard link.
-		Path inputs = Files.createDirectory(directory.resolve("inputs"));
+		Path inputs = directory.resolve("inputs");
 		try
 		{
 			RequestArchive.copy(file, copy, site.limits());
+			Files.createDirectory(inputs);
 			RequestArchive.unpack(copy, inputs, site.limits());
 		}
 		finally

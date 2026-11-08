@@ -410,6 +410,50 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that, on Windows, where a request archive is opened exclusively so that no writer can change it while
+	 * it is read, a request whose archive another handle still holds open, as a program that scans a file that was just
+	 * written does, gets no response and no response directory on that scan, does not use up the run's allowance of
+	 * sessions, and is served by a scan after the handle is closed. On other platforms an open handle does not prevent
+	 * the copy, so the request is served by the first scan.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void servesRequestWhoseArchiveWasBusy() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			AtomicInteger started = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					started.incrementAndGet();
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					}, 75);
+					process.closeOutputThenExitWhenAwaited();
+					return process;
+				}))
+			{
+				fixture.request("busy");
+				Path archive = fixture.requests.resolve("busy.tar");
+				try (FileChannel _ = FileChannel.open(archive, StandardOpenOption.READ, StandardOpenOption.WRITE))
+				{
+					broker.scan();
+					if (Platform.current().isWindows())
+					{
+						requireThat(Files.exists(fixture.responses.resolve("busy")), "responseDirectoryExists").isFalse();
+						requireThat(started.get(), "startedWhileBusy").isEqualTo(0);
+					}
+				}
+				broker.scan();
+				requireThat(fixture.await("busy").path("status").asString(), "status").isEqualTo("capacity");
+				requireThat(started.get(), "started").isEqualTo(1);
+			}
+		}
+	}
+
+	/**
 	 * Supplies invalid request mutations, including unsafe archives and invalid manifest fields.
 	 *
 	 * @return invalid input categories
