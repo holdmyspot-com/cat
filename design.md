@@ -2679,8 +2679,8 @@ session (user ruling, 2026-11-06). A caller that knows its task needs more, such
 cache outside the project, names a JSON file with `--extra-permissions <file>` on either runner launcher or on
 `request-session`: `{"format_version": 1, "writes": ["<absolute path>"], "hosts": ["<host name>"]}`, where either list
 may be left out and no other field is allowed. It rejects a relative path and a `*` host pattern, as the child's own
-needs do. The writes and hosts join the requested session's needs on every path that starts it (through a runner launcher that a
-harness session runs, through a run's broker, and in place for a runner launcher that no harness runs), so the same rule applies: the session gets
+needs do. The writes and hosts join the requested session's needs on every path that starts it (through the session's request
+server, through a run's broker, and in place for a runner launcher that no harness runs), so the same rule applies: the session gets
 them when the requesting session's sandbox allows them and otherwise is refused, with each one named and the settings
 entry that grants it. A caller that names no file requests nothing extra; the file's contents travel inside the request,
 so the runner never opens a path that the requesting session chose (user ruling, 2026-11-06: a file that describes
@@ -2708,16 +2708,22 @@ capacity ceiling and remaining request depth down, keeps each requested session'
 the requested sessions when its run ends. A launch inside a run whose caller allows no requested sessions is refused
 with status 2 and starts nothing (D107).
 
-**Runner launches outside a run (user rulings, 2026-11-08, replacing the session launcher of 2026-11-06):** a sandboxed
-command cannot start a session whose harness sandboxes it: macOS refuses to apply a sandbox inside a sandbox, and
-hosted Linux runners restrict the nested user namespaces that the harness sandboxes need. So the runner launchers run
-outside the sandbox of the session that runs them, through a sandbox exception that `install` adds to each harness and
-reports with its other settings entries, with the effect "Runs outside the sandbox"; `uninstall` removes it. Each entry
-names one of the plugin's two runner launchers by its absolute path:
+**Session launches outside a run (user rulings, 2026-11-08, replacing the session launcher of 2026-11-06):** a
+sandboxed command cannot start a session whose harness sandboxes it: macOS refuses to apply a sandbox inside a sandbox,
+and hosted Linux runners restrict the nested user namespaces that the harness sandboxes need. Every child session
+therefore starts the same way, inside a run or not: the command that wants it packs a session request inside its own
+sandbox and a runner outside that sandbox serves it (user ruling, 2026-11-08: "i prefer using a single way to create
+child sessions, not two"). Inside a run that runner is the run's runner (above). Outside a run it is the session's
+request server: a program in each plugin, `bin/request-server`, which the session's agent starts in the background
+before its first launch, and which runs outside the session's sandbox through a sandbox exception that `install` adds
+to each harness and reports with its other settings entries, with the effect "Runs outside the sandbox"; `uninstall`
+removes it. The entry names the request server by its absolute path, and the server refuses every argument:
 
-- **Claude Code:** a `sandbox.excludedCommands` entry `<launcher> *` and a `permissions.allow` entry
-  `Bash(<launcher> *)`, so that the command leaves the sandbox and runs without a prompt.
-- **Codex:** `prefix_rule(pattern = ["<launcher>"], decision = "allow")` in the installer's rules file.
+- **Claude Code:** a `sandbox.excludedCommands` entry `<request-server>` and a `permissions.allow` entry
+  `Bash(<request-server>)`, so that the command leaves the sandbox and runs without a prompt.
+- **Codex:** `prefix_rule(pattern = ["<request-server>"], decision = "allow")` in the installer's rules file.
+
+No runner launcher and no other CAT command has an exception: each runs inside the session's sandbox.
 
 An absolute path matches only that spelling: neither harness matches it against another path, a bare name found on
 `PATH`, a command behind a variable assignment or `env`, or a script with a second command. A shell function or alias
@@ -2740,67 +2746,74 @@ every project, so `install` creates none and reports that the startup files stay
 profile and restores the earlier selection (user rulings, 2026-11-08: "do that", then "Follow sandbox_mode" and "Ask
 first").
 
-A runner launcher that a harness session runs treats its options, inputs and environment as the session's, because the
-session's model chose them, and checks the following before it starts anything. It refuses with status `2` and the
-reason when a check fails:
+**Clients.** Outside a run, a runner launcher that a harness session runs, `request-session`, and every other CAT
+command that starts sessions, the prompt optimizer included, packs each launch as a session request, as inside a run,
+into `requests/` in the session's CAT session directory, waits for the response there, and writes the transcript,
+receipt and any kept run from it itself. Because the client packs the request and writes its results inside the
+session's sandbox, every file a request carries is one the session may read, and every file a launch writes is one it
+may write. A client that finds no request server serving the session refuses with status `2` before it changes
+anything and names the exact command to start one in the background. A command that no harness runs, such as one in a
+terminal, has no sandbox to bound the new session and no request server: its runner launcher starts the session itself
+with exactly what the session needs, and a command that hides which harness runs it gains nothing, because one that
+claims no harness starts the session inside the sandbox that confines it.
+
+**The request server.** It serves one session, outside that session's sandbox, and treats every request as the
+session's input, because the session's model wrote it. Before it serves anything it checks the following, and it
+refuses with status `2` and the reason when a check fails:
 
 - **Outside the sandbox.** It confirms that it runs outside the session's sandbox. Codex runs a command that a rule
   allows outside its sandbox only when the session's filesystem permissions deny no reads (Codex 0.160.0; upstream
   issue openai/codex#38318 is open and unassigned), and otherwise runs it sandboxed without saying so. When the Codex
-  session's permissions deny any read, the launcher refuses at once: its message says that Codex keeps a rule-allowed
+  session's permissions deny any read, the server refuses at once: its message says that Codex keeps a rule-allowed
   command sandboxed while any read is denied, names the profile and each denied entry, and says to remove them or to
   start the session from a terminal (user ruling, 2026-11-08: "lets fail fast if denied reads is detected and explain
-  why"). For any other reason that leaves it sandboxed, such as an entry that
-  `install` has not added yet, or a spelling that does not match, it names the cause and the absolute path to run.
+  why"). For any other reason that leaves it sandboxed, such as an entry that `install` has not added yet or a
+  spelling that does not match, it names the cause and the absolute path to run.
 - **The session.** It identifies the session from sources that the session's commands cannot change: the harness
   process among its own ancestors, and the session or thread ID that the harness puts in the command's environment
   (Claude Code's `CLAUDE_CODE_SESSION_ID`, Codex's `CODEX_THREAD_ID`). Neither harness lets a command that its exception
-  covers set its own variables, because a variable assignment or `env` in front of the launcher keeps the command
-  sandboxed. It finds the session's transcript by that ID in the harness's home (Claude Code's
-  `projects/<folder>/<session-id>.jsonl`, Codex's rollout under `sessions/`) and takes the session's project folder from
-  the working directory that the transcript's first record names, because a Bash command's environment names no
-  project folder and the launcher's own working directory is one that the session chose. It refuses when it finds no
-  transcript, more than one, or one that the session's commands could write. A thread on Codex's shared background
-  server is identified the same way, and its policy comes from the latest turn policy that its rollout records; one
-  whose rollout records none is refused.
+  covers set its own variables, because a variable assignment or `env` in front of it keeps the command sandboxed. It
+  finds the session's transcript by that ID in the harness's home (Claude Code's `projects/<folder>/<session-id>.jsonl`,
+  Codex's rollout under `sessions/`) and takes the session's project folder from the working directory that the
+  transcript's first record names, because a Bash command's environment names no project folder and the server's own
+  working directory is one that the session chose. It refuses when it finds no transcript, more than one, or one that
+  the session's commands could write, and when another request server already serves the session. A thread on Codex's
+  shared background server is identified the same way, and its policy comes from the latest turn policy that its
+  rollout records; one whose rollout records none is refused.
 - **The policy.** It reads the session's sandbox policy from that harness's settings files and from the harness
   process's command line: Claude Code's `--settings`, `--setting-sources`, `--add-dir` and `--disallowedTools`, and
   Codex's profile, `-c` overrides and sandbox options. It refuses an option that it does not know, by name. For Codex
-  it also narrows the policy by the latest turn policy that the thread's log records. It refuses when the policy cannot
-  be read safely, including when the sandbox lets the session's commands write a file that the policy is read from,
-  unless the harness itself keeps that file from its commands, as Claude Code keeps its settings files.
-- **The bound.** The new session's sandbox is the intersection of that policy and the new session's needs (its run
-  folder, the denied reads, the writes and hosts that its harness's runner reports, and any `--extra-permissions`),
-  and the session never supplies it: the launcher refuses `--policy-bound` and every other option that only CAT's own
-  starters pass, such as `--capacity-held`, `--child-needs` and the `--git-*` options. CAT's own starters, the run's
-  runner among them, remove the harness's markers from the environment of the runners they start, so that those are
-  not taken for a harness session's launch. Every path the launcher reads, such as the
-  project, the input or conversation folder, the plugins, the workspace files, the read-only evidence and the
-  `--extra-permissions` file, must be one the policy lets the session read, and every path it writes, such as the
-  output, the receipt, the run root and the conversation folder, one the policy lets it write. It passes the new
-  session no harness option that the session named. A need that the policy lacks is refused with the message and
-  settings entries given above.
+  it also narrows the policy by the latest turn policy that the thread's log records, read again for each request. It
+  refuses when the policy cannot be read safely, including when the sandbox lets the session's commands write a file
+  that the policy is read from, unless the harness itself keeps that file from its commands, as Claude Code keeps its
+  settings files.
 - **The environment.** It removes the variables that make a program load other code, such as `LD_PRELOAD`,
-  `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_*`, `BASH_ENV`, `ENV` and the Java option variables, before it starts anything:
-  the runner launchers' scripts remove them before they start the JVM, and the JVM removes them again from the
-  environment of every process it starts.
+  `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_*`, `BASH_ENV`, `ENV` and the Java option variables: the launcher scripts remove
+  them before they start the JVM, and the JVM removes them again from the environment of every process it starts.
 
-It then starts the new session itself, inside that harness's own sandbox, as its own descendant, and stops the new
-session's whole process tree when it ends. A child session's settings never hold a sandbox exception, and its commands
-send each launch to the run's runner (above), which counts it against the run's limits. A command that no harness runs,
-such as one in a terminal, has no sandbox to bound the new session, and its runner launcher starts the session itself
-with exactly what the session needs. A command that hides which harness runs it gains nothing: one that claims no
-harness starts the session inside the sandbox that confines it. Each plugin's launcher for the other harness is covered
-by its own harness's exception and starts the other harness with the bound of the session that runs it; a launcher that
-the other harness runs is refused and names the plugin to use. The runner launchers refuse every launch on native
-Windows.
+For each request, the new session's sandbox is the intersection of that policy and the new session's needs (its run
+folder, the denied reads, the writes and hosts that its harness's runner reports, and any `--extra-permissions`), and
+the request never supplies it: the server refuses a request that carries a bound or any other option that only CAT's
+own starters pass, such as `--capacity-held`, `--child-needs` and the `--git-*` options, and passes the new session no
+harness option that the request named. A need that the policy lacks is refused with the message and settings entries
+given above. The server starts the session inside its harness's own sandbox, as its own descendant, in a run of its
+own whose runner applies the request's `--session-requests` and `--request-depth` to that session's own requests, so
+the top-level session's requests have no caller limit and every deeper one does. A request for either harness is
+served, so a Claude Code session's server also starts Codex sessions, and the reverse. The server ends, and stops every
+session it started with its whole process tree, when the session's harness process ends; the requests it was serving
+fail with the reason `ended`. CAT's own starters, the server and the run's runner among them, remove the harness's
+markers from the environment of the runners they start, so that those are not taken for a harness session's commands.
+A request server that the other harness runs is refused and names the plugin to use. The request server and the
+runner launchers refuse every launch on native Windows.
 
-The runner launchers no longer use the session launcher that CAT's SessionStart hook starts for each harness process.
-Until the user decides how the prompt optimizer starts its sessions outside a run (open, 2026-11-08), only the
-optimizer uses it, and it keeps its inbox, holder, `~/.cat/sessions` state folder and that folder's write denial. Once
-that route exists, the session launcher goes, and `install` removes the state folder and its write denial. A
-runner launcher refuses a session that started before the update, because that session's sandbox has no exception for
-it, and says to start a new session.
+Another session whose sandbox lets it write this session's CAT session directory can put a request there, and the
+server serves it within this session's bound, not its own: it reaches no further than that session already does by
+writing this session's files.
+
+The session launcher that CAT's SessionStart hook started for each harness process up to this ruling is gone, with its
+inbox, holder and `~/.cat/sessions` state folder; `install` removes that folder and its write denial. A session that
+started before the update has no exception for the request server, and its request server refuses and says to start
+a new session.
 
 **Conversations with a requested session (user rulings, 2026-11-07):** a runner launcher started with
 `--conversation <folder>` in place of `--input` keeps the requested session running and lets the asking session send
@@ -2821,15 +2834,15 @@ conversation continues; Claude Code reports an interrupted turn as failed, and t
 keeps the child. The last line the launcher writes, however the child ends, is `{"ended": "<response status>"}`, so an
 asking session that waits for a `turn_end` that never comes sees the end instead. Appended files are the channel in both directions, because they work in both harnesses'
 sandboxes on every platform and need no reader to be present when a message is written; a background command in
-Claude Code has no standard input that the session can write to. Outside a run the launcher writes each turn to the child it
-started; inside a run it sends each turn to the run's runner as the channel's next turn, so the bound and the request's
+Claude Code has no standard input that the session can write to. The launcher sends each turn to the runner that serves its
+request, the run's runner or the session's request server, as the channel's next turn, so the bound and the request's
 evidence stay as above. The child ends when the conversation ends, when the launcher ends, or at its time limit,
 whichever comes first. The launcher then writes the transcript and receipt as for `--input` and exits with the same
 statuses. A forwarded launch inside a run therefore carries later turns and interrupts too; inside a run the
 launcher holds an operating-system lock on a file beside its request from before it publishes the request until it
 ends, and the run's runner stops the child once that lock is free. `--conversation` works on every path that starts a
-session: through a runner launcher that a harness session runs, through a run's runner, and in place for a runner
-launcher that no harness runs.
+session: through the session's request server, through a run's runner, and in place for a runner launcher that no
+harness runs.
 
 **Sessions that a requested session's commands start (user rulings, 2026-11-07):** inside a run whose caller allows
 requested sessions, every CAT command that starts sessions, the prompt optimizer included, sends each launch to the run's
@@ -3201,6 +3214,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D131 | A harness's CAT plugin is one bundle of its Java runtime, its installer and its harness integration, installed, updated and removed together in the plugin's versioned folder of that harness's plugin cache; nothing is shared between harnesses. An update is prompt-free and never changes trusted keys or policy; only setup does. Uninstall goes through the harness's approval prompt, removes the whole installation and keeps plugin data unless the user chooses to remove it. Rollback is removed: an older release installs only when the active release's migration registry has no data migration after it (user rulings, 2026-11-04). | One managed Java installation per machine shared by both harnesses, with a separate updater, was the earlier requirement; the user replaced it. Rollback was removed because going back past a data migration would lose data. | Each harness carries its own Java runtime and installer, so a machine with both harnesses holds two copies and updates each separately; a plugin removed by other means is not recovered, and the user reruns the setup command. |
 | D132 | Let a runner launcher hold a conversation with its requested session through `--conversation <folder>`, with the asking session's messages and the child's output in appended JSON-line files, and let every CAT command inside a run that allows requested sessions, the prompt optimizer included, send its launches to the run's runner (user rulings, 2026-11-07: "Continue with the stream because it is a better, more flexible model"). | Turns fixed before the start kept a session from answering what its child asked, so an end-to-end check whose child runs the optimizer skill could not confirm a proposal or choose a resolution in the same child; restarting the child for each turn repeats its start and loses its process state. A named pipe works across both sandboxes but blocks until both ends open, and Claude Code gives a background command no writable standard input, so appended files are the one channel that works in both harnesses. The optimizer refused inside a run because it found no session launcher, although the run's runner already starts forwarded launches outside the child's sandbox. | Supersedes D107's rule that a forwarded launch carries only turns. A caller that lets a child run a campaign must allow enough requested sessions for it, and each of them counts against the caller's limits. The asking session must keep the conversation command running; ending it ends the child. |
 | D133 | Run the runner launchers outside the sandbox of the harness session that runs them, through a sandbox exception that `install` adds for each launcher by its absolute path and reports (Claude Code: `sandbox.excludedCommands` plus `permissions.allow`; Codex: an `allow` prefix rule), make the harness home's shell startup files read-only to sessions, and have the launcher confirm that it runs outside the sandbox, identify the session, read its policy and start the session inside its harness's own sandbox with the intersection; refuse at once a Codex session whose permissions deny any read (user rulings, 2026-11-08: "investigate how we could use sandbox exclusion safely and migrate to it", "make the startup files read only", "lets fail fast if denied reads is detected and explain why"). | The session launcher that the SessionStart hook started outside the sandbox needed an inbox, a holder process and a state folder per harness process, and it ran whether or not the session ever started a session. Both harnesses can run one exact command outside their sandbox: an absolute path matches only its own spelling, cannot be shadowed by a function or alias, and a variable assignment or second command in front of it keeps the command sandboxed. Claude Code strips a few wrapper names before it matches and its shell loads the startup files, so a function planted there under a wrapper's name would run unsandboxed unless sessions cannot write those files. Codex keeps an allowed command sandboxed while its filesystem permissions deny any read (openai/codex#38318, open and unanswered as of 2026-11-08), so a launch from such a session would fail later with a sandbox error that does not name the cause. | Supersedes D107's 2026-11-06 revision: the top-level session now needs a sandbox exception, and the session launcher, its inbox, holder and `~/.cat/sessions` state folder are removed. D127's reason about the launcher's state no longer applies; its other reasons stand. The launcher's checks become the boundary, so every option, path and environment variable it accepts from a session is untrusted input. A Codex user whose profile denies reads cannot start a session from a Codex session until the upstream fix, and must remove the denied reads or start from a terminal. A session that started before the update must be restarted. The user's shell startup files cannot be edited from a session. |
+| D134 | Start every child session one way: the command that wants it packs a session request inside its sandbox, and a runner outside that sandbox serves it, the run's runner inside a run and otherwise the session's request server, which the agent starts in the background through the only sandbox exception CAT adds; the runner launchers and the prompt optimizer become clients (user rulings, 2026-11-08: "i prefer using a single way to create child sessions, not two", then "yes" to the agent-started server). | The prompt optimizer runs inside the session's sandbox and starts hundreds of sessions, and a program that a sandboxed command starts cannot use either harness's exception, which covers only the command the session runs, so D133's direct launches left the optimizer on the session launcher, two ways to start a session. Giving the optimizer its own exception would take its git work, fixture copies and delivery out of the sandbox, and re-sandboxing that work would need a CAT-built sandbox matching each harness's, which Claude Code offers no command for. Packing inside the sandbox keeps the request archive's rule that a sender packs only what its sandbox lets it read. An agent-started server runs only in sessions that start sessions, needs no state to protect, and identifies a thread on Codex's shared background server, which the hook-started session launcher refused. | Supersedes D133's exceptions for the runner launchers: the exception now names only `request-server`. The agent must start the server before its first launch, and a client without one refuses and names the command; whether Claude Code runs a background command through the exception is checked live, and if it does not, a SessionStart-hook start of the same server is the fallback. Another session that can write this session's CAT session directory can ask this session's server for a session within this session's bound. |
 
 ## 14. Acceptance evidence
 

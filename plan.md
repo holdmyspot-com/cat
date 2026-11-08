@@ -1170,7 +1170,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-139 | Done 2026-10-31 (Claude `optimize-high`; `9d2f926d54`). Record: [history](plan-history.md). |
 | WI-140 | Done 2026-10-31 (Claude `optimize-high`; `9131428c90`). Record: [history](plan-history.md). |
 | WI-141 | Done 2026-11-08 (Claude `optimize-xhigh`; `0f275126f3`..`e42e901aaa`). |
-| WI-142 | In progress: installer exceptions, read-only startup files and direct runner launches merged (`ab75964beb`..`61d18ddd4a`, full build 5337 tests, 0 failures); open: the optimizer's route outside a run and the session launcher's removal (user decision pending), Codex without a selected profile, live checks. |
+| WI-142 | In progress: installer exceptions, read-only startup files and direct runner launches merged (`ab75964beb`..`8baa2e829b`, full build 5347 tests, 0 failures); remaining: the Codex CAT profile, the session's request server (D134) and the session launcher's removal, then live checks. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
 | Final gates (§9), interim audit on `c64f57c9b3` | Gate 3: source inventory (374 test sources, 23 POMs) and a process trace found no real Codex/Claude/model launch and no native group/profile; retained processes exercise packaged boundaries or controlled shell, Git and Java fixtures. The traced run is process-audit evidence only: ptrace caused two 30-second request-input tests to time out, while the subsequent untraced focused run passed all nine checks. No timeout or security restriction was relaxed. Audit source hashes and complete execution evidence are retained in orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/java-harness-audit-obirnizd/`. Gate 2: class-level inventory has 136 requirements, 134 tagged, with R-I1 and R-I6 untagged and no unknown tags. Passing class reports do not establish exact tagged-method/data-provider execution; live E receipts are not reconciled. Gate 2 remains unmet. Current G9 execution is recorded under WI-127. Gates 4, 5, 7 and 8 remain unmet. |
@@ -4389,35 +4389,37 @@ selection and download it describes are unchanged.
 - **Exit:** tests and the clean build pass on the committed revision; E1 then runs in both harnesses from a session
 	through `--conversation`. Closes D132.
 
-### WI-142 — Runner launchers outside the sandbox through a sandbox exception (user rulings, 2026-11-08)
+### WI-142 — One way to start child sessions: the session's request server (user rulings, 2026-11-08)
 
 - **Problem:** a session outside a run starts a session only through the session launcher that CAT's SessionStart hook
 	starts outside the sandbox for every harness process, with an inbox, a holder process and a state folder, whether or
 	not the session ever starts one.
-- **Scope:** `client/common/cli/` (runner launchers, the policy reader, the session launcher and its hook start), the
-	installer and its settings integrations for both harnesses, both harnesses' runners, both plugins' runner instructions,
-	this design and plan.
-- **Change:** as `design.md` "Runner launches outside a run" and D133 define it. `install` adds, reports and `uninstall`
-	removes, for each of the plugin's runner launchers by absolute path, Claude Code's `sandbox.excludedCommands` and
-	`permissions.allow` entries and Codex's `allow` prefix rule, stops removing runner exceptions, and write-denies the
-	harness home's shell startup files. A runner launcher that a harness session runs confirms that it runs outside the
-	sandbox (refusing a Codex session whose permissions deny any read, with the explanation and the denied entries),
-	identifies the session from its ancestor harness process and, on Codex's shared background server, its thread, reads
-	the policy as the session launcher does, checks every option, path and environment variable it accepts, and starts
-	the session inside its harness's sandbox with the intersection, as its own descendant. The session launcher, its hook
-	start, inbox, holder and `~/.cat/sessions` state go; `install` removes the state folder and its write denial. Inside a
-	run nothing changes.
+- **Scope:** `client/common/cli/` (runner launchers, the request route, the policy reader, the session launcher and its
+	hook start), the installer and its settings integrations for both harnesses, both harnesses' runners, the prompt
+	optimizer's launch route, both plugins' runner instructions, `harness-runners.md` and the prompt-optimizer skill
+	(uncertified text, user approval 2026-11-08), this design and plan.
+- **Change:** as `design.md` "Session launches outside a run", D133 and D134 define it. Done so far: the installer's
+	exceptions and read-only shell startup files, and direct runner launches with their checks (`ab75964beb`..
+	`8baa2e829b`). Remaining: the Codex CAT profile when Codex selects none; `bin/request-server` in both plugins, which
+	moves the direct launches' checks into the server; the exception entries renamed from the runner launchers to the
+	request server, with no arguments; every client outside a run (runner launchers, `request-session`, the optimizer)
+	packing its launches into the session's `requests/` folder and refusing with the start command when no server
+	serves the session; the runner instructions and the optimizer skill telling the agent to start the server first;
+	removal of the session launcher, its hook start, inbox, holder and `~/.cat/sessions`, with `install` removing that
+	folder and its write denial.
 - **Verification:** requirement-level tests with CAT's real classes and the contracted harness process doubles: the
-	entries that `install` writes, reports and `uninstall` removes in both harnesses, an existing user entry kept; each
-	refusal (sandboxed, Codex denied reads, unidentified session, unreadable policy, a path outside the policy, a refused
-	option, `--policy-bound`) with its message and status 2; the environment variables removed; the child bounded by the
-	intersection and stopped when the launcher ends; `--conversation` outside a run. Then the clean full offline build,
-	reporting every test taking at least one second. Then live checks in both harnesses through the installed artifacts,
-	which no Java test may replace: the exception runs the launcher outside the sandbox by its absolute path, and keeps it
-	sandboxed behind a variable assignment, `env`, a second command, a relative path and a background command; a Codex
-	profile that denies a read is refused with the explanation; a session on Codex's shared background server is
-	identified; a run's Claude session can append to `to-child.jsonl`.
-- **Exit:** tests, the clean build and the live checks pass on the committed revision. Closes D133.
+	entries that `install` writes, reports and `uninstall` removes in both harnesses, an existing user entry kept, the
+	Codex profile cases (workspace-write, read-only, danger-full-access, none, consent refused); each server refusal
+	(sandboxed, Codex denied reads, unidentified session, second server, unreadable policy, a refused option or bound)
+	with its message and status 2; the environment variables removed; a client without a server refused before it
+	changes anything; a served request bounded by the intersection; the server ending with the session and stopping its
+	sessions; `--conversation` through the server; the optimizer's sessions through the server. Then the clean full
+	offline build, reporting every test taking at least one second. Then live checks in both harnesses through the
+	installed artifacts, which no Java test may replace: the agent starts the server in the background and it runs
+	outside the sandbox (in Claude Code too); the exception keeps it sandboxed behind a variable assignment, `env`, a
+	second command and a relative path; a Codex profile that denies a read is refused with the explanation; a thread on
+	Codex's shared background server is identified; a run's Claude session can append to `to-child.jsonl`.
+- **Exit:** tests, the clean build and the live checks pass on the committed revision. Closes D133 and D134.
 
 ## 6. Dependency order
 
