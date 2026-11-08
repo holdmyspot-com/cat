@@ -262,6 +262,9 @@ public final class FakeHarnessCli extends Process
 
 	/**
 	 * The child's standard output as the runner reads it: blocks until the test emits a line or ends the child.
+	 * <p>
+	 * Interrupting the reading thread does not end the wait, just as {@code Thread.interrupt} does not unblock a read
+	 * of a real child's pipe; the thread's interrupt status stays set.
 	 */
 	private final class ChildOutput extends InputStream
 	{
@@ -285,15 +288,7 @@ public final class FakeHarnessCli extends Process
 				return 0;
 			while (!ended && position == current.length)
 			{
-				try
-				{
-					current = standardOutput.take();
-				}
-				catch (InterruptedException e)
-				{
-					Thread.currentThread().interrupt();
-					throw new IOException("Interrupted while waiting for child output", e);
-				}
+				current = takeChunk();
 				position = 0;
 				if (current == readFailure)
 				{
@@ -310,6 +305,36 @@ public final class FakeHarnessCli extends Process
 			System.arraycopy(current, position, buffer, offset, count);
 			position += count;
 			return count;
+		}
+
+		/**
+		 * Waits for the next chunk of the child's standard output, ignoring interrupts of the reading thread until the
+		 * chunk arrives.
+		 *
+		 * @return the chunk
+		 */
+		private byte[] takeChunk()
+		{
+			boolean interrupted = false;
+			try
+			{
+				while (true)
+				{
+					try
+					{
+						return standardOutput.take();
+					}
+					catch (InterruptedException _)
+					{
+						interrupted = true;
+					}
+				}
+			}
+			finally
+			{
+				if (interrupted)
+					Thread.currentThread().interrupt();
+			}
 		}
 	}
 

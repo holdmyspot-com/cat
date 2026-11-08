@@ -19,7 +19,8 @@ public interface HarnessProcess extends AutoCloseable
 	 *
 	 * @return the terminal result for the turn
 	 *
-	 * @throws IOException if the process cannot accept or complete the turn
+	 * @throws IOException if the process cannot accept or complete the turn, or the calling thread is interrupted
+	 *   while the turn is in progress; the thread's interrupt status is then set
 	 */
 	HarnessProcessResult sendTurn(String request) throws IOException;
 
@@ -32,7 +33,9 @@ public interface HarnessProcess extends AutoCloseable
 	 *
 	 * @return the terminal result for the turn
 	 *
-	 * @throws IOException if the process cannot accept or complete the turn, or event forwarding fails
+	 * @throws IOException if the process cannot accept or complete the turn, event forwarding fails, or the calling
+	 *   thread is interrupted while the turn is in progress, which lets a caller stop a turn that does not end; the
+	 *   thread's interrupt status is then set
 	 */
 	default HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
 	{

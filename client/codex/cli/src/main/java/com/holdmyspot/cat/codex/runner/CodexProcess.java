@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.runner.HarnessStandardError;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.file.Path;
@@ -21,6 +22,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import tools.jackson.core.JacksonException;
@@ -38,7 +41,12 @@ public final class CodexProcess implements HarnessProcess
 	private final Process process;
 	private final HarnessRunnerScope scope;
 	private final OutputStreamWriter input;
-	private final BufferedReader output;
+	/**
+	 * Codex's standard-output lines in arrival order, followed by one {@link OutputLine} that marks the end of the
+	 * stream. A turn waits on this queue rather than on the pipe, because interrupting a thread does not end a read of
+	 * a pipe, and a caller that stops a turn by interrupting its thread would otherwise wait for Codex forever.
+	 */
+	private final BlockingQueue<OutputLine> output = new LinkedBlockingQueue<>();
 	private final HarnessStandardError standardError;
 	private final boolean verifyCatHookDelivery;
 	/**
@@ -91,8 +99,34 @@ public final class CodexProcess implements HarnessProcess
 		this.verifyCatHookDelivery = verifyCatHookDelivery;
 		this.transcripts = transcripts;
 		input = new OutputStreamWriter(process.getOutputStream(), UTF_8);
-		output = new BufferedReader(new InputStreamReader(process.getInputStream(), UTF_8));
 		standardError = new HarnessStandardError(process.getErrorStream());
+		// The output reader thread owns Codex's standard output and closes it when the stream ends.
+		Thread.ofVirtual().start(() -> readOutput(process.getInputStream()));
+	}
+
+	/**
+	 * Moves each line of Codex's standard output into {@link #output}. Ends with one end-of-stream entry when Codex
+	 * closes its output or reading fails.
+	 *
+	 * @param stream Codex's standard output
+	 */
+	private void readOutput(InputStream stream)
+	{
+		assert stream != null;
+		try (BufferedReader lines = new BufferedReader(new InputStreamReader(stream, UTF_8)))
+		{
+			String line = lines.readLine();
+			while (line != null)
+			{
+				output.add(new OutputLine(line, null));
+				line = lines.readLine();
+			}
+			output.add(new OutputLine(null, null));
+		}
+		catch (IOException e)
+		{
+			output.add(new OutputLine(null, e));
+		}
 	}
 
 	/**
@@ -205,7 +239,8 @@ public final class CodexProcess implements HarnessProcess
 	 * @param request the non-blank user prompt
 	 * @param listener receives each harness event line
 	 * @return the captured app-server event stream for the turn
-	 * @throws IOException if input or output fails, or the listener fails
+	 * @throws IOException if input or output fails, the listener fails, or the thread is interrupted while it waits
+	 *   for Codex's output
 	 */
 	@Override
 	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
@@ -237,7 +272,7 @@ public final class CodexProcess implements HarnessProcess
 			for (String startupLine : startup.lines().toList())
 				listener.accept(startupLine);
 			List<String> assistantMessages = new ArrayList<>();
-			String line = output.readLine();
+			String line = nextLine();
 			while (line != null)
 			{
 				events.append(line).append('\n');
@@ -264,7 +299,7 @@ public final class CodexProcess implements HarnessProcess
 					}
 					return completedTurn(events.toString(), line, assistantMessages, interrupted);
 				}
-				line = output.readLine();
+				line = nextLine();
 			}
 			String diagnostic = "Codex app-server ended before turn completion";
 			String error = standardError.await();
@@ -280,6 +315,33 @@ public final class CodexProcess implements HarnessProcess
 				turnId = null;
 			}
 		}
+	}
+
+	/**
+	 * Returns the next line of Codex's standard output, waiting for it as long as it takes.
+	 *
+	 * @return the line, or {@code null} if the stream has ended
+	 * @throws IOException if reading the stream failed or the thread is interrupted while waiting
+	 */
+	private String nextLine() throws IOException
+	{
+		OutputLine next;
+		try
+		{
+			next = output.take();
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for Codex output", e);
+		}
+		if (next.line() != null)
+			return next.line();
+		// Keep the end-of-stream entry so a later read also observes that Codex's output has ended.
+		output.add(next);
+		if (next.failure() != null)
+			throw new IOException("Unable to read Codex output", next.failure());
+		return null;
 	}
 
 	/**
@@ -579,13 +641,13 @@ public final class CodexProcess implements HarnessProcess
 		assert request != null;
 		writeDuringStartup(request, "before responding to request " + requestId);
 		String expected = "\"id\":" + requestId;
-		String line = output.readLine();
+		String line = nextLine();
 		while (line != null)
 		{
 			if (line.contains(expected))
 				return line;
 			startupEvents.append(line).append('\n');
-			line = output.readLine();
+			line = nextLine();
 		}
 		throw ended("before responding to request " + requestId, null);
 	}
@@ -657,5 +719,16 @@ public final class CodexProcess implements HarnessProcess
 		{
 			throw new IOException("Codex app-server returned malformed thread/start response", e);
 		}
+	}
+
+	/**
+	 * One entry read from Codex's standard output.
+	 *
+	 * @param line    the output line, or {@code null} when the stream has ended
+	 * @param failure the failure that ended the stream, or {@code null} when the stream ended normally or
+	 *                {@code line} is present
+	 */
+	private record OutputLine(String line, IOException failure)
+	{
 	}
 }

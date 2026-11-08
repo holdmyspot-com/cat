@@ -14,6 +14,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
@@ -254,26 +258,48 @@ public abstract class HarnessProcessContract
 
 	/**
 	 * Verifies that a turn in progress fails once the thread that runs it is interrupted, so that a caller can stop a
-	 * turn that would otherwise not end.
+	 * turn that would otherwise not end, and that the process restores the thread's interrupt status. The turn runs on
+	 * its own thread, which interrupts itself once the harness has printed a line, so that a process whose turn ignores
+	 * the interrupt fails the test instead of leaving the test's thread waiting.
 	 *
-	 * @throws IOException if the process cannot close
+	 * @throws IOException          if the process cannot close
+	 * @throws InterruptedException if the test is interrupted while it waits for the turn
 	 */
 	@Test(timeOut = 10_000)
-	public void failsTurnWhoseThreadIsInterrupted() throws IOException
+	public void failsTurnWhoseThreadIsInterrupted() throws IOException, InterruptedException
 	{
 		Harness harness = start(List.of(Turn.blocksUntilInterrupted("harness line")), null);
 		try (HarnessProcess process = harness.process())
 		{
+			// Completes with whether the failed turn left its thread's interrupt status set
+			CompletableFuture<Boolean> failed = new CompletableFuture<>();
+			Thread.ofPlatform().daemon().name("turn-under-test").start(() ->
+			{
+				try
+				{
+					process.sendTurn("first", _ -> Thread.currentThread().interrupt());
+					failed.completeExceptionally(new AssertionError("The turn did not fail"));
+				}
+				catch (IOException _)
+				{
+					failed.complete(Thread.interrupted());
+				}
+			});
+			boolean interruptRestored;
 			try
 			{
-				process.sendTurn("first", _ -> Thread.currentThread().interrupt());
-				throw new AssertionError("The turn did not fail");
+				interruptRestored = failed.get(5, TimeUnit.SECONDS);
 			}
-			catch (IOException _)
+			catch (ExecutionException e)
 			{
-				// The process restores the interrupt; clear it so that closing the process does not see it
-				requireThat(Thread.interrupted(), "interrupted").isTrue();
+				throw new AssertionError(e.getCause());
 			}
+			catch (TimeoutException e)
+			{
+				// Closing the process ends the harness, which ends the turn that ignored the interrupt
+				throw new AssertionError("The turn did not fail once its thread was interrupted", e);
+			}
+			requireThat(interruptRestored, "interruptRestored").isTrue();
 		}
 	}
 
