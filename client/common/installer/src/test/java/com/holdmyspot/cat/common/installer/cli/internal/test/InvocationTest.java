@@ -1125,7 +1125,7 @@ public final class InvocationTest
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 			requireThat(run.result().path("message").stringValue(), "message").
 				startsWith("May CAT change the shared setting?").contains("CAT changed nothing.").
-				contains("cat.sh --harness harness-a").contains("open a terminal");
+				contains(EntryCommands.forHarness("harness-a")).contains("open a terminal");
 			requireThat(run.result().has("consent_command"), "consentCommand").isFalse();
 			requireThat(Releases.snapshot(archive.root), "after").isEqualTo(before);
 		}

@@ -475,7 +475,7 @@ public final class InstallCommandTest
 			{
 				requireThat(e, "refusal").isInstanceOf(TrustException.class);
 				requireThat(e.getMessage(), "message").contains(fixture.policyFile().toString()).
-					contains("cat.sh --harness harness-a");
+					contains(EntryCommands.forHarness("harness-a"));
 			}
 			requireThat(Files.exists(fixture.home.resolve("plugins/cat-marketplace"), NOFOLLOW_LINKS),
 				"marketplace").isFalse();

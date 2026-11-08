@@ -184,7 +184,7 @@ public final class OtherHarnessInstallTest
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
 			requireThat(run.result().path("message").stringValue(), "message").contains("verify").
-				contains("cat.sh --harness harness-b");
+				contains(EntryCommands.forHarness("harness-b"));
 			fixture.requireNothingInstalled();
 		}
 	}
