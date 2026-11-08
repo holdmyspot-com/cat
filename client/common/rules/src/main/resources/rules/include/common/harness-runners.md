@@ -156,14 +156,21 @@ writes. The runner tells it how. Add `--request-depth <levels>` when those sessi
 level below may request as many sessions, one level less deep. Without `--session-requests`, the session may start
 none. The receipt lists each requested session and its response path.
 
-Outside a run, the launcher starts the session itself, inside its harness's own sandbox, and waits until it ends. It
-can do so only outside this session's sandbox, where CAT's install lets this harness run it only in the form that
-"Launcher" gives. Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name` or `--git-email`: only
-CAT itself passes them, and the launcher refuses them. It exits with `0` when the session completed, `75` when no
-capacity was free, `2` when CAT refused to start the session, and `1` otherwise, and prints the reason for any status
-other than `0`. Report that reason to the user. When it asks the user to start a new session or to change a setting,
-as it does when this session started before CAT was installed or updated, ask the user to do so and run the task in a
-new session. Do not start the run any other way, and do not change sandbox settings yourself.
+Outside a run, the launcher asks this session's request server, `${CAT_PLUGIN_ROOT}/bin/request-server`, to start the
+session outside this session's sandbox, inside its harness's own sandbox, and waits until it ends. Before your first
+launch, start the request server once in the background, by its absolute path, as a command of its own with no
+arguments and nothing in front of it: in Claude Code as a background command, in Codex as a command that keeps
+running. Launch once it prints that it serves this session's launches; it serves them until this session ends. When it
+exits with status `2` instead, report its reason to the user and do not launch, unless the reason says that another
+request server already serves this session.
+
+Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name` or `--git-email`: only CAT itself passes
+them, and the launcher refuses them. The launcher exits with `0` when the session completed, `75` when no capacity was
+free, `2` when CAT refused to start the session, and `1` otherwise, and prints the reason for any status other than
+`0`. When the reason says that no request server serves this session, start it as above and launch again. Report any
+other reason to the user. When it asks the user to start a new session or to change a setting, as it does when this
+session started before CAT was installed or updated, ask the user to do so and run the task in a new session. Do not
+start the run any other way, and do not change sandbox settings yourself.
 
 ### Conversations
 

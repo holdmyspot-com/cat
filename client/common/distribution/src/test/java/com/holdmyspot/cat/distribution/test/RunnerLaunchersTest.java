@@ -363,8 +363,8 @@ public final class RunnerLaunchersTest
 
 	/**
 	 * Verifies that the bundled rule on running a harness tells the agent to run the launcher with nothing in front of
-	 * it, names every option that only CAT passes as one the agent never passes, and no longer sends a launch outside a
-	 * run through a session launcher.
+	 * it, names every option that only CAT passes as one the agent never passes, and has it start the request server
+	 * once, by its absolute path, before it launches outside a run.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -376,7 +376,10 @@ public final class RunnerLaunchersTest
 		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
 		requireThat(rule, "rule").
 			contains("as one command with nothing in front of it, such as a variable assignment, `env` or `cd`").
-			contains("Outside a run, the launcher starts the session itself").
+			contains("Outside a run, the launcher asks this session's request server, " +
+				"`${CAT_PLUGIN_ROOT}/bin/request-server`, to start the session").
+			contains("start the request server once in the background, by its absolute path").
+			doesNotContain("the launcher starts the session itself").
 			doesNotContain("session launcher");
 		int never = rule.indexOf("Never pass ");
 		requireThat(never, "never").isNotNegative();
