@@ -2728,11 +2728,17 @@ in the harness's home folder (`.bashrc`, `.bash_profile`, `.bash_login`, `.bash_
 `.zshenv`, `.zprofile` and `.zlogin`): Claude Code gets `sandbox.filesystem.denyWrite` and `permissions.deny`
 `Edit(//<path>)` entries, and Codex gets a `read` entry for each in its permission profile (user ruling, 2026-11-08:
 "make the startup files read only"). It reports these entries with the others. A Codex configuration that selects no
-permission profile has none to hold them, so `install` creates a CAT profile that `extends` the built-in profile that
-Codex would otherwise choose (`:workspace`, or `:read-only` when Codex would use that), copies into it the writable
-folders and network setting of the user's `[sandbox_workspace_write]` table, adds the read entries, and selects it
-with `default_permissions`; it reports the profile and the selection, and `uninstall` removes both and restores the
-earlier selection (user ruling, 2026-11-08: "do that").
+permission profile has none to hold them. Codex then chooses a built-in profile per project, unless the user-level
+`sandbox_mode` fixes one, and a selected profile would replace both everywhere. So `install` follows `sandbox_mode`:
+for `workspace-write` it creates a CAT profile that `extends` `:workspace` and copies into it the user's
+`[sandbox_workspace_write]` settings (writable folders, network, and the temporary-folder exclusions), and for
+`read-only` one that `extends` `:read-only`; it adds the read entries and selects the profile with
+`default_permissions`. It asks the user first, showing what the selection changes, as it does before it replaces a
+selected built-in profile; a refusal leaves the startup files writable, and `install` reports that. With
+`danger-full-access` there is no sandbox to hold the entries, and with no `sandbox_mode` no single profile matches
+every project, so `install` creates none and reports that the startup files stay writable. `uninstall` removes the
+profile and restores the earlier selection (user rulings, 2026-11-08: "do that", then "Follow sandbox_mode" and "Ask
+first").
 
 A runner launcher that a harness session runs treats its options, inputs and environment as the session's, because the
 session's model chose them, and checks the following before it starts anything. It refuses with status `2` and the
