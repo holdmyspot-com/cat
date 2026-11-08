@@ -445,8 +445,12 @@ public final class InvocationTest
 			Map<String, String> before = Releases.snapshot(archive.root);
 			RecordingIntegration integration = new RecordingIntegration();
 
+			// The environment's search path is in the form of the platform that runs the test, so the installer runs on it
 			Run run = run(archive.plugin, archive.project, environment, List.of(new RegisteredProvider()), integration,
-				"--home", archive.home.toString(), "install", "--harness", "harness-a");
+				_ -> Optional.empty(), Platform.current(), command ->
+				{
+					throw new AssertionError("Started " + command);
+				}, "--home", archive.home.toString(), "install", "--harness", "harness-a");
 
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
