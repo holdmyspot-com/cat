@@ -1030,14 +1030,15 @@ public final class Integration implements HarnessIntegration
 	 * Returns the paths that {@code permissions.deny} entries keep Claude Code's file tools from changing.
 	 *
 	 * @param entries the entries
-	 * @return the absolute path of each {@code Edit(//<path>)} entry
+	 * @return the absolute path of each entry that {@link #readOnly} wrote, the text between {@code Edit(/}
+	 * 	and the closing parenthesis
 	 */
 	private static List<String> deniedPaths(List<String> entries)
 	{
 		List<String> paths = new ArrayList<>();
 		for (String entry : entries)
 		{
-			if (entry.startsWith(EDIT_DENIAL + "/") && entry.endsWith(")"))
+			if (entry.startsWith(EDIT_DENIAL) && entry.endsWith(")"))
 				paths.add(entry.substring(EDIT_DENIAL.length(), entry.length() - 1));
 		}
 		return paths;
