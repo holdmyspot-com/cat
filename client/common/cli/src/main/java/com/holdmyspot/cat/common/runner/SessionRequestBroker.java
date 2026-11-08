@@ -171,39 +171,59 @@ public final class SessionRequestBroker implements Closeable
 				if (Files.exists(directory, LinkOption.NOFOLLOW_LINKS))
 					continue;
 				Files.createDirectory(directory);
-				if (stopped)
-				{
-					respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
-					continue;
-				}
-				Optional<String> refusal = site.refusal(accepted);
-				if (refusal.isPresent())
-				{
-					respond(id, "", "refused", refusal.get(), "", directory);
-					continue;
-				}
 				try
 				{
-					RunRequest request = read(file, directory);
-					accepted += 1;
-					site.accepted(json, accepted);
-					harnesses.put(id, request.harness());
-					Path runRoot = site.runRoot(id, accepted);
-					runRoots.put(id, runRoot);
-					childRoots.put(id, runRoot.resolve(request.harness()));
-					List<String> arguments = arguments(request, runRoot, directory);
-					if (request.streamed())
-						streams.put(id, new Streamed(directory));
-					if (request.keepRun())
-						keptRuns.add(id);
-					children.submit(() -> execute(id, request, arguments, directory));
+					take(id, file, directory);
 				}
-				catch (IOException | IllegalArgumentException | JacksonException e)
+				finally
 				{
-					respond(id, "", "refused", e.getMessage(), "", directory);
+					site.taken(file);
 				}
 			}
 			serveStreams(requests);
+		}
+	}
+
+	/**
+	 * Answers or starts one request whose response directory this scan created.
+	 *
+	 * @param id        the request ID
+	 * @param file      the request archive
+	 * @param directory the request's response directory
+	 * @throws IOException if a response cannot be published
+	 */
+	private void take(String id, Path file, Path directory) throws IOException
+	{
+		if (stopped)
+		{
+			respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
+			return;
+		}
+		Optional<String> refusal = site.refusal(accepted);
+		if (refusal.isPresent())
+		{
+			respond(id, "", "refused", refusal.get(), "", directory);
+			return;
+		}
+		try
+		{
+			RunRequest request = read(file, directory);
+			accepted += 1;
+			site.accepted(json, accepted);
+			harnesses.put(id, request.harness());
+			Path runRoot = site.runRoot(id, accepted);
+			runRoots.put(id, runRoot);
+			childRoots.put(id, runRoot.resolve(request.harness()));
+			List<String> arguments = arguments(request, runRoot, directory);
+			if (request.streamed())
+				streams.put(id, new Streamed(directory));
+			if (request.keepRun())
+				keptRuns.add(id);
+			children.submit(() -> execute(id, request, arguments, directory));
+		}
+		catch (IOException | IllegalArgumentException | JacksonException e)
+		{
+			respond(id, "", "refused", e.getMessage(), "", directory);
 		}
 	}
 
@@ -889,6 +909,14 @@ public final class SessionRequestBroker implements Closeable
 		String closedReason();
 
 		/**
+		 * Releases a request's archive once the broker has copied it, or answered the request without reading it.
+		 *
+		 * @param file the request archive
+		 * @throws IOException if the archive cannot be released
+		 */
+		void taken(Path file) throws IOException;
+
+		/**
 		 * Releases what an accepted request leaves in its run root once its child has ended and the request is
 		 * answered.
 		 *
@@ -1012,6 +1040,12 @@ public final class SessionRequestBroker implements Closeable
 		public String closedReason()
 		{
 			return "The requesting run stopped";
+		}
+
+		@Override
+		public void taken(Path file)
+		{
+			// The request stays in the run, which the run's runner removes with it
 		}
 
 		@Override

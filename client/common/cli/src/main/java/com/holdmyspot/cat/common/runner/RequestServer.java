@@ -726,6 +726,14 @@ public final class RequestServer
 		}
 
 		@Override
+		public void taken(Path file) throws IOException
+		{
+			// The response directory marks the request as taken until the requester removes it with its results, so a
+			// request that stayed would be taken again once its response is gone
+			Files.deleteIfExists(file);
+		}
+
+		@Override
 		public void answered(Path runRoot) throws IOException
 		{
 			// The run's home holds a copy of the user's login, and the requester has its kept run's copy

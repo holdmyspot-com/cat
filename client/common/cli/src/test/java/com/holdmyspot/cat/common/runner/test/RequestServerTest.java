@@ -278,7 +278,7 @@ public final class RequestServerTest
 				int status = SessionRequestForwarder.forward("claude", new String[]{"--project",
 						fixture.project.toString(), "--model", "haiku", "--effort", "low"},
 					new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"),
-					server.requests(), Pause.sleeping(Duration.ofMillis(10)), output, new PrintWriter(errors, true));
+					server.requests(), Thread::yield, output, new PrintWriter(errors, true));
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
 
 				List<String> arguments = started.get();
@@ -287,7 +287,7 @@ public final class RequestServerTest
 				ChildPolicy bound = bounds.get();
 				requireThat(bound.writeRoots(), "writeRoots").isEqualTo(List.of(runRoot));
 				requireThat(bound.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST));
-				requireThat(Files.exists(runRoot), "runRootRemains").isFalse();
+				requireThat(awaitAbsent(runRoot), "runRootRemains").isFalse();
 				requireThat(copied.get(), "copied").contains("README.md").contains(".cat/sessions/" + SESSION_ID).
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/" + RequestServer.REQUESTS).
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/responses").
@@ -414,7 +414,8 @@ public final class RequestServerTest
 	/**
 	 * Verifies that a CAT command that starts sessions, such as the prompt optimizer, has its session served by the
 	 * server outside a run: the command receives the session's records, finds the session's kept run in its own run
-	 * root, and removes the response once it has copied the run, while the server keeps no run of its own.
+	 * root, and removes the response once it has copied the run, while the server keeps neither the request nor a run
+	 * of its own, so the request is served once.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a request cannot be served
 	 * @throws InterruptedException if the test is interrupted
@@ -479,7 +480,12 @@ public final class RequestServerTest
 				{
 					requireThat(responses.toList(), "responses").isEmpty();
 				}
-				requireThat(Files.exists(fixture.sessionDirectory().resolve("request-runs").resolve(runId)),
+				try (Stream<Path> requests = Files.list(server.requests()))
+				{
+					requireThat(requests.filter(path -> path.toString().endsWith(".tar")).toList(),
+						"requests").isEmpty();
+				}
+				requireThat(awaitAbsent(fixture.sessionDirectory().resolve("request-runs").resolve(runId)),
 					"serverRunRemains").isFalse();
 			}
 		}
@@ -581,6 +587,21 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Waits, for a bounded time, until the server removes a path once it has answered the request that the path
+	 * belongs to.
+	 *
+	 * @param path the path
+	 * @return {@code true} if the path still exists when the wait ends
+	 */
+	private static boolean awaitAbsent(Path path)
+	{
+		long deadline = System.nanoTime() + WAIT.toNanos();
+		while (Files.exists(path) && System.nanoTime() < deadline)
+			Thread.yield();
+		return Files.exists(path);
+	}
+
+	/**
 	 * Returns the value of an option.
 	 *
 	 * @param arguments the options
@@ -630,7 +651,7 @@ public final class RequestServerTest
 		private Set<String> running = Set.of("claude");
 		private Optional<PolicyRefusal> sessionRefusal = Optional.empty();
 		private Optional<String> askingThread = Optional.empty();
-		private Pause pause = Pause.sleeping(Duration.ofMillis(10));
+		private Pause pause = Thread::yield;
 		private Child child = _ ->
 		{
 			throw new AssertionError("No session was expected");
