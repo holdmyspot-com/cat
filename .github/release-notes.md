@@ -51,8 +51,8 @@ Each harness gets its own installation of CAT, and the two may run different CAT
 also use the POSIX command in Git Bash; Codex on Windows needs the PowerShell command. CAT's runners and prompt
 optimization are not available on native Windows; to use them, run your harness and CAT inside WSL2. If the command
 cannot write a required path, run it outside the agent sandbox. Restart the harness: a session that was already running
-has none of the sandbox exceptions that the install adds for CAT's runner launchers, so it cannot start runner sessions
-or prompt optimization trials.
+has none of the sandbox exceptions that the install adds for CAT's request server, so it cannot start runner sessions or
+prompt optimization trials.
 
 ## Choosing where CAT installs
 
@@ -91,12 +91,14 @@ harness home and the installer reads `USERPROFILE`. The installation records its
 these variables does not redirect an update; the full list of what the installer writes is in the
 [installation guide](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md#installed-locations).
 
-The command lets your sessions run CAT's two runner launchers outside their sandbox, by their absolute paths only, and
-reports those entries as running outside the sandbox. It also makes your shell startup files, such as `.bashrc` and
-`.zshrc`, read-only to the harness's sandboxed commands. A runner launcher identifies the session that runs it, checks
-every path that the launch names against that session's sandbox policy, and starts the runner session inside its
-harness's own sandbox, never wider than the session that asked for it. In Codex, a permissions profile that denies any
-read keeps the launchers sandboxed (openai/codex#38318), and the launchers then say which entries to remove.
+The command lets your sessions run CAT's request server outside their sandbox, by its absolute path only, and reports
+that entry as running outside the sandbox. It also makes your shell startup files, such as `.bashrc` and `.zshrc`,
+read-only to the harness's sandboxed commands. Your agent starts the request server once per session, in the
+background, and it serves only that session. Each launch of a runner session is packed inside the session's sandbox as
+a request; the request server identifies the session, checks every path that the request names against that session's
+sandbox policy, and starts the runner session inside its harness's own sandbox, never wider than the session that asked
+for it. In Codex, a permissions profile that denies any read keeps the request server sandboxed (openai/codex#38318),
+and the request server then names the denied entries to remove or says to start the session from a terminal.
 
 ## Install another release, check CAT and uninstall with your agent
 
