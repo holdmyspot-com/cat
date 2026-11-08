@@ -5,6 +5,8 @@ import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -153,7 +155,7 @@ final class ClaudePolicyComputation
 		if (filesystemDisabled())
 		{
 			// Commands may read and write every file, and nothing says that the settings files stay protected
-			writeRoots.add(Path.of("/"));
+			writeRoots.addAll(everyFile());
 			return new ParentPolicy(true, writeRoots, writeDenials, readDenials, readReallowances,
 				hosts(projectRestricted, managedDomainsOnly, managedRulesOnly), allowLocalBinding(projectRestricted),
 				protectedSources);
@@ -489,13 +491,30 @@ final class ClaudePolicyComputation
 	}
 
 	/**
+	 * Returns the folders that hold every file: {@code /} on a POSIX file system and the root of each drive on Windows
+	 * that holds a file system, which leaves out the drive of a card reader that has no card.
+	 *
+	 * @return the file system roots
+	 */
+	private static List<Path> everyFile()
+	{
+		List<Path> roots = new ArrayList<>();
+		for (Path root : FileSystems.getDefault().getRootDirectories())
+		{
+			if (Files.isDirectory(root))
+				roots.add(root);
+		}
+		return roots;
+	}
+
+	/**
 	 * Returns the paths that a deny rule denies to a tool.
 	 *
 	 * @param rule         the rule
 	 * @param tool         the tool, {@code Read} or {@code Edit}
 	 * @param settingsRoot the root of the settings that hold the rule
 	 * @param source       the source of the rule, as the user knows it
-	 * @return the paths, {@code /} if the rule denies the tool everywhere
+	 * @return the paths, every file system root if the rule denies the tool everywhere
 	 * @throws IOException   if a folder cannot be listed while matching a denied pattern
 	 * @throws PolicyRefusal if the rule names a path that CAT cannot resolve
 	 */
@@ -507,7 +526,7 @@ final class ClaudePolicyComputation
 			return List.of();
 		String specifier = matcher.group(2);
 		if (specifier == null || specifier.isBlank() || specifier.equals("**") || specifier.equals("//**"))
-			return List.of(Path.of("/"));
+			return everyFile();
 		return paths.denied(specifier, Syntax.RULE, settingsRoot, source);
 	}
 

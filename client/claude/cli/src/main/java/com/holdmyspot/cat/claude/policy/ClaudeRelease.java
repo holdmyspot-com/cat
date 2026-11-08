@@ -159,9 +159,11 @@ final class ClaudeRelease
 	 */
 	static final String WSL_INHERITS_WINDOWS_SETTINGS = "wslInheritsWindowsSettings";
 	/**
-	 * The folders that the sandbox lets commands write without any setting, other than the working directories.
+	 * The folders that the sandbox lets commands write without any setting, other than the working directories. On
+	 * Windows, where they name no folder that exists, they lie on the current drive.
 	 */
-	static final List<Path> BUILT_IN_WRITES = List.of(Path.of("/tmp/claude"), Path.of("/private/tmp/claude"));
+	static final List<Path> BUILT_IN_WRITES = List.of(Path.of("/tmp/claude").toAbsolutePath(),
+		Path.of("/private/tmp/claude").toAbsolutePath());
 	/**
 	 * The environment variable that names the temporary folder that Claude Code gives commands, which the sandbox lets
 	 * them write.

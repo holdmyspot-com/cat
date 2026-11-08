@@ -861,6 +861,10 @@ public final class ClaudeConnectionSettings
 		 * absolute, and a permission rule's is relative to the settings file's folder. Any other path may be relative
 		 * to that folder or to the project that holds it, so each reading counts. The part from the first glob
 		 * character on is dropped, so that the folder that holds every match remains.
+		 * <p>
+		 * On Windows, a path that starts at a drive, such as {@code C:\Users}, or at a network share is absolute, and a
+		 * permission rule names a drive as Claude Code does, as {@code //c/Users} for {@code C:\Users}. Names are
+		 * separated by {@code /}, so a backslash is not glob syntax there.
 		 *
 		 * @param entry      the path setting
 		 * @param ruleSyntax {@code true} if {@code entry} is the path of a permission rule
@@ -868,7 +872,12 @@ public final class ClaudeConnectionSettings
 		 */
 		private List<Path> candidates(String entry, boolean ruleSyntax)
 		{
+			Path folder = file.toAbsolutePath().getParent();
+			boolean windows = folder.getFileSystem().getSeparator().equals("\\");
 			String path = entry.strip();
+			boolean networkShare = windows && path.startsWith("\\\\");
+			if (windows)
+				path = path.replace('\\', '/');
 			for (int index = 0; index < path.length(); ++index)
 			{
 				if (GLOB_SYNTAX.indexOf(path.charAt(index)) >= 0)
@@ -877,10 +886,16 @@ public final class ClaudeConnectionSettings
 					break;
 				}
 			}
-			Path folder = file.toAbsolutePath().getParent();
 			List<Path> result = new ArrayList<>();
-			if (path.startsWith("//"))
-				result.add(Path.of(path.substring(1)));
+			if (networkShare || windows && startsAtDrive(path))
+				result.add(Path.of(path));
+			else if (path.startsWith("//"))
+			{
+				String absolute = path.substring(1);
+				if (windows)
+					absolute = ruleDrive(absolute);
+				result.add(Path.of(absolute));
+			}
 			else if (path.equals("~") || path.startsWith("~/"))
 				result.add(home.resolve(path.substring(1).replaceFirst("^/+", "")));
 			else if (path.startsWith("/") && ruleSyntax)
@@ -897,6 +912,46 @@ public final class ClaudeConnectionSettings
 			for (Path candidate : result)
 				normalized.add(candidate.toAbsolutePath().normalize());
 			return normalized;
+		}
+
+		/**
+		 * Indicates whether a path starts at a Windows drive.
+		 *
+		 * @param path a path that separates names with {@code /}
+		 * @return {@code true} if {@code path} starts with a drive letter, a colon and {@code /}
+		 */
+		private static boolean startsAtDrive(String path)
+		{
+			return path.length() >= 3 && isDriveLetter(path.charAt(0)) && path.charAt(1) == ':' &&
+				path.charAt(2) == '/';
+		}
+
+		/**
+		 * Returns the Windows path that a permission rule names with the form of a POSIX path, such as
+		 * {@code C:/Users} for {@code /c/Users}.
+		 *
+		 * @param path a path that starts with {@code /}
+		 * @return the path with its drive, or {@code path} if it does not start with a drive letter's folder
+		 */
+		private static String ruleDrive(String path)
+		{
+			if (path.length() < 2 || !isDriveLetter(path.charAt(1)) || path.length() > 2 && path.charAt(2) != '/')
+				return path;
+			String rest = "/";
+			if (path.length() > 2)
+				rest = path.substring(2);
+			return Character.toUpperCase(path.charAt(1)) + ":" + rest;
+		}
+
+		/**
+		 * Indicates whether a character is the name of a Windows drive.
+		 *
+		 * @param character the character
+		 * @return {@code true} if {@code character} is an ASCII letter
+		 */
+		private static boolean isDriveLetter(char character)
+		{
+			return character >= 'A' && character <= 'Z' || character >= 'a' && character <= 'z';
 		}
 	}
 
