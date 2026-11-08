@@ -14,12 +14,16 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -31,7 +35,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Validates session requests, snapshots their inputs before starting children, and publishes retained evidence.
  * A run whose options allow no session request gets each request refused with
  * {@link SessionRequestAccess#NO_REQUESTS_REASON}, and one that has accepted all that its options allow gets each
- * further request refused with {@code limit}. Closing the broker stops child process trees and answers unprocessed
+ * further request refused with {@code limit}. A request whose records follow it, as
+ * {@link StreamedRequest} publishes them, gets each record on its child's standard input as it arrives, and its child
+ * is stopped once the request's sender ends. Closing the broker stops child process trees and answers unprocessed
  * requests as stopped.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -55,6 +61,10 @@ public final class SessionRequestBroker implements Closeable
 	private final Map<String, String> harnesses = new HashMap<>();
 	private final Map<String, Path> childRoots = new HashMap<>();
 	private final Set<String> cancelled = new HashSet<>();
+	/**
+	 * The records of each accepted request whose records follow it, by request identifier, until its child ends.
+	 */
+	private final Map<String, Streamed> streams = new HashMap<>();
 	private Closeable monitor;
 	private IOException failure;
 	private int accepted;
@@ -162,6 +172,8 @@ public final class SessionRequestBroker implements Closeable
 					childRoots.put(id, SessionRequestAccess.requestedRunsDirectory(run).
 						resolve(String.valueOf(accepted)).resolve(request.harness()));
 					List<String> arguments = arguments(request, request.project(), request.plugins(), directory, accepted);
+					if (request.streamed())
+						streams.put(id, new Streamed(directory));
 					children.submit(() -> execute(id, request, arguments, directory));
 				}
 				catch (IOException | IllegalArgumentException | JacksonException e)
@@ -169,6 +181,53 @@ public final class SessionRequestBroker implements Closeable
 					respond(id, "", "refused", e.getMessage(), "", directory);
 				}
 			}
+			serveStreams(requests);
+		}
+	}
+
+	/**
+	 * Takes the records that each streamed request's sender has published since the last scan, in order, and stops the
+	 * child of each request whose sender has ended or published an invalid record.
+	 *
+	 * @param requests the run's requests directory
+	 * @throws IOException if a child cannot be stopped or its response cannot be published
+	 */
+	private void serveStreams(Path requests) throws IOException
+	{
+		if (stopped)
+			return;
+		for (Iterator<Map.Entry<String, Streamed>> entries = streams.entrySet().iterator(); entries.hasNext();)
+		{
+			Map.Entry<String, Streamed> entry = entries.next();
+			String id = entry.getKey();
+			Streamed stream = entry.getValue();
+			if (cancelled.contains(id))
+			{
+				// The requesting turn stopped the child, and answered the request
+				entries.remove();
+				stream.records.add(Optional.empty());
+				continue;
+			}
+			String stop = "";
+			try
+			{
+				if (StreamedRequest.senderRuns(requests, id))
+					stream.take(id, requests);
+				else
+					stop = "The launcher that requested the session ended";
+			}
+			catch (IOException | JacksonException e)
+			{
+				stop = "The launcher that requested the session sent an invalid record: " + e.getMessage();
+			}
+			if (stop.isEmpty())
+				continue;
+			entries.remove();
+			cancelled.add(id);
+			if (processes.containsKey(id))
+				HarnessProcessTermination.terminate(processes.get(id), "requested runner");
+			stream.records.add(Optional.empty());
+			respond(id, harnesses.get(id), "stopped", stop, copyChildEvidence(id, stream.directory), stream.directory);
 		}
 	}
 
@@ -273,14 +332,19 @@ public final class SessionRequestBroker implements Closeable
 			}
 			try (OutputStream input = process.getOutputStream())
 			{
-				for (String prompt : request.prompts())
+				if (request.streamed())
+					feed(id, process, input);
+				else
 				{
-					ObjectNode turn = json.createObjectNode().put("type", "turn").put("prompt", prompt);
-					input.write((json.writer().without(SerializationFeature.INDENT_OUTPUT).writeValueAsString(turn) +
-						"\n").getBytes(StandardCharsets.UTF_8));
+					for (String prompt : request.prompts())
+					{
+						ObjectNode turn = json.createObjectNode().put("type", "turn").put("prompt", prompt);
+						input.write((json.writer().without(SerializationFeature.INDENT_OUTPUT).writeValueAsString(turn) +
+							"\n").getBytes(StandardCharsets.UTF_8));
+					}
+					input.write("{\"type\":\"complete\"}\n".getBytes(StandardCharsets.UTF_8));
+					input.flush();
 				}
-				input.write("{\"type\":\"complete\"}\n".getBytes(StandardCharsets.UTF_8));
-				input.flush();
 				int exit = process.waitFor();
 				String status = "failed";
 				String reason = "Requested runner exited with status " + exit;
@@ -322,7 +386,41 @@ public final class SessionRequestBroker implements Closeable
 			synchronized (this)
 			{
 				processes.remove(id);
+				streams.remove(id);
 			}
+		}
+	}
+
+	/**
+	 * Writes each record of a streamed request to its child as the broker takes it, until the {@code complete} record,
+	 * the child's exit, or the child's stop.
+	 *
+	 * @param id      the request identifier
+	 * @param process the child
+	 * @param input   the child's standard input
+	 * @throws IOException          if a record cannot be written
+	 * @throws InterruptedException if the thread is interrupted while it waits for a record
+	 */
+	private void feed(String id, Process process, OutputStream input) throws IOException, InterruptedException
+	{
+		BlockingQueue<Optional<String>> records;
+		synchronized (this)
+		{
+			Streamed stream = streams.get(id);
+			if (stream == null)
+				return;
+			records = stream.records;
+		}
+		process.onExit().thenRun(() -> records.add(Optional.empty()));
+		while (true)
+		{
+			Optional<String> record = records.take();
+			if (record.isEmpty())
+				return;
+			input.write((record.get() + "\n").getBytes(StandardCharsets.UTF_8));
+			input.flush();
+			if (StreamedRequest.isComplete(json, record.get()))
+				return;
 		}
 	}
 
@@ -364,6 +462,8 @@ public final class SessionRequestBroker implements Closeable
 	{
 		synchronized (this)
 		{
+			// The child has ended, so the end of its request's sender no longer stops it
+			streams.remove(id);
 			if (stopped || cancelled.contains(id))
 				return;
 			String childRunId = copyChildEvidence(id, directory);
@@ -439,6 +539,7 @@ public final class SessionRequestBroker implements Closeable
 	{
 		synchronized (this)
 		{
+			streams.remove(id);
 			if (stopped || cancelled.contains(id))
 				return;
 			try
@@ -579,5 +680,60 @@ public final class SessionRequestBroker implements Closeable
 			failure = exception;
 		else
 			failure.addSuppressed(exception);
+	}
+
+	/**
+	 * The records of a streamed request that the broker took and its child has not received yet.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe; the broker takes records while holding its own lock.
+	 */
+	private final class Streamed
+	{
+		/**
+		 * The records in order; an empty element means that no record follows.
+		 */
+		private final BlockingQueue<Optional<String>> records = new LinkedBlockingQueue<>();
+		/**
+		 * The request's private response directory.
+		 */
+		private final Path directory;
+		/**
+		 * The number of the next record to take.
+		 */
+		private int next = 1;
+		/**
+		 * Indicates whether the broker took the {@code complete} record.
+		 */
+		private boolean complete;
+
+		/**
+		 * Creates the records of a request.
+		 *
+		 * @param directory the request's private response directory
+		 */
+		Streamed(Path directory)
+		{
+			this.directory = directory;
+		}
+
+		/**
+		 * Takes each record that the sender has published since the last call, in order.
+		 *
+		 * @param id       the request identifier
+		 * @param requests the run's requests directory
+		 * @throws IOException if a record is invalid or cannot be read
+		 */
+		void take(String id, Path requests) throws IOException
+		{
+			while (!complete)
+			{
+				Optional<String> record = StreamedRequest.take(json, requests, id, next, directory, limits);
+				if (record.isEmpty())
+					return;
+				next += 1;
+				complete = StreamedRequest.isComplete(json, record.get());
+				records.add(record);
+			}
+		}
 	}
 }

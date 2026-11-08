@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.StringReader;
@@ -49,6 +50,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -56,6 +58,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 /**
  * Tests request validation, child runner options, retained responses, and broker lifecycle with in-process children.
@@ -714,6 +717,336 @@ public final class SessionRequestBrokerTest
 			requireThat(errors.toString(), "errors").contains("refused: this run allows no further sessions");
 			requireThat(started, "started").isEmpty();
 		}
+	}
+
+	/**
+	 * Verifies that a session inside a run holds a conversation with the session that it requests through the run's
+	 * runner: each turn is sent once the previous turn has ended, an interrupt stops the turn in progress, a line that
+	 * is no message is refused without reaching the requested session, and {@code end} completes the session.
+	 *
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void conversationThroughBroker() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture())
+		{
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			Path folder = fixture.root.resolve("conversation");
+			// The asking session sends a malformed line with its first turn, its second turn and an interrupt once
+			// the first turn has ended, its third turn once the second has ended, and ends the conversation after
+			// the third
+			List<Message> messages = List.of(new Message(0, "{\"turn\": \"first\"}"), new Message(0, "oops"),
+				new Message(1, "{\"turn\": \"second\"}"), new Message(1, "{\"interrupt\": true}"),
+				new Message(2, "{\"turn\": \"third\"}"), new Message(3, "{\"end\": true}"));
+			AtomicInteger sent = new AtomicInteger();
+			AtomicInteger checks = new AtomicInteger();
+			int status;
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					FakeHarnessCli process = conversingRunner(fixture, fileLocks, options, child);
+					child.set(process);
+					return process;
+				}))
+			{
+				status = SessionRequestForwarder.forward("claude", new String[]{"--project", fixture.project.toString(),
+						"--model", "haiku", "--effort", "low", "--conversation", folder.toString()}, new StringReader(""),
+					fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 10_000)
+							throw new IOException("The conversation did not end");
+						ask(folder, messages, sent);
+						broker.scan();
+						sleep();
+					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true));
+			}
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(fromChild(fixture.json, folder), "fromChild").isEqualTo(List.of("refused oops",
+				"turn_completed reply 1", "{\"turn_end\":1,\"status\":\"completed\"}", "interrupted",
+				"turn_completed reply 2", "{\"turn_end\":2,\"status\":\"interrupted\"}", "turn_completed reply 3",
+				"{\"turn_end\":3,\"status\":\"completed\"}", "completed"));
+			requireThat(child.get().requests(), "records").isEqualTo(List.of("{\"type\":\"turn\",\"prompt\":\"first\"}",
+				"{\"type\":\"turn\",\"prompt\":\"second\"}", "{\"type\":\"interrupt\"}",
+				"{\"type\":\"turn\",\"prompt\":\"third\"}", "{\"type\":\"complete\"}"));
+			try (Stream<Path> left = Files.list(fixture.requests))
+			{
+				requireThat(left.map(file -> file.getFileName().toString()).filter(name -> !name.endsWith(".tar")).
+					toList(), "leftInRequests").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that {@code request-session --conversation} holds a conversation with the session that it requests and
+	 * prints the response's path once the conversation ends.
+	 *
+	 * @throws IOException if fixture, broker or request I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void requestSessionConverses() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture())
+		{
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			Path folder = fixture.root.resolve("conversation");
+			List<Message> messages = List.of(new Message(0, "{\"turn\": \"first\"}"),
+				new Message(1, "{\"turn\": \"third\"}"), new Message(2, "{\"end\": true}"));
+			AtomicInteger sent = new AtomicInteger();
+			AtomicInteger checks = new AtomicInteger();
+			StringWriter printed = new StringWriter();
+			int status;
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					FakeHarnessCli process = conversingRunner(fixture, fileLocks, options, child);
+					child.set(process);
+					return process;
+				}))
+			{
+				status = SessionRequestCli.execute(new String[]{"--harness", "claude", "--project",
+					fixture.project.toString(), "--model", "haiku", "--effort", "low", "--conversation",
+					folder.toString()}, fixture.requests, Clock.systemUTC(), () ->
+				{
+					if (checks.incrementAndGet() > 10_000)
+						throw new IOException("The conversation did not end");
+					ask(folder, messages, sent);
+					broker.scan();
+					sleep();
+				}, new PrintWriter(printed, true));
+			}
+			requireThat(status, "status").isEqualTo(0);
+			requireThat(fromChild(fixture.json, folder), "fromChild").isEqualTo(List.of("turn_completed reply 1",
+				"{\"turn_end\":1,\"status\":\"completed\"}", "turn_completed reply 2",
+				"{\"turn_end\":2,\"status\":\"completed\"}", "completed"));
+			Path response = Path.of(printed.toString().strip());
+			requireThat(fixture.json.readTree(response.toFile()).path("status").asString(), "response").
+				isEqualTo("completed");
+		}
+	}
+
+	/**
+	 * Verifies that the run's runner stops a requested session that converses with a launcher once the launcher
+	 * ends, however it ends, and answers the request as stopped.
+	 *
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void conversationStopsWithLauncher() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture())
+		{
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			Path folder = Files.createDirectory(fixture.root.resolve("conversation"));
+			Files.writeString(folder.resolve("to-child.jsonl"), "{\"turn\": \"hold\"}\n");
+			AtomicInteger checks = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					FakeHarnessCli process = conversingRunner(fixture, fileLocks, options, child);
+					child.set(process);
+					return process;
+				}))
+			{
+				String[] launch = {"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
+					"--conversation", folder.toString()};
+				// The launcher's own session stops it while the requested session's turn runs
+				IOException stopped = expectThrows(IOException.class, () -> SessionRequestForwarder.forward("claude",
+					launch, new StringReader(""), fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 10_000)
+							throw new IOException("The requested session never received its turn");
+						broker.scan();
+						FakeHarnessCli process = child.get();
+						if (process != null && !process.requests().isEmpty())
+							throw new IOException("The launcher was stopped");
+						sleep();
+					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
+				requireThat(stopped.getMessage(), "stopped").isEqualTo("The launcher was stopped");
+				broker.scan();
+				requireThat(child.get().isAlive(), "childAlive").isFalse();
+				String id;
+				try (Stream<Path> answered = Files.list(fixture.responses))
+				{
+					id = answered.map(file -> file.getFileName().toString()).findFirst().orElseThrow();
+				}
+				JsonNode response = fixture.await(id);
+				requireThat(response.path("status").asString(), "status").isEqualTo("stopped");
+				requireThat(response.path("reason").asString(), "reason").
+					isEqualTo("The launcher that requested the session ended");
+				requireThat(child.get().requests(), "records").
+					isEqualTo(List.of("{\"type\":\"turn\",\"prompt\":\"hold\"}"));
+			}
+		}
+	}
+
+	/**
+	 * Returns a requested runner that answers its turns with the runner's records: it replies to each turn except
+	 * {@code hold} and {@code second}, which run until they are interrupted, reports an interrupt and then the
+	 * interrupted turn's completion, and on {@code complete} writes its receipt and exits.
+	 *
+	 * @param fixture   the requesting run
+	 * @param fileLocks the file locks of the requested run
+	 * @param options   the requested runner's options
+	 * @param child     receives the runner, so that it can exit
+	 * @return the runner
+	 * @throws IOException if the requested run cannot be created
+	 */
+	private static FakeHarnessCli conversingRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
+		AtomicReference<FakeHarnessCli> child) throws IOException
+	{
+		HarnessRun run = new HarnessRunManager(fileLocks, Path.of(option(options, "--run-root")), Clock.systemUTC(),
+			Yielding.fileReplacer()).create("claude");
+		Path output = Path.of(option(options, "--output"));
+		Files.writeString(output, "");
+		AtomicInteger turns = new AtomicInteger();
+		return new FakeHarnessCli(line ->
+		{
+			try
+			{
+				JsonNode record = fixture.json.readTree(line);
+				switch (record.path("type").asString())
+				{
+					case "turn" ->
+					{
+						int turn = turns.incrementAndGet();
+						String prompt = record.path("prompt").asString();
+						if (!prompt.equals("hold") && !prompt.equals("second"))
+							append(output, turnCompleted(fixture, run, turn));
+					}
+					case "interrupt" ->
+					{
+						append(output, "{\"type\":\"interrupted\",\"run_id\":\"" + run.id() + "\"}");
+						append(output, turnCompleted(fixture, run, turns.get()));
+					}
+					case "complete" ->
+					{
+						append(output, "{\"type\":\"completed\",\"run_id\":\"" + run.id() + "\"}");
+						HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
+							run, output, List.of());
+						child.get().exit();
+					}
+					default -> throw new IOException("Unexpected record: " + line);
+				}
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+		});
+	}
+
+	/**
+	 * Returns the record with which a requested runner ends a turn.
+	 *
+	 * @param fixture the requesting run
+	 * @param run     the requested run
+	 * @param turn    the turn's number
+	 * @return the record
+	 */
+	private static String turnCompleted(Fixture fixture, HarnessRun run, int turn)
+	{
+		ObjectNode record = fixture.json.createObjectNode().put("type", "turn_completed").put("run_id", run.id()).
+			put("exit_code", 0).put("error", "").put("assistant_response", "reply " + turn);
+		record.putArray("assistant_messages").add("reply " + turn);
+		return record.toString();
+	}
+
+	/**
+	 * Appends a line to a file.
+	 *
+	 * @param file the file
+	 * @param line the line, without its terminator
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void append(Path file, String line) throws IOException
+	{
+		Files.writeString(file, line + "\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+	}
+
+	/**
+	 * Plays the asking session: appends each message whose turn has come to the conversation, once.
+	 *
+	 * @param folder   the conversation's folder
+	 * @param messages the messages in order
+	 * @param sent     how many messages were appended
+	 * @throws IOException if the conversation cannot be read or written
+	 */
+	private static void ask(Path folder, List<Message> messages, AtomicInteger sent) throws IOException
+	{
+		Path fromChild = folder.resolve("from-child.jsonl");
+		long turnEnds = 0;
+		if (Files.exists(fromChild))
+		{
+			turnEnds = Files.readAllLines(fromChild).stream().filter(line -> line.startsWith("{\"turn_end\"")).
+				count();
+		}
+		while (sent.get() < messages.size() && messages.get(sent.get()).afterTurnEnds() <= turnEnds)
+		{
+			Files.createDirectories(folder);
+			Files.writeString(folder.resolve("to-child.jsonl"), messages.get(sent.get()).line() + "\n",
+				StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+			sent.incrementAndGet();
+		}
+	}
+
+	/**
+	 * Summarizes the lines of a conversation's {@code from-child.jsonl}: a record's type, followed by the reply for a
+	 * {@code turn_completed} record and the refused line for a refusal, or the line itself otherwise.
+	 *
+	 * @param json   the line mapper
+	 * @param folder the conversation's folder
+	 * @return the summaries in order
+	 * @throws IOException if the file cannot be read
+	 */
+	private static List<String> fromChild(JsonMapper json, Path folder) throws IOException
+	{
+		List<String> summaries = new ArrayList<>();
+		for (String line : Files.readAllLines(folder.resolve("from-child.jsonl")))
+		{
+			JsonNode record = json.readTree(line);
+			String type = record.path("type").asString("");
+			if (record.has("refused"))
+				summaries.add("refused " + record.path("refused").asString());
+			else if (type.equals("turn_completed"))
+				summaries.add(type + " " + record.path("assistant_messages").path(0).asString());
+			else if (!type.isEmpty())
+				summaries.add(type);
+			else
+				summaries.add(line);
+		}
+		return summaries;
+	}
+
+	/**
+	 * Lets the requested session's thread run before the next check.
+	 *
+	 * @throws IOException if the thread is interrupted
+	 */
+	private static void sleep() throws IOException
+	{
+		try
+		{
+			Thread.sleep(1);
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted", e);
+		}
+	}
+
+	/**
+	 * One message of an asking session.
+	 *
+	 * @param afterTurnEnds how many of the requested session's turns must have ended before it is sent
+	 * @param line          the line
+	 */
+	private record Message(int afterTurnEnds, String line)
+	{
 	}
 
 	/**

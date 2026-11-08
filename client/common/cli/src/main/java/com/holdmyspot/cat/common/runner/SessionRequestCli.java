@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,6 +27,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * Submits a file-based session request and waits for its response, or resumes waiting for an earlier request.
+ * <p>
+ * With {@code --conversation <folder>}, the request carries no prompts: each message that the requesting session
+ * appends to the folder's {@value Conversation#TO_CHILD_FILE} goes to the requested session while it runs, the
+ * requested session's records go to {@value Conversation#FROM_CHILD_FILE}, and the command waits until the session
+ * ends, without a bound, because ending the command stops the session.
  */
 public final class SessionRequestCli
 {
@@ -40,9 +46,10 @@ public final class SessionRequestCli
 		args = CommandLineArguments.recover(args);
 		if (Arrays.equals(args, new String[]{"--help"}))
 		{
-			System.out.println("Usage: request-session --harness <name> --project <dir> --prompt <file> " +
-				"[--prompt <file>]... [--plugin <dir>]... --model <name> --effort <level> " +
-				"[--install-cat] [--session-transcripts] [--extra-permissions <file>] [--wait <seconds>] | " +
+			System.out.println("Usage: request-session --harness <name> --project <dir> " +
+				"(--prompt <file> [--prompt <file>]... [--wait <seconds>] | --conversation <folder>) " +
+				"[--plugin <dir>]... --model <name> --effort <level> " +
+				"[--install-cat] [--session-transcripts] [--extra-permissions <file>] | " +
 				"--await <id> [--wait <seconds>]");
 			return;
 		}
@@ -163,6 +170,7 @@ public final class SessionRequestCli
 		request.putArray("prompts");
 		request.putArray("plugins");
 		String id = "";
+		Path conversation = null;
 		Duration wait = Duration.ofSeconds(300);
 		Set<String> scalars = new HashSet<>();
 		for (int index = 0; index < args.length; ++index)
@@ -197,6 +205,7 @@ public final class SessionRequestCli
 				}
 				case "--project" -> request.put("project", Path.of(value).toAbsolutePath().toString());
 				case "--harness", "--model", "--effort" -> request.put(option.substring(2), value);
+				case Conversation.OPTION -> conversation = Path.of(value).toAbsolutePath();
 				case ExtraPermissions.OPTION ->
 				{
 					ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, Path.of(value));
@@ -205,6 +214,25 @@ public final class SessionRequestCli
 				}
 				default -> throw new IllegalArgumentException("Unsupported option: " + option);
 			}
+		}
+		if (conversation != null)
+		{
+			if (!id.isEmpty() || scalars.contains("--wait") || !request.path("prompts").isEmpty())
+			{
+				throw new IllegalArgumentException(Conversation.OPTION + " cannot be used with --prompt, --wait or " +
+					"--await");
+			}
+			if (!request.hasNonNull("project") || !request.hasNonNull("harness"))
+				throw new IllegalArgumentException("A request requires --harness and --project");
+			HarnessRunnerOptions.requireProfile(request.path("harness").asString(), request.path("model").asString(""),
+				request.path("effort").asString(""));
+			id = UUID.randomUUID().toString();
+			JsonNode result = SessionRequestForwarder.converse(json, request, requests, id, conversation, nullDevice,
+				limits, pause, OutputStream.nullOutputStream(), null);
+			output.println(responseFile(requests, id));
+			if (result.path("status").asString().equals("completed"))
+				return 0;
+			return 1;
 		}
 		if (id.isEmpty())
 		{
@@ -228,7 +256,7 @@ public final class SessionRequestCli
 				throw new IllegalArgumentException("--await accepts only --wait");
 			validateId(id);
 		}
-		Path response = requests.toAbsolutePath().getParent().resolve("responses").resolve(id).resolve("response.json");
+		Path response = responseFile(requests, id);
 		Instant deadline = clock.instant().plus(wait);
 		while (true)
 		{
@@ -265,6 +293,18 @@ public final class SessionRequestCli
 			}
 			pause.pause();
 		}
+	}
+
+	/**
+	 * Returns the file in which the run's runner answers a request.
+	 *
+	 * @param requests the run's requests directory
+	 * @param id       the request identifier
+	 * @return the file
+	 */
+	private static Path responseFile(Path requests, String id)
+	{
+		return requests.toAbsolutePath().getParent().resolve("responses").resolve(id).resolve("response.json");
 	}
 
 	/**

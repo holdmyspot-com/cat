@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.FileAlreadyExistsException;
@@ -311,6 +312,20 @@ public final class Conversation implements TurnSource
 	}
 
 	/**
+	 * Returns a stream that receives the child's records as bytes, one per line, and writes them both to a transcript
+	 * and, as each line ends, to this conversation.
+	 *
+	 * @param transcript receives the bytes as they are written
+	 * @return the stream
+	 * @throws NullPointerException if {@code transcript} is null
+	 */
+	public OutputStream childOutput(OutputStream transcript)
+	{
+		requireThat(transcript, "transcript").isNotNull();
+		return new ChildOutput(transcript);
+	}
+
+	/**
 	 * Appends a line to {@value #FROM_CHILD_FILE}.
 	 *
 	 * @param line the line, without its terminator
@@ -325,5 +340,68 @@ public final class Conversation implements TurnSource
 	public void close()
 	{
 		// Each read and write opens the files for itself
+	}
+
+	/**
+	 * The child's records as bytes, which go to a transcript and, a line at a time, to the conversation.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is not thread-safe.
+	 */
+	private final class ChildOutput extends OutputStream
+	{
+		private final OutputStream transcript;
+		/**
+		 * The bytes of the record whose line has not ended yet.
+		 */
+		private final ByteArrayOutputStream line = new ByteArrayOutputStream();
+
+		/**
+		 * Creates the stream.
+		 *
+		 * @param transcript receives the bytes as they are written
+		 */
+		ChildOutput(OutputStream transcript)
+		{
+			this.transcript = transcript;
+		}
+
+		@Override
+		public void write(int value) throws IOException
+		{
+			transcript.write(value);
+			split(value);
+		}
+
+		@Override
+		public void write(byte[] bytes, int offset, int length) throws IOException
+		{
+			transcript.write(bytes, offset, length);
+			for (int index = offset; index < offset + length; ++index)
+				split(bytes[index]);
+		}
+
+		/**
+		 * Adds one byte to the current record, and writes the record to the conversation when its line ends.
+		 *
+		 * @param value the byte
+		 * @throws IOException if the record cannot be written
+		 */
+		private void split(int value) throws IOException
+		{
+			if (value != '\n')
+			{
+				line.write(value);
+				return;
+			}
+			String record = line.toString(UTF_8);
+			line.reset();
+			childRecord(record);
+		}
+
+		@Override
+		public void flush() throws IOException
+		{
+			transcript.flush();
+		}
 	}
 }

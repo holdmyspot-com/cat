@@ -15,8 +15,10 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -30,9 +32,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * A session's commands cannot start a harness: they run in a sandbox and hold no login. Every session that a runner
  * starts has {@link SessionRequestAccess}, so a runner launcher that the session runs packs the launch as a session
  * request instead, waits for the parent runner to finish it, and returns the requested session's transcript and receipt
- * as its own. When the parent's run may request no session, the parent refuses the request and the launch fails with
- * the reason. The parent chooses the run root, the artifact, the denied reads and the limits of the sessions it
- * requests, so a launch may not choose them.
+ * as its own. With {@code --conversation}, the launch publishes the request without its records and sends each of the
+ * conversation's messages as the request's next record while the session runs. When the parent's run may request no
+ * further session, the parent refuses the request and the launch fails with the reason. The parent chooses the
+ * run root, the artifact, the denied reads and the limits of the sessions it requests, so a launch may not choose them.
  */
 public final class SessionRequestForwarder
 {
@@ -51,21 +54,23 @@ public final class SessionRequestForwarder
 	 * The options that take a value and that a launch may name.
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--run-root", "--project", "--plugin",
-		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION);
+		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION, Conversation.OPTION);
 
 	/**
 	 * Forwards one launch and waits for its requested session to end.
 	 *
 	 * @param harness  the harness of the runner launcher
 	 * @param args     the runner launcher's options
-	 * @param input    the launch's {@code turn} and {@code complete} records when {@code --input} is absent
+	 * @param input    the launch's {@code turn} and {@code complete} records when neither {@code --input} nor
+	 *                 {@code --conversation} is given
 	 * @param requests the run's requests directory
 	 * @param pause    paces checks for the session's progress
 	 * @param output   receives the session's transcript when {@code --output} is absent
 	 * @param errors   receives the reason when the session does not complete
 	 * @return {@code 0} if the session completed, {@code 75} if it found no capacity, or {@code 1} otherwise
-	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, or
-	 *                                  if the launch names no {@code --model} or no {@code --effort}
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
+	 *                                  {@code --input} and {@code --conversation} are both given, or if the launch
+	 *                                  names no {@code --model} or no {@code --effort}
 	 * @throws IOException              if the records are invalid, or the request or response cannot be read or
 	 *                                  written
 	 */
@@ -85,6 +90,7 @@ public final class SessionRequestForwarder
 		request.putArray("prompts");
 		request.putArray("plugins");
 		Path records = null;
+		Path conversation = null;
 		Path transcript = null;
 		Path receipt = null;
 		Set<String> scalars = new HashSet<>();
@@ -132,6 +138,7 @@ public final class SessionRequestForwarder
 				case "--plugin" -> request.withArray("plugins").add(Path.of(value).toAbsolutePath().toString());
 				case "--model", "--effort" -> request.put(option.substring(2), value);
 				case "--input" -> records = Path.of(value);
+				case Conversation.OPTION -> conversation = Path.of(value).toAbsolutePath();
 				case "--output" -> transcript = Path.of(value);
 				case "--receipt" -> receipt = Path.of(value);
 				case ExtraPermissions.OPTION ->
@@ -143,36 +150,34 @@ public final class SessionRequestForwarder
 				default -> throw new InvalidArgumentsException("Unsupported option: " + option);
 			}
 		}
+		if (conversation != null && records != null)
+			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
 		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
 			request.path("effort").asString(""));
-		List<String> prompts;
-		if (records == null)
-			prompts = prompts(json, input);
-		else
-		{
-			try (Reader file = Files.newBufferedReader(records, StandardCharsets.UTF_8))
-			{
-				prompts = prompts(json, file);
-			}
-		}
-
 		String id = UUID.randomUUID().toString();
-		RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request, prompts,
-			RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN);
-		Path directory = requests.toAbsolutePath().getParent().resolve("responses").resolve(id);
 		JsonNode response;
-		if (transcript == null)
-			response = await(json, directory, pause, output);
+		if (conversation == null)
+		{
+			List<String> prompts;
+			if (records == null)
+				prompts = prompts(json, input);
+			else
+			{
+				try (Reader file = Files.newBufferedReader(records, StandardCharsets.UTF_8))
+				{
+					prompts = prompts(json, file);
+				}
+			}
+			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
+				prompts, RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN);
+			response = awaitTranscript(json, responses(requests, id), pause, output, transcript, Function.identity());
+		}
 		else
 		{
-			Path parent = transcript.toAbsolutePath().getParent();
-			Files.createDirectories(parent);
-			try (OutputStream file = Files.newOutputStream(transcript))
-			{
-				response = await(json, directory, pause, file);
-			}
+			response = converse(json, request, requests, id, conversation, RequestArchive.NULL_DEVICE,
+				RequestLimits.IN_RUN, pause, output, transcript);
 		}
-		Path childReceipt = directory.resolve("receipt.json");
+		Path childReceipt = responses(requests, id).resolve("receipt.json");
 		if (receipt != null && Files.isRegularFile(childReceipt))
 		{
 			Files.createDirectories(receipt.toAbsolutePath().getParent());
@@ -186,6 +191,84 @@ public final class SessionRequestForwarder
 		if (status.equals("capacity"))
 			return HarnessCapacityWaitExpiredException.EXIT_STATUS;
 		return 1;
+	}
+
+	/**
+	 * Returns the directory in which the run's runner answers a request.
+	 *
+	 * @param requests the run's requests directory
+	 * @param id       the request identifier
+	 * @return the directory
+	 */
+	private static Path responses(Path requests, String id)
+	{
+		return requests.toAbsolutePath().getParent().resolve("responses").resolve(id);
+	}
+
+	/**
+	 * Publishes a request whose records come from a conversation and follows it: sends each of the conversation's
+	 * messages as the request's next record and copies the requested session's records to the conversation and to the
+	 * transcript, until the parent runner publishes its response. The sender's lock is held from before the request
+	 * appears until this method returns, however it returns, so the parent runner stops a session whose requester
+	 * ended.
+	 *
+	 * @param json       the manifest mapper
+	 * @param request    the request's manifest, without its records
+	 * @param requests   the run's requests directory
+	 * @param id         the request identifier
+	 * @param folder     the conversation's folder
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read
+	 * @param limits     the bounds that the request's archive must stay within
+	 * @param pause      paces checks for progress
+	 * @param output     receives the transcript when {@code transcript} is null
+	 * @param transcript the file that receives the transcript, or null
+	 * @return the response
+	 * @throws IllegalArgumentException if {@code folder} is not a new or empty folder
+	 * @throws IOException              if the request cannot be published, a record cannot be sent, or the wait fails
+	 */
+	static JsonNode converse(JsonMapper json, ObjectNode request, Path requests, String id, Path folder,
+		Path nullDevice, RequestLimits limits, Pause pause, OutputStream output, Path transcript) throws IOException
+	{
+		try (Conversation messages = Conversation.open(folder);
+		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
+		{
+			request.put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM);
+			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
+				List.of(), nullDevice, limits);
+			Pause sending = () ->
+			{
+				for (Optional<String> next = messages.poll(); next.isPresent(); next = messages.poll())
+					sender.send(next.get());
+				pause.pause();
+			};
+			return awaitTranscript(json, responses(requests, id), sending, output, transcript, messages::childOutput);
+		}
+	}
+
+	/**
+	 * Copies the requested session's transcript to {@code --output}, or to {@code output}, until the parent runner
+	 * publishes its response.
+	 *
+	 * @param json         the response mapper
+	 * @param directory    the request's response directory
+	 * @param pause        paces checks for progress
+	 * @param output       receives the transcript when {@code transcript} is null
+	 * @param transcript   the file that {@code --output} names, or null
+	 * @param wrap         wraps the transcript's stream, so that a conversation also receives the records
+	 * @return the response
+	 * @throws IOException if the transcript or response cannot be read, or the output cannot be written
+	 */
+	private static JsonNode awaitTranscript(JsonMapper json, Path directory, Pause pause, OutputStream output,
+		Path transcript, Function<OutputStream, OutputStream> wrap) throws IOException
+	{
+		if (transcript == null)
+			return await(json, directory, pause, wrap.apply(output));
+		Path parent = transcript.toAbsolutePath().getParent();
+		Files.createDirectories(parent);
+		try (OutputStream file = Files.newOutputStream(transcript))
+		{
+			return await(json, directory, pause, wrap.apply(file));
+		}
 	}
 
 	/**

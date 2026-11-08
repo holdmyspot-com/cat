@@ -85,7 +85,8 @@ public final class RequestArchive
 	 */
 	static final String EXTRA_PERMISSIONS = "extra_permissions";
 	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
-		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS);
+		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
+		StreamedRequest.INPUT_FIELD);
 	private static final Set<String> SESSION_FIELDS = Set.of("format_version", "harness", "model", "effort", "agent",
 		"turns", "input", "project", "plugins", "workspace", "read_only_evidence", "install_cat", "session_transcripts",
 		"keep_run", "session_requests", "request_depth", "capacity_wait", "max_concurrency", "capacity",
@@ -680,7 +681,15 @@ public final class RequestArchive
 		Path project = entry(value, inputs, "project", Kind.DIRECTORY);
 		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_RUN_INPUTS);
 		List<Path> promptFiles = namedEntries(value, inputs, "prompts", Kind.FILE, MAXIMUM_RUN_INPUTS);
-		if (promptFiles.isEmpty())
+		boolean streamed = value.has(StreamedRequest.INPUT_FIELD);
+		if (streamed && !value.path(StreamedRequest.INPUT_FIELD).stringValue("").equals(StreamedRequest.STREAM))
+		{
+			throw new IOException("Request accepts only \"" + StreamedRequest.STREAM + "\" as its " +
+				StreamedRequest.INPUT_FIELD);
+		}
+		if (streamed && !promptFiles.isEmpty())
+			throw new IOException("A request whose records follow it carries no prompts: prompts");
+		if (!streamed && promptFiles.isEmpty())
 			throw new IOException("Request requires at least one prompt: prompts");
 		List<String> prompts = new ArrayList<>();
 		for (Path prompt : promptFiles)
@@ -689,7 +698,7 @@ public final class RequestArchive
 		String effort = optionalText(value, "effort").orElse("");
 		HarnessRunnerOptions.requireProfile(harness, model, effort);
 		return new RunRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
-			flag(value, "install_cat"), extraPermissions(value));
+			flag(value, "install_cat"), extraPermissions(value), streamed);
 	}
 
 	/**
@@ -1008,9 +1017,12 @@ public final class RequestArchive
 	 * @param sessionTranscripts indicates whether native transcripts are requested
 	 * @param installCat         indicates whether CAT is installed in the requested session's home
 	 * @param extraPermissions   the writes and hosts that the requested session needs beyond its harness's
+	 * @param streamed           indicates whether the request's records follow it, as {@link StreamedRequest}
+	 *                           publishes them, instead of its prompts
 	 */
 	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
-		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions)
+		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
+		boolean streamed)
 	{
 	}
 
