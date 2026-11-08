@@ -671,7 +671,7 @@ public final class RequestServerTest
 			plugin = Files.createDirectories(root.resolve("plugin"));
 			transcript = Files.writeString(Files.createDirectories(root.resolve("transcripts")).
 				resolve(SESSION_ID + ".jsonl"), "{}\n");
-			harness = processes.start(4242, Optional.empty(), List.of("claude"));
+			harness = processes.start(4242);
 			policy = new FakeParentPolicySource("Claude Code", policy(List.of(project)));
 		}
 

@@ -4,23 +4,19 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.ProcessTable;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
- * An in-memory process table that the test edits: it starts processes under a parent with a command line, ends them,
- * and lets a later process reuse an identifier with another start. Each start has the form of a Linux process's: the
- * boot's identifier, the letter {@code t}, and the clock ticks since the boot.
+ * An in-memory process table that the test edits: it starts processes and ends them. Each start has the form of a
+ * Linux process's: the boot's identifier, the letter {@code t}, and the clock ticks since the boot.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class FakeProcessTable implements ProcessTable
 {
 	private static final String BOOT = "0f1e2d3c4b5a69788796a5b4c3d2e1f0";
-	private final Map<Long, Entry> processes = new HashMap<>();
+	private final Map<Long, ProcessIdentity> processes = new HashMap<>();
 	private int generation;
 
 	/**
@@ -33,25 +29,23 @@ public final class FakeProcessTable implements ProcessTable
 	/**
 	 * Starts a process.
 	 *
-	 * @param pid       the process identifier, which no live process has
-	 * @param parent    the parent, or empty for a process without one
-	 * @param arguments the arguments of its command line
+	 * @param pid the process identifier, which no live process has
 	 * @return its identity
 	 */
-	public ProcessIdentity start(long pid, Optional<ProcessIdentity> parent, List<String> arguments)
+	public ProcessIdentity start(long pid)
 	{
 		synchronized (this)
 		{
 			requireThat(processes.containsKey(pid), "processes.containsKey(pid)").isFalse();
 			generation += 1;
 			ProcessIdentity identity = new ProcessIdentity(pid, BOOT + "t" + (pid * 1000 + generation));
-			processes.put(pid, new Entry(identity, parent, List.copyOf(arguments)));
+			processes.put(pid, identity);
 			return identity;
 		}
 	}
 
 	/**
-	 * Ends a process. Its children keep running, without a parent.
+	 * Ends a process.
 	 *
 	 * @param process the process
 	 */
@@ -59,80 +53,7 @@ public final class FakeProcessTable implements ProcessTable
 	{
 		synchronized (this)
 		{
-			Entry entry = processes.get(process.pid());
-			if (entry != null && entry.identity().equals(process))
-				processes.remove(process.pid());
-		}
-	}
-
-	/**
-	 * Ends a process and starts another one with the same identifier, parent and command line.
-	 *
-	 * @param process the process
-	 * @return the new process's identity
-	 */
-	public ProcessIdentity reuse(ProcessIdentity process)
-	{
-		synchronized (this)
-		{
-			Entry entry = processes.get(process.pid());
-			requireThat(entry, "entry").isNotNull();
-			end(process);
-			return start(process.pid(), entry.parent(), entry.arguments());
-		}
-	}
-
-	@Override
-	public List<ProcessIdentity> all()
-	{
-		synchronized (this)
-		{
-			List<ProcessIdentity> identities = new ArrayList<>();
-			for (Entry entry : processes.values())
-				identities.add(entry.identity());
-			return identities;
-		}
-	}
-
-	@Override
-	public List<ProcessIdentity> descendants(ProcessIdentity process)
-	{
-		synchronized (this)
-		{
-			List<ProcessIdentity> descendants = new ArrayList<>();
-			if (!isAlive(process))
-				return descendants;
-			for (Entry entry : processes.values())
-			{
-				Optional<ProcessIdentity> ancestor = parent(entry.identity());
-				while (ancestor.isPresent() && !ancestor.get().equals(process))
-					ancestor = parent(ancestor.get());
-				if (ancestor.isPresent())
-					descendants.add(entry.identity());
-			}
-			return descendants;
-		}
-	}
-
-	@Override
-	public Optional<ProcessIdentity> parent(ProcessIdentity process)
-	{
-		synchronized (this)
-		{
-			if (!isAlive(process))
-				return Optional.empty();
-			return processes.get(process.pid()).parent().filter(this::isAlive);
-		}
-	}
-
-	@Override
-	public Optional<List<String>> arguments(ProcessIdentity process)
-	{
-		synchronized (this)
-		{
-			if (!isAlive(process))
-				return Optional.empty();
-			return Optional.of(processes.get(process.pid()).arguments());
+			processes.remove(process.pid(), process);
 		}
 	}
 
@@ -141,19 +62,7 @@ public final class FakeProcessTable implements ProcessTable
 	{
 		synchronized (this)
 		{
-			Entry entry = processes.get(process.pid());
-			return entry != null && entry.identity().equals(process);
+			return process.equals(processes.get(process.pid()));
 		}
-	}
-
-	/**
-	 * One live process.
-	 *
-	 * @param identity  its identity
-	 * @param parent    its parent, or empty for none
-	 * @param arguments the arguments of its command line
-	 */
-	private record Entry(ProcessIdentity identity, Optional<ProcessIdentity> parent, List<String> arguments)
-	{
 	}
 }

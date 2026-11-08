@@ -2,8 +2,6 @@ package com.holdmyspot.cat.common.runner.launcher.test;
 
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.ProcessTable;
-import java.util.List;
-import java.util.Optional;
 
 /**
  * Runs the {@link ProcessTable} contract against {@link FakeProcessTable}, so that the tests that hold their processes
@@ -19,36 +17,30 @@ public final class FakeProcessTableTest extends ProcessTableContract
 	}
 
 	@Override
-	protected ProcessTree start()
+	protected LiveProcess start()
 	{
 		FakeProcessTable table = new FakeProcessTable();
-		ProcessIdentity root = table.start(1, Optional.empty(), List.of("root"));
-		ProcessIdentity middle = table.start(2, Optional.of(root), List.of("middle"));
-		ProcessIdentity leaf = table.start(3, Optional.of(middle), LEAF_ARGUMENTS);
-		return new FakeTree(table, root, middle, leaf);
+		return new FakeProcess(table, table.start(3));
 	}
 
 	/**
-	 * Three generations of processes in a fake table.
+	 * A process in a fake table.
 	 *
-	 * @param table  the table
-	 * @param root   the leaf's grandparent
-	 * @param middle the leaf's parent
-	 * @param leaf   the leaf
+	 * @param table   the table
+	 * @param process the process
 	 */
-	private record FakeTree(FakeProcessTable table, ProcessIdentity root, ProcessIdentity middle,
-		ProcessIdentity leaf) implements ProcessTree
+	private record FakeProcess(FakeProcessTable table, ProcessIdentity process) implements LiveProcess
 	{
 		@Override
-		public void endLeaf()
+		public void end()
 		{
-			table.end(leaf);
+			table.end(process);
 		}
 
 		@Override
 		public void close()
 		{
-			table.end(leaf);
+			table.end(process);
 		}
 	}
 }

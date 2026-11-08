@@ -4,14 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
-import java.util.List;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
- * The operating system's processes as {@link ProcessHandle} reports them, with parents from
- * {@link ProcessHandle#parent()}, and with command lines and starts from {@link HarnessProcesses}, which reads
- * {@code /proc} on Linux and asks {@link ProcessHandle} elsewhere, where Windows reports no command lines.
+ * The operating system's processes as {@link HarnessProcesses} reports their starts, which it reads from {@code /proc}
+ * on Linux and asks {@link ProcessHandle} for elsewhere.
  * <p>
  * The request server's end with its session rests on this property of the platforms, which this class is the one
  * place to correct if a platform release differs: a process's {@link ProcessDescription#start() start} is the same in
@@ -30,45 +27,13 @@ public final class ProcessHandleTable implements ProcessTable
 	/**
 	 * Creates the table.
 	 *
-	 * @param processes reports the command lines and starts of processes
+	 * @param processes reports the starts of processes
 	 * @throws NullPointerException if {@code processes} is null
 	 */
 	public ProcessHandleTable(HarnessProcesses processes)
 	{
 		requireThat(processes, "processes").isNotNull();
 		this.processes = processes;
-	}
-
-	@Override
-	public List<ProcessIdentity> all()
-	{
-		return identities(ProcessHandle.allProcesses());
-	}
-
-	@Override
-	public List<ProcessIdentity> descendants(ProcessIdentity process)
-	{
-		requireThat(process, "process").isNotNull();
-		if (find(process).isEmpty())
-			return List.of();
-		return ProcessHandle.of(process.pid()).map(handle -> identities(handle.descendants())).orElse(List.of());
-	}
-
-	@Override
-	public Optional<ProcessIdentity> parent(ProcessIdentity process)
-	{
-		requireThat(process, "process").isNotNull();
-		if (find(process).isEmpty())
-			return Optional.empty();
-		return ProcessHandle.of(process.pid()).flatMap(ProcessHandle::parent).map(ProcessHandle::pid).
-			flatMap(this::identity);
-	}
-
-	@Override
-	public Optional<List<String>> arguments(ProcessIdentity process)
-	{
-		requireThat(process, "process").isNotNull();
-		return find(process).flatMap(ProcessDescription::arguments);
 	}
 
 	@Override
@@ -89,30 +54,5 @@ public final class ProcessHandleTable implements ProcessTable
 		// The start tells the process apart from a later one that reuses its identifier
 		return processes.find(process.pid()).
 			filter(description -> description.start().filter(process.start()::equals).isPresent());
-	}
-
-	/**
-	 * Returns the identities of the processes that have a start.
-	 *
-	 * @param handles the processes
-	 * @return their identities
-	 */
-	private List<ProcessIdentity> identities(Stream<ProcessHandle> handles)
-	{
-		return handles.map(ProcessHandle::pid).map(this::identity).flatMap(Optional::stream).toList();
-	}
-
-	/**
-	 * Returns the identity of a process.
-	 *
-	 * @param pid the process's identifier
-	 * @return its identity, or empty if it has no positive identifier, has ended or its start cannot be read
-	 */
-	private Optional<ProcessIdentity> identity(long pid)
-	{
-		if (pid <= 0)
-			return Optional.empty();
-		return processes.find(pid).flatMap(description -> description.start().
-			map(start -> new ProcessIdentity(pid, start)));
 	}
 }

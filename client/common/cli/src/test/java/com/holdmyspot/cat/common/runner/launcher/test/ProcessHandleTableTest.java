@@ -20,21 +20,17 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Runs the {@link ProcessTable} contract against the operating system's processes, and tests that the session
- * launcher reads a request holder's whole command line, however long, and tells a process apart from a later one with
- * its identifier in whatever process reads its identity.
+ * Runs the {@link ProcessTable} contract against the operating system's processes, and tests that the table tells a
+ * process apart from a later one with its identifier in whatever process reads its identity.
  * <p>
- * In the contract, the test's own process is the leaf's parent, the process that started the test is its grandparent,
- * and the leaf is a small JVM that runs until its standard input ends. In the other tests, a {@link ProcessFolder}
- * stands for Linux's process folder {@code /proc}: its {@code <pid>/cmdline} file holds the NUL-separated command line
- * of the test's own process, as the kernel reports it, where {@link ProcessHandle} would report no arguments for a
- * command line longer than 4 KiB, and its {@code <pid>/stat} file holds the process's start.
+ * In the contract, the process is a small JVM that runs until its standard input ends. In the other tests, a
+ * {@link ProcessFolder} stands for Linux's process folder {@code /proc}: its {@code <pid>/stat} file holds the start of
+ * the test's own process.
  */
 public final class ProcessHandleTableTest extends ProcessTableContract
 {
@@ -51,8 +47,7 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	 */
 	private static final long BOOT_TIME = 1_794_069_622;
 	/**
-	 * The boot time that the kernel reports once the wall clock is set back, as it was on a computer whose hook
-	 * started a second launcher for one harness process.
+	 * The boot time that the kernel reports once the wall clock is set back.
 	 */
 	private static final long MOVED_BOOT_TIME = 1_794_069_343;
 	/**
@@ -67,23 +62,9 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	{
 	}
 
-	/**
-	 * {@link ProcessHandle} reports no arguments of another process on Windows, where no request server serves a
-	 * session, so the table reports none there.
-	 *
-	 * @return {@code false} on Windows
-	 */
 	@Override
-	protected boolean reportsArguments()
+	protected LiveProcess start() throws IOException
 	{
-		return !Platform.current().isWindows();
-	}
-
-	@Override
-	protected ProcessTree start() throws IOException
-	{
-		ProcessHandle current = ProcessHandle.current();
-		ProcessHandle parent = current.parent().orElseThrow();
 		String executable = "java";
 		if (Platform.current().isWindows())
 			executable = "java.exe";
@@ -91,18 +72,17 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 		String classes = System.getProperty("jdk.module.path", System.getProperty("java.class.path"));
 		List<String> command = new ArrayList<>(List.of(java.toString(), "-XX:+PerfDisableSharedMem",
 			"-XX:TieredStopAtLevel=1", "-cp", classes, Leaf.class.getName()));
-		command.addAll(LEAF_ARGUMENTS);
 		Process leaf = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
 		try
 		{
-			// Until the leaf prints, its process may still run the launcher's helper, under another command line
+			// The leaf prints once its own code runs, so a start that it reads afterwards is its own
 			BufferedReader output = new BufferedReader(new InputStreamReader(leaf.getInputStream(),
 				StandardCharsets.UTF_8));
 			String printed = output.readLine();
 			if (!READY.equals(printed))
 				throw new IOException("The leaf printed \"" + printed + "\" rather than " + READY);
-			return new SystemTree(new ProcessHandleTable(HarnessProcesses.system()), identity(parent),
-				identity(current), identity(leaf.toHandle()), leaf, output);
+			return new SystemProcess(new ProcessHandleTable(HarnessProcesses.system()), identity(leaf.toHandle()), leaf,
+				output);
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -135,47 +115,25 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	}
 
 	/**
-	 * Verifies that the leaf, a process of its own, reads the start that this process reads for it, so that the hook
-	 * that names a harness process and the launcher that serves it agree on its identity.
+	 * Verifies that the leaf, a process of its own, reads the start that this process reads for it, so that every
+	 * process that reads a harness process's identity agrees on it.
 	 *
 	 * @throws IOException if the leaf cannot be started or ended
 	 */
 	@Test
 	public void otherProcessReadsSameStart() throws IOException
 	{
-		try (SystemTree tree = (SystemTree) start())
+		try (SystemProcess leaf = (SystemProcess) start())
 		{
-			String leafStart = tree.output().readLine();
+			String leafStart = leaf.output().readLine();
 
-			requireThat(leafStart, "leafStart").isEqualTo(tree.leaf().start());
+			requireThat(leafStart, "leafStart").isEqualTo(leaf.process().start());
 		}
 	}
 
 	/**
-	 * Verifies that a process whose command line is longer than 4 KiB reports every argument after its program.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void readsLongCommandLine() throws IOException
-	{
-		// Requirement: R-I11
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory("cat-proc-")), BOOT_TIME);
-			List<String> expected = List.of("--hold", "x".repeat(5000));
-			ProcessIdentity process = writeOwnProcess(folder, expected);
-			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
-
-			Optional<List<String>> arguments = new ProcessHandleTable(processes).arguments(process);
-
-			requireThat(arguments, "arguments").isEqualTo(Optional.of(expected));
-		}
-	}
-
-	/**
-	 * Verifies that a process whose identifier a later process reuses has ended and reports no arguments, so that the
-	 * launcher never takes the later process's command line for the earlier one's.
+	 * Verifies that a process whose identifier a later process reuses has ended, so that the request server never
+	 * takes the later process for its session's harness.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -186,21 +144,20 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory("cat-proc-")), BOOT_TIME);
-			ProcessIdentity ended = writeOwnProcess(folder, List.of("--hold", "request"));
+			ProcessIdentity ended = writeOwnProcess(folder);
 			folder.start(ended.pid(), "java", TICKS + 100);
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
-			ProcessHandleTable table = new ProcessHandleTable(processes);
 
-			Optional<List<String>> arguments = table.arguments(ended);
+			boolean alive = new ProcessHandleTable(processes).isAlive(ended);
 
-			requireThat(arguments, "arguments").isEmpty();
-			requireThat(table.isAlive(ended), "isAlive").isFalse();
+			requireThat(alive, "alive").isFalse();
 		}
 	}
 
 	/**
 	 * Verifies that a process of an earlier boot whose identifier and clock ticks a process of a later boot has
-	 * ended, so that the launcher of a harness process that ran before a restart never takes a later process for it.
+	 * ended, so that the request server of a harness process that ran before a restart never takes a later process for
+	 * it.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -210,7 +167,7 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory("cat-proc-")), BOOT_TIME);
-			ProcessIdentity ended = writeOwnProcess(folder, List.of("--hold", "request"));
+			ProcessIdentity ended = writeOwnProcess(folder);
 			folder.reboot("8a7b6c5d-4e3f-4a1b-9c8d-7e6f5a4b3c2d");
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
 
@@ -221,10 +178,9 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 	}
 
 	/**
-	 * Verifies that a process whose identity one process read stays alive, with its parent and its command line, in
-	 * a process that reads it after the wall clock was set back, and so the boot time that the kernel derives from it
-	 * moved. The hook that names a harness process, the launcher that serves it and a later hook of the same process
-	 * thus agree on its identity, and the launcher does not take its harness process for ended.
+	 * Verifies that a process whose identity one process read stays alive in a process that reads it after the wall
+	 * clock was set back, and so the boot time that the kernel derives from it moved. The request server thus does not
+	 * take its harness process for ended.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -234,68 +190,57 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory("cat-proc-")), BOOT_TIME);
-			List<String> arguments = List.of("--hold", "request");
-			ProcessIdentity process = writeOwnProcess(folder, arguments);
-			long parentPid = ProcessHandle.current().parent().orElseThrow().pid();
-			folder.start(parentPid, "java", TICKS - 100);
-			ProcessIdentity parent = identity(HarnessProcessesSecrets.getHarnessProcessesAccess().
-				system(folder.path()), parentPid);
+			ProcessIdentity process = writeOwnProcess(folder);
 			folder.setBootTime(MOVED_BOOT_TIME);
 			ProcessHandleTable later = new ProcessHandleTable(HarnessProcessesSecrets.getHarnessProcessesAccess().
 				system(folder.path()));
 
-			requireThat(later.isAlive(process), "isAlive").isTrue();
-			requireThat(later.parent(process), "parent").isEqualTo(Optional.of(parent));
-			requireThat(later.arguments(process), "arguments").isEqualTo(Optional.of(arguments));
+			boolean alive = later.isAlive(process);
+
+			requireThat(alive, "alive").isTrue();
 		}
 	}
 
 	/**
-	 * Writes the command line and the start of the test's own process into a stand-in for the process folder.
+	 * Writes the start of the test's own process into a stand-in for the process folder.
 	 *
-	 * @param folder    the stand-in folder
-	 * @param arguments the arguments after the program
+	 * @param folder the stand-in folder
 	 * @return the identity of the test's own process, as a process that reads the folder now reads it
 	 * @throws IOException if a file cannot be written
 	 */
-	private static ProcessIdentity writeOwnProcess(ProcessFolder folder, List<String> arguments) throws IOException
+	private static ProcessIdentity writeOwnProcess(ProcessFolder folder) throws IOException
 	{
 		long pid = ProcessHandle.current().pid();
-		List<String> commandLine = new ArrayList<>(List.of("java"));
-		commandLine.addAll(arguments);
-		folder.writeCommandLine(pid, commandLine);
 		folder.start(pid, "java", TICKS);
 		return identity(HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path()), pid);
 	}
 
 	/**
-	 * Three generations of the operating system's processes.
+	 * A process of the operating system's.
 	 *
 	 * @param table   the table
-	 * @param root    the process that started the test
-	 * @param middle  the test's own process
-	 * @param leaf    the leaf
-	 * @param process the leaf's process, which ends when its standard input ends
+	 * @param process the leaf's identity
+	 * @param leaf    the leaf, which ends when its standard input ends
 	 * @param output  the leaf's output after the line {@value #READY}
 	 */
-	private record SystemTree(ProcessTable table, ProcessIdentity root, ProcessIdentity middle, ProcessIdentity leaf,
-		Process process, BufferedReader output) implements ProcessTree
+	private record SystemProcess(ProcessTable table, ProcessIdentity process, Process leaf, BufferedReader output)
+		implements LiveProcess
 	{
 		@Override
-		public void endLeaf() throws IOException
+		public void end() throws IOException
 		{
-			process.getOutputStream().close();
+			leaf.getOutputStream().close();
 			try
 			{
-				if (!process.waitFor(LEAF_WAIT))
+				if (!leaf.waitFor(LEAF_WAIT))
 				{
-					process.destroyForcibly();
+					leaf.destroyForcibly();
 					throw new IOException("The leaf did not end within " + LEAF_WAIT);
 				}
 			}
 			catch (InterruptedException e)
 			{
-				process.destroyForcibly();
+				leaf.destroyForcibly();
 				Thread.currentThread().interrupt();
 				throw new InterruptedIOException(e.getMessage());
 			}
@@ -304,8 +249,8 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 		@Override
 		public void close() throws IOException
 		{
-			if (process.isAlive())
-				endLeaf();
+			if (leaf.isAlive())
+				end();
 		}
 	}
 
