@@ -145,8 +145,7 @@ public final class OtherHarnessPluginTest
 
 			String message = refusal(plugin, other, List.of("0.9+b0123456789ab"), Platform.LINUX_X64);
 
-			requireThat(message, "message").endsWith(": HOME=/home/session cat.sh --harness harness-b " +
-				"(in PowerShell: cat.ps1 -Harness harness-b)");
+			requireThat(message, "message").endsWith(": HOME=/home/session cat.sh --harness harness-b");
 		}
 	}
 

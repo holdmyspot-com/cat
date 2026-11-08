@@ -74,13 +74,14 @@ public final class EntryCommand
 	}
 
 	/**
-	 * Returns the entry command that installs a harness's plugin, followed by its PowerShell form in parentheses.
+	 * Returns the entry command that installs a harness's plugin, in the form for the platform that the running process
+	 * belongs to: the PowerShell form on Windows, and the POSIX shell form elsewhere.
 	 * <p>
-	 * The command sets {@code HOME} to the process's value when it differs from the account's home or the account's
-	 * home is unknown, and the harness's home variable when the process sets it to a directory other than the
-	 * harness's default one in its home. A value is quoted for the shell. The PowerShell form sets only the harness's
-	 * home variable: the PowerShell entry script takes the user's home from the user profile. Windows programs do
-	 * the same, so on Windows the command does not set {@code HOME} either.
+	 * The command sets the harness's home variable when the process sets it to a directory other than the harness's
+	 * default one in its home. Outside Windows, it also sets {@code HOME} to the process's value when that value differs
+	 * from the account's home or the account's home is unknown. On Windows it does not set {@code HOME}: the
+	 * PowerShell entry script, like other Windows programs, takes the user's home from the user profile. A value is
+	 * quoted for the shell that runs the command.
 	 *
 	 * @param harness the harness
 	 * @return the command
@@ -89,30 +90,27 @@ public final class EntryCommand
 	public String forHarness(String harness)
 	{
 		requireThat(harness, "harness").isNotBlank();
-		Map<String, String> posix = new LinkedHashMap<>();
+		Map<String, String> assignments = new LinkedHashMap<>();
 		String home = environment.get("HOME");
 		if (!platform.isWindows() && home != null && !home.isBlank() && !isAccountHome(home))
-			posix.put("HOME", home);
+			assignments.put("HOME", home);
 		String variable = HOME_VARIABLES.get(harness);
-		Map<String, String> powerShell = new LinkedHashMap<>();
 		if (variable != null)
 		{
 			String value = environment.get(variable);
 			if (value != null && !value.isEmpty() && !isDefaultHome(harness, value))
-			{
-				posix.put(variable, value);
-				powerShell.put(variable, value);
-			}
+				assignments.put(variable, value);
 		}
-		String posixAssignments = posix.entrySet().stream().
+		if (platform.isWindows())
+		{
+			return assignments.entrySet().stream().
+				map(assignment -> "$env:" + assignment.getKey() + "=" +
+					ShellQuoting.powerShellString(assignment.getValue()) + "; ").
+				collect(Collectors.joining()) + "cat.ps1 -Harness " + harness;
+		}
+		return assignments.entrySet().stream().
 			map(assignment -> assignment.getKey() + "=" + ShellQuoting.posix(assignment.getValue()) + " ").
-			collect(Collectors.joining());
-		String powerShellAssignments = powerShell.entrySet().stream().
-			map(assignment -> "$env:" + assignment.getKey() + "=" +
-				ShellQuoting.powerShellString(assignment.getValue()) + "; ").
-			collect(Collectors.joining());
-		return posixAssignments + "cat.sh --harness " + harness + " (in PowerShell: " + powerShellAssignments +
-			"cat.ps1 -Harness " + harness + ")";
+			collect(Collectors.joining()) + "cat.sh --harness " + harness;
 	}
 
 	/**

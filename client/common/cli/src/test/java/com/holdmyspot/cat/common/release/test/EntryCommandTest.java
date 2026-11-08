@@ -37,7 +37,7 @@ public final class EntryCommandTest
 		EntryCommand command = new EntryCommand(Platform.LINUX_X64, Map.of("HOME", "/home/account"), ACCOUNT_HOME);
 
 		requireThat(command.forHarness("claude"), "command").
-			isEqualTo("cat.sh --harness claude (in PowerShell: cat.ps1 -Harness claude)");
+			isEqualTo("cat.sh --harness claude");
 	}
 
 	/**
@@ -51,7 +51,7 @@ public final class EntryCommandTest
 			ACCOUNT_HOME);
 
 		requireThat(command.forHarness("claude"), "command").
-			isEqualTo("cat.sh --harness claude (in PowerShell: cat.ps1 -Harness claude)");
+			isEqualTo("cat.sh --harness claude");
 	}
 
 	/**
@@ -64,7 +64,7 @@ public final class EntryCommandTest
 		EntryCommand command = new EntryCommand(Platform.LINUX_X64, Map.of("HOME", "/home/session"), ACCOUNT_HOME);
 
 		requireThat(command.forHarness("claude"), "command").
-			isEqualTo("HOME=/home/session cat.sh --harness claude (in PowerShell: cat.ps1 -Harness claude)");
+			isEqualTo("HOME=/home/session cat.sh --harness claude");
 	}
 
 	/**
@@ -77,7 +77,7 @@ public final class EntryCommandTest
 		EntryCommand command = new EntryCommand(Platform.LINUX_X64, Map.of("HOME", "/home/account"), null);
 
 		requireThat(command.forHarness("codex"), "command").
-			isEqualTo("HOME=/home/account cat.sh --harness codex (in PowerShell: cat.ps1 -Harness codex)");
+			isEqualTo("HOME=/home/account cat.sh --harness codex");
 	}
 
 	/**
@@ -91,8 +91,7 @@ public final class EntryCommandTest
 			ACCOUNT_HOME);
 
 		requireThat(command.forHarness("claude"), "command").
-			isEqualTo("HOME='/home/Gili'\"'\"'s files' cat.sh --harness claude " +
-				"(in PowerShell: cat.ps1 -Harness claude)");
+			isEqualTo("HOME='/home/Gili'\"'\"'s files' cat.sh --harness claude");
 	}
 
 	/**
@@ -106,8 +105,7 @@ public final class EntryCommandTest
 			Map.of("HOME", "/home/account", "CLAUDE_CONFIG_DIR", "/data/claude home"), ACCOUNT_HOME);
 
 		requireThat(command.forHarness("claude"), "command").
-			isEqualTo("CLAUDE_CONFIG_DIR='/data/claude home' cat.sh --harness claude " +
-				"(in PowerShell: $env:CLAUDE_CONFIG_DIR='/data/claude home'; cat.ps1 -Harness claude)");
+			isEqualTo("CLAUDE_CONFIG_DIR='/data/claude home' cat.sh --harness claude");
 	}
 
 	/**
@@ -122,12 +120,12 @@ public final class EntryCommandTest
 			ACCOUNT_HOME);
 
 		requireThat(command.forHarness("codex"), "command").
-			isEqualTo("HOME=/home/session cat.sh --harness codex (in PowerShell: cat.ps1 -Harness codex)");
+			isEqualTo("HOME=/home/session cat.sh --harness codex");
 	}
 
 	/**
-	 * Verifies that on Windows, where the entry script takes the home from the user profile and not from
-	 * {@code HOME}, only the harness's home variable is written.
+	 * Verifies that on Windows the command is the PowerShell form, and that, because the entry script there takes the
+	 * home from the user profile and not from {@code HOME}, only the harness's home variable is written.
 	 */
 	@Test
 	public void windowsWritesOnlyHarnessHome()
@@ -137,7 +135,19 @@ public final class EntryCommandTest
 			Path.of("C:\\Users\\account"));
 
 		requireThat(command.forHarness("codex"), "command").
-			isEqualTo("CODEX_HOME='D:\\codex' cat.sh --harness codex " +
-				"(in PowerShell: $env:CODEX_HOME='D:\\codex'; cat.ps1 -Harness codex)");
+			isEqualTo("$env:CODEX_HOME='D:\\codex'; cat.ps1 -Harness codex");
+	}
+
+	/**
+	 * Verifies that on Windows a process whose environment selects the default homes gets the plain PowerShell
+	 * command.
+	 */
+	@Test
+	public void windowsDefaultHomesGivePlainCommand()
+	{
+		EntryCommand command = new EntryCommand(Platform.WINDOWS_X64,
+			Map.of("USERPROFILE", "C:\\Users\\account", "HOME", "C:\\Users\\session"), Path.of("C:\\Users\\account"));
+
+		requireThat(command.forHarness("claude"), "command").isEqualTo("cat.ps1 -Harness claude");
 	}
 }

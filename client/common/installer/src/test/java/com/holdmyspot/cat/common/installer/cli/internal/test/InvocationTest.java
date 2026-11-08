@@ -156,7 +156,7 @@ public final class InvocationTest
 
 	/**
 	 * A version folder whose plugin data folder holds no policy refuses status with one JSON result that names the one
-	 * entry command which installs the harness again.
+	 * entry command which installs the harness again, in the form for the platform that the installer runs on.
 	 *
 	 * @throws IOException if the fixture cannot be created or the output cannot be read
 	 */
@@ -173,7 +173,7 @@ public final class InvocationTest
 			requireThat(run.status, "status").isEqualTo(3);
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("refused");
 			requireThat(run.result().path("message").stringValue(), "message").
-				contains("cat.sh --harness harness-a").contains("cat.ps1 -Harness harness-a");
+				contains("cat.sh --harness harness-a").doesNotContain("cat.ps1");
 			requireThat(run.output.lines().count(), "outputLines").isEqualTo(1L);
 		}
 	}
