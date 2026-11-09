@@ -28,7 +28,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	 * The variables that a CAT runner sets in a session that it lets start sessions of its own.
 	 */
 	private static final Set<String> SESSION_REQUESTS = Set.of(SessionRequestAccess.REQUESTS_VARIABLE,
-		SessionRequestAccess.LAUNCHER_VARIABLE);
+		SessionRequestAccess.LAUNCHER_VARIABLE, SessionRequestAccess.SHELL_VARIABLE);
 	/**
 	 * The variable that a CAT runner sets in every session that it starts.
 	 */

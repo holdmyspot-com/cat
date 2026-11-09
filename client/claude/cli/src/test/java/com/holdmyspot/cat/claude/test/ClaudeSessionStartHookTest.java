@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -201,6 +202,31 @@ public final class ClaudeSessionStartHookTest
 			requireThat(unsupported.output(), "unsupportedOutput").isEqualTo("{}\n");
 			requireThat(unsupported.error(), "unsupportedError").
 				contains("CAT_PROJECT_DIR conflicts with Claude CLAUDE_PLUGIN_ROOT");
+		}
+	}
+
+	/**
+	 * Verifies a session that its runner lets request sessions still loads CAT's rules: the variables that the runner
+	 * sets for those requests are not CAT installation variables that conflict with Claude's plugin root.
+	 */
+	@Test
+	public void loadsRulesWhenSessionsAreRequestable() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path run = cleanup.add(Files.createTempDirectory("cat-run-"));
+			write(plugin, "rules/common/rule.md", "rule");
+			SessionRequestAccess access = new SessionRequestAccess(run.resolve("requests"), run.resolve("responses"),
+				run.resolve("requested-runs"), run.resolve("request-session"), SessionRequestAccess.Shell.POSIX);
+			Map<String, String> environment = new HashMap<>(access.environment());
+			environment.put("CLAUDE_PLUGIN_ROOT", plugin.toString());
+
+			HookResult result = invoke(cwdInput(project), environment, project);
+
+			requireThat(completeContext(result), "context").contains("rule");
+			requireThat(result.error(), "error").isEmpty();
 		}
 	}
 
