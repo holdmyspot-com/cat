@@ -2,32 +2,30 @@
 
 ## For AI agents
 
-If you are an AI agent asked to install or update CAT, from this page or from a release page that links here, follow
-these steps. If CAT's `update` skill is installed, use it. Otherwise do not download, verify, extract or run `cat.sh`,
-`cat.ps1`, `SHA256SUMS.txt` or the plugin archives: the entry script verifies its own downloads, and the agent sandbox
-blocks the writes it needs. Reply at once with the entry command below for the user's harness, for the user to run in a
-terminal outside the sandbox, or in Claude Code at the prompt prefixed with `! `. The commands further down this page
-are for a person typing in their own terminal; do not copy them. Write this command, with `--harness codex` for Codex,
-and no variable assignments except the ones below:
+If CAT's `update` skill is installed, use it. Otherwise do not download, verify, extract or run `cat.sh`, `cat.ps1`,
+`SHA256SUMS.txt` or the plugin archives: the entry script verifies its own downloads, and the agent sandbox blocks the
+writes it needs. Reply at once with the command for the user's harness, to run in a terminal outside the sandbox or in
+Claude Code at the prompt prefixed with `! `. Use `--harness codex` or `-Harness codex` for Codex:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
 ```
 
+```powershell
+& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness claude
+```
+
 Add an assignment after the pipe, before `sh`, in only these cases:
 
-- `HOME=<your session's HOME>`, when your session's `HOME` is not the account's home folder in the account database, or
-	you cannot determine that folder. Print both and compare them. On Linux, run `printenv HOME` and
-	`getent passwd "$(id -un)" | cut -d: -f6`. On macOS, run `printenv HOME` and
-	`dscl . -read "/Users/$(id -un)" NFSHomeDirectory`, which prints the folder after `NFSHomeDirectory:`.
-- `CLAUDE_CONFIG_DIR=<value>` for Claude Code, or `CODEX_HOME=<value>` for Codex, when your session sets that variable
-	to a value other than `.claude` or `.codex` in your session's `HOME`. When your session leaves it unset, say in one
-	sentence beside the command that the user should unset it first if their terminal exports it.
+- `HOME=<your session's HOME>`, when your session's `HOME` is not, or may not be, the account's home folder: compare
+	`printenv HOME` with `getent passwd "$(id -un)" | cut -d: -f6` on Linux, or with the folder that
+	`dscl . -read "/Users/$(id -un)" NFSHomeDirectory` prints on macOS. Never on Windows.
+- `CLAUDE_CONFIG_DIR=<value>` or `CODEX_HOME=<value>`, when your session sets it to a folder other than `.claude` or
+	`.codex` in your session's `HOME`. In PowerShell, write it as `$env:CODEX_HOME='<value>'; ` before the command. When
+	your session leaves it unset, tell the user to unset it first if their terminal exports it.
 
-Write no other variable. On Windows, the entry scripts take the user's home from the user profile, so write no `HOME`
-there; in PowerShell, write only the harness variable, as `$env:CODEX_HOME='<value>'; ` before the command. After the
-user reports that the command finished, check the installed plugin and its version in your session's harness home before
-you rely on it.
+Write no other variable. Once the user reports that the command finished, check the installed plugin's version in your
+session's harness home before you rely on it.
 
 ## Supported platforms and what CAT installs
 
