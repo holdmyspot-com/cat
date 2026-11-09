@@ -5,6 +5,7 @@ import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
 import com.holdmyspot.cat.codex.runner.CodexServedSession;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -149,6 +151,42 @@ public final class CodexServedSessionTest
 
 			requireThat(reason, "reason").contains("the rule that CAT's install adds for " + fixture.server).
 				doesNotContain("openai/codex#38318").doesNotContain("No rule in").doesNotContain("ran the request server as");
+		}
+	}
+
+	/**
+	 * Verifies that a request server that a session of a CAT run runs inside its sandbox is told that no request
+	 * server serves a run's session, that Codex keeps a rule-allowed command sandboxed while the session denies reads,
+	 * and that the session requests sessions through the launchers. A run's session keeps no rollout unless its caller
+	 * keeps the session's transcripts, and its permissions are the runner's, so neither the rule that install adds nor
+	 * the profile's entries are the advice.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void explainsRequestServerInRun() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.installed();
+			Map<String, String> environment = new HashMap<>(fixture.environment());
+			environment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
+
+			String withoutRollout = CodexServedSession.sandboxed(fixture.server, environment, fixture.home, null);
+
+			requireThat(withoutRollout, "withoutRollout").contains("a session of a CAT run").
+				contains("openai/codex#38318").contains("--session-requests <count>").
+				doesNotContain("the rule that CAT's install adds").doesNotContain("No rule in");
+
+			Path secret = Files.createDirectory(fixture.project.resolve("secret"));
+			fixture.rollout("""
+				,{"path":{"type":"path","path":%s},"access":"deny"}""".formatted(json(secret)),
+				",\"active_permission_profile\":{\"id\":\"cat-denied-reads\"}");
+
+			String withRollout = CodexServedSession.sandboxed(fixture.server, environment, fixture.home, null);
+
+			requireThat(withRollout, "withRollout").isEqualTo(withoutRollout);
+			requireThat(withRollout, "withRollout").doesNotContain("Remove those entries");
 		}
 	}
 

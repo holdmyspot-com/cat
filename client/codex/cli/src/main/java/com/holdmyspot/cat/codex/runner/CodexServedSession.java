@@ -6,6 +6,7 @@ import com.holdmyspot.cat.codex.policy.CodexPolicyReader;
 import com.holdmyspot.cat.codex.policy.CodexRollout;
 import com.holdmyspot.cat.codex.policy.CodexSession;
 import com.holdmyspot.cat.codex.policy.CodexSystemFiles;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.LauncherSpelling;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
@@ -171,13 +172,16 @@ public final class CodexServedSession
 	}
 
 	/**
-	 * Returns why a request server that a Codex session runs inside its sandbox is refused. When the latest turn of
-	 * the thread that runs it denies any read, the reason says that Codex keeps a command that a rule allows inside
-	 * its sandbox while the session's permissions deny a read, names the profile and each denied path and pattern,
-	 * and says to remove them or to start the session from a terminal. Otherwise, it names each cause that it finds:
-	 * no rule in Codex's rules folder names the server, or the thread's latest command that names the server's file
-	 * name names it by another path. When it finds neither, it lists the causes that keep the server sandboxed. Each
-	 * of these reasons names the path to run.
+	 * Returns why a request server that a Codex session runs inside its sandbox is refused. When the session is a
+	 * session of a CAT run, the reason says that Codex keeps a command that a rule allows inside its sandbox while
+	 * the session's permissions deny a read, which a run's session always does, that no request server serves such a
+	 * session, and that the session requests sessions through the launchers that its run's runner serves. Otherwise,
+	 * when the latest turn of the thread that runs it denies any read, the reason says that Codex keeps a command that
+	 * a rule allows inside its sandbox while the session's permissions deny a read, names the profile and each denied
+	 * path and pattern, and says to remove them or to start the session from a terminal. Otherwise, it names each
+	 * cause that it finds: no rule in Codex's rules folder names the server, or the thread's latest command that names
+	 * the server's file name names it by another path. When it finds neither, it lists the causes that keep the server
+	 * sandboxed. Each of these reasons names the path to run.
 	 *
 	 * @param server      the absolute path of the request server
 	 * @param environment the command's environment
@@ -192,6 +196,10 @@ public final class CodexServedSession
 		requireThat(server, "server").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(accountHome, "accountHome").isNotNull();
+		// A run's thread is ephemeral unless its caller keeps the session's transcripts, so its rollout cannot name the
+		// permissions that keep the server sandboxed, and a run's session has no use for a request server
+		if (HarnessEnvironment.RUN_VALUE.equals(environment.get(HarnessEnvironment.RUN_VARIABLE)))
+			return inRun();
 		List<String> denied = List.of();
 		Optional<String> profile = Optional.empty();
 		Optional<String> command = Optional.empty();
@@ -230,6 +238,22 @@ public final class CodexServedSession
 			"adds for " + server + ", and only for a command that is that absolute path alone, with nothing in front " +
 			"of it or after it. A session that started before that install has no such rule. Run " + server + " as " +
 			"such a command that keeps running, or start a new Codex session and run it there.";
+	}
+
+	/**
+	 * Returns why a request server that a session of a CAT run runs inside its sandbox is refused.
+	 *
+	 * @return the reason
+	 */
+	private static String inRun()
+	{
+		return "CAT cannot start the request server: this command runs in a session of a CAT run, and no request " +
+			"server serves such a session. Codex runs a command that a rule allows outside its sandbox only when the " +
+			"session's filesystem permissions deny no reads (openai/codex#38318), and a run's session always denies " +
+			"reads, such as those of its own Codex session records, so it ran the request server inside the " +
+			"session's sandbox. A session of a CAT run requests sessions by running a runner launcher or " +
+			"request-session, which send the request to the run's own runner when the run's caller allows requested " +
+			"sessions with --session-requests <count>.";
 	}
 
 	/**

@@ -347,6 +347,11 @@ a message that begins "CAT cannot start the request server:" and names each caus
 	deny no reads ([openai/codex#38318](https://github.com/openai/codex/issues/38318)). When the permissions profile
 	denies any read, the message names the profile and each denied path and pattern. Remove those entries and start a
 	new Codex session, or start the session from a terminal.
+- A session of a CAT run, such as a trial, that runs the request server stays sandboxed: a run's Codex session always
+	denies some reads, so Codex keeps the server inside the sandbox whatever rule allows it, and the run's thread keeps
+	no rollout that could name them unless its caller keeps the session's transcripts. The message says that no request
+	server serves a run's session. Such a session requests sessions through a runner launcher or `request-session`,
+	which the run's runner serves when its caller passes `--session-requests`.
 
 A Codex session whose sandbox has network access off cannot start runner sessions, because a session that it started
 could not reach its model either. CAT then starts no session for it. On Linux, `codex-runner` needs bubblewrap
