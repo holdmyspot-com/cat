@@ -24,12 +24,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.archivers.tar.TarConstants;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -42,9 +45,13 @@ import tools.jackson.databind.node.ArrayNode;
  * extract and read it on the receiver's side. A request that a run's runner serves may choose fewer fields than one
  * that a request server serves, and the run's runner refuses by name each field that only the server reads.
  * <p>
- * A sender packs only what its sandbox lets it read, without following links and leaving out the null-device
- * placeholders of files that it may not read. A receiver has the user's permissions, so it opens only the one archive,
- * copies it without following links, and extracts only plain files and directories, within {@link RequestLimits}.
+ * A sender packs only what its sandbox lets it read, leaving out the null-device placeholders of files that it may not
+ * read. It follows no link, except that a symbolic link in the project whose target stays inside the project travels
+ * as a link, and any other link in the project travels as a copy of the file or directory tree that it leads to. A
+ * receiver has the user's permissions, so it opens only the one archive, copies it without following links, and
+ * extracts only plain files, directories and the project's links, within {@link RequestLimits}. It creates the links
+ * after every file and directory, and refuses an entry whose path passes through a link and a link whose target leaves
+ * the project.
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
@@ -109,7 +116,10 @@ public final class RequestArchive
 	 * @param nullDevice  the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                    request leaves those files out of the trees that it carries
 	 * @param limits      the bounds that the archive must stay within
-	 * @throws IOException if an input is linked, special, oversized, or cannot be packed
+	 * @throws IOException if an input path passes through a symbolic link, a plugin, workspace or evidence input contains
+	 *                     one, a link in the project leads to a target that is missing, that the sandbox does not let
+	 *                     the session read or that holds the project, or an input is special, oversized, or cannot be
+	 *                     packed
 	 */
 	static void pack(JsonMapper json, Path destination, ObjectNode request, List<String> prompts, Path nullDevice,
 		RequestLimits limits) throws IOException
@@ -119,7 +129,7 @@ public final class RequestArchive
 		publish(json, destination, limits, (archive, budget) ->
 		{
 			Path project = Path.of(request.path("project").asString());
-			packTree(archive, project, "project", budget, nullDevice, skipped);
+			packProject(archive, project, budget, nullDevice, skipped);
 			request.put("project", "project");
 			for (String field : new String[]{"prompts", "plugins"})
 			{
@@ -219,6 +229,8 @@ public final class RequestArchive
 					Path path = resolveEntry(destination.getParent(), entry.getName());
 					if (!seen.add(path))
 						throw new IOException("Duplicate request archive entry: " + entry.getName());
+					if (entry.isSymbolicLink())
+						linkTarget(destination.getParent(), path, entry);
 					archive.transferTo(OutputStream.nullOutputStream());
 				}
 			}
@@ -289,6 +301,70 @@ public final class RequestArchive
 		requireThat(destination, "destination").isNotNull();
 		requireThat(limits, "limits").isNotNull();
 		ArchiveSource.copy(source, destination, limits.archiveBytes());
+	}
+
+	/**
+	 * Packs the project directory and its descendants, leaving out the null-device placeholders of files that the
+	 * session may not read and the request server's own entries. A symbolic link whose target stays inside the project
+	 * travels as a link with the same target; any other link travels as a copy of the file or directory tree that it
+	 * leads to, which counts against the same limits as the project's own files.
+	 *
+	 * @param archive    the destination archive
+	 * @param source     the readable project directory
+	 * @param budget     the request's cumulative limits
+	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read
+	 * @param skipped    the real paths of the entries that the archive leaves out with their descendants
+	 * @throws IOException if the project's path passes through a symbolic link, a link in the project leads to a target
+	 *                     that is missing, that the sandbox does not let the session read or that holds the project, or
+	 *                     the project is oversized or unreadable
+	 */
+	private static void packProject(TarArchiveOutputStream archive, Path source, Budget budget, Path nullDevice,
+		Set<Path> skipped) throws IOException
+	{
+		checkAncestors(source);
+		if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
+			throw new IOException("Input must be a directory: " + source);
+		long maximum = budget.limits.entryBytes();
+		ProjectTree.copy(source.toAbsolutePath().normalize(), nullDevice, skipped::contains, new ProjectTree.Writer()
+		{
+			@Override
+			public void directory(Path relative) throws IOException
+			{
+				budget.add(0, maximum);
+				archive.putArchiveEntry(new TarArchiveEntry(entryName(relative) + "/"));
+				archive.closeArchiveEntry();
+			}
+
+			@Override
+			public void file(Path relative, Path file) throws IOException
+			{
+				packFile(archive, file, entryName(relative), maximum, budget);
+			}
+
+			@Override
+			public void link(Path relative, Path target) throws IOException
+			{
+				budget.add(0, maximum);
+				TarArchiveEntry entry = new TarArchiveEntry(entryName(relative), TarConstants.LF_SYMLINK);
+				entry.setLinkName(target.toString().replace(target.getFileSystem().getSeparator(), "/"));
+				archive.putArchiveEntry(entry);
+				archive.closeArchiveEntry();
+			}
+
+			/**
+			 * Returns the archive name of a path in the project.
+			 *
+			 * @param relative the path relative to the project
+			 * @return its name
+			 */
+			private String entryName(Path relative)
+			{
+				String name = relative.toString().replace(relative.getFileSystem().getSeparator(), "/");
+				if (name.isEmpty())
+					return "project";
+				return "project/" + name;
+			}
+		});
 	}
 
 	/**
@@ -433,12 +509,14 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Extracts only ordinary files and directories from a private archive copy.
+	 * Extracts only ordinary files, directories and the project's symbolic links from a private archive copy, creating
+	 * the links after every file and directory.
 	 *
 	 * @param source the private archive
 	 * @param target the private empty destination
 	 * @param limits the bounds that the archive must stay within
-	 * @throws IOException if an entry is malformed, unsafe or exceeds request limits
+	 * @throws IOException if an entry is malformed, unsafe or exceeds request limits, a link lies outside the project or
+	 *                     its target leaves the project or does not exist, or an entry's path passes through a link
 	 */
 	public static void unpack(Path source, Path target, RequestLimits limits) throws IOException
 	{
@@ -447,6 +525,7 @@ public final class RequestArchive
 		requireThat(limits, "limits").isNotNull();
 		Budget budget = new Budget(limits);
 		Set<Path> seen = new HashSet<>();
+		Map<Path, Path> links = new LinkedHashMap<>();
 		try (InputStream bytes = Files.newInputStream(source);
 			TarArchiveInputStream archive = new BoundedTarInput(bytes, limits))
 		{
@@ -456,9 +535,12 @@ public final class RequestArchive
 				if (!seen.add(path))
 					throw new IOException("Duplicate request archive entry: " + entry.getName());
 				byte type = entry.getLinkFlag();
-				boolean plainType = type == '0' || type == 0 || type == '5';
+				boolean plainType = type == '0' || type == 0 || type == '5' || type == TarConstants.LF_SYMLINK;
 				if (!plainType || entry.isSparse() || !entry.isCheckSumOK())
-					throw new IOException("Request archive entry is not a plain file or directory: " + entry.getName());
+				{
+					throw new IOException("Request archive entry is not a plain file, directory or symbolic link: " +
+						entry.getName());
+				}
 				long maximum = limits.entryBytes();
 				if (entry.getName().equals(MANIFEST))
 					maximum = MAXIMUM_MANIFEST_BYTES;
@@ -473,6 +555,11 @@ public final class RequestArchive
 					continue;
 				}
 				Files.createDirectories(path.getParent());
+				if (type == TarConstants.LF_SYMLINK)
+				{
+					links.put(path, linkTarget(target, path, entry));
+					continue;
+				}
 				try (OutputStream output = Files.newOutputStream(path, StandardOpenOption.CREATE_NEW))
 				{
 					copy(archive, output, entry.getSize());
@@ -483,6 +570,53 @@ public final class RequestArchive
 					mode.add(PosixFilePermission.OWNER_EXECUTE);
 				PortableFiles.setMode(path, mode);
 			}
+		}
+		Path directory = target.toAbsolutePath().normalize();
+		for (Path path : seen)
+		{
+			for (Path ancestor = path.getParent(); !ancestor.equals(directory); ancestor = ancestor.getParent())
+			{
+				if (links.containsKey(ancestor))
+				{
+					throw new IOException("Request archive entry " + directory.relativize(path) + " passes through the " +
+						"symbolic link " + directory.relativize(ancestor));
+				}
+			}
+		}
+		ProjectTree.createLinks(directory.resolve("project"), links);
+	}
+
+	/**
+	 * Returns the target of a symbolic link entry, which only the project holds.
+	 *
+	 * @param target the extraction directory
+	 * @param path   the link's resolved path below {@code target}
+	 * @param entry  the link entry
+	 * @return the link's relative target
+	 * @throws IOException if the link lies outside the project, has content, or names an absolute or platform-specific
+	 *                     target
+	 */
+	private static Path linkTarget(Path target, Path path, TarArchiveEntry entry) throws IOException
+	{
+		Path project = target.toAbsolutePath().normalize().resolve("project");
+		if (!path.startsWith(project) || path.equals(project))
+			throw new IOException("Request archive symbolic link " + entry.getName() + " lies outside the project");
+		if (entry.getSize() != 0)
+			throw new IOException("Request archive symbolic link has content: " + entry.getName());
+		String link = entry.getLinkName();
+		if (link.isBlank() || link.startsWith("/") || link.contains("\\") || link.contains(":"))
+		{
+			throw new IOException("Request archive symbolic link " + entry.getName() + " has an absolute or " +
+				"platform-specific target: " + link);
+		}
+		try
+		{
+			return Path.of(link);
+		}
+		catch (InvalidPathException e)
+		{
+			throw new IOException("Request archive symbolic link " + entry.getName() + " has an invalid target: " +
+				link, e);
 		}
 	}
 
@@ -548,12 +682,14 @@ public final class RequestArchive
 
 	/**
 	 * Checks physical headers before Commons Compress can dispatch metadata or recurse into another header.
-	 * Only GNU long names are needed by the writer; PAX and sparse metadata are outside this protocol.
+	 * Only GNU long names and long link targets are needed by the writer; PAX and sparse metadata are outside this
+	 * protocol.
 	 */
 	private static final class BoundedTarInput extends TarArchiveInputStream
 	{
 		private final Budget budget;
 		private boolean longName;
+		private boolean longLink;
 
 		/**
 		 * Wraps a private archive stream.
@@ -575,15 +711,17 @@ public final class RequestArchive
 				return record;
 			TarArchiveEntry entry = new TarArchiveEntry(record);
 			byte type = entry.getLinkFlag();
-			boolean metadata = type == 'L';
-			boolean plain = type == '0' || type == 0 || type == '5';
-			if (!entry.isCheckSumOK() || (!plain && !metadata) || (metadata && longName))
+			boolean name = type == TarConstants.LF_GNUTYPE_LONGNAME;
+			boolean link = type == TarConstants.LF_GNUTYPE_LONGLINK;
+			boolean plain = type == '0' || type == 0 || type == '5' || type == TarConstants.LF_SYMLINK;
+			if (!entry.isCheckSumOK() || (!plain && !name && !link) || (name && longName) || (link && longLink))
 				throw new IOException("Request archive contains invalid or unsupported physical headers");
 			long maximum = budget.limits.entryBytes();
-			if (metadata)
+			if (name || link)
 				maximum = MAXIMUM_MANIFEST_BYTES;
 			budget.add(entry.getSize(), maximum);
-			longName = metadata;
+			longName = (longName || name) && !plain;
+			longLink = (longLink || link) && !plain;
 			return record;
 		}
 	}

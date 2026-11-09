@@ -30,8 +30,7 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
- * Verifies that the runner's project copy accepts a staged source that is built from a project with links, and
- * refuses the project itself.
+ * Verifies that the runner's project copy accepts a staged source that is built from a project with links.
  * <p>
  * Both harness runners copy their project through {@link HarnessRunManager#copyProject(Path, HarnessRun)}, so the
  * test registers a run for each harness and copies into it. It starts no model and no harness process.
@@ -110,8 +109,8 @@ public final class StagedSourceRunnerCopyTest
 	}
 
 	/**
-	 * Verifies that the runner refuses a project that contains links, accepts the staged source of the same project,
-	 * and copies it with every link replaced by a regular copy of its target.
+	 * Verifies that the runner accepts the staged source of a project that contains links, and copies it with every
+	 * link replaced by a regular copy of its target.
 	 *
 	 * @param harness the harness whose run receives the copy
 	 * @throws IOException if the fixture cannot be created or copied
@@ -133,17 +132,6 @@ public final class StagedSourceRunnerCopyTest
 				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
 					fixture.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
-
-				HarnessRun refused = manager.create(harness);
-				try
-				{
-					manager.copyProject(project.base(), refused);
-					throw new AssertionError("The runner must refuse a project that contains links");
-				}
-				catch (IOException e)
-				{
-					requireThat(e.getMessage(), "message").contains("symbolic-link");
-				}
 
 				HarnessRun accepted = manager.create(harness);
 				manager.copyProject(staged, accepted);

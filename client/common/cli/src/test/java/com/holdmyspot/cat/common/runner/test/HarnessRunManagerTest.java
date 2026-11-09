@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongFunction;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -984,7 +985,130 @@ public final class HarnessRunManagerTest
 			}
 			catch (IOException e)
 			{
-				requireThat(e.getMessage(), "message").contains("symbolic-link");
+				requireThat(e.getMessage(), "message").contains("symbolic link link").contains(nullDevice.toString());
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a symbolic link whose target resolves inside the project, through a chain of links too, is copied
+	 * as a link with the same relative target that resolves inside the copy, and that a link whose target leaves the
+	 * project before it comes back is copied as a file, since its copy would resolve outside the copy.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void projectCopyKeepsLinksInsideProject() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.writeString(Files.createDirectories(project.resolve("shared")).resolve("guide.md"), "guide");
+			Files.createSymbolicLink(Files.createDirectories(project.resolve("docs")).resolve("guide.md"),
+				Path.of("../shared/guide.md"));
+			Files.createSymbolicLink(project.resolve("alias"), Path.of("shared"));
+			Files.createSymbolicLink(project.resolve("chain"), Path.of("alias/guide.md"));
+			Files.createSymbolicLink(project.resolve("back"), Path.of("../project/shared/guide.md"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+
+			manager.copyProject(project, run);
+
+			Path copy = run.directory().resolve("project").toRealPath();
+			for (String name : List.of("docs/guide.md", "alias", "chain"))
+			{
+				Path link = copy.resolve(name);
+				requireThat(Files.readSymbolicLink(link), name).
+					isEqualTo(Files.readSymbolicLink(project.resolve(name)));
+				requireThat(link.toRealPath().startsWith(copy), name + "ResolvesInsideCopy").isTrue();
+			}
+			requireThat(Files.readString(copy.resolve("chain")), "chain").isEqualTo("guide");
+			requireThat(copy.resolve("back"), "back").isRegularFile();
+			requireThat(Files.isSymbolicLink(copy.resolve("back")), "backIsLink").isFalse();
+			requireThat(Files.readString(copy.resolve("back")), "back").isEqualTo("guide");
+		}
+	}
+
+	/**
+	 * Verifies that a symbolic link whose target lies outside the project is copied as a copy of the target's file or
+	 * directory tree, links inside that tree included, so that a write to the copy leaves the target unchanged.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void projectCopyCopiesTargetsOutsideProject() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path outside = Files.createDirectories(root.resolve("outside/tree"));
+			Path notes = Files.writeString(root.resolve("outside/notes.md"), "notes");
+			Files.writeString(outside.resolve("a.md"), "a");
+			Files.createSymbolicLink(outside.resolve("inner.md"), Path.of("../notes.md"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.createSymbolicLink(project.resolve("notes.md"), Path.of("../outside/notes.md"));
+			Files.createSymbolicLink(project.resolve("tree"), outside.toAbsolutePath());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+
+			manager.copyProject(project, run);
+
+			Path copy = run.directory().resolve("project");
+			for (String name : List.of("notes.md", "tree", "tree/a.md", "tree/inner.md"))
+				requireThat(Files.isSymbolicLink(copy.resolve(name)), name).isFalse();
+			requireThat(copy.resolve("tree"), "tree").isDirectory();
+			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
+			requireThat(Files.readString(copy.resolve("tree/inner.md")), "inner").isEqualTo("notes");
+			Files.writeString(copy.resolve("notes.md"), "changed");
+			requireThat(Files.readString(notes), "target").isEqualTo("notes");
+		}
+	}
+
+	/**
+	 * Supplies symbolic links that a project copy refuses.
+	 *
+	 * @return the name of the link and its target
+	 */
+	@DataProvider
+	public Object[][] refusedProjectLinks()
+	{
+		return new Object[][]{{"missing", "absent.md"}, {"cycle", "cycle"}, {"up", ".."}};
+	}
+
+	/**
+	 * Verifies that a project copy refuses, naming the link, a symbolic link whose target does not exist or leads back
+	 * to itself, and a link to a directory that holds the project, whose copy would hold the project again.
+	 *
+	 * @param name   the name of the link
+	 * @param target the link's target
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(dataProvider = "refusedProjectLinks")
+	public void projectCopyRefusesUnusableLink(String name, String target) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.createSymbolicLink(project.resolve(name), Path.of(target));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+
+			try
+			{
+				manager.copyProject(project, run);
+				throw new AssertionError("The symbolic link was copied");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("symbolic link " + name + " ");
 			}
 		}
 	}

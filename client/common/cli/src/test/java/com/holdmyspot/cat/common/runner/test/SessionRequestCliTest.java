@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.RequestArchive;
 import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
@@ -298,6 +299,119 @@ public final class SessionRequestCliTest
 	}
 
 	/**
+	 * Verifies that a request carries a project's symbolic link whose target lies inside the project as a link with the
+	 * same target, which the receiver extracts as a link that resolves inside the extracted project, and a link whose
+	 * target lies outside the project as a copy of the target's file or directory tree, even when a link's target is
+	 * longer than a tar header holds.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void carriesProjectLinks() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "links-")).toRealPath();
+			Path requests = Files.createDirectory(root.resolve("requests"));
+			Path outside = Files.createDirectories(root.resolve("outside/tree"));
+			Files.writeString(root.resolve("outside/notes.md"), "notes");
+			Files.writeString(outside.resolve("a.md"), "a");
+			Path project = Files.createDirectory(root.resolve("project"));
+			Files.writeString(Files.createDirectory(project.resolve("shared")).resolve("guide.md"), "guide");
+			Files.createSymbolicLink(Files.createDirectory(project.resolve("docs")).resolve("guide.md"),
+				Path.of("../shared/guide.md"));
+			Files.createSymbolicLink(project.resolve("alias"), Path.of("shared"));
+			// A target longer than a tar header's 100-byte field travels in a long-link header
+			Path deep = Path.of("shared", "d".repeat(60), "e".repeat(60));
+			Files.writeString(Files.createDirectories(project.resolve(deep)).resolve("deep.md"), "deep");
+			Files.createSymbolicLink(project.resolve("deep.md"), deep.resolve("deep.md"));
+			Files.createSymbolicLink(project.resolve("notes.md"), Path.of("../outside/notes.md"));
+			Files.createSymbolicLink(project.resolve("tree"), outside);
+			Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
+			ManualClock time = new ManualClock(Instant.EPOCH);
+			SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
+					"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests,
+				root.resolve("absent-null-device"), RequestLimits.IN_RUN, time,
+				() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
+			Path inputs = Files.createDirectory(root.resolve("inputs"));
+			try (Stream<Path> files = Files.list(requests))
+			{
+				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_RUN);
+			}
+
+			Path copy = inputs.resolve("project");
+			for (String name : List.of("docs/guide.md", "alias", "deep.md"))
+			{
+				requireThat(Files.readSymbolicLink(copy.resolve(name)), name).
+					isEqualTo(Files.readSymbolicLink(project.resolve(name)));
+				requireThat(copy.resolve(name).toRealPath().startsWith(copy), name + "ResolvesInsideCopy").isTrue();
+			}
+			requireThat(Files.readString(copy.resolve("alias/guide.md")), "alias").isEqualTo("guide");
+			requireThat(Files.readString(copy.resolve("deep.md")), "deep").isEqualTo("deep");
+			for (String name : List.of("notes.md", "tree", "tree/a.md"))
+				requireThat(Files.isSymbolicLink(copy.resolve(name)), name).isFalse();
+			requireThat(Files.readString(copy.resolve("notes.md")), "notes").isEqualTo("notes");
+			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
+		}
+	}
+
+	/**
+	 * Supplies project links that a request refuses to carry.
+	 *
+	 * @return the name of the link
+	 */
+	@DataProvider
+	public Object[][] refusedProjectLinks()
+	{
+		return new Object[][]{{"missing"}, {"hidden"}};
+	}
+
+	/**
+	 * Verifies that packing refuses, naming it, a project's symbolic link whose target does not exist, and one whose
+	 * target the session's sandbox hides behind the null device, and publishes no request.
+	 *
+	 * @param name the name of the link
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "refusedProjectLinks")
+	public void refusesUnusableProjectLink(String name) throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "links-")).toRealPath();
+			Path requests = Files.createDirectory(root.resolve("requests"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			// A sandbox mounts the null device itself over each protected file; a regular file stands in for it, since
+			// creating a device requires administrator rights.
+			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
+			Path target = root.resolve("absent.md");
+			if (name.equals("hidden"))
+				target = nullDevice;
+			Files.createSymbolicLink(project.resolve(name), target);
+			Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
+
+			try
+			{
+				SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
+						"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests, nullDevice,
+					RequestLimits.IN_RUN, new ManualClock(Instant.EPOCH), Thread::yield, new PrintWriter(new StringWriter()));
+				throw new AssertionError("The request was published");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("symbolic link " + name + " ").
+					contains(target.toString());
+			}
+			try (Stream<Path> files = Files.list(requests))
+			{
+				requireThat(files.count(), "publishedOrTemporaryFiles").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
 	 * Supplies launcher inputs that must fail before an archive is published.
 	 *
 	 * @return unsafe or oversized input categories
@@ -305,13 +419,13 @@ public final class SessionRequestCliTest
 	@DataProvider
 	public Object[][] unsafeInputs()
 	{
-		return new Object[][]{{"tree_link"}, {"prompt_link"}, {"ancestor_link"}, {"prompt_size"}, {"file_size"},
-			{"entry_count"}, {"total_size"}, {"special_file"}};
+		return new Object[][]{{"prompt_link"}, {"ancestor_link"}, {"prompt_size"}, {"file_size"}, {"entry_count"},
+			{"linked_tree_size"}, {"total_size"}, {"special_file"}};
 	}
 
 	/**
 	 * Verifies that packing rejects links anywhere in an input path and special files other than the null device, and
-	 * enforces prompt and tree-file bounds.
+	 * enforces prompt and tree-file bounds, which also count the copy of a directory that a project's link leads to.
 	 * <p>
 	 * The entry-count and total-size cases pack under bounds of 10 entries and 1,000 bytes, so that a few small files
 	 * cross them; the per-file and prompt cases use the bounds of every request.
@@ -333,8 +447,6 @@ public final class SessionRequestCliTest
 				Path requests = Files.createDirectory(root.resolve("requests"));
 				Path project = Files.createDirectory(root.resolve("project"));
 				Path prompt = Files.writeString(root.resolve("prompt"), "prompt");
-				if (kind.equals("tree_link"))
-					Files.createSymbolicLink(project.resolve("link"), prompt);
 				if (kind.equals("prompt_link"))
 					prompt = Files.createSymbolicLink(root.resolve("linked"), prompt);
 				if (kind.equals("ancestor_link"))
@@ -380,6 +492,16 @@ public final class SessionRequestCliTest
 					// With the project directory itself, the tree holds one entry more than the bound
 					for (int index = 0; index < limits.entries(); ++index)
 						Files.createDirectory(project.resolve("empty" + index));
+				}
+				if (kind.equals("linked_tree_size"))
+				{
+					limits = new RequestLimits(10, limits.entryBytes(), limits.totalBytes(), limits.archiveBytes());
+					// With the project directory and the copy of the linked directory, the tree holds two entries more than
+					// the bound
+					Path outside = Files.createDirectory(root.resolve("outside"));
+					for (int index = 0; index < limits.entries(); ++index)
+						Files.writeString(outside.resolve("file" + index), "file");
+					Files.createSymbolicLink(project.resolve("linked"), outside);
 				}
 				if (kind.equals("total_size"))
 				{

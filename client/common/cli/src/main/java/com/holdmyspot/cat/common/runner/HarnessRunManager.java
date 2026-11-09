@@ -2,7 +2,6 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.FileVisitResult.CONTINUE;
-import static java.nio.file.FileVisitResult.SKIP_SUBTREE;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import static java.nio.file.StandardCopyOption.COPY_ATTRIBUTES;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
@@ -34,8 +33,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 import java.util.regex.Matcher;
@@ -413,12 +414,14 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Copies project files into an owned run without source Git metadata, symlinks, or the placeholders that the
-	 * sandbox lays over files that the session may not read.
+	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
+	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
+	 * same target; any other link becomes a copy of the file or directory tree that it leads to.
 	 *
 	 * @param source the source project directory
 	 * @param run the owned run
-	 * @throws IOException if the source is not a real directory, contains symbolic links, or copying fails
+	 * @throws IOException if the source is not a real directory, a symbolic link in it leads to a missing, unreadable or
+	 *                     hidden target, or copying fails
 	 */
 	public void copyProject(Path source, HarnessRun run) throws IOException
 	{
@@ -426,8 +429,10 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Copies project files into an owned run without source Git metadata, symlinks, or the placeholders that the
-	 * sandbox lays over files that the session may not read.
+	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
+	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
+	 * same target; any other link becomes a copy of the file or directory tree that it leads to, so that a write in the
+	 * run never reaches the target.
 	 *
 	 * @param source     the source project directory
 	 * @param run        the owned run
@@ -435,7 +440,9 @@ public final class HarnessRunManager
 	 *                   copy leaves out each project file that is that device. Where it does not exist, as on Windows,
 	 *                   the copy leaves out no file.
 	 * @throws NullPointerException if any argument is null
-	 * @throws IOException          if the source is not a real directory, contains symbolic links, or copying fails
+	 * @throws IOException          if the source is not a real directory, a symbolic link in it leads to a missing,
+	 *                              unreadable or hidden target, to a directory that holds the project, or to neither a
+	 *                              file nor a directory, or copying fails
 	 */
 	public void copyProject(Path source, HarnessRun run, Path nullDevice) throws IOException
 	{
@@ -446,36 +453,31 @@ public final class HarnessRunManager
 		if (Files.isSymbolicLink(normalized) || !Files.isDirectory(normalized, NOFOLLOW_LINKS))
 			throw new IOException("Project source is not a real directory");
 		Path destination = run.directory().resolve("project");
-		boolean rootIsNested = root.startsWith(normalized);
-		Files.walkFileTree(normalized, new SimpleFileVisitor<>()
-		{
-			@Override
-			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
-				throws IOException
+		Path gitMetadata = normalized.toRealPath().resolve(".git");
+		Path runs = root.toRealPath();
+		Map<Path, Path> links = new LinkedHashMap<>();
+		ProjectTree.copy(normalized, nullDevice, path -> path.equals(gitMetadata) || path.equals(runs),
+			new ProjectTree.Writer()
 			{
-				if (Files.isSymbolicLink(directory))
-					throw new IOException("Project contains a symbolic-link directory");
-				if (rootIsNested && directory.equals(root))
-					return SKIP_SUBTREE;
-				Path relative = normalized.relativize(directory);
-				if (relative.startsWith(".git"))
-					return SKIP_SUBTREE;
-				Files.createDirectories(destination.resolve(relative));
-				return CONTINUE;
-			}
+				@Override
+				public void directory(Path relative) throws IOException
+				{
+					Files.createDirectories(destination.resolve(relative));
+				}
 
-			@Override
-			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes)
-				throws IOException
-			{
-				if (Files.isSymbolicLink(file))
-					throw new IOException("Project contains a symbolic-link file");
-				Path relative = normalized.relativize(file);
-				if (!relative.startsWith(".git") && !SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
+				@Override
+				public void file(Path relative, Path file) throws IOException
+				{
 					Files.copy(file, destination.resolve(relative), COPY_ATTRIBUTES);
-				return CONTINUE;
-			}
-		});
+				}
+
+				@Override
+				public void link(Path relative, Path target)
+				{
+					links.put(destination.resolve(relative), target);
+				}
+			});
+		ProjectTree.createLinks(destination, links);
 	}
 
 	/**

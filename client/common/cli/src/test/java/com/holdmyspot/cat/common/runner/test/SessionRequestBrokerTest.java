@@ -44,6 +44,7 @@ import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -462,7 +463,8 @@ public final class SessionRequestBrokerTest
 	public Object[][] invalidRequests()
 	{
 		return new Object[][]{{"outside"}, {"absolute"}, {"parent"}, {"drive"}, {"backslash"},
-			{"link"}, {"hardlink_entry"}, {"special"}, {"duplicate"}, {"directory_duplicate"},
+			{"link_escape"}, {"link_absolute"}, {"link_beyond_project"}, {"link_back_out"}, {"link_broken"},
+			{"link_through"}, {"link_in_plugin"}, {"hardlink_entry"}, {"special"}, {"duplicate"}, {"directory_duplicate"},
 			{"too_many"}, {"large_entry"}, {"pax_chain"}, {"pax_size"}, {"long_chain"}, {"long_size"},
 			{"manifest_size"}, {"prompt_size"}, {"total_size"}, {"checksum"}, {"sparse"},
 			{"request_link"}, {"request_hardlink"}, {"oversized"},
@@ -471,7 +473,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that hostile inputs produce refusals and never reach the child starter.
+	 * Verifies that hostile inputs produce refusals and never reach the child starter. Among them are symbolic links
+	 * that the extracted project cannot hold: one whose target leaves the project, by its text or through another link,
+	 * or does not exist, one that an entry's path passes through, and one outside the project.
 	 * <p>
 	 * The entry-count, cumulative-size and whole-archive-size cases cross the bounds that {@link #limits(String)}
 	 * gives the broker, which are small enough for a few small entries to cross; the other cases use the bounds of
@@ -513,7 +517,44 @@ public final class SessionRequestBrokerTest
 			if (List.of("too_many", "large_entry", "long_size", "manifest_size", "prompt_size", "total_size").
 				contains(kind))
 				requireThat(response.path("reason").asString(), "sizeRefusal").contains("bounds");
+			if (kind.startsWith("link_"))
+				requireThat(response.path("reason").asString(), "linkRefusal").contains("symbolic link");
 			requireThat(Files.exists(fixture.responses.resolve(".temporary")), "temporaryResponse").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the requested session's project holds each symbolic link that the request's project carries, with
+	 * the same target, written before the file that it leads to.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void servesProjectLinks() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<Path> targets = new CopyOnWriteArrayList<>();
+			List<String> contents = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					Path link = Path.of(options.get(options.indexOf("--project") + 1)).resolve("docs/marker");
+					targets.add(Files.readSymbolicLink(link));
+					contents.add(Files.readString(link));
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					}, 0);
+					process.closeOutputThenExitWhenAwaited();
+					return process;
+				}))
+			{
+				fixture.writeRequest("linked", fixture.document(), Map.of("project/docs/marker", "../marker"));
+				broker.scan();
+				fixture.await("linked");
+			}
+			requireThat(targets, "targets").isEqualTo(List.of(Path.of("../marker")));
+			requireThat(contents, "contents").isEqualTo(List.of("original"));
 		}
 	}
 
@@ -1349,11 +1390,26 @@ public final class SessionRequestBrokerTest
 					case "backslash" -> entry(archive, "project/outside", new byte[0]);
 					case "duplicate" -> entry(archive, "project/marker", new byte[0]);
 					case "directory_duplicate" -> entry(archive, "project/", new byte[0]);
-					case "link", "hardlink_entry", "special", "sparse" ->
+					case "link_escape" -> link(archive, "project/link", "../../outside");
+					case "link_absolute" -> link(archive, "project/link", "/outside");
+					case "link_beyond_project" -> link(archive, "project/link", "../prompts/0");
+					case "link_back_out" ->
 					{
-						byte type = '2';
-						if (kind.equals("hardlink_entry"))
-							type = '1';
+						// Read as text, the target stays inside the project, but the link that it passes through leads to
+						// the project itself, so its parent is the directory that holds the project
+						link(archive, "project/self", ".");
+						link(archive, "project/link", "self/../prompts/0");
+					}
+					case "link_broken" -> link(archive, "project/link", "absent");
+					case "link_through" ->
+					{
+						link(archive, "project/link", ".");
+						entry(archive, "project/link/written", new byte[0]);
+					}
+					case "link_in_plugin" -> link(archive, "plugins/0/link", "../../project/marker");
+					case "hardlink_entry", "special", "sparse" ->
+					{
+						byte type = '1';
 						if (kind.equals("special"))
 							type = '6';
 						if (kind.equals("sparse"))
@@ -1443,10 +1499,25 @@ public final class SessionRequestBrokerTest
 		 */
 		private void writeRequest(String id, ObjectNode request) throws IOException
 		{
+			writeRequest(id, request, Map.of());
+		}
+
+		/**
+		 * Writes a plain archive with a supplied manifest, captured inputs and symbolic links in the project.
+		 *
+		 * @param id      the request identifier
+		 * @param request the manifest
+		 * @param links   the target of each link, by its entry name
+		 * @throws IOException if the fixture cannot be written
+		 */
+		private void writeRequest(String id, ObjectNode request, Map<String, String> links) throws IOException
+		{
 			try (OutputStream bytes = Files.newOutputStream(requests.resolve(id + ".tar"));
 				TarArchiveOutputStream archive = new TarArchiveOutputStream(bytes))
 			{
 				entry(archive, "request.json", json.writeValueAsBytes(request));
+				for (Map.Entry<String, String> link : links.entrySet())
+					link(archive, link.getKey(), link.getValue());
 				entry(archive, "project/", new byte[0]);
 				entry(archive, "project/marker", "original".getBytes(StandardCharsets.UTF_8));
 				entry(archive, "prompts/0", "test the plugin".getBytes(StandardCharsets.UTF_8));
@@ -1470,6 +1541,22 @@ public final class SessionRequestBrokerTest
 			entry.setSize(content.length);
 			archive.putArchiveEntry(entry);
 			archive.write(content);
+			archive.closeArchiveEntry();
+		}
+
+		/**
+		 * Adds a symbolic link to a test archive.
+		 *
+		 * @param archive the fixture archive
+		 * @param name    the entry name
+		 * @param target  the link's target
+		 * @throws IOException if writing fails
+		 */
+		private static void link(TarArchiveOutputStream archive, String name, String target) throws IOException
+		{
+			TarArchiveEntry link = new TarArchiveEntry(name, TarConstants.LF_SYMLINK, true);
+			link.setLinkName(target);
+			archive.putArchiveEntry(link);
 			archive.closeArchiveEntry();
 		}
 
