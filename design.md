@@ -2629,14 +2629,19 @@ no action by the user, and the user's own session and settings stay unchanged ("
 as the parent is authenticated, the plugin should pass credentials to the children automatically without user
 intervention"). The runner starts each session, and each session that a run requests, with its own configuration folder
 and with `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the user's Claude configuration folder (`CLAUDE_CONFIG_DIR` of the
-environment that the first runner starts in, else `~/.claude`); Claude Code takes the login file, the macOS Keychain
+environment that the first runner starts in, else `~/.claude`, or that environment's own `CLAUDE_SECURESTORAGE_CONFIG_DIR`
+when it sets one); Claude Code takes the login file, the macOS Keychain
 item and the refresh lock from that variable, so a session refreshes the shared login under Claude Code's own lock, as
 two of the user's own sessions do, and the user's session reloads the refreshed login when the file changes. The user
 accepted that a session can therefore change the shared login's tokens, including Claude Code's clearing of a login whose
-refresh is refused (user ruling, 2026-11-08). CAT never reads, copies or stores a token, and the sessions' commands stay
+refresh is refused (user ruling, 2026-11-08). On macOS with the default folder the runner sets the variable empty
+instead, because Claude Code names the Keychain item without a folder suffix only then; such a session uses the user's
+Keychain item with a refresh lock of its own, which is safe because Claude Code clears a refused login only while it
+still holds the refused refresh token. CAT never reads, copies or stores a token, and the sessions' commands stay
 denied reading the user's login file. When that environment sets `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or
 `ANTHROPIC_AUTH_TOKEN`, that variable is passed as before. With neither a variable nor a stored login, which the runner
-checks by existence only, the runner refuses the run before the harness starts, with status 2, and the reason tells the
+checks by existence only and only where the absence is certain (not on Windows, whose Credential Manager may hold
+it), the runner refuses the run before the harness starts, with status 2, and the reason tells the
 user to log in to Claude Code.
 
 No one can answer a nested session's approval prompt, so a session's own commands run without one. The
