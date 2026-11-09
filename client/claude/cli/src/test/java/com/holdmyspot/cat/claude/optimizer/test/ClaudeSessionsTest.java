@@ -876,6 +876,29 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that the port classifies the host as the class that a CAT runner states in {@code CAT_HOST_LOGIN},
+	 * although neither the session's configuration directory nor a login store that it can read holds a login, as in
+	 * a session whose commands cannot read the user's login file.
+	 *
+	 * @throws IOException if a fixture cannot be created
+	 */
+	@Test(timeOut = 120_000)
+	public void classifiesTheLoginThatTheRunnerStates() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+
+				HostLogin login = loginPort(jvm, root, Map.of("CAT_HOST_LOGIN", "subscription")).hostLogin();
+
+				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the port reports an unknown login when the host has neither a credential file nor a login
 	 * variable.
 	 *

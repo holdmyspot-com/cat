@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.claude.ClaudeConfiguration;
 import com.holdmyspot.cat.claude.installer.Integration;
+import com.holdmyspot.cat.claude.optimizer.Credentials;
 import com.holdmyspot.cat.claude.optimizer.InstalledPlugins;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -14,6 +15,7 @@ import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCache;
@@ -327,6 +329,11 @@ public final class ClaudeRunner
 	 * Claude's session state events, which the turn boundary depends on. CAT's hooks then find Claude's
 	 * configuration directory through the home directory, as {@code .claude} in it.
 	 * <p>
+	 * {@code CAT_HOST_LOGIN} states the class of the user's login, {@code subscription}, {@code api_key} or
+	 * {@code unknown}, as {@link Credentials#classify} classifies the environment's authentication variables and
+	 * the login store's file, because the session's commands cannot read that file. The caller's own value is never
+	 * inherited. The class is all that the variable carries: no value of a variable or of the login file is read.
+	 * <p>
 	 * The environment never sets {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB}, so Claude Code passes its credentials and
 	 * its configuration directory's variable to the commands and hooks that it starts, and keeps protecting the
 	 * project's {@code .git/worktrees} at the lower priority that the session's settings grant overrides. The caller's
@@ -363,7 +370,13 @@ public final class ClaudeRunner
 		// A copy of the user's login in the run would stop working, even in the middle of a turn, once the user's
 		// session or another run refreshed the login, because a refresh replaces the refresh token. The session's
 		// Claude Code therefore reads and refreshes the user's own login in the user's login store.
-		isolatedEnvironment.put(LOGIN_STORE_VARIABLE, loginStore(environment, Platform.current()));
+		String store = loginStore(environment, Platform.current());
+		isolatedEnvironment.put(LOGIN_STORE_VARIABLE, store);
+		// The session's commands cannot read the login file, so the runner, which can, tells them its class. Only the
+		// key names of the login file are read, and the variable carries the class alone.
+		HostLogin login = Credentials.classify(loginDirectory(store, environment, Platform.current()),
+			isolatedEnvironment, scope.json());
+		isolatedEnvironment.put(Credentials.HOST_LOGIN_VARIABLE, Credentials.hostLoginValue(login));
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
@@ -652,6 +665,25 @@ public final class ClaudeRunner
 	}
 
 	/**
+	 * Returns the directory of the user's login store.
+	 *
+	 * @param store       the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that the session receives
+	 * @param environment the caller's environment
+	 * @param platform    the platform whose home variable names the caller's home directory
+	 * @return the directory that {@code store} names, or else {@code .claude} in the caller's home directory, which
+	 *         is where the default store keeps its login file when {@code store} is empty
+	 */
+	private static Path loginDirectory(String store, Map<String, String> environment, Platform platform)
+	{
+		assert store != null;
+		assert environment != null;
+		assert platform != null;
+		if (store.isEmpty())
+			return defaultLoginDirectory(environment, platform);
+		return Path.of(store);
+	}
+
+	/**
 	 * Returns the Claude configuration directory of the user's login store when no variable names one.
 	 *
 	 * @param environment the caller's environment
@@ -761,11 +793,7 @@ public final class ClaudeRunner
 			return;
 
 		String store = loginStore(environment, platform);
-		Path directory;
-		if (store.isEmpty())
-			directory = defaultLoginDirectory(environment, platform);
-		else
-			directory = Path.of(store);
+		Path directory = loginDirectory(store, environment, platform);
 		if (Files.exists(directory.resolve(".credentials.json")))
 			return;
 		if (isMacOs(platform) && !keychainLacksLogin(scope, environment, store))

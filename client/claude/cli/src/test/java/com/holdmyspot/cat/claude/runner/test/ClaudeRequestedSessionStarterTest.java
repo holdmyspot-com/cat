@@ -152,6 +152,54 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 	}
 
 	/**
+	 * Verifies that a requested session, and a session that a requested session requests in turn, receive the class of
+	 * the login of the user whose session runs the request server in {@code CAT_HOST_LOGIN}, as the sessions of a
+	 * run do: the runner of each receives the user's login store, whatever {@code CAT_HOST_LOGIN} says in the
+	 * environment that it receives.
+	 *
+	 * @throws IOException if the starter or an environment fails
+	 */
+	@Test
+	public void requestedSessionsReceiveTheLoginClass() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope runner = new TestHarnessRunnerScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "requested-class-")).
+				toRealPath();
+			Path userHome = Files.createDirectory(root.resolve("user"));
+			Path store = Files.createDirectory(root.resolve("store"));
+			Files.writeString(store.resolve(".credentials.json"),
+				"{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
+			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Path directory = Files.createDirectory(root.resolve("requested"));
+			Map<String, String> userEnvironment = new HashMap<>(Map.of("PATH", "", Platform.current().homeVariable(),
+				userHome.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString(), "CLAUDECODE", "1",
+				"CAT_HOST_LOGIN", "api_key"));
+			try (LauncherStarts starts = new LauncherStarts(userEnvironment);
+				Process requested = starts.starter().start(HARNESS_ID, List.of("--model", "model-a"), directory))
+			{
+				Map<String, String> requestedRunner = starts.environments().getFirst();
+				requested.destroy();
+				try (LauncherStarts nestedStarts = new LauncherStarts(requestedRunner);
+					Process nested = nestedStarts.starter().start(HARNESS_ID, List.of("--model", "model-a"),
+						directory))
+				{
+					Map<String, String> nestedRunner = nestedStarts.environments().getFirst();
+					nested.destroy();
+					for (Map<String, String> environment : List.of(requestedRunner, nestedRunner))
+					{
+						Map<String, String> session = ClaudeRunner.processEnvironment(runner, environment,
+							HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+						requireThat(session.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo("subscription");
+					}
+				}
+			}
+		}
+	}
+
+	/**
 	 * Returns the kinds of the user's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}.
 	 *
 	 * @return the kinds

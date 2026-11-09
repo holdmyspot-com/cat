@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -193,5 +194,71 @@ public final class CredentialsTest
 			requireThat(Credentials.classify(configuration, Map.of(), JSON), "unset").
 				isEqualTo(HostLogin.SUBSCRIPTION);
 		}
+	}
+
+	/**
+	 * Verifies that a valid {@code CAT_HOST_LOGIN}, which a CAT runner gives its sessions, decides the class before
+	 * every other source: an API key variable, an OAuth token variable and the credential files.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void validHostLoginVariableDecidesTheClass() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-config-"));
+			writeCredentials(configuration, "{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
+			requireThat(Credentials.classify(configuration, Map.of("CAT_HOST_LOGIN", "api_key"), JSON), "apiKey").
+				isEqualTo(HostLogin.API_KEY);
+			requireThat(Credentials.classify(configuration, Map.of("CAT_HOST_LOGIN", "unknown"), JSON), "unknown").
+				isEqualTo(HostLogin.UNKNOWN);
+			Path empty = cleanup.add(Files.createTempDirectory("cat-claude-empty-"));
+			requireThat(Credentials.classify(empty, Map.of("CAT_HOST_LOGIN", "subscription",
+				"ANTHROPIC_API_KEY", "placeholder"), JSON), "subscription").isEqualTo(HostLogin.SUBSCRIPTION);
+		}
+	}
+
+	/**
+	 * Verifies that a {@code CAT_HOST_LOGIN} whose value is not one of {@code subscription}, {@code api_key} and
+	 * {@code unknown}, written in lower case, is ignored, so that the other sources decide.
+	 *
+	 * @param value the variable's value
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(dataProvider = "invalidHostLogins")
+	public void invalidHostLoginVariableIsIgnored(String value) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-config-"));
+			requireThat(Credentials.classify(configuration, Map.of("CAT_HOST_LOGIN", value), JSON), "withoutLogin").
+				isEqualTo(HostLogin.UNKNOWN);
+			requireThat(Credentials.classify(configuration, Map.of("CAT_HOST_LOGIN", value,
+				"ANTHROPIC_API_KEY", "placeholder"), JSON), "withApiKey").isEqualTo(HostLogin.API_KEY);
+			writeCredentials(configuration, "{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
+			requireThat(Credentials.classify(configuration, Map.of("CAT_HOST_LOGIN", value), JSON), "withFile").
+				isEqualTo(HostLogin.SUBSCRIPTION);
+		}
+	}
+
+	/**
+	 * Returns values of {@code CAT_HOST_LOGIN} that name no class.
+	 *
+	 * @return the values
+	 */
+	@DataProvider
+	public static Object[][] invalidHostLogins()
+	{
+		return new Object[][]
+		{
+			{""},
+			{"Subscription"},
+			{"API_KEY"},
+			{" subscription"},
+			{"subscription "},
+			{"apikey"},
+			{"sk-placeholder"}
+		};
 	}
 }

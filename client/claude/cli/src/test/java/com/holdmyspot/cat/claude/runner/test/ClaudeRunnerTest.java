@@ -791,6 +791,66 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies that the Claude process environment states the class of the user's login in {@code CAT_HOST_LOGIN},
+	 * because the session's commands, among them the prompt optimizer, cannot read the login file: {@code subscription}
+	 * when the login store holds a subscription login, {@code api_key} when the environment selects an API key, and
+	 * {@code unknown} when there is no login. The caller's own {@code CAT_HOST_LOGIN} decides nothing.
+	 *
+	 * @param login       what the user has: {@code "subscription"}, {@code "api key"}, or {@code "none"}
+	 * @param callerClaim the caller's value of {@code CAT_HOST_LOGIN}, or {@code null} if it sets none
+	 * @param expected    the session's value of {@code CAT_HOST_LOGIN}
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test(dataProvider = "hostLogins")
+	public void statesTheLoginClassToTheSession(String login, String callerClaim, String expected)
+		throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-login-class-")).toRealPath();
+			Path store = Files.createDirectory(root.resolve("store"));
+			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put(Platform.current().homeVariable(), root.resolve("user").toString());
+			environment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString());
+			if (login.equals("subscription"))
+			{
+				Files.writeString(store.resolve(".credentials.json"),
+					"{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
+			}
+			else if (login.equals("api key"))
+				environment.put("ANTHROPIC_API_KEY", "placeholder");
+			if (callerClaim != null)
+				environment.put("CAT_HOST_LOGIN", callerClaim);
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+
+			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Returns what the user has, the caller's own {@code CAT_HOST_LOGIN}, and the value that the session receives.
+	 *
+	 * @return the values
+	 */
+	@DataProvider
+	public static Object[][] hostLogins()
+	{
+		return new Object[][]
+		{
+			{"subscription", null, "subscription"},
+			{"api key", null, "api_key"},
+			{"none", null, "unknown"},
+			{"subscription", "api_key", "subscription"},
+			{"none", "subscription", "unknown"}
+		};
+	}
+
+	/**
 	 * Verifies that the Claude process environment names a login store that the caller's
 	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names by a relative path as an absolute path, because the session's
 	 * Claude Code runs in another working directory.
