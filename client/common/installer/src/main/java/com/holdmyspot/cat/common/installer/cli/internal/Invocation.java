@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
+import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -54,7 +55,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.stream.Collectors;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -87,6 +91,7 @@ public final class Invocation
 	private final Terminal terminal;
 	private final ProcessStarter starter;
 	private final ReleaseSources sources;
+	private final InstallerProcess installers;
 	private final PrintStream stdout;
 	private final PrintStream stderr;
 	private final JsonMapper mapper = JsonMapper.builder().build();
@@ -144,11 +149,12 @@ public final class Invocation
 	{
 		this(image, platform, environment, accountHome, activations, integrations, cliFactory, clock, waiting,
 			replacer, terminal, starter, releaseBaseUrl -> new HttpsReleaseSource(releaseBaseUrl, environment,
-				CONNECT_LIMIT, REQUEST_LIMIT), stdout, stderr);
+				CONNECT_LIMIT, REQUEST_LIMIT), new InstallerProcess(platform, environment), stdout, stderr);
 	}
 
 	/**
-	 * Creates one process invocation with explicit boundaries, including the release source, for isolated tests.
+	 * Creates one process invocation with explicit boundaries, including the release source and the runner of another
+	 * version folder's installer, for isolated tests.
 	 *
 	 * @param image        the plugin folder that the running installer runs from: the extracted plugin archive for
 	 *                     install, otherwise the version folder of the installed plugin
@@ -168,6 +174,7 @@ public final class Invocation
 	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
 	 *                     it cannot delete while it runs
 	 * @param sources      opens the release source at a policy's release location
+	 * @param installers   runs the installer of the version folder that an install of another version installed
 	 * @param stdout       receives exactly one JSON result, or a report to a person where the terminal shows it
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
@@ -175,7 +182,7 @@ public final class Invocation
 	public Invocation(Path image, Platform platform, Map<String, String> environment, Path accountHome,
 		List<PluginActivation> activations, List<HarnessIntegration> integrations, HarnessCliFactory cliFactory,
 		Clock clock, Waiting waiting, FileReplacer replacer, Terminal terminal, ProcessStarter starter,
-		ReleaseSources sources, PrintStream stdout, PrintStream stderr)
+		ReleaseSources sources, InstallerProcess installers, PrintStream stdout, PrintStream stderr)
 	{
 		requireThat(image, "image").isNotNull();
 		requireThat(platform, "platform").isNotNull();
@@ -186,6 +193,7 @@ public final class Invocation
 		requireThat(terminal, "terminal").isNotNull();
 		requireThat(starter, "starter").isNotNull();
 		requireThat(sources, "sources").isNotNull();
+		requireThat(installers, "installers").isNotNull();
 		requireThat(stdout, "stdout").isNotNull();
 		requireThat(stderr, "stderr").isNotNull();
 		this.image = image;
@@ -201,6 +209,7 @@ public final class Invocation
 		this.terminal = terminal;
 		this.starter = starter;
 		this.sources = sources;
+		this.installers = installers;
 		this.stdout = stdout;
 		this.stderr = stderr;
 	}
@@ -399,7 +408,9 @@ public final class Invocation
 	 * the extracted plugin archive that the running installer belongs to, or, for a harness other than the one whose
 	 * version folder the running installer runs from, from that harness's plugin of the running installer's release.
 	 * Install refuses, changing nothing, unless the environment sets the platform's home variable to an absolute path,
-	 * because the user's home holds the capacity locks and the harness homes that the environment does not name.
+	 * because the user's home holds the capacity locks and the harness homes that the environment does not name. An
+	 * install through the installation that activates another version then runs that version's installer once, which
+	 * rewrites the settings entries with that version's code.
 	 *
 	 * @param arguments the validated install operation
 	 * @return its printed result's status
@@ -434,16 +445,135 @@ public final class Invocation
 		Optional<UpdateResult> unusable = refuseUnusableProgram(own, locations.policy(), managed);
 		if (unusable.isPresent())
 			return print(unusable.get(), arguments, locations);
+		UpdateResult result;
 		try (ReleaseConnection source = sources.open(managed.policy().releaseBaseUrl()))
 		{
 			UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 				platform.id(), clock, waiting);
 			UserConsent consent = new UserConsent(arguments.createProfile());
-			UpdateResult result = engine.install(arguments.tag(), request(managed, locations.image(), consent));
+			result = engine.install(arguments.tag(), request(managed, locations.image(), consent));
 			if (result.result() == Result.REFUSED && consent.withheld(result.message()))
 				return print(result, withheld(result, consent, arguments, locations.image()), arguments, locations);
-			return print(result, arguments, locations);
 		}
+		if (result.result() == Result.UPDATED || result.result() == Result.INSTALLED)
+		{
+			PluginVersion running = PluginVersion.parse(locations.image().getFileName().toString());
+			PluginVersion installed = PluginVersion.parse(result.version().orElseThrow());
+			if (!installed.equals(running))
+				result = writeInstalledEntries(result, managed, arguments, running, installed);
+		}
+		return print(result, arguments, locations);
+	}
+
+	/**
+	 * Runs the installer of the version folder that an install of another version activated, once, by the absolute
+	 * path of its launcher and with the install's arguments. The running installer's code wrote the settings entries,
+	 * and an older build's code may write entries that the installed version no longer writes; the installed version's
+	 * installer finds its version active and rewrites every entry with its own code. The harness lock is free by then,
+	 * so that run takes it.
+	 *
+	 * @param update    the outcome of the install, which activated {@code installed}
+	 * @param managed   the checked installation
+	 * @param arguments the validated install operation
+	 * @param running   the plugin version of the running installer
+	 * @param installed the plugin version that the install activated
+	 * @return the install's outcome together with the outcome of that run, or, when that run fails, a failure that
+	 * 	names the command that writes the installed version's entries
+	 */
+	private UpdateResult writeInstalledEntries(UpdateResult update, Managed managed, Arguments arguments,
+		PluginVersion running, PluginVersion installed)
+	{
+		Path folder = managed.session().integration().installation(managed.home()).versionFolder(installed);
+		List<String> line = installArguments(arguments);
+		String reason;
+		try
+		{
+			CommandResult run = installers.run(PluginInstall.installer(folder, platform.isWindows()), line);
+			String reported = reportedMessage(run.output());
+			if (run.exitCode() == 0)
+			{
+				return new UpdateResult(update.result(), update.harness(), update.version(), update.previousVersion(),
+					update.message() + " The installer of CAT " + installed + " then rewrote the settings entries " +
+						"and reported: " + sentence(reported), update.paths(), update.consistent(), update.keyIds(),
+					update.aotCache(), update.exitDeletions());
+			}
+			reason = "It exited with status " + run.exitCode() + " and reported: " + reported;
+		}
+		catch (IOException e)
+		{
+			reason = "It could not run: " + e.getMessage();
+		}
+		StringJoiner command = new StringJoiner(" ").add(ConsentCommand.launcher(folder, platform));
+		for (int i = 0; i < line.size(); ++i)
+		{
+			if (i > 0 && line.get(i - 1).equals("--home"))
+				command.add(ConsentCommand.quote(line.get(i), platform));
+			else
+				command.add(line.get(i));
+		}
+		return new UpdateResult(Result.FAILED, update.harness(), update.version(), update.previousVersion(),
+			update.message() + " The installer of CAT " + installed + " could not rewrite the settings entries, so " +
+				"they are still those that CAT " + running + " wrote. " + sentence(reason) + " To write the entries " +
+				"of CAT " + installed + ", run: " + command, update.paths(), update.consistent(), update.keyIds(),
+			update.aotCache(), update.exitDeletions());
+	}
+
+	/**
+	 * Returns the arguments of an install, in the order that the installer's grammar gives them.
+	 *
+	 * @param arguments the validated install operation
+	 * @return the command line after the installer launcher
+	 */
+	private static List<String> installArguments(Arguments arguments)
+	{
+		List<String> line = new ArrayList<>();
+		if (arguments.json())
+			line.add("--json");
+		if (arguments.home() != null)
+			line.addAll(List.of("--home", arguments.home().toString()));
+		if (arguments.createProfile())
+			line.add("--create-profile");
+		line.addAll(List.of("install", "--harness", arguments.harness()));
+		if (arguments.tag() != null)
+			line.add(arguments.tag());
+		return line;
+	}
+
+	/**
+	 * Returns the message of the result that an installer printed.
+	 *
+	 * @param output the installer's standard output
+	 * @return the result's message, or the output itself when it holds no result
+	 */
+	private String reportedMessage(String output)
+	{
+		String text = output.strip();
+		try
+		{
+			JsonNode message = mapper.readTree(text).path("message");
+			if (message.isString())
+				return message.stringValue();
+		}
+		catch (JacksonException _)
+		{
+			// The output is no result, so it is reported as it is
+		}
+		if (text.isEmpty())
+			return "nothing";
+		return text;
+	}
+
+	/**
+	 * Ends a text as a sentence.
+	 *
+	 * @param text the text
+	 * @return the text, followed by a period unless it already ends with one
+	 */
+	private static String sentence(String text)
+	{
+		if (text.endsWith("."))
+			return text;
+		return text + ".";
 	}
 
 	/**

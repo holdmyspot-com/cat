@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.engine.test.RegisteredProvider;
+import com.holdmyspot.cat.common.installer.secrets.InstallerProcessSecrets;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -416,7 +417,11 @@ public final class OtherHarnessInstallTest
 					_ -> Optional.empty(), command ->
 				{
 					throw new AssertionError("Started " + command);
-				}, source::open, stdout, stderr);
+				}, source::open, InstallerProcessSecrets.getInstallerProcessAccess().create(Platform.current(),
+					environment, builder ->
+				{
+					throw new AssertionError("Started " + builder.command());
+				}), stdout, stderr);
 				status = invocation.run(arguments.toArray(String[]::new));
 			}
 			return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));

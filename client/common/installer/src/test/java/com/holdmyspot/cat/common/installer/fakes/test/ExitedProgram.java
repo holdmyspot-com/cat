@@ -8,9 +8,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * Stands in for the process of a harness program that has already exited: its combined output is the answer that a
- * test scripts from the harness program's recorded or documented behavior, and its standard input discards what it
- * receives.
+ * Stands in for the process of a program that has already exited: its combined output is the answer that a test
+ * scripts from the program's recorded or documented behavior, or that CAT's own code produced in the test process,
+ * and its standard input discards what it receives.
  */
 public final class ExitedProgram extends Process
 {

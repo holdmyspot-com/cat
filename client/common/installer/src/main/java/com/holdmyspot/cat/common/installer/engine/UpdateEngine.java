@@ -38,14 +38,16 @@ import java.util.function.BooleanSupplier;
 
 /**
  * Installs CAT's plugin into a harness whose policy the installer already wrote, from an authenticated release or
- * from the extracted plugin archive that the running installer belongs to, without executing staged code. Where the
- * harness has a CAT version, the install updates it under the release and downgrade rules. The installer writes the
- * plugin into CAT's marketplace in the harness home and asks the harness to install it into the version's own
- * version folder; it then trains the plugin's startup cache there and rewrites the permission entries to name the
- * installer in that folder. Every install that succeeds, including one that finds the harness up to date, then deletes
- * the version folders other than the active version's, the one that it replaced and the running installer's. Nothing
- * in the version folder that the running installer belongs to is moved, replaced or deleted, and the policy is never
- * written.
+ * from the extracted plugin archive that the running installer belongs to. It runs no code of the release other than
+ * the data migration scripts that the release registers and, to train the startup cache, the plugin's Java runtime.
+ * Where the harness has a CAT version, the install updates it under the release and downgrade rules. The installer
+ * writes the plugin into CAT's marketplace in the harness home and asks the harness to install it into the version's
+ * own version folder; it then trains the plugin's startup cache there and rewrites the permission entries to name the
+ * installer in that folder. Those entries are the ones that the running installer's code writes; where the install
+ * activated another version, the installer then runs that version's installer, which rewrites them with its own code.
+ * Every install that succeeds, including one that finds the harness up to date, then deletes the version folders
+ * other than the active version's, the one that it replaced and the running installer's. Nothing in the version folder
+ * that the running installer belongs to is moved, replaced or deleted, and the policy is never written.
  */
 public final class UpdateEngine
 {
