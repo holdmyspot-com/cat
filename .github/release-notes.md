@@ -18,4 +18,4 @@ Codex or Claude Code on Windows, in PowerShell:
 
 This release's manifest, `cat-release-manifest.json`, is signed with the Ed25519 public key whose X.509 encoding has SHA-256 fingerprint `${CAT_KEY_FINGERPRINT}`. Compare this fingerprint through a source you trust before you run a command.
 
-For choosing where CAT installs, updating to another release, uninstalling, how downloads are verified, and notes for Windows, see the [installation guide](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md).
+For choosing where CAT installs, updating to another release, uninstalling, and notes for Windows, see the [installation guide](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/installation.md). For how downloads are verified, see the [security model](https://github.com/holdmyspot-com/cat/blob/${GITHUB_REF_NAME}/docs/security-model.md).
