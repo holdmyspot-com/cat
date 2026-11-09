@@ -155,7 +155,9 @@ public final class RequestServer
 	 *
 	 * @param harness           the identifier of the plugin's harness
 	 * @param running           the identifiers of the harnesses whose markers the server's environment holds
-	 * @param platformRefusal   why the platform cannot run sandboxed sessions, or empty if it can
+	 * @param refusal           why this server must not run in its process, such as that the platform cannot run
+	 *                          sandboxed sessions or that the process belongs to a CAT run's session, or empty if it
+	 *                          can
 	 * @param plugin            the absolute folder of the plugin, which the session's commands must not be able to
 	 *                          write
 	 * @param sandboxed         returns why the server runs inside the session's sandbox, which a refusal states
@@ -167,7 +169,7 @@ public final class RequestServer
 	 * @param processes         tells whether the session's harness process still runs
 	 * @param pause             paces the checks for requests and for the harness process's end
 	 */
-	public record Host(String harness, Set<String> running, Optional<String> platformRefusal, Path plugin,
+	public record Host(String harness, Set<String> running, Optional<String> refusal, Path plugin,
 		Supplier<String> sandboxed, SessionFinder sessions, Function<Path, ToolScope> scopes,
 		RequestedSessionStarter starter, ProcessTable processes, Pause pause)
 	{
@@ -176,7 +178,7 @@ public final class RequestServer
 		 *
 		 * @param harness           the identifier of the plugin's harness
 		 * @param running           the identifiers of the harnesses whose markers the server's environment holds
-		 * @param platformRefusal   why the platform cannot run sandboxed sessions, or empty if it can
+		 * @param refusal           why this server must not run in its process, or empty if it can
 		 * @param plugin            the absolute folder of the plugin
 		 * @param sandboxed         returns why the server runs inside the session's sandbox
 		 * @param sessions          identifies the session that runs the server
@@ -191,7 +193,7 @@ public final class RequestServer
 		{
 			requireThat(harness, "harness").isNotBlank();
 			running = Set.copyOf(running);
-			requireThat(platformRefusal, "platformRefusal").isNotNull();
+			requireThat(refusal, "refusal").isNotNull();
 			requireThat(plugin, "plugin").isNotNull().isAbsolute();
 			requireThat(sandboxed, "sandboxed").isNotNull();
 			requireThat(sessions, "sessions").isNotNull();
@@ -499,8 +501,8 @@ public final class RequestServer
 			return Optional.of("The request server takes no arguments, but it was given " + String.join(" ", args) +
 				". Run " + program(host.plugin()) + " as a command of its own.");
 		}
-		if (host.platformRefusal().isPresent())
-			return host.platformRefusal();
+		if (host.refusal().isPresent())
+			return host.refusal();
 		String productName = productName(host.harness());
 		if (host.running().contains(host.harness()))
 			return Optional.empty();

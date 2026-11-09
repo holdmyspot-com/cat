@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestServer;
@@ -86,7 +87,7 @@ public final class ClaudeRequestServerCli
 		try (JvmScope scope = new MainJvmScope(environment, Pause::sleeping))
 		{
 			RequestServer.Host host = new RequestServer.Host(HARNESS_ID, ClaudeRunnerCli.MARKERS.running(environment),
-				ClaudeSessionSandbox.refusal(Platform.current()), plugin,
+				refusal(Platform.current(), environment), plugin,
 				() -> ClaudeServedSession.sandboxed(RequestServer.program(plugin), environment),
 				ClaudeServedSession.sessions(environment),
 				directory -> ToolScope.forSession(directory, environment, SessionHarness.installed(), scope.waiting()),
@@ -95,6 +96,22 @@ public final class ClaudeRequestServerCli
 			status = RequestServer.serve(args, host, new PrintWriter(System.err, true, StandardCharsets.UTF_8));
 		}
 		System.exit(status);
+	}
+
+	/**
+	 * Returns why the server must not run in a process: the process belongs to a CAT run's session, which no request
+	 * server serves, or the platform runs no sandboxed Claude Code session.
+	 *
+	 * @param platform    the platform that runs the server
+	 * @param environment the server's environment
+	 * @return the reason, or empty if the server may run
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public static Optional<String> refusal(Platform platform, Map<String, String> environment)
+	{
+		requireThat(platform, "platform").isNotNull();
+		requireThat(environment, "environment").isNotNull();
+		return HarnessEnvironment.requestServerRefusal(environment).or(() -> ClaudeSessionSandbox.refusal(platform));
 	}
 
 	/**

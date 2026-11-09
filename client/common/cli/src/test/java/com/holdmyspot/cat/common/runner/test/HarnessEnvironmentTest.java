@@ -285,4 +285,21 @@ public final class HarnessEnvironmentTest
 			"otherValue").isEmpty();
 		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of("PATH", "/bin")), "outsideRun").isEmpty();
 	}
+
+	/**
+	 * Verifies that a request server that a session of a CAT run starts is refused, so that it does not keep running as
+	 * a background command that keeps the session's turn open, and that a command outside a run is not refused.
+	 */
+	@Test
+	public void refusesRequestServerInRun()
+	{
+		Optional<String> refusal = HarnessEnvironment.requestServerRefusal(Map.of(HarnessEnvironment.RUN_VARIABLE,
+			HarnessEnvironment.RUN_VALUE));
+
+		requireThat(refusal.orElseThrow(), "refusal").startsWith("CAT cannot start the request server:").
+			contains("no request server serves such a session").contains("--session-requests <count>");
+		requireThat(HarnessEnvironment.requestServerRefusal(Map.of(HarnessEnvironment.RUN_VARIABLE, "0")),
+			"otherValue").isEmpty();
+		requireThat(HarnessEnvironment.requestServerRefusal(Map.of("PATH", "/bin")), "outsideRun").isEmpty();
+	}
 }

@@ -33,7 +33,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * progress, and {@code {"end": true}} ends the conversation. Each message becomes the runner record that the child
  * receives: a {@code turn}, an {@code interrupt} or the {@code complete} record. A line that is not one of these
  * messages sends nothing and is answered in {@value #FROM_CHILD_FILE} by
- * {@code {"refused": "<line>", "reason": "<why>"}}. Nothing after {@code end} is read.
+ * {@code {"refused": "<line>", "reason": "<why>"}}.
+ * <p>
+ * The {@code complete} record follows the end of every turn that was asked for, so an {@code end} that follows a turn
+ * lets that turn finish. Until then the conversation still reads the lines after {@code end}, because an
+ * {@code interrupt} behind it is the only way to stop a turn that does not finish; it ignores every other line there.
  * <p>
  * Every record of the child is appended to {@value #FROM_CHILD_FILE} as it arrives. When the child's turn {@code n}
  * ends, a line {@code {"turn_end": n, "status": "<status>"}} follows its last record, whose status is
@@ -82,9 +86,18 @@ public final class Conversation implements TurnSource
 	 */
 	private long read;
 	/**
-	 * Indicates whether the asking session ended the conversation.
+	 * Indicates whether the asking session sent {@code end}, which the conversation holds back until every turn that
+	 * it asked for has ended.
+	 */
+	private boolean endRequested;
+	/**
+	 * Indicates whether the {@code complete} record was taken, so that nothing follows it.
 	 */
 	private boolean ended;
+	/**
+	 * How many turns the asking session asked for.
+	 */
+	private int turnsAsked;
 	/**
 	 * How many of the child's turns have ended.
 	 */
@@ -155,7 +168,13 @@ public final class Conversation implements TurnSource
 		{
 			if (records.isEmpty() && !ended)
 				readMessages();
-			return Optional.ofNullable(records.poll());
+			String record = records.poll();
+			if (record == null && endRequested && !ended && turnsEnded >= turnsAsked)
+			{
+				ended = true;
+				record = json.createObjectNode().put("type", "complete").toString();
+			}
+			return Optional.ofNullable(record);
 		}
 	}
 
@@ -220,7 +239,15 @@ public final class Conversation implements TurnSource
 		}
 		catch (JacksonException _)
 		{
-			refuse(line);
+			if (!endRequested)
+				refuse(line);
+			return;
+		}
+		if (endRequested)
+		{
+			// Only an interrupt of the turn that end waits for still means anything
+			if (message.isObject() && message.size() == 1 && isTrue(message.path("interrupt")))
+				records.add(json.createObjectNode().put("type", "interrupt").toString());
 			return;
 		}
 		if (!message.isObject() || message.size() != 1)
@@ -232,6 +259,7 @@ public final class Conversation implements TurnSource
 		if (turn.isString())
 		{
 			records.add(json.createObjectNode().put("type", "turn").put("prompt", turn.asString()).toString());
+			++turnsAsked;
 			return;
 		}
 		if (isTrue(message.path("interrupt")))
@@ -241,8 +269,7 @@ public final class Conversation implements TurnSource
 		}
 		if (isTrue(message.path("end")))
 		{
-			records.add(json.createObjectNode().put("type", "complete").toString());
-			ended = true;
+			endRequested = true;
 			return;
 		}
 		refuse(line);

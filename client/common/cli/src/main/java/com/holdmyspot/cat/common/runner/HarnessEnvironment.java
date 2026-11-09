@@ -42,6 +42,28 @@ public final class HarnessEnvironment
 	private static final List<String> EXCLUSION_VARIABLES = List.of("NO_PROXY", "no_proxy");
 
 	/**
+	 * Returns why a request server that a command runs is refused when the command belongs to a CAT run's session. No
+	 * request server serves such a session: its launchers send each request to the run's own runner. A server that the
+	 * session kept running as a background command would also keep the session's turn open for as long as the server
+	 * runs, so the refusal ends it at once.
+	 *
+	 * @param environment the command's environment
+	 * @return the reason, or empty if the command is not part of a CAT run
+	 * @throws NullPointerException if {@code environment} is null
+	 */
+	public static Optional<String> requestServerRefusal(Map<String, String> environment)
+	{
+		requireThat(environment, "environment").isNotNull();
+		if (!RUN_VALUE.equals(environment.get(RUN_VARIABLE)))
+			return Optional.empty();
+		return Optional.of("CAT cannot start the request server: this command runs in a session of a CAT run, and no " +
+			"request server serves such a session. This is not a failure of the session's task: it needs no request " +
+			"server. It requests sessions by running a runner launcher, request-session or the prompt optimizer, which " +
+			"send each request to the run's own runner when the run's caller allows requested sessions with " +
+			"--session-requests <count>. Continue without the request server.");
+	}
+
+	/**
 	 * Returns why a runner launcher refuses to start a session from the command that runs it. A command of a CAT run's
 	 * session may start sessions only as requests to the run's own runner, which it reaches through
 	 * {@link SessionRequestAccess#REQUESTS_VARIABLE} when the run lets its session request sessions; without that

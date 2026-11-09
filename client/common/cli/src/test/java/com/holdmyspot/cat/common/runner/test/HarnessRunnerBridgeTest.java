@@ -332,6 +332,56 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies that an asking session that ends a conversation while a turn is in progress can still stop the turn:
+	 * the {@code interrupt} that follows {@code end} ends the turn, and the conversation then ends. Otherwise a turn
+	 * that never finishes keeps the launcher running, and nothing that the asking session appends can stop it.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000)
+	public void interruptsTurnThatEndWaitsFor() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		List<String> received = new CopyOnWriteArrayList<>();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted()), received,
+				InterruptedTurn.FAILS);
+			StringReader standardInput = new StringReader(""))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createDirectories(run.directory().resolve("project"));
+			Path folder = Files.createDirectory(cleanup.add(Files.createTempDirectory("cat-asking-")).
+				resolve("conversation"));
+			Files.writeString(folder.resolve("to-child.jsonl"), "{\"turn\": \"first\"}\n{\"end\": true}\n" +
+				"{\"interrupt\": true}\n");
+			HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
+				root.resolve("artifact").toString(), "--run-root", root.toString(), "--keep-run", "--model", "model-a",
+				"--effort", "effort-a", "--conversation", folder.toString()}, "harness",
+				HarnessTemporaryRoot.of(root));
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());
+
+			requireThat(received, "received").isEqualTo(List.of("first"));
+			JsonMapper json = JsonMapper.builder().build();
+			List<String> fromChild = new ArrayList<>();
+			for (String line : Files.readAllLines(folder.resolve("from-child.jsonl")))
+			{
+				String type = json.readTree(line).path("type").asString("");
+				if (type.isEmpty())
+					fromChild.add(line);
+				else if (List.of("interrupted", "turn_failed", "completed").contains(type))
+					fromChild.add(type);
+			}
+			requireThat(fromChild, "fromChild").isEqualTo(List.of("interrupted", "turn_failed",
+				"{\"turn_end\":1,\"status\":\"interrupted\"}", "completed", "{\"ended\":\"completed\"}"));
+		}
+	}
+
+	/**
 	 * Verifies that a bridge writes one {@code session_transcript} record with the native transcript's path once the
 	 * process names the session's transcript, not once per turn, and that the receipt lists the transcript copies that
 	 * the session left in the run before the run's runtime files were pruned.

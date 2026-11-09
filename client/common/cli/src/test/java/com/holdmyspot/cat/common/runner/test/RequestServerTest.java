@@ -99,7 +99,7 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			fixture.platformRefusal = Optional.of("CAT does not start sessions on native Windows");
+			fixture.hostRefusal = Optional.of("CAT does not start sessions on native Windows");
 			requireThat(fixture.refusal(), "refusal").isEqualTo("CAT does not start sessions on native Windows\n");
 		}
 	}
@@ -647,7 +647,7 @@ public final class RequestServerTest
 		private final FakeProcessTable processes = new FakeProcessTable();
 		private final ProcessIdentity harness;
 		private final FakeParentPolicySource policy;
-		private Optional<String> platformRefusal = Optional.empty();
+		private Optional<String> hostRefusal = Optional.empty();
 		private Set<String> running = Set.of("claude");
 		private Optional<PolicyRefusal> sessionRefusal = Optional.empty();
 		private Optional<String> askingThread = Optional.empty();
@@ -719,7 +719,7 @@ public final class RequestServerTest
 				}
 				return child.start(arguments);
 			};
-			return new RequestServer.Host("claude", running, platformRefusal, plugin,
+			return new RequestServer.Host("claude", running, hostRefusal, plugin,
 				() -> "the session runs the server inside its sandbox", () ->
 			{
 				if (sessionRefusal.isPresent())
