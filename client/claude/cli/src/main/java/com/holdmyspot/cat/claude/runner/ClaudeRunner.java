@@ -145,8 +145,8 @@ public final class ClaudeRunner
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
-	 *   bound does not let it write what Claude Code writes, or a settings file that Claude Code also loads would
-	 *   widen it
+	 *   bound does not let it write what Claude Code writes outside the session's run folder, which the bound always
+	 *   lets it write, or a settings file that Claude Code also loads would widen it
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
@@ -208,7 +208,7 @@ public final class ClaudeRunner
 				hostConfiguration.resolve("settings.json"), isolatedConfiguration.resolve("settings.json"),
 				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), run.directory(),
 				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, requestAccess),
-				instructionFilesMode, requestAccess, worktree, bound, extraPermissions,
+				instructionFilesMode, requestAccess, worktree, run.directory(), bound, extraPermissions,
 				ClaudeConnectionSettings.modelHost(isolatedEnvironment));
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);

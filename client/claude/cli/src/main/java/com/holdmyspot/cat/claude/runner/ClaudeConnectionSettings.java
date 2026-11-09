@@ -265,8 +265,8 @@ public final class ClaudeConnectionSettings
 		throws IOException
 	{
 		writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
-			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, null, ExtraPermissions.NONE,
-			DEFAULT_MODEL_HOST);
+			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, isolationRoot, null,
+			ExtraPermissions.NONE, DEFAULT_MODEL_HOST);
 	}
 
 	/**
@@ -279,11 +279,13 @@ public final class ClaudeConnectionSettings
 	 * directory and the worktree registrations; a cache or directory that {@code bound} does not let it write is not
 	 * writable. Claude Code lets the instance's commands write the project and {@code claudeTemporaryDirectory}
 	 * without a setting, so the session is refused unless {@code bound} lets them write those and
-	 * {@code claudeHome}. The sandbox settings carry exactly the resulting policy: its writable paths, the paths
-	 * inside them that are not writable, the paths that are not readable (also as {@code Read} rules in
-	 * {@code permissions.deny}, since the sandbox does not confine the file tools), the paths inside those that are
-	 * readable nonetheless, and the network hosts. They require the sandbox, forbid every command outside it and
-	 * exclude no command from it.
+	 * {@code claudeHome}. {@code bound} always lets the instance write inside {@code runFolder}, so the session is
+	 * refused only for the paths among them that lie outside it; the instance's commands still write only the paths
+	 * that its policy lists, not the whole run folder. The sandbox settings carry exactly the resulting policy: its
+	 * writable paths, the paths inside them that are not writable, the paths that are not readable (also as
+	 * {@code Read} rules in {@code permissions.deny}, since the sandbox does not confine the file tools), the paths
+	 * inside those that are readable nonetheless, and the network hosts. They require the sandbox, forbid every
+	 * command outside it and exclude no command from it.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -299,26 +301,28 @@ public final class ClaudeConnectionSettings
 	 *                                 none
 	 * @param project                  the instance's Git repository, whose {@code .git} is a directory, or
 	 *                                 {@code null} if the instance may register no linked worktree
+	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
 	 *                                 needs, which join its needs
 	 * @param modelHost                the host of the instance's model provider
 	 * @return the instance's sandbox policy
-	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code extraPermissions} or
-	 *                                  {@code modelHost} are null
+	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code runFolder}, {@code extraPermissions}
+	 *                                  or {@code modelHost} are null
 	 * @throws IllegalArgumentException if {@code modelHost} is blank
 	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write {@code claudeHome},
-	 *                                  {@code claudeTemporaryDirectory} or {@code project}, or lacks a write or host
-	 *                                  that the instance needs
+	 *                                  {@code claudeTemporaryDirectory} or {@code project} outside {@code runFolder}, or
+	 *                                  lacks a write or host that the instance needs
 	 * @throws IOException              if settings I/O fails
 	 */
 	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
 		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
-		ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost)
+		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost)
 		throws IOException
 	{
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
+		requireThat(runFolder, "runFolder").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(modelHost, "modelHost").isNotBlank();
 		Path worktreeRegistrations = null;
@@ -336,8 +340,8 @@ public final class ClaudeConnectionSettings
 		implicitWrites.add(claudeTemporaryDirectory);
 		if (project != null)
 			implicitWrites.add(project);
-		ChildPolicy policy = childPolicy(bound, claudeHome, sessionWrites, implicitWrites, deniedReads, extraPermissions,
-			modelHost);
+		ChildPolicy policy = childPolicy(bound, runFolder, claudeHome, sessionWrites, implicitWrites, deniedReads,
+			extraPermissions, modelHost);
 
 		JsonMapper mapper = scope.json();
 		ObjectNode settings = mapper.createObjectNode();
@@ -383,6 +387,9 @@ public final class ClaudeConnectionSettings
 	 * Returns an isolated instance's sandbox policy: its needs, bounded by the policy that bounds it.
 	 *
 	 * @param bound          the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param runFolder      the instance's run directory, which {@code bound} always lets it write: only the writes
+	 *                       outside it need {@code bound}'s permission, and the instance's commands write only the
+	 *                       paths of its policy inside it
 	 * @param claudeHome     the instance's home directory, which it always writes
 	 * @param sessionWrites  the other paths that the instance's commands may write if {@code bound} lets them
 	 * @param implicitWrites the paths that Claude Code lets the commands write without a setting
@@ -391,29 +398,39 @@ public final class ClaudeConnectionSettings
 	 * @param modelHost      the host of the instance's model provider
 	 * @return the policy
 	 * @throws SessionRefusedException if {@code bound} does not let the commands write {@code claudeHome} or one of
-	 *                                 {@code implicitWrites}
+	 *                                 {@code implicitWrites} outside {@code runFolder}
 	 * @throws IOException             if a symbolic link in a path cannot be read
 	 */
-	private static ChildPolicy childPolicy(ChildPolicy bound, Path claudeHome, List<Path> sessionWrites,
-		List<Path> implicitWrites, List<Path> deniedReads, ExtraPermissions extra, String modelHost)
+	private static ChildPolicy childPolicy(ChildPolicy bound, Path runFolder, Path claudeHome,
+		List<Path> sessionWrites, List<Path> implicitWrites, List<Path> deniedReads, ExtraPermissions extra,
+		String modelHost)
 		throws IOException
 	{
 		ParentPolicy parent = ParentPolicy.UNSANDBOXED;
 		if (bound != null)
 		{
+			Path run = runFolder.toAbsolutePath().normalize();
 			List<Path> required = new ArrayList<>();
 			required.add(claudeHome);
 			required.addAll(implicitWrites);
 			for (Path path : required)
 			{
 				Path absolute = path.toAbsolutePath().normalize();
+				// The run folder is the instance's own, so the bound does not decide whether it may write there
+				if (isInsideAny(RealPaths.resolve(absolute), List.of(run)))
+					continue;
 				if (!writes(bound, absolute))
 				{
 					throw new SessionRefusedException("The session's sandbox policy does not let its " +
 						"commands write " + absolute + ", which Claude Code writes, so CAT does not start the session");
 				}
 			}
-			parent = bound.asParentPolicy();
+			ParentPolicy boundPolicy = bound.asParentPolicy();
+			List<Path> writeRoots = new ArrayList<>(boundPolicy.writeRoots());
+			writeRoots.add(run);
+			parent = new ParentPolicy(true, writeRoots, boundPolicy.writeDenials(), boundPolicy.readDenials(),
+				boundPolicy.readReallowances(), boundPolicy.hosts(), boundPolicy.allowLocalBinding(),
+				boundPolicy.protectedSources());
 		}
 		List<Path> extraWrites = new ArrayList<>();
 		for (Path path : sessionWrites)
