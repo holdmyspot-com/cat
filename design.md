@@ -2621,6 +2621,15 @@ because a session's installed plugins link to files there. On native Windows, wh
 its sandbox, Claude sessions are refused instead, and the refusal tells the user to run Claude Code and CAT inside WSL2
 (user ruling, 2026-11-01). A session that needs another session requests one instead of starting a harness directly (D98).
 
+**Claude login of a run (user ruling, 2026-11-08):** a subscription login rotates its refresh token, so a copy of the
+user's `.credentials.json` stops working once the user's own session, or any other copy, refreshes it, which can happen
+in the middle of a turn. A Claude session in a run therefore never authenticates through a copy of a subscription login
+file. It authenticates through `CLAUDE_CODE_OAUTH_TOKEN`, a long-lived token that the user creates once with
+`claude setup-token` and exports in the environment the harness starts in, or through `ANTHROPIC_API_KEY` or
+`ANTHROPIC_AUTH_TOKEN` when one of those is set; the runner passes that variable to the session, and to the sessions
+that it requests, and copies no login file. When none is set, the runner refuses the run before the harness starts,
+with status 2, and the reason names `claude setup-token` and the variable to export.
+
 No one can answer a nested session's approval prompt, so a session's own commands run without one. The
 Claude runner allows Bash for the session and relies on the sandbox it requires, which forbids unsandboxed commands,
 and grants edits inside the project by rule, so neither depends on Claude Code's own `sandbox.autoAllowBashIfSandboxed`
