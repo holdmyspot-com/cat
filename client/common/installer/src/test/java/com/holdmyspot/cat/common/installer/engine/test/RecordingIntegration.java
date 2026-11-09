@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.installer.engine.TreeCopy;
 import com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFileAttributeView;
@@ -125,6 +126,11 @@ public final class RecordingIntegration implements HarnessIntegration
 	 * the version that it registered.
 	 */
 	private boolean greatestName;
+	/**
+	 * Whether {@code register} deletes the version folder of every other version, as Codex does when it replaces the
+	 * plugin.
+	 */
+	private boolean deletesReplaced;
 
 	/**
 	 * Creates an integration of {@code harness-a} whose calls all succeed.
@@ -309,6 +315,18 @@ public final class RecordingIntegration implements HarnessIntegration
 	public RecordingIntegration runningGreatestName()
 	{
 		this.greatestName = true;
+		return this;
+	}
+
+	/**
+	 * Makes registration delete the version folder of every other version, as Codex does when it replaces the plugin,
+	 * including the folder that the running installer belongs to.
+	 *
+	 * @return this integration
+	 */
+	public RecordingIntegration deletingReplaced()
+	{
+		this.deletesReplaced = true;
 		return this;
 	}
 
@@ -558,6 +576,14 @@ public final class RecordingIntegration implements HarnessIntegration
 		Path target = layout.versionFolder(version);
 		Files.createDirectories(target.getParent());
 		LinkSafeDeletion.delete(target, target.getParent());
+		if (deletesReplaced)
+		{
+			try (DirectoryStream<Path> folders = Files.newDirectoryStream(target.getParent()))
+			{
+				for (Path folder : folders)
+					LinkSafeDeletion.delete(folder, target.getParent());
+			}
+		}
 		TreeCopy.copy(source, target);
 		Files.writeString(registeredVersion(home), version + "\n");
 	}

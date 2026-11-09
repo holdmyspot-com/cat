@@ -105,6 +105,32 @@ public final class UpdateEntriesTest
 	}
 
 	/**
+	 * When the harness deletes the folder of the version that the update replaces, which holds the running installer's
+	 * Java runtime, while it registers the new version, the runtime's program that starts processes still exists when
+	 * the new version's installer is started, and nothing of the old folder is left afterwards.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if a test policy is invalid
+	 */
+	@Test
+	public void deletedFolderKeepsSpawnHelper() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("update-entries-deleted-")));
+			fixture.old.deletingReplaced();
+
+			Run update = fixture.update(UPDATE);
+
+			requireThat(update.status, "status").withContext(update.output, "output").
+				withContext(update.diagnostics, "diagnostics").isEqualTo(0);
+			requireThat(fixture.started, "started").size().isEqualTo(1);
+			requireThat(fixture.spawnHelperExisted, "spawnHelperExisted").containsExactly(List.of(true));
+			requireThat(Files.exists(fixture.versionFolder(Fixture.ACTIVE)), "oldFolderExists").isFalse();
+		}
+	}
+
+	/**
 	 * The installer of the version that an update installed finds that version active and starts no installer.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
@@ -390,6 +416,11 @@ public final class UpdateEntriesTest
 		 */
 		private final List<List<String>> started = new ArrayList<>();
 		/**
+		 * Whether the runtime's program that starts processes existed when release 1.0's installer started each
+		 * process.
+		 */
+		private final List<Boolean> spawnHelperExisted = new ArrayList<>();
+		/**
 		 * The outcome of each run of release 1.2's installer that a process started.
 		 */
 		private final List<Run> installedRuns = new ArrayList<>();
@@ -438,6 +469,10 @@ public final class UpdateEntriesTest
 
 			Path active = Files.createDirectories(versionFolder(ACTIVE).resolve("bin"));
 			Files.writeString(active.resolve("VERSION"), ACTIVE + "\n");
+			Path spawnHelper = Files.createDirectories(runtime(ACTIVE).resolve("lib")).resolve("jspawnhelper");
+			Files.writeString(spawnHelper, "spawn helper");
+			if (!spawnHelper.toFile().setExecutable(true))
+				throw new IOException("Could not make " + spawnHelper + " executable");
 			Files.writeString(RecordingIntegration.registeredVersion(home), ACTIVE + "\n");
 
 			KeyPair key = keyPair();
@@ -459,6 +494,17 @@ public final class UpdateEntriesTest
 		private String registeredVersion() throws IOException
 		{
 			return Files.readString(RecordingIntegration.registeredVersion(home)).strip();
+		}
+
+		/**
+		 * Returns the Java runtime of the installer in a version folder.
+		 *
+		 * @param version the plugin version
+		 * @return the runtime folder
+		 */
+		private Path runtime(String version)
+		{
+			return versionFolder(version).resolve("runtime");
 		}
 
 		/**
@@ -551,10 +597,11 @@ public final class UpdateEntriesTest
 				environment, builder ->
 				{
 					started.add(List.copyOf(builder.command()));
+					spawnHelperExisted.add(Files.exists(runtime(version).resolve("lib").resolve("jspawnhelper")));
 					if (startFailure != null)
 						throw new IOException(startFailure);
 					return runInstalled(builder);
-				});
+				}, runtime(version));
 			return run(versionFolder(version), environment, old, terminal, installers,
 				arguments.toArray(String[]::new));
 		}
