@@ -396,7 +396,12 @@ never changes the policy's keys, release source or version limits. It then, in t
 marketplace folder and asks the harness to install it, installs CAT's files that the harness reads outside the plugin
 (Codex's custom agents), runs the data migrations that the release registers after the recorded data version, prepares a
 start-up cache for the plugin's runtime, rewrites the permission entries to name the new version folder's installer, and
-deletes the version folders that are no longer kept.
+deletes the version folders that are no longer kept. The running installer's code wrote those entries, and an older
+build may write entries that the new version no longer writes, so `install` then runs the new version folder's installer
+once, with the same arguments; that run finds its version active and rewrites every settings entry with the new
+version's code, and `install` reports its result with the update's. When that run fails, `install` reports `failed` and
+names the command that writes the new entries: the new version folder's installer with the same arguments. An installer
+from a build before this step cannot take it, so after an update from such a build, run that command once more.
 
 When the requested release is the build that is already active, `install` reports `up_to_date` and installs no new
 version folder; it still installs CAT's files that the harness reads outside the plugin again, runs the data migrations
