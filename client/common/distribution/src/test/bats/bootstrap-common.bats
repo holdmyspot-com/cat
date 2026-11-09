@@ -410,15 +410,18 @@ v2.0" ''; do
 @test "installation guide's For AI agents section gives an agent's steps" {
 	repository="${BATS_TEST_DIRNAME}/../../../../../.."
 
-	# The section's lines wrap, so the checks read it as one line
+	# The section's lines wrap and its bullet continues on an indented line, so the checks read it as one line
 	agent_section="$(sed -n '/^## For AI agents$/,/^## Supported platforms/p' "${repository}/docs/installation.md" \
-		| tr '\n' ' ' | tr -s ' ')"
+		| tr '\n\t' '  ' | tr -s ' ')"
 	[[ "${agent_section}" == *"If CAT's \`update\` skill is installed, use it."* ]]
 	[[ "${agent_section}" == *"do not download or run this release's files"* ]]
 	[[ "${agent_section}" == *"after \`! \`"* ]]
-	[[ "${agent_section}" == *"your session's \`HOME\` in place of \`<home>\`"* ]]
 	[[ "${agent_section}" == *"\`CLAUDE_CONFIG_DIR=<value>\` or \`CODEX_HOME=<value>\` before \`sh\` when your session sets it"* ]]
-	[[ "${agent_section}" == *"${SINGLE_COMMAND_URL} | HOME=<home> sh -s -- --harness claude"* ]]
+	[[ "${agent_section}" == *"${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+	[[ "${agent_section}" != *"HOME=<home>"* ]]
+	[[ "${agent_section}" == *"Add \`HOME=<your session's HOME>\` before \`sh\` only when it differs from the account's home folder"* ]]
+	[[ "${agent_section}" == *"\`getent passwd \"\$(id -un)\" | cut -d: -f6\` prints on Linux"* ]]
+	[[ "${agent_section}" == *"\`dscl . -read \"/Users/\$(id -un)\" NFSHomeDirectory\` on macOS, or when you cannot tell"* ]]
 	[[ "${agent_section}" == *"On Windows, write no \`HOME\`"* ]]
 	[[ "${agent_section}" == *"& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness claude"* ]]
 }
