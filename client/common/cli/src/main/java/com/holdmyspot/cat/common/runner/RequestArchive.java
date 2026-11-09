@@ -47,7 +47,8 @@ import tools.jackson.databind.node.ArrayNode;
  * <p>
  * A sender packs only what its sandbox lets it read, leaving out the null-device placeholders of files that it may not
  * read. It follows no link, except that a symbolic link in the project whose target stays inside the project travels
- * as a link, and any other link in the project travels as a copy of the file or directory tree that it leads to. A
+ * as a link, and any other link in the project travels as a read-only copy of the file or directory tree that it
+ * leads to. A
  * receiver has the user's permissions, so it opens only the one archive, copies it without following links, and
  * extracts only plain files, directories and the project's links, within {@link RequestLimits}. It creates the links
  * after every file and directory, and refuses an entry whose path passes through a link and a link whose target leaves
@@ -103,6 +104,23 @@ public final class RequestArchive
 		"capacity_wait", "max_concurrency");
 	private static final Set<PosixFilePermission> FILE_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> PROGRAM_MODE = PosixFilePermissions.fromString("rwxr-xr-x");
+	/**
+	 * The mode of a file in a copy of a project link's target, which the receiver extracts read-only.
+	 */
+	private static final Set<PosixFilePermission> READ_ONLY_FILE_MODE = PosixFilePermissions.fromString("r--r--r--");
+	/**
+	 * The mode of a program in a copy of a project link's target, which the receiver extracts read-only.
+	 */
+	private static final Set<PosixFilePermission> READ_ONLY_PROGRAM_MODE = PosixFilePermissions.
+		fromString("r-xr-xr-x");
+	/**
+	 * The mode of a directory of the project.
+	 */
+	private static final Set<PosixFilePermission> DIRECTORY_MODE = PROGRAM_MODE;
+	/**
+	 * The mode of a directory in a copy of a project link's target, which the receiver extracts read-only.
+	 */
+	private static final Set<PosixFilePermission> READ_ONLY_DIRECTORY_MODE = READ_ONLY_PROGRAM_MODE;
 
 	/**
 	 * Publishes a request made inside a run with archive-relative manifest paths, packing prompt texts after the
@@ -307,7 +325,8 @@ public final class RequestArchive
 	 * Packs the project directory and its descendants, leaving out the null-device placeholders of files that the
 	 * session may not read and the request server's own entries. A symbolic link whose target stays inside the project
 	 * travels as a link with the same target; any other link travels as a copy of the file or directory tree that it
-	 * leads to, which counts against the same limits as the project's own files.
+	 * leads to, which counts against the same limits as the project's own files. The entries of that copy lack every
+	 * write permission, whatever the target's own mode, so that the receiver extracts them read-only.
 	 *
 	 * @param archive    the destination archive
 	 * @param source     the readable project directory
@@ -328,17 +347,22 @@ public final class RequestArchive
 		ProjectTree.copy(source.toAbsolutePath().normalize(), nullDevice, skipped::contains, new ProjectTree.Writer()
 		{
 			@Override
-			public void directory(Path relative) throws IOException
+			public void directory(Path relative, Path directory, boolean copy) throws IOException
 			{
 				budget.add(0, maximum);
-				archive.putArchiveEntry(new TarArchiveEntry(entryName(relative) + "/"));
+				TarArchiveEntry entry = new TarArchiveEntry(entryName(relative) + "/");
+				if (copy)
+					entry.setMode(modeBits(READ_ONLY_DIRECTORY_MODE));
+				else
+					entry.setMode(modeBits(DIRECTORY_MODE));
+				archive.putArchiveEntry(entry);
 				archive.closeArchiveEntry();
 			}
 
 			@Override
-			public void file(Path relative, Path file) throws IOException
+			public void file(Path relative, Path file, boolean copy) throws IOException
 			{
-				packFile(archive, file, entryName(relative), maximum, budget);
+				packFile(archive, file, entryName(relative), maximum, budget, copy);
 			}
 
 			@Override
@@ -440,6 +464,23 @@ public final class RequestArchive
 	private static void packFile(TarArchiveOutputStream archive, Path source, String name, long maximum,
 		Budget budget) throws IOException
 	{
+		packFile(archive, source, name, maximum, budget, false);
+	}
+
+	/**
+	 * Packs exactly one bounded regular file, preserving its executable permission.
+	 *
+	 * @param archive  the destination
+	 * @param source   the input file
+	 * @param name     its archive name
+	 * @param maximum  the content bound
+	 * @param budget   cumulative limits
+	 * @param readOnly {@code true} if the receiver extracts the file read-only
+	 * @throws IOException if the file is unsafe, changes size or cannot be read
+	 */
+	private static void packFile(TarArchiveOutputStream archive, Path source, String name, long maximum,
+		Budget budget, boolean readOnly) throws IOException
+	{
 		checkAncestors(source);
 		BasicFileAttributes attributes = Files.readAttributes(source, BasicFileAttributes.class,
 			LinkOption.NOFOLLOW_LINKS);
@@ -448,9 +489,17 @@ public final class RequestArchive
 		budget.add(attributes.size(), maximum);
 		TarArchiveEntry entry = new TarArchiveEntry(name);
 		entry.setSize(attributes.size());
-		entry.setMode(modeBits(FILE_MODE));
-		if (PortableFiles.mode(source).contains(PosixFilePermission.OWNER_EXECUTE))
-			entry.setMode(modeBits(PROGRAM_MODE));
+		boolean program = PortableFiles.mode(source).contains(PosixFilePermission.OWNER_EXECUTE);
+		Set<PosixFilePermission> mode;
+		if (readOnly && program)
+			mode = READ_ONLY_PROGRAM_MODE;
+		else if (readOnly)
+			mode = READ_ONLY_FILE_MODE;
+		else if (program)
+			mode = PROGRAM_MODE;
+		else
+			mode = FILE_MODE;
+		entry.setMode(modeBits(mode));
 		archive.putArchiveEntry(entry);
 		try (InputStream input = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS))
 		{
@@ -510,7 +559,9 @@ public final class RequestArchive
 
 	/**
 	 * Extracts only ordinary files, directories and the project's symbolic links from a private archive copy, creating
-	 * the links after every file and directory.
+	 * the links after every file and directory. A file or directory of the project whose entry lacks the owner's write
+	 * permission, as the copy of a link's target does, is extracted read-only, as
+	 * {@link PortableFiles#setReadOnly(Path)} makes it.
 	 *
 	 * @param source the private archive
 	 * @param target the private empty destination
@@ -526,6 +577,10 @@ public final class RequestArchive
 		Budget budget = new Budget(limits);
 		Set<Path> seen = new HashSet<>();
 		Map<Path, Path> links = new LinkedHashMap<>();
+		List<Path> readOnlyDirectories = new ArrayList<>();
+		Path directory = target.toAbsolutePath().normalize();
+		Path project = directory.resolve("project");
+		int ownerWrite = modeBits(Set.of(PosixFilePermission.OWNER_WRITE));
 		try (InputStream bytes = Files.newInputStream(source);
 			TarArchiveInputStream archive = new BoundedTarInput(bytes, limits))
 		{
@@ -547,11 +602,16 @@ public final class RequestArchive
 				else if (entry.getName().startsWith("prompts/"))
 					maximum = MAXIMUM_PROMPT_BYTES;
 				budget.add(entry.getSize(), maximum);
+				// Only a copy of a project link's target lacks the owner's write permission
+				boolean readOnly = path.startsWith(project) && !path.equals(project) &&
+					(entry.getMode() & ownerWrite) == 0;
 				if (type == '5')
 				{
 					if (entry.getSize() != 0)
 						throw new IOException("Request archive directory has content: " + entry.getName());
 					Files.createDirectories(path);
+					if (readOnly)
+						readOnlyDirectories.add(path);
 					continue;
 				}
 				Files.createDirectories(path.getParent());
@@ -569,9 +629,10 @@ public final class RequestArchive
 				if ((entry.getMode() & modeBits(Set.of(PosixFilePermission.OWNER_EXECUTE))) != 0)
 					mode.add(PosixFilePermission.OWNER_EXECUTE);
 				PortableFiles.setMode(path, mode);
+				if (readOnly)
+					PortableFiles.setReadOnly(path);
 			}
 		}
-		Path directory = target.toAbsolutePath().normalize();
 		for (Path path : seen)
 		{
 			for (Path ancestor = path.getParent(); !ancestor.equals(directory); ancestor = ancestor.getParent())
@@ -583,7 +644,10 @@ public final class RequestArchive
 				}
 			}
 		}
-		ProjectTree.createLinks(directory.resolve("project"), links);
+		ProjectTree.createLinks(project, links);
+		// A directory becomes read-only only once nothing more is added to it
+		for (Path readOnly : readOnlyDirectories)
+			PortableFiles.setReadOnly(readOnly);
 	}
 
 	/**

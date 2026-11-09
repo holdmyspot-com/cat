@@ -1,8 +1,12 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.RequestArchive;
 import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -11,6 +15,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.io.InputStream;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.net.StandardProtocolFamily;
@@ -20,6 +25,7 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.ByteBuffer;
 import java.nio.file.StandardOpenOption;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import org.testng.annotations.Test;
@@ -301,8 +307,9 @@ public final class SessionRequestCliTest
 	/**
 	 * Verifies that a request carries a project's symbolic link whose target lies inside the project as a link with the
 	 * same target, which the receiver extracts as a link that resolves inside the extracted project, and a link whose
-	 * target lies outside the project as a copy of the target's file or directory tree, even when a link's target is
-	 * longer than a tar header holds.
+	 * target lies outside the project as a read-only copy of the target's file or directory tree, even when a link's
+	 * target is longer than a tar header holds. The run's copy of the extracted project keeps those copies read-only,
+	 * the targets stay unchanged, and the run and the extracted request still delete.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -353,7 +360,59 @@ public final class SessionRequestCliTest
 				requireThat(Files.isSymbolicLink(copy.resolve(name)), name).isFalse();
 			requireThat(Files.readString(copy.resolve("notes.md")), "notes").isEqualTo("notes");
 			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
+			requireReadOnlyCopies(copy);
+
+			// The runner copies the extracted project into the run, which keeps the copies read-only
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(copy, run);
+			requireReadOnlyCopies(run.directory().resolve("project"));
+			requireThat(Files.readString(root.resolve("outside/notes.md")), "target").isEqualTo("notes");
+			requireThat(Files.readString(outside.resolve("a.md")), "treeTarget").isEqualTo("a");
+			manager.fail(run, "test cleanup");
+			manager.deleteRun(run);
+			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
+			TemporaryDirectories.deleteRecursively(inputs);
+			requireThat(Files.exists(inputs), "inputs").isFalse();
 		}
+	}
+
+	/**
+	 * Verifies that a copy of the project of {@link #carriesProjectLinks()} holds the copies of its links' targets
+	 * outside it read-only: a write to a copied file fails, and adding a file to a copied directory fails where the
+	 * file system records POSIX permissions. The project's own files stay writable.
+	 *
+	 * @param project the copy of the project
+	 * @throws IOException if fixture I/O fails
+	 */
+	private static void requireReadOnlyCopies(Path project) throws IOException
+	{
+		for (String name : List.of("notes.md", "tree/a.md"))
+		{
+			try
+			{
+				Files.writeString(project.resolve(name), "changed");
+				throw new AssertionError("A write to the copy of " + name + " succeeded");
+			}
+			catch (AccessDeniedException _)
+			{
+				// The copy is read-only
+			}
+		}
+		if (PortableFiles.hasModes(project))
+		{
+			try
+			{
+				Files.writeString(project.resolve("tree/added.md"), "added");
+				throw new AssertionError("Adding a file to the copied directory succeeded");
+			}
+			catch (AccessDeniedException _)
+			{
+				// The copied directory is read-only
+			}
+		}
+		Files.writeString(project.resolve("shared/guide.md"), "edited");
 	}
 
 	/**

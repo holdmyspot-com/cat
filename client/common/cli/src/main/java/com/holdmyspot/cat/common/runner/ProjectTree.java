@@ -30,8 +30,9 @@ import java.util.function.Predicate;
  * A link whose target, resolved one name at a time, never leaves the project reaches the copy as a link with the same
  * target, so that it resolves inside the copy to the copy of its target. Any other link reaches the copy as a copy of
  * the file or directory tree that it leads to, read when the project is copied, with every link inside that tree
- * replaced by a copy of its target, so that a write in the copy never reaches the target. A link whose target does not
- * exist, cannot be read, or holds the project is refused.
+ * replaced by a copy of its target. The writer holds that copy read-only, so that a session can neither change the
+ * target nor change its copy and then measure itself against a file that differs from the target. A link whose target
+ * does not exist, cannot be read, or holds the project is refused.
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
@@ -69,7 +70,7 @@ final class ProjectTree
 				Path relative = project.relativize(directory);
 				if (excluded.test(realProject.resolve(relative)))
 					return SKIP_SUBTREE;
-				writer.directory(relative);
+				writer.directory(relative, directory, false);
 				return CONTINUE;
 			}
 
@@ -82,7 +83,7 @@ final class ProjectTree
 				if (attributes.isSymbolicLink())
 					copyLink(project, realProject, relative, nullDevice, excluded, writer);
 				else if (!SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
-					writer.file(relative, file);
+					writer.file(relative, file, false);
 				return CONTINUE;
 			}
 		});
@@ -122,7 +123,7 @@ final class ProjectTree
 		try
 		{
 			if (attributes.isRegularFile())
-				writer.file(relative, target);
+				writer.file(relative, target, true);
 			else if (attributes.isDirectory())
 			{
 				if (realProject.startsWith(target))
@@ -291,7 +292,7 @@ final class ProjectTree
 				{
 					if (excluded.test(directory.toRealPath()))
 						return SKIP_SUBTREE;
-					writer.directory(relative.resolve(source.relativize(directory)));
+					writer.directory(relative.resolve(source.relativize(directory)), directory, true);
 					return CONTINUE;
 				}
 
@@ -306,7 +307,7 @@ final class ProjectTree
 					}
 					Path real = file.toRealPath();
 					if (!excluded.test(real) && !SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
-						writer.file(relative.resolve(source.relativize(file)), real);
+						writer.file(relative.resolve(source.relativize(file)), real, true);
 					return CONTINUE;
 				}
 
@@ -378,18 +379,23 @@ final class ProjectTree
 		 * Writes a directory of the copy.
 		 *
 		 * @param relative the directory's path relative to the copy, empty for the copy itself
+		 * @param source   the directory that the copy stands for
+		 * @param copy     {@code true} if the directory lies in a copy of a link's target, which the copy holds
+		 *                 read-only
 		 * @throws IOException if writing fails
 		 */
-		void directory(Path relative) throws IOException;
+		void directory(Path relative, Path source, boolean copy) throws IOException;
 
 		/**
 		 * Writes a file of the copy.
 		 *
 		 * @param relative the file's path relative to the copy
 		 * @param source   the file whose contents the copy holds, reached through no symbolic link
+		 * @param copy     {@code true} if the file is a link's target or lies in a copy of one, which the copy holds
+		 *                 read-only
 		 * @throws IOException if reading or writing fails
 		 */
-		void file(Path relative, Path source) throws IOException;
+		void file(Path relative, Path source, boolean copy) throws IOException;
 
 		/**
 		 * Writes a symbolic link of the copy.

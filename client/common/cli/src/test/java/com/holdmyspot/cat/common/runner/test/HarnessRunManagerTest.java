@@ -10,6 +10,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import static java.time.ZoneOffset.UTC;
 
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -23,6 +24,7 @@ import com.holdmyspot.cat.common.secrets.HarnessRunManagerSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -1033,8 +1035,10 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies that a symbolic link whose target lies outside the project is copied as a copy of the target's file or
-	 * directory tree, links inside that tree included, so that a write to the copy leaves the target unchanged.
+	 * Verifies that a symbolic link whose target lies outside the project is copied as a read-only copy of the target's
+	 * file or directory tree, links inside that tree included: a write to a copied file fails, adding a file to a
+	 * copied directory fails where the file system records POSIX permissions, the target stays unchanged, and the run
+	 * still deletes.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1064,8 +1068,37 @@ public final class HarnessRunManagerTest
 			requireThat(copy.resolve("tree"), "tree").isDirectory();
 			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
 			requireThat(Files.readString(copy.resolve("tree/inner.md")), "inner").isEqualTo("notes");
-			Files.writeString(copy.resolve("notes.md"), "changed");
+			for (String name : List.of("notes.md", "tree/a.md", "tree/inner.md"))
+			{
+				try
+				{
+					Files.writeString(copy.resolve(name), "changed");
+					throw new AssertionError("A write to the copy of " + name + " succeeded");
+				}
+				catch (AccessDeniedException _)
+				{
+					// The copy is read-only
+				}
+			}
+			if (PortableFiles.hasModes(copy))
+			{
+				try
+				{
+					Files.writeString(copy.resolve("tree/added.md"), "added");
+					throw new AssertionError("Adding a file to the copied directory succeeded");
+				}
+				catch (AccessDeniedException _)
+				{
+					// The copied directory is read-only
+				}
+			}
 			requireThat(Files.readString(notes), "target").isEqualTo("notes");
+			requireThat(Files.readString(outside.resolve("a.md")), "treeTarget").isEqualTo("a");
+			requireThat(Files.exists(outside.resolve("added.md")), "addedToTarget").isFalse();
+
+			manager.fail(run, "test cleanup");
+			manager.deleteRun(run);
+			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
 		}
 	}
 

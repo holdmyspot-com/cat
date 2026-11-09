@@ -8,7 +8,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.nio.file.attribute.DosFileAttributeView;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -55,7 +54,8 @@ public final class TemporaryDirectories implements AutoCloseable
 
 	/**
 	 * Deletes a directory and every file and directory below it. Symbolic links are deleted, not followed, so files
-	 * outside the directory are never deleted. Read-only files, such as Git's object files, are deleted too.
+	 * outside the directory are never deleted. Read-only files, such as Git's object files, and read-only directories
+	 * are deleted too.
 	 *
 	 * @param directory the directory to delete
 	 * @throws IOException if the directory cannot be deleted
@@ -68,6 +68,16 @@ public final class TemporaryDirectories implements AutoCloseable
 		Files.walkFileTree(directory, new SimpleFileVisitor<>()
 		{
 			@Override
+			public FileVisitResult preVisitDirectory(Path visitedDirectory, BasicFileAttributes attributes)
+				throws IOException
+			{
+				// Removing an entry needs the right to write its directory
+				if (PortableFiles.isReadOnly(visitedDirectory))
+					PortableFiles.clearReadOnly(visitedDirectory);
+				return FileVisitResult.CONTINUE;
+			}
+
+			@Override
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 			{
 				try
@@ -76,7 +86,8 @@ public final class TemporaryDirectories implements AutoCloseable
 				}
 				catch (AccessDeniedException e)
 				{
-					if (!clearReadOnly(file))
+					// Windows refuses to delete a file whose read-only attribute is set
+					if (attributes.isSymbolicLink() || !PortableFiles.clearReadOnly(file))
 						throw e;
 					Files.delete(file);
 				}
@@ -92,25 +103,5 @@ public final class TemporaryDirectories implements AutoCloseable
 				return FileVisitResult.CONTINUE;
 			}
 		});
-	}
-
-	/**
-	 * Clears a file's read-only attribute on a file system without POSIX permissions. Windows refuses to delete a
-	 * file whose read-only attribute is set, and Git sets it on the object files that it writes.
-	 *
-	 * @param file the file
-	 * @return {@code true} if the attribute was set and is now cleared
-	 * @throws IOException if the file's attributes cannot be read or written
-	 */
-	private static boolean clearReadOnly(Path file) throws IOException
-	{
-		if (PortableFiles.hasModes(file))
-			return false;
-		DosFileAttributeView view = Files.getFileAttributeView(file, DosFileAttributeView.class,
-			LinkOption.NOFOLLOW_LINKS);
-		if (view == null || !view.readAttributes().isReadOnly())
-			return false;
-		view.setReadOnly(false);
-		return true;
 	}
 }

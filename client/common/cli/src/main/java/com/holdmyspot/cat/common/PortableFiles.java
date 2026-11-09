@@ -5,9 +5,12 @@ import java.nio.channels.FileChannel;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.DosFileAttributeView;
+import java.nio.file.attribute.DosFileAttributes;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Set;
 
@@ -19,12 +22,15 @@ import java.util.Set;
  * {@code rwxr-xr-x} and every other regular file reads as {@code rw-r--r--}. Setting a mode does nothing, and forcing
  * a directory does nothing because NTFS journals its directory entries. Files keep the access that they inherit from
  * their folder. A file mode that CAT compares is always read on the same machine as the mode it is compared with, so
- * a mode derived from the file's name never reports a change.
+ * a mode derived from the file's name never reports a change. A read-only file has its read-only attribute set, and
+ * no directory is read-only, because that attribute does not keep files from being added to a directory.
  */
 public final class PortableFiles
 {
 	private static final Set<PosixFilePermission> DEFAULT_MODE = PosixFilePermissions.fromString("rw-r--r--");
 	private static final Set<PosixFilePermission> PROGRAM_MODE = PosixFilePermissions.fromString("rwxr-xr-x");
+	private static final Set<PosixFilePermission> WRITE_PERMISSIONS = EnumSet.of(PosixFilePermission.OWNER_WRITE,
+		PosixFilePermission.GROUP_WRITE, PosixFilePermission.OTHERS_WRITE);
 	/**
 	 * The extensions, in lower case, that Windows runs without naming a program, as its default {@code PATHEXT} lists
 	 * them. A fixed list makes a file read with the same mode on every Windows machine.
@@ -93,6 +99,91 @@ public final class PortableFiles
 		PosixFileAttributeView view = posixView(file);
 		if (view != null)
 			view.setPermissions(mode);
+	}
+
+	/**
+	 * Makes a file or directory read-only, without following symbolic links: no one may write a read-only file, and no
+	 * one may add, remove or rename an entry of a read-only directory. Where the file system has no POSIX permissions,
+	 * as on Windows, this sets a file's read-only attribute and does nothing to a directory.
+	 *
+	 * @param path a regular file or directory
+	 * @throws IOException if the file's mode or attributes cannot be written
+	 */
+	public static void setReadOnly(Path path) throws IOException
+	{
+		PosixFileAttributeView view = posixView(path);
+		if (view != null)
+		{
+			Set<PosixFilePermission> mode = EnumSet.noneOf(PosixFilePermission.class);
+			mode.addAll(view.readAttributes().permissions());
+			mode.removeAll(WRITE_PERMISSIONS);
+			view.setPermissions(mode);
+			return;
+		}
+		DosFileAttributeView dos = dosView(path);
+		if (dos != null && !dos.readAttributes().isDirectory())
+			dos.setReadOnly(true);
+	}
+
+	/**
+	 * Indicates whether {@link #setReadOnly(Path)} would keep its owner from writing a file or directory, without
+	 * following symbolic links.
+	 *
+	 * @param path a regular file or directory
+	 * @return {@code true} if the file's owner may not write it; where the file system has no POSIX permissions, if a
+	 *   file's read-only attribute is set, and never for a directory
+	 * @throws IOException if the file's mode or attributes cannot be read
+	 */
+	public static boolean isReadOnly(Path path) throws IOException
+	{
+		PosixFileAttributeView view = posixView(path);
+		if (view != null)
+			return !view.readAttributes().permissions().contains(PosixFilePermission.OWNER_WRITE);
+		DosFileAttributeView dos = dosView(path);
+		if (dos == null)
+			return false;
+		DosFileAttributes attributes = dos.readAttributes();
+		return !attributes.isDirectory() && attributes.isReadOnly();
+	}
+
+	/**
+	 * Lets the owner of a file or directory write it again, without following symbolic links, so that it or its
+	 * entries can be deleted. Where the file system has no POSIX permissions, as on Windows, this clears the read-only
+	 * attribute.
+	 *
+	 * @param path a file or directory
+	 * @return {@code true} if the file was read-only and now is not
+	 * @throws IOException if the file's mode or attributes cannot be read or written
+	 */
+	public static boolean clearReadOnly(Path path) throws IOException
+	{
+		PosixFileAttributeView view = posixView(path);
+		if (view != null)
+		{
+			Set<PosixFilePermission> mode = EnumSet.noneOf(PosixFilePermission.class);
+			mode.addAll(view.readAttributes().permissions());
+			if (!mode.add(PosixFilePermission.OWNER_WRITE))
+				return false;
+			view.setPermissions(mode);
+			return true;
+		}
+		DosFileAttributeView dos = dosView(path);
+		if (dos == null || !dos.readAttributes().isReadOnly())
+			return false;
+		dos.setReadOnly(false);
+		return true;
+	}
+
+	/**
+	 * Returns a file's DOS attribute view, without following symbolic links.
+	 *
+	 * @param file a file
+	 * @return the view, or {@code null} if the file's file system has no DOS attributes
+	 */
+	private static DosFileAttributeView dosView(Path file)
+	{
+		return file.getFileSystem().provider().getFileAttributeView(file, DosFileAttributeView.class,
+			LinkOption.NOFOLLOW_LINKS);
 	}
 
 	/**

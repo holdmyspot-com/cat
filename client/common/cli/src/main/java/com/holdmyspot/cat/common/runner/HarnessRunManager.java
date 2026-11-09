@@ -14,12 +14,14 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerAccess;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerSecrets;
 
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileVisitResult;
@@ -416,7 +418,8 @@ public final class HarnessRunManager
 	/**
 	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
 	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
-	 * same target; any other link becomes a copy of the file or directory tree that it leads to.
+	 * same target; any other link becomes a read-only copy of the file or directory tree that it leads to. Each file and
+	 * directory below the project's own directory that is read-only stays read-only.
 	 *
 	 * @param source the source project directory
 	 * @param run the owned run
@@ -431,8 +434,10 @@ public final class HarnessRunManager
 	/**
 	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
 	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
-	 * same target; any other link becomes a copy of the file or directory tree that it leads to, so that a write in the
-	 * run never reaches the target.
+	 * same target; any other link becomes a read-only copy of the file or directory tree that it leads to, so that the
+	 * run can neither change the target nor change its copy. Each file and directory below the project's own directory
+	 * that is read-only stays read-only, as {@link PortableFiles#setReadOnly(Path)} makes it, which keeps the read-only
+	 * copies of a request's project read-only when the request's project is copied.
 	 *
 	 * @param source     the source project directory
 	 * @param run        the owned run
@@ -456,19 +461,26 @@ public final class HarnessRunManager
 		Path gitMetadata = normalized.toRealPath().resolve(".git");
 		Path runs = root.toRealPath();
 		Map<Path, Path> links = new LinkedHashMap<>();
+		List<Path> readOnlyDirectories = new ArrayList<>();
 		ProjectTree.copy(normalized, nullDevice, path -> path.equals(gitMetadata) || path.equals(runs),
 			new ProjectTree.Writer()
 			{
 				@Override
-				public void directory(Path relative) throws IOException
+				public void directory(Path relative, Path directory, boolean copy) throws IOException
 				{
-					Files.createDirectories(destination.resolve(relative));
+					Path copied = Files.createDirectories(destination.resolve(relative));
+					// The project's own directory stays writable, so that the run can add its Git baseline
+					if (!relative.toString().isEmpty() && (copy || PortableFiles.isReadOnly(directory)))
+						readOnlyDirectories.add(copied);
 				}
 
 				@Override
-				public void file(Path relative, Path file) throws IOException
+				public void file(Path relative, Path file, boolean copy) throws IOException
 				{
-					Files.copy(file, destination.resolve(relative), COPY_ATTRIBUTES);
+					Path copied = destination.resolve(relative);
+					Files.copy(file, copied, COPY_ATTRIBUTES);
+					if (copy || PortableFiles.isReadOnly(file))
+						PortableFiles.setReadOnly(copied);
 				}
 
 				@Override
@@ -478,6 +490,9 @@ public final class HarnessRunManager
 				}
 			});
 		ProjectTree.createLinks(destination, links);
+		// A directory becomes read-only only once nothing more is added to it
+		for (Path directory : readOnlyDirectories)
+			PortableFiles.setReadOnly(directory);
 	}
 
 	/**
@@ -1277,7 +1292,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Deletes a run directory after its output has been persisted.
+	 * Deletes a run directory after its output has been persisted, including its read-only files and directories.
 	 *
 	 * @param directory the directory to delete
 	 * @throws IOException if deletion fails
@@ -1289,9 +1304,36 @@ public final class HarnessRunManager
 			Files.walkFileTree(directory, new SimpleFileVisitor<>()
 			{
 				@Override
+				public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+					throws IOException
+				{
+					// Removing an entry needs the right to write its directory
+					try
+					{
+						if (PortableFiles.isReadOnly(directory))
+							PortableFiles.clearReadOnly(directory);
+					}
+					catch (NoSuchFileException _)
+					{
+						// A concurrent terminal cleanup already removed this directory
+					}
+					return CONTINUE;
+				}
+
+				@Override
 				public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 				{
-					Files.deleteIfExists(file);
+					try
+					{
+						Files.deleteIfExists(file);
+					}
+					catch (AccessDeniedException e)
+					{
+						// Windows refuses to delete a file whose read-only attribute is set
+						if (attributes.isSymbolicLink() || !PortableFiles.clearReadOnly(file))
+							throw e;
+						Files.deleteIfExists(file);
+					}
 					return CONTINUE;
 				}
 

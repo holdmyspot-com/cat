@@ -63,8 +63,8 @@ public final class SessionRequestInstructions
 			"them only if this session's sandbox allows them; otherwise the request is refused, naming the settings to " +
 			"add. Without the option the session asks for nothing extra. A prompt file must not be a symbolic link, " +
 			"and a plugin must contain none. In the project, a symbolic link whose target lies inside the project " +
-			"stays a link, and the session gets a copy of the file or folder that any other link points to; a link " +
-			"whose target is missing or that you may not read is refused. The command waits up to 300 seconds. " +
+			"stays a link, and the session gets a read-only copy of the file or folder that any other link points to; a " +
+			"link whose target is missing or that you may not read is refused. The command waits up to 300 seconds. " +
 			"When the session ends, it prints the " +
 			"file path of the response, a JSON file whose status is completed, failed, refused, capacity or stopped, " +
 			"with a reason, and whose fields name the file paths of the session's transcript, receipt and, with " +
