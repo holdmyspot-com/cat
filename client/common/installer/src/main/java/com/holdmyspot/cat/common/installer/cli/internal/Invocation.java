@@ -467,10 +467,12 @@ public final class Invocation
 
 	/**
 	 * Runs the installer of the version folder that an install of another version activated, once, by the absolute
-	 * path of its launcher and with the install's arguments. The running installer's code wrote the settings entries,
-	 * and an older build's code may write entries that the installed version no longer writes; the installed version's
-	 * installer finds its version active and rewrites every entry with its own code. The harness lock is free by then,
-	 * so that run takes it.
+	 * path of its launcher and with the install's arguments, except that they name the installed release, so that a
+	 * release published in between cannot make that run install again. The running installer's code wrote the
+	 * settings entries, and an older build's code may write entries that the installed version no longer writes; the
+	 * installed version's installer finds its version active and rewrites every entry with its own code. That run asks
+	 * no question, so what the user decided during the install stands. The harness lock is free by then, so that run
+	 * takes it.
 	 *
 	 * @param update    the outcome of the install, which activated {@code installed}
 	 * @param managed   the checked installation
@@ -479,12 +481,13 @@ public final class Invocation
 	 * @param installed the plugin version that the install activated
 	 * @return the install's outcome together with the outcome of that run, or, when that run fails, a failure that
 	 * 	names the command that writes the installed version's entries
+	 * @throws TrustException if the installed version's release is not a release version
 	 */
 	private UpdateResult writeInstalledEntries(UpdateResult update, Managed managed, Arguments arguments,
-		PluginVersion running, PluginVersion installed)
+		PluginVersion running, PluginVersion installed) throws TrustException
 	{
 		Path folder = managed.session().integration().installation(managed.home()).versionFolder(installed);
-		List<String> line = installArguments(arguments);
+		List<String> line = installArguments(arguments, ReleaseVersion.parse(installed.release()).tag());
 		String reason;
 		try
 		{
@@ -519,12 +522,13 @@ public final class Invocation
 	}
 
 	/**
-	 * Returns the arguments of an install, in the order that the installer's grammar gives them.
+	 * Returns the arguments of an install that names a release, in the order that the installer's grammar gives them.
 	 *
-	 * @param arguments the validated install operation
+	 * @param arguments the validated install operation, whose release is replaced
+	 * @param tag       the tag of the release that the arguments name
 	 * @return the command line after the installer launcher
 	 */
-	private static List<String> installArguments(Arguments arguments)
+	private static List<String> installArguments(Arguments arguments, String tag)
 	{
 		List<String> line = new ArrayList<>();
 		if (arguments.json())
@@ -533,9 +537,7 @@ public final class Invocation
 			line.addAll(List.of("--home", arguments.home().toString()));
 		if (arguments.createProfile())
 			line.add("--create-profile");
-		line.addAll(List.of("install", "--harness", arguments.harness()));
-		if (arguments.tag() != null)
-			line.add(arguments.tag());
+		line.addAll(List.of("install", "--harness", arguments.harness(), tag));
 		return line;
 	}
 
@@ -1192,7 +1194,9 @@ public final class Invocation
 	}
 
 	/**
-	 * The user's permission for a change that install needs, given by the command line or asked in the terminal.
+	 * The user's permission for a change that install needs, given by the command line or asked in the terminal. An
+	 * installer whose environment sets {@link InstallerProcess#NO_QUESTIONS} asks nothing, as one without a terminal
+	 * does: it is the run that ends an update, and the update already asked the user.
 	 */
 	private final class UserConsent implements Consent
 	{
@@ -1222,6 +1226,11 @@ public final class Invocation
 			requireThat(request, "request").isNotNull();
 			if (given)
 				return true;
+			if (!environment.getOrDefault(InstallerProcess.NO_QUESTIONS, "").isEmpty())
+			{
+				unasked.add(request);
+				return false;
+			}
 			ConsentReply reply = ConsentReply.of(terminal.ask(request + " Allow this change? [y/N] "));
 			if (reply == ConsentReply.ALLOWED)
 				return true;

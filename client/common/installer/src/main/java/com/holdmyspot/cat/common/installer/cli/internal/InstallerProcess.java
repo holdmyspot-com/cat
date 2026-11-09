@@ -20,8 +20,10 @@ import java.util.concurrent.TimeUnit;
 /**
  * Runs the installer launcher of a version folder in a new process, without a shell: on Linux and macOS the launcher
  * itself, and on Windows its PowerShell launcher through Windows PowerShell, the way the installer's permission entries
- * name it. The process gets exactly the installer's environment and working directory, its standard input closed and
- * the installer's standard error, and its standard output is read as its result.
+ * name it. The process gets the installer's environment with {@link #NO_QUESTIONS} set, so that it asks the user
+ * nothing even where it could reach the terminal that the installer shares with it; the installer's working
+ * directory; its standard input closed and the installer's standard error; and its standard output is read as its
+ * result.
  */
 public final class InstallerProcess
 {
@@ -29,6 +31,12 @@ public final class InstallerProcess
 	{
 		InstallerProcessSecrets.setInstallerProcessAccess(InstallerProcess::new);
 	}
+
+	/**
+	 * The environment variable that makes an installer ask the user no question, when it is set to a non-empty value.
+	 * A change that needs the user's permission is then treated as one that the installer could not ask about.
+	 */
+	static final String NO_QUESTIONS = "CAT_INSTALLER_NO_QUESTIONS";
 
 	/**
 	 * The longest that the installer may run and keep its standard output open. It covers the ten-minute wait for the
@@ -50,8 +58,8 @@ public final class InstallerProcess
 	 * Creates the runner.
 	 *
 	 * @param platform    the running platform
-	 * @param environment the installer's environment, which the launcher gets and which names the Windows folder in
-	 *                    {@code SystemRoot} on Windows
+	 * @param environment the installer's environment, which the launcher gets with {@link #NO_QUESTIONS} and which
+	 *                    names the Windows folder in {@code SystemRoot} on Windows
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public InstallerProcess(Platform platform, Map<String, String> environment)
@@ -63,8 +71,8 @@ public final class InstallerProcess
 	 * Creates a runner that starts the launcher through the supplied starter instead of the operating system.
 	 *
 	 * @param platform    the running platform
-	 * @param environment the installer's environment, which the launcher gets and which names the Windows folder in
-	 *                    {@code SystemRoot} on Windows
+	 * @param environment the installer's environment, which the launcher gets with {@link #NO_QUESTIONS} and which
+	 *                    names the Windows folder in {@code SystemRoot} on Windows
 	 * @param starter     starts the program that a process builder describes
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -99,6 +107,7 @@ public final class InstallerProcess
 		ProcessBuilder builder = new ProcessBuilder(line).redirectError(ProcessBuilder.Redirect.INHERIT);
 		builder.environment().clear();
 		builder.environment().putAll(environment);
+		builder.environment().put(NO_QUESTIONS, "1");
 		try (Process process = starter.start(builder))
 		{
 			process.getOutputStream().close();

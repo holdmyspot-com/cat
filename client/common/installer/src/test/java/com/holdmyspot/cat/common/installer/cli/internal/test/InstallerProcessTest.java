@@ -30,9 +30,9 @@ public final class InstallerProcessTest
 	}
 
 	/**
-	 * On Linux and macOS the launcher itself is started with the arguments, with exactly the installer's environment,
-	 * the installer's standard error and its standard output read as the result, and the exit status and output are
-	 * returned.
+	 * On Linux and macOS the launcher itself is started with the arguments, with the installer's environment and
+	 * {@code CAT_INSTALLER_NO_QUESTIONS}, which makes it ask no question, the installer's standard error and its
+	 * standard output read as the result, and the exit status and output are returned.
 	 *
 	 * @throws IOException if the test directory cannot be created or the run fails
 	 */
@@ -60,7 +60,8 @@ public final class InstallerProcessTest
 			ProcessBuilder builder = started.getFirst();
 			requireThat(builder.command(), "command").
 				isEqualTo(List.of(launcher.toString(), "install", "--harness", "claude-code", "v1.2"));
-			requireThat(Map.copyOf(builder.environment()), "environment").isEqualTo(environment);
+			requireThat(Map.copyOf(builder.environment()), "environment").isEqualTo(Map.of("HOME", root.toString(),
+				"PATH", root.resolve("bin").toString(), "CAT_INSTALLER_NO_QUESTIONS", "1"));
 			requireThat(builder.redirectError(), "redirectError").isEqualTo(ProcessBuilder.Redirect.INHERIT);
 			requireThat(builder.redirectOutput(), "redirectOutput").isEqualTo(ProcessBuilder.Redirect.PIPE);
 		}
