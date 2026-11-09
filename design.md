@@ -2821,7 +2821,10 @@ refuses with status `2` and the reason when a check fails:
   command sandboxed while any read is denied, names the profile and each denied entry, and says to remove them or to
   start the session from a terminal (user ruling, 2026-11-08: "lets fail fast if denied reads is detected and explain
   why"). For any other reason that leaves it sandboxed, such as an entry that `install` has not added yet or a
-  spelling that does not match, it names the cause and the absolute path to run.
+  spelling that does not match, it names the cause and the absolute path to run. No request server serves a session of
+  a CAT run: that session's launchers send its requests to the run's runner, and a run's Codex session always denies
+  reads, so a server it starts is refused with a message that says so and names the runner options that allow
+  requested sessions.
 - **The session.** It identifies the session from sources that the session's commands cannot change: the harness
   process among its own ancestors, and the session or thread ID that the harness puts in the command's environment
   (Claude Code's `CLAUDE_CODE_SESSION_ID`, Codex's `CODEX_THREAD_ID`). Neither harness lets a command that its exception
