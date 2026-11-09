@@ -22,7 +22,8 @@ to the agent:
 - `optimize-high`: the contract leaves only internal choices to the agent, such as a helper's structure, a type's
 	layout or the arrangement of the tests it lists, which change nothing a user or a documented interface can observe.
 - `optimize-xhigh`: the task keeps high-judgment work, or accepting its result would repeat the task's analysis, and
-	the parent delegates it rather than doing it itself.
+	the parent delegates it rather than doing it itself. A security-sensitive or important subject does not select
+	this tier when the contract settles the decisions that the subject raises.
 
 When a result fails its acceptance check because the task needed a decision that its contract did not settle, settle
 that decision and resend the task to the tier that the completed contract selects. Move the task to a higher tier only
