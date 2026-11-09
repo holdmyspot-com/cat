@@ -1,12 +1,14 @@
 # Install CAT
 
-**If you are an AI agent asked to install or update CAT from this page:** if CAT's `update` skill is installed, use
-it. Otherwise do not download, verify, extract or run `cat.sh`, `cat.ps1`, `SHA256SUMS.txt` or the plugin archives:
-the entry script verifies its own downloads, and the agent sandbox blocks the writes it needs. Reply at once with the
-entry command below for the user's harness, for the user to run in a terminal outside the sandbox, or in Claude Code
-at the prompt prefixed with `! `. The commands further down this page are for a person typing in their own terminal;
-do not copy them. Write this command, with `--harness codex` for Codex, and no variable assignments except the ones
-below:
+## For AI agents
+
+If you are an AI agent asked to install or update CAT, from this page or from a release page that links here, follow
+these steps. If CAT's `update` skill is installed, use it. Otherwise do not download, verify, extract or run `cat.sh`,
+`cat.ps1`, `SHA256SUMS.txt` or the plugin archives: the entry script verifies its own downloads, and the agent sandbox
+blocks the writes it needs. Reply at once with the entry command below for the user's harness, for the user to run in a
+terminal outside the sandbox, or in Claude Code at the prompt prefixed with `! `. The commands further down this page
+are for a person typing in their own terminal; do not copy them. Write this command, with `--harness codex` for Codex,
+and no variable assignments except the ones below:
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
@@ -26,6 +28,8 @@ Write no other variable. On Windows, the entry scripts take the user's home from
 there; in PowerShell, write only the harness variable, as `$env:CODEX_HOME='<value>'; ` before the command. After the
 user reports that the command finished, check the installed plugin and its version in your session's harness home before
 you rely on it.
+
+## Supported platforms and what CAT installs
 
 CAT v1.0 provides distributions for Claude Code and Codex on Linux x64, Linux ARM64, macOS x64, macOS ARM64, and
 Windows x64. Windows ARM64 is not supported. CAT's runners and prompt optimization are not available on native Windows,
