@@ -5,9 +5,12 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -20,6 +23,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 
 import java.io.IOException;
@@ -34,6 +38,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -686,6 +691,61 @@ public final class ClaudeRunnerTest
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
 				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"),
 				directory.resolve("home/.claude/settings.json")));
+		}
+	}
+
+	/**
+	 * Verifies that a session that its requester's sandbox policy bounds starts although its run lies in the
+	 * requester's requested-runs directory, which that policy does not let the requester write: the first requested
+	 * session's policy, which holds only its home, requests directory, worktree registrations and dependency cache,
+	 * bounds the session that it requests, and the settings of that session let its commands write its own home, the
+	 * cache, its requests directory and its worktree registrations, but neither its whole run folder nor its responses
+	 * directory.
+	 *
+	 * @throws IOException if the runs cannot be created
+	 */
+	@Test
+	public void startsNestedRequestedSession() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-nested-run-")).toRealPath();
+			Path artifact = root.resolve("artifact");
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun first = firstManager.create("claude");
+			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.current(),
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path firstProject = Files.createDirectories(first.directory().resolve("project/.git")).getParent();
+			ChildPolicy firstPolicy = ClaudeConnectionSettings.writeIsolatedSettings(scope,
+				root.resolve("missing.json"), first.directory().resolve("home/.claude/settings.json"),
+				first.directory().resolve("claude"), first.directory().resolve("home"), List.of(cache),
+				first.directory(), List.of(), "", firstAccess, firstProject, first.directory(), null,
+				ExtraPermissions.NONE, "api.example");
+			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun nested = nestedManager.create("claude");
+			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path nestedProject = Files.createDirectories(nested.directory().resolve("project/.git")).getParent();
+			Path nestedSettings = nested.directory().resolve("home/.claude/settings.json");
+
+			ChildPolicy nestedPolicy = ClaudeConnectionSettings.writeIsolatedSettings(scope,
+				root.resolve("missing.json"), nestedSettings, nested.directory().resolve("claude"),
+				nested.directory().resolve("home"), List.of(cache), nested.directory(), List.of(), "", nestedAccess,
+				nestedProject, nested.directory(), firstPolicy, ExtraPermissions.NONE, "api.example");
+
+			JsonNode sandbox = scope.json().readTree(Files.readString(nestedSettings)).path("sandbox");
+			List<String> allowWrite = new ArrayList<>();
+			for (JsonNode path : sandbox.path("filesystem").path("allowWrite"))
+				allowWrite.add(path.asString());
+			requireThat(allowWrite, "allowWrite").isEqualTo(List.of(nested.directory().resolve("home").toString(),
+				cache.toString(), nestedAccess.requests().toString(),
+				nestedProject.resolve(".git/worktrees").toString()));
+			requireThat(nestedPolicy.writeRoots(), "writeRoots").doesNotContain(nested.directory());
 		}
 	}
 

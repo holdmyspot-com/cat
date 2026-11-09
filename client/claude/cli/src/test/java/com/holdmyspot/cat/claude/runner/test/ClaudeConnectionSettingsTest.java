@@ -823,7 +823,7 @@ public final class ClaudeConnectionSettingsTest
 
 			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
 				claudeTemporaryDirectory, claudeHome, List.of(cache), run, List.of(snapshot), "", null,
-				null, bound, ExtraPermissions.NONE, "api.example");
+				null, run, bound, ExtraPermissions.NONE, "api.example");
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(sandbox.path("enabled").asBoolean(), "enabled").isTrue();
@@ -874,7 +874,7 @@ public final class ClaudeConnectionSettingsTest
 				Set.of("api.example"), false);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(records), "", null, null, bound,
+				run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(records), "", null, null, run, bound,
 				ExtraPermissions.NONE, "api.example");
 
 			JsonNode settings = scope.json().readTree(Files.readString(destination));
@@ -939,7 +939,7 @@ public final class ClaudeConnectionSettingsTest
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
 					run.resolve("claude"), run.resolve("home"), List.of(outsideCache), run, List.of(), "", null, null,
-					bound, ExtraPermissions.NONE, "model.example"));
+					run, bound, ExtraPermissions.NONE, "model.example"));
 
 			requireThat(refusal.getMessage(), "message").contains(outsideCache.toString()).contains("model.example");
 			requireThat(Files.exists(destination), "written").isFalse();
@@ -968,7 +968,7 @@ public final class ClaudeConnectionSettingsTest
 
 			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
 				destination, run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(), "", null, null,
-				bound, extra, "api.example");
+				run, bound, extra, "api.example");
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").contains(registry.toString());
@@ -1001,7 +1001,7 @@ public final class ClaudeConnectionSettingsTest
 
 			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
 				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-					run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(), "", null, null, bound, extra,
+					run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(), "", null, null, run, bound, extra,
 					"api.example"));
 
 			requireThat(refusal.getMessage(), "message").contains(registry.toString()).contains("registry.example");
@@ -1010,13 +1010,15 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that a session whose home, project or temporary directory its policy bound does not let it write is
-	 * refused, naming the directory, before any settings are written.
+	 * Verifies that a session whose home, project or temporary directory lies outside its run folder, and which its
+	 * policy bound does not let it write, is refused, naming the directory, before any settings are written.
 	 *
+	 * @param directory the directory that lies outside the run folder: {@code home}, {@code project} or
+	 *                  {@code temporary}
 	 * @throws IOException if fixture I/O fails
 	 */
-	@Test
-	public void refusesSessionOutsideBound() throws IOException
+	@Test(dataProvider = "directoriesOutsideRun")
+	public void refusesSessionOutsideBound(String directory) throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1024,20 +1026,109 @@ public final class ClaudeConnectionSettingsTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-outside-bound-")).toRealPath();
 			Path run = Files.createDirectories(root.resolve("run"));
 			Path elsewhere = Files.createDirectories(root.resolve("elsewhere"));
+			Path outside = root.resolve("outside").resolve(directory);
 			Path destination = root.resolve("isolated/settings.json");
 			ChildPolicy bound = new ChildPolicy(List.of(elsewhere), List.of(), List.of(), List.of(), Set.of(), false);
-			try
+			Path home = run.resolve("home");
+			Path project = run.resolve("project");
+			Path temporary = run.resolve("claude");
+			switch (directory)
 			{
-				ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-					run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(), "", null, null, bound,
-					ExtraPermissions.NONE, "api.example");
-				throw new AssertionError("The session was not refused");
+				case "home" -> home = outside;
+				case "project" -> project = outside;
+				case "temporary" -> temporary = outside;
+				default -> throw new AssertionError(directory);
 			}
-			catch (SessionRefusedException e)
-			{
-				requireThat(e.getMessage(), "message").contains(run.resolve("home").toString());
-			}
+			Path refusedHome = home;
+			Path refusedProject = project;
+			Path refusedTemporary = temporary;
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+					refusedTemporary, refusedHome, List.of(), run, List.of(), "", null, refusedProject, run, bound,
+					ExtraPermissions.NONE, "api.example"));
+
+			requireThat(refusal.getMessage(), "message").contains(outside.toString());
 			requireThat(Files.exists(destination), "settingsWritten").isFalse();
+		}
+	}
+
+	/**
+	 * Returns the directories of a session that may lie outside its run folder.
+	 *
+	 * @return the directory's name
+	 */
+	@DataProvider
+	public Object[][] directoriesOutsideRun()
+	{
+		return new Object[][]{{"home"}, {"project"}, {"temporary"}};
+	}
+
+	/**
+	 * Verifies that a session whose run folder lies inside a folder that its policy bound does not let it write, as a
+	 * requested session's does, starts: the bound that holds only its requester's home, requests directory and
+	 * dependency cache lets it write its own run folder, and the session's writable paths stay its home and the cache,
+	 * not the run folder, which also holds what the runner writes.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void allowsRunFolderOutsideBound() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-run-")).toRealPath();
+			Path requesterRun = Files.createDirectories(root.resolve("run"));
+			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/1"));
+			Path requesterHome = Files.createDirectories(requesterRun.resolve("home"));
+			Path requests = Files.createDirectories(requesterRun.resolve("requests"));
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path destination = root.resolve("isolated/settings.json");
+			ChildPolicy bound = new ChildPolicy(List.of(requesterHome, requests, cache), List.of(), List.of(),
+				List.of(), Set.of("api.example"), false);
+			Path home = run.resolve("home");
+			Path project = Files.createDirectories(run.resolve("project/.git"));
+
+			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
+				destination, run.resolve("claude"), home, List.of(cache), run, List.of(), "", null, project.getParent(),
+				run, bound, ExtraPermissions.NONE, "api.example");
+
+			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
+			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").isEqualTo(
+				List.of(home.toString(), cache.toString(), project.resolve("worktrees").toString()));
+			requireThat(effective.writeRoots(), "writeRoots").doesNotContain(run);
+		}
+	}
+
+	/**
+	 * Verifies that a session whose run folder lies outside its policy bound's write roots is still refused when a
+	 * dependency cache that it needs is not among them, and the refusal names the cache.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesCacheMissingFromBoundOfNestedRun() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-cache-")).toRealPath();
+			Path requesterRun = Files.createDirectories(root.resolve("run"));
+			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/1"));
+			Path requesterHome = Files.createDirectories(requesterRun.resolve("home"));
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path destination = root.resolve("isolated/settings.json");
+			ChildPolicy bound = new ChildPolicy(List.of(requesterHome), List.of(), List.of(), List.of(),
+				Set.of("api.example"), false);
+
+			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
+				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+					run.resolve("claude"), run.resolve("home"), List.of(cache), run, List.of(), "", null, null, run,
+					bound, ExtraPermissions.NONE, "api.example"));
+
+			requireThat(refusal.getMessage(), "message").contains(cache.toString());
+			requireThat(Files.exists(destination), "written").isFalse();
 		}
 	}
 
