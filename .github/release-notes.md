@@ -17,6 +17,7 @@ Codex or Claude Code on Windows, in PowerShell:
 
 ```powershell
 & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness codex
+& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/${GITHUB_REF_NAME}/cat.ps1))) -Harness claude
 ```
 
 This release's manifest, `cat-release-manifest.json`, is signed with the Ed25519 public key whose X.509 encoding has
