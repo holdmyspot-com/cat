@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
@@ -82,6 +83,83 @@ public final class CachedReleaseTest
 
 			requireThat(result.result(), "result").withContext(result.message(), "message").
 				isEqualTo(Result.DOWNLOAD_FAILED);
+			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
+				isEqualTo(Optional.of(Releases.pluginVersion("1.2")));
+		}
+	}
+
+	/**
+	 * While the release source is unreachable, an install of the build that the harness already has does not report
+	 * that CAT is up to date, because the tag may now serve another build; nothing changes.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void failsInPlaceOfUpToDateOffline() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = updated(cleanup);
+			fixture.catalog.goOffline();
+			Map<String, String> before = Releases.snapshot(fixture.home);
+
+			UpdateResult result = fixture.install("v1.2");
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.DOWNLOAD_FAILED);
+			requireThat(result.message(), "message").contains("release source could not be reached").
+				contains("matches the copy").contains("could not be checked");
+			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
+				isEqualTo(Optional.of(Releases.pluginVersion("1.2")));
+			requireThat(Releases.snapshot(fixture.home), "after").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * While the release source is unreachable, an install that uses a kept copy naming another build than the
+	 * active one says that the source could not be reached and that the kept copy was used.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void saysKeptCopyWasUsedOffline() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = updated(cleanup);
+			fixture.catalog.goOffline();
+
+			UpdateResult result = fixture.install("v1.1");
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UPDATED);
+			requireThat(result.message(), "message").contains("release source could not be reached").
+				contains("was kept from an earlier install was used");
+			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
+				isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
+		}
+	}
+
+	/**
+	 * While the release source answers, an install of the build that the harness already has reports that CAT is up
+	 * to date.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void reportsUpToDateWhenSourceAnswers() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = updated(cleanup);
+
+			UpdateResult result = fixture.install("v1.2");
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").
+				isEqualTo(Result.UP_TO_DATE);
 			requireThat(fixture.provider.installed(fixture.home).version(), "installed").
 				isEqualTo(Optional.of(Releases.pluginVersion("1.2")));
 		}

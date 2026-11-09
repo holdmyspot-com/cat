@@ -272,7 +272,11 @@ public final class UpdateEngine
 	}
 
 	/**
-	 * Installs an approved release while the harness lock is held.
+	 * Installs an approved release while the harness lock is held. When the release source cannot be reached, the
+	 * release's manifest is the copy that the installation keeps. If the active build matches that copy, nothing
+	 * changes and the outcome is {@link Result#DOWNLOAD_FAILED}, because the tag may now serve another build; if the
+	 * active build differs, the kept copy is installed and the outcome's message says that the source could not be
+	 * reached.
 	 *
 	 * @param requestedTag the requested tag, or null or {@link #LATEST} for the latest release
 	 * @param request      the harness and the running installer's plugin folder
@@ -286,7 +290,7 @@ public final class UpdateEngine
 	{
 		Active active = active(home);
 		String tag = requestedTag;
-		SignedRelease signed;
+		ObtainedRelease obtained;
 		try
 		{
 			if (tag == null || tag.equals(LATEST))
@@ -297,18 +301,28 @@ public final class UpdateEngine
 					List.of());
 			}
 			ReleaseVersion requested = ReleaseVersion.parse(tag.substring(1));
-			signed = signed(tag);
-			ReleaseApproval.approveUpdate(signed.verified(), policy, requested);
+			obtained = signed(tag);
+			ReleaseApproval.approveUpdate(obtained.release().verified(), policy, requested);
 		}
 		catch (IOException e)
 		{
 			return result(Result.DOWNLOAD_FAILED, active.version(), null, e.getMessage(), List.of());
 		}
+		SignedRelease signed = obtained.release();
 		VerifiedManifest verified = signed.verified();
 		ReleaseVersion release = verified.manifest().version();
 		PluginVersion plugin = verified.manifest().pluginVersion();
 		if (active.isUpToDate(plugin))
+		{
+			if (obtained.unreachable().isPresent())
+			{
+				return result(Result.DOWNLOAD_FAILED, active.version(), null, "The release source could not be " +
+					"reached (" + obtained.unreachable().get() + "). The installed build matches the copy of " +
+					"release " + release + " that was kept from an earlier install, and whether " + tag +
+					" now serves another build could not be checked.", List.of());
+			}
 			return upToDate(request, home, active);
+		}
 		boolean downgrade = active.release().isPresent() && release.compareTo(active.release().get()) < 0;
 		if (downgrade && (requestedTag == null || requestedTag.equals(LATEST)))
 		{
@@ -345,7 +359,7 @@ public final class UpdateEngine
 			UpdateResult outcome = deliver(tree, plugin, request, home, active);
 			if (outcome.result().exitStatus() != 0)
 				return outcome;
-			return keep(outcome, signed, archive, active);
+			return noteKeptCopy(keep(outcome, signed, archive, active), obtained.unreachable());
 		});
 	}
 
@@ -366,7 +380,7 @@ public final class UpdateEngine
 		SignedRelease signed;
 		try
 		{
-			signed = signed(tag);
+			signed = signed(tag).release();
 		}
 		catch (IOException e)
 		{
@@ -663,17 +677,37 @@ public final class UpdateEngine
 	}
 
 	/**
+	 * Adds to an install's outcome that the release source could not be reached, when the install used the copy of
+	 * the release that the installation keeps.
+	 *
+	 * @param outcome     the install's outcome
+	 * @param unreachable the release source's error message when the kept copy was used because the source could not
+	 *                    be reached, otherwise empty
+	 * @return the outcome, with the explanation appended to its message when the kept copy was used
+	 */
+	private static UpdateResult noteKeptCopy(UpdateResult outcome, Optional<String> unreachable)
+	{
+		if (unreachable.isEmpty())
+			return outcome;
+		return new UpdateResult(outcome.result(), outcome.harness(), outcome.version(), outcome.previousVersion(),
+			outcome.message() + " The release source could not be reached (" + unreachable.get() + "), so the copy " +
+			"of the release that was kept from an earlier install was used.", outcome.paths(), outcome.consistent(),
+			outcome.keyIds(), outcome.aotCache(), outcome.exitDeletions());
+	}
+
+	/**
 	 * Returns a release's signed manifest: the release source's, and the one that the installation keeps only when the
 	 * source cannot be reached and the policy's keys still verify the kept one. The source comes first because a
 	 * release that is published again from another commit keeps its tag, and only the source's manifest names the
-	 * build that the tag now serves.
+	 * build that the tag now serves. The result records that the kept manifest was used, so that a caller does not
+	 * take it for what the tag serves now.
 	 *
 	 * @param tag the release tag
-	 * @return the release
+	 * @return the release, and the source's error message when the kept manifest was used
 	 * @throws IOException    if the release source cannot supply it and the installation keeps no valid copy
 	 * @throws TrustException if no key of the policy verifies the source's manifest, or it breaks its format
 	 */
-	private SignedRelease signed(String tag) throws IOException, TrustException
+	private ObtainedRelease signed(String tag) throws IOException, TrustException
 	{
 		byte[] manifest;
 		byte[] signature;
@@ -687,10 +721,10 @@ public final class UpdateEngine
 			String version = ReleaseVersion.parse(tag.substring(1)).toString();
 			Optional<SignedRelease> kept = cache.release(version, policy);
 			if (kept.isPresent())
-				return kept.get();
+				return new ObtainedRelease(kept.get(), Optional.of(String.valueOf(e.getMessage())));
 			throw e;
 		}
-		return SignedRelease.verify(manifest, signature, policy);
+		return new ObtainedRelease(SignedRelease.verify(manifest, signature, policy), Optional.empty());
 	}
 
 	/**
@@ -753,7 +787,7 @@ public final class UpdateEngine
 		ReleaseAsset asset;
 		try
 		{
-			VerifiedManifest verified = signed(tag).verified();
+			VerifiedManifest verified = signed(tag).release().verified();
 			ReleaseApproval.approveUpdate(verified, policy, activeRelease);
 			asset = verified.manifest().findPlugin(activation.harness(), platform).orElse(null);
 			if (asset == null)
@@ -892,6 +926,17 @@ public final class UpdateEngine
 	private List<String> keyIds()
 	{
 		return policy.keys().stream().map(TrustedKey::id).toList();
+	}
+
+	/**
+	 * A release's signed manifest, and whether it came from the installation's kept copy.
+	 *
+	 * @param release     the signed release
+	 * @param unreachable the release source's error message when the release is the kept copy that was used because
+	 *                    the source could not be reached, otherwise empty
+	 */
+	private record ObtainedRelease(SignedRelease release, Optional<String> unreachable)
+	{
 	}
 
 	/**
