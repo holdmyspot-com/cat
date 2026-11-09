@@ -2,30 +2,20 @@
 
 ## For AI agents
 
-If CAT's `update` skill is installed, use it. Otherwise do not download, verify, extract or run `cat.sh`, `cat.ps1`,
-`SHA256SUMS.txt` or the plugin archives: the entry script verifies its own downloads, and the agent sandbox blocks the
-writes it needs. Reply at once with the command for the user's harness, to run in a terminal outside the sandbox or in
-Claude Code at the prompt prefixed with `! `. Use `--harness codex` or `-Harness codex` for Codex:
+If CAT's `update` skill is installed, use it. Otherwise do not download or run this release's files, because the
+sandbox blocks the writes they need. Reply with this command, for the user to run in their own terminal or at a Claude
+Code prompt after `! `. Write `codex` for Codex, your session's `HOME` in place of `<home>`, and also
+`CLAUDE_CONFIG_DIR=<value>` or `CODEX_HOME=<value>` before `sh` when your session sets it:
 
 ```bash
-curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
+curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | HOME=<home> sh -s -- --harness claude
 ```
+
+On Windows, write no `HOME`, and put `$env:CODEX_HOME='<value>'; ` first when your session sets it:
 
 ```powershell
 & ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness claude
 ```
-
-Add an assignment after the pipe, before `sh`, in only these cases:
-
-- `HOME=<your session's HOME>`, when your session's `HOME` is not, or may not be, the account's home folder: compare
-	`printenv HOME` with `getent passwd "$(id -un)" | cut -d: -f6` on Linux, or with the folder that
-	`dscl . -read "/Users/$(id -un)" NFSHomeDirectory` prints on macOS. Never on Windows.
-- `CLAUDE_CONFIG_DIR=<value>` or `CODEX_HOME=<value>`, when your session sets it to a folder other than `.claude` or
-	`.codex` in your session's `HOME`. In PowerShell, write it as `$env:CODEX_HOME='<value>'; ` before the command. When
-	your session leaves it unset, tell the user to unset it first if their terminal exports it.
-
-Write no other variable. Once the user reports that the command finished, check the installed plugin's version in your
-session's harness home before you rely on it.
 
 ## Supported platforms and what CAT installs
 

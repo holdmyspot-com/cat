@@ -414,13 +414,11 @@ v2.0" ''; do
 	agent_section="$(sed -n '/^## For AI agents$/,/^## Supported platforms/p' "${repository}/docs/installation.md" \
 		| tr '\n' ' ' | tr -s ' ')"
 	[[ "${agent_section}" == *"If CAT's \`update\` skill is installed, use it."* ]]
-	[[ "${agent_section}" == *"do not download, verify, extract or run \`cat.sh\`, \`cat.ps1\`, \`SHA256SUMS.txt\`"* ]]
-	[[ "${agent_section}" == *"Reply at once with the command for the user's harness"* ]]
-	[[ "${agent_section}" == *"prefixed with \`! \`"* ]]
-	[[ "${agent_section}" == *"${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+	[[ "${agent_section}" == *"do not download or run this release's files"* ]]
+	[[ "${agent_section}" == *"after \`! \`"* ]]
+	[[ "${agent_section}" == *"your session's \`HOME\` in place of \`<home>\`"* ]]
+	[[ "${agent_section}" == *"\`CLAUDE_CONFIG_DIR=<value>\` or \`CODEX_HOME=<value>\` before \`sh\` when your session sets it"* ]]
+	[[ "${agent_section}" == *"${SINGLE_COMMAND_URL} | HOME=<home> sh -s -- --harness claude"* ]]
+	[[ "${agent_section}" == *"On Windows, write no \`HOME\`"* ]]
 	[[ "${agent_section}" == *"& ([scriptblock]::Create((irm https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.ps1))) -Harness claude"* ]]
-	[[ "${agent_section}" == *"Add an assignment after the pipe, before \`sh\`, in only these cases:"* ]]
-	[[ "${agent_section}" == *"\`HOME=<your session's HOME>\`, when your session's \`HOME\` is not, or may not be, the account's home folder"* ]]
-	[[ "${agent_section}" == *"Write no other variable."* ]]
-	[[ "${agent_section}" == *"check the installed plugin's version in your session's harness home"* ]]
 }
