@@ -1347,8 +1347,20 @@ links, as read-only.
 
 ### 4.4 Trial staging
 
-The runner refuses a project that contains symbolic links (`HarnessRunManager.copyProject`), and it copies everything
-else in the project. CAT therefore materializes **staged sources**, directories that the runner copies for each trial.
+The runner copies a project's symbolic link whose target stays inside the project as a link with the same target, and
+any other link as a read-only copy of the file or directory tree that it leads to; it refuses a link whose target is
+missing or unreadable, records each copy and fails the run when its session changed one (`HarnessRunManager.copyProject`,
+`HarnessRunManager.changedLinkCopies`; user rulings, 2026-11-09). CAT still materializes **staged sources**,
+directories in which every link is already replaced by a copy of its target, which the runner copies for each trial,
+so a trial's project holds no copy of a link target outside it.
+
+**Changed link copies (user ruling, 2026-11-09).** Before the session starts, the runner records in `link-copies.jsonl`,
+in the run directory, the path, type and mode of each file and directory of every read-only copy of a link target, and
+the SHA-256 of each file. Neither harness's sandbox lets the session write there. When the session ends, whether it
+completed, failed, was interrupted, its conversation ended or it served a forwarded request, the runner compares the
+copies with the record before it marks the run completed or writes a receipt. Any added, removed or replaced entry,
+changed content or changed mode fails the run with exit status 1, so no result rests on files that differ from the
+targets that production reads. The diagnostic names each changed path, at most 20 and then a count of the rest.
 
 **Trial workspace (user ruling, 2026-10-17).** A trial's workspace holds the prompt system and the project files that
 its prompt test asks for, not a copy of the whole project. Each candidate, including the incumbent, has a **base
@@ -2690,10 +2702,17 @@ requested run's transcript, receipt and native transcripts, since the requesting
 runner, which runs outside the session's sandbox with the user's permissions, opens no
 path that the session chose:
 it opens only the archive, without following a link and refusing a file with more than one hard link, and unpacks it
-into a directory of its own, refusing links, absolute and parent paths and anything beyond its size bounds. An archive
+into a directory of its own, refusing absolute and parent paths, a link outside the project, a link whose target leaves
+the project, an entry that passes through a link and anything beyond its size bounds. It creates the project's links
+only after every file and directory, and extracts each read-only copy of a link target into its own folder of
+`link-targets` beside the project, with the project's link to it in its place, so the runner that serves the request
+copies, records and checks it as it does any copy of an outside link target; it refuses an entry in `link-targets`, and
+a copy that holds a writable entry, a link or another copy, or that comes after an entry inside it. An archive
 therefore holds only what the session's sandbox let it read, on every platform. The launcher leaves out of each tree
-the placeholders through which a sandbox hides a file, entries that are the null device itself, and still refuses a
-link or any other special file, so a session may request a session over its own project (user ruling, 2026-10-25). The runner validates the request and
+the placeholders through which a sandbox hides a file, entries that are the null device itself, packs a project link
+whose target stays inside the project as a link and any other project link as a read-only copy of its target, refuses a
+link whose target is missing or that the sandbox does not let it read, and refuses a link elsewhere or any other special
+file, so a session may request a session over its own project (user ruling, 2026-10-25). The runner validates the request and
 starts the session through that
 harness's runner launcher, resolved as the runner rule resolves it, with the requesting session's run root and denied
 reads, and with no requested sessions of its own unless the caller passed `--request-depth <levels>`: each level below
@@ -2905,7 +2924,9 @@ requested sessions, every CAT command that starts sessions, the prompt optimizer
 runner as the runner launchers do. Such a request may
 carry the options that only narrow the requested session or describe its own inputs: further denied reads, the
 workspace files, the read-only evidence paths, the tool-output token limit, the instruction files and `--keep-run`.
-Each path it names must be one the requesting session's sandbox lets it read, and its contents travel inside the request
+Each path it names must be one the requesting session's sandbox lets it read, and so must the target of each link in
+the project that the request carries as a read-only copy, a directory target counting against the same size bounds; its
+contents travel inside the request
 archive, so the workspace files and the evidence reach the requested session at new paths inside its run, not at the
 paths the command named. A command run with `--install-cat` names the candidate CAT artifact as the request's first
 plugin when it differs from the run's own. The run's runner copies a kept run, without its isolated home, into its
@@ -3075,7 +3096,7 @@ child, a `setsid` child and a `nohup` child, then records heartbeats and signals
 | H1 | Claude's PreToolUse input provides the session, prompt, tool-use and transcript-path identities, but no model or effort. | CAT probe; https://code.claude.com/docs/en/hooks#common-input-fields |
 | H2 | In one persisted sample, the transcript's assistant record with the matching tool use appeared about 0.085 seconds after PreToolUse. | One print-mode sample; no latency guarantee. |
 | H3 | A nested Claude launched with the `haiku` alias reported `gpt-5.6-luna` in its harness assistant events, and `perTurnEffort` was null. | The observed model must come from harness events, not configuration. |
-| H4 | The runner copies the project into its run directory, skips `.git`, creates a fresh Git baseline, and rejects any project containing a symbolic link. | `HarnessRunManager.copyProject`. |
+| H4 | The runner copies the project into its run directory, skips `.git`, creates a fresh Git baseline, keeps each symbolic link whose target stays inside the project, replaces every other link with a read-only copy of its target that it records and checks for changes when the session ends, and refuses a link whose target is missing, unreadable or holds the project. | `HarnessRunManager.copyProject`, `HarnessRunManager.changedLinkCopies`, `HarnessRunnerBridge`. |
 | H5 | Nested processes cannot reach the outer Codex daemon socket. | Earlier CAT probe. |
 | H6 | In the sandboxed Claude Bash tool, the command ran in its own PID namespace. When the command ended normally, all three children stopped within one second. On ESC, the command and every child stopped at once, with no catchable signal recorded. | 2026-09-30 probe, sandboxed host only (premise P2). |
 | H7 | A Claude tool command that exceeded its timeout was moved to the background instead of being killed. | 2026-09-30 probe. |
@@ -3241,7 +3262,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D102 | Offer `keep_identity` for every measurement change except loader changes, retaining the identity and accumulated results while recording accepted values (user ruling, 2026-10-24). | The user wants to continue the existing campaign after a plugin-cache change without discarding its measurements. | Reports identify the accepted changes and retained earlier measurements; equivalence is the user's judgment. Loader changes still require restoration or a new campaign. |
 | D103 | Codex trials inherit the parent's existing `project_doc_*` instruction-loading settings from `config.toml` (user ruling, 2026-10-24). | Filename fallbacks and instruction-size limits affect which prompt text Codex reads. | Preserve configured values and account for them in the loader configuration identity; implementation is tracked with the instruction-loading follow-up. |
 | D104 | Supply `executableFiles()` through `JvmScope`; production scopes retain retry pauses and test scopes do not sleep (user ruling, 2026-10-24). | Consumers need one scope-owned service that tests can control, rather than an inline production instance or a separate constructor argument. | The optimizer, requested runner and both harness runners obtain the service from their scope. |
-| D105 | Retain refusal of symlinks anywhere in a requested-session input path (user ruling, 2026-10-24). | The user chose to preserve the existing restriction. | macOS callers must supply resolved paths when an ancestor such as `/var` is a symlink. |
+| D105 | Retain refusal of a symlink in a requested-session input path outside the project; inside the project, a link whose target stays inside travels as a link, and any other link travels as a read-only copy of its target, which the receiving run checks for changes (user rulings, 2026-10-24, 2026-11-09: "Go ahead with A", read-only copies, detect changes). | The user chose to preserve the restriction on input paths. A project that uses links, such as E7's, was refused as a whole; an in-project link cannot escape the copy, and a copy of an outside target read at pack time gives the session nothing its sandbox did not let it read. A read-only copy whose changes fail the run keeps a session from benchmarking against a file that production does not have. | Links in an input's path are refused, except the operating system's own entries in a POSIX root directory such as macOS `/var`; a session that changes a copy fails its run; plugins, workspace and evidence still refuse links. |
 | D106 | Refactor lock coordination into an explicitly shared, process-owned object, supplied by scopes to every lock consumer (user ruling, 2026-10-24). | A mutable static registry shares state across independent scopes and tests; opening and closing another channel to a held file can release its POSIX lock. | Each process scope owns its coordinator, child scopes share it, and reservations outlive open channels. Independent coordinators retain independent state; no mutable static lock registry remains. |
 | D107 | Let a session launch either harness, its own included, through CAT's runner launchers, which both plugins hold; inside a run whose caller allows requested sessions, the launcher forwards the launch to the run's runner, and `--request-depth` lets requested sessions request sessions to a bounded depth (user rulings, 2026-10-25: implemented directly, forward through the broker, keep the runner split for later). | A session that tests work needing another harness, or a grandchild of its own, needed a different command per harness and could not start any harness from a requested session, whose commands are sandboxed and hold no login. Forwarding keeps the login, capacity, evidence and limits with the runner that already starts requested sessions host-side, so no child needs a sandbox exception, a login copy or a credential in its commands. | Supersedes D99's rule that requested sessions request none of their own. A forwarded launch carries only turns, not steering or interrupts. Revised by user ruling, 2026-11-02 ("Allow session's own login"): a session's commands may read the session's own login, a copy of the user's login in its isolated home, so a harness that a command starts directly, such as the prompt optimizer's sessions, can sign in; the user's real logins and the other harness's stay denied. Revised by user rulings, 2026-11-06: outside a run, a runner launcher that a session's command runs asks the session launcher that CAT's SessionStart hook starts for that session outside its sandbox. The session launcher starts the session inside its harness's own sandbox, bounded by the intersection of the asking session's policy and the session's needs, because no sandbox on macOS or on hosted Linux runners lets a sandboxed command start a sandboxed child. This supersedes the same day's ruling that started sessions in place, nested inside the asking session's sandbox. The top-level session needs no sandbox exception. `install` removes the exceptions that earlier versions configured and adds a write denial for the session launcher's state folder, `~/.cat/sessions`, so that the session's commands may not write it. |
 | D108 | Give the prompt author a compact table of earlier attempts’ kinds and results, with no hunks or line ranges (user ruling, 2026-10-25). | Full earlier manifests grow with every attempt and exceeded Codex’s input limit in a campaign with 417 attempts. The recurrence decision needs only which kinds were targeted and how each attempt ended; the campaign edits already hold what CAT kept of promoted hunks. | One row per attempt, oldest first, gives its number, cell, result, whether CAT rejected its manifest, and each kind’s name, classification and failure count. The prompt author no longer sees an earlier hunk’s wording, only that a kind was targeted and how the attempt ended. Full manifests remain in campaign state; no campaign format or measurement identity changes. |
