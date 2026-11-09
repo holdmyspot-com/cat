@@ -1522,6 +1522,11 @@ plugin copy of its candidate's base source, any other from its base copy. The tr
 own files that its staged source holds. The runner reuses the user's existing approvals of each plugin's hooks, as it
 does for CAT's. A Codex hook that the user has not approved does not run in trials, and the proposal lists it as a
 limitation. Claude Code runs every hook of an installed plugin without an approval, so its proposals list none.
+When a run installs CAT (`--install-cat`), the runner also writes into the trial's harness home the settings entries
+that CAT's installer writes for the installed copy: Claude Code's sandbox exceptions and allow rules for the installer
+and the request server, and Codex's installer rules, request-server rule and CAT hook approvals. A trial session thus
+meets the same approvals as a user's session, and starts its own requested sessions without asking. Entries that
+concern only the user's own home, such as the consented sandbox profile and the uninstall record, are not written.
 
 Staging excludes `.cat/sessions/`. This keeps a trial agent from reading other trials, judge results or formal
 assignments. Excluding the prompt test directories keeps a trial agent from reading a test's assertions, expected
