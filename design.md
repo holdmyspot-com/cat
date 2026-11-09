@@ -2606,7 +2606,9 @@ certifications (D111).
 
 **Session transcripts (user rulings, 2026-10-23):** a run leaves no harness transcript on disk unless its caller passes
 `--session-transcripts`, which requires `--keep-run`. Without it, Claude runs with `--no-session-persistence` and Codex
-starts ephemeral threads. With it, the harness writes its native JSONL transcripts, the runner reports each session's
+starts ephemeral threads, except in a session that may request sessions: its launchers read its sandbox policy from its
+transcript, so that session keeps its transcript in the run's isolated home, which the run discards unless kept, and the
+transcript reaches the kept run's artifacts only with the option. With it, the harness writes its native JSONL transcripts, the runner reports each session's
 transcript path in a `session_transcript` record once the session starts, so a caller can read it while the run lasts,
 and at the end of the run copies every native transcript of the run, subagents' included, into the kept run's
 `artifacts/session-transcripts/` and lists them in the receipt. The optimizer passes the option for its trials, whose
