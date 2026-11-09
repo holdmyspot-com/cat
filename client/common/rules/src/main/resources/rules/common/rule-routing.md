@@ -145,6 +145,9 @@ log, identifier, or commit message, including a timestamp that a tool, log, API,
 When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
 `../include/common/execution-lifecycle.md`.
 
+When writing a shell command that may need approval or a sandbox exception, lazy load
+`../include/common/approval-ready-commands.md`.
+
 When a recommendation, procedure, or workflow relies on an input, authority, handoff, or deferred action; before
 running a search across a directory tree, or a command that prints files or records whose size you have not
 established, such as generated, minified, or dependency data; when claiming that a tool, skill, subagent, command, test,
