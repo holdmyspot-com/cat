@@ -24,9 +24,8 @@ whose agents exchange information, lazy load `../agent-handoffs.md`.
 
 When creating, using, or handing off temporary files or directories, lazy load `../temporary-resources.md`.
 
-Before starting a session through CAT's `claude-runner` or `codex-runner` launcher, including from a session that a
-runner started, or requesting a session from inside a run through the `request-session` launcher, lazy load
-`../harness-runners.md`.
+Before you start or request a new agent session yourself, for example to test a plugin or a fresh installation in a
+separate session, including from inside a CAT run, lazy load `../harness-runners.md`.
 
 When a task needs a state change that something else produces, such as a hosted build finishing, a background process
 exiting or a subagent returning, lazy load `../external-waits.md` before you check that state or continue other work.

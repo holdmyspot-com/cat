@@ -484,9 +484,9 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
-	 * Verifies that the bundled workflow routing loads the rule on running a harness, so that an agent that runs a
-	 * runner launcher, or requests a session from inside a run, reads it first, and that its condition names those
-	 * launchers rather than any new Claude Code or Codex session, and relies on no instructions that a runner adds.
+	 * Verifies that the bundled workflow routing loads the rule before the agent starts or requests a new agent
+	 * session itself, and that its condition names no harness and no launcher, and relies on no instructions that a
+	 * runner adds.
 	 *
 	 * @throws IOException if the routing cannot be read
 	 */
@@ -497,28 +497,31 @@ public final class RunnerLaunchersTest
 		requireThat(routing, "routing").size().isEqualTo(1);
 		String text = read(routing.getFirst()).replaceAll("\\s+", " ");
 		requireThat(text, "workflows.md").
-			contains("Before starting a session through CAT's `claude-runner` or `codex-runner` launcher").
-			contains("requesting a session from inside a run").contains("`request-session`").
-			contains("lazy load `../harness-runners.md`").
-			doesNotContain("new Claude Code or Codex session").doesNotContain("instructions name");
+			contains("Before you start or request a new agent session yourself, for example to test a plugin or a " +
+				"fresh installation in a separate session, including from inside a CAT run, lazy load " +
+				"`../harness-runners.md`").
+			doesNotContain("claude-runner").doesNotContain("codex-runner").doesNotContain("`request-session`").
+			doesNotContain("Claude Code or Codex").doesNotContain("instructions name");
 	}
 
 	/**
-	 * Verifies that the always-loaded rule routing loads the workflow routing on starting a session through a runner
-	 * or session-request launcher, and not on any new Claude Code or Codex session, which a subagent could be read
-	 * as.
+	 * Verifies that the always-loaded rule routing loads the workflow routing before the agent starts or requests a
+	 * new agent session itself, and that its condition names no harness and no launcher.
 	 *
 	 * @throws IOException if the routing cannot be read
 	 */
 	@Test
-	public void ruleRoutingNamesRunnerLaunchers() throws IOException
+	public void ruleRoutingNamesNewSessionTrigger() throws IOException
 	{
 		List<URL> routing = resources("rules/common/rule-routing.md");
 		requireThat(routing, "routing").size().isEqualTo(1);
 		String text = read(routing.getFirst()).replaceAll("\\s+", " ");
 		requireThat(text, "rule-routing.md").
-			contains("starting a session through CAT's `claude-runner`, `codex-runner` or `request-session` launcher").
-			doesNotContain("new Claude Code or Codex session");
+			contains("starting or requesting a new agent session yourself, for example to test a plugin or a fresh " +
+				"installation in a separate session, including from inside a CAT run, or sending information to " +
+				"another agent").
+			doesNotContain("`claude-runner`, `codex-runner` or `request-session` launcher").
+			doesNotContain("Claude Code or Codex session");
 	}
 
 	/**
