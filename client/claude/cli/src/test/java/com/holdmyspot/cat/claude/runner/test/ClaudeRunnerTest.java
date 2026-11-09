@@ -954,7 +954,7 @@ public final class ClaudeRunnerTest
 	@Test
 	public void persistsSessionThatMayRequestSessions()
 	{
-		Path launcher = Path.of("/plugin/bin/request-session");
+		Path launcher = Path.of("/plugin/bin/request-session").toAbsolutePath();
 		List<String> mayRequest = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
 			List.of(), false, launcher, 2);
 		List<String> mayRequestNone = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(),
