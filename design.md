@@ -2725,6 +2725,15 @@ removes it. The entry names the request server by its absolute path, and the ser
 
 No runner launcher and no other CAT command has an exception: each runs inside the session's sandbox.
 
+An update ends with the settings entries of the version it installs, not those of the installer that ran it (user
+ruling, 2026-11-08). After an installer has installed and activated another version, it releases the harness lock and
+runs that version's installer once, by its absolute path, with the same `install` arguments. That run finds its version
+active and rewrites every settings entry with its own code, and the update reports its result. This is the only staged
+code an installer runs, and only from a release whose signature and checksums it has verified. When that run fails, the
+update reports the failure and names the command that writes the new entries: the new version's installer with the same
+arguments. An installer from before this change cannot do it, so an update from such a build needs that command run
+once more.
+
 An absolute path matches only that spelling: neither harness matches it against another path, a bare name found on
 `PATH`, a command behind a variable assignment or `env`, or a script with a second command. A shell function or alias
 cannot take a name that holds `/`. Both harnesses still strip a few wrappers, such as `timeout` and `nohup`, before
