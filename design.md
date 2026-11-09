@@ -2736,8 +2736,11 @@ No runner launcher and no other CAT command has an exception: each runs inside t
 
 An update ends with the settings entries of the version it installs, not those of the installer that ran it (user
 ruling, 2026-11-08). After an installer has installed and activated another version, it releases the harness lock and
-runs that version's installer once, by its absolute path, with the same `install` arguments. That run finds its version
-active and rewrites every settings entry with its own code, and the update reports its result. This is the only staged
+runs that version's installer once, by its absolute path, with the same `install` arguments except that the tag is
+always the tag of the release it installed, never `latest` or none, so that a release published in between cannot make
+it update again. That run asks no question: what the update decided, such as a declined optional change, stands, and
+nothing the update already settled is offered again. That run finds its version active and rewrites every settings
+entry with its own code, and the update reports its result. This is the only staged
 code an installer runs, and only from a release whose signature and checksums it has verified. When that run fails, the
 update reports the failure and names the command that writes the new entries: the new version's installer with the same
 arguments. An installer from before this change cannot do it, so an update from such a build needs that command run
