@@ -74,6 +74,9 @@ public final class HarnessRunReceipt
 			{
 				for (Path directory : directories)
 				{
+					// The folder also holds the run's limits file, which is not a requested session
+					if (!Files.isDirectory(directory))
+						continue;
 					Path response = directory.resolve("response.json");
 					JsonNode resultDocument = json.readTree(response.toFile());
 					ObjectNode entry = sessions.addObject();
