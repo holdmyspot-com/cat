@@ -213,6 +213,37 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies bulk pruning skips a run folder that has no manifest yet, as a requester's copy of a requested session's
+	 * run does until the session ends, or never has if the session was stopped, and still prunes the terminal runs
+	 * beside it. The requester's own session ends and prunes while another requested session is still running.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void pruneSkipsRunFolderWithoutManifest() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(
+				jvm.temporaryDirectory(),
+				"cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun terminal = manager.create("harness");
+			Files.writeString(terminal.directory().resolve("home/cache.txt"), "cache");
+			manager.markCompleted(terminal);
+			Path requested = Files.createDirectories(root.resolve("harness/mw9qj3hn-1x2ce9sid1/artifacts"));
+			Files.writeString(requested.resolve("transcript.jsonl"), "{}");
+
+			manager.pruneTerminalRuntimes("harness");
+
+			requireThat(Files.notExists(terminal.directory().resolve("home")), "terminalHome").isTrue();
+			requireThat(Files.isRegularFile(requested.resolve("transcript.jsonl")), "requestedTranscript").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies failed runs retain non-secret diagnostics for later investigation.
 	 *
 	 * @throws IOException if the filesystem operation fails

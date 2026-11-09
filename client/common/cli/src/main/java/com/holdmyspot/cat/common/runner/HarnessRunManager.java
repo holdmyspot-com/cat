@@ -757,7 +757,9 @@ public final class HarnessRunManager
 	/**
 	 * Removes disposable runtime state from every terminal run owned by one harness root. Entries whose names are not
 	 * generated run identifiers are not runs and stay as they are, such as the {@code .claude} directories that a
-	 * harness sandbox creates in the directories above its working directory.
+	 * harness sandbox creates in the directories above its working directory. A run folder that has no manifest stays
+	 * as it is too: a requester's copy of a requested session's run has none until the session ends, or ever if the
+	 * session was stopped, and a run that was being created or deleted at that moment has none either.
 	 *
 	 * @param harness the owning harness name
 	 * @throws IOException if a manifest is malformed or disposable state cannot be removed
@@ -779,8 +781,15 @@ public final class HarnessRunManager
 				if (Files.isSymbolicLink(entry) || !Files.isDirectory(entry, NOFOLLOW_LINKS))
 					throw new IOException("Harness run is not an owned directory: " + entry);
 				HarnessRun run = new HarnessRun(harness, entry.getFileName().toString(), entry);
-				if (!readManifest(run).state().equals("running"))
-					pruneRuntime(run);
+				try
+				{
+					if (!readManifest(run).state().equals("running"))
+						pruneRuntime(run);
+				}
+				catch (NoSuchFileException _)
+				{
+					// The run has no manifest, or lost it while this loop ran: it belongs to no terminal run to prune
+				}
 			}
 		}
 	}
