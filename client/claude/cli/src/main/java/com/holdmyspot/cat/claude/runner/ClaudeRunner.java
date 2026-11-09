@@ -631,11 +631,16 @@ public final class ClaudeRunner
 		if (store != null && !store.isEmpty())
 		{
 			// On macOS, Claude Code names the Keychain item of a named store after a hash of the variable's text, which
-			// Path would change by dropping a trailing separator or a repeated one
-			Path directory = Path.of(store);
-			if (directory.isAbsolute())
+			// Path would change by dropping a trailing separator or a repeated one. The platform, not the JVM's file
+			// system, decides whether a text is absolute: a JVM on Windows does not take "/Users/alice" as absolute.
+			boolean absolute;
+			if (platform.isWindows())
+				absolute = Path.of(store).isAbsolute();
+			else
+				absolute = store.startsWith("/");
+			if (absolute)
 				return store;
-			return directory.toAbsolutePath().toString();
+			return Path.of(store).toAbsolutePath().toString();
 		}
 		// The user's Claude Code keeps the login of its default store in the Keychain item without a hash in its name,
 		// which only an empty value selects. The session's refreshes then take its own lock, which is safe: a refresh
