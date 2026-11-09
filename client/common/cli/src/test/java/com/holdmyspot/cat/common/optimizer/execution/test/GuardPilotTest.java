@@ -52,6 +52,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
@@ -370,6 +371,33 @@ public final class GuardPilotTest
 			requireThat(safety.trials(), "trials").isEmpty();
 			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
 				"The built-in tools could not be decided: `notes.md` was not a file when the trial started"));
+		}
+	}
+
+	/**
+	 * A trial session that ends with an exception counts as a failed run that names the exception's type, so that a
+	 * message that holds only a file name, as a missing file's does, still says what went wrong.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void crashedTrialSessionRecordsExceptionType() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-crash"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			String manifest = directory.resolve("runs/claude/mw9qj3hn-1x2ce9sid1/run.json").toString();
+			sessions.crashTrials(new NoSuchFileException(manifest));
+
+			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
+				SELECTION, Map.of(), new SplittableRandom(6)).get("safety");
+
+			requireThat(safety.trials(), "trials").isEmpty();
+			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
+				"The trial session failed: java.nio.file.NoSuchFileException: " + manifest));
 		}
 	}
 
@@ -880,6 +908,7 @@ public final class GuardPilotTest
 		private final List<String> judgedReplies = new ArrayList<>();
 		private final JudgePrompt judgePrompt;
 		private final Map<SessionRole, Deque<SessionResult>> rejections = new EnumMap<>(SessionRole.class);
+		private volatile Throwable trialCrash;
 
 		/**
 		 * Creates a script.
@@ -972,6 +1001,17 @@ public final class GuardPilotTest
 		}
 
 		/**
+		 * Makes every trial session end with an exception instead of a result, as a session does when CAT cannot
+		 * determine how it ended.
+		 *
+		 * @param failure the exception
+		 */
+		void crashTrials(Throwable failure)
+		{
+			trialCrash = failure;
+		}
+
+		/**
 		 * Returns the requests of the sessions that started with a role.
 		 *
 		 * @param role the role
@@ -1004,6 +1044,11 @@ public final class GuardPilotTest
 		private void answer(FakeSession session)
 		{
 			SessionRequest request = session.request();
+			if (request.role() == SessionRole.TRIAL && trialCrash != null)
+			{
+				session.fail(trialCrash);
+				return;
+			}
 			// The session's start position names its evidence directory
 			int number = port.sessions().indexOf(session) + 1;
 			SessionResult rejection;

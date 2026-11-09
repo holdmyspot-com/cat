@@ -2258,19 +2258,26 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Describes an exception.
+	 * Describes an exception. A message that CAT wrote, which an {@link IOException} of CAT's or an exception of
+	 * CAT's own types carries, says what went wrong and stands alone. The message of any other exception, such as a
+	 * {@link java.nio.file.NoSuchFileException}, which carries only the name of the file, does not, so its type's name
+	 * comes first.
 	 *
 	 * @param failure the exception
-	 * @return its message, or its type if it has no message
+	 * @return its message if CAT wrote it, its type's name and its message for any other exception, or its type's
+	 *   name if it has no message
 	 */
 	static String describe(Throwable failure)
 	{
 		Throwable cause = failure;
 		if (cause instanceof CompletionException && cause.getCause() != null)
 			cause = cause.getCause();
+		String type = cause.getClass().getName();
 		String message = cause.getMessage();
 		if (message == null || message.isBlank())
-			return cause.getClass().getName();
-		return message;
+			return type;
+		if (cause.getClass() == IOException.class || type.startsWith("com.holdmyspot.cat."))
+			return message;
+		return type + ": " + message;
 	}
 }

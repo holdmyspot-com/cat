@@ -484,6 +484,19 @@ public final class FakeSessionPort implements SessionPort
 		}
 
 		/**
+		 * Ends the session with the exception that the real session's completion carries when CAT cannot determine
+		 * how the session ended. Ending a session that has ended does nothing.
+		 *
+		 * @param failure the exception
+		 * @throws NullPointerException if {@code failure} is null
+		 */
+		public void fail(Throwable failure)
+		{
+			requireThat(failure, "failure").isNotNull();
+			result.completeExceptionally(failure);
+		}
+
+		/**
 		 * Indicates whether the session has ended.
 		 *
 		 * @return {@code true} if the session has a result
