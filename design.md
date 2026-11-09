@@ -2624,20 +2624,20 @@ its sandbox, Claude sessions are refused instead, and the refusal tells the user
 **Claude login of a run (user rulings, 2026-11-08):** a subscription login rotates its refresh token, so a copy of the
 user's `.credentials.json` stops working once the user's own session, or any other copy, refreshes it, which can happen
 in the middle of a turn; Claude Code also replaces a symbolic link when it saves a refreshed login, so a link to the
-user's file does not help. A Claude session in a run therefore never authenticates through the user's login file or a
-copy of it, and the user's own session keeps its login unchanged ("Set it in the auth settings of each child, but leave
-the parent as-is"). It authenticates through a run token: a long-lived token that the user creates once with
-`claude setup-token` and stores with `<installer> set-run-token --harness claude`, a command of the Claude plugin's
-installer that the user runs outside the sandbox. It reads the token from the terminal without echoing it, or from
-standard input when that is not a terminal, refuses a blank one, and saves it in the plugin data folder in a file that
-only the user can read; running it again replaces the token, and uninstall removes it with the plugin data. Install
-denies the harness sessions' commands reading that file, so the user's session's agent cannot read it. The runner, which
-runs outside the session's sandbox, reads the file when it starts a run and writes the token as
-`CLAUDE_CODE_OAUTH_TOKEN` into the `env` block of the run's own Claude settings, and the run's runner does the same for
-each session that the run requests. When the environment that the runner starts in sets `CLAUDE_CODE_OAUTH_TOKEN`,
-`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, that variable is used instead, as before. With neither, the runner
-refuses the run before the harness starts, with status 2, and the reason names `claude setup-token` and the
-`set-run-token` command.
+user's file does not help. A Claude session in a run therefore shares the user's login store instead of copying it, with
+no action by the user, and the user's own session and settings stay unchanged ("The mechanism must be automatic. So long
+as the parent is authenticated, the plugin should pass credentials to the children automatically without user
+intervention"). The runner starts each session, and each session that a run requests, with its own configuration folder
+and with `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the user's Claude configuration folder (`CLAUDE_CONFIG_DIR` of the
+environment that the first runner starts in, else `~/.claude`); Claude Code takes the login file, the macOS Keychain
+item and the refresh lock from that variable, so a session refreshes the shared login under Claude Code's own lock, as
+two of the user's own sessions do, and the user's session reloads the refreshed login when the file changes. The user
+accepted that a session can therefore change the shared login's tokens, including Claude Code's clearing of a login whose
+refresh is refused (user ruling, 2026-11-08). CAT never reads, copies or stores a token, and the sessions' commands stay
+denied reading the user's login file. When that environment sets `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or
+`ANTHROPIC_AUTH_TOKEN`, that variable is passed as before. With neither a variable nor a stored login, which the runner
+checks by existence only, the runner refuses the run before the harness starts, with status 2, and the reason tells the
+user to log in to Claude Code.
 
 No one can answer a nested session's approval prompt, so a session's own commands run without one. The
 Claude runner allows Bash for the session and relies on the sandbox it requires, which forbids unsandboxed commands,
